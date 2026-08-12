@@ -1,8 +1,6 @@
 <div align="center">
   <img src="assets/c5vrx-logo.jpg" alt="C5VRX logo" width="760" />
 
-  <h1></h1>
-
   <p><strong>ESP32-C5 analog 5.8 GHz FPV receiver research</strong></p>
   <p>An experimental attempt to turn the ESP32-C5 into an open <strong>RX5808 alternative</strong> for analog FPV.</p>
 
@@ -84,6 +82,37 @@ That means the **RF front-end does not need frequency translation tricks** just 
 
 ---
 
+## FPV frequency coverage
+
+C5VRX is **not limited to Band A**. The current direct hardware target is **5645–5885 MHz**.
+
+| Ch | A | B | E | F | R |
+|---:|:---:|:---:|:---:|:---:|:---:|
+| 1 | ✅ | ☑️ | ☑️ | ☑️ | ☑️ |
+| 2 | ✅ | ☑️ | ☑️ | ☑️ | ☑️ |
+| 3 | ✅ | ☑️ | ☑️ | ☑️ | ☑️ |
+| 4 | ✅ | ☑️ | ☑️ | ☑️ | ☑️ |
+| 5 | ✅ | ☑️ | ✅ | ☑️ | ☑️ |
+| 6 | ✅ | ☑️ | ❌ | ☑️ | ☑️ |
+| 7 | ✅ | ☑️ | ❌ | ☑️ | ☑️ |
+| 8 | ☑️ | ☑️ | ❌ | ☑️ | ❌ |
+
+**Legend**
+- ✅ = exact match with a normal 5 GHz Wi-Fi center frequency
+- ☑️ = inside the C5VRX target range, but requires offset/arbitrary tuning
+- ❌ = outside the current ESP32-C5 target range
+
+### Current exceptions
+
+- **RaceBand R8 — 5917 MHz** ❌
+- **E6 — 5905 MHz** ❌
+- **E7 — 5925 MHz** ❌
+- **E8 — 5945 MHz** ❌
+
+Everything else in the classic A/B/E/F/R table is inside the current C5VRX target window.
+
+---
+
 ## Vision
 
 If this works, C5VRX could become the basis for:
@@ -136,8 +165,8 @@ print_dump_data
 loop_dump_test
 fedump_rd_rxmem
 phy_chan_dump_cfg_752
-phy_fe_adc_on
 phy_adc_rate_set
+phy_fe_adc_on
 phy_iq_est_enable
 phy_write_chan_freq
 ```
