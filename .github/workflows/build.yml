@@ -63,5 +63,8 @@ jobs:
       - name: WBFM discriminator self-test
         run: python tools/wbfm_demod.py --self-test
 
+      - name: ADC dump decoder self-test
+        run: python tools/decode_adc_dump.py --self-test
+
       - name: Generate FPV channel report
         run: python tools/fpv_channel_report.py

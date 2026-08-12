@@ -7,6 +7,7 @@
 #include "esp_chip_info.h"
 #include "esp_log.h"
 
+#include "c5vrx_adc_dump.h"
 #include "c5vrx_channels.h"
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_rf.h"
@@ -26,6 +27,12 @@ static const char *TAG = "C5VRX";
 #define C5VRX_CFG_DIRECT_TUNE false
 #endif
 
+#if CONFIG_C5VRX_ADC_DUMP_PRINT_RAW
+#define C5VRX_CFG_ADC_PRINT_RAW true
+#else
+#define C5VRX_CFG_ADC_PRINT_RAW false
+#endif
+
 static c5vrx_band_t configured_band(void)
 {
 #if CONFIG_C5VRX_TARGET_BAND_A
@@ -38,6 +45,24 @@ static c5vrx_band_t configured_band(void)
     return C5VRX_BAND_F;
 #else
     return C5VRX_BAND_R;
+#endif
+}
+
+static void maybe_run_adc_dump(const c5vrx_frequency_plan_t *plan)
+{
+#if CONFIG_C5VRX_EXPERIMENTAL_ADC_DUMP
+    if (!plan->exact_wifi_center && !C5VRX_CFG_DIRECT_TUNE) {
+        ESP_LOGW(TAG,
+                 "ADC dump target is offset %+d MHz from the bootstrap center and direct tune is disabled; use an exact channel such as A4/5805 for the first hardware proof",
+                 plan->offset_mhz);
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_ERROR_CHECK(c5vrx_adc_dump_capture(
+        CONFIG_C5VRX_ADC_DUMP_SAMPLES,
+        C5VRX_CFG_ADC_PRINT_RAW));
+#else
+    (void)plan;
 #endif
 }
 
@@ -90,8 +115,10 @@ void app_main(void)
         }
     }
 
+    maybe_run_adc_dump(&plan);
+
     ESP_LOGW(TAG,
-             "Promiscuous Wi-Fi RX only proves the 5 GHz RF path is active; it does NOT expose analog FPV samples. Next milestone: FE/baseband dump capture.");
+             "Promiscuous Wi-Fi RX proves the 5 GHz RF path is active; live analog FPV still requires continuous FE/baseband sample capture and WBFM demodulation.");
 
     while (true) {
         c5vrx_wifi5_status_t status;
@@ -120,6 +147,7 @@ void app_main(void)
 
     ESP_ERROR_CHECK(c5vrx_rf_init());
     ESP_ERROR_CHECK(c5vrx_rf_start(&cfg));
+    maybe_run_adc_dump(&plan);
 
     while (true) {
         esp_phy_rx_result_t rx = {0};

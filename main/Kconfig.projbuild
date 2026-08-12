@@ -54,8 +54,35 @@ config C5VRX_EXPERIMENTAL_DIRECT_TUNE
     default n
     help
         EXPERIMENTAL. After a receive backend is active on the nearest standard
-        Wi-Fi center, call the weak phy_set_freq(int MHz) hook to attempt an
-        arbitrary-frequency retune. Leave disabled until testing with a
-        controlled RF source.
+        Wi-Fi center, call the weak two-argument phy_set_freq(freq_mhz, offset)
+        hook to attempt an arbitrary-frequency retune. Leave disabled until
+        testing with a controlled RF source.
+
+config C5VRX_EXPERIMENTAL_ADC_DUMP
+    bool "Run one finite vendor ADC/IQ dump after RF bring-up"
+    default n
+    help
+        EXPERIMENTAL. ESP-IDF v6.0.2 static analysis identifies a 64 KiB
+        vendor RF-test capture buffer with packed signed 10-bit I/Q samples.
+        This option triggers one finite capture after the RF backend starts.
+        The path is not yet validated on physical ESP32-C5 hardware.
+
+config C5VRX_ADC_DUMP_SAMPLES
+    int "ADC/IQ samples per finite capture"
+    range 256 16384
+    default 8192
+    depends on C5VRX_EXPERIMENTAL_ADC_DUMP
+    help
+        Number of complex 32-bit dump words to process. The recovered vendor
+        buffer at 0x40830000 is 64 KiB, so the maximum is 16384 samples.
+
+config C5VRX_ADC_DUMP_PRINT_RAW
+    bool "Print raw capture words as IQ:xxxxxxxx lines"
+    default n
+    depends on C5VRX_EXPERIMENTAL_ADC_DUMP
+    help
+        Emit machine-readable raw 32-bit dump words over the console. This is
+        intentionally disabled by default because thousands of serial lines are
+        slow. Enable it for captures that will be decoded on a host PC.
 
 endmenu
