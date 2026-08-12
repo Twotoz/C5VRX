@@ -1,0 +1,12 @@
+# C5VRX one-click proof-test firmware
+# A4 / 5805 MHz exact Wi-Fi center, HT40, no direct retune.
+CONFIG_C5VRX_RF_BACKEND_WIFI5=y
+CONFIG_C5VRX_TARGET_BAND_A=y
+CONFIG_C5VRX_TARGET_CHANNEL=4
+CONFIG_C5VRX_RX_HT40=y
+# Keep arbitrary retuning disabled for the first hardware proof.
+# CONFIG_C5VRX_EXPERIMENTAL_DIRECT_TUNE is not set
+# Enable one finite vendor ADC/IQ capture and print all words for host analysis.
+CONFIG_C5VRX_EXPERIMENTAL_ADC_DUMP=y
+CONFIG_C5VRX_ADC_DUMP_SAMPLES=8192
+CONFIG_C5VRX_ADC_DUMP_PRINT_RAW=y
