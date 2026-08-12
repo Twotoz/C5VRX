@@ -7,24 +7,32 @@ A practical, open RX5808-class alternative based on inexpensive, currently obtai
 ## Milestones
 
 - [x] Identify exact FPV/Wi-Fi frequency overlap for Band A1-A7.
+- [x] Add complete classic A/B/E/F/R FPV channel database.
+- [x] Define realistic direct C5 target window: 5645-5885 MHz.
+- [x] Add nearest-Wi-Fi-center planning for every FPV channel.
 - [x] Confirm RF certification libraries are linkable from ESP-IDF.
 - [x] Identify promising C5 RF-test symbols for ADC/IQ/front-end dump research.
 - [x] Add a minimal C5 RF-test RX harness.
 - [x] Add automated symbol/disassembly extraction tooling.
+- [x] Identify `phy_set_freq(int freq_mhz)` as an arbitrary-frequency candidate hook.
+- [x] Add opt-in weak-symbol direct-frequency experiment.
+- [x] Add offline WBFM discriminator + synthetic DSP self-test.
 - [ ] Build on a real ESP32-C5 board.
 - [ ] Verify 5 GHz RF-test RX on channel 161 / 5805 MHz.
+- [ ] Verify R5 / 5806 MHz reception from the ch161 HT40 bootstrap path.
+- [ ] Validate whether `phy_set_freq(5806)` actually shifts the C5 receiver center by +1 MHz.
 - [ ] Recover calling convention for `set_dump_mode` and `loop_dump_test`.
 - [ ] Locate/parse the receive dump buffer.
 - [ ] Prove the dump changes in response to a non-802.11 analog FPV carrier.
 - [ ] Determine whether captured data preserves phase (raw/near-raw IQ).
+- [ ] Feed first real capture into `tools/wbfm_demod.py`.
 - [ ] Recover a short analog-video waveform offline.
 - [ ] Obtain continuous or sufficiently chunked sample capture.
 - [ ] Implement real-time WBFM discriminator.
 - [ ] Recover monochrome PAL/NTSC video.
 - [ ] Recover color.
 - [ ] Feed a display pipeline with measured end-to-end latency.
-- [ ] Investigate arbitrary frequency programming for the rest of FPV bands.
-- [ ] Add RSSI / autoscan / channel table.
+- [ ] Add RSSI / autoscan / runtime channel selection.
 - [ ] Design a minimal C5VRX PCB if the silicon path proves viable.
 
 ## Kill criteria

@@ -6,9 +6,12 @@
 #include "esp_chip_info.h"
 #include "esp_log.h"
 
+#include "c5vrx_channels.h"
 #include "c5vrx_rf.h"
 
 static const char *TAG = "C5VRX";
+
+#define C5VRX_EXPERIMENTAL_DIRECT_TUNE 0
 
 void app_main(void)
 {
@@ -26,14 +29,23 @@ void app_main(void)
     ESP_LOGI(TAG, "Goal: RX5808-class analog FPV reception using the ESP32-C5 5 GHz receive chain");
     ESP_LOGI(TAG, "Chip revision: %u", (unsigned)info.revision);
 
-    c5vrx_print_direct_fpv_channels();
+    c5vrx_print_fpv_coverage();
 
-    // First bring-up target: FPV Band A4 = 5805 MHz = Wi-Fi channel 161.
-    // HT40 gives the front-end enough receive bandwidth for the first WBFM experiments.
+    c5vrx_fpv_channel_t target;
+    c5vrx_frequency_plan_t plan;
+    ESP_ERROR_CHECK(c5vrx_get_fpv_channel(C5VRX_BAND_R, 5, &target) ? ESP_OK : ESP_FAIL);
+    ESP_ERROR_CHECK(c5vrx_plan_frequency(target.mhz, &plan) ? ESP_OK : ESP_FAIL);
+
+    ESP_LOGW(TAG,
+             "Target %c%u / %s: %u MHz; bootstrap Wi-Fi ch%u=%u MHz, offset=%+d MHz",
+             target.letter, target.channel, target.name, target.mhz,
+             plan.wifi_channel, plan.wifi_center_mhz, plan.offset_mhz);
+
     const c5vrx_rx_config_t cfg = {
-        .wifi_channel = 161,
-        .center_mhz = 5805,
+        .wifi_channel = plan.wifi_channel,
+        .center_mhz = target.mhz,
         .ht40 = true,
+        .try_direct_frequency = C5VRX_EXPERIMENTAL_DIRECT_TUNE,
         .rate = PHY_RATE_6M,
     };
 
@@ -41,7 +53,7 @@ void app_main(void)
     ESP_ERROR_CHECK(c5vrx_rf_start(&cfg));
 
     ESP_LOGW(TAG,
-             "Packet counters below are NOT the analog-video output. The next milestone is tapping the FE/baseband dump/IQ path before 802.11 decode.");
+             "Packet counters below are NOT analog video. Next milestone: FE/baseband dump capture before 802.11 decode.");
 
     while (true) {
         esp_phy_rx_result_t rx = {0};
