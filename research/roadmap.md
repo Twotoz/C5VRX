@@ -14,14 +14,19 @@ A practical, open RX5808-class alternative based on inexpensive, currently obtai
 - [x] Identify promising C5 RF-test symbols for ADC/IQ/front-end dump research.
 - [x] Add a minimal C5 RF-test RX harness.
 - [x] Add automated symbol/disassembly extraction tooling.
+- [x] Add symbol-size + relocation call-graph analysis for dump/frequency targets.
 - [x] Identify `phy_set_freq(int freq_mhz)` as an arbitrary-frequency candidate hook.
 - [x] Add opt-in weak-symbol direct-frequency experiment.
+- [x] Add menuconfig-selectable A/B/E/F/R target channel and experimental tuning switch.
 - [x] Add offline WBFM discriminator + synthetic DSP self-test.
+- [x] Document historical FE-dump evidence and reprioritize `loop_dump_test` analysis.
+- [x] Add ESP-IDF v6.0.2 CI build definition for ESP32-C5.
+- [ ] Make the ESP-IDF CI build pass on `main`.
 - [ ] Build on a real ESP32-C5 board.
 - [ ] Verify 5 GHz RF-test RX on channel 161 / 5805 MHz.
 - [ ] Verify R5 / 5806 MHz reception from the ch161 HT40 bootstrap path.
 - [ ] Validate whether `phy_set_freq(5806)` actually shifts the C5 receiver center by +1 MHz.
-- [ ] Recover calling convention for `set_dump_mode` and `loop_dump_test`.
+- [ ] Recover C5 calling convention for `set_dump_mode` and `loop_dump_test`.
 - [ ] Locate/parse the receive dump buffer.
 - [ ] Prove the dump changes in response to a non-802.11 analog FPV carrier.
 - [ ] Determine whether captured data preserves phase (raw/near-raw IQ).

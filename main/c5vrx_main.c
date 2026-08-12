@@ -1,5 +1,6 @@
 #include <inttypes.h>
 
+#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
@@ -11,7 +12,20 @@
 
 static const char *TAG = "C5VRX";
 
-#define C5VRX_EXPERIMENTAL_DIRECT_TUNE 0
+static c5vrx_band_t configured_band(void)
+{
+#if CONFIG_C5VRX_TARGET_BAND_A
+    return C5VRX_BAND_A;
+#elif CONFIG_C5VRX_TARGET_BAND_B
+    return C5VRX_BAND_B;
+#elif CONFIG_C5VRX_TARGET_BAND_E
+    return C5VRX_BAND_E;
+#elif CONFIG_C5VRX_TARGET_BAND_F
+    return C5VRX_BAND_F;
+#else
+    return C5VRX_BAND_R;
+#endif
+}
 
 void app_main(void)
 {
@@ -33,7 +47,10 @@ void app_main(void)
 
     c5vrx_fpv_channel_t target;
     c5vrx_frequency_plan_t plan;
-    ESP_ERROR_CHECK(c5vrx_get_fpv_channel(C5VRX_BAND_R, 5, &target) ? ESP_OK : ESP_FAIL);
+    const c5vrx_band_t band = configured_band();
+    const uint8_t channel = CONFIG_C5VRX_TARGET_CHANNEL;
+
+    ESP_ERROR_CHECK(c5vrx_get_fpv_channel(band, channel, &target) ? ESP_OK : ESP_FAIL);
     ESP_ERROR_CHECK(c5vrx_plan_frequency(target.mhz, &plan) ? ESP_OK : ESP_FAIL);
 
     ESP_LOGW(TAG,
@@ -41,11 +58,18 @@ void app_main(void)
              target.letter, target.channel, target.name, target.mhz,
              plan.wifi_channel, plan.wifi_center_mhz, plan.offset_mhz);
 
+    if (!plan.inside_c5_rx_window) {
+        ESP_LOGE(TAG,
+                 "Target %c%u is outside the current ESP32-C5 receive window; select another channel in menuconfig",
+                 target.letter, target.channel);
+        return;
+    }
+
     const c5vrx_rx_config_t cfg = {
         .wifi_channel = plan.wifi_channel,
         .center_mhz = target.mhz,
-        .ht40 = true,
-        .try_direct_frequency = C5VRX_EXPERIMENTAL_DIRECT_TUNE,
+        .ht40 = CONFIG_C5VRX_RX_HT40,
+        .try_direct_frequency = CONFIG_C5VRX_EXPERIMENTAL_DIRECT_TUNE,
         .rate = PHY_RATE_6M,
     };
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Generate a focused reverse-engineering report for ESP32-C5 PHY/RF-test blobs.
 
-This script does not modify the vendor libraries. It runs the Espressif RISC-V
-binutils against libphy.a/librftest.a and extracts only the functions relevant
-to C5VRX's receive-sample research.
+The script is deliberately read-only: it never patches vendor libraries. It uses
+Espressif's RISC-V binutils to extract symbol sizes, focused disassembly and a
+small relocation-based call graph around the receive/dump/frequency functions
+that matter to C5VRX.
 """
 
 from __future__ import annotations
@@ -14,8 +15,10 @@ import pathlib
 import re
 import shutil
 import subprocess
+from collections import defaultdict
 
 TARGETS = [
+    # RF-test / factory dump path
     "adctrig",
     "sampledeal",
     "accumiq",
@@ -28,20 +31,35 @@ TARGETS = [
     "loop_dump_test",
     "fedump_rd_rxmem",
     "fedump_rd_txmem",
+    # PHY/front-end dump and IQ helpers (keep old + current name variants)
+    "phy_chan_dump_cfg",
     "phy_chan_dump_cfg_752",
     "phy_adc_rate_set",
     "phy_fe_adc_on",
     "phy_iq_est_enable",
+    "phy_iq_est_enable_new",
     "phy_iq_est_disable",
     "phy_dc_iq_est",
+    "phy_dc_iq_est_new",
     "phy_rxiq_get_mis",
     "phy_get_iq_est_snr",
     "phy_fft_scale_force",
     "phy_csidump_force_lltf_cfg",
+    # Frequency control candidates
+    "phy_set_freq",
+    "phy_set_chanfreq",
+    "phy_set_rfpll_freq",
+    "phy_set_channel_rfpll_freq_new",
+    "phy_write_chan_freq",
+    "phy_chip_set_chan",
+    "phy_chip_set_chan_ana",
+    "phy_chip_set_chan_offset",
     "phy_set_rx_pbus_freq",
     "phy_get_rx_pbus_freq",
-    "phy_write_chan_freq",
 ]
+
+FUNC_HEADER = re.compile(r"^\s*[0-9a-fA-F]+\s+<([^>]+)>:\s*$")
+RELOC_CALL = re.compile(r"R_RISCV_(?:CALL|CALL_PLT|JAL)\s+([^\s+]+)")
 
 
 def run(cmd: list[str]) -> str:
@@ -50,28 +68,75 @@ def run(cmd: list[str]) -> str:
 
 
 def find_tool(name: str) -> str:
-    candidates = [f"riscv32-esp-elf-{name}", f"riscv32-unknown-elf-{name}", name]
-    for candidate in candidates:
+    for candidate in (f"riscv32-esp-elf-{name}", f"riscv32-unknown-elf-{name}", name):
         p = shutil.which(candidate)
         if p:
             return p
     raise SystemExit(f"Could not find {name}. Source/export your ESP-IDF environment first.")
 
 
-def extract_functions(disassembly: str, symbols: list[str], tail_lines: int = 100) -> dict[str, str]:
+def extract_functions(disassembly: str, symbols: list[str], tail_lines: int = 180) -> dict[str, str]:
     lines = disassembly.splitlines()
+    wanted = set(symbols)
     hits: dict[str, str] = {}
-    patterns = {s: re.compile(rf"<({re.escape(s)})>:\s*$") for s in symbols}
     for i, line in enumerate(lines):
-        for sym, pat in patterns.items():
-            if pat.search(line):
-                chunk = [line]
-                for nxt in lines[i + 1 : i + 1 + tail_lines]:
-                    if re.search(r"^[0-9a-fA-F]+\s+<[^>]+>:\s*$", nxt):
-                        break
-                    chunk.append(nxt)
-                hits[sym] = "\n".join(chunk)
+        m = FUNC_HEADER.match(line)
+        if not m or m.group(1) not in wanted:
+            continue
+        name = m.group(1)
+        chunk = [line]
+        for nxt in lines[i + 1 : i + 1 + tail_lines]:
+            if FUNC_HEADER.match(nxt):
+                break
+            chunk.append(nxt)
+        hits[name] = "\n".join(chunk)
     return hits
+
+
+def symbol_sizes(nm_output: str) -> dict[str, tuple[int, str]]:
+    """Return symbol -> (size, original nm line) for common GNU nm -S layouts."""
+    out: dict[str, tuple[int, str]] = {}
+    for line in nm_output.splitlines():
+        # Archive prefix is optional. The last token is the symbol name; look for
+        # two adjacent hex fields immediately before the type/name tail.
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        name = parts[-1]
+        if name not in TARGETS:
+            continue
+        size = None
+        for token in reversed(parts[:-1]):
+            if re.fullmatch(r"[0-9a-fA-F]+", token):
+                if size is None:
+                    size = int(token, 16)
+                else:
+                    break
+        if size is not None:
+            out[name] = (size, line)
+    return out
+
+
+def call_graph(disassembly: str) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    callers: dict[str, set[str]] = defaultdict(set)
+    callees: dict[str, set[str]] = defaultdict(set)
+    current = None
+    wanted = set(TARGETS)
+    for line in disassembly.splitlines():
+        m = FUNC_HEADER.match(line)
+        if m:
+            current = m.group(1)
+            continue
+        if current is None:
+            continue
+        m = RELOC_CALL.search(line)
+        if not m:
+            continue
+        target = m.group(1)
+        if current in wanted or target in wanted:
+            callees[current].add(target)
+            callers[target].add(current)
+    return callers, callees
 
 
 def main() -> int:
@@ -101,21 +166,41 @@ def main() -> int:
         "",
         "Generated by `tools/analyze_phy.py`.",
         "",
-        "The goal is to locate a path from the C5 5 GHz front-end/ADC to raw or near-raw receive samples before normal 802.11 packet decoding.",
+        "Goal: identify a path from the 5 GHz front-end/ADC to phase-bearing receive samples before normal 802.11 decode.",
+        "",
+        "> Function names and call relationships are evidence; undocumented prototypes are not assumed from names alone.",
         "",
     ]
 
     for lib in libs:
         report += [f"## `{lib.name}`", ""]
-        symbols = run([nm, "-A", "-C", "--defined-only", str(lib)])
-        report += ["### Interesting exported symbols", "", "```text"]
-        for line in symbols.splitlines():
-            if any(t in line for t in TARGETS):
-                report.append(line)
-        report += ["```", ""]
+        nm_out = run([nm, "-A", "-S", "-C", "--defined-only", str(lib)])
+        sizes = symbol_sizes(nm_out)
+        report += ["### Target symbol inventory", "", "| Symbol | Size |", "| --- | ---: |"]
+        for target in TARGETS:
+            if target in sizes:
+                report.append(f"| `{target}` | {sizes[target][0]} bytes |")
+        if not sizes:
+            report.append("| _none found_ | — |")
+        report.append("")
 
         dis = run([objdump, "-dr", "-C", str(lib)])
+        callers, callees = call_graph(dis)
         funcs = extract_functions(dis, TARGETS)
+
+        report += ["### Relocation-based call graph", ""]
+        for target in TARGETS:
+            inbound = sorted(callers.get(target, ()))
+            outbound = sorted(callees.get(target, ()))
+            if not inbound and not outbound:
+                continue
+            report += [f"#### `{target}`", ""]
+            if inbound:
+                report.append("Called by: " + ", ".join(f"`{x}`" for x in inbound))
+            if outbound:
+                report.append("Calls: " + ", ".join(f"`{x}`" for x in outbound))
+            report.append("")
+
         report += ["### Focused disassembly", ""]
         for target in TARGETS:
             body = funcs.get(target)

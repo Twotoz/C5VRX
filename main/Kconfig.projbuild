@@ -1,0 +1,43 @@
+menu "C5VRX research firmware"
+
+choice C5VRX_TARGET_BAND
+    prompt "Default analog FPV band"
+    default C5VRX_TARGET_BAND_R
+
+config C5VRX_TARGET_BAND_A
+    bool "A / Boscam A"
+config C5VRX_TARGET_BAND_B
+    bool "B / Boscam B"
+config C5VRX_TARGET_BAND_E
+    bool "E / Boscam E"
+config C5VRX_TARGET_BAND_F
+    bool "F / FatShark"
+config C5VRX_TARGET_BAND_R
+    bool "R / RaceBand"
+
+endchoice
+
+config C5VRX_TARGET_CHANNEL
+    int "Default FPV channel"
+    range 1 8
+    default 5
+    help
+        Channel number inside the selected analog FPV band.
+
+config C5VRX_RX_HT40
+    bool "Use 40 MHz Wi-Fi RX bandwidth for bootstrap"
+    default y
+    help
+        Wide bootstrap bandwidth makes early analog-FPV experiments tolerant
+        of offsets between the requested FPV center and a normal Wi-Fi center.
+
+config C5VRX_EXPERIMENTAL_DIRECT_TUNE
+    bool "Enable undocumented phy_set_freq() retune experiment"
+    default n
+    help
+        EXPERIMENTAL. After the documented RF-test RX path starts on the
+        nearest standard Wi-Fi center, call the weak phy_set_freq(int MHz)
+        hook to attempt an arbitrary-frequency retune. Leave disabled until
+        testing with a controlled RF source.
+
+endmenu

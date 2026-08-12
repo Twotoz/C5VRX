@@ -1,0 +1,45 @@
+name: C5VRX CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware-build:
+    name: ESP32-C5 / ESP-IDF v6.0.2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build ESP32-C5 firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.2
+          target: esp32c5
+          path: .
+
+  host-tools:
+    name: Host-side DSP / tables
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install DSP dependency
+        run: python -m pip install --disable-pip-version-check numpy
+
+      - name: WBFM discriminator self-test
+        run: python tools/wbfm_demod.py --self-test
+
+      - name: Generate FPV channel report
+        run: python tools/fpv_channel_report.py
