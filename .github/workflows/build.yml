@@ -66,5 +66,8 @@ jobs:
       - name: ADC dump decoder self-test
         run: python tools/decode_adc_dump.py --self-test
 
+      - name: Capture diagnostics self-test
+        run: python tools/analyze_iq_capture.py --self-test
+
       - name: Generate FPV channel report
         run: python tools/fpv_channel_report.py
