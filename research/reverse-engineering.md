@@ -27,19 +27,38 @@ PAL/NTSC composite baseband
 ## What is established
 
 1. ESP32-C5 has a real 5 GHz receive chain. The chip internally converts RF to quadrature baseband and digitizes the receive path before Wi-Fi baseband processing.
-2. Normal 5 GHz Wi-Fi channel centers overlap seven analog FPV Band A channels exactly:
-   - ch149 = 5745 MHz = A7
-   - ch153 = 5765 MHz = A6
-   - ch157 = 5785 MHz = A5
-   - ch161 = 5805 MHz = A4
-   - ch165 = 5825 MHz = A3
-   - ch169 = 5845 MHz = A2
-   - ch173 = 5865 MHz = A1
-3. ESP-IDF can link Espressif's RF certification library by enabling `CONFIG_ESP_PHY_ENABLE_CERT_TEST`.
-4. The public certification layer exposes RX start/stop and HT20/HT40 selection, but only returns packet-oriented counters/RSSI. This is not enough for analog video.
-5. Much more interesting receive/debug machinery exists below that public API.
+2. Normal 5 GHz Wi-Fi channel centers overlap seven analog FPV Band A channels exactly, but C5VRX is **not limited to Band A**. The firmware now carries the classic A/B/E/F/R tables and plans every frequency against the nearest 5 GHz Wi-Fi center.
+3. The current direct hardware target is **5645-5885 MHz**. Legacy FPV channels above 5885 MHz are intentionally marked out-of-window.
+4. ESP-IDF can link Espressif's RF certification library by enabling `CONFIG_ESP_PHY_ENABLE_CERT_TEST`.
+5. The public certification layer exposes RX start/stop and HT20/HT40 selection, but only returns packet-oriented counters/RSSI. This is not enough for analog video.
+6. Much more interesting receive/debug machinery exists below that public API.
 
-## New high-value finding
+## High-value finding: arbitrary frequency control
+
+The current ESP32-C5 PHY symbol inventory includes several frequency-control functions:
+
+```text
+phy_set_freq
+phy_set_chanfreq
+phy_set_rfpll_freq
+phy_set_channel_rfpll_freq_new
+phy_write_chan_freq
+phy_freq_to_chan
+phy_chan_to_freq
+phy_chip_set_chan
+phy_chip_set_chan_ana
+phy_chip_set_chan_offset
+```
+
+A separate open reverse-engineering project, `esp-hosted-open`, declares and calls the candidate hook as:
+
+```c
+extern void phy_set_freq(int freq_mhz) __attribute__((weak));
+```
+
+C5VRX now includes the same weak-symbol experiment behind an opt-in compile-time switch. This is a strong lead, but it is **not yet a verified vendor ABI**. The first validation target is RaceBand 5 at **5806 MHz**, only +1 MHz from the known standard Wi-Fi center at 5805 MHz.
+
+## High-value finding: receive/sample dump path
 
 The C5 RF-test binary exposes symbol names strongly suggesting a front-end/sample dump path, including:
 
@@ -53,16 +72,16 @@ The C5 RF-test binary exposes symbol names strongly suggesting a front-end/sampl
 - `loop_dump_test`
 - `fedump_rd_rxmem`
 
-The C5 ROM symbol table separately exposes:
+The C5 PHY symbol inventory separately exposes:
 
-- `phy_chan_dump_cfg_752`
+- `phy_chan_dump_cfg` / `phy_chan_dump_cfg_752`
 - `phy_adc_rate_set`
 - `phy_fe_adc_on`
-- `phy_iq_est_enable` / `phy_iq_est_disable`
-- `phy_dc_iq_est`
+- `phy_iq_est_enable_new` / `phy_iq_est_disable`
+- `phy_dc_iq_est_new`
 - `phy_fft_scale_force`
 - `phy_set_rx_pbus_freq`
-- `phy_write_chan_freq`
+- `phy_get_rx_pbus_freq`
 
 This changes the research target. We no longer have to begin by inventing an ADC path from scratch; we should first determine what the existing **FE dump / channel dump** machinery captures and how its RX memory is formatted.
 
@@ -76,9 +95,21 @@ That is not yet proof of raw I/Q. The buffer could hold FFT bins, calibration st
 
 ### Phase 0 — safe baseline
 
-Build and flash the normal C5VRX firmware. Start on 5805 MHz / Wi-Fi channel 161. Verify the C5 can enter its RF-test RX state without crashing.
+Build and flash the normal C5VRX firmware. The current default target is R5 / **5806 MHz**, bootstrapped through Wi-Fi channel 161 / 5805 MHz in HT40. Direct retuning remains disabled by default.
 
-### Phase 1 — static binary analysis
+### Phase 1 — frequency validation
+
+Before depending on undocumented direct tuning:
+
+1. Verify RF-test RX at 5805 MHz.
+2. Verify a 5806 MHz source is visible from the 5805 MHz HT40 bootstrap path.
+3. Enable the `phy_set_freq(5806)` experiment.
+4. Confirm the receive center really shifts using a controlled narrowband source.
+5. Repeat at larger offsets only after the +1 MHz test is repeatable.
+
+See [`frequency-tuning.md`](frequency-tuning.md).
+
+### Phase 2 — static binary analysis
 
 Run:
 
@@ -107,7 +138,7 @@ For every target establish:
 - referenced memory ranges
 - calls into ROM symbols
 
-### Phase 2 — identify RX dump memory
+### Phase 3 — identify RX dump memory
 
 Find the address and size consumed by `fedump_rd_rxmem` / `print_dump_data`. Determine whether data changes with:
 
@@ -119,7 +150,7 @@ Find the address and size consumed by `fedump_rd_rxmem` / `print_dump_data`. Det
 
 A useful capture should vary continuously with the analog source even though no valid 802.11 packet exists.
 
-### Phase 3 — classify sample format
+### Phase 4 — classify sample format
 
 Candidate formats:
 
@@ -130,20 +161,20 @@ Candidate formats:
 - correlation/IQ-estimator accumulators,
 - post-filter real samples.
 
-For raw complex samples, instantaneous FM can be recovered with a low-cost discriminator such as:
+For raw complex samples, instantaneous FM can be recovered with:
 
 ```text
 z[n] = I[n] + jQ[n]
 dphi[n] = arg(z[n] * conj(z[n-1]))
 ```
 
-For small phase steps, an atan-free approximation can later be used on-device.
+`tools/wbfm_demod.py` now implements this offline and includes a synthetic self-test. See [`dsp-pipeline.md`](dsp-pipeline.md).
 
-### Phase 4 — continuous capture
+### Phase 5 — continuous capture
 
 A finite factory dump is enough to prove the concept but not enough for live FPV. After proving sample content, trace how the dump writer is fed. The real target is the producer before the finite debug RAM, then redirect/copy it into a DMA/ring-buffer path.
 
-### Phase 5 — WBFM to composite
+### Phase 6 — WBFM to composite
 
 Once continuous I/Q is available:
 
@@ -158,4 +189,4 @@ Latency matters more than perfect image quality. Avoid full-frame buffering unti
 
 ## Important caution
 
-Do not call undocumented vendor functions purely from guessed prototypes. On RISC-V a wrong argument count/type can silently corrupt state or crash the RF subsystem. Establish each prototype from disassembly/call sites first and gate experimental calls behind a compile-time option.
+Do not call undocumented vendor functions purely from guessed prototypes. The `phy_set_freq(int)` prototype has an independent public implementation using the same call shape, which makes it a better candidate than a name-only guess, but it still needs real C5 validation. Every other undocumented hook should be established from disassembly/call sites first and gated behind an explicit experimental option.
