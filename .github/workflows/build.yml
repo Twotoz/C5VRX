@@ -37,14 +37,14 @@ jobs:
           target: esp32c5
           path: .
           command: >-
-            bash -lc 'cp sdkconfig.defaults.flasher sdkconfig.defaults &&
+            cp sdkconfig.defaults.flasher sdkconfig.defaults &&
             idf.py set-target esp32c5 &&
             idf.py build &&
             mkdir -p firmware_bundle &&
             cp build/flasher_args.json firmware_bundle/ &&
             cp build/bootloader/bootloader.bin firmware_bundle/bootloader.bin &&
             cp build/partition_table/partition-table.bin firmware_bundle/partition-table.bin &&
-            cp build/*.bin firmware_bundle/'
+            cp build/*.bin firmware_bundle/
 
       - name: Upload proof firmware
         uses: actions/upload-artifact@v4
