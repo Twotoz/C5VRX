@@ -23,6 +23,21 @@ jobs:
           target: esp32c5
           path: .
 
+      - name: Extract ESP32-C5 PHY/RF-test report
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.2
+          target: esp32c5
+          path: .
+          command: python tools/analyze_phy.py --out phy-analysis.md
+
+      - name: Upload PHY analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32c5-phy-analysis
+          path: phy-analysis.md
+          if-no-files-found: error
+
   host-tools:
     name: Host-side DSP / tables
     runs-on: ubuntu-latest
