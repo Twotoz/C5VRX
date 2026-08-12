@@ -1,15 +1,22 @@
-# C5VRX one-click proof-test firmware
-# A4 / 5805 MHz exact Wi-Fi center, HT40, no direct retune.
+# C5VRX one-click control firmware
+# Boot on A4 / 5805 MHz exact Wi-Fi center, then retune at runtime from the PC UI.
 CONFIG_C5VRX_RF_BACKEND_WIFI5=y
 CONFIG_C5VRX_TARGET_BAND_A=y
 CONFIG_C5VRX_TARGET_CHANNEL=4
 CONFIG_C5VRX_RX_HT40=y
-# Keep arbitrary retuning disabled for the first hardware proof.
+
+# Native USB-C control path on ESP32-C5 (GPIO13 D-, GPIO14 D+).
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Keep arbitrary undocumented retuning disabled by default. Non-exact FPV
+# channels use the nearest standard 5 GHz Wi-Fi center and can be compensated
+# later in host/on-chip DSP.
 # CONFIG_C5VRX_EXPERIMENTAL_DIRECT_TUNE is not set
+
 # Link Espressif's RF certification/test library. This is required for the
 # recovered set_dump_mode()/adctrig() finite IQ capture path.
 CONFIG_ESP_PHY_ENABLE_CERT_TEST=y
-# Enable one finite vendor ADC/IQ capture and print all words for host analysis.
-CONFIG_C5VRX_EXPERIMENTAL_ADC_DUMP=y
-CONFIG_C5VRX_ADC_DUMP_SAMPLES=8192
-CONFIG_C5VRX_ADC_DUMP_PRINT_RAW=y
+
+# Do NOT dump thousands of samples automatically on every boot. The Windows
+# control panel can trigger finite captures on demand with CAPTURE <N>.
+# CONFIG_C5VRX_EXPERIMENTAL_ADC_DUMP is not set
