@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/c5vrx-logo.jpg" alt="C5VRX logo" width="760" />
 
-  <h1>C5VRX</h1>
+  <h1></h1>
 
   <p><strong>ESP32-C5 analog 5.8 GHz FPV receiver research</strong></p>
   <p>An experimental attempt to turn the ESP32-C5 into an open <strong>RX5808 alternative</strong> for analog FPV.</p>
