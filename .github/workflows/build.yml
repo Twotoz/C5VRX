@@ -23,6 +23,13 @@ jobs:
           target: esp32c5
           path: .
 
+  phy-analysis:
+    name: ESP32-C5 PHY reverse engineering
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Extract ESP32-C5 PHY/RF-test report
         uses: espressif/esp-idf-ci-action@v1
         with:
