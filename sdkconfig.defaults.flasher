@@ -6,6 +6,9 @@ CONFIG_C5VRX_TARGET_CHANNEL=4
 CONFIG_C5VRX_RX_HT40=y
 # Keep arbitrary retuning disabled for the first hardware proof.
 # CONFIG_C5VRX_EXPERIMENTAL_DIRECT_TUNE is not set
+# Link Espressif's RF certification/test library. This is required for the
+# recovered set_dump_mode()/adctrig() finite IQ capture path.
+CONFIG_ESP_PHY_ENABLE_CERT_TEST=y
 # Enable one finite vendor ADC/IQ capture and print all words for host analysis.
 CONFIG_C5VRX_EXPERIMENTAL_ADC_DUMP=y
 CONFIG_C5VRX_ADC_DUMP_SAMPLES=8192
