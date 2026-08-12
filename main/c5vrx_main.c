@@ -12,6 +12,18 @@
 
 static const char *TAG = "C5VRX";
 
+#if CONFIG_C5VRX_RX_HT40
+#define C5VRX_CFG_HT40 true
+#else
+#define C5VRX_CFG_HT40 false
+#endif
+
+#if CONFIG_C5VRX_EXPERIMENTAL_DIRECT_TUNE
+#define C5VRX_CFG_DIRECT_TUNE true
+#else
+#define C5VRX_CFG_DIRECT_TUNE false
+#endif
+
 static c5vrx_band_t configured_band(void)
 {
 #if CONFIG_C5VRX_TARGET_BAND_A
@@ -68,8 +80,8 @@ void app_main(void)
     const c5vrx_rx_config_t cfg = {
         .wifi_channel = plan.wifi_channel,
         .center_mhz = target.mhz,
-        .ht40 = CONFIG_C5VRX_RX_HT40,
-        .try_direct_frequency = CONFIG_C5VRX_EXPERIMENTAL_DIRECT_TUNE,
+        .ht40 = C5VRX_CFG_HT40,
+        .try_direct_frequency = C5VRX_CFG_DIRECT_TUNE,
         .rate = PHY_RATE_6M,
     };
 
