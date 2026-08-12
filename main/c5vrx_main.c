@@ -9,6 +9,7 @@
 
 #include "c5vrx_adc_dump.h"
 #include "c5vrx_channels.h"
+#include "c5vrx_control.h"
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_rf.h"
 #include "c5vrx_wifi5.h"
@@ -117,6 +118,13 @@ void app_main(void)
 
     maybe_run_adc_dump(&plan);
 
+    ESP_ERROR_CHECK(c5vrx_control_start(
+        band,
+        channel,
+        C5VRX_CFG_HT40,
+        C5VRX_CFG_DIRECT_TUNE));
+
+    ESP_LOGI(TAG, "USB control ready: select bands/channels and trigger IQ captures without reflashing");
     ESP_LOGW(TAG,
              "Promiscuous Wi-Fi RX proves the 5 GHz RF path is active; live analog FPV still requires continuous FE/baseband sample capture and WBFM demodulation.");
 
@@ -131,7 +139,7 @@ void app_main(void)
                      status.promiscuous_enabled,
                      c5vrx_phy_has_direct_frequency_hook() ? "present" : "absent");
         }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
 #else
     ESP_LOGW(TAG,
