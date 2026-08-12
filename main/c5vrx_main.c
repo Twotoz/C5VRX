@@ -8,7 +8,9 @@
 #include "esp_log.h"
 
 #include "c5vrx_channels.h"
+#include "c5vrx_phy_hacks.h"
 #include "c5vrx_rf.h"
+#include "c5vrx_wifi5.h"
 
 static const char *TAG = "C5VRX";
 
@@ -77,6 +79,37 @@ void app_main(void)
         return;
     }
 
+#if CONFIG_C5VRX_RF_BACKEND_WIFI5
+    ESP_LOGI(TAG, "RF backend: public ESP-IDF 5 GHz Wi-Fi driver");
+    ESP_ERROR_CHECK(c5vrx_wifi5_start(plan.wifi_channel, C5VRX_CFG_HT40));
+
+    if (C5VRX_CFG_DIRECT_TUNE && !plan.exact_wifi_center) {
+        err = c5vrx_phy_set_frequency_mhz(target.mhz);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Experimental direct tune failed: %s", esp_err_to_name(err));
+        }
+    }
+
+    ESP_LOGW(TAG,
+             "Promiscuous Wi-Fi RX only proves the 5 GHz RF path is active; it does NOT expose analog FPV samples. Next milestone: FE/baseband dump capture.");
+
+    while (true) {
+        c5vrx_wifi5_status_t status;
+        if (c5vrx_wifi5_get_status(&status) == ESP_OK) {
+            ESP_LOGI(TAG,
+                     "wifi5 RX: requested=ch%u readback=ch%u BW=%s promiscuous=%d direct-hook=%s",
+                     status.requested_channel,
+                     status.active_primary_channel,
+                     status.ht40 ? "40" : "20",
+                     status.promiscuous_enabled,
+                     c5vrx_phy_has_direct_frequency_hook() ? "present" : "absent");
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+#else
+    ESP_LOGW(TAG,
+             "RF backend: certification/test API. ESP-IDF v6.0.2 documents esp_phy_wifi_rx() channel values as 1-14; 5 GHz channel-number use is intentionally not assumed.");
+
     const c5vrx_rx_config_t cfg = {
         .wifi_channel = plan.wifi_channel,
         .center_mhz = target.mhz,
@@ -87,9 +120,6 @@ void app_main(void)
 
     ESP_ERROR_CHECK(c5vrx_rf_init());
     ESP_ERROR_CHECK(c5vrx_rf_start(&cfg));
-
-    ESP_LOGW(TAG,
-             "Packet counters below are NOT analog video. Next milestone: FE/baseband dump capture before 802.11 decode.");
 
     while (true) {
         esp_phy_rx_result_t rx = {0};
@@ -102,4 +132,5 @@ void app_main(void)
                  rx.phy_rx_result_flag);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+#endif
 }

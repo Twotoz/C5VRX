@@ -1,5 +1,23 @@
 menu "C5VRX research firmware"
 
+choice C5VRX_RF_BACKEND
+    prompt "RF bring-up backend"
+    default C5VRX_RF_BACKEND_WIFI5
+    help
+        The public Wi-Fi driver is the default because ESP-IDF officially
+        supports 5 GHz operation on ESP32-C5. The certification/test RX API
+        currently documents only channel numbers 1-14 and is therefore kept
+        as a separate research backend rather than being treated as a proven
+        5 GHz tuner.
+
+config C5VRX_RF_BACKEND_WIFI5
+    bool "Public ESP-IDF 5 GHz Wi-Fi driver (recommended)"
+
+config C5VRX_RF_BACKEND_CERT_TEST
+    bool "RF certification/test PHY (experimental; documented channels 1-14)"
+
+endchoice
+
 choice C5VRX_TARGET_BAND
     prompt "Default analog FPV band"
     default C5VRX_TARGET_BAND_R
@@ -35,9 +53,9 @@ config C5VRX_EXPERIMENTAL_DIRECT_TUNE
     bool "Enable undocumented phy_set_freq() retune experiment"
     default n
     help
-        EXPERIMENTAL. After the documented RF-test RX path starts on the
-        nearest standard Wi-Fi center, call the weak phy_set_freq(int MHz)
-        hook to attempt an arbitrary-frequency retune. Leave disabled until
-        testing with a controlled RF source.
+        EXPERIMENTAL. After a receive backend is active on the nearest standard
+        Wi-Fi center, call the weak phy_set_freq(int MHz) hook to attempt an
+        arbitrary-frequency retune. Leave disabled until testing with a
+        controlled RF source.
 
 endmenu
