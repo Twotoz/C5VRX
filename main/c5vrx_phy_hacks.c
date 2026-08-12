@@ -6,10 +6,15 @@
 static const char *TAG = "c5vrx_phy_hacks";
 
 /*
- * Reverse-engineered call shape used independently by esp-hosted-open.
- * Still undocumented by Espressif: keep this weak and opt-in.
+ * ESP32-C5 ESP-IDF v6.0.2 disassembly shows that phy_set_freq consumes
+ * TWO arguments: a0 is forwarded into phy_chip_set_chan(), while a1 is
+ * stored as the signed frequency-offset field before the channel change.
+ *
+ * An independent ESP32-C6 implementation (Hubble Network device SDK) uses
+ * the same two-argument shape: phy_set_freq(uint16_t freq_mhz, int offset).
+ * The C5 call remains undocumented, so keep it weak and explicitly opt-in.
  */
-extern void phy_set_freq(int freq_mhz) __attribute__((weak));
+extern void phy_set_freq(uint16_t freq_mhz, int offset) __attribute__((weak));
 
 bool c5vrx_phy_has_direct_frequency_hook(void)
 {
@@ -28,7 +33,8 @@ esp_err_t c5vrx_phy_set_frequency_mhz(uint16_t mhz)
         return ESP_ERR_NOT_SUPPORTED;
     }
 
-    ESP_LOGW(TAG, "EXPERIMENTAL undocumented PHY retune -> %u MHz", mhz);
-    phy_set_freq((int)mhz);
+    /* Integer-MHz FPV channels do not need the undocumented fine-offset unit. */
+    ESP_LOGW(TAG, "EXPERIMENTAL undocumented PHY retune -> %u MHz, offset=0", mhz);
+    phy_set_freq(mhz, 0);
     return ESP_OK;
 }

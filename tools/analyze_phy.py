@@ -2,9 +2,9 @@
 """Generate a focused reverse-engineering report for ESP32-C5 PHY/RF-test blobs.
 
 The script is deliberately read-only: it never patches vendor libraries. It uses
-Espressif's RISC-V binutils to extract symbol sizes, focused disassembly and a
-small relocation-based call graph around the receive/dump/frequency functions
-that matter to C5VRX.
+Espressif's RISC-V binutils to extract symbol sizes, focused disassembly,
+relocation-based call relationships and caller context around the receive/dump/
+frequency functions that matter to C5VRX.
 """
 
 from __future__ import annotations
@@ -45,12 +45,15 @@ TARGETS = [
     "phy_get_iq_est_snr",
     "phy_fft_scale_force",
     "phy_csidump_force_lltf_cfg",
-    # Frequency control candidates
+    # Frequency control candidates / conversion helpers
     "phy_set_freq",
     "phy_set_chanfreq",
     "phy_set_rfpll_freq",
     "phy_set_channel_rfpll_freq_new",
     "phy_write_chan_freq",
+    "phy_chan_to_freq",
+    "phy_freq_to_chan",
+    "phy_set_step_01k",
     "phy_chip_set_chan",
     "phy_chip_set_chan_ana",
     "phy_chip_set_chan_offset",
@@ -75,7 +78,12 @@ def find_tool(name: str) -> str:
     raise SystemExit(f"Could not find {name}. Source/export your ESP-IDF environment first.")
 
 
-def extract_functions(disassembly: str, symbols: list[str], tail_lines: int = 180) -> dict[str, str]:
+def is_local_label(name: str) -> bool:
+    """objdump renders .L* branch labels like function headers; they are not functions."""
+    return name.startswith(".") or name.startswith("$")
+
+
+def extract_functions(disassembly: str, symbols: list[str], tail_lines: int = 900) -> dict[str, str]:
     lines = disassembly.splitlines()
     wanted = set(symbols)
     hits: dict[str, str] = {}
@@ -86,7 +94,10 @@ def extract_functions(disassembly: str, symbols: list[str], tail_lines: int = 18
         name = m.group(1)
         chunk = [line]
         for nxt in lines[i + 1 : i + 1 + tail_lines]:
-            if FUNC_HEADER.match(nxt):
+            hm = FUNC_HEADER.match(nxt)
+            # Keep local .L labels inside the function. Stop only when objdump
+            # reaches another real symbol/function.
+            if hm and not is_local_label(hm.group(1)):
                 break
             chunk.append(nxt)
         hits[name] = "\n".join(chunk)
@@ -97,8 +108,6 @@ def symbol_sizes(nm_output: str) -> dict[str, tuple[int, str]]:
     """Return symbol -> (size, original nm line) for common GNU nm -S layouts."""
     out: dict[str, tuple[int, str]] = {}
     for line in nm_output.splitlines():
-        # Archive prefix is optional. The last token is the symbol name; look for
-        # two adjacent hex fields immediately before the type/name tail.
         parts = line.split()
         if len(parts) < 4:
             continue
@@ -125,7 +134,10 @@ def call_graph(disassembly: str) -> tuple[dict[str, set[str]], dict[str, set[str
     for line in disassembly.splitlines():
         m = FUNC_HEADER.match(line)
         if m:
-            current = m.group(1)
+            name = m.group(1)
+            # Do not let a local branch label replace the owning function.
+            if not is_local_label(name):
+                current = name
             continue
         if current is None:
             continue
@@ -137,6 +149,27 @@ def call_graph(disassembly: str) -> tuple[dict[str, set[str]], dict[str, set[str
             callees[current].add(target)
             callers[target].add(current)
     return callers, callees
+
+
+def callsite_contexts(disassembly: str, targets: list[str], radius: int = 6) -> dict[str, list[str]]:
+    """Return compact call-site snippets, retaining the owning non-local function."""
+    lines = disassembly.splitlines()
+    wanted = set(targets)
+    current = None
+    contexts: dict[str, list[str]] = defaultdict(list)
+    for i, line in enumerate(lines):
+        h = FUNC_HEADER.match(line)
+        if h and not is_local_label(h.group(1)):
+            current = h.group(1)
+        m = RELOC_CALL.search(line)
+        if not m or m.group(1) not in wanted:
+            continue
+        target = m.group(1)
+        lo = max(0, i - radius)
+        hi = min(len(lines), i + radius + 1)
+        snippet = [f"# caller: {current or '?'}"] + lines[lo:hi]
+        contexts[target].append("\n".join(snippet))
+    return contexts
 
 
 def main() -> int:
@@ -186,6 +219,7 @@ def main() -> int:
 
         dis = run([objdump, "-dr", "-C", str(lib)])
         callers, callees = call_graph(dis)
+        contexts = callsite_contexts(dis, TARGETS)
         funcs = extract_functions(dis, TARGETS)
 
         report += ["### Relocation-based call graph", ""]
@@ -200,6 +234,15 @@ def main() -> int:
             if outbound:
                 report.append("Calls: " + ", ".join(f"`{x}`" for x in outbound))
             report.append("")
+
+        report += ["### Call-site contexts", ""]
+        for target in TARGETS:
+            snippets = contexts.get(target, [])
+            if not snippets:
+                continue
+            report += [f"#### `{target}`", ""]
+            for snippet in snippets[:12]:
+                report += ["```asm", snippet, "```", ""]
 
         report += ["### Focused disassembly", ""]
         for target in TARGETS:
