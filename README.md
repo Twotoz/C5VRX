@@ -2,83 +2,92 @@
   <img src="assets/c5vrx-logo.jpg" alt="C5VRX logo" width="760" />
 
   <p><strong>ESP32-C5 analog 5.8 GHz FPV receiver research</strong></p>
-  <p>An experimental attempt to turn the ESP32-C5 into an open <strong>RX5808 alternative</strong> for analog FPV.</p>
+  <p>An open-source attempt to turn commodity ESP32-C5 hardware into an <strong>RX5808-class analog FPV receiver</strong>.</p>
 
   <p>
-    <img src="https://img.shields.io/badge/status-research%20%2F%20proof--of--concept-blue" alt="Status" />
+    <img src="https://img.shields.io/badge/status-hardware%20validation%20next-blue" alt="Status" />
     <img src="https://img.shields.io/badge/chip-ESP32--C5-111111" alt="Chip" />
-    <img src="https://img.shields.io/badge/band-5.8GHz-6f42c1" alt="Band" />
+    <img src="https://img.shields.io/badge/RF-5.8%20GHz-6f42c1" alt="RF" />
     <img src="https://img.shields.io/badge/goal-RX5808%20alternative-00b894" alt="Goal" />
-    <img src="https://img.shields.io/badge/video-analog%20FPV-orange" alt="Video" />
+    <img src="https://img.shields.io/badge/video-analog%20WBFM-orange" alt="Video" />
   </p>
 </div>
 
 ---
 
-## Overview
+## Why C5VRX?
 
-**C5VRX** exists because analog FPV VRX parts such as the **RX5808 / RTC6715 family** are becoming harder to source, more expensive, or tied to increasingly awkward modules.
+Analog FPV still depends heavily on old 5.8 GHz receiver silicon such as **RX5808 / RTC6715**. Those parts are increasingly awkward to source at sane prices.
 
-This project explores whether the **ESP32-C5** can be repurposed into a tiny, cheap, software-defined **5.8 GHz analog FPV receiver** by abusing its built-in **5 GHz Wi-Fi RF chain**.
+The ESP32-C5 is cheap, tiny and contains a real **2.4 + 5 GHz Wi-Fi RF chain**. C5VRX asks a slightly unreasonable question:
 
-The core idea is simple:
+> **Can we bypass enough of the Wi-Fi PHY to use that RF chain as a low-cost analog FPV receiver?**
 
-> If the ESP32-C5 can tune to FPV channel center frequencies, and if we can extract useful receive-domain data before normal Wi-Fi packet decoding, we may be able to demodulate analog FPV in software.
+The target architecture is:
 
-This would create a new path toward an **open, compact and affordable analog VRX platform** using commodity ESP32-C5 boards.
-
----
-
-## Project status
-
-> **Current status:** reverse-engineering / proof-of-concept.
->
-> C5VRX is **not yet a working analog FPV receiver**.
-
-What is already confirmed:
-
-- The **ESP32-C5** has real **5 GHz receive hardware**.
-- Several standard **FPV 5.8 GHz channels align directly with Wi-Fi 5 GHz channel centers**.
-- Espressif's RF/PHY artifacts expose promising internal/debug-oriented functions related to:
-  - ADC triggering
-  - sample processing
-  - IQ accumulation
-  - RX buffer access
-  - FE / dump / channel-dump style paths
-
-What is not yet confirmed:
-
-- Whether those internal paths provide **raw or near-raw receive-domain data** useful for analog FM video demodulation.
-- Whether such data can be captured **reliably enough and fast enough** for real analog FPV.
-- Whether the final path can reach **practical latency and image quality**.
+```text
+5.8 GHz analog FPV VTX
+          │
+          ▼
+   ESP32-C5 RF front-end
+          │
+          ▼
+      complex I/Q
+          │
+          ▼
+   software WBFM demod
+          │
+          ▼
+ PAL / NTSC video baseband
+          │
+          ▼
+ display / DVR / OSD
+```
 
 ---
 
-## Why ESP32-C5?
+## Current status
 
-The ESP32-C5 is interesting because it is:
+> **C5VRX is still experimental and is not yet a working analog FPV receiver.**
 
-- **Cheap**
-- **Small**
-- **Easy to buy**
-- **5 GHz capable**
-- **Open enough to experiment with** compared to fully closed consumer Wi-Fi modules
+But the project has moved past the original “maybe there is some hidden IQ path” stage.
 
-Even more importantly, several common **analog FPV frequencies line up exactly** with 5 GHz Wi-Fi channels.
+### Static reverse-engineering breakthrough
 
-### FPV ↔ Wi-Fi channel mapping
+Analysis of Espressif's **ESP32-C5 ESP-IDF v6.0.2 RF-test binaries** identifies a real finite complex-sample capture path:
 
-| FPV band/channel | Frequency (MHz) | Wi-Fi channel |
-| --- | ---: | ---: |
-| A7 | 5745 | 149 |
-| A6 | 5765 | 153 |
-| A5 | 5785 | 157 |
-| A4 | 5805 | 161 |
-| A3 | 5825 | 165 |
-| A2 | 5845 | 169 |
-| A1 | 5865 | 173 |
+```text
+set_dump_mode()
+      ↓
+adctrig()
+      ↓
+0x40830000 dump RAM
+      ↓
+print_dump_data() / accumiq()
+```
 
-That means the **RF front-end does not need frequency translation tricks** just to land on those centers.
+The vendor code decodes every 32-bit dump word as:
+
+```text
+31                              20 19          10 9            0
+┌────────────────────────────────┬──────────────┬──────────────┐
+│      status / internal bits    │ I signed 10b │ Q signed 10b │
+└────────────────────────────────┴──────────────┴──────────────┘
+```
+
+So, statically, the C5 RF-test path contains **complex signed 10-bit I/Q samples**.
+
+The recovered capture RAM is:
+
+```text
+base: 0x40830000
+size: 0x10000 bytes = 64 KiB
+max:  16,384 complex samples
+```
+
+The next decisive step is physical hardware validation: prove that this dump can capture a live **5.8 GHz analog FPV VTX** and that the samples retain enough bandwidth for WBFM video.
+
+See [`research/adc-dump-format.md`](research/adc-dump-format.md).
 
 ---
 
@@ -97,304 +106,197 @@ C5VRX is **not limited to Band A**. The current direct hardware target is **5645
 | 7 | ✅ | ☑️ | ❌ | ☑️ | ☑️ |
 | 8 | ☑️ | ☑️ | ❌ | ☑️ | ❌ |
 
-**Legend**
-- ✅ = exact match with a normal 5 GHz Wi-Fi center frequency
-- ☑️ = inside the C5VRX target range, but requires offset/arbitrary tuning
-- ❌ = outside the current ESP32-C5 target range
+**Legend:** ✅ exact normal 5 GHz Wi-Fi center · ☑️ inside target range, needs offset/arbitrary tuning · ❌ outside current C5 target window
 
-### Current exceptions
+Current out-of-range legacy channels are **E6 5905**, **E7 5925**, **E8 5945** and **R8 5917 MHz**.
 
-- **RaceBand R8 — 5917 MHz** ❌
-- **E6 — 5905 MHz** ❌
-- **E7 — 5925 MHz** ❌
-- **E8 — 5945 MHz** ❌
+### The fun coincidence
 
-Everything else in the classic A/B/E/F/R table is inside the current C5VRX target window.
+Seven Band-A channels line up exactly with normal 5 GHz Wi-Fi centers:
+
+| FPV | MHz | Wi-Fi |
+|:---:|---:|---:|
+| A7 | 5745 | 149 |
+| A6 | 5765 | 153 |
+| A5 | 5785 | 157 |
+| A4 | 5805 | 161 |
+| A3 | 5825 | 165 |
+| A2 | 5845 | 169 |
+| A1 | 5865 | 173 |
+
+That gives C5VRX clean bring-up frequencies before any undocumented PLL tricks are required.
 
 ---
 
-## Vision
+## RF bring-up
 
-If this works, C5VRX could become the basis for:
-
-- a standalone **ESP32-C5 analog FPV receiver**,
-- a tiny **OpenPocket/OpenVRX-style module**,
-- a cheap research platform for **software-defined analog video reception**,
-- or a future **community-built alternative** to scarce legacy VRX parts.
-
-Long term, the dream is:
+The default firmware uses the **normal ESP-IDF Wi-Fi driver** to bring the C5 onto a supported 5 GHz Wi-Fi center:
 
 ```text
-Analog FPV VTX
-      |
-      v
-5.8 GHz RF
-      |
-      v
-ESP32-C5 RF front-end
-      |
-      v
-raw / near-raw receive data
-      |
-      v
-software WBFM demodulation
-      |
-      v
-composite video reconstruction
-      |
-      v
-display / DVR / OSD / downstream processing
+5 GHz-only mode
+      ↓
+20 / 40 MHz receive bandwidth
+      ↓
+standard Wi-Fi channel
+      ↓
+promiscuous receive
+      ↓
+read channel back
 ```
+
+This is intentionally separate from the RF certification/test API. In ESP-IDF v6.0.2, the generic `esp_phy_wifi_rx()` header documents channel values `1–14`, so C5VRX does **not** pretend that passing `161` to that function is a supported 5 GHz tuner API.
+
+Promiscuous Wi-Fi RX is only the **supported RF bootstrap**. It does not output analog FPV samples.
 
 ---
 
-## Current technical direction
+## Arbitrary frequency tuning
 
-The main attack path is focused on the **receive frontend dump / sample path**.
+The C5 PHY contains a promising undocumented tuning path.
 
-During analysis of ESP32-C5 RF/PHY artifacts, the following kinds of symbols stood out as especially interesting:
+Actual ESP32-C5 v6.0.2 disassembly shows `phy_set_freq` consumes **two arguments** and reaches the real channel/RFPLL retune chain. C5VRX currently models the experimental ABI as:
+
+```c
+extern void phy_set_freq(uint16_t freq_mhz, int offset);
+```
+
+For an integer-MHz FPV channel such as RaceBand 5:
+
+```c
+phy_set_freq(5806, 0);
+```
+
+This is **disabled by default** until verified on real C5 hardware.
+
+See [`research/frequency-tuning.md`](research/frequency-tuning.md).
+
+---
+
+## Finite I/Q capture experiment
+
+C5VRX now includes an opt-in firmware experiment around the recovered vendor ADC dump path.
+
+Enable in `menuconfig`:
 
 ```text
-adctrig
-sampledeal
-accumiq
-get_rx_buffer
-get_rx_data_addr
-set_dump_mode
-print_dump_data
-loop_dump_test
-fedump_rd_rxmem
-phy_chan_dump_cfg_752
-phy_adc_rate_set
-phy_fe_adc_on
-phy_iq_est_enable
-phy_write_chan_freq
+C5VRX research firmware
+  → Run one finite vendor ADC/IQ dump after RF bring-up
 ```
 
-These names strongly suggest that Espressif's internal RF-test / PHY infrastructure includes functionality for:
-
-- enabling receive-side analog or ADC paths,
-- configuring frontend/channel dump behavior,
-- accessing receive memory,
-- estimating or accumulating IQ-related information,
-- and interacting with the receive chain below ordinary Wi-Fi packet processing.
-
-The **big question** is whether those pathways can expose a representation that still preserves enough information for **WBFM analog video demodulation**.
-
----
-
-## Research strategy
-
-C5VRX is intentionally split into clear stages.
-
-### Phase 1 — Confirm RF-test receive baseline
-- Build and flash a minimal ESP-IDF baseline.
-- Start the official/vendor RF-test receive chain.
-- Lock to a known analog FPV frequency, initially:
-  - **5805 MHz**
-  - **Wi-Fi channel 161**
-  - **FPV Band A4**
-- Verify stable 5 GHz receive operation.
-
-### Phase 2 — Reverse engineer sample / dump paths
-- Trace promising symbols in `librftest.a` and `libphy.a`.
-- Recover call flow and candidate prototypes.
-- Identify dump configuration paths.
-- Determine what `fedump_rd_rxmem` and related functions actually return.
-
-### Phase 3 — Controlled dump experiments
-- Compare dump behavior with:
-  - VTX off
-  - VTX on
-  - static test image
-  - changing test imagery
-  - weak vs strong signal
-- Look for repeatable phase/frequency-bearing behavior.
-
-### Phase 4 — Attempt analog demodulation
-- If the dumped representation is usable, prototype:
-  - FM discriminator / WBFM demodulation
-  - sync extraction
-  - PAL/NTSC line timing recovery
-  - composite video reconstruction
-
-### Phase 5 — Real receiver path
-- Reduce overhead
-- Improve stability
-- Optimize latency
-- Explore display / DVR / OSD output pipelines
-
----
-
-## Repository structure
+Recommended first test:
 
 ```text
-.
-├── main/        # ESP-IDF app entry point / baseline firmware
-├── research/    # notes, reverse-engineering docs, generated findings
-├── tools/       # scripts for symbol discovery and binary analysis
-└── README.md
+VTX:       A4 / 5805 MHz
+C5 center: Wi-Fi ch161 / 5805 MHz
+BW:        40 MHz
+retune:    OFF
+ADC dump:  ON
+raw print: ON
 ```
 
-### Important files
+Why A4 first? It removes arbitrary tuning from the equation. We only want to answer one question:
 
-- `main/` — baseline firmware used to enter RF-test RX mode on the ESP32-C5.
-- `tools/analyze_phy.py` — helper script to locate and inspect relevant PHY/RF blobs.
-- `tools/check_symbols.sh` — quick symbol scan for promising functions.
-- `research/reverse-engineering.md` — active reverse-engineering notes / attack plan.
-- `research/roadmap.md` — milestone overview.
+> **Does the C5 dump RAM contain live complex samples from an analog FPV transmission?**
+
+Capture three logs:
+
+```text
+1. VTX off
+2. VTX on, static image
+3. VTX on, changing black/white image
+```
+
+The firmware can emit raw words as:
+
+```text
+C5VRX_IQ_BEGIN samples=8192 base=0x40830000
+IQ:12345678
+IQ:89abcdef
+...
+C5VRX_IQ_END
+```
+
+Decode them on a PC:
+
+```bash
+python tools/decode_adc_dump.py capture.log --csv iq.csv --iq-bin iq.i16
+```
+
+Then run the WBFM discriminator:
+
+```bash
+python tools/wbfm_demod.py iq.i16 --dtype '<i2' --sample-rate 80000000 --output demod.f32
+```
+
+The exact C5 sample rate still needs hardware verification; `80 MHz` is currently based on the recovered RF-test mode/ABI.
 
 ---
 
-## Getting started
+## Build
 
-### Requirements
-
-- An **ESP32-C5** development board
-- A recent **ESP-IDF** with ESP32-C5 support
-- An analog FPV VTX for testing
-- Preferably a low-power close-range test setup
-
-### Build
+Requires ESP-IDF with ESP32-C5 support. CI currently targets **ESP-IDF v6.0.2**.
 
 ```bash
 idf.py set-target esp32c5
+idf.py menuconfig
 idf.py build
-```
-
-### Flash + monitor
-
-```bash
 idf.py flash monitor
 ```
 
-The baseline firmware starts Espressif's RF certification/test receive path on:
-
-- **Channel 161**
-- **5805 MHz**
-- **HT40** as an initial wide-band experiment
-
-> Note: the baseline does **not** receive analog video yet.
-> It only proves that the C5 can be driven into the relevant 5 GHz RX path while we continue reverse-engineering the internal dump/sample flow.
+Experimental paths are deliberately **off by default**.
 
 ---
 
-## Binary analysis helpers
+## Repository layout
 
-### Run focused RF/PHY analysis
-
-```bash
-python tools/analyze_phy.py
+```text
+.
+├── main/
+│   ├── c5vrx_wifi5.c        # supported 5 GHz RF bootstrap
+│   ├── c5vrx_phy_hacks.c    # opt-in undocumented tuning hooks
+│   ├── c5vrx_adc_dump.c     # finite vendor I/Q capture experiment
+│   └── c5vrx_channels.c     # A/B/E/F/R frequency database
+├── research/
+│   ├── adc-dump-format.md
+│   ├── frequency-tuning.md
+│   ├── reverse-engineering.md
+│   └── roadmap.md
+├── tools/
+│   ├── analyze_phy.py       # C5 libphy/librftest disassembly report
+│   ├── decode_adc_dump.py   # raw dump → signed I/Q
+│   ├── wbfm_demod.py        # offline FM discriminator
+│   └── fpv_channel_report.py
+└── README.md
 ```
 
-This script looks for the ESP32-C5 PHY/RF libraries in your ESP-IDF installation, runs the appropriate RISC-V analysis tools, and writes results into `research/generated/`.
-
-### Quick symbol scan
-
-```bash
-./tools/check_symbols.sh
-```
-
-This is useful for quickly checking whether the expected C5 RF-test / PHY symbols are present in the installed toolchain.
-
 ---
 
-## First hardware experiment
+## What still has to be proven
 
-A simple first experiment looks like this:
+The project now has a plausible path from C5 RF hardware to finite complex samples, but the important hardware questions remain:
 
-1. Set an analog FPV VTX to **5805 MHz / Band A4**.
-2. Keep TX power low and distance short.
-3. Flash the baseline C5VRX firmware.
-4. Confirm the ESP32-C5 enters the expected 5 GHz test RX path without crashing.
-5. Analyze the vendor blobs and identify the dump function path.
-6. Add a minimal experiment around the dump mechanism.
-7. Compare captured data with VTX off vs on.
-8. Then vary the transmitted image and see whether the dump output changes in a structured way.
+- Does the recovered dump capture the **live 5 GHz receive path** when using an analog VTX?
+- Is the effective sample rate / bandwidth sufficient for ~20 MHz analog FPV WBFM?
+- Does `phy_set_freq(5806, 0)` actually retune the physical receiver?
+- Can finite dumps be chained, or can the producer feeding dump RAM be tapped continuously?
+- Can all of this run with low enough latency for actual FPV?
 
----
-
-## Design goals
-
-- **Create an RX5808 alternative** using widely available hardware
-- Stay focused on **analog FPV**, not generic Wi-Fi sniffing
-- Prefer **small, cheap dev boards** for proof-of-concept
-- Keep the end goal **low latency**
-- Document findings properly instead of relying on magic undocumented code
-- Separate **verified behavior** from **hypotheses**
-- Build something the FPV/open-source community can actually use later
-
----
-
-## Non-goals (for now)
-
-At this stage, C5VRX is **not** trying to be:
-
-- a polished consumer VRX,
-- a finished DVR platform,
-- a long-range digital video system,
-- or a perfect software-defined radio framework.
-
-The immediate goal is much narrower:
-
-> **Can the ESP32-C5 be pushed far enough to become a practical analog 5.8 GHz FPV receiver core?**
-
----
-
-## Risks / unknowns
-
-This project is exciting, but there are real unknowns:
-
-- The internal receive dump path may not expose sufficiently raw data.
-- The sample format may be heavily processed or lossy.
-- Timing / bandwidth may be insufficient for usable video reconstruction.
-- Some needed functions may rely on hidden side effects or undocumented register state.
-- The analog path may prove possible but too fragile for a clean end product.
-
-That is why C5VRX is treated as **research first, product second**.
+Until those are measured, C5VRX remains a research project rather than a replacement module you should fly with.
 
 ---
 
 ## Contributing
 
-Contributions are welcome, especially around:
+RF reverse engineering, ESP32 PHY knowledge, RF-test tooling, DSP, PAL/NTSC decoding and real ESP32-C5 capture results are all very welcome.
 
-- RF / PHY reverse engineering
-- ESP32-C5 undocumented behavior
-- analog FM / WBFM demodulation
-- composite video decoding
-- test capture analysis
-- toolchain automation
-
-If you experiment with C5VRX, please try to share:
-
-- board used
-- ESP-IDF version
-- exact VTX frequency
-- code changes
-- logs / captures
-- what changed between off/on-signal tests
-
-That will help separate signal from noise much faster.
+When sharing a hardware capture, include the board, ESP-IDF version, VTX frequency, bandwidth, menuconfig options and raw serial log if possible.
 
 ---
 
-## Related context
+## Goal
 
-C5VRX is closely related in spirit to projects like **OpenPocket** and other open FPV tooling efforts: finding clever, practical ways to keep analog FPV hardware accessible, hackable and fun.
+The end state is intentionally simple:
 
----
+> **A tiny, inexpensive, open analog 5.8 GHz VRX built around a currently available ESP32-C5 instead of scarce RX5808-era silicon.**
 
-## Disclaimer
-
-C5VRX is experimental research software.
-
-Use it responsibly, follow local RF rules, and be careful when testing around active transmitters. Nothing here guarantees regulatory compliance, video quality, or safe operation for mission-critical use.
-
----
-
-## License
-
-**TBD** before first public release.
-
-For now, treat the repository as an active research project.
+No magic claims. Prove each layer, publish the ugly details, then make it fast.
