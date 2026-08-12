@@ -23,6 +23,74 @@ jobs:
           target: esp32c5
           path: .
 
+  proof-firmware:
+    name: Build A4 proof-test firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build preconfigured A4 / 5805 MHz image
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.2
+          target: esp32c5
+          path: .
+          command: >-
+            bash -lc 'cp sdkconfig.defaults.flasher sdkconfig.defaults &&
+            idf.py set-target esp32c5 &&
+            idf.py build &&
+            mkdir -p firmware_bundle &&
+            cp build/flasher_args.json firmware_bundle/ &&
+            cp build/bootloader/bootloader.bin firmware_bundle/bootloader.bin &&
+            cp build/partition_table/partition-table.bin firmware_bundle/partition-table.bin &&
+            cp build/*.bin firmware_bundle/'
+
+      - name: Upload proof firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: c5vrx-proof-firmware
+          path: firmware_bundle/
+          if-no-files-found: error
+
+  windows-flasher:
+    name: Build C5VRX Windows flasher
+    runs-on: windows-latest
+    needs: proof-firmware
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download proof firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: c5vrx-proof-firmware
+          path: firmware
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install flasher dependencies
+        run: python -m pip install --disable-pip-version-check pyinstaller pyserial esptool
+
+      - name: Build one-file GUI flasher
+        shell: pwsh
+        run: >-
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name C5VRX-Flasher
+          --collect-all esptool
+          --add-data "firmware;firmware"
+          tools/C5VRX_Flasher.py
+
+      - name: Upload Windows flasher
+        uses: actions/upload-artifact@v4
+        with:
+          name: C5VRX-Flasher-Windows
+          path: dist/C5VRX-Flasher.exe
+          if-no-files-found: error
+
   phy-analysis:
     name: ESP32-C5 PHY reverse engineering
     runs-on: ubuntu-latest
