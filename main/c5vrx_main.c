@@ -10,6 +10,7 @@
 #include "c5vrx_adc_dump.h"
 #include "c5vrx_channels.h"
 #include "c5vrx_control.h"
+#include "c5vrx_cvbs_out.h"
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_rf.h"
 #include "c5vrx_wifi5.h"
@@ -79,9 +80,18 @@ void app_main(void)
     esp_chip_info_t info;
     esp_chip_info(&info);
 
-    ESP_LOGI(TAG, "C5VRX research firmware");
-    ESP_LOGI(TAG, "Goal: RX5808-class analog FPV reception using the ESP32-C5 5 GHz receive chain");
+    ESP_LOGI(TAG, "C5VRX analog receiver research firmware");
+    ESP_LOGI(TAG, "Goal: RX5808-class 5.8 GHz reception with direct analog CVBS output");
     ESP_LOGI(TAG, "Chip revision: %u", (unsigned)info.revision);
+
+#if CONFIG_C5VRX_CVBS_OUTPUT_ONLY_TEST
+    ESP_LOGW(TAG, "Output-only proof mode: RF/Wi-Fi bring-up is intentionally skipped");
+    ESP_ERROR_CHECK(c5vrx_cvbs_test_start());
+    ESP_LOGI(TAG, "PAL CVBS test is running continuously; reset/power-off to stop this proof image");
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(10000));
+    }
+#endif
 
     c5vrx_print_fpv_coverage();
 
@@ -124,7 +134,7 @@ void app_main(void)
         C5VRX_CFG_HT40,
         C5VRX_CFG_DIRECT_TUNE));
 
-    ESP_LOGI(TAG, "USB control ready: select bands/channels and trigger IQ captures without reflashing");
+    ESP_LOGI(TAG, "USB control ready: select bands/channels, trigger IQ captures and control the CVBS proof output");
     ESP_LOGW(TAG,
              "Promiscuous Wi-Fi RX proves the 5 GHz RF path is active; live analog FPV still requires continuous FE/baseband sample capture and WBFM demodulation.");
 
