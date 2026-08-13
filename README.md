@@ -72,7 +72,7 @@ ESP32-C5 / C5 module
 power + decoupling
 antenna / RF connection
 6-bit weighted resistor DAC
-AV视频 connector
+AV connector
 ```
 
 No RX5808. No external video decoder. No external video DAC. No AT7456E-class
@@ -225,7 +225,7 @@ PARLIO + GDMA
           ↓
 75-ohm weighted resistor DAC
           ↓
-AV视频 / goggles / DVR
+AV output / goggles / DVR
 ```
 
 PARLIO can transport an 8-bit byte per sample while only six low data GPIOs are
