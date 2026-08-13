@@ -125,7 +125,7 @@ static esp_err_t stop_live_sources(c5vrx_stream_stats_t *pipeline_stats,
 static void print_ring_stats(const c5vrx_live_ring_stats_t *stats)
 {
     if (!stats) return;
-    printf("C5VRX_LIVE_RING_STATS blocks=%llu words=%llu dropped=%llu missed_words=%llu overruns=%llu discontinuities=%llu wraps=%llu fatal_stops=%llu fatal_reason=%s max_copy_cycles=%u\n",
+    printf("C5VRX_LIVE_RING_STATS blocks=%llu words=%llu dropped=%llu missed_words=%llu overruns=%llu discontinuities=%llu wraps=%llu fatal_stops=%llu fatal_reason=%s copy_cycles_total=%llu max_copy_cycles=%u\n",
            (unsigned long long)stats->blocks,
            (unsigned long long)stats->words,
            (unsigned long long)stats->dropped_blocks,
@@ -135,6 +135,7 @@ static void print_ring_stats(const c5vrx_live_ring_stats_t *stats)
            (unsigned long long)stats->wraps_observed,
            (unsigned long long)stats->fatal_stops,
            c5vrx_live_ring_failure_name(stats->fatal_reason),
+           (unsigned long long)stats->copy_cycles_total,
            (unsigned)stats->maximum_copy_cycles);
 }
 
@@ -576,18 +577,32 @@ static void handle_line(char *line)
             ring.overruns == 0u && ring.fatal_stops == 0u &&
             pipeline.dropped_rf_blocks == 0u &&
             pipeline.output_underruns == 0u && rate_pass;
+        const uint64_t available_cycles =
+            (uint64_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000u * ring_bench_ms;
+        const unsigned copy_cpu_percent = available_cycles ?
+            (unsigned)(ring.copy_cycles_total * 100u / available_cycles) : 0u;
+        const uint64_t copy_bytes_per_second = ring_bench_ms ?
+            ring.words * sizeof(uint32_t) * 1000u / ring_bench_ms : 0u;
+        const bool copy_shortfall = ring.copy_cycles_total &&
+            (copy_cpu_percent >= 25u ||
+             ring.fatal_reason == C5VRX_RING_FAILURE_COPY_AMBIGUOUS);
+        const char *zero_copy_action = !ring.copy_cycles_total ? "NO_RESULT" :
+            (copy_shortfall ? "IMPLEMENT_ZERO_COPY" : "KEEP_IMMUTABLE_COPY");
         if (pass && ring_bench_mode == 0u && ring_bench_ms == 1000u &&
             s_wbfm_self_test_passed && s_parlio_bench_passed &&
             s_synthetic_pipeline_passed) {
             s_capabilities.bitscrambler_path_available = true;
         }
         print_ring_stats(&ring);
-        printf("C5VRX_BENCH_RING_PIPELINE mode=%u duration_ms=%u blocks=%llu input_rate=%u measured_source_rate=%u rate_pass=%u dropped=%llu output_underruns=%llu synthetic_margin_pass=%u classification=%s code=%d\n",
+        printf("C5VRX_BENCH_RING_PIPELINE mode=%u duration_ms=%u blocks=%llu input_rate=%u measured_source_rate=%u rate_pass=%u copy_bytes_per_second=%llu copy_cycles_total=%llu copy_cpu_percent=%u zero_copy_action=%s dropped=%llu output_underruns=%llu synthetic_margin_pass=%u classification=%s code=%d\n",
                ring_bench_mode, ring_bench_ms,
                (unsigned long long)pipeline.blocks_processed,
                (unsigned)pipeline.achieved_input_rate_hz,
                (unsigned)s_capabilities.measured_source_rate,
                rate_pass ? 1u : 0u,
+               (unsigned long long)copy_bytes_per_second,
+               (unsigned long long)ring.copy_cycles_total,
+               copy_cpu_percent, zero_copy_action,
                (unsigned long long)pipeline.dropped_rf_blocks,
                (unsigned long long)pipeline.output_underruns,
                s_synthetic_pipeline_passed ? 1u : 0u,
@@ -918,7 +933,7 @@ static void console_task(void *arg)
     (void)arg;
     char line[128];
 
-    printf("C5VRX_READY protocol=6\n");
+    printf("C5VRX_READY protocol=7 usb_preview_binary=1\n");
     print_help();
 
     for (;;) {

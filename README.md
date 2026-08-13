@@ -180,9 +180,9 @@ size: 0x10000 bytes = 64 KiB
 max:  16,384 complex samples
 ```
 
-The decisive RF problem is whether the live 5 GHz receiver can feed it with
-enough bandwidth and whether the producer can be converted from a finite debug
-dump into a continuous/chained stream.
+The source-level producer and guarded ring reader are implemented. The decisive
+RF problem is now whether real C5 silicon produces phase-bearing data with
+enough bandwidth, cadence and coherent continuity through ring wrap.
 
 See [`research/adc-dump-format.md`](research/adc-dump-format.md),
 [`research/reverse-engineering.md`](research/reverse-engineering.md) and
@@ -305,17 +305,11 @@ anti-alias bandwidth or processing margin is missing. `LIVE EXPERIMENTAL START`
 is the explicitly unproven laboratory route through the guarded ring reader,
 persistent BitScrambler, conditioner and PARLIO.
 
-Protocol 6 frames preview data as an ASCII header, exactly 19,200 binary bytes
-and an ASCII footer:
-
-```text
-C5VRX_USB_FRAME seq=<n> width=160 height=120 bytes=19200 encoding=GRAY8 crc32=<hex>
-<160x120 row-major GRAY8 payload>
-C5VRX_USB_FRAME_END
-```
-
-The CRC is standard CRC-32/ISO-HDLC (Python `zlib.crc32`). The Receiver Console
-rejects malformed geometry, short frames and CRC failures.
+Protocol 7 carries preview data in versioned binary packets with an eight-byte
+magic marker, packet type, sequence, lengths, timestamp, header CRC and payload
+CRC. `STREAM_INFO`, `GRAY8_FRAME` and `STREAM_END` packets allow clean startup,
+frame-loss reporting and resynchronisation after corruption or disconnect. See
+[`research/usb-preview-protocol.md`](research/usb-preview-protocol.md).
 
 `WBFM HWTEST` runs synthetic packed I/Q through the physical C5 BitScrambler and
 compares its output with a CPU reference. `WBFM CAPTURE` bridges a real finite
@@ -454,6 +448,12 @@ Experimental hardware paths remain off by default in the normal firmware.
 The deep-probe build exposes a fail-closed `LIVE START`: cadence, coherent wrap,
 staged soak, measured anti-alias bandwidth and hardware throughput gates must
 pass first. See [`research/first-hardware-test.md`](research/first-hardware-test.md).
+
+The Receiver Console profile targets the 4 MB
+**ESP32-C5-WROOM-1U-N4** and uses a 3 MiB factory-app partition. The combined
+console/RF image is 972,320 bytes in the current build, leaving 2,173,408 bytes
+(69%) of that app slot free. Output-only/default profiles keep their existing
+partition settings.
 
 ---
 

@@ -14,7 +14,6 @@ import sys
 import threading
 import time
 import traceback
-import zlib
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 import tkinter as tk
@@ -23,6 +22,16 @@ from tkinter import messagebox, ttk
 import esptool
 import serial
 from serial.tools import list_ports
+
+from c5vrx_usb_protocol import (
+    FRAME_DESCRIPTOR,
+    PACKET_GRAY8_FRAME,
+    PACKET_STREAM_END,
+    PACKET_STREAM_INFO,
+    PIXEL_FORMAT_GRAY8,
+    Packet,
+    StreamDecoder,
+)
 
 APP_TITLE = "C5VRX Receiver Console"
 C5_RX_MAX_MHZ = 5885
@@ -110,6 +119,7 @@ class C5VRXApp(tk.Tk):
         self.preview_width = 160
         self.preview_height = 120
         self.preview_image: tk.PhotoImage | None = None
+        self.preview_sequence: int | None = None
         self.first_test_active = False
         self.first_test_fine_sent = False
         self.first_test_center = 5805
@@ -324,6 +334,7 @@ class C5VRXApp(tk.Tk):
 
     def disconnect_serial(self) -> None:
         self.serial_stop.set()
+        self.preview_sequence = None
         ser = self.ser
         self.ser = None
         if ser:
@@ -338,38 +349,23 @@ class C5VRXApp(tk.Tk):
         ser = self.ser
         if not ser:
             return
+        decoder = StreamDecoder()
         try:
             while not self.serial_stop.is_set() and ser.is_open:
-                raw = ser.readline()
+                raw = ser.read(4096)
                 if not raw:
                     continue
-                line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
-                self.sink.write(line + "\n")
-                if line.startswith("C5VRX_USB_FRAME "):
-                    try:
-                        fields = self._fields(line)
-                        count = int(fields.get("bytes", "0"))
-                        width = int(fields.get("width", "0"))
-                        height = int(fields.get("height", "0"))
-                        expected_crc = int(fields.get("crc32", "0"), 16)
-                    except ValueError:
-                        self.sink.write("C5VRX_PREVIEW_DROP reason=MALFORMED_HEADER\n")
-                        continue
-                    if count != 160 * 120 or width != 160 or height != 120:
-                        self.sink.write("C5VRX_PREVIEW_DROP reason=UNSUPPORTED_GEOMETRY\n")
-                        ser.reset_input_buffer()
-                        continue
-                    payload = self._read_exact(ser, count)
-                    footer = ser.readline().decode("ascii", errors="replace").strip()
-                    if not footer:
-                        footer = ser.readline().decode("ascii", errors="replace").strip()
-                    if (count == width * height and footer == "C5VRX_USB_FRAME_END"
-                            and zlib.crc32(payload) & 0xFFFFFFFF == expected_crc):
-                        self.after(0, self._show_gray_frame, payload, width, height)
+                for kind, value in decoder.feed(raw):
+                    if kind == "line":
+                        line = str(value)
+                        self.sink.write(line + "\n")
+                        self._parse_device_line(line)
+                    elif kind == "packet":
+                        assert isinstance(value, Packet)
+                        self._handle_usb_packet(value)
                     else:
-                        self.sink.write("C5VRX_PREVIEW_DROP reason=FRAMING_OR_CRC\n")
-                    continue
-                self._parse_device_line(line)
+                        self.sink.write(
+                            f"C5VRX_PREVIEW_RESYNC reason={value}\n")
         except Exception as exc:
             if not self.serial_stop.is_set():
                 self.sink.write(f"\nSerial reader stopped: {exc}\n")
@@ -424,15 +420,53 @@ class C5VRXApp(tk.Tk):
                 fields[key] = value
         return fields
 
-    @staticmethod
-    def _read_exact(ser: serial.Serial, count: int) -> bytes:
-        data = bytearray()
-        deadline = time.monotonic() + 3.0
-        while len(data) < count and time.monotonic() < deadline:
-            chunk = ser.read(count - len(data))
-            if chunk:
-                data.extend(chunk)
-        return bytes(data)
+    def _handle_usb_packet(self, packet: Packet) -> None:
+        if self.preview_sequence is not None and packet.sequence != (
+                self.preview_sequence + 1) & 0xFFFFFFFF:
+            self.sink.write(
+                "C5VRX_PREVIEW_SEQUENCE_GAP "
+                f"expected={(self.preview_sequence + 1) & 0xFFFFFFFF} "
+                f"received={packet.sequence}\n")
+        self.preview_sequence = packet.sequence
+
+        if packet.packet_type == PACKET_STREAM_END:
+            dropped = int.from_bytes(packet.payload[:8], "little") \
+                if len(packet.payload) >= 8 else 0
+            self.after(0, self.preview_status_var.set,
+                       f"USB preview stopped; device dropped {dropped} frame(s)")
+            return
+        if packet.packet_type not in {PACKET_STREAM_INFO, PACKET_GRAY8_FRAME}:
+            self.sink.write(
+                f"C5VRX_PREVIEW_SKIP packet_type={packet.packet_type}\n")
+            return
+        if len(packet.payload) < FRAME_DESCRIPTOR.size:
+            self.sink.write("C5VRX_PREVIEW_DROP reason=SHORT_DESCRIPTOR\n")
+            return
+
+        width, height, stride, pixel_format, flags = \
+            FRAME_DESCRIPTOR.unpack_from(packet.payload)
+        if (not width or not height or width > 640 or height > 480 or
+                stride < width or pixel_format != PIXEL_FORMAT_GRAY8):
+            self.sink.write("C5VRX_PREVIEW_DROP reason=UNSUPPORTED_FORMAT\n")
+            return
+        if packet.packet_type == PACKET_STREAM_INFO:
+            self.preview_sequence = packet.sequence
+            self.after(0, self.preview_status_var.set,
+                       f"USB preview v1: {width}×{height}, waiting for H/V lock")
+            return
+
+        pixels = packet.payload[FRAME_DESCRIPTOR.size:]
+        if len(pixels) != stride * height:
+            self.sink.write("C5VRX_PREVIEW_DROP reason=PAYLOAD_SIZE\n")
+            return
+        if stride != width:
+            pixels = b"".join(
+                pixels[row * stride:row * stride + width]
+                for row in range(height)
+            )
+        self.after(0, self._show_gray_frame, pixels, width, height)
+        if not (flags & 1):
+            self.sink.write("C5VRX_PREVIEW_WARNING reason=SYNC_UNLOCKED\n")
 
     def _apply_status_line(self, line: str) -> None:
         fields = self._fields(line)

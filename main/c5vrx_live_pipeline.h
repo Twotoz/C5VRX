@@ -51,6 +51,7 @@ typedef struct {
     uint64_t discontinuities;
     uint64_t wraps_observed;
     uint64_t fatal_stops;
+    uint64_t copy_cycles_total;
     c5vrx_live_ring_failure_t fatal_reason;
     uint32_t maximum_copy_cycles;
     uint16_t reader_pointer;

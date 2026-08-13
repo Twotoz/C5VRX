@@ -1,9 +1,9 @@
 # Prepared live RF streaming architecture
 
-> Investigation update: no application-usable continuous producer has been
-> proven. See [`continuous-rf-verdict.md`](continuous-rf-verdict.md). The
-> `RING_PROBE` command is a one-arm pre-trigger experiment, not a producer and
-> not repeated finite capture.
+> Investigation update: the source-level non-blocking producer and guarded
+> ring source are reconstructed and implemented. Physical continuous/wrap and
+> phase-bearing behavior is not yet proven, so the source remains explicitly
+> `EXPERIMENTAL_RING_SOURCE_UNPROVEN`.
 
 ## Status
 

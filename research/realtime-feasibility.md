@@ -36,3 +36,6 @@ measure writer-only, sparse reads, loopback, PARLIO and simultaneous contention.
 `BENCH RING PIPELINE 0 1000` is the bounded simultaneous-contention gate: unlike
 the synthetic benchmarks, it runs the real writer, guarded immutable copies,
 persistent BitScrambler, conditioner and PARLIO together for one second.
+It also measures aggregate copy cycles/occupancy. Zero-copy is requested only
+when that real run reports >=25% CPU in the copy itself or `COPY_AMBIGUOUS`;
+otherwise the immutable-copy path remains the production candidate.

@@ -1,4 +1,11 @@
 # C5VRX one-click control firmware
+# The production target is ESP32-C5-WROOM-1U-N4. Reserve a 3 MiB factory-app
+# slot instead of IDF's 1 MiB default; the remaining 960 KiB stays unused for
+# future data/upgrade policy rather than being silently consumed by the app.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_receiver_console.csv"
+
 # Boot on A4 / 5805 MHz exact Wi-Fi center, then retune at runtime from the PC UI.
 CONFIG_C5VRX_RF_BACKEND_WIFI5=y
 CONFIG_C5VRX_TARGET_BAND_A=y

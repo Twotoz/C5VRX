@@ -35,6 +35,14 @@ be synchronous: check writer distance, transform the contiguous window before
 overwrite, re-read the writer pointer, and discard on ambiguity. It must not
 hand raw ring memory to the existing asynchronous queue.
 
+Zero-copy is intentionally deferred until the real simultaneous benchmark
+demonstrates that copying is the limiting stage. `BENCH RING PIPELINE 0 1000`
+reports `copy_bytes_per_second`, `copy_cycles_total`, `copy_cpu_percent` and a
+machine-readable `zero_copy_action`. The current decision threshold is measured
+copy occupancy >=25% or a `COPY_AMBIGUOUS` stop; without valid copied blocks the
+result is `NO_RESULT`. This prevents replacing the safer immutable contract on
+the basis of an unmeasured 80 MS/s design case.
+
 ## Ordering and coherency
 
 Ring accesses use volatile loads and RISC-V I/O/read fences around producer

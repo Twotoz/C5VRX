@@ -7,6 +7,7 @@
 
 #define C5VRX_USB_PREVIEW_WIDTH 160u
 #define C5VRX_USB_PREVIEW_HEIGHT 120u
+#define C5VRX_USB_PREVIEW_PROTOCOL_VERSION 1u
 
 esp_err_t c5vrx_usb_preview_start(void);
 esp_err_t c5vrx_usb_preview_stop(void);

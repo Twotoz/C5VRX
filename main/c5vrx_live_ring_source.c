@@ -161,6 +161,7 @@ static bool ring_acquire(c5vrx_rf_source_t *source,
     __asm__ __volatile__("fence r, rw" ::: "memory");
     const uint32_t last_cycle = (uint32_t)esp_cpu_get_cycle_count();
     const uint32_t copy_cycles = last_cycle - first_cycle;
+    ctx->stats.copy_cycles_total += copy_cycles;
     if (copy_cycles > ctx->stats.maximum_copy_cycles)
         ctx->stats.maximum_copy_cycles = copy_cycles;
 
