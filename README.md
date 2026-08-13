@@ -264,6 +264,17 @@ whether finite captures are useful as a temporary near-live source.
 compares its output with a CPU reference. `WBFM CAPTURE` bridges a real finite
 vendor RF dump directly into that hardware WBFM transform.
 
+For the first board test, use the guided runner instead of entering these by
+hand. It captures the complete evidence in one JSON file:
+
+```bash
+python -m pip install pyserial
+python tools/c5vrx_bench.py --port /dev/ttyACM0
+```
+
+See [`research/a4-bench-test.md`](research/a4-bench-test.md) for equipment,
+safety prompts, automated gates and the separate PAL output test.
+
 Decode serial captures on the host with:
 
 ```bash

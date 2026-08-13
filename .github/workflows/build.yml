@@ -44,7 +44,9 @@ jobs:
             cp build/flasher_args.json firmware_bundle/ &&
             cp build/bootloader/bootloader.bin firmware_bundle/bootloader.bin &&
             cp build/partition_table/partition-table.bin firmware_bundle/partition-table.bin &&
-            cp build/*.bin firmware_bundle/
+            cp build/*.bin firmware_bundle/ &&
+            cp research/a4-bench-test.md firmware_bundle/TESTING.md &&
+            cp tools/c5vrx_bench.py firmware_bundle/
 
       - name: Upload proof firmware
         uses: actions/upload-artifact@v4
@@ -167,6 +169,9 @@ jobs:
 
       - name: Capture diagnostics self-test
         run: python tools/analyze_iq_capture.py --self-test
+
+      - name: Hardware bench runner parser self-test
+        run: python tools/c5vrx_bench.py --self-test
 
       - name: BitScrambler FM approximation self-test
         run: python tools/bitlut_fm.py --self-test

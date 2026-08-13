@@ -147,6 +147,10 @@ decoder.
 
 ## Physical test sequence that unlocks the final software
 
+The automated serial runner and exact pass/report format are documented in
+`research/a4-bench-test.md`. Prefer that runner over copying terminal output by
+hand.
+
 Use A4 / 5805 MHz first so the RF center is a normal Wi-Fi center and arbitrary
 retuning is removed from the experiment.
 
