@@ -1,8 +1,8 @@
 # A4 / 5805 MHz first-hardware test
 
-This is the reproducible test gate for C5VRX PR #1. It proves every currently
-implemented hardware boundary without claiming that the undocumented finite RF
-dump is already a continuous live receiver.
+This is the legacy finite-capture test gate. For the current producer/ring,
+cadence, wrap, fine-tune, soak and performance suite, use
+[`first-hardware-test.md`](first-hardware-test.md).
 
 ## Equipment
 
@@ -84,8 +84,7 @@ circuit voltage as the final CVBS level.
 
 ## What unlocks the next implementation
 
-Return the JSON report plus scope screenshots/capture data. If the finite dumps
-track the VTX and CHAIN gaps are small enough, the next step is a temporary
-ping-pong RF-to-WBFM pipeline. If they do not, reverse engineering must move
-behind `adctrig()` to the actual producer/DMA registers. Neither result should
-be hidden with guessed video conditioning.
+Return the JSON report plus scope screenshots/capture data. The guarded producer
+and ring pipeline are already implemented; physical evidence determines which
+capability gates can be enabled. Neither result should be hidden with guessed
+video conditioning.

@@ -57,7 +57,9 @@ buffer size = 0x00010000 bytes = 64 KiB
 
 At one 32-bit word per complex sample, that buffer can hold up to **16,384 I/Q samples**.
 
-If the `sample_80m=1` argument really means 80 MS/s on C5 as it does in the Espressif RF-test family, a full 64 KiB capture spans about **204.8 µs**. That is finite, but already long enough for multiple analog-video line periods and easily enough to prove WBFM/baseband recovery.
+The `sample_80m` write is overwritten before enable, so it does not establish a
+physical C5 rate. At the still-useful **80 MS/s design case**, a full 64 KiB
+ring spans **204.8 us**. The actual span is measured by `PRODUCER CADENCE PROBE`.
 
 ## `adctrig` calling convention
 

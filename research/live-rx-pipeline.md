@@ -85,10 +85,10 @@ where code 32 is the zero-frequency bias.
 The LUT is 1024 x 16-bit = 2048 bytes and is loaded at initialization with
 `bitscrambler_load_lut()` rather than being copied into assembly source.
 
-Nominal rate relationship if the recovered RF mode really is 80 MS/s:
+Design-case rate relationship if hardware measures approximately 80 MS/s:
 
 ```text
-80 MS/s packed I/Q -> 20 MS/s phase-delta bytes
+candidate 80 MS/s packed I/Q -> 20 MS/s phase-delta bytes
 ```
 
 The hardware implementation has three proof modes:

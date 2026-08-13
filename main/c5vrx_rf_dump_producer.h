@@ -26,9 +26,25 @@ typedef struct {
     bool wrap_or_done;
 } c5vrx_rf_dump_status_t;
 
+typedef struct {
+    uint32_t dump_ctrl;
+    uint32_t dump_ptr_mode;
+    uint32_t dump_format;
+    uint32_t fe_path;
+    uint32_t fe_aux;
+    uint32_t fe_enable;
+    uint32_t source_ctrl;
+    uint32_t source_mux;
+    uint32_t sram_usage;
+    uint32_t modem_clock;
+} c5vrx_rf_dump_registers_t;
+
 bool c5vrx_rf_dump_producer_available(void);
+bool c5vrx_rf_dump_memory_reserved(void);
 esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
                                   c5vrx_rf_dump_mode_t mode);
 esp_err_t c5vrx_rf_dump_start(void);
 esp_err_t c5vrx_rf_dump_get_status(c5vrx_rf_dump_status_t *status);
 esp_err_t c5vrx_rf_dump_stop(void);
+esp_err_t c5vrx_rf_dump_read_registers(c5vrx_rf_dump_registers_t *registers);
+bool c5vrx_rf_dump_last_restore_ok(void);

@@ -2,6 +2,8 @@
 
 #include "sdkconfig.h"
 #include "esp_idf_version.h"
+#include "esp_memory_utils.h"
+#include "heap_memory_layout.h"
 
 #define REG32(address) (*(volatile uint32_t *)(uintptr_t)(address))
 
@@ -13,8 +15,8 @@
 #define FE_ENABLE       0x600a0800u
 #define SOURCE_CTRL     0x600a08ccu
 #define SOURCE_MUX      0x600a70b8u
-#define RX_CLOCK        0x60095004u
-#define PHY_CLEAR       0x600a9c04u
+#define HP_SRAM_USAGE   0x60095004u
+#define MODEM_CLOCK     0x600a9c04u
 
 #define CTRL_LENGTH_MASK 0x0001ffffu
 #define CTRL_MODE_BIT    0x00020000u
@@ -26,21 +28,64 @@ extern void phy_pbus_clear_reg(void);
 
 static bool s_configured;
 static bool s_running;
+static bool s_last_restore_ok = true;
 static struct {
     uint32_t dump_ctrl, dump_ptr_mode, dump_format;
     uint32_t fe_path, fe_aux, fe_enable, source_ctrl, source_mux;
-    uint32_t rx_clock, phy_clear;
+    uint32_t hp_sram_usage, modem_clock;
 } s_saved;
+
+/* The RF-test writer does not target an abstract peripheral FIFO: it writes
+ * this fixed 64 KiB HP-SRAM window. Reserve it before heap initialization so
+ * ordinary allocations can never become silent RF-writer victims. A link-time
+ * assertion separately rejects static .bss overlap. */
+#if CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER
+SOC_RESERVE_MEMORY_REGION(0x40830000u, 0x40840000u, c5vrx_rf_dump_ram);
+#endif
+
+extern char _bss_end;
 
 bool c5vrx_rf_dump_producer_available(void)
 {
 #if CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER && \
     ESP_IDF_VERSION == ESP_IDF_VERSION_VAL(6, 0, 2)
-    return true;
+    return c5vrx_rf_dump_memory_reserved();
 #else
     return false;
 #endif
 }
+
+bool c5vrx_rf_dump_memory_reserved(void)
+{
+    return (uintptr_t)&_bss_end <= 0x40830000u &&
+           esp_ptr_dma_capable((const void *)(uintptr_t)0x40830000u) &&
+           esp_ptr_internal((const void *)(uintptr_t)0x40830000u);
+}
+
+static c5vrx_rf_dump_registers_t read_registers(void)
+{
+    return (c5vrx_rf_dump_registers_t) {
+        .dump_ctrl = REG32(DUMP_CTRL),
+        .dump_ptr_mode = REG32(DUMP_PTR_MODE),
+        .dump_format = REG32(DUMP_FORMAT),
+        .fe_path = REG32(FE_PATH),
+        .fe_aux = REG32(FE_AUX),
+        .fe_enable = REG32(FE_ENABLE),
+        .source_ctrl = REG32(SOURCE_CTRL),
+        .source_mux = REG32(SOURCE_MUX),
+        .sram_usage = REG32(HP_SRAM_USAGE),
+        .modem_clock = REG32(MODEM_CLOCK),
+    };
+}
+
+esp_err_t c5vrx_rf_dump_read_registers(c5vrx_rf_dump_registers_t *registers)
+{
+    if (!registers) return ESP_ERR_INVALID_ARG;
+    *registers = read_registers();
+    return ESP_OK;
+}
+
+bool c5vrx_rf_dump_last_restore_ok(void) { return s_last_restore_ok; }
 
 static void set_format_fields(uint32_t top, uint32_t middle,
                               uint32_t low, uint32_t bottom)
@@ -63,7 +108,7 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
                                   c5vrx_rf_dump_mode_t mode)
 {
     if (!c5vrx_rf_dump_producer_available()) return ESP_ERR_NOT_SUPPORTED;
-    if (s_running) return ESP_ERR_INVALID_STATE;
+    if (s_configured || s_running) return ESP_ERR_INVALID_STATE;
     if (sample_count == 0 || sample_count > 16384u) return ESP_ERR_INVALID_ARG;
     if (mode != C5VRX_RF_DUMP_MODE_ORDINARY_RX &&
         mode != C5VRX_RF_DUMP_MODE_11 && mode != C5VRX_RF_DUMP_MODE_12)
@@ -81,8 +126,9 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
     s_saved.fe_enable = REG32(FE_ENABLE);
     s_saved.source_ctrl = REG32(SOURCE_CTRL);
     s_saved.source_mux = REG32(SOURCE_MUX);
-    s_saved.rx_clock = REG32(RX_CLOCK);
-    s_saved.phy_clear = REG32(PHY_CLEAR);
+    s_saved.hp_sram_usage = REG32(HP_SRAM_USAGE);
+    s_saved.modem_clock = REG32(MODEM_CLOCK);
+    s_last_restore_ok = false;
 
     /* Exact set_dump_mode(0): all three supported trigger modes use the
      * ordinary receive source; nonzero set_dump_mode arguments are identical. */
@@ -92,7 +138,7 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
     /* Exact automatic-gain subset of C5 v6.0.2 adctrig. The historical
      * sample_80m write is intentionally absent: vendor control flow overwrites
      * those same bits before enable, so forcing them would be a new value. */
-    REG32(PHY_CLEAR) = UINT32_MAX;
+    REG32(MODEM_CLOCK) = UINT32_MAX;
     REG32(FE_ENABLE) |= 4u;
     REG32(DUMP_CTRL) = (REG32(DUMP_CTRL) & ~CTRL_LENGTH_MASK) |
                        ((uint32_t)sample_count & CTRL_LENGTH_MASK);
@@ -107,8 +153,12 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
     }
 
     REG32(DUMP_FORMAT) |= 0x01000000u;
-    REG32(RX_CLOCK) = (REG32(RX_CLOCK) & 0xfffff0ffu) | 0x00000200u;
-    REG32(RX_CLOCK) |= 0x00010000u;
+    /* Public C5 headers identify 0x60095004 as HP SRAM ownership, not a
+     * sample clock: [11:8]=2 grants the MAC/dump writer the selected memory
+     * bank and bit 16 adds the vendor-observed 64 KiB offset. */
+    REG32(HP_SRAM_USAGE) =
+        (REG32(HP_SRAM_USAGE) & 0xfffff0ffu) | 0x00000200u;
+    REG32(HP_SRAM_USAGE) |= 0x00010000u;
     REG32(DUMP_CTRL) &= ~0x00300000u;
     REG32(DUMP_CTRL) &= ~CTRL_MODE_BIT;
 
@@ -123,7 +173,9 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
             (REG32(DUMP_PTR_MODE) & ~MODE_SELECT_MASK) |
             (mode == C5VRX_RF_DUMP_MODE_11 ? 0x00160000u : 0x00120000u);
         if (mode == C5VRX_RF_DUMP_MODE_12) {
-            REG32(PHY_CLEAR) &= ~0x00200000u;
+            /* MODEM_SYSCON_CLK_DATA_DUMP_MUX, named by the public C5 header.
+             * Mode 12 is the only vendor-observed branch selecting zero. */
+            REG32(MODEM_CLOCK) &= ~0x00200000u;
             REG32(FE_PATH) |= 1u;
             REG32(FE_AUX) = (REG32(FE_AUX) & 0x1fffffffu) | 0x40000000u;
         }
@@ -166,8 +218,8 @@ esp_err_t c5vrx_rf_dump_stop(void)
     if (!c5vrx_rf_dump_producer_available()) return ESP_ERR_NOT_SUPPORTED;
     if (!s_configured) return ESP_ERR_INVALID_STATE;
     REG32(DUMP_CTRL) &= ~CTRL_ENABLE_BIT;
-    REG32(RX_CLOCK) &= 0xfffff0ffu;
-    REG32(RX_CLOCK) &= 0xfffeffffu;
+    REG32(HP_SRAM_USAGE) &= 0xfffff0ffu;
+    REG32(HP_SRAM_USAGE) &= 0xfffeffffu;
     phy_pbus_clear_reg();
     REG32(DUMP_PTR_MODE) = s_saved.dump_ptr_mode;
     REG32(DUMP_FORMAT) = s_saved.dump_format;
@@ -176,11 +228,24 @@ esp_err_t c5vrx_rf_dump_stop(void)
     REG32(FE_ENABLE) = s_saved.fe_enable;
     REG32(SOURCE_CTRL) = s_saved.source_ctrl;
     REG32(SOURCE_MUX) = s_saved.source_mux;
-    REG32(RX_CLOCK) = s_saved.rx_clock;
-    REG32(PHY_CLEAR) = s_saved.phy_clear;
+    REG32(HP_SRAM_USAGE) = s_saved.hp_sram_usage;
+    REG32(MODEM_CLOCK) = s_saved.modem_clock;
     REG32(DUMP_CTRL) = s_saved.dump_ctrl & ~CTRL_ENABLE_BIT;
     __asm__ __volatile__("fence iorw, iorw" ::: "memory");
+
+    const c5vrx_rf_dump_registers_t restored = read_registers();
+    s_last_restore_ok =
+        restored.dump_ctrl == (s_saved.dump_ctrl & ~CTRL_ENABLE_BIT) &&
+        restored.dump_ptr_mode == s_saved.dump_ptr_mode &&
+        restored.dump_format == s_saved.dump_format &&
+        restored.fe_path == s_saved.fe_path &&
+        restored.fe_aux == s_saved.fe_aux &&
+        restored.fe_enable == s_saved.fe_enable &&
+        restored.source_ctrl == s_saved.source_ctrl &&
+        restored.source_mux == s_saved.source_mux &&
+        restored.sram_usage == s_saved.hp_sram_usage &&
+        restored.modem_clock == s_saved.modem_clock;
     s_running = false;
     s_configured = false;
-    return ESP_OK;
+    return s_last_restore_ok ? ESP_OK : ESP_ERR_INVALID_STATE;
 }

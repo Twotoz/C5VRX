@@ -47,9 +47,9 @@ PAL/NTSC waveform. A normal analog monitor, DVR or goggles can decode that
 waveform themselves, so C5VRX does **not** need a framebuffer, RGB conversion,
 full PAL/NTSC pixel decoder or LCD controller in the main path.
 
-Digital display/USB preview work is explicitly secondary. If it is ever needed,
-it should sit behind the proven analog receiver path or on a companion processor
-rather than complicating the core VRX.
+Digital display remains secondary. The implemented USB-C preview is a reduced
+160×120 grayscale diagnostic derived from the streaming CVBS samples; it has
+independent buffers and may be stopped or disconnected without owning PARLIO AV.
 
 See [`research/analog-first-architecture.md`](research/analog-first-architecture.md).
 
@@ -243,13 +243,14 @@ See [`research/frequency-tuning.md`](research/frequency-tuning.md).
 
 ### Test-readiness status
 
-- **PROVEN IN SOFTWARE / BUILD TESTED:** modular RF block ABI, bounded queue,
+- **IMPLEMENTED / NOT PHYSICALLY TESTED:** modular RF block ABI, bounded queue,
   C5 BitScrambler WBFM, configurable sample conditioner, two-buffer PARLIO
   sink, branded PAL renderer, DevKitC and XIAO build profiles.
-- **PHYSICAL TEST PENDING:** RF sample validity/rate/gaps, conditioner
+- **UNKNOWN UNTIL MEASURED ON HARDWARE:** RF sample validity/rate/gaps, conditioner
   calibration, 75-ohm DAC levels and real monitor/VTX behavior.
-- **CONTINUOUS RF PRODUCER UNKNOWN:** the C5 RF frontend producer feeding the
-  prepared `c5vrx_rf_source_t` interface.
+- **EXPERIMENTAL RING SOURCE UNPROVEN:** the guarded source exists, but physical
+  cadence, wrap continuity, tap bandwidth and sustainable contention margin are
+  still unknown.
 
 > **Can the ESP32-C5 provide a sufficiently continuous, phase-bearing RF
 > stream for real-time WBFM demodulation?**
@@ -268,16 +269,30 @@ BW:        40 MHz
 retune:    OFF
 ```
 
-The USB protocol now exposes four useful proof commands:
+The USB protocol exposes bounded producer, DSP and streaming diagnostics:
 
 ```text
 CAPTURE 16384
-CHAIN 32 16384
-RING PROBE
+PRODUCER CADENCE PROBE ALL
+WRAP FLAG PROBE 0
+PHASE CONTINUITY PROBE 0
+PRODUCER SOAK 0 30000
+FINE TUNE VERIFY 5805 5807 <measured_rate_hz>
+TONE RESPONSE PROBE 0 <signed_offset_hz> <measured_rate_hz>
 WBFM HWTEST
-WBFM CAPTURE 16384
-NEARLIVE START
-NEARLIVE STOP
+BENCH SPARSE 2
+BENCH SPARSE 4
+BENCH SPARSE 8
+BENCH BITSCRAMBLER
+BENCH PARLIO
+BENCH USB PREVIEW
+BENCH PIPELINE
+BENCH RING PIPELINE 0 1000
+LIVE START
+LIVE EXPERIMENTAL START 0
+LIVE STOP
+USB PREVIEW START
+USB PREVIEW STOP
 PIPELINE STATS
 ```
 
@@ -285,10 +300,22 @@ PIPELINE STATS
 vendor dump and reports hashes plus boundary discontinuity, explicitly testing
 whether finite captures are useful as a temporary near-live source.
 
-`RING PROBE` invokes `adctrig()` once in a non-immediate pre-trigger mode and
-observes the recovered hardware write pointer during that single arm. It is not
-a stream and does not retrigger finite blocks. It is the next hardware test for
-the internal circular-ring hypothesis.
+`LIVE START` uses measured capabilities and fails closed while rate, phase,
+anti-alias bandwidth or processing margin is missing. `LIVE EXPERIMENTAL START`
+is the explicitly unproven laboratory route through the guarded ring reader,
+persistent BitScrambler, conditioner and PARLIO.
+
+Protocol 6 frames preview data as an ASCII header, exactly 19,200 binary bytes
+and an ASCII footer:
+
+```text
+C5VRX_USB_FRAME seq=<n> width=160 height=120 bytes=19200 encoding=GRAY8 crc32=<hex>
+<160x120 row-major GRAY8 payload>
+C5VRX_USB_FRAME_END
+```
+
+The CRC is standard CRC-32/ISO-HDLC (Python `zlib.crc32`). The Receiver Console
+rejects malformed geometry, short frames and CRC failures.
 
 `WBFM HWTEST` runs synthetic packed I/Q through the physical C5 BitScrambler and
 compares its output with a CPU reference. `WBFM CAPTURE` bridges a real finite
@@ -306,8 +333,8 @@ python -m pip install pyserial
 python tools/c5vrx_bench.py --port /dev/ttyACM0
 ```
 
-See [`research/a4-bench-test.md`](research/a4-bench-test.md) for equipment,
-safety prompts, automated gates and the separate PAL output test.
+See [`research/first-hardware-test.md`](research/first-hardware-test.md) for the
+Receiver Console one-button sequence, equipment, safety prompts and gates.
 
 Decode serial captures on the host with:
 
@@ -390,8 +417,9 @@ The assembly program is `main/c5vrx_wbfm_4to1.bsasm`; the C hardware bridge is
 `main/c5vrx_wbfm_hw.c`; and `tools/validate_wbfm_bsasm.py` checks the numerical
 architecture on the host.
 
-This still does **not** claim continuous RF capture. The undocumented producer
-feeding the finite vendor dump remains the final silicon-level blocker.
+This still does **not** claim continuous RF capture. A guarded ring source is
+implemented, but cadence, coherent wrap continuity, tap bandwidth and sustained
+bus margin remain first-silicon gates before it can be promoted to LIVE.
 
 ---
 
@@ -423,6 +451,9 @@ idf.py flash monitor
 ```
 
 Experimental hardware paths remain off by default in the normal firmware.
+The deep-probe build exposes a fail-closed `LIVE START`: cadence, coherent wrap,
+staged soak, measured anti-alias bandwidth and hardware throughput gates must
+pass first. See [`research/first-hardware-test.md`](research/first-hardware-test.md).
 
 ---
 

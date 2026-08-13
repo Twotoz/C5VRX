@@ -59,6 +59,12 @@ Both are branches inside `adctrig`, not `set_dump_mode()` values.
 | `0x600a20ac[31:29]` | unchanged | unchanged | set to 2 | mode 12 alone chooses an alternate subpath |
 | `0x600a9c04[21]` | unchanged after initial all-ones write | unchanged | clear | mode 12 changes an additional PHY control |
 
+The public C5 header now resolves the last row exactly as
+`MODEM_SYSCON_CLK_DATA_DUMP_MUX`. Thus the field identity and mode-12 write are
+**PROVEN STATICALLY**. The two clock-source frequencies and their signal-stage
+origins remain **UNKNOWN**. This makes mode 12 a safe vendor-observed cadence
+comparison, not proof of a lower-rate tap.
+
 `0x600a20b4` and `0x600a20ac` lie in the same `0x600a20xx` block used heavily
 by Bluetooth direction-finding/CTE IQ selection in `libbtbb.a`, although the
 exact C5 addresses used by those helpers are mostly nearby rather than equal.
@@ -75,5 +81,5 @@ the alternate-path controls above. No direct RFPLL-frequency register readback
 API is available. Firmware therefore records the strongest supported proxy:
 the public Wi-Fi primary-channel and bandwidth before setup, after setup,
 during/after probes and after teardown, plus whether `phy_set_freq()` was
-requested. Preservation of the public readback is **PROVEN ON HARDWARE** only
+requested. Preservation of the public readback is **MEASURED ON HARDWARE** only
 after logs exist; preservation of a fine direct retune remains **UNKNOWN**.

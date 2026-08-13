@@ -42,7 +42,9 @@ def main() -> int:
     archive = root / "components/esp_phy/lib/esp32c5/librftest.a"
     gdma = root / "components/esp_hal_dma/esp32c5/include/hal/gdma_channel.h"
     attach = root / "components/esp_hal_dma/esp32c5/include/hal/bitscrambler_peri_select.h"
-    if not all(p.exists() for p in (archive, gdma, attach)):
+    hp_system = root / "components/soc/esp32c5/register/soc/hp_system_reg.h"
+    modem_clock = root / "components/soc/esp32c5/include/modem/modem_syscon_reg.h"
+    if not all(p.exists() for p in (archive, gdma, attach, hp_system, modem_clock)):
         raise SystemExit("required ESP32-C5 IDF artifacts are missing")
 
     dis = run(objdump, "-dr", "-C", str(archive))
@@ -51,6 +53,8 @@ def main() -> int:
     dump_mode = section(dis, "set_dump_mode")
     gdma_text = gdma.read_text()
     attach_text = attach.read_text()
+    hp_system_text = hp_system.read_text()
+    modem_clock_text = modem_clock.read_text()
 
     facts = {
         "packed IQ producer function exists": bool(re.search(r"\bT adctrig$", symbols, re.M)),
@@ -66,6 +70,11 @@ def main() -> int:
         "public C5 GDMA trigger list has no Wi-Fi/FE source": not re.search(r"WIFI|MODEM|\bFE\b", gdma_text),
         "public C5 BitScrambler attach list has no Wi-Fi/FE source": not re.search(r"WIFI|MODEM|\bFE\b", attach_text),
         "dump mode is an FE/AGC register configuration": "600a08cc" in dump_mode and "600a70b8" in dump_mode,
+        "0x60095004 is named HP SRAM usage, not RX clock":
+            "HP_SYSTEM_SRAM_USAGE_CONF_REG" in hp_system_text and
+            "HP_SYSTEM_MAC_DUMP_ALLOC" in hp_system_text,
+        "C5 public header names a data-dump clock mux":
+            "MODEM_SYSCON_CLK_DATA_DUMP_MUX" in modem_clock_text,
     }
 
     passed = all(facts.values())
@@ -81,8 +90,10 @@ def main() -> int:
               "but the shipped wrapper is finite and tears the engine down. No public "
               "GDMA or BitScrambler attachment exposes the Wi-Fi RF/FE producer. Static "
               "evidence alone therefore does not establish a sustainable application "
-              "sample stream. Use the on-device `RING PROBE` before attempting a guarded "
-              "ring reader; do not label repeated finite captures continuous.", ""]
+              "sample stream. A guarded ring reader is now implemented but remains "
+              "`EXPERIMENTAL_RING_SOURCE_UNPROVEN` until the on-device cadence, wrap, "
+              "phase and contention probes pass; repeated finite captures are never "
+              "labeled continuous.", ""]
     Path(args.out).write_text("\n".join(lines))
     print(f"RF streamability audit {'PASS' if passed else 'INCOMPLETE'}: {args.out}")
     return 0 if passed else 1

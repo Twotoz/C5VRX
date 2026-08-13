@@ -14,6 +14,49 @@ static uint8_t *s_live_buffer[2];
 static size_t s_live_samples;
 static TaskHandle_t s_writer;
 static bool s_transmission_started;
+static unsigned s_osd_phase;
+static unsigned s_osd_low_run;
+static unsigned s_osd_lock_count;
+static unsigned s_osd_line;
+
+/* Sample-domain watermark: no framebuffer. It is inserted only after three
+ * plausible 20-MS/s line intervals have locked, so uncalibrated/no-sync input
+ * passes through untouched. Glyphs are C and 5, 5x7, scaled 2x. */
+static void apply_sample_osd(uint8_t *samples, size_t count)
+{
+    static const uint8_t glyph[2][7] = {
+        {14, 17, 16, 16, 16, 17, 14},
+        {31, 16, 30, 1, 1, 17, 14},
+    };
+    for (size_t i = 0; i < count; ++i) {
+        if ((samples[i] & 0x3fu) <= 8u) {
+            ++s_osd_low_run;
+            if (s_osd_low_run == 40u) {
+                if (s_osd_phase >= 1100u && s_osd_phase <= 1450u) {
+                    if (s_osd_lock_count < 4u) ++s_osd_lock_count;
+                } else {
+                    s_osd_lock_count = 0;
+                }
+                s_osd_phase = 40u;
+                s_osd_line = (s_osd_line + 1u) % 625u;
+            }
+        } else {
+            s_osd_low_run = 0;
+        }
+        if (s_osd_lock_count >= 3u && s_osd_line >= 20u &&
+            s_osd_line < 34u && s_osd_phase >= 230u && s_osd_phase < 278u) {
+            const unsigned row = (s_osd_line - 20u) / 2u;
+            const unsigned px = (s_osd_phase - 230u) / 2u;
+            const unsigned which = px / 12u;
+            const unsigned column = px % 12u;
+            if (which < 2u && column < 10u &&
+                (glyph[which][row] & (1u << (4u - column / 2u)))) {
+                samples[i] = 63u;
+            }
+        }
+        ++s_osd_phase;
+    }
+}
 
 static bool on_switched(parlio_tx_unit_handle_t unit,
                         const parlio_tx_buffer_switched_event_data_t *event,
@@ -77,6 +120,8 @@ esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *samples, size_t count,
     if (!s_transmission_started) {
         memcpy(s_live_buffer[0], samples, count);
         memcpy(s_live_buffer[1], samples, count);
+        apply_sample_osd(s_live_buffer[0], count);
+        apply_sample_osd(s_live_buffer[1], count);
         esp_err_t err = queue_buffer(s_live_buffer[0]);
         if (err == ESP_OK) err = queue_buffer(s_live_buffer[1]);
         if (err == ESP_OK) s_transmission_started = true;
@@ -89,6 +134,7 @@ esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *samples, size_t count,
     const unsigned index = retired == 1u ? 0u : retired == 2u ? 1u : 2u;
     if (index > 1u) return ESP_FAIL;
     memcpy(s_live_buffer[index], samples, count);
+    apply_sample_osd(s_live_buffer[index], count);
     return queue_buffer(s_live_buffer[index]);
 }
 
@@ -101,6 +147,7 @@ esp_err_t c5vrx_cvbs_live_out_stop(void)
     }
     for (unsigned i = 0; i < 2; ++i) { free(s_live_buffer[i]); s_live_buffer[i] = NULL; }
     s_writer = NULL; s_live_samples = 0; s_transmission_started = false;
+    s_osd_phase = s_osd_low_run = s_osd_lock_count = s_osd_line = 0;
     return ESP_OK;
 }
 #else

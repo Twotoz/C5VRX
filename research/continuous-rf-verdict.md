@@ -31,7 +31,8 @@ Disassembly of `adctrig` establishes all of the following for this blob:
 - the reported allocation is `0x10000` bytes (16,384 32-bit words);
 - `0x600a9004[16:0]` receives the capture length and bit 18 is polled;
 - the low 16 bits of `0x600a9008` are returned as a current pointer;
-- `sample_80m` selects the recovered 80 MHz mode;
+- the historical `sample_80m` write is overwritten before enable and does not
+  prove any physical rate;
 - the wrapper polls for at most 1,000,000 microseconds;
 - it clears the capture-enable bit before it returns;
 - it creates no DMA descriptors and has no GDMA call relocation;
@@ -101,15 +102,17 @@ Failure of items 1--3 rejects the accessible circular-ring hypothesis for the
 tested silicon/blob. Items 4--5 prevent bus noise or a misidentified pointer
 from being promoted to a source.
 
-Passing the probe still does **not** prove a sustainable receiver. The next
-step would be a guarded reader which stays behind the writer, measures laps and
-drops, and feeds the existing `c5vrx_rf_source_t` ABI. That code is deliberately
-not enabled before pointer units, cache/bus behavior and safe distance are
-measured.
+Passing the probe still does **not** prove a sustainable receiver. The guarded
+reader is now **IMPLEMENTED / NOT PHYSICALLY TESTED**: it stays behind the
+writer, copies only short contiguous windows into owned buffers, rejects
+ambiguous copies, and records laps, overruns, missed words and drops through the
+existing `c5vrx_rf_source_t` ABI. It remains explicitly experimental until
+pointer cadence, coherency, safe distance and phase continuity are measured.
 
 ## Throughput feasibility
 
-The recovered nominal format is four bytes per complex sample. At 80 MS/s the
+The recovered format is four bytes per complex sample. In the 80 MS/s design
+case the
 writer rate is therefore 320 MB/s and a 64 KiB ring wraps in about 204.8 us.
 That makes a CPU copy-and-process loop implausible without measurement, and is
 why the missing direct FE-to-DMA attachment matters. Decimating later does not

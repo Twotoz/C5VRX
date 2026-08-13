@@ -65,7 +65,7 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [ ] Validate `phy_set_freq(5806, 0)` shifts the real receiver center by +1 MHz.
 - [ ] Characterize capture sample rate and effective receive bandwidth on hardware.
 - [ ] Measure whether finite dump captures can be chained with acceptably small gaps.
-- [ ] Trace and control the hardware producer feeding dump RAM for true continuous/ring-buffer capture.
+- [x] Reconstruct a guarded, opt-in ring source over the hardware producer; physical continuous/wrap proof remains pending.
 
 ## Analog output milestones
 
@@ -91,7 +91,7 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [x] Identify the one-LUT hardware constraint: the phase LUT and a second full 2 KiB delta LUT cannot be resident simultaneously.
 - [x] Implement a C5 BitScrambler 4:1 packed-IQ -> biased phase-delta program.
 - [x] Generate/load the single 1024 x 16-bit phase LUT at initialization.
-- [x] Add host validation for the nominal 80 MS/s IQ -> 20 MS/s phase-delta architecture.
+- [x] Add host validation for the candidate 80 MS/s IQ -> 20 MS/s phase-delta design case.
 - [x] Add an on-device synthetic `WBFM HWTEST` path.
 - [x] Add a finite real RF dump -> hardware WBFM bridge (`WBFM CAPTURE`).
 - [ ] Run `WBFM HWTEST` on physical ESP32-C5 silicon and require zero mismatches.

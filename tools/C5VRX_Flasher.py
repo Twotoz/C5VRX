@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import traceback
+import zlib
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 import tkinter as tk
@@ -23,7 +24,7 @@ import esptool
 import serial
 from serial.tools import list_ports
 
-APP_TITLE = "C5VRX Control"
+APP_TITLE = "C5VRX Receiver Console"
 C5_RX_MAX_MHZ = 5885
 
 FPV_BANDS = {
@@ -105,6 +106,13 @@ class C5VRXApp(tk.Tk):
         self.serial_stop = threading.Event()
         self.iq_words: list[int] = []
         self.iq_capture_active = False
+        self.preview_frame: bytes | None = None
+        self.preview_width = 160
+        self.preview_height = 120
+        self.preview_image: tk.PhotoImage | None = None
+        self.first_test_active = False
+        self.first_test_fine_sent = False
+        self.first_test_center = 5805
 
         root = ttk.Frame(self, padding=14)
         root.pack(fill="both", expand=True)
@@ -112,7 +120,7 @@ class C5VRXApp(tk.Tk):
         header = ttk.Frame(root)
         header.pack(fill="x")
         ttk.Label(header, text="C5VRX", font=("Segoe UI", 25, "bold")).pack(side="left")
-        ttk.Label(header, text="ESP32-C5 analog FPV research control panel").pack(side="left", padx=12, pady=(8, 0))
+        ttk.Label(header, text="ESP32-C5 analog FPV receiver & first-hardware console").pack(side="left", padx=12, pady=(8, 0))
 
         port_row = ttk.Frame(root)
         port_row.pack(fill="x", pady=(12, 8))
@@ -211,13 +219,26 @@ class C5VRXApp(tk.Tk):
             text="CAPTURE uses the recovered Espressif RF-test dump path. It is a finite diagnostic capture, not continuous video yet.",
         ).pack(anchor="w", pady=(8, 0))
 
+        diag_box = ttk.LabelFrame(tab, text="First hardware diagnostics", padding=10)
+        diag_box.pack(fill="x", pady=(12, 0))
+        ttk.Button(
+            diag_box,
+            text="FIRST HARDWARE TEST",
+            command=self.first_hardware_test,
+        ).pack(side="left", ipady=5)
+        ttk.Label(
+            diag_box,
+            text="Runs fail-closed cadence, wrap, phase, BitScrambler and staged soak tests. Use a coherent RF tone for phase evidence.",
+            wraplength=610,
+        ).pack(side="left", padx=12)
+
     def _build_preview_tab(self, tab: ttk.Frame) -> None:
         ttk.Label(tab, text="USB-C signal preview", font=("Segoe UI", 14, "bold")).pack(anchor="w")
         ttk.Label(
             tab,
             text=(
-                "For now this renders the WBFM discriminator waveform from a finite IQ capture. "
-                "Once continuous FE/baseband capture is proven, this pane is where live PAL/NTSC video can be decoded and shown."
+                "Displays framed 160×120 GRAY8 video reduced on the C5 from the CVBS sample stream. "
+                "Finite IQ waveform preview remains available as a diagnostic fallback."
             ),
             wraplength=760,
         ).pack(anchor="w", pady=(4, 10))
@@ -232,6 +253,8 @@ class C5VRXApp(tk.Tk):
         preview_controls = ttk.Frame(tab)
         preview_controls.pack(fill="x", pady=(8, 0))
         ttk.Button(preview_controls, text="Capture 16K IQ", command=self.capture_iq_16k).pack(side="left")
+        ttk.Button(preview_controls, text="Start live preview", command=self.start_usb_preview).pack(side="left", padx=8)
+        ttk.Button(preview_controls, text="Stop live preview", command=lambda: self.send_command("USB PREVIEW STOP")).pack(side="left")
         ttk.Button(preview_controls, text="Clear", command=self.clear_preview).pack(side="left", padx=8)
 
     def refresh_ports(self) -> None:
@@ -322,6 +345,30 @@ class C5VRXApp(tk.Tk):
                     continue
                 line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
                 self.sink.write(line + "\n")
+                if line.startswith("C5VRX_USB_FRAME "):
+                    try:
+                        fields = self._fields(line)
+                        count = int(fields.get("bytes", "0"))
+                        width = int(fields.get("width", "0"))
+                        height = int(fields.get("height", "0"))
+                        expected_crc = int(fields.get("crc32", "0"), 16)
+                    except ValueError:
+                        self.sink.write("C5VRX_PREVIEW_DROP reason=MALFORMED_HEADER\n")
+                        continue
+                    if count != 160 * 120 or width != 160 or height != 120:
+                        self.sink.write("C5VRX_PREVIEW_DROP reason=UNSUPPORTED_GEOMETRY\n")
+                        ser.reset_input_buffer()
+                        continue
+                    payload = self._read_exact(ser, count)
+                    footer = ser.readline().decode("ascii", errors="replace").strip()
+                    if not footer:
+                        footer = ser.readline().decode("ascii", errors="replace").strip()
+                    if (count == width * height and footer == "C5VRX_USB_FRAME_END"
+                            and zlib.crc32(payload) & 0xFFFFFFFF == expected_crc):
+                        self.after(0, self._show_gray_frame, payload, width, height)
+                    else:
+                        self.sink.write("C5VRX_PREVIEW_DROP reason=FRAMING_OR_CRC\n")
+                    continue
                 self._parse_device_line(line)
         except Exception as exc:
             if not self.serial_stop.is_set():
@@ -332,6 +379,22 @@ class C5VRXApp(tk.Tk):
         self.disconnect_serial()
 
     def _parse_device_line(self, line: str) -> None:
+        if (self.first_test_active and not self.first_test_fine_sent
+                and line.startswith("C5VRX_PRODUCER_CADENCE mode=0 ")):
+            fields = self._fields(line)
+            if fields.get("classification") == "MEASURED":
+                rate = int(fields.get("complex_samples_per_sec", "0"))
+                if rate:
+                    center = self.first_test_center
+                    tone = center + 2
+                    self.first_test_fine_sent = True
+                    try:
+                        assert self.ser is not None
+                        self.ser.write(f"FINE TUNE VERIFY {center} {tone} {rate}\n".encode("ascii"))
+                        self.ser.flush()
+                        self.sink.write(f"> FINE TUNE VERIFY {center} {tone} {rate}\n")
+                    except Exception as exc:
+                        self.sink.write(f"C5VRX_FINE_TUNE_AUTOMATION_FAILED error={exc}\n")
         if line.startswith("C5VRX_IQ_BEGIN"):
             self.iq_words = []
             self.iq_capture_active = True
@@ -352,12 +415,27 @@ class C5VRXApp(tk.Tk):
         if line.startswith("C5VRX_STATUS") or line.startswith("C5VRX_OK set"):
             self.after(0, self._apply_status_line, line)
 
-    def _apply_status_line(self, line: str) -> None:
+    @staticmethod
+    def _fields(line: str) -> dict[str, str]:
         fields: dict[str, str] = {}
         for part in line.split():
             if "=" in part:
-                k, v = part.split("=", 1)
-                fields[k] = v
+                key, value = part.split("=", 1)
+                fields[key] = value
+        return fields
+
+    @staticmethod
+    def _read_exact(ser: serial.Serial, count: int) -> bytes:
+        data = bytearray()
+        deadline = time.monotonic() + 3.0
+        while len(data) < count and time.monotonic() < deadline:
+            chunk = ser.read(count - len(data))
+            if chunk:
+                data.extend(chunk)
+        return bytes(data)
+
+    def _apply_status_line(self, line: str) -> None:
+        fields = self._fields(line)
         band = fields.get("band")
         ch = fields.get("channel")
         bw = fields.get("bw")
@@ -401,6 +479,54 @@ class C5VRXApp(tk.Tk):
     def capture_iq_16k(self) -> None:
         self.samples_var.set("16384")
         self.capture_iq()
+
+    def start_usb_preview(self) -> None:
+        self.send_command("USB PREVIEW START")
+        self.after(100, lambda: self.send_command("LIVE START"))
+
+    def first_hardware_test(self) -> None:
+        if not self.ser or not self.ser.is_open:
+            messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
+            return
+        center = FPV_BANDS[self.band_var.get()][int(self.channel_var.get()) - 1]
+        tone = center + 2
+        if not messagebox.askokcancel(
+            APP_TITLE,
+            f"Set a coherent RF generator to {tone} MHz at a safe, attenuated level. "
+            f"The receiver baseline is {center} MHz. The suite takes about 45 seconds and never enables unbounded capture. Continue?",
+        ):
+            return
+        self.first_test_active = True
+        self.first_test_fine_sent = False
+        self.first_test_center = center
+        commands = [
+            "STATUS",
+            "WBFM HWTEST",
+            "PRODUCER CADENCE PROBE ALL",
+            "WRAP FLAG PROBE 0",
+            "PHASE CONTINUITY PROBE 0",
+            "PRODUCER SOAK 0 30000",
+            "BENCH SPARSE 2",
+            "BENCH SPARSE 4",
+            "BENCH SPARSE 8",
+            "BENCH BITSCRAMBLER",
+            "BENCH PARLIO",
+            "BENCH PIPELINE",
+            "BENCH USB PREVIEW",
+            "BENCH RING PIPELINE 0 1000",
+            "USB PREVIEW STOP",
+            "CAPABILITIES",
+            "STATUS",
+        ]
+        try:
+            payload = "".join(command + "\n" for command in commands).encode("ascii")
+            self.ser.write(payload)
+            self.ser.flush()
+            self.sink.write("\n=== FIRST HARDWARE TEST QUEUED ===\n")
+            for command in commands:
+                self.sink.write(f"> {command}\n")
+        except Exception as exc:
+            messagebox.showerror(APP_TITLE, f"Could not start diagnostics:\n\n{exc}")
 
     @staticmethod
     def _decode_iq(raw: int) -> tuple[int, int]:
@@ -448,8 +574,30 @@ class C5VRXApp(tk.Tk):
         canvas.create_line(*pts, fill="#35a7ff", width=1)
         canvas.create_text(8, 8, anchor="nw", text="WBFM discriminator — diagnostic preview, not decoded video yet", fill="white")
 
+    def _show_gray_frame(self, payload: bytes, width: int, height: int) -> None:
+        self.preview_frame = payload
+        self.preview_width = width
+        self.preview_height = height
+        pgm = f"P5\n{width} {height}\n255\n".encode("ascii") + payload
+        try:
+            self.preview_image = tk.PhotoImage(data=pgm, format="PGM")
+        except tk.TclError:
+            self.preview_status_var.set("Valid GRAY8 frame received; Tk cannot render PGM on this system")
+            return
+        canvas = self.preview_canvas
+        canvas.delete("all")
+        canvas.create_image(
+            max(0, canvas.winfo_width() // 2),
+            max(0, canvas.winfo_height() // 2),
+            image=self.preview_image,
+            anchor="center",
+        )
+        self.preview_status_var.set(f"Live USB preview: {width}×{height} GRAY8, CRC valid")
+
     def clear_preview(self) -> None:
         self.iq_words = []
+        self.preview_frame = None
+        self.preview_image = None
         self.preview_status_var.set("No IQ capture yet")
         self.render_iq_preview()
 

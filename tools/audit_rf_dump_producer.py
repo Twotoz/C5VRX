@@ -34,6 +34,10 @@ def main() -> int:
         failures.append("start-enable")
     if not re.search(r"REG32\(DUMP_CTRL\) &= ~CTRL_ENABLE_BIT", producer):
         failures.append("stop-disable")
+    if "SOC_RESERVE_MEMORY_REGION(0x40830000u, 0x40840000u" not in producer:
+        failures.append("dump-ram-not-reserved")
+    if "if (s_configured || s_running)" not in producer:
+        failures.append("double-owner-not-rejected")
     print("RF dump producer audit", "PASS" if not failures else "FAIL",
           "failures=" + ",".join(failures))
     return 1 if failures else 0

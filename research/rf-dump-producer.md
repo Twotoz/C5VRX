@@ -53,7 +53,7 @@ RX-start=3, RX-end=4, TX-start=5, TX-end=6 and RX-error=7.
 | Trigger source | Trigger argument 0..12 dispatches through a vendor jump table and programs `0x600a9008[24:17]`, plus source-specific FE controls | Proven mapping below |
 | Current pointer | `0x600a9008[15:0]`, read after stop and printed/returned as `curr_ptr` | Proven |
 | Wrap counter/flag | `0x600a9004[18]` is polled as completion/wrap status and returned as `wrap_flag`; no counter is read | Proven flag; no counter found |
-| Decimation/filter | Only the three-bit `sample_80m` field and mode-dependent `0x600a9018` constants were found. No callable decimator API or named filter field exists. | Partial |
+| Decimation/filter | The transient three-bit `sample_80m` write is not active at enable. A named 5 GHz RX filter-mode write exists upstream, but its relation to the dump tap is unresolved. No callable dump decimator API was found. | Partial |
 | Interrupt/watermark | None. The wrapper busy-polls `0x600a9004[18]`; no ISR registration, interrupt status, threshold, descriptor, or GDMA relocation occurs. | Proven negative |
 | Lower-rate I/Q/baseband | Eight selector encodings are accepted by hardware writes, but their physical rates are not named in C5 code. Modes 11 and 12 change `0x600a9018`, showing additional dump pipelines, not yet a proven lower-rate phase-bearing stream. | Candidate, not proven |
 | Indefinite capture | The hardware is enabled before the polling loop and only software later clears bit 31. No hardware auto-disable is visible. Skipping teardown can therefore leave it armed in principle, but indefinite wrap behavior and RF/clock ownership require a physical test. | Strong static evidence, not yet a safety guarantee |
@@ -85,16 +85,16 @@ Values above 15 alias modulo the retained three bits, but are not called
 "valid": the vendor code does not range-check them and no vendor caller was
 found using them. Most importantly, values 0 and 1 are identical at the
 hardware register. The historic parameter name and Python default cannot be
-used to label field 0 as 80 MS/s. Measuring pointer slope for fields 0..7 is
-the safe way to identify possible 20/40 MS/s modes.
+used to label field 0 as 80 MS/s. Because the values do not survive until
+enable, they are not useful rate-probe candidates; cadence must be measured on
+the actual running producer in vendor-observed modes 0, 11 and 12.
 
 However, the next mode-dispatch branch clears or overwrites the encompassing
 `0x600a9008[24:17]` field before `0x600a9004[31]` is set. Thus the eight values
 do **not** survive to an enabled ordinary capture. Static evidence does not
 support calling this a divider, source-clock selector, full-rate selector, or
-powers-of-two progression. `RATE PROBE ALL` passes each even historical
-argument through the unchanged vendor function and reports the final field;
-it never forces the transient bits after configuration. The machine-readable
+powers-of-two progression. Legacy `RATE PROBE ALL` records the overwritten
+paths but is superseded by `PRODUCER CADENCE PROBE ALL`. The machine-readable
 table is [`rf-dump-rate-fields.json`](rf-dump-rate-fields.json).
 
 ### Trigger/mode jump table

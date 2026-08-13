@@ -1,0 +1,201 @@
+#include "c5vrx_bench.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "c5vrx_cvbs_live_out.h"
+#include "c5vrx_stream.h"
+#include "c5vrx_usb_preview.h"
+#include "c5vrx_wbfm_hw.h"
+#include "esp_cpu.h"
+#include "esp_heap_caps.h"
+#include "esp_timer.h"
+#include "sdkconfig.h"
+
+#define BENCH_WORDS 16384u
+#define BENCH_RETAINED 1000000u
+
+static uint32_t pack_iq(unsigned n)
+{
+    const int32_t i = (int32_t)((n * 29u) & 0x3ffu) - 512;
+    const int32_t q = (int32_t)((n * 47u) & 0x3ffu) - 512;
+    return (((uint32_t)i & 0x3ffu) << 10) | ((uint32_t)q & 0x3ffu);
+}
+
+esp_err_t c5vrx_bench_sparse(unsigned factor)
+{
+    if (factor != 2u && factor != 4u && factor != 8u)
+        return ESP_ERR_INVALID_ARG;
+    uint32_t *input = heap_caps_malloc(BENCH_WORDS * sizeof(uint32_t),
+                                       MALLOC_CAP_INTERNAL);
+    if (!input) return ESP_ERR_NO_MEM;
+    for (unsigned i = 0; i < BENCH_WORDS; ++i) input[i] = pack_iq(i);
+    volatile uint32_t checksum = 0;
+    const uint32_t first_cycle = (uint32_t)esp_cpu_get_cycle_count();
+    const int64_t first_us = esp_timer_get_time();
+    unsigned index = 0;
+    for (unsigned i = 0; i < BENCH_RETAINED; ++i) {
+        checksum ^= input[index];
+        index = (index + factor) & (BENCH_WORDS - 1u);
+    }
+    const uint32_t cycles = (uint32_t)esp_cpu_get_cycle_count() - first_cycle;
+    const uint64_t us = (uint64_t)(esp_timer_get_time() - first_us);
+    const uint64_t reads_s = us ? BENCH_RETAINED * 1000000ull / us : 0;
+    const uint32_t cycles_per = cycles / BENCH_RETAINED;
+    const uint32_t occupancy = us ?
+        (uint32_t)((uint64_t)cycles * 100u /
+                   ((uint64_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * us)) : 0;
+    printf("C5VRX_BENCH_SPARSE factor=%u retained=%u duration_us=%llu reads_per_sec=%llu bytes_per_sec=%llu cycles_per_retained=%u cpu_occupancy_percent=%u checksum=%08lx classification=MEASURED_ON_HARDWARE_CPU_MEMORY_ONLY\n",
+           factor, BENCH_RETAINED, (unsigned long long)us,
+           (unsigned long long)reads_s,
+           (unsigned long long)(reads_s * sizeof(uint32_t)),
+           (unsigned)cycles_per, (unsigned)occupancy,
+           (unsigned long)checksum);
+    fflush(stdout);
+    free(input);
+    return ESP_OK;
+}
+
+static esp_err_t alloc_transform(uint32_t **input, uint8_t **output,
+                                 c5vrx_wbfm_hw_context_t **context)
+{
+    *input = heap_caps_malloc(BENCH_WORDS * sizeof(uint32_t),
+                              MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    *output = heap_caps_malloc(BENCH_WORDS / 4u,
+                               MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    if (!*input || !*output) return ESP_ERR_NO_MEM;
+    for (unsigned i = 0; i < BENCH_WORDS; ++i) (*input)[i] = pack_iq(i);
+    return c5vrx_wbfm_hw_create(BENCH_WORDS, context);
+}
+
+esp_err_t c5vrx_bench_bitscrambler(uint64_t *input_bytes_per_second)
+{
+    if (input_bytes_per_second) *input_bytes_per_second = 0;
+    uint32_t *input = NULL;
+    uint8_t *output = NULL;
+    c5vrx_wbfm_hw_context_t *context = NULL;
+    esp_err_t err = alloc_transform(&input, &output, &context);
+    const unsigned iterations = 16u;
+    size_t written = 0;
+    const int64_t first_us = esp_timer_get_time();
+    if (err == ESP_OK) {
+        for (unsigned i = 0; i < iterations && err == ESP_OK; ++i)
+            err = c5vrx_wbfm_hw_transform_context(
+                context, input, BENCH_WORDS, output, BENCH_WORDS / 4u,
+                &written);
+    }
+    const uint64_t us = (uint64_t)(esp_timer_get_time() - first_us);
+    const uint64_t input_bytes =
+        (uint64_t)iterations * BENCH_WORDS * sizeof(uint32_t);
+    const uint64_t input_rate = us ? input_bytes * 1000000u / us : 0u;
+    if (err == ESP_OK && input_bytes_per_second)
+        *input_bytes_per_second = input_rate;
+    printf("C5VRX_BENCH_BITSCRAMBLER input_bytes=%llu output_bytes=%llu duration_us=%llu input_bytes_per_sec=%llu transform_factor=4 persistent_context=1 cpu_occupancy=SETUP_AND_WAIT_INCLUDED classification=%s code=%d\n",
+           (unsigned long long)input_bytes,
+           (unsigned long long)iterations * written,
+           (unsigned long long)us,
+           (unsigned long long)input_rate,
+           err == ESP_OK ? "MEASURED_ON_HARDWARE_SYNTHETIC" : "FAILED",
+           (int)err);
+    fflush(stdout);
+    c5vrx_wbfm_hw_destroy(context);
+    free(input);
+    free(output);
+    return err;
+}
+
+esp_err_t c5vrx_bench_parlio(void)
+{
+    uint8_t *samples = heap_caps_malloc(4096u,
+                                        MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    if (!samples) return ESP_ERR_NO_MEM;
+    memset(samples, 19, 4096u);
+    esp_err_t err = c5vrx_cvbs_live_out_start(4096u);
+    const unsigned blocks = 32u;
+    const int64_t first_us = esp_timer_get_time();
+    for (unsigned i = 0; i < blocks && err == ESP_OK; ++i)
+        err = c5vrx_cvbs_live_out_write(samples, 4096u, NULL);
+    const uint64_t us = (uint64_t)(esp_timer_get_time() - first_us);
+    const esp_err_t stop_err = c5vrx_cvbs_live_out_stop();
+    if (err == ESP_OK) err = stop_err;
+    printf("C5VRX_BENCH_PARLIO samples=%u duration_us=%llu samples_per_sec=%llu underrun=%u classification=%s code=%d\n",
+           blocks * 4096u, (unsigned long long)us,
+           (unsigned long long)(us ? (uint64_t)blocks * 4096u * 1000000u / us : 0u),
+           err == ESP_OK ? 0u : 1u,
+           err == ESP_OK ? "MEASURED_ON_HARDWARE_SYNTHETIC" : "FAILED",
+           (int)err);
+    fflush(stdout);
+    free(samples);
+    return err;
+}
+
+esp_err_t c5vrx_bench_usb_preview(void)
+{
+    uint8_t *line = malloc(1280u);
+    if (!line) return ESP_ERR_NO_MEM;
+    memset(line, 19, 1280u);
+    memset(line, 0, 94u);
+    for (unsigned i = 210u; i < 1250u; ++i)
+        line[i] = (uint8_t)(20u + (i - 210u) * 43u / 1040u);
+    esp_err_t err = c5vrx_usb_preview_start();
+    const int64_t first_us = esp_timer_get_time();
+    for (unsigned line_n = 0; line_n < 240u && err == ESP_OK; ++line_n)
+        c5vrx_usb_preview_ingest(line, 1280u);
+    const uint64_t us = (uint64_t)(esp_timer_get_time() - first_us);
+    printf("C5VRX_BENCH_USB_PREVIEW input_samples=%u output_bytes=%u duration_us=%llu transport_throughput_requires_connected_host=1 classification=%s code=%d\n",
+           240u * 1280u,
+           C5VRX_USB_PREVIEW_WIDTH * C5VRX_USB_PREVIEW_HEIGHT,
+           (unsigned long long)us,
+           err == ESP_OK ? "MEASURED_ON_HARDWARE_REDUCER_ONLY" : "FAILED",
+           (int)err);
+    fflush(stdout);
+    /* Leave preview enabled long enough for its low-priority sender, then the
+     * explicit STOP command can test disconnect/non-interference behavior. */
+    free(line);
+    return err;
+}
+
+esp_err_t c5vrx_bench_pipeline(uint64_t *input_samples_per_second)
+{
+    if (input_samples_per_second) *input_samples_per_second = 0;
+    uint32_t *input = NULL;
+    uint8_t *wbfm = NULL;
+    c5vrx_wbfm_hw_context_t *context = NULL;
+    esp_err_t err = alloc_transform(&input, &wbfm, &context);
+    uint8_t *cvbs = heap_caps_malloc(BENCH_WORDS / 4u, MALLOC_CAP_INTERNAL);
+    if (!cvbs && err == ESP_OK) err = ESP_ERR_NO_MEM;
+    c5vrx_cvbs_conditioner_t conditioner;
+    const c5vrx_cvbs_conditioner_config_t cfg = {
+        .bias_q8 = 32 << 8, .gain_q8 = 256, .black_code = 20,
+        .clamp_min = 4, .clamp_max = 63, .filter_shift = 2,
+    };
+    c5vrx_cvbs_conditioner_init(&conditioner, &cfg);
+    const unsigned iterations = 16u;
+    size_t written = 0;
+    const int64_t first_us = esp_timer_get_time();
+    for (unsigned i = 0; i < iterations && err == ESP_OK; ++i) {
+        err = c5vrx_wbfm_hw_transform_context(
+            context, input, BENCH_WORDS, wbfm, BENCH_WORDS / 4u, &written);
+        if (err == ESP_OK)
+            c5vrx_cvbs_condition(&conditioner, wbfm, cvbs, written, NULL, NULL);
+    }
+    const uint64_t us = (uint64_t)(esp_timer_get_time() - first_us);
+    const uint64_t iq = (uint64_t)iterations * BENCH_WORDS;
+    const uint64_t input_rate = us ? iq * 1000000u / us : 0u;
+    if (err == ESP_OK && input_samples_per_second)
+        *input_samples_per_second = input_rate;
+    printf("C5VRX_BENCH_PIPELINE effective_input_samples=%llu wbfm_output_samples=%llu cvbs_output_samples=%llu duration_us=%llu effective_input_samples_per_sec=%llu latency_us_per_block=%llu underruns=0 includes_parlio=0 classification=%s code=%d\n",
+           (unsigned long long)iq,
+           (unsigned long long)iterations * written,
+           (unsigned long long)iterations * written,
+           (unsigned long long)us,
+           (unsigned long long)input_rate,
+           (unsigned long long)(us / iterations),
+           err == ESP_OK ? "MEASURED_ON_HARDWARE_SYNTHETIC" : "FAILED",
+           (int)err);
+    fflush(stdout);
+    c5vrx_wbfm_hw_destroy(context);
+    free(input); free(wbfm); free(cvbs);
+    return err;
+}

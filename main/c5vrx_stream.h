@@ -13,7 +13,8 @@ extern "C" {
 
 typedef enum {
     C5VRX_RF_SOURCE_FINITE_CHAINED = 0,
-    C5VRX_RF_SOURCE_CONTINUOUS = 1,
+    C5VRX_RF_SOURCE_EXPERIMENTAL_RING_UNPROVEN = 1,
+    C5VRX_RF_SOURCE_CONTINUOUS = 2,
 } c5vrx_rf_source_kind_t;
 
 typedef struct {

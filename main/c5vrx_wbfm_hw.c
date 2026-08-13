@@ -23,6 +23,11 @@ BITSCRAMBLER_PROGRAM(c5vrx_wbfm_4to1_program, "c5vrx_wbfm_4to1");
 #define C5VRX_WBFM_LUT_WORDS           1024u
 #define C5VRX_PI_F                     3.14159265358979323846f
 
+struct c5vrx_wbfm_hw_context {
+    bitscrambler_handle_t bs;
+    size_t maximum_input_words;
+};
+
 static uint32_t pack_iq10(int16_t i, int16_t q)
 {
     return (((uint32_t)i & 0x3ffu) << 10) | ((uint32_t)q & 0x3ffu);
@@ -45,6 +50,12 @@ static uint8_t coarse_phase6_from_iq(int16_t i, int16_t q)
     return (uint8_t)lrintf(phase * (64.0f / (2.0f * C5VRX_PI_F))) & 0x3fu;
 }
 
+uint8_t c5vrx_wbfm_coarse_phase6(uint32_t packed_iq)
+{
+    const c5vrx_iq10_sample_t sample = c5vrx_adc_decode_word(packed_iq);
+    return coarse_phase6_from_iq(sample.i, sample.q);
+}
+
 static void build_phase_lut(uint16_t lut[C5VRX_WBFM_LUT_WORDS])
 {
     for (unsigned i5 = 0; i5 < 32u; ++i5) {
@@ -63,68 +74,94 @@ static void build_phase_lut(uint16_t lut[C5VRX_WBFM_LUT_WORDS])
     }
 }
 
+esp_err_t c5vrx_wbfm_hw_create(size_t maximum_input_words,
+                               c5vrx_wbfm_hw_context_t **context)
+{
+    if (!context || maximum_input_words < 8u ||
+        (maximum_input_words & 3u)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *context = NULL;
+    c5vrx_wbfm_hw_context_t *ctx = calloc(1, sizeof(*ctx));
+    if (!ctx) return ESP_ERR_NO_MEM;
+
+    uint16_t *lut = heap_caps_malloc(C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t),
+                                     MALLOC_CAP_INTERNAL);
+    if (!lut) {
+        free(ctx);
+        return ESP_ERR_NO_MEM;
+    }
+    build_phase_lut(lut);
+
+    const size_t max_transfer = maximum_input_words * sizeof(uint32_t);
+    esp_err_t err = bitscrambler_loopback_create(
+        &ctx->bs,
+        SOC_BITSCRAMBLER_ATTACH_I2S0,
+        max_transfer);
+    if (err == ESP_OK) {
+        err = bitscrambler_load_program(ctx->bs, c5vrx_wbfm_4to1_program);
+    }
+    if (err == ESP_OK) {
+        err = bitscrambler_load_lut(ctx->bs, lut,
+                                    C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t));
+    }
+    free(lut);
+    if (err != ESP_OK) {
+        if (ctx->bs) bitscrambler_free(ctx->bs);
+        free(ctx);
+        return err;
+    }
+    ctx->maximum_input_words = maximum_input_words;
+    *context = ctx;
+    return ESP_OK;
+}
+
+void c5vrx_wbfm_hw_destroy(c5vrx_wbfm_hw_context_t *context)
+{
+    if (!context) return;
+    if (context->bs) bitscrambler_free(context->bs);
+    free(context);
+}
+
+esp_err_t c5vrx_wbfm_hw_transform_context(
+    c5vrx_wbfm_hw_context_t *context,
+    const uint32_t *packed_iq,
+    size_t input_words,
+    uint8_t *phase_delta,
+    size_t output_capacity,
+    size_t *output_written)
+{
+    if (output_written) *output_written = 0;
+    if (!context || !packed_iq || !phase_delta || input_words < 8u ||
+        (input_words & 3u) || input_words > context->maximum_input_words) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    const size_t expected_output = input_words / C5VRX_WBFM_TEST_DECIMATION;
+    if (output_capacity < expected_output) return ESP_ERR_INVALID_SIZE;
+
+    size_t written = 0;
+    esp_err_t err = bitscrambler_loopback_run(
+        context->bs, (void *)packed_iq, input_words * sizeof(uint32_t),
+        phase_delta, output_capacity, &written);
+
+    if (err == ESP_OK && output_written) *output_written = written;
+    return err;
+}
+
 esp_err_t c5vrx_wbfm_hw_transform(const uint32_t *packed_iq,
                                    size_t input_words,
                                    uint8_t *phase_delta,
                                    size_t output_capacity,
                                    size_t *output_written)
 {
-    if (output_written) {
-        *output_written = 0;
-    }
-    if (!packed_iq || !phase_delta || input_words < 8u ||
-        (input_words & 3u) != 0u) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    const size_t expected_output = input_words / C5VRX_WBFM_TEST_DECIMATION;
-    if (output_capacity < expected_output) {
-        return ESP_ERR_INVALID_SIZE;
-    }
-
-    uint16_t *lut = heap_caps_malloc(C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t),
-                                     MALLOC_CAP_INTERNAL);
-    if (!lut) {
-        return ESP_ERR_NO_MEM;
-    }
-    build_phase_lut(lut);
-
-    const size_t input_bytes = input_words * sizeof(uint32_t);
-    const size_t max_transfer =
-        input_bytes > output_capacity ? input_bytes : output_capacity;
-
-    bitscrambler_handle_t bs = NULL;
-    esp_err_t err = bitscrambler_loopback_create(
-        &bs,
-        SOC_BITSCRAMBLER_ATTACH_I2S0,
-        max_transfer);
+    c5vrx_wbfm_hw_context_t *context = NULL;
+    esp_err_t err = c5vrx_wbfm_hw_create(input_words, &context);
     if (err == ESP_OK) {
-        err = bitscrambler_load_program(bs, c5vrx_wbfm_4to1_program);
+        err = c5vrx_wbfm_hw_transform_context(
+            context, packed_iq, input_words, phase_delta,
+            output_capacity, output_written);
     }
-    if (err == ESP_OK) {
-        err = bitscrambler_load_lut(bs, lut,
-                                    C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t));
-    }
-
-    size_t written = 0;
-    if (err == ESP_OK) {
-        err = bitscrambler_loopback_run(
-            bs,
-            (void *)packed_iq,
-            input_bytes,
-            phase_delta,
-            output_capacity,
-            &written);
-    }
-
-    if (bs) {
-        bitscrambler_free(bs);
-    }
-    free(lut);
-
-    if (err == ESP_OK && output_written) {
-        *output_written = written;
-    }
+    c5vrx_wbfm_hw_destroy(context);
     return err;
 }
 
@@ -181,7 +218,7 @@ esp_err_t c5vrx_wbfm_hw_probe_dump(size_t sample_count)
         }
         const size_t valid = written - 1u;
         ESP_LOGW(TAG,
-                 "finite RF -> BitScrambler WBFM proof: iq=%u @ nominal 80MS/s, fm=%u @ nominal 20MS/s, code min/max=%u/%u mean=%u mean_abs_dev_from_bias=%u",
+                 "finite RF -> BitScrambler WBFM proof: iq=%u, fm=%u (4:1 retained-sample transform; physical rates UNKNOWN), code min/max=%u/%u mean=%u mean_abs_dev_from_bias=%u",
                  (unsigned)sample_count,
                  (unsigned)written,
                  min_code,
