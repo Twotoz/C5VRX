@@ -1,276 +1,295 @@
-# Video output architecture
+# Analog video output architecture
 
-The easiest C5VRX video path is **not** to decode PAL/NTSC into pixels.
+C5VRX's primary output is **analog composite video (CVBS)**.
 
-For an analog FPV receiver, WBFM demodulation already gives us the original
-**composite video baseband (CVBS)**. If the goal is an analog AV output, we can
-keep the signal as a sampled waveform and send it straight to a small DAC.
-That avoids frame buffers, color decoding and most per-pixel work.
+The receiver should behave like a classic analog VRX: recover WBFM baseband and
+reconstruct the composite waveform directly. Full PAL/NTSC-to-pixel decoding is
+not part of the core receiver path.
 
-## Preferred low-latency path
+## Primary path
 
 ```text
 5.8 GHz analog FPV RF
         |
         v
-ESP32-C5 RF / complex I,Q
+ESP32-C5 RF / phase-bearing I,Q
         |
         v
 hardware-assisted FM discriminator
         |
         v
-8-bit composite samples
+filter / decimate / level normalize
         |
         v
-PARLIO + GDMA @ ~20 MS/s
+~20 MS/s CVBS sample stream
         |
         v
-6/8-bit resistor DAC + video buffer
+PARLIO + GDMA
         |
         v
-1 Vpp / 75 ohm CVBS
+6-bit weighted resistor DAC
         |
         v
-analog LCD / AV input / DVR
+~1 Vpp into 75 ohm
+        |
+        v
+analog monitor / goggles / DVR
 ```
 
-The key point is that **PAL/NTSC decoding is skipped entirely** on this path.
-Horizontal sync, vertical sync, luma and chroma remain inside the reconstructed
-composite waveform exactly as they would at the output pin of a conventional
-analog VRX.
+The key property is that horizontal sync, vertical sync, luma and chroma remain
+inside the reconstructed waveform. The display or DVR already knows how to
+decode them.
 
-## Why PARLIO is unusually useful here
+## Why analog-only is the mainline target
 
-ESP32-C5 has a dedicated Parallel IO peripheral connected to GDMA. In
-half-duplex mode it supports an **8-bit parallel bus** and the C5 datasheet
-specifies a clock of **up to 40 MHz**.
-
-That makes an 8-bit video DAC practical without bit-banging GPIOs:
+A digital display path would add at least:
 
 ```text
-RAM byte 0  -> GPIO DAC value 0
-RAM byte 1  -> GPIO DAC value 1
-RAM byte 2  -> GPIO DAC value 2
-...
-             GDMA
-              |
-              v
-         PARLIO 8-bit
-              |
-              v
-        resistor DAC
+CVBS
+  -> sync detector
+  -> active-line extraction
+  -> luma/chroma decode
+  -> YUV/RGB conversion
+  -> frame/line buffering
+  -> LCD or host transport
 ```
 
-A 20 MHz byte stream is 160 Mbit/s on the parallel data bus but requires no
-160 Mbit/s serial interface: eight GPIOs change together once every 50 ns.
-PARLIO/GDMA performs the actual output timing while the CPU prepares or swaps
-buffers.
+None of that is needed to produce normal AV output. It adds compute, memory,
+latency and often extra hardware without helping the core goal of replacing an
+RX5808-class analog receiver.
 
-A final board would need proper output scaling/buffering for a 75-ohm video
-load. **Do not connect eight 3.3 V GPIOs directly to an RCA input.** A resistor
-DAC plus a suitable buffer/attenuator is the intended hardware experiment.
+Digital preview may be revisited later as a diagnostic or companion-processor
+feature, but it must not drive the core architecture.
 
-## The real compute problem is FM demodulation
+## PARLIO as the video DAC engine
 
-The expensive part is earlier in the chain.
+ESP32-C5 has PARLIO attached to GDMA. The peripheral can transmit an 8-bit
+parallel stream at rates suitable for sampled composite video without
+bit-banging GPIOs.
 
-A normal complex FM discriminator is:
+C5VRX transports one byte per video sample but does not need all eight physical
+pins. The current reference output uses only six low bits:
+
+```text
+RAM byte
+   |
+   v
+PARLIO 8-bit transport
+   |
+   +--> D0 GPIO -- R
+   +--> D1 GPIO -- R
+   +--> D2 GPIO -- R
+   +--> D3 GPIO -- R
+   +--> D4 GPIO -- R
+   +--> D5 GPIO -- R
+   |
+   v
+weighted analog node -> 75-ohm CVBS load
+```
+
+The unused D6/D7 outputs remain disconnected.
+
+## Why six physical bits
+
+A nominal 1 V full-scale composite output gives approximately:
+
+```text
+6-bit step = 1 V / 63 = 15.9 mV
+```
+
+That is a useful compromise between hardware count and analog level resolution.
+It keeps blanking, black, white and sync levels much easier to represent than a
+3- or 4-bit experiment while still requiring only six GPIOs.
+
+Lower bit depths remain useful experiments, but six bits are the reference
+architecture until hardware measurements show otherwise.
+
+## Passive 75-ohm reference network
+
+For a 3.3 V logic source and a normal 75-ohm terminated video input, a binary
+weighted network can be chosen so that the source is approximately 75 ohms and
+full-scale is approximately 1 V at the terminated load.
+
+Nominal E96 starting values:
+
+| Bit | Resistor to video node |
+|---|---:|
+| D0 / LSB | 7.87 kOhm |
+| D1 | 3.92 kOhm |
+| D2 | 1.96 kOhm |
+| D3 | 976 Ohm |
+| D4 | 487 Ohm |
+| D5 / MSB | 243 Ohm |
+| video node -> GND | 191 Ohm |
+
+Ideal calculation gives roughly:
+
+```text
+Thevenin source impedance: ~75 ohm
+open-circuit full-scale:   ~2.0 V
+75-ohm loaded full-scale:  ~1.0 V
+```
+
+These are **starting values, not a production guarantee**. GPIO output
+resistance, VOH droop, resistor tolerance, connector/cable capacitance and the
+actual monitor termination alter the waveform. Validate on a scope and adjust
+or calibrate the digital level mapping if needed.
+
+A dedicated buffer may still be useful for long cables, ESD robustness or a
+strict production video interface, but it is not assumed to be mandatory for
+the minimum-hardware short-trace prototype.
+
+Never connect raw 3.3 V GPIOs directly to a 75-ohm input.
+
+## Existing independent output experiment
+
+`main/c5vrx_cvbs_out.c` already exercises the output side independently of RF.
+It generates a 20 MS/s PAL-line-like test waveform through PARLIO so the
+following can be proven before continuous I/Q exists:
+
+```text
+C5 memory -> GDMA -> PARLIO -> resistor DAC -> scope / AV monitor
+```
+
+The next output-side milestone is a complete stable PAL/NTSC test frame rather
+than only a repeated horizontal line.
+
+## WBFM compute remains the difficult part
+
+The expensive operation is earlier in the chain:
 
 ```text
 y[n] = angle(x[n] * conj(x[n-1]))
 ```
 
-At tens of millions of I/Q samples per second, doing complex multiplies and an
-`atan2`-style operation on the 240 MHz RISC-V CPU is a poor architecture. Even
-if it can be heavily optimized, it burns most of the CPU budget before video
-filtering or output starts.
+Doing complex multiply plus an atan2-like operation at tens of millions of
+samples per second on the CPU is a poor final architecture.
 
-So C5VRX should try to turn the discriminator into a **DMA-side lookup problem**.
+C5VRX therefore investigates the BitScrambler as a quantized phase
+preprocessor/discriminator.
 
-## BitScrambler FM experiment
+## Single-LUT BitScrambler direction
 
-ESP32-C5 includes a BitScrambler on the DMA path. The hardware can process up
-to 32 bits per DMA clock period, has two small counters, an output-history
-source and **2048 bytes of LUT RAM**. It is intended for format transforms but
-is programmable enough to investigate a coarse phase discriminator.
-
-### Pass 1: I/Q -> phase
-
-The recovered RF-test sample format contains signed 10-bit I and Q. Keep only
-the five most-significant bits of each component:
+The recovered sample format contains signed 10-bit I and Q. Keep the five most
+significant bits of each component:
 
 ```text
 I10 -> I5 --+
-            +--> 10-bit LUT address --> phase8
-Q10 -> Q5 --+                         --> -phase8
+            +--> 10-bit LUT address
+Q10 -> Q5 --+
 ```
 
-There are exactly `32 x 32 = 1024` coarse I/Q cells.
-
-A `1024 x 16-bit` table occupies exactly **2048 bytes**, so every LUT entry can
-contain:
+There are exactly 1024 coarse I/Q cells. A 1024 x 16-bit table occupies the C5
+BitScrambler's complete 2048-byte LUT and can return:
 
 ```text
-low byte:   phase8
+low byte:  phase8
 high byte: -phase8 modulo 256
 ```
 
-No multiply and no trigonometry are required at runtime.
-
-### Pass 2A: quality path
-
-Use the BitScrambler counters to perform modular phase subtraction:
+The preferred live experiment is then to use BitScrambler state/counters or
+output history to form:
 
 ```text
-phase8[n] + (-phase8[n-1]) -> delta phase8
+phase[n] - phase[n-1]
 ```
 
-`tools/bitlut_fm.py` models this path. On the synthetic video-like WBFM test it
-currently gives roughly:
+without trigonometry.
+
+### Important one-LUT constraint
+
+`tools/bitlut_fm.py` also models a second 2 KiB phase-difference LUT. That is a
+useful numerical comparison, but the C5 only has one 2 KiB BitScrambler LUT.
+The I/Q-to-phase table and a second full-size delta table therefore cannot both
+be resident simultaneously in the same live pipeline.
+
+For the analog-first mainline, prefer:
 
 ```text
-phase-error RMSE: ~0.033 rad/sample
-correlation:      ~0.988
+one resident I/Q -> phase LUT
+        +
+BitScrambler state/counter subtraction
 ```
 
-This is a numerical approximation test only. It is **not** a measured C5
-throughput result.
+over an architecture that assumes two simultaneous LUT memories.
 
-### Pass 2B: throughput path
+## Target streaming pipeline
 
-If the counter version needs too many BitScrambler cycles, a second 2 KiB LUT
-can trade precision for throughput:
+If a continuous RF sample producer can be recovered, the preferred end state is:
 
 ```text
-current phase6  --+
-                   +--> 11-bit address --> signed delta8
-previous phase5 --+
-```
-
-The 11-bit address gives 2048 combinations and therefore exactly fills an
-8-bit-wide 2 KiB LUT. The current host simulation is visibly noisier but still
-tracks the synthetic FM waveform. This is the fallback when DMA throughput is
-more important than phase precision.
-
-Generate/test the tables with:
-
-```bash
-python tools/bitlut_fm.py --self-test
-python tools/bitlut_fm.py --emit-dir generated-luts
-```
-
-## Target sample-rate experiment
-
-The existing RF-test dump code currently asks `adctrig()` for its 80 MHz sample
-mode. Historical Espressif tooling suggests the `sample_80m` argument selects
-between capture-rate modes, but C5VRX must verify the actual C5 rate on hardware
-before treating a lower mode as 40 MS/s.
-
-If a verified ~40 MS/s continuous complex path exists, an attractive pipeline
-would be:
-
-```text
-~40 MS/s packed I/Q
+~40 MS/s packed phase-bearing samples
         |
         v
-BitScrambler phase/discriminator
+single-LUT hardware-assisted discriminator
         |
         v
-decimate / filter
+filter / decimate
         |
         v
-~20 MS/s unsigned CVBS samples
+~20 MS/s CVBS bytes
         |
         v
-PARLIO 8-bit @ ~20 MHz
+GDMA / PARLIO
+        |
+        v
+6-bit passive DAC
 ```
 
-Twenty megasamples per second is comfortably below PARLIO's documented 40 MHz
-clock ceiling and is enough to preserve the roughly 4.43 MHz PAL chroma region
-while leaving transition/filtering room.
+Twenty MS/s is a development target, not a fixed final rate. Hardware testing
+should determine whether a higher output sample rate materially improves color
+or edge quality without harming the RF/DSP budget.
 
-The **unproven blocker remains continuous RF sample production**, not PARLIO.
-The current recovered dump RAM only gives a finite 64 KiB capture.
+## OSD without an OSD chip
 
-## Digital output options
-
-### Direct LCD from the C5
-
-For a digital LCD we cannot simply send composite samples. We need at least:
+Analog-first does not require an AT7456E-class part. Once horizontal/vertical
+sync timing is known, simple monochrome OSD can be inserted by replacing
+selected CVBS samples during active lines:
 
 ```text
-CVBS samples
-  -> horizontal/vertical sync detection
-  -> active-line extraction
-  -> luma reconstruction
-  -> optional PAL/NTSC chroma decode
-  -> RGB/YUV pixels
-  -> LCD interface
+recovered CVBS
+      |
+      +--> sync/line timing
+      +--> optional character mask
+      |
+      v
+modified CVBS -> PARLIO
 ```
 
-This costs more compute than analog CVBS output. A good milestone is **grayscale
-first**: line sync + luma only, one or two line buffers, no full-frame buffer.
-Color can be added later.
+This can produce channel/RSSI/status text without converting the complete frame
+to RGB.
 
-### USB-C preview
+## One-bit output research path
 
-ESP32-C5's built-in USB Serial/JTAG controller is USB 2.0 **full speed**, up to
-12 Mbit/s. It is excellent for flashing, control and finite captures, but it is
-far too slow for raw wideband I/Q and does not provide a native high-speed UVC
-video device path.
-
-So C5VRX Control should eventually receive one of these instead:
-
-- low-resolution luma frames,
-- line-decoded grayscale data,
-- heavily decimated diagnostic video,
-- or short IQ/CVBS captures.
-
-Raw 40 MS/s I/Q over the existing USB-C port is not a realistic target.
-
-### High-speed companion output
-
-The C5 also has an SDIO slave peripheral with 4-bit mode, DMA and a documented
-clock range up to 50 MHz. That creates a much better future route to an
-ESP32-P4/FPGA/other host **after FM demodulation has reduced the stream to an
-8-bit composite representation**.
-
-Conceptually:
+An even smaller experimental route is possible in principle:
 
 ```text
-C5 RF + WBFM
-     |
-     +--> PARLIO DAC --> analog CVBS       (cheapest / lowest latency)
-     |
-     +--> SDIO --------> companion MCU     (digital display / USB HS / DVR)
-     |
-     +--> USB CDC -----> low-res preview   (development/debug)
+CVBS values
+   -> software/noise-shaped 1-bit stream
+   -> fast serial peripheral
+   -> one GPIO
+   -> passive reconstruction network
+   -> video
 ```
+
+This could reduce the output to one GPIO plus a few passives, but it trades a
+handful of resistors for a much harder signal-integrity/noise-shaping problem.
+It is therefore a research branch, not the reference architecture.
 
 ## Recommended development order
 
-1. Prove a real 5.8 GHz finite I/Q capture.
-2. Verify the actual `adctrig()` sample rate(s).
-3. Feed real captures through `bitlut_fm.py` and compare against the exact host discriminator.
-4. Reverse-engineer the FE dump producer until captures can be chained/ring-buffered.
-5. Implement the BitScrambler phase LUT on real C5 hardware and benchmark throughput.
-6. Independently prove PARLIO -> resistor DAC -> valid composite waveform.
-7. Join both halves into the first live analog C5VRX AV output.
-8. Only then spend compute on digital PAL/NTSC decoding and USB/LCD preview.
+1. Generate a complete valid PAL/NTSC test frame from PARLIO.
+2. Validate the six-bit passive DAC into a real 75-ohm load with a scope.
+3. Compare 4-, 5- and 6-bit output quality on an analog monitor.
+4. Prove real 5.8 GHz finite I/Q capture.
+5. Verify the actual RF capture sample rate and usable bandwidth.
+6. Trace the producer behind the finite dump RAM into a continuous/chained path.
+7. Implement and benchmark the single-LUT BitScrambler discriminator.
+8. Join RF -> WBFM -> CVBS -> PARLIO into the first live receiver.
+9. Add RSSI/autoscan and simple sample-domain OSD only after live video works.
 
-## Why this is preferable to decoding everything first
+## Core rule
 
-A conventional analog VRX does not understand pixels. It demodulates FM and
-outputs composite video. C5VRX should copy that architecture as closely as the
-C5 hardware allows.
-
-If the BitScrambler experiment works, the end product can potentially look much
-more like a **streaming hardware receiver** than an MCU repeatedly running a
-large software video decoder.
-
-## Primary hardware references
-
-- ESP32-C5 Series Datasheet, v1.3: CPU up to 240 MHz, PARLIO up to 40 MHz, GDMA, BitScrambler and SDIO slave.
-- ESP-IDF ESP32-C5 Parallel IO TX documentation: GDMA-backed parallel transmission and BitScrambler decoration support.
-- ESP-IDF ESP32-C5 BitScrambler documentation: 2 KiB LUT, input/output routing, counters and memory-to-memory mode.
-- ESP32-C5 USB Serial/JTAG documentation: USB 2.0 full-speed / 12 Mbit/s.
+If a normal analog monitor can perform a task after the CVBS connector, C5VRX
+should not perform that task before the connector unless a measurement proves
+it is necessary.
