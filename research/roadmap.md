@@ -56,12 +56,19 @@ Digital LCD/USB video is deliberately outside the critical path.
 ## Analog output milestones
 
 - [x] Add an independent PARLIO CVBS line-waveform experiment.
-- [ ] Generate a complete stable PAL test frame from C5 memory/PARLIO.
-- [ ] Generate a complete stable NTSC test frame.
+- [x] Implement a streamed PAL 625/50 interlaced raster without a full-frame framebuffer.
+- [x] Add half-line equalizing/broad vertical sync and normal horizontal sync timing.
+- [x] Add a grayscale test picture and optional 4.43361875 MHz swinging-burst stress signal.
+- [x] Add a host-side golden PAL waveform/chunk-wrap self-test.
+- [x] Add a dedicated output-only DevKit configuration using GPIO 0/1/6/8/9/10.
+- [x] Add a CI-built PAL CVBS proof firmware artifact and wiring guide.
+- [x] Correct the passive-DAC model to validate the source-matched 75-ohm reference network.
+- [ ] Prove the streamed PAL raster is stable on physical ESP32-C5 hardware.
+- [ ] Generate and validate a complete stable NTSC test raster.
 - [ ] Build the reference 6-bit passive DAC on a real C5 board.
 - [ ] Scope source impedance, sync level, blank level, black level and white level into a 75-ohm load.
 - [ ] Compare 4-, 5- and 6-bit output on real analog monitors/goggles.
-- [ ] Verify color-subcarrier reproduction and visible color stability.
+- [ ] Verify the PAL-frequency burst survives the physical GPIO/DAC/cable path.
 - [ ] Decide whether a production output buffer is actually required or only optional for long cables/ESD robustness.
 
 ## Real-time DSP milestones
@@ -100,6 +107,10 @@ live analog CVBS works:
 Static analysis is strong enough to say the ESP32-C5 vendor RF-test code
 contains a finite complex I/Q dump path. It is **not** yet strong enough to say
 C5VRX receives analog FPV on hardware.
+
+The output side now has a complete software proof target: a CI-built,
+output-only PAL raster generator plus a source-matched 6-bit passive DAC model.
+That is still **not** a physical video proof until scope and monitor tests pass.
 
 The next decisive RF milestone is a physical A4/5805 capture showing
 source-dependent complex samples and recoverable WBFM baseband.
