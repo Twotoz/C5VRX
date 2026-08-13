@@ -47,11 +47,42 @@ PAL/NTSC waveform. A normal analog monitor, DVR or goggles can decode that
 waveform themselves, so C5VRX does **not** need a framebuffer, RGB conversion,
 full PAL/NTSC pixel decoder or LCD controller in the main path.
 
-Digital display/USB preview work is now explicitly secondary. If it is ever
-needed, it should sit behind the proven analog receiver path or on a companion
-processor rather than complicating the core VRX.
+Digital display/USB preview work is explicitly secondary. If it is ever needed,
+it should sit behind the proven analog receiver path or on a companion processor
+rather than complicating the core VRX.
 
 See [`research/analog-first-architecture.md`](research/analog-first-architecture.md).
+
+---
+
+## Output proof you can build before RF works
+
+The output half now has its own reproducible hardware test. The firmware can boot
+in an **output-only PAL mode** that skips RF/Wi-Fi and continuously streams a
+625/50 monochrome test raster through PARLIO/GDMA into a six-bit passive DAC.
+
+```text
+C5 RAM
+  -> double-buffered PAL raster
+  -> PARLIO/GDMA @ 20 MS/s
+  -> GPIO0/1/6/8/9/10
+  -> 6-bit source-matched resistor DAC
+  -> 75-ohm CVBS input
+```
+
+Use [`sdkconfig.defaults.cvbs`](sdkconfig.defaults.cvbs) for the dedicated image
+and follow [`research/devkit-cvbs-proof.md`](research/devkit-cvbs-proof.md) for
+the exact resistor values, pin wiring and scope checklist.
+
+The CI artifact is named `c5vrx-pal-cvbs-proof-firmware`. The active image is
+grayscale. An optional 4.43361875 MHz swinging burst is included only as an
+analog bandwidth/lock stress signal; it is not a claim of complete PAL color
+encoding.
+
+A host-side golden model in [`tools/pal_cvbs_reference.py`](tools/pal_cvbs_reference.py)
+checks line/field timing, vertical sync, active-line count and DMA chunk wrap.
+[`tools/minimal_cvbs_dac.py`](tools/minimal_cvbs_dac.py) separately validates the
+ideal source-matched resistor network.
 
 ---
 
@@ -225,7 +256,7 @@ PARLIO + GDMA
           ↓
 75-ohm weighted resistor DAC
           ↓
-AV output / goggles / DVR
+AV / goggles / DVR
 ```
 
 PARLIO can transport an 8-bit byte per sample while only six low data GPIOs are
@@ -233,13 +264,9 @@ physically connected. Six bits are the current reference compromise: enough
 voltage resolution for composite sync/blank/black/white separation while still
 requiring only a handful of passives.
 
-A nominal 3.3 V / 75-ohm direct-load reference network is documented in
-[`research/analog-first-architecture.md`](research/analog-first-architecture.md).
-It must be scope-validated on real hardware because GPIO output resistance,
-logic-high droop, layout and the actual video load affect the final amplitude.
-
-The existing `c5vrx_cvbs_out.c` experiment can independently generate a
-20 MS/s PAL-line-like waveform before the RF half is working.
+The existing `c5vrx_cvbs_out.c` experiment now streams a full 625/50 interlaced
+monochrome raster using two small DMA buffers rather than allocating a complete
+framebuffer.
 
 **Never connect raw 3.3 V GPIO outputs directly to a 75-ohm video input.**
 Use the resistor network or another correctly scaled output stage.
@@ -308,7 +335,7 @@ idf.py build
 idf.py flash monitor
 ```
 
-Experimental hardware paths remain off by default.
+Experimental hardware paths remain off by default in the normal firmware.
 
 ---
 
@@ -317,13 +344,14 @@ Experimental hardware paths remain off by default.
 ```text
 .
 ├── main/
-│   ├── c5vrx_wifi5.c        # supported 5 GHz RF bootstrap
-│   ├── c5vrx_phy_hacks.c    # opt-in undocumented tuning hooks
-│   ├── c5vrx_adc_dump.c     # finite vendor I/Q capture experiment
-│   ├── c5vrx_cvbs_out.c     # PARLIO composite resistor-DAC test
-│   └── c5vrx_channels.c     # A/B/E/F/R frequency database
+│   ├── c5vrx_wifi5.c
+│   ├── c5vrx_phy_hacks.c
+│   ├── c5vrx_adc_dump.c
+│   ├── c5vrx_cvbs_out.c
+│   └── c5vrx_channels.c
 ├── research/
 │   ├── analog-first-architecture.md
+│   ├── devkit-cvbs-proof.md
 │   ├── adc-dump-format.md
 │   ├── dsp-pipeline.md
 │   ├── video-output.md
@@ -335,8 +363,11 @@ Experimental hardware paths remain off by default.
 │   ├── decode_adc_dump.py
 │   ├── wbfm_demod.py
 │   ├── bitlut_fm.py
+│   ├── pal_cvbs_reference.py
+│   ├── minimal_cvbs_dac.py
 │   ├── render_cvbs_lines.py
 │   └── fpv_channel_report.py
+├── sdkconfig.defaults.cvbs
 └── README.md
 ```
 
@@ -349,7 +380,7 @@ Experimental hardware paths remain off by default.
 - Does arbitrary frequency tuning move the real receiver center?
 - Can the finite dump producer be tapped continuously or chained with tiny gaps?
 - Can one BitScrambler phase-LUT/state discriminator sustain the needed rate?
-- Can the 6-bit PARLIO resistor-DAC produce clean, correctly scaled PAL/NTSC CVBS?
+- Does the streamed six-bit PARLIO resistor-DAC produce clean, correctly scaled PAL CVBS on physical hardware?
 - Can the joined RF → WBFM → CVBS path keep latency low enough for FPV?
 
 Until those are measured, C5VRX remains a research project rather than a
