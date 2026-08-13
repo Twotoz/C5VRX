@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the C5VRX 4:1 BitScrambler WBFM program and embedded LUT."""
+"""Validate the C5VRX 4:1 BitScrambler WBFM architecture."""
 from __future__ import annotations
 
 import math
@@ -22,8 +22,8 @@ def _coarse_center(code: int, bits: int, source_bits: int = 10) -> float:
     return coarse * scale + (scale - 1) / 2.0
 
 
-def expected_lut() -> list[int]:
-    out: list[int] = []
+def expected_lut() -> np.ndarray:
+    out = np.empty(1024, dtype=np.uint16)
     for i5 in range(32):
         i = _coarse_center(i5, 5)
         for q5 in range(32):
@@ -31,19 +31,22 @@ def expected_lut() -> list[int]:
             phase = math.atan2(q, i) % (2.0 * math.pi)
             p6 = int(round(phase * 64.0 / (2.0 * math.pi))) & 0x3F
             bias_minus_phase = (BIAS - p6) & 0x3F
-            out.append(p6 | (bias_minus_phase << 8))
+            out[(i5 << 5) | q5] = p6 | (bias_minus_phase << 8)
     return out
 
 
-def parse_embedded_lut() -> list[int]:
-    values: list[int] = []
-    for raw in BSASM.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line.lower().startswith("lut "):
-            continue
-        for item in line[4:].split(","):
-            values.append(int(item.strip(), 0))
-    return values
+def validate_program_text() -> None:
+    text = BSASM.read_text(encoding="utf-8")
+    lowered = text.lower()
+    assert "cfg lut_width_bits 16" in lowered
+    assert "addctibl" in lowered
+    assert "ldctibl" in lowered
+    assert "set 22..26 5..9" in lowered
+    assert "set 27..31 15..19" in lowered
+    assert "set 0..5 b0..b5" in lowered
+    assert "write 8" in lowered
+    # LUT data is intentionally loaded at runtime through bitscrambler_load_lut.
+    assert not any(line.strip().lower().startswith("lut ") for line in text.splitlines())
 
 
 def phase6_codes(i: np.ndarray, q: np.ndarray, lut: np.ndarray) -> np.ndarray:
@@ -69,12 +72,10 @@ def synthetic_iq(fs: float = 80_000_000.0, n: int = 400_000) -> tuple[np.ndarray
 
 
 def self_test() -> None:
-    embedded = parse_embedded_lut()
-    expected = expected_lut()
-    assert len(embedded) == 1024, f"expected 1024 LUT words, got {len(embedded)}"
-    assert embedded == expected, "embedded bsasm LUT differs from mathematical generator"
+    validate_program_text()
+    lut = expected_lut()
+    assert lut.size == 1024 and lut.nbytes == 2048
 
-    lut = np.asarray(embedded, dtype=np.uint16)
     i80, q80 = synthetic_iq()
     i20 = i80[::4]
     q20 = q80[::4]
@@ -94,8 +95,8 @@ def self_test() -> None:
     assert corr > 0.99, (rmse, corr)
     assert len(i80) == 4 * len(i20)
 
-    print("4:1 BitScrambler WBFM program self-test PASS")
-    print("  embedded LUT: 1024 x 16-bit = 2048 bytes")
+    print("4:1 BitScrambler WBFM architecture self-test PASS")
+    print("  runtime LUT: 1024 x 16-bit = 2048 bytes")
     print("  nominal stream ratio: 80 MS/s IQ -> 20 MS/s phase delta")
     print(f"  decimated synthetic FM: RMSE {rmse:.4f} rad, corr {corr:.5f}")
 
