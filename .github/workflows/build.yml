@@ -75,7 +75,7 @@ jobs:
             cp build/bootloader/bootloader.bin cvbs_firmware_bundle/bootloader.bin &&
             cp build/partition_table/partition-table.bin cvbs_firmware_bundle/partition-table.bin &&
             cp build/*.bin cvbs_firmware_bundle/ &&
-            cp research/analog-first-architecture.md cvbs_firmware_bundle/WIRING.md
+            cp research/devkit-cvbs-proof.md cvbs_firmware_bundle/WIRING.md
 
       - name: Upload PAL output proof firmware
         uses: actions/upload-artifact@v4
