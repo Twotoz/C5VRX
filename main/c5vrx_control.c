@@ -128,7 +128,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,WBFM_HWTEST,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -165,6 +165,24 @@ static void handle_line(char *line)
         fflush(stdout);
         const esp_err_t err = c5vrx_wbfm_hw_self_test();
         printf("C5VRX_WBFM_HWTEST_DONE code=%d\n", (int)err);
+        fflush(stdout);
+        return;
+    }
+
+    unsigned wbfm_samples = 0;
+    if (sscanf(line, "WBFM CAPTURE %u", &wbfm_samples) == 1) {
+        if (wbfm_samples < 8 ||
+            wbfm_samples > C5VRX_ADC_DUMP_MAX_SAMPLES ||
+            (wbfm_samples & 3u) != 0u) {
+            printf("C5VRX_ERR invalid-wbfm-capture range=8-%u multiple=4\n",
+                   (unsigned)C5VRX_ADC_DUMP_MAX_SAMPLES);
+            fflush(stdout);
+            return;
+        }
+        printf("C5VRX_WBFM_CAPTURE_BEGIN iq_samples=%u\n", wbfm_samples);
+        fflush(stdout);
+        const esp_err_t err = c5vrx_wbfm_hw_probe_dump(wbfm_samples);
+        printf("C5VRX_WBFM_CAPTURE_DONE code=%d\n", (int)err);
         fflush(stdout);
         return;
     }
@@ -272,7 +290,7 @@ static void console_task(void *arg)
     (void)arg;
     char line[128];
 
-    printf("C5VRX_READY protocol=3\n");
+    printf("C5VRX_READY protocol=4\n");
     print_help();
 
     for (;;) {
