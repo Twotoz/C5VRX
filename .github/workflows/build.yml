@@ -171,6 +171,9 @@ jobs:
       - name: BitScrambler FM approximation self-test
         run: python tools/bitlut_fm.py --self-test
 
+      - name: Validate embedded 4:1 BitScrambler program
+        run: python tools/validate_wbfm_bsasm.py
+
       - name: Finite CVBS scanline renderer self-test
         run: python tools/render_cvbs_lines.py --self-test
 
