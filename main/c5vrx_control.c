@@ -139,6 +139,84 @@ static void print_ring_stats(const c5vrx_live_ring_stats_t *stats)
            (unsigned)stats->maximum_copy_cycles);
 }
 
+#define C5VRX_LIVE_CVBS_SAMPLE_RATE_HZ 20000000u
+
+static const char *cvbs_timing_name(uint32_t line_period_samples)
+{
+    if (line_period_samples >= 1276u && line_period_samples <= 1284u)
+        return "PAL_CANDIDATE";
+    if (line_period_samples >= 1267u && line_period_samples <= 1275u)
+        return "NTSC_CANDIDATE";
+    return "UNKNOWN";
+}
+
+static void print_cvbs_lock_status(const c5vrx_usb_preview_stats_t *stats)
+{
+    const uint32_t line_rate_millihz = stats->line_period_samples ?
+        (uint32_t)((uint64_t)C5VRX_LIVE_CVBS_SAMPLE_RATE_HZ * 1000u /
+                   stats->line_period_samples) : 0u;
+    const bool locked = stats->horizontal_locked && stats->vertical_locked;
+    printf("C5VRX_CVBS_LOCK running=%u h_locked=%u v_locked=%u hsyncs=%u vsyncs=%u frames_completed=%u frames_sent=%u frames_dropped=%u rejected_pulses=%u lock_acquisitions=%u lock_losses=%u line_period_samples=%u line_rate_millihz=%u hsync_width=%u vsync_width=%u threshold=%u timing=%s classification=%s\n",
+           c5vrx_usb_preview_running() ? 1u : 0u,
+           stats->horizontal_locked ? 1u : 0u,
+           stats->vertical_locked ? 1u : 0u,
+           (unsigned)stats->horizontal_syncs, (unsigned)stats->vertical_syncs,
+           (unsigned)stats->frames_completed, (unsigned)stats->frames_sent,
+           (unsigned)stats->frames_dropped,
+           (unsigned)stats->rejected_sync_pulses,
+           (unsigned)stats->lock_acquisitions,
+           (unsigned)stats->lock_losses, (unsigned)stats->line_period_samples,
+           (unsigned)line_rate_millihz, (unsigned)stats->last_hsync_width,
+           (unsigned)stats->last_vsync_width, (unsigned)stats->sync_threshold,
+           cvbs_timing_name(stats->line_period_samples),
+           locked ? "LOCKED" :
+               (c5vrx_usb_preview_running() ? "ACQUIRING" : "STOPPED"));
+    fflush(stdout);
+}
+
+static void run_cvbs_lock_probe(uint32_t duration_ms)
+{
+    if (!c5vrx_usb_preview_running() || !c5vrx_live_pipeline_running()) {
+        printf("C5VRX_CVBS_LOCK_PROBE duration_ms=%u classification=FAILED reason=LIVE_PIPELINE_AND_USB_PREVIEW_REQUIRED code=%d\n",
+               (unsigned)duration_ms, (int)ESP_ERR_INVALID_STATE);
+        fflush(stdout);
+        return;
+    }
+    c5vrx_usb_preview_stats_t before = {0}, after = {0};
+    c5vrx_usb_preview_get_stats(&before);
+    const int64_t start_us = esp_timer_get_time();
+    vTaskDelay(pdMS_TO_TICKS(duration_ms));
+    const uint64_t elapsed_us = (uint64_t)(esp_timer_get_time() - start_us);
+    c5vrx_usb_preview_get_stats(&after);
+
+    const uint32_t hsyncs = after.horizontal_syncs - before.horizontal_syncs;
+    const uint32_t vsyncs = after.vertical_syncs - before.vertical_syncs;
+    const uint32_t frames = after.frames_completed - before.frames_completed;
+    const uint32_t sent = after.frames_sent - before.frames_sent;
+    const uint32_t drops = after.frames_dropped - before.frames_dropped;
+    const uint32_t losses = after.lock_losses - before.lock_losses;
+    const uint32_t h_rate_millihz = elapsed_us ?
+        (uint32_t)((uint64_t)hsyncs * 1000000000ull / elapsed_us) : 0u;
+    const uint32_t v_rate_millihz = elapsed_us ?
+        (uint32_t)((uint64_t)vsyncs * 1000000000ull / elapsed_us) : 0u;
+    const bool timing_plausible = h_rate_millihz >= 15000000u &&
+        h_rate_millihz <= 16500000u && v_rate_millihz >= 40000u &&
+        v_rate_millihz <= 70000u;
+    const bool pass = after.horizontal_locked && after.vertical_locked &&
+        frames >= 2u && timing_plausible;
+    printf("C5VRX_CVBS_LOCK_PROBE duration_ms=%u elapsed_us=%llu hsyncs=%u vsyncs=%u frames_completed=%u frames_sent=%u frames_dropped=%u lock_losses=%u horizontal_rate_millihz=%u vertical_rate_millihz=%u line_period_samples=%u timing=%s timing_plausible=%u analog_vtx_usable_iq=%u visible_image_machine_proven=0 user_visual_confirmation_required=1 classification=%s code=%d\n",
+           (unsigned)duration_ms, (unsigned long long)elapsed_us,
+           (unsigned)hsyncs, (unsigned)vsyncs, (unsigned)frames,
+           (unsigned)sent, (unsigned)drops, (unsigned)losses,
+           (unsigned)h_rate_millihz, (unsigned)v_rate_millihz,
+           (unsigned)after.line_period_samples,
+           cvbs_timing_name(after.line_period_samples),
+           timing_plausible ? 1u : 0u, pass ? 1u : 0u,
+           pass ? "MEASURED_CVBS_LOCK" : "NO_STABLE_CVBS_LOCK",
+           pass ? (int)ESP_OK : (int)ESP_FAIL);
+    fflush(stdout);
+}
+
 static bool band_from_char(char c, c5vrx_band_t *out)
 {
     if (!out) {
@@ -243,7 +321,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11|12>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11|12>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|12|ALL>,WRAP_FLAG_PROBE_<0|11|12>,PHASE_CONTINUITY_PROBE_<0|11|12>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11|12>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11|12>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11|12>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11|12>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|12|ALL>,WRAP_FLAG_PROBE_<0|11|12>,PHASE_CONTINUITY_PROBE_<0|11|12>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11|12>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11|12>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -344,6 +422,10 @@ static void handle_line(char *line)
         strcasecmp(line, "USB_PREVIEW_START") != 0 &&
         strcasecmp(line, "USB PREVIEW STOP") != 0 &&
         strcasecmp(line, "USB_PREVIEW_STOP") != 0 &&
+        strcasecmp(line, "CVBS LOCK STATUS") != 0 &&
+        strcasecmp(line, "CVBS_LOCK_STATUS") != 0 &&
+        strncasecmp(line, "CVBS LOCK PROBE ", 16) != 0 &&
+        strncasecmp(line, "CVBS_LOCK_PROBE_", 16) != 0 &&
         strcasecmp(line, "PIPELINE STATS") != 0 &&
         strcasecmp(line, "PIPELINE_STATS") != 0) {
         printf("C5VRX_ERR receiver-busy owner=LIVE_PIPELINE allowed=STATUS,CAPABILITIES,LIVE_STOP,USB_PREVIEW,PIPELINE_STATS\n");
@@ -504,6 +586,25 @@ static void handle_line(char *line)
         const esp_err_t err = c5vrx_usb_preview_stop();
         printf("C5VRX_USB_PREVIEW state=STOP code=%d\n", (int)err);
         fflush(stdout);
+        return;
+    }
+    if (strcasecmp(line, "CVBS LOCK STATUS") == 0 ||
+        strcasecmp(line, "CVBS_LOCK_STATUS") == 0) {
+        c5vrx_usb_preview_stats_t stats = {0};
+        c5vrx_usb_preview_get_stats(&stats);
+        print_cvbs_lock_status(&stats);
+        return;
+    }
+    unsigned cvbs_probe_ms = 0;
+    if (sscanf(line, "CVBS LOCK PROBE %u", &cvbs_probe_ms) == 1 ||
+        sscanf(line, "CVBS_LOCK_PROBE_%u", &cvbs_probe_ms) == 1) {
+        if (cvbs_probe_ms != 1000u && cvbs_probe_ms != 5000u) {
+            printf("C5VRX_CVBS_LOCK_PROBE duration_ms=%u classification=REJECTED reason=DURATION_INVALID allowed=1000,5000 code=%d\n",
+                   cvbs_probe_ms, (int)ESP_ERR_INVALID_ARG);
+            fflush(stdout);
+            return;
+        }
+        run_cvbs_lock_probe(cvbs_probe_ms);
         return;
     }
     unsigned sparse_factor = 0;
@@ -681,8 +782,7 @@ static void handle_line(char *line)
         c5vrx_phase_continuity_t phase = {0};
         const esp_err_t err = c5vrx_producer_phase_continuity_probe(
             (c5vrx_rf_dump_mode_t)producer_mode, &phase);
-        if (err == ESP_OK && producer_mode == 0u && phase.coherence >= 0.90f &&
-            phase.mean_magnitude >= 8.0f && fabsf(phase.boundary_residual) <= 0.25f)
+        if (err == ESP_OK && producer_mode == 0u && phase.boundary_continuous)
             s_capabilities.phase_continuity_valid = true;
         printf("C5VRX_PHASE_CONTINUITY_DONE mode=%u code=%d\n",
                producer_mode, (int)err);

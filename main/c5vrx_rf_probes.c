@@ -295,14 +295,27 @@ esp_err_t c5vrx_producer_phase_continuity_probe(
     result->mean_magnitude = magnitude_sum / count;
     result->coherence = sqrtf(sum_sin * sum_sin + sum_cos * sum_cos) / count;
 
+    /* A fixed 0.25 radian ceiling prevents a noisy tone from making its own
+     * acceptance window arbitrarily wide. The 5-sigma term keeps a clean tone
+     * from being judged against an unrealistically exact floating-point zero. */
+    result->boundary_tolerance = fminf(0.25f,
+        fmaxf(0.05f, 5.0f * result->rms_deviation));
+    result->boundary_continuous = err == ESP_OK &&
+        result->coherence >= 0.90f && result->mean_magnitude >= 8.0f &&
+        fabsf(result->boundary_residual) <= result->boundary_tolerance;
+
     const char *classification = err != ESP_OK ? "FAILED" :
-        (result->coherence >= 0.90f && result->mean_magnitude >= 8.0f
-            ? "MEASURED_COHERENT_TONE" : "INCOHERENT_SOURCE");
-    printf("C5VRX_PHASE_CONTINUITY mode=%u mean_phase_increment=%g rms_deviation=%g boundary_phase_increment=%g boundary_residual=%g signal_magnitude=%g coherence_metric=%g pointer_wraps=%u iq10_format=%s coherent_tone_required=1 restore_ok=%u classification=%s code=%d\n",
+        (result->coherence < 0.90f || result->mean_magnitude < 8.0f ?
+            "INCOHERENT_SOURCE" :
+            (result->boundary_continuous ? "MEASURED_CONTINUOUS" :
+                                           "MEASURED_DISCONTINUITY"));
+    printf("C5VRX_PHASE_CONTINUITY mode=%u mean_phase_increment=%g rms_deviation=%g boundary_phase_increment=%g boundary_residual=%g boundary_tolerance=%g boundary_continuous=%u signal_magnitude=%g coherence_metric=%g pointer_wraps=%u iq10_format=%s coherent_tone_required=1 restore_ok=%u classification=%s code=%d\n",
            (unsigned)mode, (double)result->mean_phase_increment,
            (double)result->rms_deviation,
            (double)result->boundary_phase_increment,
            (double)result->boundary_residual,
+           (double)result->boundary_tolerance,
+           result->boundary_continuous ? 1u : 0u,
            (double)result->mean_magnitude, (double)result->coherence,
            (unsigned)result->pointer_wraps,
            mode == C5VRX_RF_DUMP_MODE_ORDINARY_RX ? "VENDOR_DECODED" : "UNPROVEN",

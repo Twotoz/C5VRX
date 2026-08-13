@@ -71,11 +71,13 @@ the asynchronous queue.
 
 The optional preview observes conditioned CVBS samples without owning PARLIO
 or stopping AV. Its adaptive sync tracker distinguishes 60–160-sample H-sync
-pulses from 300–800-sample broad vertical sync, requires three plausible
-1100–1450-sample line intervals for horizontal lock, follows PAL/NTSC-ish line
-period drift, rejects short low glitches and samples active video relative to
-the measured line period. A broad-sync sequence resets the 120-line field
-reducer, so frames are not assembled from an arbitrary fixed line counter.
+pulses from 300–800-sample broad vertical sync, clusters the multiple broad
+pulses in one vertical-sync interval into one field marker, requires three
+plausible 1100–1450-sample line intervals for horizontal lock, expires stale
+lock, follows PAL/NTSC-ish line-period drift, rejects short low glitches and
+samples active video relative to the measured line period. `CVBS LOCK STATUS`
+and bounded `CVBS LOCK PROBE 1000|5000` commands expose H/V rates, lock
+transitions and frame counts.
 
 Frames use the versioned CRC-protected binary protocol documented in
 [`usb-preview-protocol.md`](usb-preview-protocol.md). Packet magic, header

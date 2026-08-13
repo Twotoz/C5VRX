@@ -44,6 +44,12 @@ int main(void)
     c5vrx_cvbs_sync_event_t event = {0};
     c5vrx_cvbs_sync_init(&tracker);
     broad_sync(&tracker, &event);
+    assert(tracker.vertical_events == 1u);
+
+    /* The broad-sync sequence is a pulse cluster, not several fields. */
+    assert(feed(&tracker, 1u, 520u, &event) == 0u);
+    assert(feed(&tracker, 20u, 20u, &event) == 0u);
+    assert(tracker.vertical_events == 1u);
 
     bool saw_lock = false;
     for (unsigned i = 0; i < 40u; ++i) {
@@ -57,6 +63,15 @@ int main(void)
     assert(event.line_period_samples <= 1290u);
     assert(c5vrx_cvbs_sync_threshold(&tracker) >= 4u);
     assert(c5vrx_cvbs_sync_threshold(&tracker) <= 14u);
+    assert(tracker.horizontal_locked);
+    assert(tracker.horizontal_events == 40u);
+    assert(tracker.lock_acquisitions == 1u);
+
+    /* Missing sync must revoke lock; stale lock must never qualify RF. */
+    (void)feed(&tracker, 45u, 4u * 1280u, &event);
+    assert(!tracker.horizontal_locked);
+    assert(!tracker.vertical_locked);
+    assert(tracker.lock_losses == 1u);
 
     /* A second dirty field at the NTSC-ish line period must reacquire without
      * relying on a compile-time 1280-sample rollover. */
@@ -67,6 +82,8 @@ int main(void)
         if (event.horizontal && event.locked) saw_lock = true;
     }
     assert(saw_lock);
+    assert(tracker.vertical_events == 2u);
+    assert(tracker.lock_acquisitions == 2u);
     assert(event.line_period_samples >= 1265u);
     assert(event.line_period_samples <= 1280u);
     puts("cvbs_sync_test: PASS");

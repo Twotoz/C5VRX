@@ -293,6 +293,8 @@ LIVE EXPERIMENTAL START 0
 LIVE STOP
 USB PREVIEW START
 USB PREVIEW STOP
+CVBS LOCK STATUS
+CVBS LOCK PROBE 5000
 PIPELINE STATS
 ```
 
@@ -310,6 +312,13 @@ magic marker, packet type, sequence, lengths, timestamp, header CRC and payload
 CRC. `STREAM_INFO`, `GRAY8_FRAME` and `STREAM_END` packets allow clean startup,
 frame-loss reporting and resynchronisation after corruption or disconnect. See
 [`research/usb-preview-protocol.md`](research/usb-preview-protocol.md).
+
+`CVBS LOCK PROBE 5000` is the bounded real-VTX qualification step. It reports
+H/V event rates, adaptive line period, lock loss and completed/sent/dropped
+preview frames. A VTX-on/off hash difference is not called usable IQ; that
+label requires stable demodulated CVBS timing. The complete six-question
+evidence ladder is in
+[`research/real-rf-evidence-ladder.md`](research/real-rf-evidence-ladder.md).
 
 `WBFM HWTEST` runs synthetic packed I/Q through the physical C5 BitScrambler and
 compares its output with a CPU reference. `WBFM CAPTURE` bridges a real finite

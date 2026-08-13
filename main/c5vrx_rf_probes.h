@@ -30,9 +30,11 @@ typedef struct {
     float rms_deviation;
     float boundary_phase_increment;
     float boundary_residual;
+    float boundary_tolerance;
     float mean_magnitude;
     float coherence;
     uint32_t pointer_wraps;
+    bool boundary_continuous;
 } c5vrx_phase_continuity_t;
 
 esp_err_t c5vrx_producer_cadence_probe(c5vrx_rf_dump_mode_t mode,

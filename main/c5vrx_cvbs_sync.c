@@ -12,6 +12,15 @@
 #define MAX_BROAD_SYNC_SAMPLES 800u
 #define HORIZONTAL_LOCK_EVENTS 3u
 #define MAX_FIELD_LINES 340u
+#define VERTICAL_CLUSTER_LINES 4u
+#define HORIZONTAL_TIMEOUT_LINES 3u
+
+static void lose_horizontal_lock(c5vrx_cvbs_sync_tracker_t *tracker)
+{
+    if (tracker->horizontal_locked) ++tracker->lock_losses;
+    tracker->horizontal_locked = false;
+    tracker->horizontal_lock_score = 0u;
+}
 
 void c5vrx_cvbs_sync_init(c5vrx_cvbs_sync_tracker_t *tracker)
 {
@@ -57,16 +66,30 @@ static bool finish_pulse(c5vrx_cvbs_sync_tracker_t *tracker,
     tracker->high_run = 0;
 
     if (width >= MIN_BROAD_SYNC_SAMPLES && width <= MAX_BROAD_SYNC_SAMPLES) {
+        /* Equalising/broad-sync sequences contain several pulses per field.
+         * Count and emit the cluster once, not once per constituent pulse. */
+        const bool same_cluster = tracker->vertical_events != 0u &&
+            pulse_start - tracker->last_vsync_start <
+                (uint64_t)VERTICAL_CLUSTER_LINES * tracker->line_period_samples;
+        if (same_cluster) return false;
+        ++tracker->vertical_events;
+        tracker->last_vsync_start = pulse_start;
+        tracker->last_vsync_width = width;
         tracker->vertical_locked = true;
         tracker->field_line = 0u;
         tracker->last_hsync_start = 0u;
-        tracker->horizontal_lock_score = 0u;
+        lose_horizontal_lock(tracker);
         event->vertical = true;
         event->sync_start = pulse_start;
         event->field_line = 0u;
         return true;
     }
-    if (width < MIN_HSYNC_SAMPLES || width > MAX_HSYNC_SAMPLES) return false;
+    if (width < MIN_HSYNC_SAMPLES || width > MAX_HSYNC_SAMPLES) {
+        ++tracker->rejected_pulses;
+        return false;
+    }
+    ++tracker->horizontal_events;
+    tracker->last_hsync_width = width;
 
     if (tracker->last_hsync_start) {
         const uint64_t interval64 = pulse_start - tracker->last_hsync_start;
@@ -80,6 +103,14 @@ static bool finish_pulse(c5vrx_cvbs_sync_tracker_t *tracker,
             --tracker->horizontal_lock_score;
         }
     }
+    if (!tracker->horizontal_locked &&
+        tracker->horizontal_lock_score >= HORIZONTAL_LOCK_EVENTS) {
+        tracker->horizontal_locked = true;
+        ++tracker->lock_acquisitions;
+    } else if (tracker->horizontal_locked &&
+               tracker->horizontal_lock_score < HORIZONTAL_LOCK_EVENTS) {
+        lose_horizontal_lock(tracker);
+    }
     tracker->last_hsync_start = pulse_start;
 
     event->horizontal = true;
@@ -87,14 +118,14 @@ static bool finish_pulse(c5vrx_cvbs_sync_tracker_t *tracker,
     event->line_period_samples = tracker->line_period_samples;
     event->field_line = tracker->vertical_locked ? tracker->field_line :
         C5VRX_CVBS_SYNC_NO_LINE;
-    event->locked = tracker->vertical_locked &&
-        tracker->horizontal_lock_score >= HORIZONTAL_LOCK_EVENTS;
+    event->locked = tracker->vertical_locked && tracker->horizontal_locked;
 
     if (tracker->vertical_locked) {
         ++tracker->field_line;
         if (tracker->field_line > MAX_FIELD_LINES) {
             tracker->vertical_locked = false;
             tracker->field_line = C5VRX_CVBS_SYNC_NO_LINE;
+            lose_horizontal_lock(tracker);
             event->locked = false;
         }
     }
@@ -112,6 +143,14 @@ bool c5vrx_cvbs_sync_consume(c5vrx_cvbs_sync_tracker_t *tracker,
     sample &= 0x3fu;
     update_envelope(tracker, sample);
     const uint8_t threshold = c5vrx_cvbs_sync_threshold(tracker);
+
+    if (tracker->horizontal_locked && tracker->last_hsync_start &&
+        tracker->samples_seen - tracker->last_hsync_start >
+            (uint64_t)HORIZONTAL_TIMEOUT_LINES * tracker->line_period_samples) {
+        tracker->vertical_locked = false;
+        tracker->field_line = C5VRX_CVBS_SYNC_NO_LINE;
+        lose_horizontal_lock(tracker);
+    }
 
     bool emitted = false;
     if (!tracker->in_sync) {

@@ -265,6 +265,11 @@ class C5VRXApp(tk.Tk):
         ttk.Button(preview_controls, text="Capture 16K IQ", command=self.capture_iq_16k).pack(side="left")
         ttk.Button(preview_controls, text="Start live preview", command=self.start_usb_preview).pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Stop live preview", command=lambda: self.send_command("USB PREVIEW STOP")).pack(side="left")
+        ttk.Button(
+            preview_controls,
+            text="Measure CVBS lock (5 s)",
+            command=lambda: self.send_command("CVBS LOCK PROBE 5000"),
+        ).pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Clear", command=self.clear_preview).pack(side="left", padx=8)
 
     def refresh_ports(self) -> None:

@@ -36,7 +36,10 @@ typedef struct {
     uint32_t line_period;
     uint32_t sequence;
     uint64_t dropped;
+    uint32_t frames_completed;
+    uint32_t frames_sent;
     c5vrx_cvbs_sync_tracker_t sync;
+    c5vrx_usb_preview_stats_t telemetry;
     bool current_line;
     bool sending[2];
     volatile bool ready;
@@ -149,6 +152,8 @@ static void preview_task(void *arg)
                      descriptor, sizeof(descriptor),
                      s_preview.frame[index], FRAME_BYTES);
         taskENTER_CRITICAL(&s_preview.lock);
+        ++s_preview.frames_sent;
+        s_preview.telemetry.frames_sent = s_preview.frames_sent;
         s_preview.sending[index] = false;
         taskEXIT_CRITICAL(&s_preview.lock);
     }
@@ -163,9 +168,13 @@ static void preview_task(void *arg)
 static void publish_frame(void)
 {
     taskENTER_CRITICAL(&s_preview.lock);
+    ++s_preview.frames_completed;
+    s_preview.telemetry.frames_completed = s_preview.frames_completed;
     const unsigned next = s_preview.fill_index ^ 1u;
     if (s_preview.ready || s_preview.sending[next]) {
         ++s_preview.dropped;
+        s_preview.telemetry.frames_dropped =
+            s_preview.dropped > UINT32_MAX ? UINT32_MAX : (uint32_t)s_preview.dropped;
     } else {
         s_preview.ready_index = s_preview.fill_index;
         s_preview.ready = true;
@@ -217,6 +226,40 @@ esp_err_t c5vrx_usb_preview_stop(void)
 }
 
 bool c5vrx_usb_preview_running(void) { return s_preview.running; }
+
+void c5vrx_usb_preview_get_stats(c5vrx_usb_preview_stats_t *stats)
+{
+    if (!stats) return;
+    taskENTER_CRITICAL(&s_preview.lock);
+    *stats = s_preview.telemetry;
+    taskEXIT_CRITICAL(&s_preview.lock);
+}
+
+static void update_telemetry(void)
+{
+    c5vrx_usb_preview_stats_t next = {
+        .samples_ingested = s_preview.sync.samples_seen > UINT32_MAX ?
+            UINT32_MAX : (uint32_t)s_preview.sync.samples_seen,
+        .horizontal_syncs = s_preview.sync.horizontal_events,
+        .vertical_syncs = s_preview.sync.vertical_events,
+        .rejected_sync_pulses = s_preview.sync.rejected_pulses,
+        .lock_acquisitions = s_preview.sync.lock_acquisitions,
+        .lock_losses = s_preview.sync.lock_losses,
+        .frames_completed = s_preview.frames_completed,
+        .frames_sent = s_preview.frames_sent,
+        .frames_dropped = s_preview.dropped > UINT32_MAX ?
+            UINT32_MAX : (uint32_t)s_preview.dropped,
+        .line_period_samples = s_preview.sync.line_period_samples,
+        .last_hsync_width = s_preview.sync.last_hsync_width,
+        .last_vsync_width = s_preview.sync.last_vsync_width,
+        .sync_threshold = c5vrx_cvbs_sync_threshold(&s_preview.sync),
+        .horizontal_locked = s_preview.sync.horizontal_locked,
+        .vertical_locked = s_preview.sync.vertical_locked,
+    };
+    taskENTER_CRITICAL(&s_preview.lock);
+    s_preview.telemetry = next;
+    taskEXIT_CRITICAL(&s_preview.lock);
+}
 
 void c5vrx_usb_preview_ingest(const uint8_t *cvbs, size_t samples)
 {
@@ -273,4 +316,5 @@ void c5vrx_usb_preview_ingest(const uint8_t *cvbs, size_t samples)
         }
         ++s_preview.line_phase;
     }
+    update_telemetry();
 }

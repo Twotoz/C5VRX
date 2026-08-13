@@ -52,8 +52,9 @@ in the normal parser.
 - mode 0 has `classification=MEASURED`, no ambiguous cadence intervals, a
   changing pointer/RAM, and exact register restoration;
 - bit 18 correlation is reported as observation, not silently named wrap;
-- phase test uses the coherent tone, has high coherence/magnitude and a small
-  16383->0 boundary residual;
+- phase test uses the coherent tone and reports
+  `classification=MEASURED_CONTINUOUS`; its boundary tolerance is derived from
+  local phase noise but hard-capped at 0.25 rad;
 - fine-tune offsets follow the expected +2 MHz baseline and do not revert
   during producer setup;
 - every soak stage preserves enable/progression/state, heap, Wi-Fi liveness and
@@ -104,6 +105,30 @@ mode-0 staged soak, WBFM self-test, PARLIO benchmark and at least 20% synthetic
 pipeline throughput margin, plus the one-second real-ring benchmark. Lower-tap
 and sparse-CPU choices remain fail-closed
 until their corresponding consumers are implemented and physically validated.
-Then use `USB PREVIEW START`; disconnecting or stopping preview does not stop
-PARLIO AV. Stop the receiver with `LIVE STOP` and preserve the complete console
-log, especially ring overrun/drop statistics.
+## Real-VTX evidence stage
+
+The coherent-tone suite cannot prove video. After all production gates pass,
+transmit a known PAL test card with a moving marker and run:
+
+```text
+USB PREVIEW START
+LIVE START
+CVBS LOCK STATUS
+CVBS LOCK PROBE 5000
+PIPELINE STATS
+LIVE STOP
+USB PREVIEW STOP
+```
+
+The Receiver Console exposes the five-second command as **Measure CVBS lock**.
+Only `classification=MEASURED_CVBS_LOCK analog_vtx_usable_iq=1` upgrades the
+VTX path from RF response to usable demodulated video. Repeat with the VTX off;
+noise must not lock. Finally verify that the displayed marker actually moves
+and save the preview plus complete log. Timing lock alone cannot prove visible
+content, polarity or grey mapping.
+
+Disconnecting or stopping preview does not stop PARLIO AV. Stop the receiver
+with `LIVE STOP` and preserve the complete console log, especially ring
+overrun/drop statistics. The acceptance rationale and representative FPV
+bandwidth calculation are in
+[`real-rf-evidence-ladder.md`](real-rf-evidence-ladder.md).
