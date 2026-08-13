@@ -53,6 +53,37 @@ jobs:
           path: firmware_bundle/
           if-no-files-found: error
 
+  cvbs-proof-firmware:
+    name: Build PAL CVBS output-proof firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build output-only PAL image
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.2
+          target: esp32c5
+          path: .
+          command: >-
+            cp sdkconfig.defaults.cvbs sdkconfig.defaults &&
+            idf.py set-target esp32c5 &&
+            idf.py build &&
+            mkdir -p cvbs_firmware_bundle &&
+            cp build/flasher_args.json cvbs_firmware_bundle/ &&
+            cp build/bootloader/bootloader.bin cvbs_firmware_bundle/bootloader.bin &&
+            cp build/partition_table/partition-table.bin cvbs_firmware_bundle/partition-table.bin &&
+            cp build/*.bin cvbs_firmware_bundle/ &&
+            cp research/analog-first-architecture.md cvbs_firmware_bundle/WIRING.md
+
+      - name: Upload PAL output proof firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: c5vrx-pal-cvbs-proof-firmware
+          path: cvbs_firmware_bundle/
+          if-no-files-found: error
+
   windows-flasher:
     name: Build C5VRX Windows flasher
     runs-on: windows-latest
@@ -142,6 +173,9 @@ jobs:
 
       - name: Finite CVBS scanline renderer self-test
         run: python tools/render_cvbs_lines.py --self-test
+
+      - name: PAL CVBS streamed-raster self-test
+        run: python tools/pal_cvbs_reference.py --self-test
 
       - name: Minimal CVBS DAC model self-test
         run: python tools/minimal_cvbs_dac.py --self-test
