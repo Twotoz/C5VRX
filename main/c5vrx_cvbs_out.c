@@ -12,8 +12,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "c5vrx_cvbs";
-
 /*
  * Analog-first output proof.
  *
@@ -68,6 +66,8 @@ static const char *TAG = "c5vrx_cvbs";
 
 #if CONFIG_C5VRX_EXPERIMENTAL_CVBS_PARLIO
 
+static const char *TAG = "c5vrx_cvbs";
+
 typedef struct {
     TaskHandle_t task;
     volatile bool stop_requested;
@@ -85,7 +85,80 @@ static uint8_t s_chunk[2][C5VRX_CVBS_CHUNK_SAMPLES] __attribute__((aligned(64)))
 static parlio_tx_unit_handle_t s_tx;
 static c5vrx_cvbs_stream_state_t s_stream;
 static uint16_t s_next_half_line;
+static uint32_t s_frame_counter;
 static bool s_running;
+
+static uint8_t cvbs_code_from_mv(unsigned mv);
+static uint8_t grayscale_code(unsigned active_x);
+
+/* Compact 5x7 uppercase font, indexed as ASCII 32..90. Only branding glyphs
+ * are populated; missing glyphs render as spacing. This remains scanline-only. */
+typedef struct { char c; uint8_t row[7]; } glyph_t;
+static const glyph_t s_font[] = {
+    {'0',{14,17,19,21,25,17,14}}, {'2',{14,17,1,2,4,8,31}},
+    {'3',{30,1,1,14,1,1,30}},
+    {'5',{31,16,30,1,1,17,14}}, {'6',{6,8,16,30,17,17,14}},
+    {'-',{0,0,0,31,0,0,0}}, {'/',{1,2,4,8,16,0,0}},
+    {'A',{14,17,17,31,17,17,17}}, {'B',{30,17,17,30,17,17,30}},
+    {'C',{14,17,16,16,16,17,14}}, {'D',{30,17,17,17,17,17,30}},
+    {'E',{31,16,16,30,16,16,31}}, {'F',{31,16,16,30,16,16,16}},
+    {'G',{14,17,16,23,17,17,15}},
+    {'I',{31,4,4,4,4,4,31}}, {'L',{16,16,16,16,16,16,31}},
+    {'M',{17,27,21,21,17,17,17}}, {'N',{17,25,21,19,17,17,17}},
+    {'O',{14,17,17,17,17,17,14}}, {'P',{30,17,17,30,16,16,16}},
+    {'R',{30,17,17,30,20,18,17}}, {'S',{15,16,16,14,1,1,30}},
+    {'T',{31,4,4,4,4,4,4}}, {'U',{17,17,17,17,17,17,14}},
+    {'V',{17,17,17,17,17,10,4}}, {'X',{17,17,10,4,10,17,17}},
+};
+
+static uint8_t glyph_row(char c, unsigned row)
+{
+    for (unsigned i = 0; i < sizeof(s_font) / sizeof(s_font[0]); ++i) {
+        if (s_font[i].c == c) return s_font[i].row[row];
+    }
+    return 0;
+}
+
+static bool text_pixel(const char *text, int x, int y, int origin_x,
+                       int origin_y, unsigned scale)
+{
+    if (x < origin_x || y < origin_y) return false;
+    const unsigned px = (unsigned)(x - origin_x) / scale;
+    const unsigned py = (unsigned)(y - origin_y) / scale;
+    if (py >= 7u) return false;
+    const unsigned char_index = px / 6u;
+    const unsigned column = px % 6u;
+    const size_t length = strlen(text);
+    if (char_index >= length || column >= 5u) return false;
+    return (glyph_row(text[char_index], py) & (1u << (4u - column))) != 0u;
+}
+
+static bool branded_pixel(unsigned x, unsigned y)
+{
+    const bool splash = s_frame_counter < 300u; /* 12 seconds at 25 fps. */
+    if (splash) {
+        return text_pixel("C5VRX", x, y, 320, 70, 12) ||
+               text_pixel("ESP32-C5 ANALOG FPV RECEIVER", x, y, 250, 190, 3) ||
+               text_pixel("PAL CVBS OUTPUT", x, y, 380, 230, 3);
+    }
+    if (x < 8u || x >= C5VRX_CVBS_ACTIVE_SAMPLES - 8u || y < 5u || y >= 283u)
+        return true;
+    if ((x % 130u == 0u) || (y % 48u == 0u)) return true;
+    return text_pixel("C5VRX", x, y, 24, 15, 5) ||
+           text_pixel("PAL CVBS PROOF", x, y, 650, 18, 3) ||
+           text_pixel("20 MS/S - 6-BIT DAC", x, y, 590, 252, 3);
+}
+
+static uint8_t diagnostic_code(unsigned x, unsigned y)
+{
+    if (branded_pixel(x, y)) return cvbs_code_from_mv(1000);
+    if (s_frame_counter < 300u) return cvbs_code_from_mv(320);
+    if (y >= 210u && y < 238u) {
+        if (x < C5VRX_CVBS_ACTIVE_SAMPLES / 3u) return cvbs_code_from_mv(320);
+        if (x > 2u * C5VRX_CVBS_ACTIVE_SAMPLES / 3u) return cvbs_code_from_mv(1000);
+    }
+    return grayscale_code(x);
+}
 
 static uint8_t cvbs_code_from_mv(unsigned mv)
 {
@@ -218,16 +291,36 @@ static const uint8_t *template_for_half_line(uint16_t frame_half_line)
     return s_active_first[line_index & 1u];
 }
 
+static void overlay_active_half(uint8_t *half, uint16_t frame_half_line)
+{
+    const unsigned field_pos = frame_half_line % C5VRX_CVBS_FIELD_HALF_LINES;
+    if (field_pos < C5VRX_CVBS_ACTIVE_START_HALF) return;
+    const unsigned normal_offset = field_pos - C5VRX_CVBS_NORMAL_START_HALF;
+    const bool first_half = (normal_offset & 1u) == 0u;
+    const unsigned y = (field_pos - C5VRX_CVBS_ACTIVE_START_HALF) / 2u;
+    const unsigned start = first_half ? C5VRX_CVBS_ACTIVE_START : 0u;
+    const unsigned end = first_half ? C5VRX_CVBS_HALF_LINE_SAMPLES
+                                    : C5VRX_CVBS_ACTIVE_END - C5VRX_CVBS_HALF_LINE_SAMPLES;
+    for (unsigned p = start; p < end; ++p) {
+        const unsigned x = first_half ? p - C5VRX_CVBS_ACTIVE_START
+                                      : (C5VRX_CVBS_HALF_LINE_SAMPLES - C5VRX_CVBS_ACTIVE_START) + p;
+        half[p] = diagnostic_code(x, y);
+    }
+}
+
 static void build_next_chunk(uint8_t *dst)
 {
     for (unsigned i = 0; i < C5VRX_CVBS_CHUNK_HALF_LINES; ++i) {
         const uint8_t *src = template_for_half_line(s_next_half_line);
-        memcpy(dst + i * C5VRX_CVBS_HALF_LINE_SAMPLES,
+        uint8_t *half = dst + i * C5VRX_CVBS_HALF_LINE_SAMPLES;
+        memcpy(half,
                src,
                C5VRX_CVBS_HALF_LINE_SAMPLES);
+        overlay_active_half(half, s_next_half_line);
         ++s_next_half_line;
         if (s_next_half_line == C5VRX_CVBS_FRAME_HALF_LINES) {
             s_next_half_line = 0;
+            ++s_frame_counter;
         }
     }
 }
@@ -405,6 +498,7 @@ esp_err_t c5vrx_cvbs_test_start(void)
 
     build_templates();
     s_next_half_line = 0;
+    s_frame_counter = 0;
     build_next_chunk(s_chunk[0]);
     build_next_chunk(s_chunk[1]);
 

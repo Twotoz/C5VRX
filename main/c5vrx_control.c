@@ -13,6 +13,9 @@
 #include "c5vrx_cvbs_out.h"
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_wbfm_hw.h"
+#include "c5vrx_live_pipeline.h"
+#include "c5vrx_cvbs_live_out.h"
+#include "sdkconfig.h"
 #include "c5vrx_wifi5.h"
 
 typedef struct {
@@ -24,6 +27,13 @@ typedef struct {
 } c5vrx_control_state_t;
 
 static c5vrx_control_state_t s_state;
+static c5vrx_rf_source_t s_finite_source;
+
+#ifdef CONFIG_C5VRX_LIVE_CVBS_INVERT
+#define C5VRX_CFG_LIVE_INVERT true
+#else
+#define C5VRX_CFG_LIVE_INVERT false
+#endif
 
 static bool band_from_char(char c, c5vrx_band_t *out)
 {
@@ -128,7 +138,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -157,6 +167,49 @@ static void handle_line(char *line)
     if (strcasecmp(line, "STATUS") == 0) {
         print_status();
         return;
+    }
+    if (strcasecmp(line, "PIPELINE STATS") == 0 ||
+        strcasecmp(line, "PIPELINE_STATS") == 0) {
+        c5vrx_live_pipeline_log_stats();
+        return;
+    }
+    if (strcasecmp(line, "NEARLIVE START") == 0 ||
+        strcasecmp(line, "NEARLIVE_START") == 0) {
+        if (c5vrx_live_pipeline_running() || c5vrx_cvbs_test_running()) {
+            printf("C5VRX_ERR nearlive-already-running\n"); fflush(stdout); return;
+        }
+        esp_err_t err = c5vrx_finite_chain_source_create(&s_finite_source, 16384u);
+        if (err == ESP_OK) err = c5vrx_cvbs_live_out_start(4096u);
+        const c5vrx_live_pipeline_config_t config = {
+            .source = &s_finite_source, .sink = c5vrx_cvbs_live_out_write,
+            .maximum_input_words = 16384u,
+            .conditioner = {
+                .bias_q8 = CONFIG_C5VRX_LIVE_CVBS_BIAS_Q8,
+                .gain_q8 = CONFIG_C5VRX_LIVE_CVBS_GAIN_Q8,
+                .invert = C5VRX_CFG_LIVE_INVERT,
+                .sync_code = 0, .blank_code = 19, .black_code = 20,
+                .white_code = 63,
+                .clamp_min = CONFIG_C5VRX_LIVE_CVBS_CLAMP_MIN,
+                .clamp_max = CONFIG_C5VRX_LIVE_CVBS_CLAMP_MAX,
+                .filter_shift = CONFIG_C5VRX_LIVE_CVBS_FILTER_SHIFT,
+            },
+        };
+        if (err == ESP_OK) err = c5vrx_live_pipeline_start(&config);
+        if (err != ESP_OK) {
+            (void)c5vrx_cvbs_live_out_stop();
+            c5vrx_finite_chain_source_destroy(&s_finite_source);
+        }
+        printf("C5VRX_NEARLIVE_START code=%d mode=FINITE_CHAINED_NOT_CONTINUOUS\n", (int)err);
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "NEARLIVE STOP") == 0 ||
+        strcasecmp(line, "NEARLIVE_STOP") == 0) {
+        esp_err_t err = c5vrx_live_pipeline_stop();
+        if (err == ESP_OK) {
+            (void)c5vrx_cvbs_live_out_stop();
+            c5vrx_finite_chain_source_destroy(&s_finite_source);
+        }
+        printf("C5VRX_NEARLIVE_STOP code=%d\n", (int)err); fflush(stdout); return;
     }
 
     if (strcasecmp(line, "WBFM HWTEST") == 0 ||

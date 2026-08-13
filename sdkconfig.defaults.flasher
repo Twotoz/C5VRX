@@ -20,3 +20,17 @@ CONFIG_ESP_PHY_ENABLE_CERT_TEST=y
 # Do NOT dump thousands of samples automatically on every boot. The Windows
 # control panel can trigger finite captures on demand with CAPTURE <N>.
 # CONFIG_C5VRX_EXPERIMENTAL_ADC_DUMP is not set
+
+# Compile the experimental finite-chain -> WBFM -> sample-domain CVBS route.
+# It starts only after the explicit NEARLIVE START command and is never called
+# a continuous RF source.
+CONFIG_C5VRX_EXPERIMENTAL_CVBS_PARLIO=y
+CONFIG_C5VRX_CVBS_DAC_BITS=6
+CONFIG_C5VRX_CVBS_D0_GPIO=0
+CONFIG_C5VRX_CVBS_D1_GPIO=1
+CONFIG_C5VRX_CVBS_D2_GPIO=6
+CONFIG_C5VRX_CVBS_D3_GPIO=8
+CONFIG_C5VRX_CVBS_D4_GPIO=9
+CONFIG_C5VRX_CVBS_D5_GPIO=10
+CONFIG_C5VRX_CVBS_D6_GPIO=-1
+CONFIG_C5VRX_CVBS_D7_GPIO=-1
