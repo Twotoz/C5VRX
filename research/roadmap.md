@@ -23,6 +23,7 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [x] Define a nominal ~75-ohm / ~1 Vpp passive output network for hardware validation.
 - [x] Keep external video DAC, video decoder and OSD ICs out of the minimum design.
 - [x] Treat one-GPIO/noise-shaped video as optional research, not the mainline architecture.
+- [x] Define a standalone WROOM-1U-N4 analog receiver BOM plus machine-readable CSV.
 
 ## RF / reverse-engineering milestones
 
@@ -34,12 +35,14 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [x] Add a minimal RF certification/test research backend without pretending its 1-14 channel API is a 5 GHz tuner.
 - [x] Add automated symbol/disassembly extraction tooling and CI artifacts.
 - [x] Add symbol-size + relocation call-graph + call-site analysis for dump/frequency targets.
+- [x] Add literal/MMIO context tracing for 0x40830000 dump RAM and 0x600a04xx FE/RX register candidates.
 - [x] Correct `phy_set_freq` to the two-argument C5 ABI shape recovered from disassembly.
 - [x] Add opt-in arbitrary-frequency experiment (`phy_set_freq(freq_mhz, offset)`).
 - [x] Recover the C5 vendor finite ADC-dump format: signed 10-bit Q in bits 0-9 and signed 10-bit I in bits 10-19.
 - [x] Recover the C5 dump RAM: 0x40830000, 64 KiB, up to 16384 complex samples.
 - [x] Recover the 9-argument `adctrig` call shape and software-trigger mode from C5 + historical Espressif tooling.
 - [x] Add opt-in finite ADC/IQ capture firmware and host decoder.
+- [x] Add repeated finite-capture continuity/hash diagnostic (`CHAIN`).
 - [x] Add offline WBFM discriminator + synthetic DSP self-test.
 - [x] Build ESP32-C5 firmware successfully in CI with ESP-IDF v6.0.2.
 - [ ] Run the finite ADC/IQ capture on a real ESP32-C5.
@@ -50,8 +53,8 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [ ] Verify R5 / 5806 MHz reception from the ch161 HT40 bootstrap path.
 - [ ] Validate `phy_set_freq(5806, 0)` shifts the real receiver center by +1 MHz.
 - [ ] Characterize capture sample rate and effective receive bandwidth on hardware.
-- [ ] Determine whether finite dump captures can be chained with acceptably small gaps.
-- [ ] Trace the producer feeding dump RAM for continuous/ring-buffer capture.
+- [ ] Measure whether finite dump captures can be chained with acceptably small gaps.
+- [ ] Trace and control the hardware producer feeding dump RAM for true continuous/ring-buffer capture.
 
 ## Analog output milestones
 
@@ -75,10 +78,16 @@ Digital LCD/USB video is deliberately outside the critical path.
 
 - [x] Model a 2 KiB I/Q-to-phase BitScrambler LUT.
 - [x] Identify the one-LUT hardware constraint: the phase LUT and a second full 2 KiB delta LUT cannot be resident simultaneously.
-- [ ] Implement the single resident phase-LUT on C5 BitScrambler hardware.
-- [ ] Implement phase[n] - phase[n-1] using available state/counter/output-history mechanisms.
-- [ ] Benchmark sustainable sample throughput on physical C5 hardware.
-- [ ] Filter/decimate the discriminator output into a stable CVBS sample stream.
+- [x] Implement a C5 BitScrambler 4:1 packed-IQ -> biased phase-delta program.
+- [x] Generate/load the single 1024 x 16-bit phase LUT at initialization.
+- [x] Add host validation for the nominal 80 MS/s IQ -> 20 MS/s phase-delta architecture.
+- [x] Add an on-device synthetic `WBFM HWTEST` path.
+- [x] Add a finite real RF dump -> hardware WBFM bridge (`WBFM CAPTURE`).
+- [ ] Run `WBFM HWTEST` on physical ESP32-C5 silicon and require zero mismatches.
+- [ ] Run `WBFM CAPTURE 16384` on a real A4/5805 analog VTX capture.
+- [ ] Benchmark sustainable BitScrambler throughput on physical C5 hardware.
+- [ ] Measure real discriminator polarity/deviation and calibrate phase-delta -> CVBS voltage scaling.
+- [ ] Filter/condition the discriminator output into a stable CVBS sample stream.
 - [ ] Join continuous RF samples -> WBFM -> CVBS -> PARLIO.
 - [ ] Measure end-to-end RF-to-CVBS latency.
 
@@ -88,7 +97,7 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [ ] Add channel scanning and analog-video detection.
 - [ ] Add runtime channel selection.
 - [ ] Add simple sample-domain monochrome OSD only if useful.
-- [ ] Design a minimal analog-first C5VRX PCB.
+- [ ] Turn `hardware/analog-vrx-bom.md` into the first production PCB schematic/layout after silicon proof.
 
 ## Explicitly deferred
 
@@ -106,11 +115,17 @@ live analog CVBS works:
 
 Static analysis is strong enough to say the ESP32-C5 vendor RF-test code
 contains a finite complex I/Q dump path. It is **not** yet strong enough to say
-C5VRX receives analog FPV on hardware.
+C5VRX receives analog FPV on hardware or that the dump producer can run
+continuously.
 
-The output side now has a complete software proof target: a CI-built,
-output-only PAL raster generator plus a source-matched 6-bit passive DAC model.
-That is still **not** a physical video proof until scope and monitor tests pass.
+The DSP side now has an explicit hardware proof path: packed C5-format I/Q can
+be fed through a 4:1 BitScrambler discriminator, and a real finite vendor dump
+can be bridged directly into that transform. Both still require a physical C5
+run before they become silicon proofs.
+
+The output side has a complete software proof target: a CI-built output-only PAL
+raster generator plus a source-matched 6-bit passive DAC model. That is still
+**not** a physical video proof until scope and monitor tests pass.
 
 The next decisive RF milestone is a physical A4/5805 capture showing
 source-dependent complex samples and recoverable WBFM baseband.
