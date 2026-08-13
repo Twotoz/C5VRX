@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "c5vrx_adc_dump.h"
 #include "driver/bitscrambler.h"
 #include "driver/bitscrambler_loopback.h"
 #include "esp_heap_caps.h"
@@ -27,41 +28,171 @@ static uint32_t pack_iq10(int16_t i, int16_t q)
     return (((uint32_t)i & 0x3ffu) << 10) | ((uint32_t)q & 0x3ffu);
 }
 
-static int coarse_signed_center(unsigned code5)
+static float coarse_signed_center(unsigned code5)
 {
     const int signed5 = (code5 & 0x10u) ? (int)code5 - 32 : (int)code5;
-    /* Center of the corresponding 32-code-wide signed 10-bit bucket. */
-    return signed5 * 32 + 15;
+    return (float)signed5 * 32.0f + 15.5f;
 }
 
 static uint8_t coarse_phase6_from_iq(int16_t i, int16_t q)
 {
     const unsigned i5 = (((uint16_t)i & 0x3ffu) >> 5) & 0x1fu;
     const unsigned q5 = (((uint16_t)q & 0x3ffu) >> 5) & 0x1fu;
-    const float phase = atan2f((float)coarse_signed_center(q5),
-                               (float)coarse_signed_center(i5));
-    float wrapped = phase;
-    if (wrapped < 0.0f) {
-        wrapped += 2.0f * C5VRX_PI_F;
+    float phase = atan2f(coarse_signed_center(q5), coarse_signed_center(i5));
+    if (phase < 0.0f) {
+        phase += 2.0f * C5VRX_PI_F;
     }
-    return (uint8_t)lrintf(wrapped * (64.0f / (2.0f * C5VRX_PI_F))) & 0x3fu;
+    return (uint8_t)lrintf(phase * (64.0f / (2.0f * C5VRX_PI_F))) & 0x3fu;
 }
 
 static void build_phase_lut(uint16_t lut[C5VRX_WBFM_LUT_WORDS])
 {
     for (unsigned i5 = 0; i5 < 32u; ++i5) {
         for (unsigned q5 = 0; q5 < 32u; ++q5) {
-            float phase = atan2f((float)coarse_signed_center(q5),
-                                 (float)coarse_signed_center(i5));
+            float phase = atan2f(coarse_signed_center(q5), coarse_signed_center(i5));
             if (phase < 0.0f) {
                 phase += 2.0f * C5VRX_PI_F;
             }
             const uint8_t p =
                 (uint8_t)lrintf(phase * (64.0f / (2.0f * C5VRX_PI_F))) & 0x3fu;
-            const uint8_t bias_minus = (uint8_t)(C5VRX_WBFM_PHASE_BIAS - p) & 0x3fu;
-            lut[(i5 << 5) | q5] = (uint16_t)p | ((uint16_t)bias_minus << 8);
+            const uint8_t bias_minus =
+                (uint8_t)(C5VRX_WBFM_PHASE_BIAS - p) & 0x3fu;
+            lut[(i5 << 5) | q5] =
+                (uint16_t)p | ((uint16_t)bias_minus << 8);
         }
     }
+}
+
+esp_err_t c5vrx_wbfm_hw_transform(const uint32_t *packed_iq,
+                                   size_t input_words,
+                                   uint8_t *phase_delta,
+                                   size_t output_capacity,
+                                   size_t *output_written)
+{
+    if (output_written) {
+        *output_written = 0;
+    }
+    if (!packed_iq || !phase_delta || input_words < 8u ||
+        (input_words & 3u) != 0u) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const size_t expected_output = input_words / C5VRX_WBFM_TEST_DECIMATION;
+    if (output_capacity < expected_output) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    uint16_t *lut = heap_caps_malloc(C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t),
+                                     MALLOC_CAP_INTERNAL);
+    if (!lut) {
+        return ESP_ERR_NO_MEM;
+    }
+    build_phase_lut(lut);
+
+    const size_t input_bytes = input_words * sizeof(uint32_t);
+    const size_t max_transfer =
+        input_bytes > output_capacity ? input_bytes : output_capacity;
+
+    bitscrambler_handle_t bs = NULL;
+    esp_err_t err = bitscrambler_loopback_create(
+        &bs,
+        SOC_BITSCRAMBLER_ATTACH_I2S0,
+        max_transfer);
+    if (err == ESP_OK) {
+        err = bitscrambler_load_program(bs, c5vrx_wbfm_4to1_program);
+    }
+    if (err == ESP_OK) {
+        err = bitscrambler_load_lut(bs, lut,
+                                    C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t));
+    }
+
+    size_t written = 0;
+    if (err == ESP_OK) {
+        err = bitscrambler_loopback_run(
+            bs,
+            (void *)packed_iq,
+            input_bytes,
+            phase_delta,
+            output_capacity,
+            &written);
+    }
+
+    if (bs) {
+        bitscrambler_free(bs);
+    }
+    free(lut);
+
+    if (err == ESP_OK && output_written) {
+        *output_written = written;
+    }
+    return err;
+}
+
+esp_err_t c5vrx_wbfm_hw_probe_dump(size_t sample_count)
+{
+    if (sample_count < 8u || sample_count > C5VRX_ADC_DUMP_MAX_SAMPLES ||
+        (sample_count & 3u) != 0u) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = c5vrx_adc_dump_capture(sample_count, false);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    const size_t output_capacity = sample_count / C5VRX_WBFM_TEST_DECIMATION;
+    uint32_t *iq_copy = heap_caps_malloc(sample_count * sizeof(uint32_t),
+                                         MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    uint8_t *fm = heap_caps_calloc(output_capacity, 1,
+                                   MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    if (!iq_copy || !fm) {
+        free(iq_copy);
+        free(fm);
+        return ESP_ERR_NO_MEM;
+    }
+
+    volatile const uint32_t *const dump =
+        (volatile const uint32_t *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR;
+    for (size_t i = 0; i < sample_count; ++i) {
+        iq_copy[i] = dump[i];
+    }
+
+    size_t written = 0;
+    err = c5vrx_wbfm_hw_transform(
+        iq_copy,
+        sample_count,
+        fm,
+        output_capacity,
+        &written);
+
+    if (err == ESP_OK && written > 1u) {
+        unsigned min_code = 63u;
+        unsigned max_code = 0u;
+        uint64_t sum = 0;
+        uint64_t abs_dev_sum = 0;
+        for (size_t i = 1; i < written; ++i) {
+            const unsigned code = fm[i] & 0x3fu;
+            if (code < min_code) min_code = code;
+            if (code > max_code) max_code = code;
+            sum += code;
+            abs_dev_sum += code >= C5VRX_WBFM_PHASE_BIAS
+                ? code - C5VRX_WBFM_PHASE_BIAS
+                : C5VRX_WBFM_PHASE_BIAS - code;
+        }
+        const size_t valid = written - 1u;
+        ESP_LOGW(TAG,
+                 "finite RF -> BitScrambler WBFM proof: iq=%u @ nominal 80MS/s, fm=%u @ nominal 20MS/s, code min/max=%u/%u mean=%u mean_abs_dev_from_bias=%u",
+                 (unsigned)sample_count,
+                 (unsigned)written,
+                 min_code,
+                 max_code,
+                 (unsigned)(sum / valid),
+                 (unsigned)(abs_dev_sum / valid));
+    }
+
+    free(iq_copy);
+    free(fm);
+    return err;
 }
 
 esp_err_t c5vrx_wbfm_hw_self_test(void)
@@ -69,23 +200,16 @@ esp_err_t c5vrx_wbfm_hw_self_test(void)
     const size_t input_bytes = C5VRX_WBFM_TEST_INPUT_WORDS * sizeof(uint32_t);
     const size_t output_bytes = C5VRX_WBFM_TEST_OUTPUT_SAMPLES;
 
-    uint32_t *input = heap_caps_malloc(input_bytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    uint8_t *output = heap_caps_calloc(output_bytes, 1, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    uint16_t *lut = heap_caps_malloc(C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t),
-                                     MALLOC_CAP_INTERNAL);
-    if (!input || !output || !lut) {
+    uint32_t *input = heap_caps_malloc(input_bytes,
+                                       MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    uint8_t *output = heap_caps_calloc(output_bytes, 1,
+                                       MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    if (!input || !output) {
         free(input);
         free(output);
-        free(lut);
         return ESP_ERR_NO_MEM;
     }
-    build_phase_lut(lut);
 
-    /*
-     * Choose a phase ramp whose phase advances by about five phase6 codes for
-     * every fourth (kept) I/Q sample. This exercises wrap behavior without
-     * approaching the +/-pi ambiguity of an FM discriminator.
-     */
     const float kept_step = 5.0f * (2.0f * C5VRX_PI_F / 64.0f);
     const float input_step = kept_step / (float)C5VRX_WBFM_TEST_DECIMATION;
 
@@ -101,48 +225,18 @@ esp_err_t c5vrx_wbfm_hw_self_test(void)
         }
     }
 
-    bitscrambler_handle_t bs = NULL;
-    esp_err_t err = bitscrambler_loopback_create(
-        &bs,
-        SOC_BITSCRAMBLER_ATTACH_I2S0,
-        input_bytes);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "loopback create failed: %s", esp_err_to_name(err));
-        free(input);
-        free(output);
-        free(lut);
-        return err;
-    }
-
-    err = bitscrambler_load_program(bs, c5vrx_wbfm_4to1_program);
-    if (err == ESP_OK) {
-        err = bitscrambler_load_lut(bs, lut,
-                                    C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t));
-    }
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "program/LUT load failed: %s", esp_err_to_name(err));
-        bitscrambler_free(bs);
-        free(input);
-        free(output);
-        free(lut);
-        return err;
-    }
-
     size_t written = 0;
-    err = bitscrambler_loopback_run(
-        bs,
+    esp_err_t err = c5vrx_wbfm_hw_transform(
         input,
-        input_bytes,
+        C5VRX_WBFM_TEST_INPUT_WORDS,
         output,
         output_bytes,
         &written);
-    bitscrambler_free(bs);
-
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "loopback transform failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "BitScrambler self-test transform failed: %s",
+                 esp_err_to_name(err));
         free(input);
         free(output);
-        free(lut);
         return err;
     }
 
@@ -150,7 +244,6 @@ esp_err_t c5vrx_wbfm_hw_self_test(void)
         ESP_LOGE(TAG, "short BitScrambler output: %u bytes", (unsigned)written);
         free(input);
         free(output);
-        free(lut);
         return ESP_FAIL;
     }
 
@@ -185,6 +278,5 @@ esp_err_t c5vrx_wbfm_hw_self_test(void)
 
     free(input);
     free(output);
-    free(lut);
     return mismatches == 0u ? ESP_OK : ESP_FAIL;
 }
