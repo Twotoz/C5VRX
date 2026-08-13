@@ -143,5 +143,8 @@ jobs:
       - name: Finite CVBS scanline renderer self-test
         run: python tools/render_cvbs_lines.py --self-test
 
+      - name: Minimal CVBS DAC model self-test
+        run: python tools/minimal_cvbs_dac.py --self-test
+
       - name: Generate FPV channel report
         run: python tools/fpv_channel_report.py
