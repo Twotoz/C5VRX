@@ -74,7 +74,15 @@ No public source, header, example, ROM symbol implementation, RF-test utility
 or documentation found in this survey provides a C5 SDR API or a supported
 Wi-Fi-RF-to-GDMA route.
 
-## The one credible next experiment
+## Producer-level follow-up
+
+The wrapper boundary is no longer the end of the static investigation. See
+[`rf-dump-producer.md`](rf-dump-producer.md) for the exhaustive C5 register
+xref, the recovered 13-way trigger table, the exact eight hardware encodings
+behind the misleading `sample_80m` argument, and a configure/start/observe/stop
+split derived from vendor basic blocks.
+
+## Ring experiment after producer modes
 
 `RING_PROBE` starts **one** vendor `adctrig()` call in RX-error pre-trigger
 mode, then observes the recovered write-pointer register and safely lagged dump
