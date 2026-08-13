@@ -89,6 +89,79 @@ ideal source-matched resistor network.
 
 ---
 
+## How to wire the resistor DAC to AV out
+
+The reference DevKitC and Receiver Console profiles use six GPIOs as the bits of
+one passive video DAC. **Each GPIO needs its own complete series resistance
+before the six branches meet.** Do not join the GPIOs directly, and do not
+connect any of these resistors to 3.3 V.
+
+| DAC bit | GPIO | Required series resistance | 1206 kit series chain |
+|---|---:|---:|---:|
+| D0 / LSB | GPIO0 | 7.87 kΩ | 7.5 kΩ + 360 Ω + 10 Ω |
+| D1 | GPIO1 | 3.92 kΩ | 3.9 kΩ + 20 Ω |
+| D2 | GPIO6 | 1.96 kΩ | 1.8 kΩ + 160 Ω |
+| D3 | GPIO8 | 976 Ω | 910 Ω + 62 Ω + 3.9 Ω = 975.9 Ω |
+| D4 | GPIO9 | 487 Ω | 470 Ω + 16 Ω + 1 Ω |
+| D5 / MSB | GPIO10 | 243 Ω | 240 Ω + 3 Ω |
+| Shunt | VIDEO to GND | 191 Ω | 180 Ω + 11 Ω |
+
+Resistors shown with `+` are soldered **end-to-end in series**. Their order
+inside a branch does not matter. For example, the D0 branch is
+`GPIO0 -> 7.5 kΩ -> 360 Ω -> 10 Ω -> VIDEO`. Build and measure every chain
+separately before joining its VIDEO end to the common node.
+
+```text
+GPIO0  -- 7.5k -- 360R -- 10R --------+
+GPIO1  -- 3.9k --------- 20R ----------+
+GPIO6  -- 1.8k -------- 160R ----------+
+GPIO8  --  910R -- 62R -- 3.9R --------+---- VIDEO ---- AV signal/center
+GPIO9  --  470R -- 16R ---- 1R --------+
+GPIO10 --  240R ---------- 3R ---------+
+                                          |
+                                        180R
+                                          |
+                                         11R
+                                          |
+ESP32-C5 GND -----------------------------+---- AV ground/shield
+```
+
+The 191 Ω chain is different from the six GPIO branches: it connects the
+finished `VIDEO` summing node to ground. The AV connector's signal contact also
+connects to `VIDEO`, and its ground/shield connects to an ESP32-C5 GND pin. A
+common ground is mandatory. For RCA, these are normally center and outer shell.
+For a 3.5 mm/TRRS HDZero cable, verify the actual cable/breakout pinout with its
+documentation or a continuity meter—tip/ring assignments are not universal.
+
+The receiving monitor, DVR or goggles should provide the normal **75 Ω input
+termination**. Do not add another 75 Ω resistor on the C5VRX board: two 75 Ω
+terminations in parallel load the DAC with 37.5 Ω and halve the intended level
+again. When testing without a monitor, a single 75 Ω termination at the scope
+input emulates the receiver. A high-impedance 1 MΩ scope input is useful for
+inspection but will show roughly 2 V open-circuit full scale instead of the
+approximately 1 V expected into 75 Ω.
+
+Prototype construction matters at the 20 MS/s edge rate:
+
+1. Power off the board and verify the value of every resistor chain with a
+   multimeter before connecting all seven branches.
+2. Keep the common VIDEO node, ground return and AV lead short; avoid a large
+   solderless breadboard and long flying wires where possible.
+3. Check that VIDEO is not shorted to 3.3 V or directly to any GPIO.
+4. Start with the output-only PAL firmware and a scope terminated once at 75 Ω.
+   Expect sync near 0 V, blank near 0.30 V, black near 0.32 V and white near
+   1.0 V. These are measurement targets, not guaranteed uncalibrated values.
+5. Only connect the HDZero/monitor AV input after the loaded waveform and ground
+   wiring look correct. Never connect a raw 3.3 V GPIO directly to AV input.
+
+This GPIO table applies to the DevKitC/Receiver Console profiles. The XIAO C5
+uses different pins; follow
+[`research/xiao-c5-cvbs-proof.md`](research/xiao-c5-cvbs-proof.md) while keeping
+the same resistor values and VIDEO-node topology. The more detailed scope test
+is in [`research/devkit-cvbs-proof.md`](research/devkit-cvbs-proof.md).
+
+---
+
 ## Standalone receiver hardware target
 
 The first custom receiver PCB should use **ESP32-C5-WROOM-1U-N4** rather than a
