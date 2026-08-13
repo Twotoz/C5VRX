@@ -32,6 +32,8 @@ CONFIG_ESP_PHY_ENABLE_CERT_TEST=y
 # It starts only after the explicit NEARLIVE START command and is never called
 # a continuous RF source.
 CONFIG_C5VRX_EXPERIMENTAL_CVBS_PARLIO=y
+# ESP32-C5-DevKitC-1 v1.2: D0..D5 are J1 pins 5,6,7,9,10,11.
+# The logical GPIO map also applies to a custom WROOM-1/1U board.
 CONFIG_C5VRX_CVBS_DAC_BITS=6
 CONFIG_C5VRX_CVBS_D0_GPIO=0
 CONFIG_C5VRX_CVBS_D1_GPIO=1

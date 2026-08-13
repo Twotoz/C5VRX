@@ -106,6 +106,32 @@ connect any of these resistors to 3.3 V.
 | D5 / MSB | GPIO10 | 243 Ω | 240 Ω + 3 Ω |
 | Shunt | VIDEO to GND | 191 Ω | 180 Ω + 11 Ω |
 
+The logical pin map above has been checked against the ESP32-C5 GPIO matrix,
+the ESP32-C5-WROOM-1/1U module pinout and both official DevKitC revisions. For
+the **supported ESP32-C5-DevKitC-1 v1.2**, the physical connections are:
+
+| DAC bit | GPIO label | DevKitC-1 v1.2 header | WROOM-1/1U module pad |
+|---|---:|---:|---:|
+| D0 / LSB | GPIO0 | J1 pin 5 | IO0, pad 6 |
+| D1 | GPIO1 | J1 pin 6 | IO1, pad 7 |
+| D2 | GPIO6 | J1 pin 7 | IO6, pad 8 |
+| D3 | GPIO8 | J1 pin 9 | IO8, pad 10 |
+| D4 | GPIO9 | J1 pin 10 | IO9, pad 11 |
+| D5 / MSB | GPIO10 | J1 pin 11 | IO10, pad 12 |
+
+Use the **GPIO label printed beside the header** as the primary identifier.
+DevKitC-1 v1.1 placed several of these same logical GPIOs at different J1/J3
+positions. More importantly, Espressif documents that v1.1 contains C5 chip
+revision v0.1, while the pinned ESP-IDF v6.0.2 C5VRX image requires chip
+revision >= v1.0. Do not use the v1.2 header-position table—or the current
+C5VRX firmware—on a v1.1 board.
+
+The selected v1.2 pins are ordinary GPIO-matrix outputs. None is a C5 boot
+strapping pin, native USB uses GPIO13/14 instead, and the module exposes all six
+pins. PARLIO is configured with `data_gpio_nums[0..5]` in exactly the order
+shown and sends 8-bit samples whose upper two bits are zero, so D0/GPIO0 is the
+least-significant contribution and D5/GPIO10 the most-significant contribution.
+
 Resistors shown with `+` are soldered **end-to-end in series**. Their order
 inside a branch does not matter. For example, the D0 branch is
 `GPIO0 -> 7.5 kΩ -> 360 Ω -> 10 Ω -> VIDEO`. Build and measure every chain
@@ -155,10 +181,14 @@ Prototype construction matters at the 20 MS/s edge rate:
    wiring look correct. Never connect a raw 3.3 V GPIO directly to AV input.
 
 This GPIO table applies to the DevKitC/Receiver Console profiles. The XIAO C5
-uses different pins; follow
+uses the separately verified mapping `D4/D5/D6/D7/D8/D9` =
+`GPIO23/24/11/12/8/9`; follow
 [`research/xiao-c5-cvbs-proof.md`](research/xiao-c5-cvbs-proof.md) while keeping
 the same resistor values and VIDEO-node topology. The more detailed scope test
-is in [`research/devkit-cvbs-proof.md`](research/devkit-cvbs-proof.md).
+is in [`research/devkit-cvbs-proof.md`](research/devkit-cvbs-proof.md). Official
+pin references: [DevKitC-1 v1.2 header table](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c5/esp32-c5-devkitc-1/user_guide.html#header-block),
+[WROOM-1/1U pin definitions](https://documentation.espressif.com/esp32-c5-wroom-1_wroom-1u_datasheet_en.html),
+and [XIAO ESP32-C5 pin map](https://wiki.seeedstudio.com/xiao_esp32c5_getting_started/#pin-map).
 
 ---
 

@@ -18,6 +18,13 @@ and are routed through the C5 GPIO matrix to PARLIO.
 | D4 | D8 | 8 | 487 Ω |
 | D5 / MSB | D9 | 9 | 243 Ω |
 
+This mapping has been checked against Seeed's current official pin table.
+GPIO23/24/11/12/8/9 are header-accessible GPIO-matrix outputs and none is an
+ESP32-C5 strapping pin. GPIO11 and GPIO12 are also the default UART0 TX/RX
+functions; the proof image uses native USB Serial/JTAG and PARLIO takes over
+those pins when the application starts. A short reset/ROM transient on
+D6/GPIO11 is therefore possible and is not valid CVBS evidence.
+
 Join the six resistor outputs at `VIDEO`:
 
 ```text
