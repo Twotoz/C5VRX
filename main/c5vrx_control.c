@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 
 #include "c5vrx_adc_dump.h"
+#include "c5vrx_cvbs_out.h"
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_wifi5.h"
 
@@ -58,7 +59,7 @@ static void print_status(void)
         return;
     }
 
-    printf("C5VRX_STATUS band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d\n",
+    printf("C5VRX_STATUS band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d\n",
            target.letter,
            (unsigned)target.channel,
            (unsigned)target.mhz,
@@ -69,7 +70,8 @@ static void print_status(void)
            plan.inside_c5_rx_window ? 1 : 0,
            s_state.ht40 ? 40u : 20u,
            (unsigned)wifi.active_primary_channel,
-           s_state.direct_tune_enabled ? 1 : 0);
+           s_state.direct_tune_enabled ? 1 : 0,
+           c5vrx_cvbs_test_running() ? 1 : 0);
     fflush(stdout);
 }
 
@@ -123,6 +125,12 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
     return ESP_OK;
 }
 
+static void print_help(void)
+{
+    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CVBS_TEST,CVBS_STOP\n");
+    fflush(stdout);
+}
+
 static void handle_line(char *line)
 {
     while (*line && isspace((unsigned char)*line)) {
@@ -142,12 +150,33 @@ static void handle_line(char *line)
         return;
     }
     if (strcasecmp(line, "HELP") == 0) {
-        printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>\n");
-        fflush(stdout);
+        print_help();
         return;
     }
     if (strcasecmp(line, "STATUS") == 0) {
         print_status();
+        return;
+    }
+
+    if (strcasecmp(line, "CVBS TEST") == 0 || strcasecmp(line, "CVBS_TEST") == 0) {
+        const esp_err_t err = c5vrx_cvbs_test_start();
+        if (err == ESP_OK) {
+            printf("C5VRX_OK cvbs-test=1 sample_rate=20000000 line_samples=1280\n");
+        } else {
+            printf("C5VRX_ERR cvbs-test code=%d\n", (int)err);
+        }
+        fflush(stdout);
+        return;
+    }
+
+    if (strcasecmp(line, "CVBS STOP") == 0 || strcasecmp(line, "CVBS_STOP") == 0) {
+        const esp_err_t err = c5vrx_cvbs_test_stop();
+        if (err == ESP_OK) {
+            printf("C5VRX_OK cvbs-test=0\n");
+        } else {
+            printf("C5VRX_ERR cvbs-stop code=%d\n", (int)err);
+        }
+        fflush(stdout);
         return;
     }
 
@@ -205,9 +234,8 @@ static void console_task(void *arg)
     (void)arg;
     char line[128];
 
-    printf("C5VRX_READY protocol=1\n");
-    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>\n");
-    fflush(stdout);
+    printf("C5VRX_READY protocol=2\n");
+    print_help();
 
     for (;;) {
         if (fgets(line, sizeof(line), stdin) != NULL) {
