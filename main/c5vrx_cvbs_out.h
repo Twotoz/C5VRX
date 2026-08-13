@@ -12,7 +12,7 @@ extern "C" {
  *
  * The generator streams a PAL 625/50 interlaced monochrome test raster at
  * 20 MS/s through PARLIO. It includes full horizontal/vertical sync structure,
- * grayscale bars and, when enabled in Kconfig, a PAL-frequency swinging burst
+ * branded splash/diagnostics and, when enabled in Kconfig, a PAL-frequency swinging burst
  * used only to stress analog bandwidth/locking.
  *
  * This is intentionally independent from the RF receive path so the

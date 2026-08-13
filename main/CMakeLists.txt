@@ -9,6 +9,9 @@ idf_component_register(
         "c5vrx_control.c"
         "c5vrx_cvbs_out.c"
         "c5vrx_wbfm_hw.c"
+        "c5vrx_stream.c"
+        "c5vrx_live_pipeline.c"
+        "c5vrx_cvbs_live_out.c"
     INCLUDE_DIRS "."
     REQUIRES
         nvs_flash
@@ -18,6 +21,7 @@ idf_component_register(
         esp_netif
         esp_driver_parlio
         esp_driver_bitscrambler
+        esp_timer
 )
 
 target_bitscrambler_add_src("c5vrx_wbfm_4to1.bsasm")

@@ -74,8 +74,11 @@ Use [`sdkconfig.defaults.cvbs`](sdkconfig.defaults.cvbs) for the dedicated image
 and follow [`research/devkit-cvbs-proof.md`](research/devkit-cvbs-proof.md) for
 the exact resistor values, pin wiring and scope checklist.
 
-The CI artifact is named `c5vrx-pal-cvbs-proof-firmware`. The active image is
-grayscale. An optional 4.43361875 MHz swinging burst is included only as an
+The DevKitC CI artifact is named `c5vrx-pal-cvbs-proof-firmware`. It displays a
+12-second C5VRX splash followed by a grayscale calibration screen. The separate
+XIAO artifact is `c5vrx-xiao-pal-cvbs-proof-firmware`; use
+[`research/xiao-c5-cvbs-proof.md`](research/xiao-c5-cvbs-proof.md), not the
+DevKitC pin map. An optional 4.43361875 MHz swinging burst is included only as an
 analog bandwidth/lock stress signal; it is not a claim of complete PAL color
 encoding.
 
@@ -238,6 +241,21 @@ See [`research/frequency-tuning.md`](research/frequency-tuning.md).
 
 ## Finite I/Q and live-pipeline diagnostics
 
+### Test-readiness status
+
+- **PROVEN IN SOFTWARE / BUILD TESTED:** modular RF block ABI, bounded queue,
+  C5 BitScrambler WBFM, configurable sample conditioner, two-buffer PARLIO
+  sink, branded PAL renderer, DevKitC and XIAO build profiles.
+- **PHYSICAL TEST PENDING:** RF sample validity/rate/gaps, conditioner
+  calibration, 75-ohm DAC levels and real monitor/VTX behavior.
+- **CONTINUOUS RF PRODUCER UNKNOWN:** the C5 RF frontend producer feeding the
+  prepared `c5vrx_rf_source_t` interface.
+
+> **Can the ESP32-C5 provide a sufficiently continuous, phase-bearing RF
+> stream for real-time WBFM demodulation?**
+
+See [`research/live-stream-architecture.md`](research/live-stream-architecture.md).
+
 Recommended first physical target:
 
 ```text
@@ -254,6 +272,9 @@ CAPTURE 16384
 CHAIN 32 16384
 WBFM HWTEST
 WBFM CAPTURE 16384
+NEARLIVE START
+NEARLIVE STOP
+PIPELINE STATS
 ```
 
 `CAPTURE` gets a real finite packed-I/Q block. `CHAIN` repeatedly retriggers the
@@ -263,6 +284,10 @@ whether finite captures are useful as a temporary near-live source.
 `WBFM HWTEST` runs synthetic packed I/Q through the physical C5 BitScrambler and
 compares its output with a CPU reference. `WBFM CAPTURE` bridges a real finite
 vendor RF dump directly into that hardware WBFM transform.
+
+`NEARLIVE START` exercises the complete bounded RF -> hardware WBFM ->
+conditioner -> PARLIO route using repeated finite dumps. It is explicitly an
+experimental finite/chained mode, not continuous capture.
 
 For the first board test, use the guided runner instead of entering these by
 hand. It captures the complete evidence in one JSON file:

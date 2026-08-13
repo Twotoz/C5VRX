@@ -1,5 +1,8 @@
 # Live RF -> analog CVBS pipeline
 
+The prepared producer ABI, bounded queue, conditioner, live PARLIO sink and
+diagnostics are now specified in `research/live-stream-architecture.md`.
+
 This document is the implementation boundary between the pieces C5VRX can
 already build/test in software and the one undocumented silicon path that still
 needs physical reverse engineering.
