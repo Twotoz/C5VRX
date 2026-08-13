@@ -23,7 +23,7 @@ The ESP32-C5 is cheap, tiny and contains a real **2.4 + 5 GHz Wi-Fi RF chain**. 
 
 > **Can we bypass enough of the Wi-Fi PHY to use that RF chain as a low-cost analog FPV receiver?**
 
-The target architecture is:
+The target architecture is now intentionally closer to a classic analog VRX than to a software video player:
 
 ```text
 5.8 GHz analog FPV VTX
@@ -35,14 +35,20 @@ The target architecture is:
       complex I/Q
           │
           ▼
-   software WBFM demod
+ hardware-assisted WBFM
           │
           ▼
- PAL / NTSC video baseband
+  sampled composite video
           │
-          ▼
- display / DVR / OSD
+     ┌────┴─────────────┐
+     ▼                  ▼
+PARLIO + DAC       PAL/NTSC decode
+     │                  │
+     ▼                  ▼
+ analog CVBS       RGB / USB / LCD
 ```
+
+The important shortcut is that **analog AV output does not require decoding PAL/NTSC into pixels**. WBFM demodulation already recovers the composite waveform, which can potentially be streamed straight to a DAC.
 
 ---
 
@@ -228,7 +234,46 @@ Then run the WBFM discriminator:
 python tools/wbfm_demod.py iq.i16 --dtype '<i2' --sample-rate 80000000 --output demod.f32
 ```
 
+Or immediately try to reconstruct the complete grayscale scanlines that fit inside the finite capture:
+
+```bash
+python tools/render_cvbs_lines.py iq.i16 --sample-rate 80000000 --output lines.pgm
+```
+
 The exact C5 sample rate still needs hardware verification; `80 MHz` is currently based on the recovered RF-test mode/ABI.
+
+---
+
+## Video output strategy
+
+The first live-video target is **direct composite AV**, not a framebuffer.
+
+```text
+continuous I/Q
+      ↓
+quantized / hardware-assisted FM discriminator
+      ↓
+filter + decimate
+      ↓
+~20 MS/s 8-bit CVBS samples
+      ↓
+PARLIO + GDMA
+      ↓
+resistor DAC + video buffer
+      ↓
+75-ohm composite AV output
+```
+
+C5VRX now contains two experiments for this direction:
+
+- `tools/bitlut_fm.py` models a **2 KiB BitScrambler LUT phase discriminator**, replacing per-sample trigonometry with a coarse hardware lookup.
+- `c5vrx_cvbs_out.c` can independently loop a **20 MS/s PAL-line-like test waveform** through an 8-bit PARLIO bus, so the digital-to-CVBS hardware can be validated before continuous RF capture exists.
+
+The PARLIO test is deliberately off by default and requires eight explicitly configured GPIOs plus a proper resistor DAC / output buffer. **Do not connect 3.3 V GPIOs directly to a 75-ohm video input.**
+
+See [`research/video-output.md`](research/video-output.md) and [`research/dsp-pipeline.md`](research/dsp-pipeline.md).
+
+For a digital LCD, C5VRX can continue past CVBS into sync detection, luma and later chroma decoding. The intended order is **analog CVBS first → grayscale digital video → color digital video**.
 
 ---
 
@@ -255,16 +300,21 @@ Experimental paths are deliberately **off by default**.
 │   ├── c5vrx_wifi5.c        # supported 5 GHz RF bootstrap
 │   ├── c5vrx_phy_hacks.c    # opt-in undocumented tuning hooks
 │   ├── c5vrx_adc_dump.c     # finite vendor I/Q capture experiment
+│   ├── c5vrx_cvbs_out.c     # 20 MS/s PARLIO composite-DAC test
 │   └── c5vrx_channels.c     # A/B/E/F/R frequency database
 ├── research/
 │   ├── adc-dump-format.md
+│   ├── dsp-pipeline.md
+│   ├── video-output.md
 │   ├── frequency-tuning.md
 │   ├── reverse-engineering.md
 │   └── roadmap.md
 ├── tools/
 │   ├── analyze_phy.py       # C5 libphy/librftest disassembly report
 │   ├── decode_adc_dump.py   # raw dump → signed I/Q
-│   ├── wbfm_demod.py        # offline FM discriminator
+│   ├── wbfm_demod.py        # exact offline FM discriminator
+│   ├── bitlut_fm.py         # BitScrambler LUT discriminator model
+│   ├── render_cvbs_lines.py # finite IQ → grayscale scanlines
 │   └── fpv_channel_report.py
 └── README.md
 ```
@@ -273,12 +323,14 @@ Experimental paths are deliberately **off by default**.
 
 ## What still has to be proven
 
-The project now has a plausible path from C5 RF hardware to finite complex samples, but the important hardware questions remain:
+The project now has a plausible path from C5 RF hardware to finite complex samples and a separate hardware path from digital samples to a composite-video DAC, but the important hardware questions remain:
 
 - Does the recovered dump capture the **live 5 GHz receive path** when using an analog VTX?
-- Is the effective sample rate / bandwidth sufficient for ~20 MHz analog FPV WBFM?
+- What is the actual effective sample rate / bandwidth of each RF-test capture mode?
 - Does `phy_set_freq(5806, 0)` actually retune the physical receiver?
 - Can finite dumps be chained, or can the producer feeding dump RAM be tapped continuously?
+- Can the BitScrambler phase/discriminator idea sustain the required real sample rate?
+- Can the PARLIO + resistor-DAC path produce clean, correctly scaled 75-ohm CVBS?
 - Can all of this run with low enough latency for actual FPV?
 
 Until those are measured, C5VRX remains a research project rather than a replacement module you should fly with.
