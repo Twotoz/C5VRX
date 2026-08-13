@@ -55,27 +55,29 @@ def detect_line_starts(cvbs: np.ndarray, fs: float, standard: str) -> np.ndarray
     sync_n = max(2, int(round(fs * 4.5e-6)))
     score = moving_mean(cvbs.astype(np.float64), sync_n)
 
-    # The deepest wide negative feature is a likely horizontal sync pulse.
-    first = int(np.argmin(score))
-    starts = [first]
+    # The moving-mean trough is centered inside the sync pulse. Track those
+    # centers while searching, then convert them back to approximate leading
+    # edges before applying PAL/NTSC active-video timing.
+    first_center = int(np.argmin(score))
+    centers = [first_center]
 
     # Search both directions around integer line periods. A +/-12% timing
     # window is intentionally generous because first real C5 rate calibration
     # may be imperfect.
     search = max(4, int(0.12 * line_n))
 
-    pos = first + line_n
+    pos = first_center + line_n
     while pos + search < score.size:
         lo = max(0, pos - search)
         hi = min(score.size, pos + search + 1)
         pick = lo + int(np.argmin(score[lo:hi]))
-        if pick <= starts[-1]:
+        if pick <= centers[-1]:
             break
-        starts.append(pick)
+        centers.append(pick)
         pos = pick + line_n
 
     prefix: list[int] = []
-    pos = first - line_n
+    pos = first_center - line_n
     while pos - search >= 0:
         lo = max(0, pos - search)
         hi = min(score.size, pos + search + 1)
@@ -83,14 +85,16 @@ def detect_line_starts(cvbs: np.ndarray, fs: float, standard: str) -> np.ndarray
         prefix.append(pick)
         pos = pick - line_n
 
-    starts = list(reversed(prefix)) + starts
+    centers = list(reversed(prefix)) + centers
     # De-duplicate any picks that collapsed into the same sync trough.
     dedup: list[int] = []
     min_sep = int(0.6 * line_n)
-    for s in starts:
+    for s in centers:
         if not dedup or s - dedup[-1] >= min_sep:
             dedup.append(s)
-    return np.asarray(dedup, dtype=np.int64)
+
+    starts = np.asarray(dedup, dtype=np.int64) - sync_n // 2
+    return starts
 
 
 def resample_row(x: np.ndarray, width: int) -> np.ndarray:
