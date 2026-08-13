@@ -63,7 +63,7 @@ For a module-based implementation, the aspirational core BOM is:
 passive decoupling / boot support
 6-bit video resistor network
 antenna connection
-AV视频 connector or pad
+AV connector or pad
 ```
 
 A bare-chip design additionally needs the normal crystal/RF/flash requirements
