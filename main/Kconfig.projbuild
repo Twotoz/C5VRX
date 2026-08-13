@@ -86,17 +86,29 @@ config C5VRX_ADC_DUMP_PRINT_RAW
         slow. Enable it for captures that will be decoded on a host PC.
 
 config C5VRX_EXPERIMENTAL_CVBS_PARLIO
-    bool "Enable experimental 8-bit PARLIO CVBS DAC test output"
+    bool "Enable experimental minimal PARLIO CVBS DAC test output"
     default n
     help
         EXPERIMENTAL OUTPUT-SIDE TEST ONLY. Adds the CVBS TEST / CVBS STOP USB
-        commands. CVBS TEST loops a 20 MS/s PAL-line-like waveform on eight
-        PARLIO GPIOs so the resistor-DAC + video-buffer concept can be tested
-        independently from the unresolved continuous RF capture path.
+        commands. CVBS TEST loops a 20 MS/s PAL-line-like waveform through
+        PARLIO. Only the configured number of low data bits need physical GPIOs,
+        allowing a tiny 3-6 resistor DAC experiment instead of an external video
+        DAC IC.
 
-        The GPIO bus is a digital DAC code. Never wire 3.3 V GPIOs directly to
-        a 75-ohm composite-video input; use a correctly designed resistor DAC,
-        attenuation and buffering stage.
+        A short-trace direct connection to a known 75-ohm terminated input can
+        be tested with only weighted resistors. A long RCA/coax output may still
+        need source matching / protection / buffering for signal integrity.
+
+config C5VRX_CVBS_DAC_BITS
+    int "Physical CVBS resistor-DAC bits"
+    range 2 8
+    default 4
+    depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
+    help
+        Number of physical GPIO/resistor bits used for the composite output.
+        PARLIO still transports one byte per sample; unused upper data GPIOs are
+        left disconnected. 2-bit is a coarse proof, 3-bit is the ultra-minimal
+        color experiment, 4-6 bits are better quality/BOM compromises.
 
 config C5VRX_CVBS_D0_GPIO
     int "CVBS DAC bit 0 GPIO"
