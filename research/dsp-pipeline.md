@@ -1,10 +1,7 @@
 # Analog FPV DSP pipeline
 
-Once C5VRX obtains phase-bearing receive samples, the most important design choice is **where to stop decoding**.
-
-For a classic analog AV output we do **not** need to decode PAL/NTSC into pixels. WBFM demodulation already recovers the original composite-video waveform, so the lowest-latency path is to stream that waveform straight into a DAC.
-
-## Two output paths
+Once C5VRX obtains phase-bearing receive samples, the mainline pipeline stops at
+**composite video**. It does not continue into RGB pixels.
 
 ```text
 5.8 GHz analog FPV RF
@@ -19,131 +16,188 @@ complex / phase-bearing I,Q
 FM discriminator
         |
         v
+filter / level normalize / decimate
+        |
+        v
 composite video samples (CVBS)
         |
-        +------------------------------+
-        |                              |
-        v                              v
-  ANALOG FAST PATH                DIGITAL PATH
- PARLIO + GDMA DAC             sync / luma / chroma
-        |                              |
-        v                              v
- 1 Vpp / 75 ohm CVBS              RGB / YUV pixels
-        |                              |
-        v                              v
- AV LCD / DVR / goggles           LCD / USB / DVR
+        v
+PARLIO + 6-bit passive DAC
+        |
+        v
+1 Vpp / 75-ohm analog video
 ```
 
-The analog path behaves much more like an RX5808: demodulate RF and reconstruct the composite voltage. Horizontal sync, vertical sync, luma and color stay encoded in CVBS and therefore do not consume CPU as a video-decoder workload.
+That is the core receiver. Anything beyond the CVBS connector belongs to the
+display/DVR, not to C5VRX.
 
-See [`video-output.md`](video-output.md) for the proposed hardware architecture.
+See [`analog-first-architecture.md`](analog-first-architecture.md) and
+[`video-output.md`](video-output.md).
 
-## FM discriminator
+## Reference FM discriminator
 
-For complex samples `x[n] = I[n] + jQ[n]`, the reference discriminator is:
+For complex samples `x[n] = I[n] + jQ[n]`:
 
 ```text
 y[n] = angle(x[n] * conj(x[n-1]))
 ```
 
-`y[n]` is the phase increment in radians/sample. Converting it to instantaneous frequency is:
+`y[n]` is phase increment in radians/sample. Instantaneous frequency is:
 
 ```text
 f[n] = y[n] * sample_rate / (2*pi)
 ```
 
-This is mathematically simple, but doing it tens of millions of times per second on the 240 MHz application CPU is still expensive. The CPU implementation therefore remains the **reference**, not the preferred final architecture.
+This is the mathematical reference and is ideal for host-side validation. It is
+not automatically the correct real-time C5 implementation because complex
+multiply plus atan2-like work at tens of millions of samples per second is
+expensive on the application CPU.
 
 ## Hardware-assisted discriminator experiment
 
-C5VRX now explores using the ESP32-C5 **BitScrambler** in the DMA path as a quantized phase discriminator.
+C5VRX investigates the ESP32-C5 BitScrambler as a quantized phase
+preprocessor/discriminator.
 
-The recovered RF-test format provides signed 10-bit I and Q. The first experiment reduces each to the five most-significant bits:
+The recovered RF-test format provides signed 10-bit I and Q. Quantize each to
+its five most-significant bits:
 
 ```text
 I10 -> I5 --+
-            +--> 1024-entry LUT --> phase8 + (-phase8)
+            +--> 1024-entry LUT
 Q10 -> Q5 --+
 ```
 
-A 1024-entry table with a 16-bit result occupies exactly 2048 bytes. Every result can therefore contain an 8-bit quantized phase plus its modular negative.
-
-A second stage then approximates:
-
-```text
-phase[n] - phase[n-1]
-```
-
-without complex multiplication or trigonometry. `tools/bitlut_fm.py` models two variants:
-
-- a higher-quality phase8/counter-subtraction path;
-- a lower-precision 2048-entry phase-difference LUT for a possible higher-throughput implementation.
-
-Run:
-
-```bash
-python tools/bitlut_fm.py --self-test
-```
-
-This test proves only the **numerical approximation**, not real BitScrambler throughput or a continuous C5 receive path.
-
-## Analog CVBS output target
-
-If continuous RF samples become available, the first live-video target is:
+A 1024-entry table with a 16-bit result occupies exactly 2048 bytes. Each entry
+can store:
 
 ```text
-wideband I/Q
-    |
-    v
-hardware-assisted WBFM
-    |
-    v
-filter / decimate
-    |
-    v
-~20 MS/s unsigned composite samples
-    |
-    v
-PARLIO + GDMA, 8-bit
-    |
-    v
-resistor DAC + 75-ohm video buffer
-    |
-    v
-CVBS OUT
+low byte:  phase8
+high byte: -phase8 modulo 256
 ```
 
-This deliberately avoids a framebuffer. Ideally C5VRX uses ping-pong line/stream buffers so latency is dominated by RF/DSP filtering rather than a complete video frame.
-
-## Digital path
-
-Direct digital video requires extra work because a display wants pixels rather than a composite voltage:
+The preferred live experiment is then:
 
 ```text
-CVBS
-  -> horizontal/vertical sync detector
-  -> active-line window
-  -> luma
-  -> optional chroma demodulation
-  -> YUV/RGB
-  -> LCD / host
+phase8[n] + (-phase8[n-1]) -> delta phase8
 ```
 
-The first digital milestone should therefore be **grayscale**. Luma plus sync is enough to prove actual images with a tiny line buffer. PAL/NTSC color decoding can follow later.
+using BitScrambler state, counters or output-history mechanisms rather than
+complex multiplication/trigonometry.
 
-For USB development, short IQ/CVBS captures and low-resolution decoded previews are much more realistic than raw wideband I/Q streaming.
+`tools/bitlut_fm.py` verifies the numerical approximation on synthetic
+video-like FM. It does **not** prove hardware throughput or continuous RF
+capture.
+
+## One-LUT hardware constraint
+
+The host tool also models a lower-precision phase-difference LUT. That table is
+another complete 2 KiB LUT.
+
+The ESP32-C5 BitScrambler has only one 2 KiB LUT, therefore this conceptual pair:
+
+```text
+2 KiB I/Q -> phase LUT
++
+2 KiB current/previous phase -> delta LUT
+```
+
+cannot be simultaneously resident in one live BitScrambler pipeline.
+
+The mainline implementation should therefore target:
+
+```text
+one resident I/Q -> phase LUT
++
+state/counter subtraction
+```
+
+unless later measurements prove that a time-multiplexed/reloaded alternative
+can meet the required rate.
+
+## CVBS reconstruction
+
+FM discriminator output is not ready to drive the DAC directly. The streaming
+path still needs measured signal conditioning such as:
+
+```text
+phase delta
+  -> remove discriminator/DC bias as required
+  -> reject out-of-band noise
+  -> apply receive/baseband de-emphasis if required by measured VTX path
+  -> scale/offset into composite-video voltage codes
+  -> decimate to the chosen CVBS sample rate
+```
+
+Do not hard-code an elaborate television decoder into this stage. The goal is
+to reproduce the analog waveform faithfully enough that a normal PAL/NTSC
+monitor locks to it.
+
+## Reference output representation
+
+The internal stream can remain 8-bit even though the physical DAC is six bits:
+
+```text
+CVBS sample byte
+      |
+      v
+scale / clamp
+      |
+      v
+0..63 physical output code
+      |
+      v
+PARLIO D0..D5
+```
+
+This keeps buffers simple and leaves room for calibration, filtering and OSD
+operations before the final six-bit quantization.
+
+## Buffering and latency
+
+Avoid frame buffers.
+
+At 20 MS/s a ~64 us PAL line is about:
+
+```text
+20,000,000 * 64e-6 = 1280 samples
+```
+
+A pair of byte-oriented line buffers is therefore only about 2.5 KiB. Streaming
+or short ping-pong buffers should keep latency dominated by RF/DSP filtering
+rather than an entire video frame.
+
+The exact sample rate is a hardware decision. Twenty MS/s is a development
+target, not a permanent requirement.
+
+## OSD remains sample-domain
+
+Simple status OSD can be inserted without decoding to pixels.
+
+After horizontal/vertical timing is known:
+
+```text
+CVBS samples
+  -> line/x timing
+  -> tiny character mask
+  -> replace selected samples with calibrated black/white levels
+  -> DAC
+```
+
+This keeps an external OSD chip and full RGB path out of the core design.
 
 ## Host-side validation
 
-`tools/wbfm_demod.py` implements the exact reference discriminator for interleaved IQ captures. It deliberately runs on a PC first so we can answer the most important question quickly: **does a C5 dump contain real analog-FPV phase information?**
+`tools/wbfm_demod.py` implements the exact reference discriminator for
+interleaved IQ captures. Use the host first to prove that a C5 dump contains
+real analog-FPV phase information.
 
-Run the synthetic test:
+Synthetic self-test:
 
 ```bash
 python tools/wbfm_demod.py --self-test
 ```
 
-For a future little-endian int16 IQ capture:
+Example capture:
 
 ```bash
 python tools/wbfm_demod.py capture.iq \
@@ -152,18 +206,28 @@ python tools/wbfm_demod.py capture.iq \
   --output demod.f32
 ```
 
-The output contains float32 instantaneous-frequency samples in Hz.
+The output is float32 instantaneous-frequency data.
 
-## What to look for in the first real capture
+## What to prove in the first real capture
 
-Before trying to render an image, validate progressively:
+Validate progressively:
 
 1. A known CW signal should produce a nearly constant discriminator output.
-2. A frequency-modulated test source should reproduce its modulation waveform.
-3. An analog FPV VTX with a static image should show repeatable horizontal-sync structure.
-4. Changing image brightness should measurably change the recovered composite waveform.
-5. Reconstruct a few grayscale scanlines from a finite capture.
-6. Only after continuous capture exists, connect the streaming discriminator to the CVBS DAC path.
-7. Decode PAL/NTSC to digital pixels only when a digital output actually needs it.
+2. A controlled FM source should reproduce its modulation waveform.
+3. An analog FPV VTX with a static image should show repeatable line-sync structure.
+4. Changing image brightness should change the recovered composite waveform.
+5. A finite capture should reconstruct recognizable grayscale scanline content.
+6. Measured chroma-region energy should be consistent with PAL/NTSC color content.
+7. Only after continuous capture exists should the streaming discriminator be connected to PARLIO CVBS output.
 
-This keeps RF reverse engineering, FM demodulation, analog output and full video decoding as separate problems.
+## Mainline non-goals
+
+Do not spend real-time C5 budget on these before live CVBS exists:
+
+- complete PAL/NTSC color decoding to pixels;
+- RGB/YUV conversion;
+- direct LCD rendering;
+- full-frame buffering;
+- UVC video encoding/transport.
+
+A normal analog display already solves those problems after the connector.

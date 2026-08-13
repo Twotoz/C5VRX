@@ -1,0 +1,42 @@
+#pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+#include "esp_err.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Transform packed C5 RF-test I/Q words to biased 6-bit phase deltas.
+ *
+ * Input words use the recovered format (Q10 in bits 0..9, I10 in bits 10..19).
+ * Four input words are consumed for each output byte. Output low six bits use
+ * bias code 32: approximately zero instantaneous frequency is code 32.
+ *
+ * This uses BitScrambler loopback as a hardware proof path. A final live
+ * receiver should keep a persistent hardware/DMA pipeline instead of creating
+ * a loopback object per block.
+ */
+esp_err_t c5vrx_wbfm_hw_transform(const uint32_t *packed_iq,
+                                   size_t input_words,
+                                   uint8_t *phase_delta,
+                                   size_t output_capacity,
+                                   size_t *output_written);
+
+/**
+ * Capture one finite vendor I/Q block, copy it to DMA-capable SRAM and run the
+ * hardware 4:1 WBFM transform. Intended for first physical RF validation.
+ */
+esp_err_t c5vrx_wbfm_hw_probe_dump(size_t sample_count);
+
+/**
+ * Run the C5 BitScrambler 4:1 WBFM discriminator against synthetic packed
+ * 10-bit I/Q in RAM and compare the hardware result with a CPU reference.
+ */
+esp_err_t c5vrx_wbfm_hw_self_test(void);
+
+#ifdef __cplusplus
+}
+#endif

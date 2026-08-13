@@ -1,32 +1,90 @@
 #include "c5vrx_cvbs_out.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "sdkconfig.h"
 #include "driver/parlio_tx.h"
+#include "esp_attr.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "c5vrx_cvbs";
 
 /*
- * First hardware-output experiment only.
+ * Analog-first output proof.
  *
- * PAL horizontal timing is about 64 us/line. At 20 MS/s that is exactly 1280
- * samples per repeated line. We generate a simple monochrome line containing
- * sync, back porch and grayscale bars. There is deliberately no vertical sync
- * yet; this waveform is for scope/DAC validation before joining the RF path.
+ * The C5 cannot afford a full 625-line byte framebuffer at 20 MS/s, so the
+ * test generator streams a PAL 625/50 interlaced raster through two small DMA
+ * chunks. PARLIO's loop-buffer switching keeps one chunk on the wire while a
+ * high-priority task rebuilds the retired chunk.
+ *
+ * The active picture is monochrome grayscale. Optional PAL-frequency swinging
+ * burst is present only as an output-bandwidth/PLL stress signal; there is no
+ * active chroma yet and this is not claimed as broadcast-compliance equipment.
  */
-#define C5VRX_CVBS_SAMPLE_RATE_HZ 20000000u
-#define C5VRX_CVBS_LINE_SAMPLES   1280u
-#define C5VRX_CVBS_SYNC_SAMPLES   94u   /* ~4.7 us */
-#define C5VRX_CVBS_BACK_SAMPLES   114u  /* ~5.7 us */
-#define C5VRX_CVBS_ACTIVE_SAMPLES 1040u /* ~52 us */
+#define C5VRX_CVBS_SAMPLE_RATE_HZ       20000000u
+#define C5VRX_CVBS_LINE_SAMPLES         1280u
+#define C5VRX_CVBS_HALF_LINE_SAMPLES    640u
+#define C5VRX_CVBS_FIELD_HALF_LINES     625u
+#define C5VRX_CVBS_FRAME_HALF_LINES     1250u
+
+#define C5VRX_CVBS_HSYNC_SAMPLES        94u   /* 4.70 us */
+#define C5VRX_CVBS_EQ_SAMPLES           47u   /* 2.35 us */
+#define C5VRX_CVBS_BROAD_SYNC_SAMPLES   546u  /* 27.30 us */
+#define C5VRX_CVBS_ACTIVE_START         210u  /* 10.50 us after line datum */
+#define C5VRX_CVBS_ACTIVE_END           1250u /* leaves 1.50 us front porch */
+#define C5VRX_CVBS_ACTIVE_SAMPLES       (C5VRX_CVBS_ACTIVE_END - C5VRX_CVBS_ACTIVE_START)
+
+#define C5VRX_CVBS_EQ_HALF_LINES        5u
+#define C5VRX_CVBS_BROAD_HALF_LINES     5u
+#define C5VRX_CVBS_NORMAL_START_HALF    15u
+/*
+ * Starting active video at local half-line 49 gives 576 active half-lines
+ * (288 full lines) per field while keeping the first active half-line aligned
+ * to the normal H-sync cadence that resumes after the post-equalizing pulses.
+ */
+#define C5VRX_CVBS_ACTIVE_START_HALF    49u
+
+/* 64 half-lines = 2.048 ms and 40,960 bytes at 20 MS/s. */
+#define C5VRX_CVBS_CHUNK_HALF_LINES     64u
+#define C5VRX_CVBS_CHUNK_SAMPLES        (C5VRX_CVBS_CHUNK_HALF_LINES * C5VRX_CVBS_HALF_LINE_SAMPLES)
+
+#define C5VRX_CVBS_STREAM_STACK         4096u
+#define C5VRX_CVBS_STREAM_PRIORITY      18u
+
+#define C5VRX_CVBS_RETIRED_BUF0         (1u << 0)
+#define C5VRX_CVBS_RETIRED_BUF1         (1u << 1)
+#define C5VRX_CVBS_STOP_NOTIFY          (1u << 31)
+
+#define C5VRX_PAL_BURST_START_SAMPLES   112u  /* 5.60 us after line datum */
+#define C5VRX_PAL_BURST_SAMPLES         45u   /* 2.25 us @ 20 MS/s */
+#define C5VRX_PAL_SUBCARRIER_HZ          4433618.75
+#define C5VRX_PAL_BURST_AMPLITUDE_MV    150.0
+#define C5VRX_PI                        3.14159265358979323846
 
 #if CONFIG_C5VRX_EXPERIMENTAL_CVBS_PARLIO
 
-static uint8_t s_line[C5VRX_CVBS_LINE_SAMPLES] __attribute__((aligned(64)));
+typedef struct {
+    TaskHandle_t task;
+    volatile bool stop_requested;
+} c5vrx_cvbs_stream_state_t;
+
+static uint8_t s_eq_half[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
+static uint8_t s_broad_half[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
+static uint8_t s_blank_first[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
+static uint8_t s_blank_second[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
+static uint8_t s_active_first[2][C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
+static uint8_t s_active_second[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
+
+static uint8_t s_chunk[2][C5VRX_CVBS_CHUNK_SAMPLES] __attribute__((aligned(64)));
+
 static parlio_tx_unit_handle_t s_tx;
+static c5vrx_cvbs_stream_state_t s_stream;
+static uint16_t s_next_half_line;
 static bool s_running;
 
 static uint8_t cvbs_code_from_mv(unsigned mv)
@@ -39,36 +97,138 @@ static uint8_t cvbs_code_from_mv(unsigned mv)
     return (uint8_t)((mv * max_code + 500u) / 1000u);
 }
 
-static void build_test_line(void)
+static uint8_t cvbs_code_from_mv_signed(double mv)
 {
-    /* Nominal terminated CVBS levels for the resistor-DAC experiment. */
-    const uint8_t sync_level = cvbs_code_from_mv(0);
-    const uint8_t blank_level = cvbs_code_from_mv(300);
-    const uint8_t black_level = cvbs_code_from_mv(320);
-    const uint8_t white_level = cvbs_code_from_mv(1000);
+    if (mv <= 0.0) {
+        return 0;
+    }
+    if (mv >= 1000.0) {
+        return cvbs_code_from_mv(1000);
+    }
+    return cvbs_code_from_mv((unsigned)(mv + 0.5));
+}
 
-    size_t p = 0;
-
-    for (; p < C5VRX_CVBS_SYNC_SAMPLES; ++p) {
-        s_line[p] = sync_level;
+static uint8_t grayscale_code(unsigned active_x)
+{
+    const unsigned black_mv = 320u;
+    const unsigned white_mv = 1000u;
+    unsigned bar = active_x / (C5VRX_CVBS_ACTIVE_SAMPLES / 8u);
+    if (bar > 7u) {
+        bar = 7u;
     }
 
-    const size_t back_end = C5VRX_CVBS_SYNC_SAMPLES + C5VRX_CVBS_BACK_SAMPLES;
-    for (; p < back_end; ++p) {
-        s_line[p] = blank_level;
+    /* White -> black makes clipping and pedestal errors easy to spot. */
+    const unsigned level = white_mv -
+        ((white_mv - black_mv) * bar + 3u) / 7u;
+    return cvbs_code_from_mv(level);
+}
+
+static void add_pal_burst(uint8_t *line_first, unsigned phase_index)
+{
+#if CONFIG_C5VRX_CVBS_TEST_COLOR_BURST
+    const double phase_step =
+        2.0 * C5VRX_PI * C5VRX_PAL_SUBCARRIER_HZ /
+        (double)C5VRX_CVBS_SAMPLE_RATE_HZ;
+
+    /*
+     * PAL-frequency swinging burst stress: alternate +135/-135 degrees. The
+     * active image remains monochrome, so this tests output bandwidth/locking
+     * rather than claiming complete PAL chroma generation.
+     */
+    const double phase0 = phase_index ? (-3.0 * C5VRX_PI / 4.0)
+                                      : ( 3.0 * C5VRX_PI / 4.0);
+
+    for (unsigned i = 0; i < C5VRX_PAL_BURST_SAMPLES; ++i) {
+        const unsigned p = C5VRX_PAL_BURST_START_SAMPLES + i;
+        const double mv = 300.0 +
+            C5VRX_PAL_BURST_AMPLITUDE_MV * sin(phase0 + phase_step * i);
+        line_first[p] = cvbs_code_from_mv_signed(mv);
+    }
+#else
+    (void)line_first;
+    (void)phase_index;
+#endif
+}
+
+static void build_templates(void)
+{
+    const uint8_t sync = cvbs_code_from_mv(0);
+    const uint8_t blank = cvbs_code_from_mv(300);
+
+    memset(s_eq_half, blank, sizeof(s_eq_half));
+    memset(s_eq_half, sync, C5VRX_CVBS_EQ_SAMPLES);
+
+    memset(s_broad_half, blank, sizeof(s_broad_half));
+    memset(s_broad_half, sync, C5VRX_CVBS_BROAD_SYNC_SAMPLES);
+
+    memset(s_blank_first, blank, sizeof(s_blank_first));
+    memset(s_blank_first, sync, C5VRX_CVBS_HSYNC_SAMPLES);
+    memset(s_blank_second, blank, sizeof(s_blank_second));
+
+    for (unsigned phase = 0; phase < 2; ++phase) {
+        memset(s_active_first[phase], blank, sizeof(s_active_first[phase]));
+        memset(s_active_first[phase], sync, C5VRX_CVBS_HSYNC_SAMPLES);
+        add_pal_burst(s_active_first[phase], phase);
+
+        for (unsigned p = C5VRX_CVBS_ACTIVE_START;
+             p < C5VRX_CVBS_HALF_LINE_SAMPLES; ++p) {
+            s_active_first[phase][p] =
+                grayscale_code(p - C5VRX_CVBS_ACTIVE_START);
+        }
     }
 
-    const size_t active_end = back_end + C5VRX_CVBS_ACTIVE_SAMPLES;
-    for (; p < active_end; ++p) {
-        const size_t x = p - back_end;
-        const unsigned bar = (unsigned)((x * 8u) / C5VRX_CVBS_ACTIVE_SAMPLES);
-        const unsigned clamped_bar = bar > 7u ? 7u : bar;
-        s_line[p] = (uint8_t)(black_level +
-                              ((unsigned)(white_level - black_level) * clamped_bar) / 7u);
+    memset(s_active_second, blank, sizeof(s_active_second));
+    const unsigned second_active_samples =
+        C5VRX_CVBS_ACTIVE_END - C5VRX_CVBS_HALF_LINE_SAMPLES;
+    for (unsigned p = 0; p < second_active_samples; ++p) {
+        const unsigned x =
+            (C5VRX_CVBS_HALF_LINE_SAMPLES - C5VRX_CVBS_ACTIVE_START) + p;
+        s_active_second[p] = grayscale_code(x);
+    }
+}
+
+static const uint8_t *template_for_half_line(uint16_t frame_half_line)
+{
+    const unsigned field_pos =
+        (unsigned)(frame_half_line % C5VRX_CVBS_FIELD_HALF_LINES);
+
+    if (field_pos < C5VRX_CVBS_EQ_HALF_LINES) {
+        return s_eq_half;
+    }
+    if (field_pos < C5VRX_CVBS_EQ_HALF_LINES + C5VRX_CVBS_BROAD_HALF_LINES) {
+        return s_broad_half;
+    }
+    if (field_pos < C5VRX_CVBS_NORMAL_START_HALF) {
+        return s_eq_half;
     }
 
-    for (; p < C5VRX_CVBS_LINE_SAMPLES; ++p) {
-        s_line[p] = blank_level;
+    const unsigned normal_offset = field_pos - C5VRX_CVBS_NORMAL_START_HALF;
+    const bool first_half = ((normal_offset & 1u) == 0u);
+    const bool active = (field_pos >= C5VRX_CVBS_ACTIVE_START_HALF);
+
+    if (!active) {
+        return first_half ? s_blank_first : s_blank_second;
+    }
+
+    if (!first_half) {
+        return s_active_second;
+    }
+
+    const unsigned line_index = normal_offset / 2u;
+    return s_active_first[line_index & 1u];
+}
+
+static void build_next_chunk(uint8_t *dst)
+{
+    for (unsigned i = 0; i < C5VRX_CVBS_CHUNK_HALF_LINES; ++i) {
+        const uint8_t *src = template_for_half_line(s_next_half_line);
+        memcpy(dst + i * C5VRX_CVBS_HALF_LINE_SAMPLES,
+               src,
+               C5VRX_CVBS_HALF_LINE_SAMPLES);
+        ++s_next_half_line;
+        if (s_next_half_line == C5VRX_CVBS_FRAME_HALF_LINES) {
+            s_next_half_line = 0;
+        }
     }
 }
 
@@ -108,26 +268,146 @@ static bool pins_valid(void)
     return true;
 }
 
+static esp_err_t queue_loop_buffer(uint8_t *buffer)
+{
+    const parlio_transmit_config_t tx_cfg = {
+        .idle_value = cvbs_code_from_mv(300),
+        .bitscrambler_program = NULL,
+        .flags = {
+            .queue_nonblocking = 0,
+            .loop_transmission = 1,
+        },
+    };
+
+    return parlio_tx_unit_transmit(
+        s_tx,
+        buffer,
+        C5VRX_CVBS_CHUNK_SAMPLES * 8u,
+        &tx_cfg);
+}
+
+static bool IRAM_ATTR on_buffer_switched(
+    parlio_tx_unit_handle_t tx_unit,
+    const parlio_tx_buffer_switched_event_data_t *edata,
+    void *user_ctx)
+{
+    (void)tx_unit;
+    c5vrx_cvbs_stream_state_t *state =
+        (c5vrx_cvbs_stream_state_t *)user_ctx;
+
+    if (!state || !state->task || !edata) {
+        return false;
+    }
+
+    uint32_t bit = 0;
+    if (edata->old_buffer_addr == s_chunk[0]) {
+        bit = C5VRX_CVBS_RETIRED_BUF0;
+    } else if (edata->old_buffer_addr == s_chunk[1]) {
+        bit = C5VRX_CVBS_RETIRED_BUF1;
+    } else {
+        return false;
+    }
+
+    BaseType_t high_task_wakeup = pdFALSE;
+    xTaskNotifyFromISR(
+        state->task,
+        bit,
+        eSetBits,
+        &high_task_wakeup);
+    return high_task_wakeup == pdTRUE;
+}
+
+static void stream_task(void *arg)
+{
+    (void)arg;
+
+    for (;;) {
+        uint32_t notification = 0;
+        (void)xTaskNotifyWait(
+            0,
+            UINT32_MAX,
+            &notification,
+            portMAX_DELAY);
+
+        if (s_stream.stop_requested ||
+            (notification & C5VRX_CVBS_STOP_NOTIFY)) {
+            break;
+        }
+
+        for (unsigned index = 0; index < 2; ++index) {
+            const uint32_t bit =
+                index == 0 ? C5VRX_CVBS_RETIRED_BUF0
+                           : C5VRX_CVBS_RETIRED_BUF1;
+            if (!(notification & bit)) {
+                continue;
+            }
+
+            build_next_chunk(s_chunk[index]);
+
+            if (s_stream.stop_requested) {
+                break;
+            }
+
+            const esp_err_t err = queue_loop_buffer(s_chunk[index]);
+            if (err != ESP_OK) {
+                if (!s_stream.stop_requested) {
+                    ESP_LOGE(TAG,
+                             "PAL stream buffer queue failed: %s",
+                             esp_err_to_name(err));
+                }
+                s_stream.stop_requested = true;
+                break;
+            }
+        }
+
+        if (s_stream.stop_requested) {
+            break;
+        }
+    }
+
+    s_stream.task = NULL;
+    vTaskDelete(NULL);
+}
+
+static void stop_stream_task(void)
+{
+    TaskHandle_t task = s_stream.task;
+    if (!task) {
+        return;
+    }
+
+    s_stream.stop_requested = true;
+    (void)xTaskNotify(task, C5VRX_CVBS_STOP_NOTIFY, eSetBits);
+
+    for (unsigned i = 0; i < 100 && s_stream.task; ++i) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+
+    if (s_stream.task) {
+        ESP_LOGW(TAG, "PAL stream task did not exit cleanly; deleting it");
+        vTaskDelete(s_stream.task);
+        s_stream.task = NULL;
+    }
+}
+
 esp_err_t c5vrx_cvbs_test_start(void)
 {
     if (s_running) {
         return ESP_ERR_INVALID_STATE;
     }
     if (!pins_valid()) {
-        ESP_LOGE(TAG, "CVBS PARLIO requires unique GPIOs D0..D%u for the selected %u-bit DAC",
+        ESP_LOGE(TAG,
+                 "CVBS PARLIO requires unique GPIOs D0..D%u for the selected %u-bit DAC",
                  (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS - 1u,
                  (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS);
         return ESP_ERR_INVALID_ARG;
     }
 
-    build_test_line();
+    build_templates();
+    s_next_half_line = 0;
+    build_next_chunk(s_chunk[0]);
+    build_next_chunk(s_chunk[1]);
 
-    /*
-     * Keep PARLIO at an 8-bit transport width so every byte in s_line is one
-     * video sample. Only D0..D(N-1) are physically routed; upper GPIOs may be
-     * -1. This lets a 3-bit resistor DAC use exactly three output pins without
-     * nibble/bit packing complexity.
-     */
     const parlio_tx_unit_config_t cfg = {
         .clk_src = PARLIO_CLK_SRC_DEFAULT,
         .clk_in_gpio_num = -1,
@@ -149,7 +429,7 @@ esp_err_t c5vrx_cvbs_test_start(void)
         .valid_start_delay = 0,
         .valid_stop_delay = 0,
         .trans_queue_depth = 2,
-        .max_transfer_size = sizeof(s_line),
+        .max_transfer_size = C5VRX_CVBS_CHUNK_SAMPLES,
         .dma_burst_size = 32,
         .shift_edge = PARLIO_SHIFT_EDGE_NEG,
         .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
@@ -162,27 +442,59 @@ esp_err_t c5vrx_cvbs_test_start(void)
         return err;
     }
 
-    err = parlio_tx_unit_enable(s_tx);
+    s_stream.stop_requested = false;
+    s_stream.task = NULL;
+    TaskHandle_t stream_handle = NULL;
+    if (xTaskCreate(
+            stream_task,
+            "c5vrx_pal",
+            C5VRX_CVBS_STREAM_STACK,
+            NULL,
+            C5VRX_CVBS_STREAM_PRIORITY,
+            &stream_handle) != pdPASS) {
+        parlio_del_tx_unit(s_tx);
+        s_tx = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+    s_stream.task = stream_handle;
+
+    const parlio_tx_event_callbacks_t callbacks = {
+        .on_trans_done = NULL,
+        .on_buffer_switched = on_buffer_switched,
+    };
+    err = parlio_tx_unit_register_event_callbacks(
+        s_tx,
+        &callbacks,
+        &s_stream);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "parlio_tx_unit_enable failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG,
+                 "parlio callback registration failed: %s",
+                 esp_err_to_name(err));
+        stop_stream_task();
         parlio_del_tx_unit(s_tx);
         s_tx = NULL;
         return err;
     }
 
-    const parlio_transmit_config_t tx_cfg = {
-        .idle_value = cvbs_code_from_mv(300),
-        .bitscrambler_program = NULL,
-        .flags = {
-            .queue_nonblocking = 0,
-            .loop_transmission = 1,
-        },
-    };
-
-    err = parlio_tx_unit_transmit(s_tx, s_line, sizeof(s_line) * 8u, &tx_cfg);
+    err = parlio_tx_unit_enable(s_tx);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "parlio_tx_unit_transmit failed: %s", esp_err_to_name(err));
-        parlio_tx_unit_disable(s_tx);
+        ESP_LOGE(TAG, "parlio_tx_unit_enable failed: %s", esp_err_to_name(err));
+        stop_stream_task();
+        parlio_del_tx_unit(s_tx);
+        s_tx = NULL;
+        return err;
+    }
+
+    err = queue_loop_buffer(s_chunk[0]);
+    if (err == ESP_OK) {
+        err = queue_loop_buffer(s_chunk[1]);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG,
+                 "initial PAL stream queue failed: %s",
+                 esp_err_to_name(err));
+        (void)parlio_tx_unit_disable(s_tx);
+        stop_stream_task();
         parlio_del_tx_unit(s_tx);
         s_tx = NULL;
         return err;
@@ -190,10 +502,17 @@ esp_err_t c5vrx_cvbs_test_start(void)
 
     s_running = true;
     ESP_LOGW(TAG,
-             "Experimental CVBS DAC pattern active: %u-bit physical DAC, 20 MS/s, 1280 samples/line, 64 us repeated line",
-             (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS);
+             "PAL 625/50 composite test active: %u-bit DAC, 20 MS/s, 2x%u-byte DMA chunks",
+             (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS,
+             (unsigned)C5VRX_CVBS_CHUNK_SAMPLES);
+#if CONFIG_C5VRX_CVBS_TEST_COLOR_BURST
     ESP_LOGW(TAG,
-             "Minimal mode expects weighted resistors into a known video load; long coax/source matching is a separate hardware problem");
+             "Test frame is monochrome; 4.43361875 MHz swinging burst is enabled only as an analog bandwidth/lock stress");
+#else
+    ESP_LOGW(TAG, "Test frame is monochrome with color burst disabled");
+#endif
+    ESP_LOGW(TAG,
+             "Use a correctly scaled resistor network into a known 75-ohm input; never connect raw 3.3 V GPIOs directly");
     return ESP_OK;
 }
 
@@ -203,14 +522,21 @@ esp_err_t c5vrx_cvbs_test_stop(void)
         return ESP_ERR_INVALID_STATE;
     }
 
+    s_running = false;
+    s_stream.stop_requested = true;
+
     esp_err_t first = parlio_tx_unit_disable(s_tx);
+    stop_stream_task();
+
     const esp_err_t del = parlio_del_tx_unit(s_tx);
     if (first == ESP_OK) {
         first = del;
     }
+
     s_tx = NULL;
-    s_running = false;
-    ESP_LOGI(TAG, "CVBS PARLIO test output stopped");
+    s_next_half_line = 0;
+    s_stream.stop_requested = false;
+    ESP_LOGI(TAG, "PAL 625/50 composite test output stopped");
     return first;
 }
 

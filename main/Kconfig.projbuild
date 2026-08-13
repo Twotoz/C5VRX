@@ -1,4 +1,4 @@
-menu "C5VRX research firmware"
+menu "C5VRX analog receiver research"
 
 choice C5VRX_RF_BACKEND
     prompt "RF bring-up backend"
@@ -86,29 +86,57 @@ config C5VRX_ADC_DUMP_PRINT_RAW
         slow. Enable it for captures that will be decoded on a host PC.
 
 config C5VRX_EXPERIMENTAL_CVBS_PARLIO
-    bool "Enable experimental minimal PARLIO CVBS DAC test output"
+    bool "Enable analog-first PARLIO CVBS resistor-DAC output"
     default n
     help
-        EXPERIMENTAL OUTPUT-SIDE TEST ONLY. Adds the CVBS TEST / CVBS STOP USB
-        commands. CVBS TEST loops a 20 MS/s PAL-line-like waveform through
-        PARLIO. Only the configured number of low data bits need physical GPIOs,
-        allowing a tiny 3-6 resistor DAC experiment instead of an external video
-        DAC IC.
+        EXPERIMENTAL OUTPUT-SIDE TEST. Adds the CVBS TEST / CVBS STOP USB
+        commands and the optional output-only boot mode.
 
-        A short-trace direct connection to a known 75-ohm terminated input can
-        be tested with only weighted resistors. A long RCA/coax output may still
-        need source matching / protection / buffering for signal integrity.
+        The generator streams a PAL 625/50 monochrome raster at 20 MS/s with
+        horizontal and vertical sync, grayscale bars and an optional
+        PAL-frequency burst. Two PARLIO/GDMA buffers are switched continuously
+        so a full-frame framebuffer is not required.
+
+        The reference architecture transports one byte per sample but uses six
+        physical low-order GPIO bits and a weighted resistor network into a
+        known 75-ohm terminated video input. No external DAC IC is required.
+
+        A short-trace passive output is the baseline. Long cables, ESD targets
+        or strict production video-drive requirements may justify an optional
+        buffer later, but a buffer is not assumed to be mandatory.
+
+config C5VRX_CVBS_OUTPUT_ONLY_TEST
+    bool "Boot directly into PAL CVBS output test (skip RF bring-up)"
+    default n
+    depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
+    help
+        Start the PAL output proof immediately after boot and skip Wi-Fi/RF
+        initialization. Use this for the dedicated DevKit resistor-DAC hardware
+        test so RF activity cannot interfere with output validation.
+
+config C5VRX_CVBS_TEST_COLOR_BURST
+    bool "Add PAL-frequency swinging burst to the monochrome test frame"
+    default y
+    depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
+    help
+        Add a 4.43361875 MHz alternating-phase burst during the back porch.
+        This is an analog bandwidth/lock stress signal only. The active picture
+        remains monochrome and C5VRX does not claim complete PAL color encoding.
 
 config C5VRX_CVBS_DAC_BITS
     int "Physical CVBS resistor-DAC bits"
     range 2 8
-    default 4
+    default 6
     depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
     help
-        Number of physical GPIO/resistor bits used for the composite output.
-        PARLIO still transports one byte per sample; unused upper data GPIOs are
-        left disconnected. 2-bit is a coarse proof, 3-bit is the ultra-minimal
-        color experiment, 4-6 bits are better quality/BOM compromises.
+        Number of physical GPIO/resistor bits used for composite output.
+        PARLIO still transports one byte per sample; unused upper GPIOs remain
+        disconnected.
+
+        Six bits are the analog-first reference target. This gives 64 output
+        codes while requiring only six GPIOs. Lower bit depths remain useful
+        for BOM/quality experiments; 7-8 bits should only be used if measured
+        video quality justifies the extra pins and passives.
 
 config C5VRX_CVBS_D0_GPIO
     int "CVBS DAC bit 0 GPIO"

@@ -23,6 +23,14 @@ typedef struct {
     uint32_t raw;
 } c5vrx_iq10_sample_t;
 
+typedef struct {
+    size_t blocks_completed;
+    size_t samples_per_block;
+    uint64_t total_samples;
+    uint32_t repeated_block_hashes;
+    uint64_t boundary_jump_power_sum;
+} c5vrx_adc_chain_stats_t;
+
 /** Decode the lower 20 bits of one C5 RF-test dump word as signed 10-bit I/Q. */
 c5vrx_iq10_sample_t c5vrx_adc_decode_word(uint32_t raw);
 
@@ -34,6 +42,18 @@ c5vrx_iq10_sample_t c5vrx_adc_decode_word(uint32_t raw);
  * software trigger, 80 MHz sample mode and 10-bit dump mode.
  */
 esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words);
+
+/**
+ * Re-trigger the finite vendor dump repeatedly and measure block hashes and
+ * I/Q discontinuity at block boundaries.
+ *
+ * This is a diagnostic for determining whether finite captures can be chained
+ * with sufficiently small gaps. It is deliberately NOT described as a
+ * continuous stream: every block still comes from a separate adctrig() call.
+ */
+esp_err_t c5vrx_adc_dump_capture_chained(size_t block_count,
+                                         size_t sample_count,
+                                         c5vrx_adc_chain_stats_t *stats);
 
 #ifdef __cplusplus
 }

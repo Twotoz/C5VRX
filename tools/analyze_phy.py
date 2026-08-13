@@ -3,8 +3,8 @@
 
 The script is deliberately read-only: it never patches vendor libraries. It uses
 Espressif's RISC-V binutils to extract symbol sizes, focused disassembly,
-relocation-based call relationships and caller context around the receive/dump/
-frequency functions that matter to C5VRX.
+relocation-based call relationships, caller context and literal/MMIO context
+around the receive/dump/frequency functions that matter to C5VRX.
 """
 
 from __future__ import annotations
@@ -61,6 +61,13 @@ TARGETS = [
     "phy_get_rx_pbus_freq",
 ]
 
+# RISC-V often materializes a 32-bit address as LUI(upper20) + ADDI/load/store.
+# Therefore match both complete addresses and the useful upper-immediate forms.
+LITERAL_PATTERNS = {
+    "finite dump RAM 0x40830000": re.compile(r"\b(?:0x)?40830000\b|\b40830\b", re.I),
+    "FE/RX MMIO 0x600a04xx": re.compile(r"\b(?:0x)?600a04[0-9a-f]{2}\b|\b600a0\b", re.I),
+}
+
 FUNC_HEADER = re.compile(r"^\s*[0-9a-fA-F]+\s+<([^>]+)>:\s*$")
 RELOC_CALL = re.compile(r"R_RISCV_(?:CALL|CALL_PLT|JAL)\s+([^\s+]+)")
 
@@ -95,8 +102,6 @@ def extract_functions(disassembly: str, symbols: list[str], tail_lines: int = 90
         chunk = [line]
         for nxt in lines[i + 1 : i + 1 + tail_lines]:
             hm = FUNC_HEADER.match(nxt)
-            # Keep local .L labels inside the function. Stop only when objdump
-            # reaches another real symbol/function.
             if hm and not is_local_label(hm.group(1)):
                 break
             chunk.append(nxt)
@@ -135,7 +140,6 @@ def call_graph(disassembly: str) -> tuple[dict[str, set[str]], dict[str, set[str
         m = FUNC_HEADER.match(line)
         if m:
             name = m.group(1)
-            # Do not let a local branch label replace the owning function.
             if not is_local_label(name):
                 current = name
             continue
@@ -169,6 +173,34 @@ def callsite_contexts(disassembly: str, targets: list[str], radius: int = 6) -> 
         hi = min(len(lines), i + radius + 1)
         snippet = [f"# caller: {current or '?'}"] + lines[lo:hi]
         contexts[target].append("\n".join(snippet))
+    return contexts
+
+
+def literal_contexts(disassembly: str, radius: int = 8) -> dict[str, list[str]]:
+    """Find code touching known dump-RAM/MMIO address materialization patterns."""
+    lines = disassembly.splitlines()
+    current = None
+    contexts: dict[str, list[str]] = defaultdict(list)
+    seen: dict[str, set[tuple[str | None, int]]] = defaultdict(set)
+
+    for i, line in enumerate(lines):
+        h = FUNC_HEADER.match(line)
+        if h and not is_local_label(h.group(1)):
+            current = h.group(1)
+
+        for label, pattern in LITERAL_PATTERNS.items():
+            if not pattern.search(line):
+                continue
+            # Adjacent instructions can contain the same LUI literal; collapse
+            # hits within a small window in the same owner function.
+            key = (current, i // 4)
+            if key in seen[label]:
+                continue
+            seen[label].add(key)
+            lo = max(0, i - radius)
+            hi = min(len(lines), i + radius + 1)
+            snippet = [f"# owner: {current or '?'}", f"# match: {line.strip()}"] + lines[lo:hi]
+            contexts[label].append("\n".join(snippet))
     return contexts
 
 
@@ -220,6 +252,7 @@ def main() -> int:
         dis = run([objdump, "-dr", "-C", str(lib)])
         callers, callees = call_graph(dis)
         contexts = callsite_contexts(dis, TARGETS)
+        literals = literal_contexts(dis)
         funcs = extract_functions(dis, TARGETS)
 
         report += ["### Relocation-based call graph", ""]
@@ -234,6 +267,21 @@ def main() -> int:
             if outbound:
                 report.append("Calls: " + ", ".join(f"`{x}`" for x in outbound))
             report.append("")
+
+        report += ["### Dump-RAM / FE-MMIO literal contexts", ""]
+        report += [
+            "These snippets are especially useful for tracing the producer behind the finite IQ dump.",
+            "RISC-V address materialization may show only the upper immediate, so both full and LUI forms are searched.",
+            "",
+        ]
+        for label in LITERAL_PATTERNS:
+            snippets = literals.get(label, [])
+            report += [f"#### {label}", ""]
+            if not snippets:
+                report += ["_No literal/materialization match found in this archive._", ""]
+                continue
+            for snippet in snippets[:32]:
+                report += ["```asm", snippet, "```", ""]
 
         report += ["### Call-site contexts", ""]
         for target in TARGETS:

@@ -12,6 +12,7 @@
 #include "c5vrx_adc_dump.h"
 #include "c5vrx_cvbs_out.h"
 #include "c5vrx_phy_hacks.h"
+#include "c5vrx_wbfm_hw.h"
 #include "c5vrx_wifi5.h"
 
 typedef struct {
@@ -127,7 +128,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -158,10 +159,38 @@ static void handle_line(char *line)
         return;
     }
 
+    if (strcasecmp(line, "WBFM HWTEST") == 0 ||
+        strcasecmp(line, "WBFM_HWTEST") == 0) {
+        printf("C5VRX_WBFM_HWTEST_BEGIN\n");
+        fflush(stdout);
+        const esp_err_t err = c5vrx_wbfm_hw_self_test();
+        printf("C5VRX_WBFM_HWTEST_DONE code=%d\n", (int)err);
+        fflush(stdout);
+        return;
+    }
+
+    unsigned wbfm_samples = 0;
+    if (sscanf(line, "WBFM CAPTURE %u", &wbfm_samples) == 1) {
+        if (wbfm_samples < 8 ||
+            wbfm_samples > C5VRX_ADC_DUMP_MAX_SAMPLES ||
+            (wbfm_samples & 3u) != 0u) {
+            printf("C5VRX_ERR invalid-wbfm-capture range=8-%u multiple=4\n",
+                   (unsigned)C5VRX_ADC_DUMP_MAX_SAMPLES);
+            fflush(stdout);
+            return;
+        }
+        printf("C5VRX_WBFM_CAPTURE_BEGIN iq_samples=%u\n", wbfm_samples);
+        fflush(stdout);
+        const esp_err_t err = c5vrx_wbfm_hw_probe_dump(wbfm_samples);
+        printf("C5VRX_WBFM_CAPTURE_DONE code=%d\n", (int)err);
+        fflush(stdout);
+        return;
+    }
+
     if (strcasecmp(line, "CVBS TEST") == 0 || strcasecmp(line, "CVBS_TEST") == 0) {
         const esp_err_t err = c5vrx_cvbs_test_start();
         if (err == ESP_OK) {
-            printf("C5VRX_OK cvbs-test=1 sample_rate=20000000 line_samples=1280\n");
+            printf("C5VRX_OK cvbs-test=1 standard=PAL625 fields_hz=50 frames_hz=25 sample_rate=20000000\n");
         } else {
             printf("C5VRX_ERR cvbs-test code=%d\n", (int)err);
         }
@@ -209,6 +238,33 @@ static void handle_line(char *line)
         return;
     }
 
+    unsigned chain_blocks = 0;
+    unsigned chain_samples = 0;
+    if (sscanf(line, "CHAIN %u %u", &chain_blocks, &chain_samples) == 2) {
+        if (chain_blocks < 2 || chain_blocks > 1024 ||
+            chain_samples < 1 || chain_samples > C5VRX_ADC_DUMP_MAX_SAMPLES) {
+            printf("C5VRX_ERR invalid-chain blocks=2-1024 samples=1-%u\n",
+                   (unsigned)C5VRX_ADC_DUMP_MAX_SAMPLES);
+            fflush(stdout);
+            return;
+        }
+        c5vrx_adc_chain_stats_t stats = {0};
+        printf("C5VRX_CHAIN_BEGIN blocks=%u samples=%u\n", chain_blocks, chain_samples);
+        fflush(stdout);
+        const esp_err_t err = c5vrx_adc_dump_capture_chained(
+            chain_blocks,
+            chain_samples,
+            &stats);
+        printf("C5VRX_CHAIN_DONE code=%d blocks=%u total=%llu repeated_hashes=%u boundary_jump_power=%llu\n",
+               (int)err,
+               (unsigned)stats.blocks_completed,
+               (unsigned long long)stats.total_samples,
+               (unsigned)stats.repeated_block_hashes,
+               (unsigned long long)stats.boundary_jump_power_sum);
+        fflush(stdout);
+        return;
+    }
+
     unsigned samples = 0;
     if (sscanf(line, "CAPTURE %u", &samples) == 1) {
         if (samples < 256 || samples > C5VRX_ADC_DUMP_MAX_SAMPLES) {
@@ -234,7 +290,7 @@ static void console_task(void *arg)
     (void)arg;
     char line[128];
 
-    printf("C5VRX_READY protocol=2\n");
+    printf("C5VRX_READY protocol=4\n");
     print_help();
 
     for (;;) {
