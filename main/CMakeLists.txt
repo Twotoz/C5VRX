@@ -7,6 +7,7 @@ idf_component_register(
         "c5vrx_adc_dump.c"
         "c5vrx_channels.c"
         "c5vrx_control.c"
+        "c5vrx_cvbs_out.c"
     INCLUDE_DIRS "."
-    REQUIRES nvs_flash esp_phy esp_wifi esp_event esp_netif
+    REQUIRES nvs_flash esp_phy esp_wifi esp_event esp_netif esp_driver_parlio
 )
