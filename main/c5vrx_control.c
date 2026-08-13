@@ -161,7 +161,7 @@ static void handle_line(char *line)
     if (strcasecmp(line, "CVBS TEST") == 0 || strcasecmp(line, "CVBS_TEST") == 0) {
         const esp_err_t err = c5vrx_cvbs_test_start();
         if (err == ESP_OK) {
-            printf("C5VRX_OK cvbs-test=1 sample_rate=20000000 line_samples=1280\n");
+            printf("C5VRX_OK cvbs-test=1 standard=PAL625 fields_hz=50 frames_hz=25 sample_rate=20000000\n");
         } else {
             printf("C5VRX_ERR cvbs-test code=%d\n", (int)err);
         }
