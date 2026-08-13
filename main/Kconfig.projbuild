@@ -86,22 +86,42 @@ config C5VRX_ADC_DUMP_PRINT_RAW
         slow. Enable it for captures that will be decoded on a host PC.
 
 config C5VRX_EXPERIMENTAL_CVBS_PARLIO
-    bool "Enable analog-first PARLIO CVBS resistor-DAC test output"
+    bool "Enable analog-first PARLIO CVBS resistor-DAC output"
     default n
     help
         EXPERIMENTAL OUTPUT-SIDE TEST. Adds the CVBS TEST / CVBS STOP USB
-        commands. CVBS TEST loops a 20 MS/s PAL-line-like waveform through
-        PARLIO so the analog output half can be validated independently from
-        the RF receive path.
+        commands and the optional output-only boot mode.
+
+        The generator streams a PAL 625/50 monochrome raster at 20 MS/s with
+        horizontal and vertical sync, grayscale bars and an optional
+        PAL-frequency burst. Two PARLIO/GDMA buffers are switched continuously
+        so a full-frame framebuffer is not required.
 
         The reference architecture transports one byte per sample but uses six
         physical low-order GPIO bits and a weighted resistor network into a
-        known 75-ohm terminated video input. No external DAC IC is required for
-        this minimum-hardware experiment.
+        known 75-ohm terminated video input. No external DAC IC is required.
 
         A short-trace passive output is the baseline. Long cables, ESD targets
         or strict production video-drive requirements may justify an optional
         buffer later, but a buffer is not assumed to be mandatory.
+
+config C5VRX_CVBS_OUTPUT_ONLY_TEST
+    bool "Boot directly into PAL CVBS output test (skip RF bring-up)"
+    default n
+    depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
+    help
+        Start the PAL output proof immediately after boot and skip Wi-Fi/RF
+        initialization. Use this for the dedicated DevKit resistor-DAC hardware
+        test so RF activity cannot interfere with output validation.
+
+config C5VRX_CVBS_TEST_COLOR_BURST
+    bool "Add PAL-frequency swinging burst to the monochrome test frame"
+    default y
+    depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
+    help
+        Add a 4.43361875 MHz alternating-phase burst during the back porch.
+        This is an analog bandwidth/lock stress signal only. The active picture
+        remains monochrome and C5VRX does not claim complete PAL color encoding.
 
 config C5VRX_CVBS_DAC_BITS
     int "Physical CVBS resistor-DAC bits"
