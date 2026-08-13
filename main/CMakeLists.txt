@@ -8,6 +8,16 @@ idf_component_register(
         "c5vrx_channels.c"
         "c5vrx_control.c"
         "c5vrx_cvbs_out.c"
+        "c5vrx_wbfm_hw.c"
     INCLUDE_DIRS "."
-    REQUIRES nvs_flash esp_phy esp_wifi esp_event esp_netif esp_driver_parlio
+    REQUIRES
+        nvs_flash
+        esp_phy
+        esp_wifi
+        esp_event
+        esp_netif
+        esp_driver_parlio
+        esp_driver_bitscrambler
 )
+
+target_bitscrambler_add_src("c5vrx_wbfm_4to1.bsasm")
