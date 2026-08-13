@@ -2,9 +2,29 @@
 
 ## Goal
 
-A practical, open RX5808-class alternative based on inexpensive, currently obtainable ESP32-C5 hardware.
+A practical, open RX5808-class alternative based on inexpensive, currently
+obtainable ESP32-C5 hardware, with **normal analog CVBS as the primary product
+output**.
 
-## Milestones
+The core architecture should stay streaming and minimal:
+
+```text
+5.8 GHz RF -> C5 receive path -> WBFM -> sampled CVBS -> passive DAC -> AV out
+```
+
+Digital LCD/USB video is deliberately outside the critical path.
+
+## Architecture decisions
+
+- [x] Make analog CVBS the primary output target.
+- [x] Avoid full PAL/NTSC-to-pixel decoding in the core receiver.
+- [x] Use PARLIO + GDMA as the reference sampled-video output engine.
+- [x] Select a 6-bit passive DAC as the reference quality/BOM compromise.
+- [x] Define a nominal ~75-ohm / ~1 Vpp passive output network for hardware validation.
+- [x] Keep external video DAC, video decoder and OSD ICs out of the minimum design.
+- [x] Treat one-GPIO/noise-shaped video as optional research, not the mainline architecture.
+
+## RF / reverse-engineering milestones
 
 - [x] Identify exact FPV/Wi-Fi frequency overlap for Band A1-A7.
 - [x] Add complete classic A/B/E/F/R FPV channel database.
@@ -24,27 +44,79 @@ A practical, open RX5808-class alternative based on inexpensive, currently obtai
 - [x] Build ESP32-C5 firmware successfully in CI with ESP-IDF v6.0.2.
 - [ ] Run the finite ADC/IQ capture on a real ESP32-C5.
 - [ ] Verify exact-center A4 / 5805 MHz capture with VTX off/on.
-- [ ] Confirm the finite capture contains the analog FPV WBFM carrier/modulation rather than an internal loopback-only signal.
-- [ ] Feed the first real C5 I/Q dump into `tools/wbfm_demod.py` and recover analog-video baseband structure.
+- [ ] Confirm the finite capture contains live analog-FPV WBFM rather than an internal loopback-only signal.
+- [ ] Feed the first real C5 I/Q dump into `tools/wbfm_demod.py` and recover composite baseband structure.
 - [ ] Verify PAL/NTSC sync timing in the demodulated finite capture.
 - [ ] Verify R5 / 5806 MHz reception from the ch161 HT40 bootstrap path.
 - [ ] Validate `phy_set_freq(5806, 0)` shifts the real receiver center by +1 MHz.
 - [ ] Characterize capture sample rate and effective receive bandwidth on hardware.
 - [ ] Determine whether finite dump captures can be chained with acceptably small gaps.
 - [ ] Trace the producer feeding dump RAM for continuous/ring-buffer capture.
-- [ ] Implement real-time WBFM discriminator.
-- [ ] Recover monochrome PAL/NTSC video.
-- [ ] Recover color.
-- [ ] Feed a display pipeline with measured end-to-end latency.
-- [ ] Add RSSI / autoscan / runtime channel selection.
-- [ ] Design a minimal C5VRX PCB if the silicon path proves viable.
+
+## Analog output milestones
+
+- [x] Add an independent PARLIO CVBS line-waveform experiment.
+- [ ] Generate a complete stable PAL test frame from C5 memory/PARLIO.
+- [ ] Generate a complete stable NTSC test frame.
+- [ ] Build the reference 6-bit passive DAC on a real C5 board.
+- [ ] Scope source impedance, sync level, blank level, black level and white level into a 75-ohm load.
+- [ ] Compare 4-, 5- and 6-bit output on real analog monitors/goggles.
+- [ ] Verify color-subcarrier reproduction and visible color stability.
+- [ ] Decide whether a production output buffer is actually required or only optional for long cables/ESD robustness.
+
+## Real-time DSP milestones
+
+- [x] Model a 2 KiB I/Q-to-phase BitScrambler LUT.
+- [x] Identify the one-LUT hardware constraint: the phase LUT and a second full 2 KiB delta LUT cannot be resident simultaneously.
+- [ ] Implement the single resident phase-LUT on C5 BitScrambler hardware.
+- [ ] Implement phase[n] - phase[n-1] using available state/counter/output-history mechanisms.
+- [ ] Benchmark sustainable sample throughput on physical C5 hardware.
+- [ ] Filter/decimate the discriminator output into a stable CVBS sample stream.
+- [ ] Join continuous RF samples -> WBFM -> CVBS -> PARLIO.
+- [ ] Measure end-to-end RF-to-CVBS latency.
+
+## Receiver features after live video
+
+- [ ] Add signal-power/RSSI metric.
+- [ ] Add channel scanning and analog-video detection.
+- [ ] Add runtime channel selection.
+- [ ] Add simple sample-domain monochrome OSD only if useful.
+- [ ] Design a minimal analog-first C5VRX PCB.
+
+## Explicitly deferred
+
+These are not blockers for C5VRX and should not consume mainline effort before
+live analog CVBS works:
+
+- full PAL/NTSC-to-RGB decoding;
+- direct LCD rendering;
+- full-frame buffering;
+- UVC/high-speed USB video;
+- HDMI/digital video output;
+- companion-processor display pipelines.
 
 ## Current proof boundary
 
-Static analysis is now strong enough to say the ESP32-C5 vendor RF-test code contains a finite complex I/Q dump path. It is **not** yet strong enough to say C5VRX receives analog FPV on hardware. The next decisive milestone is a physical A4/5805 capture showing source-dependent complex samples and recoverable WBFM baseband.
+Static analysis is strong enough to say the ESP32-C5 vendor RF-test code
+contains a finite complex I/Q dump path. It is **not** yet strong enough to say
+C5VRX receives analog FPV on hardware.
+
+The next decisive RF milestone is a physical A4/5805 capture showing
+source-dependent complex samples and recoverable WBFM baseband.
+
+The next decisive output milestone is independent: prove a correctly scaled,
+stable six-bit CVBS signal from PARLIO into a real 75-ohm video load.
+
+These two halves can be developed independently and joined only after both are
+measured.
 
 ## Kill criteria
 
-The direct C5-only path should be abandoned if the recovered finite I/Q dump cannot be driven from the live 5 GHz receive path, if its effective bandwidth is too narrow for analog FPV, or if there is no practical route from finite vendor RAM to continuous/chained phase-bearing samples.
+Abandon the direct C5-only RF path if the recovered sample mechanism cannot be
+driven from the live 5 GHz receive path, if usable bandwidth is too narrow for
+analog FPV, or if no practical continuous/chained phase-bearing stream can be
+recovered.
 
-Fallback architecture remains: use the C5 as a 5 GHz synthesizer/LO with a tiny external mixer/IF detector. That still avoids obsolete RX5808 silicon but is a separate hardware path.
+Fallback architecture remains using the C5 as a 5 GHz synthesizer/LO with a
+tiny external mixer/IF detector. Even in that fallback, the output side should
+remain analog-first: demodulated CVBS -> passive/low-component video output.
