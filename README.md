@@ -57,8 +57,8 @@ See [`research/analog-first-architecture.md`](research/analog-first-architecture
 
 ## Output proof you can build before RF works
 
-The output half now has its own reproducible hardware test. The firmware can boot
-in an **output-only PAL mode** that skips RF/Wi-Fi and continuously streams a
+The output half has its own reproducible hardware test. The firmware can boot in
+an **output-only PAL mode** that skips RF/Wi-Fi and continuously streams a
 625/50 monochrome test raster through PARLIO/GDMA into a six-bit passive DAC.
 
 ```text
@@ -83,6 +83,38 @@ A host-side golden model in [`tools/pal_cvbs_reference.py`](tools/pal_cvbs_refer
 checks line/field timing, vertical sync, active-line count and DMA chunk wrap.
 [`tools/minimal_cvbs_dac.py`](tools/minimal_cvbs_dac.py) separately validates the
 ideal source-matched resistor network.
+
+---
+
+## Standalone receiver hardware target
+
+The first custom receiver PCB should use **ESP32-C5-WROOM-1U-N4** rather than a
+bare C5. That keeps the first board focused on proving the receiver instead of
+simultaneously debugging a custom 5.8 GHz RF/crystal/flash implementation.
+
+The recommended standalone architecture is:
+
+```text
+USB-C 5 V
+   |
+3.3 V LDO
+   |
+ESP32-C5-WROOM-1U-N4 <--- external 5.8 GHz antenna
+   |
+6-bit passive CVBS DAC
+   |
+AV视频 / RCA OUT
+```
+
+Complete BOM:
+
+- [`hardware/analog-vrx-bom.md`](hardware/analog-vrx-bom.md) — design notes,
+  wiring and functional-minimum versus standalone product BOM;
+- [`hardware/analog-vrx-bom.csv`](hardware/analog-vrx-bom.csv) — machine-readable
+  BOM for PCB/CAD work.
+
+The functional minimum can be one active C5 module in the signal path plus the
+video ladder and normal power/reset passives.
 
 ---
 
@@ -145,13 +177,13 @@ size: 0x10000 bytes = 64 KiB
 max:  16,384 complex samples
 ```
 
-The decisive RF problem is no longer whether interesting low-level sample
-machinery exists. It is whether the live 5 GHz receiver can feed it with enough
-bandwidth and whether the producer can be converted from a finite debug dump
-into a continuous/chained stream.
+The decisive RF problem is whether the live 5 GHz receiver can feed it with
+enough bandwidth and whether the producer can be converted from a finite debug
+dump into a continuous/chained stream.
 
-See [`research/adc-dump-format.md`](research/adc-dump-format.md) and
-[`research/reverse-engineering.md`](research/reverse-engineering.md).
+See [`research/adc-dump-format.md`](research/adc-dump-format.md),
+[`research/reverse-engineering.md`](research/reverse-engineering.md) and
+[`research/live-rx-pipeline.md`](research/live-rx-pipeline.md).
 
 ---
 
@@ -204,28 +236,35 @@ See [`research/frequency-tuning.md`](research/frequency-tuning.md).
 
 ---
 
-## Finite I/Q capture experiment
+## Finite I/Q and live-pipeline diagnostics
 
-Recommended first physical test:
+Recommended first physical target:
 
 ```text
 VTX:       A4 / 5805 MHz
 C5 center: Wi-Fi ch161 / 5805 MHz
 BW:        40 MHz
 retune:    OFF
-ADC dump:  ON
-raw print: ON
 ```
 
-Capture at least:
+The USB protocol now exposes four useful proof commands:
 
 ```text
-1. VTX off
-2. VTX on, static image
-3. VTX on, changing black/white image
+CAPTURE 16384
+CHAIN 32 16384
+WBFM HWTEST
+WBFM CAPTURE 16384
 ```
 
-Decode a serial dump on the host:
+`CAPTURE` gets a real finite packed-I/Q block. `CHAIN` repeatedly retriggers the
+vendor dump and reports hashes plus boundary discontinuity, explicitly testing
+whether finite captures are useful as a temporary near-live source.
+
+`WBFM HWTEST` runs synthetic packed I/Q through the physical C5 BitScrambler and
+compares its output with a CPU reference. `WBFM CAPTURE` bridges a real finite
+vendor RF dump directly into that hardware WBFM transform.
+
+Decode serial captures on the host with:
 
 ```bash
 python tools/decode_adc_dump.py capture.log --csv iq.csv --iq-bin iq.i16
@@ -239,16 +278,18 @@ The exact C5 capture sample rate still needs hardware verification.
 
 ## Analog CVBS output strategy
 
-The mainline output target is now:
+The mainline output target is:
 
 ```text
 continuous phase-bearing RF samples
           ↓
-quantized / hardware-assisted FM discriminator
+4:1 hardware-assisted FM discriminator
           ↓
-filter + decimate
+~20 MS/s biased phase-delta stream
           ↓
-~20 MS/s unsigned CVBS sample stream
+filter / polarity / level calibration
+          ↓
+~20 MS/s CVBS sample stream
           ↓
 PARLIO + GDMA
           ↓
@@ -259,21 +300,19 @@ PARLIO + GDMA
 AV / goggles / DVR
 ```
 
-PARLIO can transport an 8-bit byte per sample while only six low data GPIOs are
-physically connected. Six bits are the current reference compromise: enough
-voltage resolution for composite sync/blank/black/white separation while still
-requiring only a handful of passives.
+PARLIO transports an 8-bit byte per sample while only six low data GPIOs are
+physically connected. Six bits are the current reference compromise: useful
+analog level resolution while still requiring only a handful of passives.
 
-The existing `c5vrx_cvbs_out.c` experiment now streams a full 625/50 interlaced
-monochrome raster using two small DMA buffers rather than allocating a complete
-framebuffer.
+The existing `c5vrx_cvbs_out.c` experiment streams a full 625/50 interlaced
+monochrome raster using two small DMA buffers rather than a complete framebuffer.
 
 **Never connect raw 3.3 V GPIO outputs directly to a 75-ohm video input.**
-Use the resistor network or another correctly scaled output stage.
+Use the documented resistor network or another correctly scaled output stage.
 
 ---
 
-## Real-time WBFM direction
+## Hardware-assisted WBFM direction
 
 A normal discriminator is:
 
@@ -282,29 +321,32 @@ y[n] = angle(x[n] * conj(x[n-1]))
 ```
 
 Doing that tens of millions of times per second on the CPU is unattractive.
-C5VRX therefore explores the C5 BitScrambler as a DMA-side coarse phase
-converter.
-
-The realistic mainline experiment is one resident 2 KiB LUT:
+C5VRX now has a C5 BitScrambler proof architecture instead.
 
 ```text
-I10,Q10
-   ↓ keep 5+5 MSBs
-1024 x 16-bit LUT
-   ↓
-phase8 + (-phase8)
-   ↓
-state/counter subtraction
-   ↓
-delta phase
+packed I10/Q10 words
+       ↓
+keep every fourth sample
+       ↓
+I5/Q5 -> 1024 x 16-bit phase LUT
+       ↓
+BitScrambler counter state
+       ↓
+32 + phase[n] - phase[n-1] modulo 64
+       ↓
+one output byte per four IQ words
 ```
 
-A second full 2 KiB phase-difference LUT cannot be resident at the same time on
-a device with only one 2 KiB BitScrambler LUT, so the two-LUT fast model remains
-a host-side research comparison rather than the preferred live architecture.
+If the recovered RF mode is physically confirmed as 80 MS/s, this architecture
+maps naturally to the existing 20 MS/s CVBS path. The LUT occupies exactly the
+C5's 2 KiB LUT RAM and is loaded once at initialization.
 
-See [`research/dsp-pipeline.md`](research/dsp-pipeline.md) and
-[`tools/bitlut_fm.py`](tools/bitlut_fm.py).
+The assembly program is `main/c5vrx_wbfm_4to1.bsasm`; the C hardware bridge is
+`main/c5vrx_wbfm_hw.c`; and `tools/validate_wbfm_bsasm.py` checks the numerical
+architecture on the host.
+
+This still does **not** claim continuous RF capture. The undocumented producer
+feeding the finite vendor dump remains the final silicon-level blocker.
 
 ---
 
@@ -343,14 +385,20 @@ Experimental hardware paths remain off by default in the normal firmware.
 
 ```text
 .
+├── hardware/
+│   ├── analog-vrx-bom.md
+│   └── analog-vrx-bom.csv
 ├── main/
 │   ├── c5vrx_wifi5.c
 │   ├── c5vrx_phy_hacks.c
 │   ├── c5vrx_adc_dump.c
+│   ├── c5vrx_wbfm_hw.c
+│   ├── c5vrx_wbfm_4to1.bsasm
 │   ├── c5vrx_cvbs_out.c
 │   └── c5vrx_channels.c
 ├── research/
 │   ├── analog-first-architecture.md
+│   ├── live-rx-pipeline.md
 │   ├── devkit-cvbs-proof.md
 │   ├── adc-dump-format.md
 │   ├── dsp-pipeline.md
@@ -363,6 +411,7 @@ Experimental hardware paths remain off by default in the normal firmware.
 │   ├── decode_adc_dump.py
 │   ├── wbfm_demod.py
 │   ├── bitlut_fm.py
+│   ├── validate_wbfm_bsasm.py
 │   ├── pal_cvbs_reference.py
 │   ├── minimal_cvbs_dac.py
 │   ├── render_cvbs_lines.py
@@ -379,7 +428,8 @@ Experimental hardware paths remain off by default in the normal firmware.
 - What is the actual effective sample rate and receive bandwidth?
 - Does arbitrary frequency tuning move the real receiver center?
 - Can the finite dump producer be tapped continuously or chained with tiny gaps?
-- Can one BitScrambler phase-LUT/state discriminator sustain the needed rate?
+- Does `WBFM HWTEST` give zero mismatches on actual C5 silicon and what sustained throughput is available?
+- What polarity/gain/filtering maps real WBFM output to calibrated CVBS voltage codes?
 - Does the streamed six-bit PARLIO resistor-DAC produce clean, correctly scaled PAL CVBS on physical hardware?
 - Can the joined RF → WBFM → CVBS path keep latency low enough for FPV?
 
