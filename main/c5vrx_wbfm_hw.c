@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "driver/bitscrambler.h"
 #include "driver/bitscrambler_loopback.h"
