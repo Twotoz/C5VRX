@@ -23,32 +23,39 @@ static const char *TAG = "c5vrx_cvbs";
 #define C5VRX_CVBS_BACK_SAMPLES   114u  /* ~5.7 us */
 #define C5VRX_CVBS_ACTIVE_SAMPLES 1040u /* ~52 us */
 
-/*
- * These are normalized DAC codes, NOT direct 75-ohm voltage levels.
- * The external resistor ladder / buffer sets the final 0..~1 V composite range.
- */
-#define C5VRX_CVBS_SYNC_LEVEL  0u
-#define C5VRX_CVBS_BLANK_LEVEL 74u
-#define C5VRX_CVBS_BLACK_LEVEL 78u
-#define C5VRX_CVBS_WHITE_LEVEL 235u
-
 #if CONFIG_C5VRX_EXPERIMENTAL_CVBS_PARLIO
 
 static uint8_t s_line[C5VRX_CVBS_LINE_SAMPLES] __attribute__((aligned(64)));
 static parlio_tx_unit_handle_t s_tx;
 static bool s_running;
 
+static uint8_t cvbs_code_from_mv(unsigned mv)
+{
+    const unsigned bits = CONFIG_C5VRX_CVBS_DAC_BITS;
+    const unsigned max_code = (1u << bits) - 1u;
+    if (mv >= 1000u) {
+        return (uint8_t)max_code;
+    }
+    return (uint8_t)((mv * max_code + 500u) / 1000u);
+}
+
 static void build_test_line(void)
 {
+    /* Nominal terminated CVBS levels for the resistor-DAC experiment. */
+    const uint8_t sync_level = cvbs_code_from_mv(0);
+    const uint8_t blank_level = cvbs_code_from_mv(300);
+    const uint8_t black_level = cvbs_code_from_mv(320);
+    const uint8_t white_level = cvbs_code_from_mv(1000);
+
     size_t p = 0;
 
     for (; p < C5VRX_CVBS_SYNC_SAMPLES; ++p) {
-        s_line[p] = C5VRX_CVBS_SYNC_LEVEL;
+        s_line[p] = sync_level;
     }
 
     const size_t back_end = C5VRX_CVBS_SYNC_SAMPLES + C5VRX_CVBS_BACK_SAMPLES;
     for (; p < back_end; ++p) {
-        s_line[p] = C5VRX_CVBS_BLANK_LEVEL;
+        s_line[p] = blank_level;
     }
 
     const size_t active_end = back_end + C5VRX_CVBS_ACTIVE_SAMPLES;
@@ -56,18 +63,18 @@ static void build_test_line(void)
         const size_t x = p - back_end;
         const unsigned bar = (unsigned)((x * 8u) / C5VRX_CVBS_ACTIVE_SAMPLES);
         const unsigned clamped_bar = bar > 7u ? 7u : bar;
-        s_line[p] = (uint8_t)(C5VRX_CVBS_BLACK_LEVEL +
-                              ((C5VRX_CVBS_WHITE_LEVEL - C5VRX_CVBS_BLACK_LEVEL) * clamped_bar) / 7u);
+        s_line[p] = (uint8_t)(black_level +
+                              ((unsigned)(white_level - black_level) * clamped_bar) / 7u);
     }
 
     for (; p < C5VRX_CVBS_LINE_SAMPLES; ++p) {
-        s_line[p] = C5VRX_CVBS_BLANK_LEVEL;
+        s_line[p] = blank_level;
     }
 }
 
-static bool pins_valid(void)
+static unsigned configured_pins(int pins[8])
 {
-    const int pins[8] = {
+    const int all[8] = {
         CONFIG_C5VRX_CVBS_D0_GPIO,
         CONFIG_C5VRX_CVBS_D1_GPIO,
         CONFIG_C5VRX_CVBS_D2_GPIO,
@@ -78,10 +85,21 @@ static bool pins_valid(void)
         CONFIG_C5VRX_CVBS_D7_GPIO,
     };
     for (unsigned i = 0; i < 8; ++i) {
+        pins[i] = all[i];
+    }
+    return (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS;
+}
+
+static bool pins_valid(void)
+{
+    int pins[8];
+    const unsigned required = configured_pins(pins);
+
+    for (unsigned i = 0; i < required; ++i) {
         if (pins[i] < 0) {
             return false;
         }
-        for (unsigned j = i + 1; j < 8; ++j) {
+        for (unsigned j = i + 1; j < required; ++j) {
             if (pins[i] == pins[j]) {
                 return false;
             }
@@ -96,12 +114,20 @@ esp_err_t c5vrx_cvbs_test_start(void)
         return ESP_ERR_INVALID_STATE;
     }
     if (!pins_valid()) {
-        ESP_LOGE(TAG, "CVBS PARLIO requires eight unique data GPIOs in menuconfig");
+        ESP_LOGE(TAG, "CVBS PARLIO requires unique GPIOs D0..D%u for the selected %u-bit DAC",
+                 (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS - 1u,
+                 (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS);
         return ESP_ERR_INVALID_ARG;
     }
 
     build_test_line();
 
+    /*
+     * Keep PARLIO at an 8-bit transport width so every byte in s_line is one
+     * video sample. Only D0..D(N-1) are physically routed; upper GPIOs may be
+     * -1. This lets a 3-bit resistor DAC use exactly three output pins without
+     * nibble/bit packing complexity.
+     */
     const parlio_tx_unit_config_t cfg = {
         .clk_src = PARLIO_CLK_SRC_DEFAULT,
         .clk_in_gpio_num = -1,
@@ -145,7 +171,7 @@ esp_err_t c5vrx_cvbs_test_start(void)
     }
 
     const parlio_transmit_config_t tx_cfg = {
-        .idle_value = C5VRX_CVBS_BLANK_LEVEL,
+        .idle_value = cvbs_code_from_mv(300),
         .bitscrambler_program = NULL,
         .flags = {
             .queue_nonblocking = 0,
@@ -164,9 +190,10 @@ esp_err_t c5vrx_cvbs_test_start(void)
 
     s_running = true;
     ESP_LOGW(TAG,
-             "Experimental CVBS DAC pattern active: 20 MS/s, 1280 samples/line, 64 us repeated line");
+             "Experimental CVBS DAC pattern active: %u-bit physical DAC, 20 MS/s, 1280 samples/line, 64 us repeated line",
+             (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS);
     ESP_LOGW(TAG,
-             "GPIO bus is an 8-bit DAC code only; use a resistor ladder + buffer/attenuator before any 75-ohm video input");
+             "Minimal mode expects weighted resistors into a known video load; long coax/source matching is a separate hardware problem");
     return ESP_OK;
 }
 
