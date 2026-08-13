@@ -2,11 +2,11 @@
 
 ## Immediate RF gate
 
-Run the single-arm `RING PROBE` experiment described in
-[`continuous-rf-verdict.md`](continuous-rf-verdict.md). Do not implement or
-advertise a live source unless moving-pointer, RF coherence, cadence and drain
-margin are measured. A pass permits a guarded-ring-reader prototype; a failure
-keeps the existing finite/chained source strictly diagnostic.
+Run `RF DEEP PROBE` first with the VTX off and then with A4/5805 MHz on. It
+subsumes rate-argument, source-mode, tuning-persistence, ring, finite-IQ and
+finite-WBFM diagnostics. Use `PHASE PROBE <field>` only with a coherent tone.
+Do not advertise a live source unless moving-pointer, RF coherence, cadence
+and drain margin are measured.
 
 ## Goal
 
@@ -50,6 +50,9 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [x] Recover the C5 dump RAM: 0x40830000, 64 KiB, up to 16384 complex samples.
 - [x] Recover the 9-argument `adctrig` call shape and software-trigger mode from C5 + historical Espressif tooling.
 - [x] Add opt-in finite ADC/IQ capture firmware and host decoder.
+- [x] Prove the historical rate-field write is overwritten before capture enable.
+- [x] Add a hash-pinned, default-off configure/start/status/stop producer for modes 0/11/12.
+- [x] Add rate, source-mode, phase-continuity and first-board deep probes.
 - [x] Add repeated finite-capture continuity/hash diagnostic (`CHAIN`).
 - [x] Add offline WBFM discriminator + synthetic DSP self-test.
 - [x] Build ESP32-C5 firmware successfully in CI with ESP-IDF v6.0.2.

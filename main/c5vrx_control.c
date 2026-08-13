@@ -17,6 +17,9 @@
 #include "c5vrx_cvbs_live_out.h"
 #include "sdkconfig.h"
 #include "c5vrx_wifi5.h"
+#include "c5vrx_rf_dump_producer.h"
+#include "esp_app_desc.h"
+#include "esp_idf_version.h"
 
 typedef struct {
     c5vrx_band_t band;
@@ -138,8 +141,60 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,RATE_PROBE_ALL,PHASE_PROBE_<0-7>,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
+}
+
+static void print_tuning_snapshot(const char *stage)
+{
+    c5vrx_fpv_channel_t target = {0};
+    c5vrx_wifi5_status_t wifi = {0};
+    const bool target_ok = c5vrx_get_fpv_channel(s_state.band, s_state.channel, &target);
+    const esp_err_t wifi_err = c5vrx_wifi5_get_status(&wifi);
+    printf("C5VRX_TUNING stage=%s requested_mhz=%u public_readback_valid=%u public_channel=%u bandwidth_mhz=%u direct_retune_requested=%u direct_pll_readback_available=0 proxy=PUBLIC_WIFI_CHANNEL\n",
+           stage, target_ok ? (unsigned)target.mhz : 0u,
+           wifi_err == ESP_OK ? 1u : 0u,
+           wifi_err == ESP_OK ? (unsigned)wifi.active_primary_channel : 0u,
+           s_state.ht40 ? 40u : 20u,
+           s_state.direct_tune_enabled ? 1u : 0u);
+    fflush(stdout);
+}
+
+static esp_err_t run_deep_probe(void)
+{
+    const esp_app_desc_t *app = esp_app_get_description();
+    printf("C5VRX_RF_DEEP_PROBE_BEGIN firmware=%s version=%s idf=%s expected_rftest_sha256=%s producer_enabled=%u warning=NO_INDEFINITE_CAPTURE\n",
+           app->project_name, app->version, esp_get_idf_version(),
+           C5VRX_RF_DUMP_LIB_SHA256,
+           c5vrx_rf_dump_producer_available() ? 1u : 0u);
+    print_tuning_snapshot("before");
+    esp_err_t result = c5vrx_adc_rate_probe_all();
+    print_tuning_snapshot("after_rate_probe");
+    const esp_err_t mode_err = c5vrx_adc_dump_mode_probe();
+    printf("C5VRX_RF_DEEP_PROBE_STAGE stage=mode_probe code=%d classification=%s\n",
+           (int)mode_err, mode_err == ESP_ERR_NOT_SUPPORTED ?
+           "DISABLED_FAIL_CLOSED" : "MEASUREMENT_RECORDED");
+    print_tuning_snapshot("after_mode_probe");
+    c5vrx_adc_ring_probe_stats_t ring = {0};
+    const esp_err_t ring_err = c5vrx_adc_dump_ring_probe(&ring);
+    printf("C5VRX_RF_DEEP_PROBE_STAGE stage=ring_probe code=%d pointer_changes=%u content_changes=%u classification=PHYSICAL_INTERPRETATION_REQUIRED\n",
+           (int)ring_err, (unsigned)ring.pointer_changes,
+           (unsigned)ring.content_changes);
+    print_tuning_snapshot("after_ring_probe");
+    const esp_err_t finite_err = c5vrx_adc_dump_capture(1024u, false);
+    printf("C5VRX_RF_DEEP_PROBE_STAGE stage=finite_iq code=%d classification=IQ10_SANITY_ONLY\n",
+           (int)finite_err);
+    const esp_err_t wbfm_err = c5vrx_wbfm_hw_probe_dump(1024u);
+    printf("C5VRX_RF_DEEP_PROBE_STAGE stage=finite_wbfm code=%d classification=FINITE_CAPTURE_SANITY_ONLY\n",
+           (int)wbfm_err);
+    print_tuning_snapshot("after_teardown");
+    if (result == ESP_OK && ring_err != ESP_OK) result = ring_err;
+    if (result == ESP_OK && finite_err != ESP_OK) result = finite_err;
+    if (result == ESP_OK && wbfm_err != ESP_OK) result = wbfm_err;
+    printf("C5VRX_RF_DEEP_PROBE_DONE code=%d mode_probe_code=%d next=COMPARE_VTX_OFF_AND_A4_5805_LOGS\n",
+           (int)result, (int)mode_err);
+    fflush(stdout);
+    return result;
 }
 
 static void handle_line(char *line)
@@ -166,6 +221,37 @@ static void handle_line(char *line)
     }
     if (strcasecmp(line, "STATUS") == 0) {
         print_status();
+        return;
+    }
+    if (strcasecmp(line, "RATE PROBE ALL") == 0 ||
+        strcasecmp(line, "RATE_PROBE_ALL") == 0) {
+        printf("C5VRX_RATE_PROBE_BEGIN fields=8 method=UNMODIFIED_VENDOR_ARMS no_forced_register_values=1\n");
+        fflush(stdout);
+        const esp_err_t err = c5vrx_adc_rate_probe_all();
+        printf("C5VRX_RATE_PROBE_DONE code=%d\n", (int)err);
+        fflush(stdout);
+        return;
+    }
+    unsigned phase_field = 0;
+    if (sscanf(line, "PHASE PROBE %u", &phase_field) == 1 ||
+        sscanf(line, "PHASE_PROBE_%u", &phase_field) == 1) {
+        const esp_err_t err = c5vrx_adc_phase_probe(phase_field);
+        printf("C5VRX_PHASE_PROBE_DONE field=%u code=%d\n", phase_field, (int)err);
+        fflush(stdout);
+        return;
+    }
+    if (strcasecmp(line, "DUMP MODE PROBE") == 0 ||
+        strcasecmp(line, "DUMP_MODE_PROBE") == 0) {
+        const esp_err_t err = c5vrx_adc_dump_mode_probe();
+        printf("C5VRX_DUMP_MODE_PROBE_DONE code=%d classification=%s\n",
+               (int)err, err == ESP_ERR_NOT_SUPPORTED ?
+               "DISABLED_FAIL_CLOSED" : "PHYSICAL_INTERPRETATION_REQUIRED");
+        fflush(stdout);
+        return;
+    }
+    if (strcasecmp(line, "RF DEEP PROBE") == 0 ||
+        strcasecmp(line, "RF_DEEP_PROBE") == 0) {
+        (void)run_deep_probe();
         return;
     }
     if (strcasecmp(line, "PIPELINE STATS") == 0 ||
@@ -364,7 +450,7 @@ static void console_task(void *arg)
     (void)arg;
     char line[128];
 
-    printf("C5VRX_READY protocol=4\n");
+    printf("C5VRX_READY protocol=5\n");
     print_help();
 
     for (;;) {

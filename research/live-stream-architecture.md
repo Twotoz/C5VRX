@@ -40,6 +40,10 @@ Key unresolved question:
 > Can the ESP32-C5 provide a sufficiently continuous, phase-bearing RF stream
 > for real-time WBFM demodulation?
 
+`RF DEEP PROBE` is now the first-board gate. The optional non-blocking producer
+is hash-pinned, disabled by default and limited to vendor-derived modes 0/11/12.
+It is diagnostic infrastructure, not a promoted continuous source.
+
 `NEARLIVE START` repeatedly uses the recovered finite vendor dump. Every block
 is flagged discontinuous and logs identify the mode as
 `FINITE_CHAINED_NOT_CONTINUOUS`. It is an experiment, never evidence of a true

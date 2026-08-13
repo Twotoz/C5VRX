@@ -133,3 +133,9 @@ The unresolved question remains:
 
 > Can the ESP32-C5 provide a sufficiently continuous, phase-bearing RF stream
 > for real-time WBFM demodulation?
+
+Final producer pass: the historical `sample_80m` write is overwritten by the
+later overlapping mode selector before capture enable. Eight distinct active
+rates are therefore not established statically. Firmware now measures the
+unchanged vendor argument paths and fails closed rather than forcing that
+field. The next milestone is physical `RF DEEP PROBE` measurement.

@@ -46,7 +46,7 @@ RX-start=3, RX-end=4, TX-start=5, TX-end=6 and RX-error=7.
 | --- | --- | --- |
 | Capture enable | `0x600a9004[31]`; set to start, cleared on teardown | Proven |
 | Circular/wrap enable | No separately written circular-enable bit was found. The engine exposes wrap status and uses fixed ring RAM; circular behavior still requires a live test. | Negative static result |
-| Rate selector/divider (`sample_80m`) | `0x600a9008[23:21] = (argument >> 1) & 7` | Proven |
+| Historical rate write (`sample_80m`) | `0x600a9008[23:21] = (argument >> 1) & 7`, then overwritten by the later mode write to `[24:17]` before enable | Proven transient write; physical rate meaning rejected |
 | Sample format selector | Trigger/mode setup writes `0x600a9008[24:17]`; `set_dump_mode` separately selects FE/BB data at `0x600a08cc` and `0x600a70b8`. Exact format names per selector remain unproven. | Field proven, semantics partial |
 | Buffer length | `0x600a9004[16:0] = smp_num_aft_trig + 1` | Proven |
 | Buffer start/end | Fixed start `0x40830000`, reported size `0x10000` bytes, hence exclusive end `0x40840000` | Proven |
@@ -58,7 +58,7 @@ RX-start=3, RX-end=4, TX-start=5, TX-end=6 and RX-error=7.
 | Lower-rate I/Q/baseband | Eight selector encodings are accepted by hardware writes, but their physical rates are not named in C5 code. Modes 11 and 12 change `0x600a9018`, showing additional dump pipelines, not yet a proven lower-rate phase-bearing stream. | Candidate, not proven |
 | Indefinite capture | The hardware is enabled before the polling loop and only software later clears bit 31. No hardware auto-disable is visible. Skipping teardown can therefore leave it armed in principle, but indefinite wrap behavior and RF/clock ownership require a physical test. | Strong static evidence, not yet a safety guarantee |
 
-### `sample_80m` exactly
+### `sample_80m` exactly: transient, not an active rate selection
 
 The implementation computes:
 
@@ -68,7 +68,7 @@ REG(0x600a9008) = (REG(0x600a9008) & ~0x00e00000)
                     | ((rate_field << 21) & 0x00e00000);
 ```
 
-Consequently all configurations actually emitted by vendor code are:
+Consequently the eight transient writes are:
 
 | Argument values | `0x600a9008[23:21]` | Register contribution |
 | ---: | ---: | ---: |
@@ -88,23 +88,32 @@ hardware register. The historic parameter name and Python default cannot be
 used to label field 0 as 80 MS/s. Measuring pointer slope for fields 0..7 is
 the safe way to identify possible 20/40 MS/s modes.
 
+However, the next mode-dispatch branch clears or overwrites the encompassing
+`0x600a9008[24:17]` field before `0x600a9004[31]` is set. Thus the eight values
+do **not** survive to an enabled ordinary capture. Static evidence does not
+support calling this a divider, source-clock selector, full-rate selector, or
+powers-of-two progression. `RATE PROBE ALL` passes each even historical
+argument through the unchanged vendor function and reports the final field;
+it never forces the transient bits after configuration. The machine-readable
+table is [`rf-dump-rate-fields.json`](rf-dump-rate-fields.json).
+
 ### Trigger/mode jump table
 
 The second argument indexes 13 vendor-observed branches:
 
 | Mode | Changes derived from branch |
 | ---: | --- |
-| 0 | Sets `0x600a9004[19]`; clears it again immediately in common setup; programs selector `0x00800000` in `0x600a9008[24:17]` |
-| 1 | Selector `0x01600000` |
-| 2 | Selector `0x00200000` |
-| 3 | Selector `0x00200000` |
-| 4 | Selector `0x00400000` |
-| 5 | Selector `0x00600000` |
-| 6 | Sets `0x600a9004[17]`; selector `0x00800000` |
-| 7 | Programs `0x600a4e38[8:0]` from `trig_case`; selector `0x00a00000` |
+| 0 | Clears `0x600a20b4[0]`; ORs selector `0x01e00000` into `0x600a9008` |
+| 1 | Clears `0x600a20b4[0]`; selector `0x00000000` |
+| 2 | Clears `0x600a20b4[0]`; selector `0x00000000` |
+| 3 | Clears `0x600a20b4[0]`; selector `0x00000000` |
+| 4 | Clears `0x600a20b4[0]`; selector `0x00020000` |
+| 5 | Clears `0x600a20b4[0]`; selector `0x00040000` |
+| 6 | Sets `0x600a9004[17]`, clears `0x600a20b4[0]`; selector `0x00080000` |
+| 7 | Programs `0x600a4e38[8:0]` from `trig_case`; selector `0x000a0000` |
 | 8, 9, 10 | Selector is `(mode << 17) & 0x001e0000` |
-| 11 | Selector `0x01600000`; alternate constants in `0x600a9018` |
-| 12 | Enables alternate path at `0x600a20b4[0]`, changes `0x600a20ac[31:29]`, selector `0x01200000`, and alternate `0x600a9018` constants |
+| 11 | Selector `0x00160000`; alternate constants in `0x600a9018` |
+| 12 | Enables alternate path at `0x600a20b4[0]`, changes `0x600a20ac[31:29]`, clears `0x600a9c04[21]`, selector `0x00120000`, and alternate `0x600a9018` constants |
 
 The table records exact writes, not guessed human-readable names beyond the
 historical 0..7 enumeration.
@@ -115,10 +124,11 @@ historical 0..7 enumeration.
 configuration, the write setting `0x600a9004[31]` is start, the loop beginning
 at `0x2d2` is observe/wait, and offset `0x334` begins stop/restore.
 
-The safe implementation strategy is therefore not a hand-written list of
-magic writes. Extract those four basic-block ranges from this exact blob into
-auditable wrappers, preserving every read-modify-write and every source-specific
-helper call:
+The source reconstruction in `main/c5vrx_rf_dump_producer.c` implements the
+fully observed automatic-gain subset for modes 0, 11 and 12. It preserves the
+vendor RMW masks, mode-specific setup and teardown call. It refuses all other
+modes, is disabled by default, requires ESP-IDF v6.0.2 and makes CMake fail if
+the archive SHA-256 differs. It does not call internal instruction addresses.
 
 ```text
 rf_dump_configure(args): adctrig 0x000..0x1c0, excluding start
@@ -153,11 +163,22 @@ main reason rates must be measured rather than assigned from the old name.
 
 ## Next experiment before making RING PROBE primary
 
-Use the ordinary vendor arm to measure pointer slope for argument pairs
-`0/1`, `2/3`, ... `14/15`, aborting on out-of-ring pointers or unexpected
-register deltas. Record samples under a coherent RF tone and test phase
-continuity across pointer wrap. Only configurations whose exact register delta
-matches the table above should be exercised. Then test the split sequence with
-the original teardown block retained. If none of the eight fields yields a
-sustainable 20--40 MS/s phase-bearing stream, the lagged ring reader becomes
-the main remaining path.
+Run `RF DEEP PROBE` with the VTX off and again with A4/5805 MHz on. It executes
+unchanged vendor arms for all eight historical arguments, compares modes
+0/11/12 when the hash-pinned producer is enabled, records tuning proxies, runs
+the ring probe and finite IQ/WBFM sanity checks. `PHASE PROBE <field>` is a
+separate coherent-tone test. The next milestone is physical RF measurement,
+not another broad static survey.
+
+Build the opt-in image only against the audited tree:
+
+```sh
+idf.py -B build-rf-deep-probe \
+  -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.rf_deep_probe" \
+  set-target esp32c5 build
+```
+
+Tune A4 as usual and issue `RF DEEP PROBE` once with the VTX off, save the
+complete log, then repeat after enabling the 5805 MHz VTX. Run
+`PHASE PROBE 0` separately with a coherent unmodulated tone; the deep probe
+does not infer phase continuity from random noise or video modulation.

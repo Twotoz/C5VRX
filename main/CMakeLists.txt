@@ -5,6 +5,7 @@ idf_component_register(
         "c5vrx_wifi5.c"
         "c5vrx_phy_hacks.c"
         "c5vrx_adc_dump.c"
+        "c5vrx_rf_dump_producer.c"
         "c5vrx_channels.c"
         "c5vrx_control.c"
         "c5vrx_cvbs_out.c"
@@ -22,6 +23,18 @@ idf_component_register(
         esp_driver_parlio
         esp_driver_bitscrambler
         esp_timer
+        esp_app_format
 )
 
 target_bitscrambler_add_src("c5vrx_wbfm_4to1.bsasm")
+
+if(CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER)
+    set(C5VRX_AUDITED_RFTEST "${IDF_PATH}/components/esp_phy/lib/esp32c5/librftest.a")
+    if(NOT EXISTS "${C5VRX_AUDITED_RFTEST}")
+        message(FATAL_ERROR "Experimental RF dump producer requires ESP32-C5 librftest.a")
+    endif()
+    file(SHA256 "${C5VRX_AUDITED_RFTEST}" C5VRX_RFTEST_SHA256)
+    if(NOT C5VRX_RFTEST_SHA256 STREQUAL "0f9680b41612762d854accf2334412e3e01b206a3ec290bbbb232842fdaec7ba")
+        message(FATAL_ERROR "Experimental RF dump producer refused unreviewed librftest.a SHA-256 ${C5VRX_RFTEST_SHA256}")
+    endif()
+endif()
