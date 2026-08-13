@@ -1,5 +1,10 @@
 # Prepared live RF streaming architecture
 
+> Investigation update: no application-usable continuous producer has been
+> proven. See [`continuous-rf-verdict.md`](continuous-rf-verdict.md). The
+> `RING_PROBE` command is a one-arm pre-trigger experiment, not a producer and
+> not repeated finite capture.
+
 ## Status
 
 **PROVEN IN SOFTWARE / BUILD TESTED**

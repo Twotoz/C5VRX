@@ -31,6 +31,18 @@ typedef struct {
     uint64_t boundary_jump_power_sum;
 } c5vrx_adc_chain_stats_t;
 
+typedef struct {
+    uint32_t observations;
+    uint32_t pointer_changes;
+    uint32_t content_changes;
+    uint32_t minimum_pointer;
+    uint32_t maximum_pointer;
+    uint32_t final_status;
+    uint64_t active_time_us;
+    bool completion_bit_seen;
+    bool reached_vendor_timeout;
+} c5vrx_adc_ring_probe_stats_t;
+
 /** Decode the lower 20 bits of one C5 RF-test dump word as signed 10-bit I/Q. */
 c5vrx_iq10_sample_t c5vrx_adc_decode_word(uint32_t raw);
 
@@ -54,6 +66,17 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words);
 esp_err_t c5vrx_adc_dump_capture_chained(size_t block_count,
                                          size_t sample_count,
                                          c5vrx_adc_chain_stats_t *stats);
+
+/**
+ * Probe the vendor dump engine's single, hardware-driven pre-trigger interval.
+ *
+ * This invokes adctrig() exactly once with the documented RX-error trigger and
+ * observes the C5 write-pointer register while that call is active. It neither
+ * re-triggers blocks nor claims a continuous source. A long-running moving
+ * pointer would justify a later guarded ring-reader experiment; a short run or
+ * stationary pointer rejects that hypothesis on the tested silicon/blob.
+ */
+esp_err_t c5vrx_adc_dump_ring_probe(c5vrx_adc_ring_probe_stats_t *stats);
 
 #ifdef __cplusplus
 }

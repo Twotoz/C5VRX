@@ -1,5 +1,13 @@
 # C5VRX roadmap
 
+## Immediate RF gate
+
+Run the single-arm `RING PROBE` experiment described in
+[`continuous-rf-verdict.md`](continuous-rf-verdict.md). Do not implement or
+advertise a live source unless moving-pointer, RF coherence, cadence and drain
+margin are measured. A pass permits a guarded-ring-reader prototype; a failure
+keeps the existing finite/chained source strictly diagnostic.
+
 ## Goal
 
 A practical, open RX5808-class alternative based on inexpensive, currently

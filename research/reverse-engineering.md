@@ -1,5 +1,11 @@
 # Reverse-engineering notes
 
+For the reproducible v6.0.2 machine-code audit, public API survey and final
+continuous-stream verdict, see
+[`continuous-rf-verdict.md`](continuous-rf-verdict.md). The key new result is
+that `adctrig()` exposes a live pointer while armed but disables the engine
+before returning; no public C5 GDMA/BitScrambler Wi-Fi-FE attachment exists.
+
 ## Mission
 
 C5VRX investigates whether an ESP32-C5 can be repurposed as a low-cost analog 5.8 GHz FPV receiver, primarily as an RX5808/RTC6715-class alternative during the current receiver-module shortage.

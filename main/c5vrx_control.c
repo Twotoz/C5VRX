@@ -138,7 +138,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -314,6 +314,27 @@ static void handle_line(char *line)
                (unsigned long long)stats.total_samples,
                (unsigned)stats.repeated_block_hashes,
                (unsigned long long)stats.boundary_jump_power_sum);
+        fflush(stdout);
+        return;
+    }
+
+    if (strcasecmp(line, "RING PROBE") == 0 ||
+        strcasecmp(line, "RING_PROBE") == 0) {
+        c5vrx_adc_ring_probe_stats_t stats = {0};
+        printf("C5VRX_RING_PROBE_BEGIN mode=SINGLE_ARM_PRETRIGGER_NOT_CONTINUOUS\n");
+        fflush(stdout);
+        const esp_err_t err = c5vrx_adc_dump_ring_probe(&stats);
+        printf("C5VRX_RING_PROBE_DONE code=%d active_us=%llu observations=%u pointer_changes=%u pointer_min=%u pointer_max=%u content_changes=%u done=%u vendor_timeout=%u status=%08x classification=%s\n",
+               (int)err, (unsigned long long)stats.active_time_us,
+               (unsigned)stats.observations, (unsigned)stats.pointer_changes,
+               (unsigned)stats.minimum_pointer, (unsigned)stats.maximum_pointer,
+               (unsigned)stats.content_changes, stats.completion_bit_seen ? 1u : 0u,
+               stats.reached_vendor_timeout ? 1u : 0u,
+               (unsigned)stats.final_status,
+               err == ESP_OK && stats.reached_vendor_timeout &&
+                       stats.pointer_changes > 2u
+                   ? "PRETRIGGER_RING_CANDIDATE_PHYSICAL_VALIDATION_REQUIRED"
+                   : "NO_CONTINUOUS_EVIDENCE");
         fflush(stdout);
         return;
     }

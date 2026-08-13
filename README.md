@@ -255,6 +255,9 @@ See [`research/frequency-tuning.md`](research/frequency-tuning.md).
 > stream for real-time WBFM demodulation?**
 
 See [`research/live-stream-architecture.md`](research/live-stream-architecture.md).
+The exhaustive public-interface survey, binary audit and single-arm physical
+falsification test are in
+[`research/continuous-rf-verdict.md`](research/continuous-rf-verdict.md).
 
 Recommended first physical target:
 
@@ -270,6 +273,7 @@ The USB protocol now exposes four useful proof commands:
 ```text
 CAPTURE 16384
 CHAIN 32 16384
+RING PROBE
 WBFM HWTEST
 WBFM CAPTURE 16384
 NEARLIVE START
@@ -280,6 +284,11 @@ PIPELINE STATS
 `CAPTURE` gets a real finite packed-I/Q block. `CHAIN` repeatedly retriggers the
 vendor dump and reports hashes plus boundary discontinuity, explicitly testing
 whether finite captures are useful as a temporary near-live source.
+
+`RING PROBE` invokes `adctrig()` once in a non-immediate pre-trigger mode and
+observes the recovered hardware write pointer during that single arm. It is not
+a stream and does not retrigger finite blocks. It is the next hardware test for
+the internal circular-ring hypothesis.
 
 `WBFM HWTEST` runs synthetic packed I/Q through the physical C5 BitScrambler and
 compares its output with a CPU reference. `WBFM CAPTURE` bridges a real finite

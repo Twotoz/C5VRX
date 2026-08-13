@@ -6,8 +6,17 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "c5vrx_adc_dump";
+
+/* Recovered from C5 v6.0.2 adctrig() disassembly. These are intentionally
+ * private diagnostic constants, not presented as documented SoC registers. */
+#define C5VRX_FE_DUMP_CONTROL_REG 0x600a9004u
+#define C5VRX_FE_DUMP_POINTER_REG 0x600a9008u
+#define C5VRX_FE_DUMP_DONE_BIT    (1u << 18)
 
 /*
  * Prototype is independently documented by historical Espressif RF-test
@@ -208,5 +217,107 @@ esp_err_t c5vrx_adc_dump_capture_chained(size_t block_count,
     if (stats) {
         *stats = local;
     }
+    return ESP_OK;
+}
+
+typedef struct {
+    volatile bool started;
+    volatile bool finished;
+    int64_t begin_us;
+    int64_t end_us;
+} ring_probe_worker_t;
+
+static ring_probe_worker_t s_ring_probe_worker;
+static volatile bool s_ring_probe_busy;
+
+static void ring_probe_adctrig_task(void *arg)
+{
+    ring_probe_worker_t *worker = arg;
+    worker->begin_us = esp_timer_get_time();
+    worker->started = true;
+    /* RX-error-1 is a known historical trigger. The vendor function owns all
+     * setup, its one-second timeout, shutdown and RF-state restoration. */
+    adctrig((int32_t)C5VRX_ADC_DUMP_MAX_SAMPLES - 1,
+            7, 1, 1, 0, 0, 0, 0, 0);
+    worker->end_us = esp_timer_get_time();
+    worker->finished = true;
+    vTaskDelete(NULL);
+}
+
+esp_err_t c5vrx_adc_dump_ring_probe(c5vrx_adc_ring_probe_stats_t *stats)
+{
+    if (!stats) return ESP_ERR_INVALID_ARG;
+    if (s_ring_probe_busy) return ESP_ERR_INVALID_STATE;
+    s_ring_probe_busy = true;
+    memset(stats, 0, sizeof(*stats));
+    stats->minimum_pointer = UINT32_MAX;
+
+    set_dump_mode(0);
+    ring_probe_worker_t *const worker = &s_ring_probe_worker;
+    memset(worker, 0, sizeof(*worker));
+    if (xTaskCreate(ring_probe_adctrig_task, "c5vrx_ring_probe", 3072,
+                    worker, 4, NULL) != pdPASS) {
+        s_ring_probe_busy = false;
+        return ESP_ERR_NO_MEM;
+    }
+
+    const int64_t wait_deadline = esp_timer_get_time() + 1500000;
+    while (!worker->started && esp_timer_get_time() < wait_deadline)
+        vTaskDelay(1);
+    if (!worker->started) {
+        s_ring_probe_busy = false;
+        return ESP_ERR_TIMEOUT;
+    }
+
+    uint32_t previous_pointer = UINT32_MAX;
+    uint32_t previous_word = 0;
+    bool have_word = false;
+    while (!worker->finished && esp_timer_get_time() < wait_deadline) {
+        const uint32_t pointer =
+            (*(volatile const uint32_t *)(uintptr_t)C5VRX_FE_DUMP_POINTER_REG) & 0xffffu;
+        ++stats->observations;
+        if (previous_pointer != UINT32_MAX && pointer != previous_pointer)
+            ++stats->pointer_changes;
+        if (pointer < stats->minimum_pointer) stats->minimum_pointer = pointer;
+        if (pointer > stats->maximum_pointer) stats->maximum_pointer = pointer;
+
+        /* Historical tools define this pointer in words. Stay 256 words behind
+         * the producer so the sampled location is not the current write word. */
+        const uint32_t safe_index = (pointer - 256u) &
+            (C5VRX_ADC_DUMP_MAX_SAMPLES - 1u);
+        const uint32_t word = *(volatile const uint32_t *)(uintptr_t)
+            (C5VRX_ADC_DUMP_BASE_ADDR + safe_index * sizeof(uint32_t));
+        if (have_word && word != previous_word) ++stats->content_changes;
+        previous_word = word;
+        have_word = true;
+        previous_pointer = pointer;
+        vTaskDelay(1);
+    }
+    if (!worker->finished) {
+        /* Keep the static state reserved until the vendor-owned call exits.
+         * Its recovered timeout is one second, so this is only a safety net. */
+        while (!worker->finished) vTaskDelay(1);
+        s_ring_probe_busy = false;
+        return ESP_ERR_TIMEOUT;
+    }
+
+    stats->active_time_us = (uint64_t)(worker->end_us - worker->begin_us);
+    stats->final_status =
+        *(volatile const uint32_t *)(uintptr_t)C5VRX_FE_DUMP_CONTROL_REG;
+    stats->completion_bit_seen =
+        (stats->final_status & C5VRX_FE_DUMP_DONE_BIT) != 0;
+    stats->reached_vendor_timeout = stats->active_time_us >= 900000u;
+    if (stats->minimum_pointer == UINT32_MAX) stats->minimum_pointer = 0;
+
+    ESP_LOGW(TAG,
+             "single-arm ring probe (NOT a stream): active_us=%llu observations=%u pointer_changes=%u range=%u..%u content_changes=%u done=%u vendor_timeout=%u status=%08" PRIx32,
+             (unsigned long long)stats->active_time_us,
+             (unsigned)stats->observations,
+             (unsigned)stats->pointer_changes, (unsigned)stats->minimum_pointer,
+             (unsigned)stats->maximum_pointer, (unsigned)stats->content_changes,
+             stats->completion_bit_seen ? 1u : 0u,
+             stats->reached_vendor_timeout ? 1u : 0u,
+             (uint32_t)stats->final_status);
+    s_ring_probe_busy = false;
     return ESP_OK;
 }
