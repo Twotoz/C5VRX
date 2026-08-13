@@ -137,5 +137,8 @@ jobs:
       - name: Capture diagnostics self-test
         run: python tools/analyze_iq_capture.py --self-test
 
+      - name: BitScrambler FM approximation self-test
+        run: python tools/bitlut_fm.py --self-test
+
       - name: Generate FPV channel report
         run: python tools/fpv_channel_report.py
