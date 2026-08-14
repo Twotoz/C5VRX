@@ -99,7 +99,7 @@ esp_err_t c5vrx_adc_dump_ring_probe(c5vrx_adc_ring_probe_stats_t *stats);
 /** Safely invoke the unmodified vendor producer for all historical arguments. */
 esp_err_t c5vrx_adc_rate_probe_all(void);
 
-/** Compare vendor-observed producer modes 0, 11 and 12. */
+/** Compare modes 0/11 and record vendor BLE-specific mode 12 as skipped. */
 esp_err_t c5vrx_adc_dump_mode_probe(void);
 
 /** Optional coherent-tone phase continuity test for one historical field. */

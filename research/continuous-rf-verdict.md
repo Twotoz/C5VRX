@@ -34,6 +34,9 @@ Disassembly of `adctrig` establishes all of the following for this blob:
 - the historical `sample_80m` write is overwritten before enable and does not
   prove any physical rate;
 - the wrapper polls for at most 1,000,000 microseconds;
+- ordinary mode 0 pulses a software-trigger bit after enable and therefore does
+  not require a decoded Wi-Fi packet trigger;
+- mode 12 calls `ble_rx_start(0, 0)` and is not a lower-rate 5.8 GHz candidate;
 - it clears the capture-enable bit before it returns;
 - it creates no DMA descriptors and has no GDMA call relocation;
 - `set_dump_mode` changes FE/AGC registers at `0x600a08cc` and
@@ -142,3 +145,6 @@ later overlapping mode selector before capture enable. Eight distinct active
 rates are therefore not established statically. Firmware now measures the
 unchanged vendor argument paths and fails closed rather than forcing that
 field. The next milestone is physical `RF DEEP PROBE` measurement.
+
+For the focused tap, processing, mode and WBFM-bandwidth answer, see
+[`rf-iq-dump-verdict.md`](rf-iq-dump-verdict.md).

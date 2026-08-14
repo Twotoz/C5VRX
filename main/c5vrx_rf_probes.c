@@ -30,8 +30,7 @@ static volatile const uint32_t *const s_dump =
 static bool mode_valid(c5vrx_rf_dump_mode_t mode)
 {
     return mode == C5VRX_RF_DUMP_MODE_ORDINARY_RX ||
-           mode == C5VRX_RF_DUMP_MODE_11 ||
-           mode == C5VRX_RF_DUMP_MODE_12;
+           mode == C5VRX_RF_DUMP_MODE_11;
 }
 
 static uint32_t cpu_hz(void)

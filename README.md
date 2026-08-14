@@ -385,6 +385,9 @@ See [`research/live-stream-architecture.md`](research/live-stream-architecture.m
 The exhaustive public-interface survey, binary audit and single-arm physical
 falsification test are in
 [`research/continuous-rf-verdict.md`](research/continuous-rf-verdict.md).
+The focused answer on tap position, AGC/filtering, modes 0/11/12, likely rate
+and whether analog-FPV WBFM survives is in
+[`research/rf-iq-dump-verdict.md`](research/rf-iq-dump-verdict.md).
 
 Recommended first physical target:
 

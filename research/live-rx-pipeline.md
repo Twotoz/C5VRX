@@ -18,7 +18,7 @@ control or reader architecture.
 
 ```text
 5.8 GHz RF
-  -> vendor-observed dump producer (mode 0/11/12; default off)
+  -> vendor-observed dump producer (mode 0/11; default off; mode 12 rejected)
   -> 0x40830000 16,384-word ring
   -> guarded short immutable copy
   -> persistent BitScrambler 4:1 phase discriminator
@@ -87,7 +87,7 @@ disconnect/reconnect and preview stop do not own or stop analog AV.
 
 ## Physical gates still required
 
-- actual producer cadence for modes 0, 11 and 12;
+- actual producer cadence for modes 0 and 11 (mode 12 is BLE-specific);
 - meaning of status bit `0x600a9004[18]`;
 - coherent I/Q and phase continuity across ring wrap;
 - pre/post-dump fine-tune phase slope;

@@ -21,7 +21,7 @@ It is not a benchmark result. Sparse rows count only selected 32-bit reads.
 | CPU /4 sparse | `Fs` bytes/s | Fs/4 | fourfold cycle budget | direct CVBS for 80 MS/s | current BS math, no anti-alias filter |
 | CPU /8 sparse | `Fs/2` bytes/s | Fs/8 | eightfold cycle budget | upsample unless Fs=160 MS/s | alias/phase-wrap gate required |
 | BitScrambler loopback | current program reads all `4 Fs` bytes/s | Fs/4 | CPU setup/monitor only after persistent descriptors | direct at 80 MS/s design case | DMA accessibility **PROVEN STATICALLY**; sustainable bandwidth **UNKNOWN** |
-| lower-rate hardware tap | `4 Ftap` bytes/s | depends transform | avoids raw Fs consumer | prefer a 20–40 MS/s phase tap | mode 12 **CANDIDATE**, not proven |
+| lower-rate hardware tap | `4 Ftap` bytes/s | depends transform | avoids raw Fs consumer | prefer a 20–40 MS/s phase tap | no eligible lower-rate C5 tap found; mode 12 starts BLE RX |
 
 Maximum safe service interval is smaller than a wrap and depends on actual lag,
 block size, guard and measured copy/transform time. The guarded reader starts at
