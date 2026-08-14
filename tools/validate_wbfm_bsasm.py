@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Validate the C5VRX 4:1 BitScrambler WBFM architecture."""
 from __future__ import annotations
 
@@ -97,7 +98,7 @@ def self_test() -> None:
 
     print("4:1 BitScrambler WBFM architecture self-test PASS")
     print("  runtime LUT: 1024 x 16-bit = 2048 bytes")
-    print("  nominal stream ratio: 80 MS/s IQ -> 20 MS/s phase delta")
+    print("  design-case stream ratio: candidate 80 MS/s IQ -> 20 MS/s phase delta")
     print(f"  decimated synthetic FM: RMSE {rmse:.4f} rad, corr {corr:.5f}")
 
 

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
 #include "c5vrx_live_pipeline.h"
 
 #include <stdlib.h>
@@ -15,9 +17,14 @@ static const char *TAG = "c5vrx_live";
 #define FINITE_SOURCE_BUFFER_COUNT (C5VRX_RF_BLOCK_QUEUE_CAPACITY + 1u)
 
 typedef struct {
+    uint32_t *words;
+    atomic_bool in_use;
+} finite_source_slot_t;
+
+typedef struct {
     size_t words_per_block;
     uint64_t sequence;
-    uint32_t *copy[FINITE_SOURCE_BUFFER_COUNT];
+    finite_source_slot_t slot[FINITE_SOURCE_BUFFER_COUNT];
 } finite_source_context_t;
 
 typedef struct {
@@ -27,11 +34,17 @@ typedef struct {
     c5vrx_live_pipeline_config_t config;
     c5vrx_stream_stats_t stats;
     c5vrx_cvbs_conditioner_t conditioner;
+    c5vrx_wbfm_hw_context_t *wbfm_hw;
     uint8_t *wbfm;
     uint8_t *cvbs;
+    uint8_t *sink_pending;
+    size_t sink_pending_count;
+    size_t sink_block_samples;
     c5vrx_rf_block_queue_t queue;
     uint8_t previous_wbfm;
     bool have_previous_wbfm;
+    uint8_t previous_retained_phase;
+    bool have_previous_retained_phase;
 } live_state_t;
 
 static live_state_t s_live;
@@ -45,25 +58,40 @@ static bool finite_acquire(c5vrx_rf_source_t *source,
                            c5vrx_rf_block_t *block,
                            uint32_t timeout_ms)
 {
-    (void)timeout_ms;
     finite_source_context_t *ctx = source ? source->context : NULL;
     if (!ctx || !block) return false;
+    finite_source_slot_t *slot = NULL;
+    const int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
+    do {
+        for (unsigned i = 0; i < FINITE_SOURCE_BUFFER_COUNT; ++i) {
+            bool expected = false;
+            if (atomic_compare_exchange_strong(&ctx->slot[i].in_use,
+                                               &expected, true)) {
+                slot = &ctx->slot[i];
+                break;
+            }
+        }
+        if (slot || !timeout_ms) break;
+        taskYIELD();
+    } while (esp_timer_get_time() < deadline);
+    if (!slot) return false;
     const int64_t begin = esp_timer_get_time();
     if (c5vrx_adc_dump_capture(ctx->words_per_block, false) != ESP_OK) {
+        atomic_store(&slot->in_use, false);
         return false;
     }
     volatile const uint32_t *dump =
         (volatile const uint32_t *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR;
     for (size_t i = 0; i < ctx->words_per_block; ++i) {
-        ctx->copy[ctx->sequence % FINITE_SOURCE_BUFFER_COUNT][i] = dump[i];
+        slot->words[i] = dump[i];
     }
     *block = (c5vrx_rf_block_t) {
-        .words = ctx->copy[ctx->sequence % FINITE_SOURCE_BUFFER_COUNT],
+        .words = slot->words,
         .word_count = ctx->words_per_block,
         .sequence = ctx->sequence++,
         .capture_time_us = (uint64_t)(esp_timer_get_time() - begin),
         .discontinuity_before = true,
-        .owner = ctx,
+        .owner = slot,
     };
     return true;
 }
@@ -72,7 +100,8 @@ static void finite_release(c5vrx_rf_source_t *source,
                            const c5vrx_rf_block_t *block)
 {
     (void)source;
-    (void)block;
+    finite_source_slot_t *slot = block ? block->owner : NULL;
+    if (slot) atomic_store(&slot->in_use, false);
 }
 
 esp_err_t c5vrx_finite_chain_source_create(c5vrx_rf_source_t *source,
@@ -86,19 +115,21 @@ esp_err_t c5vrx_finite_chain_source_create(c5vrx_rf_source_t *source,
     finite_source_context_t *ctx = calloc(1, sizeof(*ctx));
     if (!ctx) return ESP_ERR_NO_MEM;
     for (unsigned i = 0; i < FINITE_SOURCE_BUFFER_COUNT; ++i) {
-        ctx->copy[i] = heap_caps_malloc(words_per_block * sizeof(uint32_t),
-                                        MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-        if (!ctx->copy[i]) {
-            while (i) free(ctx->copy[--i]);
+        ctx->slot[i].words = heap_caps_malloc(
+            words_per_block * sizeof(uint32_t),
+            MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+        if (!ctx->slot[i].words) {
+            while (i) free(ctx->slot[--i].words);
             free(ctx);
             return ESP_ERR_NO_MEM;
         }
+        atomic_init(&ctx->slot[i].in_use, false);
     }
     ctx->words_per_block = words_per_block;
     *source = (c5vrx_rf_source_t) {
         .name = "finite-vendor-dump-chain (NOT continuous RF)",
         .kind = C5VRX_RF_SOURCE_FINITE_CHAINED,
-        .nominal_sample_rate_hz = 80000000u,
+        .nominal_sample_rate_hz = 0,
         .acquire = finite_acquire,
         .release = finite_release,
         .context = ctx,
@@ -112,7 +143,7 @@ void c5vrx_finite_chain_source_destroy(c5vrx_rf_source_t *source)
     finite_source_context_t *ctx = source->context;
     if (ctx) {
         for (unsigned i = 0; i < FINITE_SOURCE_BUFFER_COUNT; ++i)
-            free(ctx->copy[i]);
+            free(ctx->slot[i].words);
         free(ctx);
     }
     memset(source, 0, sizeof(*source));
@@ -126,6 +157,17 @@ static void source_task(void *arg)
         const int64_t begin = esp_timer_get_time();
         if (!s_live.config.source->acquire(s_live.config.source, &block, 20u)) {
             ++s_live.stats.source_underruns;
+            if (s_live.config.source->kind ==
+                C5VRX_RF_SOURCE_EXPERIMENTAL_RING_UNPROVEN) {
+                c5vrx_live_ring_stats_t ring = {0};
+                c5vrx_live_ring_source_get_stats(s_live.config.source, &ring);
+                if (ring.fatal_stops) {
+                    ESP_LOGE(TAG, "ring stopped fail-closed: %s",
+                             c5vrx_live_ring_failure_name(ring.fatal_reason));
+                    s_live.stop = true;
+                    break;
+                }
+            }
             vTaskDelay(pdMS_TO_TICKS(1));
             continue;
         }
@@ -143,6 +185,36 @@ static void source_task(void *arg)
     vTaskDelete(NULL);
 }
 
+static void sink_samples(const uint8_t *samples, size_t count)
+{
+    size_t consumed = 0;
+    while (consumed < count) {
+        size_t copy = s_live.sink_block_samples - s_live.sink_pending_count;
+        if (copy > count - consumed) copy = count - consumed;
+        memcpy(s_live.sink_pending + s_live.sink_pending_count,
+               samples + consumed, copy);
+        s_live.sink_pending_count += copy;
+        consumed += copy;
+        if (s_live.sink_pending_count != s_live.sink_block_samples) continue;
+
+        const int64_t output_begin = esp_timer_get_time();
+        const esp_err_t output_err = s_live.config.sink(
+            s_live.sink_pending, s_live.sink_block_samples,
+            s_live.config.sink_context);
+        const uint64_t output_duration =
+            (uint64_t)(esp_timer_get_time() - output_begin);
+        s_live.stats.output_time_us += output_duration;
+        update_max_u64(&s_live.stats.output_time_max_us, output_duration);
+        if (output_err != ESP_OK) {
+            ++s_live.stats.output_underruns;
+            ESP_LOGE(TAG, "output stopped fail-closed: %s",
+                     esp_err_to_name(output_err));
+            s_live.stop = true;
+        }
+        s_live.sink_pending_count = 0;
+    }
+}
+
 static void pipeline_task(void *arg)
 {
     (void)arg;
@@ -150,7 +222,10 @@ static void pipeline_task(void *arg)
     ESP_LOGW(TAG, "pipeline source=%s kind=%s",
              s_live.config.source->name,
              s_live.config.source->kind == C5VRX_RF_SOURCE_CONTINUOUS
-                 ? "continuous" : "FINITE/CHAINED EXPERIMENT");
+                 ? "CONTINUOUS" :
+             s_live.config.source->kind == C5VRX_RF_SOURCE_EXPERIMENTAL_RING_UNPROVEN
+                 ? "EXPERIMENTAL_RING_SOURCE_UNPROVEN" :
+                   "FINITE/CHAINED EXPERIMENT");
 
     while (!s_live.stop) {
         c5vrx_rf_block_t block = {0};
@@ -169,13 +244,27 @@ static void pipeline_task(void *arg)
 
         size_t written = 0;
         const int64_t wbfm_begin = esp_timer_get_time();
-        esp_err_t err = c5vrx_wbfm_hw_transform(
-            block.words, block.word_count, s_live.wbfm,
+        esp_err_t err = c5vrx_wbfm_hw_transform_context(
+            s_live.wbfm_hw, block.words, block.word_count, s_live.wbfm,
             s_live.config.maximum_input_words / 4u, &written);
         const uint64_t wbfm_duration =
             (uint64_t)(esp_timer_get_time() - wbfm_begin);
         s_live.stats.wbfm_time_us += wbfm_duration;
         update_max_u64(&s_live.stats.wbfm_time_max_us, wbfm_duration);
+        if (err == ESP_OK && written > 0u) {
+            const uint8_t first_phase =
+                c5vrx_wbfm_coarse_phase6(block.words[0]);
+            if (!block.discontinuity_before &&
+                s_live.have_previous_retained_phase) {
+                s_live.wbfm[0] = (uint8_t)(32u + first_phase -
+                    s_live.previous_retained_phase) & 0x3fu;
+            } else {
+                s_live.wbfm[0] = 32u;
+            }
+            s_live.previous_retained_phase = c5vrx_wbfm_coarse_phase6(
+                block.words[(written - 1u) * 4u]);
+            s_live.have_previous_retained_phase = true;
+        }
         s_live.config.source->release(s_live.config.source, &block);
         if (err != ESP_OK || written == 0u) {
             ++s_live.stats.dropped_rf_blocks;
@@ -208,16 +297,7 @@ static void pipeline_task(void *arg)
         update_max_u64(&s_live.stats.conditioner_time_max_us,
                        conditioner_duration);
 
-        const int64_t output_begin = esp_timer_get_time();
-        const esp_err_t output_err = s_live.config.sink(
-            s_live.cvbs, written, s_live.config.sink_context);
-        const uint64_t output_duration =
-            (uint64_t)(esp_timer_get_time() - output_begin);
-        s_live.stats.output_time_us += output_duration;
-        update_max_u64(&s_live.stats.output_time_max_us, output_duration);
-        if (output_err != ESP_OK) {
-            ++s_live.stats.output_underruns;
-        }
+        sink_samples(s_live.cvbs, written);
         ++s_live.stats.blocks_processed;
         s_live.stats.input_samples += block.word_count;
         s_live.stats.output_samples += written;
@@ -248,21 +328,30 @@ esp_err_t c5vrx_live_pipeline_start(const c5vrx_live_pipeline_config_t *config)
     memset(&s_live, 0, sizeof(s_live));
     s_live.config = *config;
     const size_t output_capacity = config->maximum_input_words / 4u;
+    s_live.sink_block_samples = output_capacity;
     s_live.wbfm = heap_caps_malloc(output_capacity,
                                    MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
     s_live.cvbs = heap_caps_malloc(output_capacity,
                                    MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    if (!s_live.wbfm || !s_live.cvbs) {
+    s_live.sink_pending = heap_caps_malloc(output_capacity,
+                                           MALLOC_CAP_INTERNAL);
+    esp_err_t hardware_err = c5vrx_wbfm_hw_create(
+        config->maximum_input_words, &s_live.wbfm_hw);
+    if (!s_live.wbfm || !s_live.cvbs || !s_live.sink_pending ||
+        hardware_err != ESP_OK) {
         free(s_live.wbfm);
         free(s_live.cvbs);
+        free(s_live.sink_pending);
+        c5vrx_wbfm_hw_destroy(s_live.wbfm_hw);
         memset(&s_live, 0, sizeof(s_live));
-        return ESP_ERR_NO_MEM;
+        return hardware_err != ESP_OK ? hardware_err : ESP_ERR_NO_MEM;
     }
     c5vrx_cvbs_conditioner_init(&s_live.conditioner, &config->conditioner);
     c5vrx_rf_block_queue_init(&s_live.queue);
     if (xTaskCreate(source_task, "c5vrx_source", 3072, NULL, 18,
                     &s_live.source_task) != pdPASS) {
-        free(s_live.wbfm); free(s_live.cvbs);
+        free(s_live.wbfm); free(s_live.cvbs); free(s_live.sink_pending);
+        c5vrx_wbfm_hw_destroy(s_live.wbfm_hw);
         memset(&s_live, 0, sizeof(s_live));
         return ESP_ERR_NO_MEM;
     }
@@ -272,6 +361,8 @@ esp_err_t c5vrx_live_pipeline_start(const c5vrx_live_pipeline_config_t *config)
         while (s_live.source_task) vTaskDelay(pdMS_TO_TICKS(1));
         free(s_live.wbfm);
         free(s_live.cvbs);
+        free(s_live.sink_pending);
+        c5vrx_wbfm_hw_destroy(s_live.wbfm_hw);
         memset(&s_live, 0, sizeof(s_live));
         return ESP_ERR_NO_MEM;
     }
@@ -280,7 +371,8 @@ esp_err_t c5vrx_live_pipeline_start(const c5vrx_live_pipeline_config_t *config)
 
 esp_err_t c5vrx_live_pipeline_stop(void)
 {
-    if (!s_live.task) return ESP_ERR_INVALID_STATE;
+    if (!s_live.task && !s_live.source_task && !s_live.wbfm_hw)
+        return ESP_ERR_INVALID_STATE;
     s_live.stop = true;
     for (unsigned i = 0; i < 1000u && (s_live.task || s_live.source_task); ++i) {
         vTaskDelay(pdMS_TO_TICKS(1));
@@ -288,12 +380,21 @@ esp_err_t c5vrx_live_pipeline_stop(void)
     if (s_live.task || s_live.source_task) return ESP_ERR_TIMEOUT;
     free(s_live.wbfm);
     free(s_live.cvbs);
+    free(s_live.sink_pending);
+    c5vrx_wbfm_hw_destroy(s_live.wbfm_hw);
     s_live.wbfm = NULL;
     s_live.cvbs = NULL;
+    s_live.wbfm_hw = NULL;
     return ESP_OK;
 }
 
-bool c5vrx_live_pipeline_running(void) { return s_live.task != NULL; }
+bool c5vrx_live_pipeline_running(void)
+{
+    /* Keep ownership asserted after a fail-closed task exit until LIVE STOP
+     * releases the source, RF producer and output peripheral. */
+    return s_live.task != NULL || s_live.source_task != NULL ||
+           s_live.wbfm_hw != NULL;
+}
 
 void c5vrx_live_pipeline_get_stats(c5vrx_stream_stats_t *stats)
 {

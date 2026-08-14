@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
 #include "c5vrx_wifi5.h"
 
 #include "esp_event.h"

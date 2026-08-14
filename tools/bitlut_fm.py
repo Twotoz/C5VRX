@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Evaluate hardware-friendly FM discriminator ideas for ESP32-C5 BitScrambler.
 
 C5VRX's expensive live operation is not PAL/NTSC decoding; it is turning a

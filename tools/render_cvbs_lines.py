@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Render a few grayscale PAL/NTSC-like scanlines from a finite C5VRX IQ capture.
 
 This is deliberately a *line* renderer rather than a full-frame decoder. The

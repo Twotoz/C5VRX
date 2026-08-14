@@ -1,13 +1,17 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
 #include "c5vrx_cvbs_out.h"
 
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "sdkconfig.h"
 #include "driver/parlio_tx.h"
 #include "esp_attr.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -80,7 +84,12 @@ static uint8_t s_blank_second[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((align
 static uint8_t s_active_first[2][C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
 static uint8_t s_active_second[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
 
-static uint8_t s_chunk[2][C5VRX_CVBS_CHUNK_SAMPLES] __attribute__((aligned(64)));
+/* Keep the 81,920-byte diagnostic stream buffer out of static DRAM.  The RF
+ * dump writer owns the fixed 0x40830000..0x4083ffff window, so a static array
+ * this large could make the linker place ordinary application state inside
+ * hardware-owned RAM.  DMA-capable buffers are allocated only while the test
+ * generator is active; the reserved dump window is excluded from the heap. */
+static uint8_t *s_chunk[2];
 
 static parlio_tx_unit_handle_t s_tx;
 static c5vrx_cvbs_stream_state_t s_stream;
@@ -496,6 +505,15 @@ esp_err_t c5vrx_cvbs_test_start(void)
         return ESP_ERR_INVALID_ARG;
     }
 
+    for (unsigned i = 0; i < 2; ++i) {
+        s_chunk[i] = heap_caps_malloc(C5VRX_CVBS_CHUNK_SAMPLES,
+                                      MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+        if (!s_chunk[i]) {
+            while (i) free(s_chunk[--i]);
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
     build_templates();
     s_next_half_line = 0;
     s_frame_counter = 0;
@@ -533,6 +551,9 @@ esp_err_t c5vrx_cvbs_test_start(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "parlio_new_tx_unit failed: %s", esp_err_to_name(err));
         s_tx = NULL;
+        free(s_chunk[0]);
+        free(s_chunk[1]);
+        s_chunk[0] = s_chunk[1] = NULL;
         return err;
     }
 
@@ -548,6 +569,9 @@ esp_err_t c5vrx_cvbs_test_start(void)
             &stream_handle) != pdPASS) {
         parlio_del_tx_unit(s_tx);
         s_tx = NULL;
+        free(s_chunk[0]);
+        free(s_chunk[1]);
+        s_chunk[0] = s_chunk[1] = NULL;
         return ESP_ERR_NO_MEM;
     }
     s_stream.task = stream_handle;
@@ -567,6 +591,9 @@ esp_err_t c5vrx_cvbs_test_start(void)
         stop_stream_task();
         parlio_del_tx_unit(s_tx);
         s_tx = NULL;
+        free(s_chunk[0]);
+        free(s_chunk[1]);
+        s_chunk[0] = s_chunk[1] = NULL;
         return err;
     }
 
@@ -576,6 +603,9 @@ esp_err_t c5vrx_cvbs_test_start(void)
         stop_stream_task();
         parlio_del_tx_unit(s_tx);
         s_tx = NULL;
+        free(s_chunk[0]);
+        free(s_chunk[1]);
+        s_chunk[0] = s_chunk[1] = NULL;
         return err;
     }
 
@@ -591,6 +621,9 @@ esp_err_t c5vrx_cvbs_test_start(void)
         stop_stream_task();
         parlio_del_tx_unit(s_tx);
         s_tx = NULL;
+        free(s_chunk[0]);
+        free(s_chunk[1]);
+        s_chunk[0] = s_chunk[1] = NULL;
         return err;
     }
 
@@ -628,6 +661,9 @@ esp_err_t c5vrx_cvbs_test_stop(void)
     }
 
     s_tx = NULL;
+    free(s_chunk[0]);
+    free(s_chunk[1]);
+    s_chunk[0] = s_chunk[1] = NULL;
     s_next_half_line = 0;
     s_stream.stop_requested = false;
     ESP_LOGI(TAG, "PAL 625/50 composite test output stopped");

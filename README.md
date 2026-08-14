@@ -47,9 +47,9 @@ PAL/NTSC waveform. A normal analog monitor, DVR or goggles can decode that
 waveform themselves, so C5VRX does **not** need a framebuffer, RGB conversion,
 full PAL/NTSC pixel decoder or LCD controller in the main path.
 
-Digital display/USB preview work is explicitly secondary. If it is ever needed,
-it should sit behind the proven analog receiver path or on a companion processor
-rather than complicating the core VRX.
+Digital display remains secondary. The implemented USB-C preview is a reduced
+160×120 grayscale diagnostic derived from the streaming CVBS samples; it has
+independent buffers and may be stopped or disconnected without owning PARLIO AV.
 
 See [`research/analog-first-architecture.md`](research/analog-first-architecture.md).
 
@@ -82,10 +82,136 @@ DevKitC pin map. An optional 4.43361875 MHz swinging burst is included only as a
 analog bandwidth/lock stress signal; it is not a claim of complete PAL color
 encoding.
 
+For the **full RF diagnostics, live pipeline and USB preview on a Seeed Studio
+XIAO ESP32-C5**, use `c5vrx-xiao-receiver-console-firmware` or the board-specific
+`C5VRX-XIAO-Receiver-Console-Windows` artifact. The ordinary
+`C5VRX-Receiver-Console-Windows` remains the DevKitC/WROOM build and must not be
+used for XIAO AV wiring.
+
 A host-side golden model in [`tools/pal_cvbs_reference.py`](tools/pal_cvbs_reference.py)
 checks line/field timing, vertical sync, active-line count and DMA chunk wrap.
 [`tools/minimal_cvbs_dac.py`](tools/minimal_cvbs_dac.py) separately validates the
 ideal source-matched resistor network.
+
+---
+
+## How to wire the resistor DAC to AV out
+
+The reference DevKitC and Receiver Console profiles use six GPIOs as the bits of
+one passive video DAC. **Each GPIO needs its own complete series resistance
+before the six branches meet.** Do not join the GPIOs directly, and do not
+connect any of these resistors to 3.3 V.
+
+| DAC bit | GPIO | Required series resistance | 1206 kit series chain |
+|---|---:|---:|---:|
+| D0 / LSB | GPIO0 | 7.87 kΩ | 7.5 kΩ + 360 Ω + 10 Ω |
+| D1 | GPIO1 | 3.92 kΩ | 3.9 kΩ + 20 Ω |
+| D2 | GPIO6 | 1.96 kΩ | 1.8 kΩ + 160 Ω |
+| D3 | GPIO8 | 976 Ω | 910 Ω + 62 Ω + 3.9 Ω = 975.9 Ω |
+| D4 | GPIO9 | 487 Ω | 470 Ω + 16 Ω + 1 Ω |
+| D5 / MSB | GPIO10 | 243 Ω | 240 Ω + 3 Ω |
+| Shunt | VIDEO to GND | 191 Ω | 180 Ω + 11 Ω |
+
+The resistor values and D0-to-D5 order are identical on every profile, but the
+GPIOs are board-specific. **For a Seeed Studio XIAO ESP32-C5 running the XIAO
+Receiver Console artifact, replace the GPIO column above with this table:**
+
+| DAC bit | XIAO header pin | ESP32-C5 GPIO | Required series resistance |
+|---|---:|---:|---:|
+| D0 / LSB | D4 | GPIO23 | 7.87 kΩ |
+| D1 | D5 | GPIO24 | 3.92 kΩ |
+| D2 | D6 / TX | GPIO11 | 1.96 kΩ |
+| D3 | D7 / RX | GPIO12 | 976 Ω |
+| D4 | D8 / SCK | GPIO8 | 487 Ω |
+| D5 / MSB | D9 / MISO | GPIO9 | 243 Ω |
+
+This XIAO map leaves native USB GPIO13/14, battery-sense GPIO6/26, BOOT GPIO28
+and the strapping pins GPIO7/25 untouched. D6/GPIO11 and D7/GPIO12 are UART0
+alternates, so a brief non-video transient can occur during reset before
+PARLIO takes control. Do not connect the resistor network to XIAO D0–D3 or D10.
+
+The logical pin map above has been checked against the ESP32-C5 GPIO matrix,
+the ESP32-C5-WROOM-1/1U module pinout and both official DevKitC revisions. For
+the **supported ESP32-C5-DevKitC-1 v1.2**, the physical connections are:
+
+| DAC bit | GPIO label | DevKitC-1 v1.2 header | WROOM-1/1U module pad |
+|---|---:|---:|---:|
+| D0 / LSB | GPIO0 | J1 pin 5 | IO0, pad 6 |
+| D1 | GPIO1 | J1 pin 6 | IO1, pad 7 |
+| D2 | GPIO6 | J1 pin 7 | IO6, pad 8 |
+| D3 | GPIO8 | J1 pin 9 | IO8, pad 10 |
+| D4 | GPIO9 | J1 pin 10 | IO9, pad 11 |
+| D5 / MSB | GPIO10 | J1 pin 11 | IO10, pad 12 |
+
+Use the **GPIO label printed beside the header** as the primary identifier.
+DevKitC-1 v1.1 placed several of these same logical GPIOs at different J1/J3
+positions. More importantly, Espressif documents that v1.1 contains C5 chip
+revision v0.1, while the pinned ESP-IDF v6.0.2 C5VRX image requires chip
+revision >= v1.0. Do not use the v1.2 header-position table—or the current
+C5VRX firmware—on a v1.1 board.
+
+The selected v1.2 pins are ordinary GPIO-matrix outputs. None is a C5 boot
+strapping pin, native USB uses GPIO13/14 instead, and the module exposes all six
+pins. PARLIO is configured with `data_gpio_nums[0..5]` in exactly the order
+shown and sends 8-bit samples whose upper two bits are zero, so D0/GPIO0 is the
+least-significant contribution and D5/GPIO10 the most-significant contribution.
+
+Resistors shown with `+` are soldered **end-to-end in series**. Their order
+inside a branch does not matter. For example, the D0 branch is
+`GPIO0 -> 7.5 kΩ -> 360 Ω -> 10 Ω -> VIDEO`. Build and measure every chain
+separately before joining its VIDEO end to the common node.
+
+```text
+GPIO0  -- 7.5k -- 360R -- 10R --------+
+GPIO1  -- 3.9k --------- 20R ----------+
+GPIO6  -- 1.8k -------- 160R ----------+
+GPIO8  --  910R -- 62R -- 3.9R --------+---- VIDEO ---- AV signal/center
+GPIO9  --  470R -- 16R ---- 1R --------+
+GPIO10 --  240R ---------- 3R ---------+
+                                          |
+                                        180R
+                                          |
+                                         11R
+                                          |
+ESP32-C5 GND -----------------------------+---- AV ground/shield
+```
+
+The 191 Ω chain is different from the six GPIO branches: it connects the
+finished `VIDEO` summing node to ground. The AV connector's signal contact also
+connects to `VIDEO`, and its ground/shield connects to an ESP32-C5 GND pin. A
+common ground is mandatory. For RCA, these are normally center and outer shell.
+For a 3.5 mm/TRRS HDZero cable, verify the actual cable/breakout pinout with its
+documentation or a continuity meter—tip/ring assignments are not universal.
+
+The receiving monitor, DVR or goggles should provide the normal **75 Ω input
+termination**. Do not add another 75 Ω resistor on the C5VRX board: two 75 Ω
+terminations in parallel load the DAC with 37.5 Ω and halve the intended level
+again. When testing without a monitor, a single 75 Ω termination at the scope
+input emulates the receiver. A high-impedance 1 MΩ scope input is useful for
+inspection but will show roughly 2 V open-circuit full scale instead of the
+approximately 1 V expected into 75 Ω.
+
+Prototype construction matters at the 20 MS/s edge rate:
+
+1. Power off the board and verify the value of every resistor chain with a
+   multimeter before connecting all seven branches.
+2. Keep the common VIDEO node, ground return and AV lead short; avoid a large
+   solderless breadboard and long flying wires where possible.
+3. Check that VIDEO is not shorted to 3.3 V or directly to any GPIO.
+4. Start with the output-only PAL firmware and a scope terminated once at 75 Ω.
+   Expect sync near 0 V, blank near 0.30 V, black near 0.32 V and white near
+   1.0 V. These are measurement targets, not guaranteed uncalibrated values.
+5. Only connect the HDZero/monitor AV input after the loaded waveform and ground
+   wiring look correct. Never connect a raw 3.3 V GPIO directly to AV input.
+
+The DevKitC table applies only to the ordinary Receiver Console profile. The
+XIAO Receiver Console uses the separately verified mapping shown above; follow
+[`research/xiao-c5-cvbs-proof.md`](research/xiao-c5-cvbs-proof.md) while keeping
+the same resistor values and VIDEO-node topology. The more detailed scope test
+is in [`research/devkit-cvbs-proof.md`](research/devkit-cvbs-proof.md). Official
+pin references: [DevKitC-1 v1.2 header table](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c5/esp32-c5-devkitc-1/user_guide.html#header-block),
+[WROOM-1/1U pin definitions](https://documentation.espressif.com/esp32-c5-wroom-1_wroom-1u_datasheet_en.html),
+and [XIAO ESP32-C5 pin map](https://wiki.seeedstudio.com/xiao_esp32c5_getting_started/#pin-map).
 
 ---
 
@@ -180,9 +306,9 @@ size: 0x10000 bytes = 64 KiB
 max:  16,384 complex samples
 ```
 
-The decisive RF problem is whether the live 5 GHz receiver can feed it with
-enough bandwidth and whether the producer can be converted from a finite debug
-dump into a continuous/chained stream.
+The source-level producer and guarded ring reader are implemented. The decisive
+RF problem is now whether real C5 silicon produces phase-bearing data with
+enough bandwidth, cadence and coherent continuity through ring wrap.
 
 See [`research/adc-dump-format.md`](research/adc-dump-format.md),
 [`research/reverse-engineering.md`](research/reverse-engineering.md) and
@@ -243,18 +369,22 @@ See [`research/frequency-tuning.md`](research/frequency-tuning.md).
 
 ### Test-readiness status
 
-- **PROVEN IN SOFTWARE / BUILD TESTED:** modular RF block ABI, bounded queue,
+- **IMPLEMENTED / NOT PHYSICALLY TESTED:** modular RF block ABI, bounded queue,
   C5 BitScrambler WBFM, configurable sample conditioner, two-buffer PARLIO
   sink, branded PAL renderer, DevKitC and XIAO build profiles.
-- **PHYSICAL TEST PENDING:** RF sample validity/rate/gaps, conditioner
+- **UNKNOWN UNTIL MEASURED ON HARDWARE:** RF sample validity/rate/gaps, conditioner
   calibration, 75-ohm DAC levels and real monitor/VTX behavior.
-- **CONTINUOUS RF PRODUCER UNKNOWN:** the C5 RF frontend producer feeding the
-  prepared `c5vrx_rf_source_t` interface.
+- **EXPERIMENTAL RING SOURCE UNPROVEN:** the guarded source exists, but physical
+  cadence, wrap continuity, tap bandwidth and sustainable contention margin are
+  still unknown.
 
 > **Can the ESP32-C5 provide a sufficiently continuous, phase-bearing RF
 > stream for real-time WBFM demodulation?**
 
 See [`research/live-stream-architecture.md`](research/live-stream-architecture.md).
+The exhaustive public-interface survey, binary audit and single-arm physical
+falsification test are in
+[`research/continuous-rf-verdict.md`](research/continuous-rf-verdict.md).
 
 Recommended first physical target:
 
@@ -265,21 +395,56 @@ BW:        40 MHz
 retune:    OFF
 ```
 
-The USB protocol now exposes four useful proof commands:
+The USB protocol exposes bounded producer, DSP and streaming diagnostics:
 
 ```text
 CAPTURE 16384
-CHAIN 32 16384
+PRODUCER CADENCE PROBE ALL
+WRAP FLAG PROBE 0
+PHASE CONTINUITY PROBE 0
+PRODUCER SOAK 0 30000
+FINE TUNE VERIFY 5805 5807 <measured_rate_hz>
+TONE RESPONSE PROBE 0 <signed_offset_hz> <measured_rate_hz>
 WBFM HWTEST
-WBFM CAPTURE 16384
-NEARLIVE START
-NEARLIVE STOP
+BENCH SPARSE 2
+BENCH SPARSE 4
+BENCH SPARSE 8
+BENCH BITSCRAMBLER
+BENCH PARLIO
+BENCH USB PREVIEW
+BENCH PIPELINE
+BENCH RING PIPELINE 0 1000
+LIVE START
+LIVE EXPERIMENTAL START 0
+LIVE STOP
+USB PREVIEW START
+USB PREVIEW STOP
+CVBS LOCK STATUS
+CVBS LOCK PROBE 5000
 PIPELINE STATS
 ```
 
 `CAPTURE` gets a real finite packed-I/Q block. `CHAIN` repeatedly retriggers the
 vendor dump and reports hashes plus boundary discontinuity, explicitly testing
 whether finite captures are useful as a temporary near-live source.
+
+`LIVE START` uses measured capabilities and fails closed while rate, phase,
+anti-alias bandwidth or processing margin is missing. `LIVE EXPERIMENTAL START`
+is the explicitly unproven laboratory route through the guarded ring reader,
+persistent BitScrambler, conditioner and PARLIO.
+
+Protocol 8 carries preview data in versioned binary packets with an eight-byte
+magic marker, packet type, sequence, lengths, timestamp, header CRC and payload
+CRC. `STREAM_INFO`, `GRAY8_FRAME` and `STREAM_END` packets allow clean startup,
+frame-loss reporting and resynchronisation after corruption or disconnect. See
+[`research/usb-preview-protocol.md`](research/usb-preview-protocol.md).
+
+`CVBS LOCK PROBE 5000` is the bounded real-VTX qualification step. It reports
+H/V event rates, adaptive line period, lock loss and completed/sent/dropped
+preview frames. A VTX-on/off hash difference is not called usable IQ; that
+label requires stable demodulated CVBS timing. The complete six-question
+evidence ladder is in
+[`research/real-rf-evidence-ladder.md`](research/real-rf-evidence-ladder.md).
 
 `WBFM HWTEST` runs synthetic packed I/Q through the physical C5 BitScrambler and
 compares its output with a CPU reference. `WBFM CAPTURE` bridges a real finite
@@ -289,16 +454,30 @@ vendor RF dump directly into that hardware WBFM transform.
 conditioner -> PARLIO route using repeated finite dumps. It is explicitly an
 experimental finite/chained mode, not continuous capture.
 
-For the first board test, use the guided runner instead of entering these by
-hand. It captures the complete evidence in one JSON file:
+For the first board test, use the USB-C lab runner instead of entering these by
+hand. It automatically finds the C5 where possible, streams results live, and
+creates a timestamped session plus a complete Codex ZIP bundle:
 
 ```bash
 python -m pip install pyserial
-python tools/c5vrx_bench.py --port /dev/ttyACM0
+python tools/c5vrx_lab.py auto-test
 ```
 
-See [`research/a4-bench-test.md`](research/a4-bench-test.md) for equipment,
-safety prompts, automated gates and the separate PAL output test.
+Run the bounded A4 / 5805 MHz VTX-off/on comparison with:
+
+```bash
+python tools/c5vrx_lab.py vtx-proof
+```
+
+Final stdout is machine-readable JSON and failures return a non-zero exit code.
+Exact serial bytes, decoded logs, parsed measurements, IQ, preview frames,
+firmware/Git identity, board profile, configuration and failures are retained.
+The Receiver Console records the same session data and its **EXPORT CODEX
+BUNDLE** button creates one ZIP. See
+[`research/codex-hardware-lab.md`](research/codex-hardware-lab.md) and
+[`research/first-hardware-test.md`](research/first-hardware-test.md) for the
+artifact schema, one-button sequence, equipment, safety prompts and gates. The
+legacy finite-only `tools/c5vrx_bench.py` runner remains available.
 
 Decode serial captures on the host with:
 
@@ -381,8 +560,9 @@ The assembly program is `main/c5vrx_wbfm_4to1.bsasm`; the C hardware bridge is
 `main/c5vrx_wbfm_hw.c`; and `tools/validate_wbfm_bsasm.py` checks the numerical
 architecture on the host.
 
-This still does **not** claim continuous RF capture. The undocumented producer
-feeding the finite vendor dump remains the final silicon-level blocker.
+This still does **not** claim continuous RF capture. A guarded ring source is
+implemented, but cadence, coherent wrap continuity, tap bandwidth and sustained
+bus margin remain first-silicon gates before it can be promoted to LIVE.
 
 ---
 
@@ -402,6 +582,26 @@ stream after sync timing is known, without decoding the complete image to RGB.
 
 ---
 
+## License
+
+Except where otherwise identified, repository-authored source code, build
+scripts, tests, tools and documentation are licensed under the
+[GNU General Public License version 3 only](LICENSE), identified by
+`GPL-3.0-only`.
+
+The **C5VRX** name, logo (including `assets/c5vrx-logo.jpg`), distinctive visual
+identity and other project branding are outside the software license. The GPL
+does not grant permission to use those items as trademarks, to brand a modified
+version as C5VRX, or to imply endorsement. See [BRANDING.md](BRANDING.md).
+
+Third-party dependencies and components retain their own licenses and notices.
+In particular, Espressif ESP-IDF, tools, libraries, headers and RF-test/PHY
+components are not relicensed by this repository's GPL license. Distributors
+must review and comply with the applicable third-party terms for the components
+they use or include.
+
+---
+
 ## Build
 
 Requires ESP-IDF with ESP32-C5 support. CI currently targets ESP-IDF v6.0.2.
@@ -414,6 +614,30 @@ idf.py flash monitor
 ```
 
 Experimental hardware paths remain off by default in the normal firmware.
+The deep-probe build exposes a fail-closed `LIVE START`: cadence, coherent wrap,
+staged soak, measured anti-alias bandwidth and hardware throughput gates must
+pass first. See [`research/first-hardware-test.md`](research/first-hardware-test.md).
+
+There are two deliberately separate Receiver Console profiles:
+
+- `sdkconfig.defaults.flasher` targets the 4 MB ESP32-C5 DevKitC/WROOM profile,
+  uses GPIO0/1/6/8/9/10 and a 3 MiB factory-app partition.
+- `sdkconfig.defaults.xiao_receiver_console` targets the Seeed Studio XIAO
+  ESP32-C5, uses header D4–D9 (GPIO23/24/11/12/8/9), configures its documented
+  8 MB flash and provides a 6 MiB factory-app partition. Its 8 MB PSRAM remains
+  disabled until a measured pipeline need justifies moving suitable buffers.
+
+Both include the same guarded RF diagnostics when combined with
+`sdkconfig.defaults.rf_deep_probe`. The firmware reports `profile=devkit-wroom`
+or `profile=xiao-esp32c5` in `STATUS`; the board-specific Windows console checks
+that value after connecting and warns on a mismatch.
+
+Build the XIAO Receiver Console locally with ESP-IDF v6.0.2:
+
+```bash
+SDKCONFIG_DEFAULTS="sdkconfig.defaults.xiao_receiver_console;sdkconfig.defaults.rf_deep_probe" \
+  idf.py -D SDKCONFIG=sdkconfig.xiao set-target esp32c5 build
+```
 
 ---
 
@@ -453,6 +677,7 @@ Experimental hardware paths remain off by default in the normal firmware.
 │   ├── render_cvbs_lines.py
 │   └── fpv_channel_report.py
 ├── sdkconfig.defaults.cvbs
+├── sdkconfig.defaults.xiao_receiver_console
 └── README.md
 ```
 

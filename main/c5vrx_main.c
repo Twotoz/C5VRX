@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
 #include <inttypes.h>
 
 #include "sdkconfig.h"
@@ -81,6 +83,7 @@ void app_main(void)
     esp_chip_info(&info);
 
     ESP_LOGI(TAG, "C5VRX analog receiver research firmware");
+    ESP_LOGI(TAG, "Board profile: %s", CONFIG_C5VRX_BOARD_PROFILE);
     ESP_LOGI(TAG, "Goal: RX5808-class 5.8 GHz reception with direct analog CVBS output");
     ESP_LOGI(TAG, "Chip revision: %u", (unsigned)info.revision);
 

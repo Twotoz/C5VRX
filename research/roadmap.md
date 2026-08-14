@@ -1,5 +1,13 @@
 # C5VRX roadmap
 
+## Immediate RF gate
+
+Run `RF DEEP PROBE` first with the VTX off and then with A4/5805 MHz on. It
+subsumes rate-argument, source-mode, tuning-persistence, ring, finite-IQ and
+finite-WBFM diagnostics. Use `PHASE PROBE <field>` only with a coherent tone.
+Do not advertise a live source unless moving-pointer, RF coherence, cadence
+and drain margin are measured.
+
 ## Goal
 
 A practical, open RX5808-class alternative based on inexpensive, currently
@@ -42,6 +50,9 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [x] Recover the C5 dump RAM: 0x40830000, 64 KiB, up to 16384 complex samples.
 - [x] Recover the 9-argument `adctrig` call shape and software-trigger mode from C5 + historical Espressif tooling.
 - [x] Add opt-in finite ADC/IQ capture firmware and host decoder.
+- [x] Prove the historical rate-field write is overwritten before capture enable.
+- [x] Add a hash-pinned, default-off configure/start/status/stop producer for modes 0/11/12.
+- [x] Add rate, source-mode, phase-continuity and first-board deep probes.
 - [x] Add repeated finite-capture continuity/hash diagnostic (`CHAIN`).
 - [x] Add offline WBFM discriminator + synthetic DSP self-test.
 - [x] Build ESP32-C5 firmware successfully in CI with ESP-IDF v6.0.2.
@@ -54,7 +65,9 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [ ] Validate `phy_set_freq(5806, 0)` shifts the real receiver center by +1 MHz.
 - [ ] Characterize capture sample rate and effective receive bandwidth on hardware.
 - [ ] Measure whether finite dump captures can be chained with acceptably small gaps.
-- [ ] Trace and control the hardware producer feeding dump RAM for true continuous/ring-buffer capture.
+- [x] Reconstruct a guarded, opt-in ring source over the hardware producer; physical continuous/wrap proof remains pending.
+- [x] Add an adaptive H/V-sync tracker and bounded real-RF CVBS-lock qualification record.
+- [x] Define explicit hardware evidence gates from analog VTX IQ through a visible moving test pattern.
 
 ## Analog output milestones
 
@@ -80,15 +93,15 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [x] Identify the one-LUT hardware constraint: the phase LUT and a second full 2 KiB delta LUT cannot be resident simultaneously.
 - [x] Implement a C5 BitScrambler 4:1 packed-IQ -> biased phase-delta program.
 - [x] Generate/load the single 1024 x 16-bit phase LUT at initialization.
-- [x] Add host validation for the nominal 80 MS/s IQ -> 20 MS/s phase-delta architecture.
+- [x] Add host validation for the candidate 80 MS/s IQ -> 20 MS/s phase-delta design case.
 - [x] Add an on-device synthetic `WBFM HWTEST` path.
 - [x] Add a finite real RF dump -> hardware WBFM bridge (`WBFM CAPTURE`).
 - [ ] Run `WBFM HWTEST` on physical ESP32-C5 silicon and require zero mismatches.
 - [ ] Run `WBFM CAPTURE 16384` on a real A4/5805 analog VTX capture.
 - [ ] Benchmark sustainable BitScrambler throughput on physical C5 hardware.
 - [ ] Measure real discriminator polarity/deviation and calibrate phase-delta -> CVBS voltage scaling.
-- [ ] Filter/condition the discriminator output into a stable CVBS sample stream.
-- [ ] Join continuous RF samples -> WBFM -> CVBS -> PARLIO.
+- [x] Implement discriminator conditioning into a bounded streaming CVBS sample path (not physically calibrated).
+- [x] Join guarded continuous RF -> WBFM -> conditioned CVBS -> PARLIO behind measured fail-closed gates.
 - [ ] Measure end-to-end RF-to-CVBS latency.
 
 ## Receiver features after live video
@@ -113,10 +126,11 @@ live analog CVBS works:
 
 ## Current proof boundary
 
-Static analysis is strong enough to say the ESP32-C5 vendor RF-test code
-contains a finite complex I/Q dump path. It is **not** yet strong enough to say
-C5VRX receives analog FPV on hardware or that the dump producer can run
-continuously.
+Static analysis and implementation now establish a non-blocking, guarded RF
+producer/ring reader plus the complete streaming consumer. They do **not** yet
+establish its physical cadence, wrap continuity, tap bandwidth, real-VTX CVBS
+lock or visible image. Those conclusions have distinct automated gates in
+[`real-rf-evidence-ladder.md`](real-rf-evidence-ladder.md).
 
 The DSP side now has an explicit hardware proof path: packed C5-format I/Q can
 be fed through a 4:1 BitScrambler discriminator, and a real finite vendor dump

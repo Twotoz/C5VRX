@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """C5VRX Windows flasher + runtime USB control panel.
 
 The one-file executable bundles the ESP32-C5 firmware, flashes it, reconnects
@@ -17,13 +18,25 @@ import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 import esptool
 import serial
 from serial.tools import list_ports
 
-APP_TITLE = "C5VRX Control"
+from c5vrx_lab import SessionRecorder
+
+from c5vrx_usb_protocol import (
+    FRAME_DESCRIPTOR,
+    PACKET_GRAY8_FRAME,
+    PACKET_STREAM_END,
+    PACKET_STREAM_INFO,
+    PIXEL_FORMAT_GRAY8,
+    Packet,
+    StreamDecoder,
+)
+
+APP_TITLE = "C5VRX Receiver Console"
 C5_RX_MAX_MHZ = 5885
 
 FPV_BANDS = {
@@ -40,6 +53,29 @@ def resource_dir() -> Path:
     if base:
         return Path(base) / "firmware"
     return Path(__file__).resolve().parent.parent / "firmware"
+
+
+def load_firmware_profile() -> dict[str, object]:
+    """Load the identity of the firmware bundled into this executable."""
+    profile_path = resource_dir() / "profile.json"
+    if not profile_path.exists():
+        return {
+            "schema_version": 0,
+            "profile_id": "legacy-unknown",
+            "display_name": "legacy/unknown ESP32-C5 profile",
+            "av_pin_summary": "Check the firmware bundle documentation before wiring AV",
+            "flash_size_mb": 0,
+        }
+
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    if profile.get("schema_version") != 1:
+        raise RuntimeError(f"Unsupported firmware profile schema: {profile_path}")
+    for key in ("profile_id", "display_name", "av_pin_summary"):
+        if not isinstance(profile.get(key), str) or not profile[key]:
+            raise RuntimeError(f"Invalid firmware profile field {key}: {profile_path}")
+    if not isinstance(profile.get("flash_size_mb"), int):
+        raise RuntimeError(f"Invalid firmware profile flash_size_mb: {profile_path}")
+    return profile
 
 
 def load_flash_plan() -> tuple[list[str], list[tuple[str, Path]]]:
@@ -95,7 +131,24 @@ class TextSink:
 class C5VRXApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(APP_TITLE)
+        self.firmware_profile = load_firmware_profile()
+        self.expected_profile = str(self.firmware_profile["profile_id"])
+        self.session = SessionRecorder(
+            "receiver-console",
+            parent=Path.home() / "Documents" / "C5VRX Sessions",
+            board_profile=self.firmware_profile,
+            test_config={
+                "application": APP_TITLE,
+                "baud": 115200,
+                "rf_safety": {
+                    "bounded_capture_only": True,
+                    "no_rf_register_overrides": True,
+                    "live_start_validation_preserved": True,
+                },
+            },
+        )
+        self.profile_mismatch_warned = False
+        self.title(f"{APP_TITLE} — {self.firmware_profile['display_name']}")
         self.geometry("860x650")
         self.minsize(760, 580)
 
@@ -105,6 +158,14 @@ class C5VRXApp(tk.Tk):
         self.serial_stop = threading.Event()
         self.iq_words: list[int] = []
         self.iq_capture_active = False
+        self.preview_frame: bytes | None = None
+        self.preview_width = 160
+        self.preview_height = 120
+        self.preview_image: tk.PhotoImage | None = None
+        self.preview_sequence: int | None = None
+        self.first_test_active = False
+        self.first_test_fine_sent = False
+        self.first_test_center = 5805
 
         root = ttk.Frame(self, padding=14)
         root.pack(fill="both", expand=True)
@@ -112,7 +173,13 @@ class C5VRXApp(tk.Tk):
         header = ttk.Frame(root)
         header.pack(fill="x")
         ttk.Label(header, text="C5VRX", font=("Segoe UI", 25, "bold")).pack(side="left")
-        ttk.Label(header, text="ESP32-C5 analog FPV research control panel").pack(side="left", padx=12, pady=(8, 0))
+        ttk.Label(header, text="ESP32-C5 analog FPV receiver & first-hardware console").pack(side="left", padx=12, pady=(8, 0))
+        ttk.Label(
+            root,
+            text=(f"Firmware: {self.firmware_profile['display_name']}  •  "
+                  f"AV: {self.firmware_profile['av_pin_summary']}"),
+            foreground="#2457a6",
+        ).pack(anchor="w", pady=(4, 0))
 
         port_row = ttk.Frame(root)
         port_row.pack(fill="x", pady=(12, 8))
@@ -142,6 +209,18 @@ class C5VRXApp(tk.Tk):
         self.log.pack(fill="both", expand=False, pady=(10, 0))
         self.sink = TextSink(self.log)
 
+        export_row = ttk.Frame(root)
+        export_row.pack(fill="x", pady=(8, 0))
+        ttk.Button(
+            export_row,
+            text="EXPORT CODEX BUNDLE",
+            command=self.export_codex_bundle,
+        ).pack(side="left")
+        ttk.Label(
+            export_row,
+            text=f"Session: {self.session.path}",
+        ).pack(side="left", padx=10)
+
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.refresh_ports()
         self.update_channel_label()
@@ -157,7 +236,8 @@ class C5VRXApp(tk.Tk):
 
         ttk.Label(
             flash_box,
-            text="One firmware image. Band/channel changes happen live over USB after flashing.",
+            text=(f"Board-specific {self.firmware_profile['flash_size_mb']} MB firmware. "
+                  "Band/channel changes happen live over USB after flashing."),
         ).pack(anchor="w", pady=(8, 0))
 
         channel_box = ttk.LabelFrame(tab, text="Analog FPV channel", padding=10)
@@ -211,13 +291,26 @@ class C5VRXApp(tk.Tk):
             text="CAPTURE uses the recovered Espressif RF-test dump path. It is a finite diagnostic capture, not continuous video yet.",
         ).pack(anchor="w", pady=(8, 0))
 
+        diag_box = ttk.LabelFrame(tab, text="First hardware diagnostics", padding=10)
+        diag_box.pack(fill="x", pady=(12, 0))
+        ttk.Button(
+            diag_box,
+            text="FIRST HARDWARE TEST",
+            command=self.first_hardware_test,
+        ).pack(side="left", ipady=5)
+        ttk.Label(
+            diag_box,
+            text="Runs fail-closed cadence, wrap, phase, BitScrambler and staged soak tests. Use a coherent RF tone for phase evidence.",
+            wraplength=610,
+        ).pack(side="left", padx=12)
+
     def _build_preview_tab(self, tab: ttk.Frame) -> None:
         ttk.Label(tab, text="USB-C signal preview", font=("Segoe UI", 14, "bold")).pack(anchor="w")
         ttk.Label(
             tab,
             text=(
-                "For now this renders the WBFM discriminator waveform from a finite IQ capture. "
-                "Once continuous FE/baseband capture is proven, this pane is where live PAL/NTSC video can be decoded and shown."
+                "Displays framed 160×120 GRAY8 video reduced on the C5 from the CVBS sample stream. "
+                "Finite IQ waveform preview remains available as a diagnostic fallback."
             ),
             wraplength=760,
         ).pack(anchor="w", pady=(4, 10))
@@ -232,6 +325,13 @@ class C5VRXApp(tk.Tk):
         preview_controls = ttk.Frame(tab)
         preview_controls.pack(fill="x", pady=(8, 0))
         ttk.Button(preview_controls, text="Capture 16K IQ", command=self.capture_iq_16k).pack(side="left")
+        ttk.Button(preview_controls, text="Start live preview", command=self.start_usb_preview).pack(side="left", padx=8)
+        ttk.Button(preview_controls, text="Stop live preview", command=lambda: self.send_command("USB PREVIEW STOP")).pack(side="left")
+        ttk.Button(
+            preview_controls,
+            text="Measure CVBS lock (5 s)",
+            command=lambda: self.send_command("CVBS LOCK PROBE 5000"),
+        ).pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Clear", command=self.clear_preview).pack(side="left", padx=8)
 
     def refresh_ports(self) -> None:
@@ -280,6 +380,7 @@ class C5VRXApp(tk.Tk):
             return False
 
         self.disconnect_serial()
+        self.profile_mismatch_warned = False
         try:
             self.ser = serial.Serial(port, 115200, timeout=0.15, write_timeout=1)
             self.serial_stop.clear()
@@ -301,6 +402,7 @@ class C5VRXApp(tk.Tk):
 
     def disconnect_serial(self) -> None:
         self.serial_stop.set()
+        self.preview_sequence = None
         ser = self.ser
         self.ser = None
         if ser:
@@ -315,16 +417,30 @@ class C5VRXApp(tk.Tk):
         ser = self.ser
         if not ser:
             return
+        decoder = StreamDecoder()
         try:
             while not self.serial_stop.is_set() and ser.is_open:
-                raw = ser.readline()
+                raw = ser.read(4096)
                 if not raw:
                     continue
-                line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
-                self.sink.write(line + "\n")
-                self._parse_device_line(line)
+                self.session.record_raw(raw)
+                for kind, value in decoder.feed(raw):
+                    if kind == "line":
+                        line = str(value)
+                        self.session.record_line(line)
+                        self.sink.write(line + "\n")
+                        self._parse_device_line(line)
+                    elif kind == "packet":
+                        assert isinstance(value, Packet)
+                        self.session.record_packet(value)
+                        self._handle_usb_packet(value)
+                    else:
+                        self.session.record_error("USB_PROTOCOL", str(value))
+                        self.sink.write(
+                            f"C5VRX_PREVIEW_RESYNC reason={value}\n")
         except Exception as exc:
             if not self.serial_stop.is_set():
+                self.session.record_error("SERIAL_READER", str(exc))
                 self.sink.write(f"\nSerial reader stopped: {exc}\n")
                 self.after(0, self._serial_lost)
 
@@ -332,6 +448,24 @@ class C5VRXApp(tk.Tk):
         self.disconnect_serial()
 
     def _parse_device_line(self, line: str) -> None:
+        if (self.first_test_active and not self.first_test_fine_sent
+                and line.startswith("C5VRX_PRODUCER_CADENCE mode=0 ")):
+            fields = self._fields(line)
+            if fields.get("classification") == "MEASURED":
+                rate = int(fields.get("complex_samples_per_sec", "0"))
+                if rate:
+                    center = self.first_test_center
+                    tone = center + 2
+                    self.first_test_fine_sent = True
+                    try:
+                        assert self.ser is not None
+                        fine_command = f"FINE TUNE VERIFY {center} {tone} {rate}"
+                        self.session.record_command(fine_command)
+                        self.ser.write((fine_command + "\n").encode("ascii"))
+                        self.ser.flush()
+                        self.sink.write(f"> {fine_command}\n")
+                    except Exception as exc:
+                        self.sink.write(f"C5VRX_FINE_TUNE_AUTOMATION_FAILED error={exc}\n")
         if line.startswith("C5VRX_IQ_BEGIN"):
             self.iq_words = []
             self.iq_capture_active = True
@@ -352,12 +486,90 @@ class C5VRXApp(tk.Tk):
         if line.startswith("C5VRX_STATUS") or line.startswith("C5VRX_OK set"):
             self.after(0, self._apply_status_line, line)
 
-    def _apply_status_line(self, line: str) -> None:
+    @staticmethod
+    def _fields(line: str) -> dict[str, str]:
         fields: dict[str, str] = {}
         for part in line.split():
             if "=" in part:
-                k, v = part.split("=", 1)
-                fields[k] = v
+                key, value = part.split("=", 1)
+                fields[key] = value
+        return fields
+
+    def _handle_usb_packet(self, packet: Packet) -> None:
+        if self.preview_sequence is not None and packet.sequence != (
+                self.preview_sequence + 1) & 0xFFFFFFFF:
+            self.sink.write(
+                "C5VRX_PREVIEW_SEQUENCE_GAP "
+                f"expected={(self.preview_sequence + 1) & 0xFFFFFFFF} "
+                f"received={packet.sequence}\n")
+        self.preview_sequence = packet.sequence
+
+        if packet.packet_type == PACKET_STREAM_END:
+            dropped = int.from_bytes(packet.payload[:8], "little") \
+                if len(packet.payload) >= 8 else 0
+            self.after(0, self.preview_status_var.set,
+                       f"USB preview stopped; device dropped {dropped} frame(s)")
+            return
+        if packet.packet_type not in {PACKET_STREAM_INFO, PACKET_GRAY8_FRAME}:
+            self.sink.write(
+                f"C5VRX_PREVIEW_SKIP packet_type={packet.packet_type}\n")
+            return
+        if len(packet.payload) < FRAME_DESCRIPTOR.size:
+            self.sink.write("C5VRX_PREVIEW_DROP reason=SHORT_DESCRIPTOR\n")
+            return
+
+        width, height, stride, pixel_format, flags = \
+            FRAME_DESCRIPTOR.unpack_from(packet.payload)
+        if (not width or not height or width > 640 or height > 480 or
+                stride < width or pixel_format != PIXEL_FORMAT_GRAY8):
+            self.sink.write("C5VRX_PREVIEW_DROP reason=UNSUPPORTED_FORMAT\n")
+            return
+        if packet.packet_type == PACKET_STREAM_INFO:
+            self.preview_sequence = packet.sequence
+            self.after(0, self.preview_status_var.set,
+                       f"USB preview v1: {width}×{height}, waiting for H/V lock")
+            return
+
+        pixels = packet.payload[FRAME_DESCRIPTOR.size:]
+        if len(pixels) != stride * height:
+            self.sink.write("C5VRX_PREVIEW_DROP reason=PAYLOAD_SIZE\n")
+            return
+        if stride != width:
+            pixels = b"".join(
+                pixels[row * stride:row * stride + width]
+                for row in range(height)
+            )
+        self.after(0, self._show_gray_frame, pixels, width, height)
+        if not (flags & 1):
+            self.sink.write("C5VRX_PREVIEW_WARNING reason=SYNC_UNLOCKED\n")
+
+    def _apply_status_line(self, line: str) -> None:
+        fields = self._fields(line)
+        device_profile = fields.get("profile")
+        profile_error = None
+        if (line.startswith("C5VRX_STATUS") and not device_profile and
+                self.expected_profile != "legacy-unknown"):
+            profile_error = "device did not report a board profile"
+        elif (line.startswith("C5VRX_STATUS") and device_profile and
+              self.expected_profile not in {"legacy-unknown", device_profile}):
+            profile_error = f"device reports {device_profile}"
+
+        if profile_error:
+            self.connection_var.set(
+                f"PROFILE MISMATCH: console={self.expected_profile}; {profile_error}")
+            if not self.profile_mismatch_warned:
+                self.profile_mismatch_warned = True
+                messagebox.showwarning(
+                    APP_TITLE,
+                    "The connected firmware uses a different board profile.\n\n"
+                    f"Console bundle: {self.expected_profile}\n"
+                    f"Device: {profile_error}\n\n"
+                    "Do not connect the AV resistor network until the firmware "
+                    "and physical board mapping match.",
+                )
+        elif line.startswith("C5VRX_STATUS") and device_profile:
+            self.connection_var.set(
+                f"Connected: {self.selected_port()} — profile verified: {device_profile}")
         band = fields.get("band")
         ch = fields.get("channel")
         bw = fields.get("bw")
@@ -375,6 +587,7 @@ class C5VRXApp(tk.Tk):
             messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
             return
         try:
+            self.session.record_command(command.strip())
             ser.write((command.strip() + "\n").encode("ascii"))
             ser.flush()
             self.sink.write(f"> {command}\n")
@@ -396,11 +609,62 @@ class C5VRXApp(tk.Tk):
         self.after(100, lambda: self.send_command(f"SET {band} {ch}"))
 
     def capture_iq(self) -> None:
+        self.session.next_iq_label("receiver-console-capture")
         self.send_command(f"CAPTURE {int(self.samples_var.get())}")
 
     def capture_iq_16k(self) -> None:
         self.samples_var.set("16384")
         self.capture_iq()
+
+    def start_usb_preview(self) -> None:
+        self.send_command("USB PREVIEW START")
+        self.after(100, lambda: self.send_command("LIVE START"))
+
+    def first_hardware_test(self) -> None:
+        if not self.ser or not self.ser.is_open:
+            messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
+            return
+        center = FPV_BANDS[self.band_var.get()][int(self.channel_var.get()) - 1]
+        tone = center + 2
+        if not messagebox.askokcancel(
+            APP_TITLE,
+            f"Set a coherent RF generator to {tone} MHz at a safe, attenuated level. "
+            f"The receiver baseline is {center} MHz. The suite takes about 45 seconds and never enables unbounded capture. Continue?",
+        ):
+            return
+        self.first_test_active = True
+        self.first_test_fine_sent = False
+        self.first_test_center = center
+        commands = [
+            "STATUS",
+            "WBFM HWTEST",
+            "PRODUCER CADENCE PROBE ALL",
+            "WRAP FLAG PROBE 0",
+            "PHASE CONTINUITY PROBE 0",
+            "PRODUCER SOAK 0 30000",
+            "BENCH SPARSE 2",
+            "BENCH SPARSE 4",
+            "BENCH SPARSE 8",
+            "BENCH BITSCRAMBLER",
+            "BENCH PARLIO",
+            "BENCH PIPELINE",
+            "BENCH USB PREVIEW",
+            "BENCH RING PIPELINE 0 1000",
+            "USB PREVIEW STOP",
+            "CAPABILITIES",
+            "STATUS",
+        ]
+        try:
+            payload = "".join(command + "\n" for command in commands).encode("ascii")
+            for command in commands:
+                self.session.record_command(command)
+            self.ser.write(payload)
+            self.ser.flush()
+            self.sink.write("\n=== FIRST HARDWARE TEST QUEUED ===\n")
+            for command in commands:
+                self.sink.write(f"> {command}\n")
+        except Exception as exc:
+            messagebox.showerror(APP_TITLE, f"Could not start diagnostics:\n\n{exc}")
 
     @staticmethod
     def _decode_iq(raw: int) -> tuple[int, int]:
@@ -448,10 +712,57 @@ class C5VRXApp(tk.Tk):
         canvas.create_line(*pts, fill="#35a7ff", width=1)
         canvas.create_text(8, 8, anchor="nw", text="WBFM discriminator — diagnostic preview, not decoded video yet", fill="white")
 
+    def _show_gray_frame(self, payload: bytes, width: int, height: int) -> None:
+        self.preview_frame = payload
+        self.preview_width = width
+        self.preview_height = height
+        pgm = f"P5\n{width} {height}\n255\n".encode("ascii") + payload
+        try:
+            self.preview_image = tk.PhotoImage(data=pgm, format="PGM")
+        except tk.TclError:
+            self.preview_status_var.set("Valid GRAY8 frame received; Tk cannot render PGM on this system")
+            return
+        canvas = self.preview_canvas
+        canvas.delete("all")
+        canvas.create_image(
+            max(0, canvas.winfo_width() // 2),
+            max(0, canvas.winfo_height() // 2),
+            image=self.preview_image,
+            anchor="center",
+        )
+        self.preview_status_var.set(f"Live USB preview: {width}×{height} GRAY8, CRC valid")
+
     def clear_preview(self) -> None:
         self.iq_words = []
+        self.preview_frame = None
+        self.preview_image = None
         self.preview_status_var.set("No IQ capture yet")
         self.render_iq_preview()
+
+    def export_codex_bundle(self) -> None:
+        self.session.update_test_config(
+            port=self.selected_port(),
+            band=self.band_var.get(),
+            channel=int(self.channel_var.get()),
+            bandwidth_mhz=int(self.bw_var.get()),
+            finite_iq_samples=int(self.samples_var.get()),
+        )
+        suggested = self.session.path.name + "-codex-bundle.zip"
+        selected = filedialog.asksaveasfilename(
+            title="Export C5VRX Codex bundle",
+            defaultextension=".zip",
+            initialfile=suggested,
+            filetypes=[("ZIP archive", "*.zip")],
+        )
+        if not selected:
+            return
+        try:
+            bundle = self.session.create_bundle(Path(selected))
+            self.sink.write(f"\n=== CODEX BUNDLE EXPORTED: {bundle} ===\n")
+            messagebox.showinfo(APP_TITLE, f"Codex bundle exported:\n\n{bundle}")
+        except Exception as exc:
+            self.session.record_error("BUNDLE_EXPORT", str(exc))
+            messagebox.showerror(APP_TITLE, f"Could not export Codex bundle:\n\n{exc}")
 
     def flash(self) -> None:
         if self._busy:
@@ -459,6 +770,14 @@ class C5VRXApp(tk.Tk):
         port = self.selected_port()
         if not port:
             messagebox.showerror(APP_TITLE, "No USB/COM port selected.")
+            return
+        if not messagebox.askokcancel(
+            APP_TITLE,
+            f"Flash {self.firmware_profile['display_name']} firmware to {port}?\n\n"
+            f"AV mapping: {self.firmware_profile['av_pin_summary']}\n"
+            f"Expected flash: {self.firmware_profile['flash_size_mb']} MB\n\n"
+            "Use this image only on the named board/profile.",
+        ):
             return
 
         self.disconnect_serial()
@@ -525,6 +844,12 @@ class C5VRXApp(tk.Tk):
     def on_close(self) -> None:
         self.disconnect_serial()
         time.sleep(0.03)
+        self.session.finalize({
+            "status": "CONSOLE_SESSION_COMPLETE",
+            "passed": None,
+            "reason": "interactive Receiver Console session",
+        })
+        self.session.close()
         self.destroy()
 
 

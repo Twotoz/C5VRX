@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
 # C5VRX packed IQ -> 20 MS/s biased phase-delta proof.
 #
 # Input word layout recovered from the C5 RF-test dump:
@@ -5,7 +7,7 @@
 #   bits 10..19 I signed 10-bit
 #
 # The program consumes four 32-bit input words for every one output byte. At an
-# 80 MS/s upstream IQ rate this produces a 20 MS/s stream, matching the current
+# 80 MS/s design-case upstream IQ rate this produces a 20 MS/s stream, matching the current
 # CVBS PARLIO target. The first output after reset is a priming sample.
 #
 # The 1024 x 16-bit LUT is loaded separately through bitscrambler_load_lut():

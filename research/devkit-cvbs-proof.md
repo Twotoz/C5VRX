@@ -1,4 +1,4 @@
-# ESP32-C5-DevKitC PAL CVBS output proof
+# ESP32-C5-DevKitC-1 v1.2 PAL CVBS output proof
 
 This is the shortest hardware test for the analog-first C5VRX output path.
 It does **not** test 5.8 GHz reception yet. The dedicated firmware skips RF and
@@ -13,19 +13,30 @@ starts a PAL 625/50 monochrome composite test immediately after boot.
 - a display/goggle/DVR input that really terminates video at 75 ohm
 - ideally an oscilloscope before connecting expensive equipment
 
+## Supported board revision
+
+Use an **ESP32-C5-DevKitC-1 v1.2**. The official v1.2 header table places all
+six selected DAC GPIOs on J1 and confirms that none is a strapping pin. The
+older DevKitC-1 v1.1 used different header positions and contains C5 silicon
+revision v0.1; Espressif has discontinued v0.1 support, while the pinned C5VRX
+ESP-IDF v6.0.2 build requires chip revision >= v1.0.
+
+Always follow the GPIO label printed beside the header, not a header position
+copied from an image of another board revision.
+
 ## DevKit pin assignment
 
 The dedicated `sdkconfig.defaults.cvbs` uses GPIOs that are broken out on the
 DevKit and avoids the documented USB Serial/JTAG pins and boot-strapping pins.
 
-| DAC bit | DevKit GPIO | Resistor to VIDEO node |
-|---|---:|---:|
-| D0 / LSB | GPIO0 | 7.87 kOhm |
-| D1 | GPIO1 | 3.92 kOhm |
-| D2 | GPIO6 | 1.96 kOhm |
-| D3 | GPIO8 | 976 Ohm |
-| D4 | GPIO9 | 487 Ohm |
-| D5 / MSB | GPIO10 | 243 Ohm |
+| DAC bit | DevKit GPIO | v1.2 header | Resistor to VIDEO node |
+|---|---:|---:|---:|
+| D0 / LSB | GPIO0 | J1 pin 5 | 7.87 kOhm |
+| D1 | GPIO1 | J1 pin 6 | 3.92 kOhm |
+| D2 | GPIO6 | J1 pin 7 | 1.96 kOhm |
+| D3 | GPIO8 | J1 pin 9 | 976 Ohm |
+| D4 | GPIO9 | J1 pin 10 | 487 Ohm |
+| D5 / MSB | GPIO10 | J1 pin 11 | 243 Ohm |
 
 Add **191 Ohm from the VIDEO node to GND**.
 
@@ -49,6 +60,12 @@ so the values are a **scope-validation starting point**, not a production
 calibration.
 
 Do not connect raw 3.3 V GPIOs directly to a video input.
+
+Official sources:
+
+- [ESP32-C5-DevKitC-1 v1.2 header block](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c5/esp32-c5-devkitc-1/user_guide.html#header-block)
+- [ESP32-C5-DevKitC-1 v1.1 notice and old header block](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c5/esp32-c5-devkitc-1/user_guide_v1.1.html)
+- [ESP32-C5-WROOM-1/1U pin definitions](https://documentation.espressif.com/esp32-c5-wroom-1_wroom-1u_datasheet_en.html)
 
 ## Firmware
 

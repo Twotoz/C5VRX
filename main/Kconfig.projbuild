@@ -1,4 +1,14 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
 menu "C5VRX analog receiver research"
+
+config C5VRX_BOARD_PROFILE
+    string "Board/profile identifier"
+    default "generic"
+    help
+        Machine-readable identifier printed at boot and in STATUS. Release
+        profiles override this so the Receiver Console can make the selected
+        AV-output wiring explicit. This does not perform board autodetection.
 
 choice C5VRX_RF_BACKEND
     prompt "RF bring-up backend"
@@ -66,6 +76,15 @@ config C5VRX_EXPERIMENTAL_ADC_DUMP
         vendor RF-test capture buffer with packed signed 10-bit I/Q samples.
         This option triggers one finite capture after the RF backend starts.
         The path is not yet validated on physical ESP32-C5 hardware.
+
+config C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER
+    bool "Enable hash-pinned non-blocking RF dump producer probes"
+    default n
+    help
+        HIGH-RISK HARDWARE DIAGNOSTIC. Enables a source reconstruction pinned
+        to ESP-IDF v6.0.2 and the audited C5 librftest.a SHA-256 shown by RF
+        DEEP PROBE. It reproduces only vendor-observed automatic-gain modes
+        0, 11 and 12. It never forces the overwritten historical rate field.
 
 config C5VRX_ADC_DUMP_SAMPLES
     int "ADC/IQ samples per finite capture"

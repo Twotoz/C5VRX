@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
 # C5VRX needs Espressif's RF certification library linked so we can use the
 # public non-signalling RX harness while reverse-engineering the deeper RX path.
 CONFIG_ESP_PHY_ENABLE_CERT_TEST=y

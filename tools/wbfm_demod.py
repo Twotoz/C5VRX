@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Offline WBFM discriminator for future C5VRX IQ captures.
 
 Input is interleaved signed int16 IQ by default:
