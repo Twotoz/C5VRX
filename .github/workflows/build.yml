@@ -46,8 +46,10 @@ jobs:
             cp build/*.bin firmware_bundle/ &&
             cp research/a4-bench-test.md firmware_bundle/TESTING.md &&
             cp research/first-hardware-test.md firmware_bundle/FIRST-HARDWARE-TEST.md &&
+            cp research/codex-hardware-lab.md firmware_bundle/codex-hardware-lab.md &&
             cp firmware_profiles/devkit-wroom.json firmware_bundle/profile.json &&
-            cp tools/c5vrx_bench.py firmware_bundle/
+            cp tools/c5vrx_bench.py firmware_bundle/ &&
+            cp tools/c5vrx_lab.py tools/c5vrx_usb_protocol.py firmware_bundle/
 
       - name: Upload proof firmware
         uses: actions/upload-artifact@v4
@@ -162,7 +164,9 @@ jobs:
             cp firmware_profiles/xiao-esp32c5.json xiao_console_firmware_bundle/profile.json &&
             cp research/xiao-c5-cvbs-proof.md xiao_console_firmware_bundle/WIRING.md &&
             cp research/first-hardware-test.md xiao_console_firmware_bundle/FIRST-HARDWARE-TEST.md &&
-            cp tools/c5vrx_bench.py xiao_console_firmware_bundle/
+            cp research/codex-hardware-lab.md xiao_console_firmware_bundle/codex-hardware-lab.md &&
+            cp tools/c5vrx_bench.py xiao_console_firmware_bundle/ &&
+            cp tools/c5vrx_lab.py tools/c5vrx_usb_protocol.py xiao_console_firmware_bundle/
       - uses: actions/upload-artifact@v4
         with:
           name: c5vrx-xiao-receiver-console-firmware
@@ -300,6 +304,9 @@ jobs:
 
       - name: Hardware bench runner parser self-test
         run: python tools/c5vrx_bench.py --self-test
+
+      - name: USB-C lab session and Codex bundle self-test
+        run: python tools/c5vrx_lab.py self-test
 
       - name: BitScrambler FM approximation self-test
         run: python tools/bitlut_fm.py --self-test

@@ -19,6 +19,19 @@ enable production `LIVE START` unless all gates are measured.
 
 ## One-button suite
 
+For a command-line run with automatic USB-port selection, live output,
+machine-readable PASS/FAIL and complete session artifacts, use:
+
+```bash
+python tools/c5vrx_lab.py auto-test
+```
+
+The legacy `c5vrx_bench.py` finite-capture runner remains available. The
+session-oriented runner executes the current cadence/phase/soak/performance
+suite described below, then appends the legacy finite IQ, WBFM and chain
+diagnostics. See [`codex-hardware-lab.md`](codex-hardware-lab.md) for artifact
+layout, exit codes and the separate bounded `vtx-proof` command.
+
 Open `C5VRX Receiver Console`, connect, and press **FIRST HARDWARE TEST**. It
 queues, in order:
 
@@ -129,6 +142,11 @@ VTX path from RF response to usable demodulated video. Repeat with the VTX off;
 noise must not lock. Finally verify that the displayed marker actually moves
 and save the preview plus complete log. Timing lock alone cannot prove visible
 content, polarity or grey mapping.
+
+`python tools/c5vrx_lab.py vtx-proof` guides and archives this A4 off/on stage.
+It does not assert the externally measured bandwidth gate. If guarded live
+preview is not yet eligible, it records that limitation and still preserves
+the bounded IQ and WBFM evidence for inspection.
 
 Disconnecting or stopping preview does not stop PARLIO AV. Stop the receiver
 with `LIVE STOP` and preserve the complete console log, especially ring

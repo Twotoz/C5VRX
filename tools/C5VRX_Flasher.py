@@ -17,11 +17,13 @@ import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 import esptool
 import serial
 from serial.tools import list_ports
+
+from c5vrx_lab import SessionRecorder
 
 from c5vrx_usb_protocol import (
     FRAME_DESCRIPTOR,
@@ -130,6 +132,20 @@ class C5VRXApp(tk.Tk):
         super().__init__()
         self.firmware_profile = load_firmware_profile()
         self.expected_profile = str(self.firmware_profile["profile_id"])
+        self.session = SessionRecorder(
+            "receiver-console",
+            parent=Path.home() / "Documents" / "C5VRX Sessions",
+            board_profile=self.firmware_profile,
+            test_config={
+                "application": APP_TITLE,
+                "baud": 115200,
+                "rf_safety": {
+                    "bounded_capture_only": True,
+                    "no_rf_register_overrides": True,
+                    "live_start_validation_preserved": True,
+                },
+            },
+        )
         self.profile_mismatch_warned = False
         self.title(f"{APP_TITLE} — {self.firmware_profile['display_name']}")
         self.geometry("860x650")
@@ -191,6 +207,18 @@ class C5VRXApp(tk.Tk):
         self.log = tk.Text(root, height=12, wrap="word", state="disabled", font=("Consolas", 9))
         self.log.pack(fill="both", expand=False, pady=(10, 0))
         self.sink = TextSink(self.log)
+
+        export_row = ttk.Frame(root)
+        export_row.pack(fill="x", pady=(8, 0))
+        ttk.Button(
+            export_row,
+            text="EXPORT CODEX BUNDLE",
+            command=self.export_codex_bundle,
+        ).pack(side="left")
+        ttk.Label(
+            export_row,
+            text=f"Session: {self.session.path}",
+        ).pack(side="left", padx=10)
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.refresh_ports()
@@ -394,19 +422,24 @@ class C5VRXApp(tk.Tk):
                 raw = ser.read(4096)
                 if not raw:
                     continue
+                self.session.record_raw(raw)
                 for kind, value in decoder.feed(raw):
                     if kind == "line":
                         line = str(value)
+                        self.session.record_line(line)
                         self.sink.write(line + "\n")
                         self._parse_device_line(line)
                     elif kind == "packet":
                         assert isinstance(value, Packet)
+                        self.session.record_packet(value)
                         self._handle_usb_packet(value)
                     else:
+                        self.session.record_error("USB_PROTOCOL", str(value))
                         self.sink.write(
                             f"C5VRX_PREVIEW_RESYNC reason={value}\n")
         except Exception as exc:
             if not self.serial_stop.is_set():
+                self.session.record_error("SERIAL_READER", str(exc))
                 self.sink.write(f"\nSerial reader stopped: {exc}\n")
                 self.after(0, self._serial_lost)
 
@@ -425,9 +458,11 @@ class C5VRXApp(tk.Tk):
                     self.first_test_fine_sent = True
                     try:
                         assert self.ser is not None
-                        self.ser.write(f"FINE TUNE VERIFY {center} {tone} {rate}\n".encode("ascii"))
+                        fine_command = f"FINE TUNE VERIFY {center} {tone} {rate}"
+                        self.session.record_command(fine_command)
+                        self.ser.write((fine_command + "\n").encode("ascii"))
                         self.ser.flush()
-                        self.sink.write(f"> FINE TUNE VERIFY {center} {tone} {rate}\n")
+                        self.sink.write(f"> {fine_command}\n")
                     except Exception as exc:
                         self.sink.write(f"C5VRX_FINE_TUNE_AUTOMATION_FAILED error={exc}\n")
         if line.startswith("C5VRX_IQ_BEGIN"):
@@ -551,6 +586,7 @@ class C5VRXApp(tk.Tk):
             messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
             return
         try:
+            self.session.record_command(command.strip())
             ser.write((command.strip() + "\n").encode("ascii"))
             ser.flush()
             self.sink.write(f"> {command}\n")
@@ -572,6 +608,7 @@ class C5VRXApp(tk.Tk):
         self.after(100, lambda: self.send_command(f"SET {band} {ch}"))
 
     def capture_iq(self) -> None:
+        self.session.next_iq_label("receiver-console-capture")
         self.send_command(f"CAPTURE {int(self.samples_var.get())}")
 
     def capture_iq_16k(self) -> None:
@@ -618,6 +655,8 @@ class C5VRXApp(tk.Tk):
         ]
         try:
             payload = "".join(command + "\n" for command in commands).encode("ascii")
+            for command in commands:
+                self.session.record_command(command)
             self.ser.write(payload)
             self.ser.flush()
             self.sink.write("\n=== FIRST HARDWARE TEST QUEUED ===\n")
@@ -699,6 +738,31 @@ class C5VRXApp(tk.Tk):
         self.preview_status_var.set("No IQ capture yet")
         self.render_iq_preview()
 
+    def export_codex_bundle(self) -> None:
+        self.session.update_test_config(
+            port=self.selected_port(),
+            band=self.band_var.get(),
+            channel=int(self.channel_var.get()),
+            bandwidth_mhz=int(self.bw_var.get()),
+            finite_iq_samples=int(self.samples_var.get()),
+        )
+        suggested = self.session.path.name + "-codex-bundle.zip"
+        selected = filedialog.asksaveasfilename(
+            title="Export C5VRX Codex bundle",
+            defaultextension=".zip",
+            initialfile=suggested,
+            filetypes=[("ZIP archive", "*.zip")],
+        )
+        if not selected:
+            return
+        try:
+            bundle = self.session.create_bundle(Path(selected))
+            self.sink.write(f"\n=== CODEX BUNDLE EXPORTED: {bundle} ===\n")
+            messagebox.showinfo(APP_TITLE, f"Codex bundle exported:\n\n{bundle}")
+        except Exception as exc:
+            self.session.record_error("BUNDLE_EXPORT", str(exc))
+            messagebox.showerror(APP_TITLE, f"Could not export Codex bundle:\n\n{exc}")
+
     def flash(self) -> None:
         if self._busy:
             return
@@ -779,6 +843,12 @@ class C5VRXApp(tk.Tk):
     def on_close(self) -> None:
         self.disconnect_serial()
         time.sleep(0.03)
+        self.session.finalize({
+            "status": "CONSOLE_SESSION_COMPLETE",
+            "passed": None,
+            "reason": "interactive Receiver Console session",
+        })
+        self.session.close()
         self.destroy()
 
 

@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "c5vrx_adc_dump.h"
@@ -225,6 +226,11 @@ esp_err_t c5vrx_wbfm_hw_probe_dump(size_t sample_count)
                  max_code,
                  (unsigned)(sum / valid),
                  (unsigned)(abs_dev_sum / valid));
+        printf("C5VRX_WBFM_METRICS iq_samples=%u fm_samples=%u decimation=4 min=%u max=%u mean=%u mean_abs_dev_from_bias=%u physical_rates=UNKNOWN code=0\n",
+               (unsigned)sample_count, (unsigned)written,
+               min_code, max_code, (unsigned)(sum / valid),
+               (unsigned)(abs_dev_sum / valid));
+        fflush(stdout);
     }
 
     free(iq_copy);

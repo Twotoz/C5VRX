@@ -234,6 +234,7 @@ static bool band_from_char(char c, c5vrx_band_t *out)
 
 static void print_status(void)
 {
+    const esp_app_desc_t *app = esp_app_get_description();
     c5vrx_fpv_channel_t target;
     c5vrx_frequency_plan_t plan;
     c5vrx_wifi5_status_t wifi = {0};
@@ -252,7 +253,10 @@ static void print_status(void)
         return;
     }
 
-    printf("C5VRX_STATUS profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d\n",
+    printf("C5VRX_STATUS firmware=%s version=%s idf=%s protocol=8 profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d\n",
+           app->project_name,
+           app->version,
+           esp_get_idf_version(),
            CONFIG_C5VRX_BOARD_PROFILE,
            target.letter,
            (unsigned)target.channel,
@@ -1034,7 +1038,7 @@ static void console_task(void *arg)
     (void)arg;
     char line[128];
 
-    printf("C5VRX_READY protocol=7 usb_preview_binary=1\n");
+    printf("C5VRX_READY protocol=8 usb_preview_binary=1 lab_session_artifacts=1\n");
     print_help();
 
     for (;;) {

@@ -433,7 +433,7 @@ anti-alias bandwidth or processing margin is missing. `LIVE EXPERIMENTAL START`
 is the explicitly unproven laboratory route through the guarded ring reader,
 persistent BitScrambler, conditioner and PARLIO.
 
-Protocol 7 carries preview data in versioned binary packets with an eight-byte
+Protocol 8 carries preview data in versioned binary packets with an eight-byte
 magic marker, packet type, sequence, lengths, timestamp, header CRC and payload
 CRC. `STREAM_INFO`, `GRAY8_FRAME` and `STREAM_END` packets allow clean startup,
 frame-loss reporting and resynchronisation after corruption or disconnect. See
@@ -454,16 +454,30 @@ vendor RF dump directly into that hardware WBFM transform.
 conditioner -> PARLIO route using repeated finite dumps. It is explicitly an
 experimental finite/chained mode, not continuous capture.
 
-For the first board test, use the guided runner instead of entering these by
-hand. It captures the complete evidence in one JSON file:
+For the first board test, use the USB-C lab runner instead of entering these by
+hand. It automatically finds the C5 where possible, streams results live, and
+creates a timestamped session plus a complete Codex ZIP bundle:
 
 ```bash
 python -m pip install pyserial
-python tools/c5vrx_bench.py --port /dev/ttyACM0
+python tools/c5vrx_lab.py auto-test
 ```
 
-See [`research/first-hardware-test.md`](research/first-hardware-test.md) for the
-Receiver Console one-button sequence, equipment, safety prompts and gates.
+Run the bounded A4 / 5805 MHz VTX-off/on comparison with:
+
+```bash
+python tools/c5vrx_lab.py vtx-proof
+```
+
+Final stdout is machine-readable JSON and failures return a non-zero exit code.
+Exact serial bytes, decoded logs, parsed measurements, IQ, preview frames,
+firmware/Git identity, board profile, configuration and failures are retained.
+The Receiver Console records the same session data and its **EXPORT CODEX
+BUNDLE** button creates one ZIP. See
+[`research/codex-hardware-lab.md`](research/codex-hardware-lab.md) and
+[`research/first-hardware-test.md`](research/first-hardware-test.md) for the
+artifact schema, one-button sequence, equipment, safety prompts and gates. The
+legacy finite-only `tools/c5vrx_bench.py` runner remains available.
 
 Decode serial captures on the host with:
 
