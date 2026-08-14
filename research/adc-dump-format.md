@@ -94,7 +94,9 @@ Historical Espressif Python tooling maps trigger modes as:
 7 = RX error
 ```
 
-For receive-only C5VRX testing, software trigger (`0`) is the simplest first experiment.
+For receive-only C5VRX testing, software trigger (`0`) is the simplest first
+experiment. C5 machine code confirms it by pulsing dump-controller bit 19 after
+enable, without waiting for an 802.11 RX-start/end event.
 
 ## Vendor loop-dump example recovered from C5
 
@@ -124,7 +126,8 @@ The experiment:
 
 1. selects normal 10-bit dump mode,
 2. uses software trigger,
-3. requests 80 MHz sample mode,
+3. passes the historical `sample_80m` argument but does not claim a physical
+   C5 rate because the associated write is overwritten before enable,
 4. captures into `0x40830000`,
 5. decodes signed I/Q,
 6. prints summary statistics,

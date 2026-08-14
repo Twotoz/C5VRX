@@ -92,7 +92,9 @@ TONE RESPONSE PROBE 0 <signed_offset_hz> <measured_rate_hz>
 
 The device fills at least one complete ring, measures phase slope, coherence
 and IQ magnitude, and emits one machine-readable `C5VRX_TONE_RESPONSE` record.
-Repeat the sweep for modes 11 and 12 when comparing candidate taps. The host
+Repeat the sweep for mode 11 only when comparing the secondary trigger path.
+Do not use mode 12: the complete vendor branch starts BLE RX and is not a
+5.8 GHz dump candidate. The host
 cannot safely retune an arbitrary external generator, so changing the generator
 is the only manual step; capture and classification on the C5 are automated.
 

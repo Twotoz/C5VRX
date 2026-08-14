@@ -50,12 +50,12 @@ RX-start=3, RX-end=4, TX-start=5, TX-end=6 and RX-error=7.
 | Sample format selector | Trigger/mode setup writes `0x600a9008[24:17]`; `set_dump_mode` separately selects FE/BB data at `0x600a08cc` and `0x600a70b8`. Exact format names per selector remain unproven. | Field proven, semantics partial |
 | Buffer length | `0x600a9004[16:0] = smp_num_aft_trig + 1` | Proven |
 | Buffer start/end | Fixed start `0x40830000`, reported size `0x10000` bytes, hence exclusive end `0x40840000` | Proven |
-| Trigger source | Trigger argument 0..12 dispatches through a vendor jump table and programs `0x600a9008[24:17]`, plus source-specific FE controls | Proven mapping below |
+| Trigger source | Trigger argument 0..12 dispatches through a vendor jump table and programs `0x600a9008[24:17]`, plus source-specific FE controls. Mode 0 pulses `0x600a9004[19]` after enable; mode 12 calls `ble_rx_start(0, 0)`. | Proven mapping below |
 | Current pointer | `0x600a9008[15:0]`, read after stop and printed/returned as `curr_ptr` | Proven |
 | Wrap counter/flag | `0x600a9004[18]` is polled as completion/wrap status and returned as `wrap_flag`; no counter is read | Proven flag; no counter found |
 | Decimation/filter | The transient three-bit `sample_80m` write is not active at enable. A named 5 GHz RX filter-mode write exists upstream, but its relation to the dump tap is unresolved. No callable dump decimator API was found. | Partial |
 | Interrupt/watermark | None. The wrapper busy-polls `0x600a9004[18]`; no ISR registration, interrupt status, threshold, descriptor, or GDMA relocation occurs. | Proven negative |
-| Lower-rate I/Q/baseband | Eight selector encodings are accepted by hardware writes, but their physical rates are not named in C5 code. Modes 11 and 12 change `0x600a9018`, showing additional dump pipelines, not yet a proven lower-rate phase-bearing stream. | Candidate, not proven |
+| Lower-rate I/Q/baseband | Eight transient historical values are overwritten. Mode 11 changes trigger/debug selectors but has no proven rate change. Mode 12 starts BLE RX and is not a 5.8 GHz lower-rate candidate. | No lower-rate tap proven |
 | Indefinite capture | The hardware is enabled before the polling loop and only software later clears bit 31. No hardware auto-disable is visible. Skipping teardown can therefore leave it armed in principle, but indefinite wrap behavior and RF/clock ownership require a physical test. | Strong static evidence, not yet a safety guarantee |
 
 ### `sample_80m` exactly: transient, not an active rate selection
@@ -87,7 +87,8 @@ found using them. Most importantly, values 0 and 1 are identical at the
 hardware register. The historic parameter name and Python default cannot be
 used to label field 0 as 80 MS/s. Because the values do not survive until
 enable, they are not useful rate-probe candidates; cadence must be measured on
-the actual running producer in vendor-observed modes 0, 11 and 12.
+the actual running producer in vendor-observed modes 0 and 11. Mode 12 belongs
+to a BLE receive branch.
 
 However, the next mode-dispatch branch clears or overwrites the encompassing
 `0x600a9008[24:17]` field before `0x600a9004[31]` is set. Thus the eight values
@@ -103,7 +104,7 @@ The second argument indexes 13 vendor-observed branches:
 
 | Mode | Changes derived from branch |
 | ---: | --- |
-| 0 | Clears `0x600a20b4[0]`; ORs selector `0x01e00000` into `0x600a9008` |
+| 0 | Clears `0x600a20b4[0]`; ORs selector `0x01e00000` into `0x600a9008`; after enable pulses `0x600a9004[19]` high then low (software trigger) |
 | 1 | Clears `0x600a20b4[0]`; selector `0x00000000` |
 | 2 | Clears `0x600a20b4[0]`; selector `0x00000000` |
 | 3 | Clears `0x600a20b4[0]`; selector `0x00000000` |
@@ -113,10 +114,12 @@ The second argument indexes 13 vendor-observed branches:
 | 7 | Programs `0x600a4e38[8:0]` from `trig_case`; selector `0x000a0000` |
 | 8, 9, 10 | Selector is `(mode << 17) & 0x001e0000` |
 | 11 | Selector `0x00160000`; alternate constants in `0x600a9018` |
-| 12 | Enables alternate path at `0x600a20b4[0]`, changes `0x600a20ac[31:29]`, clears `0x600a9c04[21]`, selector `0x00120000`, and alternate `0x600a9018` constants |
+| 12 | Enables alternate path at `0x600a20b4[0]`, changes `0x600a20ac[31:29]`, clears `0x600a9c04[21]`, selector `0x00120000`, uses alternate `0x600a9018` constants, and calls `ble_rx_start(0, 0)` |
 
-The table records exact writes, not guessed human-readable names beyond the
-historical 0..7 enumeration.
+The table records exact writes/calls, not guessed human-readable names beyond
+the historical 0..7 enumeration. The mode-0 pulse means an 802.11 packet event
+is not required to trigger an ordinary capture. It does not mean the RX chain
+is free of PHY-selected filtering or AGC.
 
 ## Minimal split configure/start/observe/stop reconstruction
 
@@ -125,14 +128,17 @@ configuration, the write setting `0x600a9004[31]` is start, the loop beginning
 at `0x2d2` is observe/wait, and offset `0x334` begins stop/restore.
 
 The source reconstruction in `main/c5vrx_rf_dump_producer.c` implements the
-fully observed automatic-gain subset for modes 0, 11 and 12. It preserves the
-vendor RMW masks, mode-specific setup and teardown call. It refuses all other
-modes, is disabled by default, requires ESP-IDF v6.0.2 and makes CMake fail if
-the archive SHA-256 differs. It does not call internal instruction addresses.
+observed automatic-gain subset for modes 0 and 11. It preserves the vendor RMW
+masks, mode-specific setup, mode-0 software-trigger pulse and teardown call.
+It refuses every other mode. In particular it refuses mode 12 because a
+register-only reconstruction would omit the guarded vendor
+`ble_rx_start(0, 0)` call. It is disabled by default, requires ESP-IDF v6.0.2
+and makes CMake fail if the archive SHA-256 differs. It does not call internal
+instruction addresses.
 
 ```text
 rf_dump_configure(args): adctrig 0x000..0x1c0, excluding start
-rf_dump_start():         adctrig 0x1c2..0x1ce (set 0x600a9004[31])
+rf_dump_start():         adctrig 0x1c2..0x212 (enable plus mode-0 pulse)
 observe_pointer():       read 0x600a9008[15:0] and 0x600a9004[18]
 rf_dump_stop():          adctrig 0x334..0x37a, including FE restore
 ```
@@ -164,9 +170,10 @@ main reason rates must be measured rather than assigned from the old name.
 ## Next experiment before making RING PROBE primary
 
 Run `RF DEEP PROBE` with the VTX off and again with A4/5805 MHz on. It executes
-unchanged vendor arms for all eight historical arguments, compares modes
-0/11/12 when the hash-pinned producer is enabled, records tuning proxies, runs
-the ring probe and finite IQ/WBFM sanity checks. `PHASE PROBE <field>` is a
+unchanged vendor arms for all eight historical arguments, compares modes 0/11
+when the hash-pinned producer is enabled, records mode 12 as skipped, and logs
+tuning proxies before the ring probe and finite IQ/WBFM sanity checks.
+`PHASE PROBE <field>` is a
 separate coherent-tone test. The next milestone is physical RF measurement,
 not another broad static survey.
 

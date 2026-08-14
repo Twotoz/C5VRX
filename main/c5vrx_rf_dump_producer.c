@@ -23,6 +23,7 @@
 #define CTRL_LENGTH_MASK 0x0001ffffu
 #define CTRL_MODE_BIT    0x00020000u
 #define CTRL_STATUS_BIT  0x00040000u
+#define CTRL_SW_TRIGGER_BIT 0x00080000u
 #define CTRL_ENABLE_BIT  0x80000000u
 #define MODE_SELECT_MASK 0x01fe0000u
 
@@ -30,6 +31,7 @@ extern void phy_pbus_clear_reg(void);
 
 static bool s_configured;
 static bool s_running;
+static c5vrx_rf_dump_mode_t s_mode;
 static bool s_last_restore_ok = true;
 static struct {
     uint32_t dump_ctrl, dump_ptr_mode, dump_format;
@@ -112,8 +114,11 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
     if (!c5vrx_rf_dump_producer_available()) return ESP_ERR_NOT_SUPPORTED;
     if (s_configured || s_running) return ESP_ERR_INVALID_STATE;
     if (sample_count == 0 || sample_count > 16384u) return ESP_ERR_INVALID_ARG;
+    /* Mode 12 is not just a register variant: the pinned vendor routine calls
+     * ble_rx_start(0, 0) after arming it. Reconstructing only its MMIO writes
+     * would be incomplete, so fail closed rather than invent BLE setup. */
     if (mode != C5VRX_RF_DUMP_MODE_ORDINARY_RX &&
-        mode != C5VRX_RF_DUMP_MODE_11 && mode != C5VRX_RF_DUMP_MODE_12)
+        mode != C5VRX_RF_DUMP_MODE_11)
         return ESP_ERR_NOT_SUPPORTED;
 
     /* Snapshot only values actually touched below. Refuse to take ownership of
@@ -150,8 +155,6 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
         set_format_fields(0x006c0000u, 0x0001a000u, 0x00000640u, 0x18u);
     } else if (mode == C5VRX_RF_DUMP_MODE_11) {
         set_format_fields(0x005c0000u, 0x00016000u, 0x00000540u, 0x14u);
-    } else {
-        set_format_fields(0x002c0000u, 0x00008000u, 0x00000540u, 0x14u);
     }
 
     REG32(DUMP_FORMAT) |= 0x01000000u;
@@ -173,17 +176,11 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
     } else {
         REG32(DUMP_PTR_MODE) =
             (REG32(DUMP_PTR_MODE) & ~MODE_SELECT_MASK) |
-            (mode == C5VRX_RF_DUMP_MODE_11 ? 0x00160000u : 0x00120000u);
-        if (mode == C5VRX_RF_DUMP_MODE_12) {
-            /* MODEM_SYSCON_CLK_DATA_DUMP_MUX, named by the public C5 header.
-             * Mode 12 is the only vendor-observed branch selecting zero. */
-            REG32(MODEM_CLOCK) &= ~0x00200000u;
-            REG32(FE_PATH) |= 1u;
-            REG32(FE_AUX) = (REG32(FE_AUX) & 0x1fffffffu) | 0x40000000u;
-        }
+            0x00160000u;
     }
 
     __asm__ __volatile__("fence iorw, iorw" ::: "memory");
+    s_mode = mode;
     s_configured = true;
     return ESP_OK;
 }
@@ -193,6 +190,13 @@ esp_err_t c5vrx_rf_dump_start(void)
     if (!c5vrx_rf_dump_producer_available()) return ESP_ERR_NOT_SUPPORTED;
     if (!s_configured || s_running) return ESP_ERR_INVALID_STATE;
     REG32(DUMP_CTRL) |= CTRL_ENABLE_BIT;
+    /* Exact mode-0 software trigger from the pinned C5 adctrig routine. This
+     * occurs after enable and proves that a decoded Wi-Fi packet trigger is
+     * not required for the ordinary bounded capture. */
+    if (s_mode == C5VRX_RF_DUMP_MODE_ORDINARY_RX) {
+        REG32(DUMP_CTRL) |= CTRL_SW_TRIGGER_BIT;
+        REG32(DUMP_CTRL) &= ~CTRL_SW_TRIGGER_BIT;
+    }
     __asm__ __volatile__("fence iorw, iorw" ::: "memory");
     s_running = true;
     return ESP_OK;

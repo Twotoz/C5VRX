@@ -49,7 +49,9 @@ Key unresolved question:
 > for real-time WBFM demodulation?
 
 `RF DEEP PROBE` is now the first-board gate. The optional non-blocking producer
-is hash-pinned, disabled by default and limited to vendor-derived modes 0/11/12.
+is hash-pinned, disabled by default and limited to vendor-derived modes 0/11.
+Vendor mode 12 is deliberately rejected because its complete branch starts
+BLE RX.
 It is diagnostic infrastructure, not a promoted continuous source.
 
 `NEARLIVE START` repeatedly uses the recovered finite vendor dump. Every block

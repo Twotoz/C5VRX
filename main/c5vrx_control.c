@@ -328,7 +328,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11|12>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11|12>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|12|ALL>,WRAP_FLAG_PROBE_<0|11|12>,PHASE_CONTINUITY_PROBE_<0|11|12>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11|12>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11|12>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -359,7 +359,6 @@ static esp_err_t run_deep_probe(void)
     const c5vrx_rf_dump_mode_t modes[] = {
         C5VRX_RF_DUMP_MODE_ORDINARY_RX,
         C5VRX_RF_DUMP_MODE_11,
-        C5VRX_RF_DUMP_MODE_12,
     };
     for (unsigned i = 0; i < sizeof(modes) / sizeof(modes[0]); ++i) {
         c5vrx_producer_cadence_t cadence = {0};
@@ -735,14 +734,13 @@ static void handle_line(char *line)
         sscanf(line, "PRODUCER_CADENCE_PROBE_%15s", producer_arg) == 1) {
         const bool all = strcasecmp(producer_arg, "ALL") == 0;
         if (!all && sscanf(producer_arg, "%u", &producer_mode) != 1) {
-            printf("C5VRX_ERR invalid-producer-mode allowed=0,11,12,ALL\n");
+            printf("C5VRX_ERR invalid-producer-mode allowed=0,11,ALL mode12=VENDOR_BLE_ONLY\n");
             fflush(stdout);
             return;
         }
         const c5vrx_rf_dump_mode_t modes[] = {
             C5VRX_RF_DUMP_MODE_ORDINARY_RX,
             C5VRX_RF_DUMP_MODE_11,
-            C5VRX_RF_DUMP_MODE_12,
         };
         esp_err_t final = ESP_OK;
         for (unsigned i = 0; i < sizeof(modes) / sizeof(modes[0]); ++i) {
@@ -766,8 +764,8 @@ static void handle_line(char *line)
             }
             if (final == ESP_OK && err != ESP_OK) final = err;
         }
-        if (!all && producer_mode != 0u && producer_mode != 11u &&
-            producer_mode != 12u) final = ESP_ERR_INVALID_ARG;
+        if (!all && producer_mode != 0u && producer_mode != 11u)
+            final = ESP_ERR_INVALID_ARG;
         printf("C5VRX_PRODUCER_CADENCE_DONE requested=%s code=%d\n",
                producer_arg, (int)final);
         fflush(stdout);

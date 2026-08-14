@@ -13,6 +13,8 @@
 typedef enum {
     C5VRX_RF_DUMP_MODE_ORDINARY_RX = 0,
     C5VRX_RF_DUMP_MODE_11 = 11,
+    /* Present in the vendor API, but deliberately unsupported by the split
+     * producer: its setup also calls ble_rx_start(0, 0). */
     C5VRX_RF_DUMP_MODE_12 = 12,
 } c5vrx_rf_dump_mode_t;
 

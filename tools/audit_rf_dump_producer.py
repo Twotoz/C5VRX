@@ -24,8 +24,8 @@ def main() -> int:
     required_dis = ["ff200637", "ffe20737", "006c06b7", "005c05b7",
                     "002c05b7", "00160737", "00120737", "800006b7"]
     required_source = ["0x01fe0000", "0x006c0000",
-                       "0x005c0000", "0x002c0000", "0x00160000",
-                       "0x00120000", "0x80000000"]
+                       "0x005c0000", "0x00160000", "0x80000000",
+                       "CTRL_SW_TRIGGER_BIT"]
     failures = [x for x in required_dis if x not in dis]
     failures += [x for x in required_source if x not in producer]
     rate = json.loads(pathlib.Path("research/rf-dump-rate-fields.json").read_text())
@@ -33,12 +33,23 @@ def main() -> int:
         failures.append("rate-table-fields")
     if not re.search(r"REG32\(DUMP_CTRL\) \|= CTRL_ENABLE_BIT", producer):
         failures.append("start-enable")
+    if not re.search(
+        r"REG32\(DUMP_CTRL\) \|= CTRL_SW_TRIGGER_BIT;\s*"
+        r"REG32\(DUMP_CTRL\) &= ~CTRL_SW_TRIGGER_BIT;", producer
+    ):
+        failures.append("mode0-software-trigger-pulse")
     if not re.search(r"REG32\(DUMP_CTRL\) &= ~CTRL_ENABLE_BIT", producer):
         failures.append("stop-disable")
     if "SOC_RESERVE_MEMORY_REGION(0x40830000u, 0x40840000u" not in producer:
         failures.append("dump-ram-not-reserved")
     if "if (s_configured || s_running)" not in producer:
         failures.append("double-owner-not-rejected")
+    if not re.search(r"li\s+a5,12.{0,400}R_RISCV_CALL\s+ble_rx_start", dis,
+                     re.DOTALL):
+        failures.append("vendor-mode12-ble-rx-start")
+    if "mode != C5VRX_RF_DUMP_MODE_11)" not in producer or \
+            "mode == C5VRX_RF_DUMP_MODE_12" in producer:
+        failures.append("mode12-split-producer-not-fail-closed")
     print("RF dump producer audit", "PASS" if not failures else "FAIL",
           "failures=" + ",".join(failures))
     return 1 if failures else 0

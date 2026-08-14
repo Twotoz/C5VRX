@@ -59,7 +59,7 @@ static void trigger_dump(size_t sample_count)
     adctrig((int32_t)sample_count - 1,
             0,  /* software trigger */
             0,  /* trigger case */
-            1,  /* 80 MHz sample mode */
+            1,  /* historical sample_80m value; C5 rate unproven */
             0,  /* trigger then dump */
             0,  /* automatic RX gain */
             0,
@@ -260,7 +260,6 @@ esp_err_t c5vrx_adc_dump_mode_probe(void)
 {
     static const c5vrx_rf_dump_mode_t modes[] = {
         C5VRX_RF_DUMP_MODE_ORDINARY_RX, C5VRX_RF_DUMP_MODE_11,
-        C5VRX_RF_DUMP_MODE_12,
     };
     if (!c5vrx_rf_dump_producer_available()) return ESP_ERR_NOT_SUPPORTED;
     volatile const uint32_t *words =
@@ -294,6 +293,9 @@ esp_err_t c5vrx_adc_dump_mode_probe(void)
         fflush(stdout);
         if (err != ESP_OK) return err;
     }
+    printf("C5VRX_DUMP_MODE_PROBE mode=12 classification=SKIPPED_VENDOR_BLE_RX_START_REQUIRED code=%d\n",
+           (int)ESP_ERR_NOT_SUPPORTED);
+    fflush(stdout);
     return ESP_OK;
 }
 

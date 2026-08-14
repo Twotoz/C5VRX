@@ -42,7 +42,8 @@ register maps and explicitly performs more writes than C5 does. Accordingly:
 
 The safe `DUMP MODE PROBE` therefore does not vary arbitrary `set_dump_mode`
 values: all nonzero values are identical. It holds this mux in its established
-mode-zero state while comparing producer modes 0, 11 and 12.
+mode-zero state while comparing producer modes 0 and 11. Vendor trigger mode
+12 is reported as skipped because its complete branch also starts BLE RX.
 
 ## Producer modes 11 and 12
 
@@ -50,8 +51,8 @@ Both are branches inside `adctrig`, not `set_dump_mode()` values.
 
 | Register | Ordinary mode 0 | Mode 11 | Mode 12 | Static conclusion |
 | --- | --- | --- | --- | --- |
-| `0x600a9018[23:18]` | `0x1b` | `0x17` | `0x0b` | different dump packing/timing configuration; exact field name **UNKNOWN** |
-| `0x600a9018[17:12]` | `0x1a` | `0x16` | `0x08` | different dump packing/timing configuration; exact field name **UNKNOWN** |
+| `0x600a9018[23:18]` | `0x1b` | `0x17` | `0x0b` | different selector; exact field name **UNKNOWN** |
+| `0x600a9018[17:12]` | `0x1a` | `0x16` | `0x08` | different selector; exact field name **UNKNOWN** |
 | `0x600a9018[11:6]` | `0x19` | `0x15` | `0x15` | modes 11/12 share this subfield |
 | `0x600a9018[5:0]` | `0x18` | `0x14` | `0x14` | modes 11/12 share this subfield |
 | `0x600a9008[24:17]` | OR register with `0x01e00000` (field value `0xf0`) | field `0x0b` | field `0x09` | mode/source selector, overlapping historical rate write |
@@ -59,25 +60,33 @@ Both are branches inside `adctrig`, not `set_dump_mode()` values.
 | `0x600a20ac[31:29]` | unchanged | unchanged | set to 2 | mode 12 alone chooses an alternate subpath |
 | `0x600a9c04[21]` | unchanged after initial all-ones write | unchanged | clear | mode 12 changes an additional PHY control |
 
-The public C5 header now resolves the last row exactly as
+The public C5 header resolves the last row exactly as
 `MODEM_SYSCON_CLK_DATA_DUMP_MUX`. Thus the field identity and mode-12 write are
-**PROVEN STATICALLY**. The two clock-source frequencies and their signal-stage
-origins remain **UNKNOWN**. This makes mode 12 a safe vendor-observed cadence
-comparison, not proof of a lower-rate tap.
+**PROVEN STATICALLY**. More decisively, mode 12 tests `s0 == 12` and calls
+`ble_rx_start(0, 0)` after enabling the dump. C61 has the same guarded call and
+C6 contains the corresponding BLE-start path. Mode 12 is therefore a
+Bluetooth diagnostic route, not a defensible lower-rate 5.8 GHz candidate.
+Its clock frequency, format and signal-stage origin remain **UNKNOWN**.
 
 `0x600a20b4` and `0x600a20ac` lie in the same `0x600a20xx` block used heavily
 by Bluetooth direction-finding/CTE IQ selection in `libbtbb.a`, although the
 exact C5 addresses used by those helpers are mostly nearby rather than equal.
-That makes an alternate radio/IQ diagnostic path **LIKELY** for mode 12. It
-does not prove raw ADC, post-AGC, post-filter, FFT, or decimated IQ. Those
-labels remain **UNKNOWN** until `DUMP MODE PROBE` measures format plausibility,
-pointer cadence and signal response on silicon.
+The exact alternate-node meaning remains **UNKNOWN**; raw ADC, post-AGC,
+post-filter, FFT and decimated-IQ labels are not justified. C5VRX does not
+reconstruct the BLE call and now rejects mode 12 instead of running a partial
+sequence.
+
+The four 6-bit mode-0 values are 24, 25, 26 and 27; mode 11 uses 20, 21, 22 and
+23. Consecutive groups plus the trigger-mode dispatch make internal
+trigger/debug-matrix selectors **LIKELY**. Calling them sample packing, timing,
+width or decimation fields is not supported by a public name or xref.
 
 ## Tuning interaction
 
 The automatic-gain configure/start/stop blocks call no channel or RFPLL setter.
-Ordinary mode 0 and mode 11 clear `0x600a20b4[0]`; mode 12 additionally changes
-the alternate-path controls above. No direct RFPLL-frequency register readback
+Ordinary mode 0 and mode 11 clear `0x600a20b4[0]`. The complete vendor mode-12
+branch changes the alternate-path controls and starts BLE RX. No direct
+RFPLL-frequency register readback
 API is available. Firmware therefore records the strongest supported proxy:
 the public Wi-Fi primary-channel and bandwidth before setup, after setup,
 during/after probes and after teardown, plus whether `phy_set_freq()` was

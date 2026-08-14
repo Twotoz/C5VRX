@@ -51,7 +51,8 @@ Digital LCD/USB video is deliberately outside the critical path.
 - [x] Recover the 9-argument `adctrig` call shape and software-trigger mode from C5 + historical Espressif tooling.
 - [x] Add opt-in finite ADC/IQ capture firmware and host decoder.
 - [x] Prove the historical rate-field write is overwritten before capture enable.
-- [x] Add a hash-pinned, default-off configure/start/status/stop producer for modes 0/11/12.
+- [x] Add a hash-pinned, default-off configure/start/status/stop producer for
+      modes 0/11; reject mode 12 because the complete vendor path starts BLE RX.
 - [x] Add rate, source-mode, phase-continuity and first-board deep probes.
 - [x] Add repeated finite-capture continuity/hash diagnostic (`CHAIN`).
 - [x] Add offline WBFM discriminator + synthetic DSP self-test.
