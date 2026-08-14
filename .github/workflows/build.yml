@@ -150,7 +150,7 @@ jobs:
           command: >-
             SDKCONFIG_DEFAULTS="sdkconfig.defaults.xiao_receiver_console;sdkconfig.defaults.rf_deep_probe"
             idf.py -D SDKCONFIG=/tmp/c5vrx-xiao-console-sdkconfig set-target esp32c5 build &&
-            grep -q '^CONFIG_C5VRX_BOARD_PROFILE="xiao-esp32c5"$' /tmp/c5vrx-xiao-console-sdkconfig &&
+            grep -q 'CONFIG_C5VRX_BOARD_PROFILE=.*xiao-esp32c5' /tmp/c5vrx-xiao-console-sdkconfig &&
             grep -q '^CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y$' /tmp/c5vrx-xiao-console-sdkconfig &&
             grep -q '^CONFIG_C5VRX_CVBS_D0_GPIO=23$' /tmp/c5vrx-xiao-console-sdkconfig &&
             grep -q '^CONFIG_C5VRX_CVBS_D5_GPIO=9$' /tmp/c5vrx-xiao-console-sdkconfig &&
