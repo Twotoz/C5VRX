@@ -1,7 +1,7 @@
-# XIAO ESP32-C5 PAL CVBS proof
+# XIAO ESP32-C5 Receiver Console and PAL CVBS proof
 
-Target: Seeed Studio XIAO ESP32-C5. This is a separate pin profile; do not use
-the DevKitC wiring.
+Target: Seeed Studio XIAO ESP32-C5. This is a separate pin and flash profile;
+do not use the DevKitC wiring or its ordinary Receiver Console artifact.
 
 The mapping follows [Seeed's official XIAO ESP32-C5 pin table](https://wiki.seeedstudio.com/xiao_esp32c5_getting_started/)
 and the [official ESP32-C5 datasheet](https://www.espressif.com/sites/default/files/documentation/esp32-c5_datasheet_en.pdf). It avoids native
@@ -33,10 +33,26 @@ VIDEO node -> composite video input
 XIAO GND   -> video ground
 ```
 
-Flash the `c5vrx-xiao-pal-cvbs-proof-firmware` artifact over USB-C. No UART
-commands are required. On power-up the output holds PAL timing continuously,
-shows the C5VRX splash for 12 seconds, then switches content (not timing) to the
-diagnostic screen.
+Two XIAO artifacts are intentionally available:
+
+- `c5vrx-xiao-pal-cvbs-proof-firmware` is output-only. No commands are required;
+  it starts PAL timing at boot, shows the C5VRX splash for 12 seconds, then
+  switches content (not timing) to the diagnostic screen.
+- `c5vrx-xiao-receiver-console-firmware` is the full guarded RF/diagnostics,
+  live AV and USB-preview image. Windows users can instead download
+  `C5VRX-XIAO-Receiver-Console-Windows`, which bundles that exact firmware.
+
+The full profile is [`sdkconfig.defaults.xiao_receiver_console`](../sdkconfig.defaults.xiao_receiver_console).
+It configures the XIAO's documented 8 MB flash with a 6 MiB factory partition
+and identifies itself as `profile=xiao-esp32c5` in `STATUS`. The XIAO Windows
+console checks that identity after connecting. The onboard 8 MB PSRAM is not
+enabled yet: the fixed RF dump RAM is internal and current PARLIO buffers stay
+in DMA-capable internal RAM until measurement justifies another memory path.
+
+The full profile does not start video unconditionally. First run the output
+proof (`CVBS TEST`), then the automated hardware diagnostics. `LIVE START`
+remains fail-closed until its RF cadence, phase continuity, bandwidth and
+throughput gates pass.
 
 The resistor values are calculated nominal targets. Measure sync, blank, black
 and white levels into the exact 75-ohm AV input before treating them as a final

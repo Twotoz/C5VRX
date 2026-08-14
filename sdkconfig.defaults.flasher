@@ -5,6 +5,7 @@
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_receiver_console.csv"
+CONFIG_C5VRX_BOARD_PROFILE="devkit-wroom"
 
 # Boot on A4 / 5805 MHz exact Wi-Fi center, then retune at runtime from the PC UI.
 CONFIG_C5VRX_RF_BACKEND_WIFI5=y

@@ -1,5 +1,13 @@
 menu "C5VRX analog receiver research"
 
+config C5VRX_BOARD_PROFILE
+    string "Board/profile identifier"
+    default "generic"
+    help
+        Machine-readable identifier printed at boot and in STATUS. Release
+        profiles override this so the Receiver Console can make the selected
+        AV-output wiring explicit. This does not perform board autodetection.
+
 choice C5VRX_RF_BACKEND
     prompt "RF bring-up backend"
     default C5VRX_RF_BACKEND_WIFI5

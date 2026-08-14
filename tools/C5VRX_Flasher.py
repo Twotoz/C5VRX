@@ -52,6 +52,29 @@ def resource_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "firmware"
 
 
+def load_firmware_profile() -> dict[str, object]:
+    """Load the identity of the firmware bundled into this executable."""
+    profile_path = resource_dir() / "profile.json"
+    if not profile_path.exists():
+        return {
+            "schema_version": 0,
+            "profile_id": "legacy-unknown",
+            "display_name": "legacy/unknown ESP32-C5 profile",
+            "av_pin_summary": "Check the firmware bundle documentation before wiring AV",
+            "flash_size_mb": 0,
+        }
+
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    if profile.get("schema_version") != 1:
+        raise RuntimeError(f"Unsupported firmware profile schema: {profile_path}")
+    for key in ("profile_id", "display_name", "av_pin_summary"):
+        if not isinstance(profile.get(key), str) or not profile[key]:
+            raise RuntimeError(f"Invalid firmware profile field {key}: {profile_path}")
+    if not isinstance(profile.get("flash_size_mb"), int):
+        raise RuntimeError(f"Invalid firmware profile flash_size_mb: {profile_path}")
+    return profile
+
+
 def load_flash_plan() -> tuple[list[str], list[tuple[str, Path]]]:
     fw = resource_dir()
     manifest = fw / "flasher_args.json"
@@ -105,7 +128,10 @@ class TextSink:
 class C5VRXApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(APP_TITLE)
+        self.firmware_profile = load_firmware_profile()
+        self.expected_profile = str(self.firmware_profile["profile_id"])
+        self.profile_mismatch_warned = False
+        self.title(f"{APP_TITLE} — {self.firmware_profile['display_name']}")
         self.geometry("860x650")
         self.minsize(760, 580)
 
@@ -131,6 +157,12 @@ class C5VRXApp(tk.Tk):
         header.pack(fill="x")
         ttk.Label(header, text="C5VRX", font=("Segoe UI", 25, "bold")).pack(side="left")
         ttk.Label(header, text="ESP32-C5 analog FPV receiver & first-hardware console").pack(side="left", padx=12, pady=(8, 0))
+        ttk.Label(
+            root,
+            text=(f"Firmware: {self.firmware_profile['display_name']}  •  "
+                  f"AV: {self.firmware_profile['av_pin_summary']}"),
+            foreground="#2457a6",
+        ).pack(anchor="w", pady=(4, 0))
 
         port_row = ttk.Frame(root)
         port_row.pack(fill="x", pady=(12, 8))
@@ -175,7 +207,8 @@ class C5VRXApp(tk.Tk):
 
         ttk.Label(
             flash_box,
-            text="One firmware image. Band/channel changes happen live over USB after flashing.",
+            text=(f"Board-specific {self.firmware_profile['flash_size_mb']} MB firmware. "
+                  "Band/channel changes happen live over USB after flashing."),
         ).pack(anchor="w", pady=(8, 0))
 
         channel_box = ttk.LabelFrame(tab, text="Analog FPV channel", padding=10)
@@ -318,6 +351,7 @@ class C5VRXApp(tk.Tk):
             return False
 
         self.disconnect_serial()
+        self.profile_mismatch_warned = False
         try:
             self.ser = serial.Serial(port, 115200, timeout=0.15, write_timeout=1)
             self.serial_stop.clear()
@@ -475,6 +509,31 @@ class C5VRXApp(tk.Tk):
 
     def _apply_status_line(self, line: str) -> None:
         fields = self._fields(line)
+        device_profile = fields.get("profile")
+        profile_error = None
+        if (line.startswith("C5VRX_STATUS") and not device_profile and
+                self.expected_profile != "legacy-unknown"):
+            profile_error = "device did not report a board profile"
+        elif (line.startswith("C5VRX_STATUS") and device_profile and
+              self.expected_profile not in {"legacy-unknown", device_profile}):
+            profile_error = f"device reports {device_profile}"
+
+        if profile_error:
+            self.connection_var.set(
+                f"PROFILE MISMATCH: console={self.expected_profile}; {profile_error}")
+            if not self.profile_mismatch_warned:
+                self.profile_mismatch_warned = True
+                messagebox.showwarning(
+                    APP_TITLE,
+                    "The connected firmware uses a different board profile.\n\n"
+                    f"Console bundle: {self.expected_profile}\n"
+                    f"Device: {profile_error}\n\n"
+                    "Do not connect the AV resistor network until the firmware "
+                    "and physical board mapping match.",
+                )
+        elif line.startswith("C5VRX_STATUS") and device_profile:
+            self.connection_var.set(
+                f"Connected: {self.selected_port()} — profile verified: {device_profile}")
         band = fields.get("band")
         ch = fields.get("channel")
         bw = fields.get("bw")
@@ -646,6 +705,14 @@ class C5VRXApp(tk.Tk):
         port = self.selected_port()
         if not port:
             messagebox.showerror(APP_TITLE, "No USB/COM port selected.")
+            return
+        if not messagebox.askokcancel(
+            APP_TITLE,
+            f"Flash {self.firmware_profile['display_name']} firmware to {port}?\n\n"
+            f"AV mapping: {self.firmware_profile['av_pin_summary']}\n"
+            f"Expected flash: {self.firmware_profile['flash_size_mb']} MB\n\n"
+            "Use this image only on the named board/profile.",
+        ):
             return
 
         self.disconnect_serial()

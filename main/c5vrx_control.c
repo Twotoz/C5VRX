@@ -252,7 +252,8 @@ static void print_status(void)
         return;
     }
 
-    printf("C5VRX_STATUS band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d\n",
+    printf("C5VRX_STATUS profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d\n",
+           CONFIG_C5VRX_BOARD_PROFILE,
            target.letter,
            (unsigned)target.channel,
            (unsigned)target.mhz,

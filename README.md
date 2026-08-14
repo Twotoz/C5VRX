@@ -82,6 +82,12 @@ DevKitC pin map. An optional 4.43361875 MHz swinging burst is included only as a
 analog bandwidth/lock stress signal; it is not a claim of complete PAL color
 encoding.
 
+For the **full RF diagnostics, live pipeline and USB preview on a Seeed Studio
+XIAO ESP32-C5**, use `c5vrx-xiao-receiver-console-firmware` or the board-specific
+`C5VRX-XIAO-Receiver-Console-Windows` artifact. The ordinary
+`C5VRX-Receiver-Console-Windows` remains the DevKitC/WROOM build and must not be
+used for XIAO AV wiring.
+
 A host-side golden model in [`tools/pal_cvbs_reference.py`](tools/pal_cvbs_reference.py)
 checks line/field timing, vertical sync, active-line count and DMA chunk wrap.
 [`tools/minimal_cvbs_dac.py`](tools/minimal_cvbs_dac.py) separately validates the
@@ -105,6 +111,24 @@ connect any of these resistors to 3.3 V.
 | D4 | GPIO9 | 487 Ω | 470 Ω + 16 Ω + 1 Ω |
 | D5 / MSB | GPIO10 | 243 Ω | 240 Ω + 3 Ω |
 | Shunt | VIDEO to GND | 191 Ω | 180 Ω + 11 Ω |
+
+The resistor values and D0-to-D5 order are identical on every profile, but the
+GPIOs are board-specific. **For a Seeed Studio XIAO ESP32-C5 running the XIAO
+Receiver Console artifact, replace the GPIO column above with this table:**
+
+| DAC bit | XIAO header pin | ESP32-C5 GPIO | Required series resistance |
+|---|---:|---:|---:|
+| D0 / LSB | D4 | GPIO23 | 7.87 kΩ |
+| D1 | D5 | GPIO24 | 3.92 kΩ |
+| D2 | D6 / TX | GPIO11 | 1.96 kΩ |
+| D3 | D7 / RX | GPIO12 | 976 Ω |
+| D4 | D8 / SCK | GPIO8 | 487 Ω |
+| D5 / MSB | D9 / MISO | GPIO9 | 243 Ω |
+
+This XIAO map leaves native USB GPIO13/14, battery-sense GPIO6/26, BOOT GPIO28
+and the strapping pins GPIO7/25 untouched. D6/GPIO11 and D7/GPIO12 are UART0
+alternates, so a brief non-video transient can occur during reset before
+PARLIO takes control. Do not connect the resistor network to XIAO D0–D3 or D10.
 
 The logical pin map above has been checked against the ESP32-C5 GPIO matrix,
 the ESP32-C5-WROOM-1/1U module pinout and both official DevKitC revisions. For
@@ -180,9 +204,8 @@ Prototype construction matters at the 20 MS/s edge rate:
 5. Only connect the HDZero/monitor AV input after the loaded waveform and ground
    wiring look correct. Never connect a raw 3.3 V GPIO directly to AV input.
 
-This GPIO table applies to the DevKitC/Receiver Console profiles. The XIAO C5
-uses the separately verified mapping `D4/D5/D6/D7/D8/D9` =
-`GPIO23/24/11/12/8/9`; follow
+The DevKitC table applies only to the ordinary Receiver Console profile. The
+XIAO Receiver Console uses the separately verified mapping shown above; follow
 [`research/xiao-c5-cvbs-proof.md`](research/xiao-c5-cvbs-proof.md) while keeping
 the same resistor values and VIDEO-node topology. The more detailed scope test
 is in [`research/devkit-cvbs-proof.md`](research/devkit-cvbs-proof.md). Official
@@ -561,11 +584,26 @@ The deep-probe build exposes a fail-closed `LIVE START`: cadence, coherent wrap,
 staged soak, measured anti-alias bandwidth and hardware throughput gates must
 pass first. See [`research/first-hardware-test.md`](research/first-hardware-test.md).
 
-The Receiver Console profile targets the 4 MB
-**ESP32-C5-WROOM-1U-N4** and uses a 3 MiB factory-app partition. The combined
-console/RF image is 972,320 bytes in the current build, leaving 2,173,408 bytes
-(69%) of that app slot free. Output-only/default profiles keep their existing
-partition settings.
+There are two deliberately separate Receiver Console profiles:
+
+- `sdkconfig.defaults.flasher` targets the 4 MB ESP32-C5 DevKitC/WROOM profile,
+  uses GPIO0/1/6/8/9/10 and a 3 MiB factory-app partition.
+- `sdkconfig.defaults.xiao_receiver_console` targets the Seeed Studio XIAO
+  ESP32-C5, uses header D4–D9 (GPIO23/24/11/12/8/9), configures its documented
+  8 MB flash and provides a 6 MiB factory-app partition. Its 8 MB PSRAM remains
+  disabled until a measured pipeline need justifies moving suitable buffers.
+
+Both include the same guarded RF diagnostics when combined with
+`sdkconfig.defaults.rf_deep_probe`. The firmware reports `profile=devkit-wroom`
+or `profile=xiao-esp32c5` in `STATUS`; the board-specific Windows console checks
+that value after connecting and warns on a mismatch.
+
+Build the XIAO Receiver Console locally with ESP-IDF v6.0.2:
+
+```bash
+SDKCONFIG_DEFAULTS="sdkconfig.defaults.xiao_receiver_console;sdkconfig.defaults.rf_deep_probe" \
+  idf.py -D SDKCONFIG=sdkconfig.xiao set-target esp32c5 build
+```
 
 ---
 
@@ -605,6 +643,7 @@ partition settings.
 │   ├── render_cvbs_lines.py
 │   └── fpv_channel_report.py
 ├── sdkconfig.defaults.cvbs
+├── sdkconfig.defaults.xiao_receiver_console
 └── README.md
 ```
 

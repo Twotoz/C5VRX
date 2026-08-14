@@ -6,7 +6,10 @@ enable production `LIVE START` unless all gates are measured.
 ## Connections
 
 1. Flash the RF-deep-probe/Receiver Console firmware built from the pinned
-   ESP-IDF v6.0.2 profile.
+   ESP-IDF v6.0.2 profile. For a Seeed Studio XIAO ESP32-C5, use only
+   `c5vrx-xiao-receiver-console-firmware` or
+   `C5VRX-XIAO-Receiver-Console-Windows`; verify that `STATUS` reports
+   `profile=xiao-esp32c5` before connecting the AV resistor network.
 2. Connect USB-C and the six-bit passive DAC to a high-impedance scope first;
    connect the HDZero 75-ohm AV input only after the CVBS test levels are safe.
 3. Select a receiver center inside the C5 specified range. A4/5805 MHz is the
