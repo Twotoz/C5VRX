@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Reproducible static audit of the ESP32-C5 RF dump/stream boundary."""
 
 from __future__ import annotations

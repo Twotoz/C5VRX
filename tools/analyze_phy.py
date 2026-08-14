@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Generate a focused reverse-engineering report for ESP32-C5 PHY/RF-test blobs.
 
 The script is deliberately read-only: it never patches vendor libraries. It uses

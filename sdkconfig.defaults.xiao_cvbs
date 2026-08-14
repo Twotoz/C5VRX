@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
 # Seeed Studio XIAO ESP32-C5 output-only PAL proof.
 # Native USB is GPIO13/14. Battery sensing is GPIO6/26. Boot is GPIO28.
 # GPIO7/GPIO25 are strapping pins. None are used below.

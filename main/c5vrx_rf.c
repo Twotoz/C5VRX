@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
 #include "c5vrx_rf.h"
 
 #include "esp_log.h"

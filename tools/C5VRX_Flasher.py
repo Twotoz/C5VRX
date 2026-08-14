@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """C5VRX Windows flasher + runtime USB control panel.
 
 The one-file executable bundles the ESP32-C5 firmware, flashes it, reconnects

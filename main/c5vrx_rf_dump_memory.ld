@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
 /* Fail the link before any RF build can place static application state in the
  * fixed vendor dump window. Runtime heap reservation is emitted by
  * c5vrx_rf_dump_producer.c through SOC_RESERVE_MEMORY_REGION(). */

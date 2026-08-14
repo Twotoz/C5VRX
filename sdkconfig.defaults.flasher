@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
 # C5VRX one-click control firmware
 # The production target is ESP32-C5-WROOM-1U-N4. Reserve a 3 MiB factory-app
 # slot instead of IDF's 1 MiB default; the remaining 960 KiB stays unused for

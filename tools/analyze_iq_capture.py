@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Quick diagnostics for a decoded C5VRX interleaved int16 I/Q capture.
 
 This is intentionally a proof-of-concept analyzer, not a video decoder. It

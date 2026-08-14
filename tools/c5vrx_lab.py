@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Session-oriented USB-C hardware lab runner for C5VRX.
 
 Stdout contains one final JSON object. Live device output and operator prompts

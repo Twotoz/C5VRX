@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Run and record the first C5VRX A4 hardware proof over native USB serial."""
 
 from __future__ import annotations

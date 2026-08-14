@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Decode ESP32-C5 RF-test FE/ADC dump words into signed 10-bit I/Q.
 
 The lower-20-bit packing is confirmed by C5 ESP-IDF v6.0.2 `print_dump_data`

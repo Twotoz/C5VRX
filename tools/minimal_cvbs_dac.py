@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Estimate minimal passive CVBS output hardware for C5VRX.
 
 The model compares 2-8 bit uniform resistor-DAC quantization and a one-bit

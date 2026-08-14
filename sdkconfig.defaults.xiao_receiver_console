@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
 # C5VRX Receiver Console for Seeed Studio XIAO ESP32-C5.
 #
 # This is a complete board profile, not an overlay for the DevKit/WROOM build.

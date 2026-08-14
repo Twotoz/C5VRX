@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Fail CI if a packaged board identity drifts from its sdkconfig pin map."""
 
 from __future__ import annotations

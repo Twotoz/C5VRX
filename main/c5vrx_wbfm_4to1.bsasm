@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
 # C5VRX packed IQ -> 20 MS/s biased phase-delta proof.
 #
 # Input word layout recovered from the C5 RF-test dump:

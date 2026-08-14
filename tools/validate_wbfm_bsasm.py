@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Validate the C5VRX 4:1 BitScrambler WBFM architecture."""
 from __future__ import annotations
 

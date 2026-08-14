@@ -582,6 +582,26 @@ stream after sync timing is known, without decoding the complete image to RGB.
 
 ---
 
+## License
+
+Except where otherwise identified, repository-authored source code, build
+scripts, tests, tools and documentation are licensed under the
+[GNU General Public License version 3 only](LICENSE), identified by
+`GPL-3.0-only`.
+
+The **C5VRX** name, logo (including `assets/c5vrx-logo.jpg`), distinctive visual
+identity and other project branding are outside the software license. The GPL
+does not grant permission to use those items as trademarks, to brand a modified
+version as C5VRX, or to imply endorsement. See [BRANDING.md](BRANDING.md).
+
+Third-party dependencies and components retain their own licenses and notices.
+In particular, Espressif ESP-IDF, tools, libraries, headers and RF-test/PHY
+components are not relicensed by this repository's GPL license. Distributors
+must review and comply with the applicable third-party terms for the components
+they use or include.
+
+---
+
 ## Build
 
 Requires ESP-IDF with ESP32-C5 support. CI currently targets ESP-IDF v6.0.2.

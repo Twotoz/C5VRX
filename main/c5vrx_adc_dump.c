@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
 #include "c5vrx_adc_dump.h"
 
 #include <inttypes.h>

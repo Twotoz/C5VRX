@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Versioned, CRC-protected C5VRX USB preview stream framing."""
 
 from __future__ import annotations

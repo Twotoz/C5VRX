@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
 menu "C5VRX analog receiver research"
 
 config C5VRX_BOARD_PROFILE

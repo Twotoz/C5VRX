@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
 #include "c5vrx_live_pipeline.h"
 
 #include <stdatomic.h>

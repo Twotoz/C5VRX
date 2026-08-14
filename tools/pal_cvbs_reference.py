@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Reference model for the C5VRX streamed PAL 625/50 CVBS test pattern.
 
 This mirrors the firmware timing at 20 MS/s. It validates the half-line

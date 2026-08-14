@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Verify source reconstruction constants against the audited C5 machine code."""
 from __future__ import annotations
 import argparse, hashlib, json, pathlib, re, shutil, subprocess
