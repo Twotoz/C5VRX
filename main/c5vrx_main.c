@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 #include <inttypes.h>
+#include <stdio.h>
 
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
@@ -8,6 +9,8 @@
 #include "nvs_flash.h"
 #include "esp_chip_info.h"
 #include "esp_log.h"
+#include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_vfs.h"
 
 #include "c5vrx_adc_dump.h"
 #include "c5vrx_channels.h"
@@ -36,6 +39,45 @@ static const char *TAG = "C5VRX";
 #else
 #define C5VRX_CFG_ADC_PRINT_RAW false
 #endif
+
+/*
+ * CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG registers the USB Serial/JTAG VFS, but
+ * ESP-IDF's default VFS path uses the simple polling helpers.  Real XIAO C5
+ * hardware proved that the interrupt-driven USB Serial/JTAG driver itself is
+ * reliable while the old fgets(stdin) control path can remain silent.
+ *
+ * Install the driver explicitly and switch the already-registered VFS to it so
+ * every existing printf/fgets/fwrite user (control console, IQ binary transport,
+ * logs and USB preview) shares the same proven native-USB path.
+ */
+static esp_err_t c5vrx_usb_console_init(void)
+{
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+    if (!usb_serial_jtag_is_driver_installed()) {
+        usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+        cfg.rx_buffer_size = 2048;
+        cfg.tx_buffer_size = 4096;
+        const esp_err_t err = usb_serial_jtag_driver_install(&cfg);
+        if (err != ESP_OK) {
+            return err;
+        }
+    }
+
+    usb_serial_jtag_vfs_use_driver();
+    setvbuf(stdin, NULL, _IONBF, 0);
+    setvbuf(stdout, NULL, _IONBF, 0);
+
+    /* Bypass stdio once so first-board logs can distinguish driver bring-up
+     * from a later VFS/control problem. */
+    static const char marker[] =
+        "C5VRX_USB_DRIVER_READY transport=usb_serial_jtag vfs=driver\n";
+    (void)usb_serial_jtag_write_bytes(
+        marker, sizeof(marker) - 1u, pdMS_TO_TICKS(100));
+    return ESP_OK;
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
 
 static c5vrx_band_t configured_band(void)
 {
@@ -72,6 +114,9 @@ static void maybe_run_adc_dump(const c5vrx_frequency_plan_t *plan)
 
 void app_main(void)
 {
+    /* Native USB control must be alive before NVS, Wi-Fi or vendor RF code. */
+    ESP_ERROR_CHECK(c5vrx_usb_console_init());
+
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
