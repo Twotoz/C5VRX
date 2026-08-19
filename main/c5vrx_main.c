@@ -120,26 +120,54 @@ void app_main(void)
 
 #if CONFIG_C5VRX_RF_BACKEND_WIFI5
     ESP_LOGI(TAG, "RF backend: public ESP-IDF 5 GHz Wi-Fi driver");
-    ESP_ERROR_CHECK(c5vrx_wifi5_start(plan.wifi_channel, C5VRX_CFG_HT40));
 
-    if (C5VRX_CFG_DIRECT_TUNE && !plan.exact_wifi_center) {
+    bool wifi_ready = false;
+    bool active_ht40 = false;
+    err = c5vrx_wifi5_start(plan.wifi_channel, C5VRX_CFG_HT40);
+    if (err == ESP_OK) {
+        wifi_ready = true;
+        c5vrx_wifi5_status_t startup_status = {0};
+        if (c5vrx_wifi5_get_status(&startup_status) == ESP_OK) {
+            active_ht40 = startup_status.ht40;
+        }
+        ESP_LOGI(TAG, "C5VRX_BOOT stage=WIFI5_READY bw=%u",
+                 active_ht40 ? 40u : 20u);
+    } else {
+        /* Keep USB diagnostics alive even when RF bring-up fails. The first
+         * hardware board must report the failing stage instead of rebooting
+         * before PING/STATUS can be used. */
+        ESP_LOGE(TAG,
+                 "C5VRX_BOOT stage=WIFI5_FAILED code=%d name=%s; continuing with USB diagnostics",
+                 (int)err, esp_err_to_name(err));
+    }
+
+    if (wifi_ready && C5VRX_CFG_DIRECT_TUNE && !plan.exact_wifi_center) {
         err = c5vrx_phy_set_frequency_mhz(target.mhz);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "Experimental direct tune failed: %s", esp_err_to_name(err));
         }
     }
 
-    maybe_run_adc_dump(&plan);
+    if (wifi_ready) {
+        maybe_run_adc_dump(&plan);
+    } else {
+        ESP_LOGW(TAG, "Skipping RF dump startup because the Wi-Fi RX backend is not ready");
+    }
 
     ESP_ERROR_CHECK(c5vrx_control_start(
         band,
         channel,
-        C5VRX_CFG_HT40,
+        active_ht40,
         C5VRX_CFG_DIRECT_TUNE));
 
     ESP_LOGI(TAG, "USB control ready: select bands/channels, trigger IQ captures and control the CVBS proof output");
-    ESP_LOGW(TAG,
-             "Promiscuous Wi-Fi RX proves the 5 GHz RF path is active; live analog FPV still requires continuous FE/baseband sample capture and WBFM demodulation.");
+    if (wifi_ready) {
+        ESP_LOGW(TAG,
+                 "Promiscuous Wi-Fi RX proves the 5 GHz RF path is active; live analog FPV still requires continuous FE/baseband sample capture and WBFM demodulation.");
+    } else {
+        ESP_LOGW(TAG,
+                 "RF backend startup failed, but USB control remains available for diagnosis and recovery.");
+    }
 
     while (true) {
         c5vrx_wifi5_status_t status;
