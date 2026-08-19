@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "c5vrx_rf_dump_producer.h"
+#include "c5vrx_usb_preview.h"
 
 static const char *TAG = "c5vrx_adc_dump";
 
@@ -21,6 +22,15 @@ static const char *TAG = "c5vrx_adc_dump";
 #define C5VRX_FE_DUMP_CONTROL_REG 0x600a9004u
 #define C5VRX_FE_DUMP_POINTER_REG 0x600a9008u
 #define C5VRX_FE_DUMP_DONE_BIT    (1u << 18)
+
+#define C5VRX_USB_HEADER_BYTES 32u
+#define C5VRX_USB_IQ_DESCRIPTOR_BYTES 8u
+#define C5VRX_USB_PACKET_IQ_U32_BLOCK 4u
+
+static const uint8_t s_iq_usb_magic[8] = {
+    0x00, 'C', '5', 'V', 'R', 'X', 0xa5, 0x5a
+};
+static uint32_t s_iq_usb_sequence;
 
 /*
  * Prototype is independently documented by historical Espressif RF-test
@@ -82,6 +92,88 @@ static uint32_t fnv1a_dump_hash(volatile const uint32_t *words, size_t sample_co
     return hash;
 }
 
+static void put_le16(uint8_t *out, uint16_t value)
+{
+    out[0] = (uint8_t)value;
+    out[1] = (uint8_t)(value >> 8u);
+}
+
+static void put_le32(uint8_t *out, uint32_t value)
+{
+    for (unsigned i = 0; i < 4u; ++i) out[i] = (uint8_t)(value >> (8u * i));
+}
+
+static void put_le64(uint8_t *out, uint64_t value)
+{
+    for (unsigned i = 0; i < 8u; ++i) out[i] = (uint8_t)(value >> (8u * i));
+}
+
+static uint32_t crc32_update(uint32_t crc, const uint8_t *data, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        crc ^= data[i];
+        for (unsigned bit = 0; bit < 8u; ++bit)
+            crc = (crc >> 1u) ^ (0xedb88320u & (0u - (crc & 1u)));
+    }
+    return crc;
+}
+
+static uint32_t crc32_bytes(const uint8_t *data, size_t count)
+{
+    return ~crc32_update(UINT32_MAX, data, count);
+}
+
+static uint32_t iq_payload_crc(const uint8_t descriptor[C5VRX_USB_IQ_DESCRIPTOR_BYTES],
+                               volatile const uint32_t *words,
+                               size_t sample_count)
+{
+    uint32_t crc = crc32_update(UINT32_MAX, descriptor,
+                                C5VRX_USB_IQ_DESCRIPTOR_BYTES);
+    uint8_t raw[4];
+    for (size_t i = 0; i < sample_count; ++i) {
+        put_le32(raw, words[i]);
+        crc = crc32_update(crc, raw, sizeof(raw));
+    }
+    return ~crc;
+}
+
+static void write_binary_iq_packet(volatile const uint32_t *words,
+                                   size_t sample_count)
+{
+    uint8_t descriptor[C5VRX_USB_IQ_DESCRIPTOR_BYTES] = {0};
+    put_le32(descriptor, (uint32_t)sample_count);
+    put_le32(descriptor + 4u, 0u); /* flags */
+
+    uint8_t header[C5VRX_USB_HEADER_BYTES] = {0};
+    memcpy(header, s_iq_usb_magic, sizeof(s_iq_usb_magic));
+    header[8] = C5VRX_USB_PREVIEW_PROTOCOL_VERSION;
+    header[9] = C5VRX_USB_PACKET_IQ_U32_BLOCK;
+    put_le16(header + 10u, C5VRX_USB_HEADER_BYTES);
+    put_le32(header + 12u, s_iq_usb_sequence++);
+    put_le32(header + 16u,
+             C5VRX_USB_IQ_DESCRIPTOR_BYTES +
+                 (uint32_t)sample_count * sizeof(uint32_t));
+    put_le64(header + 20u, (uint64_t)esp_timer_get_time());
+    put_le32(header + 28u, crc32_bytes(header, 28u));
+
+    const uint32_t payload_crc = iq_payload_crc(descriptor, words, sample_count);
+    uint8_t trailer[4];
+    put_le32(trailer, payload_crc);
+
+    /* Framed binary is only selected while the host has explicitly opened the
+     * USB preview transport. Keep stdout locked so diagnostic text from other
+     * tasks cannot be inserted inside a packet. ESP32-C5 is little-endian, so
+     * the packed uint32_t dump words can be written directly on the wire. */
+    flockfile(stdout);
+    (void)fwrite(header, 1, sizeof(header), stdout);
+    (void)fwrite(descriptor, 1, sizeof(descriptor), stdout);
+    (void)fwrite((const void *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR,
+                 sizeof(uint32_t), sample_count, stdout);
+    (void)fwrite(trailer, 1, sizeof(trailer), stdout);
+    (void)fflush(stdout);
+    funlockfile(stdout);
+}
+
 esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
 {
     if (sample_count == 0 || sample_count > C5VRX_ADC_DUMP_MAX_SAMPLES) {
@@ -107,10 +199,21 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
     int16_t max_i = INT16_MIN;
     int16_t min_q = INT16_MAX;
     int16_t max_q = INT16_MIN;
+    const bool binary_transport =
+        print_raw_words && c5vrx_usb_preview_running();
 
     if (print_raw_words) {
-        printf("C5VRX_IQ_BEGIN samples=%u base=0x%08" PRIx32 "\n",
-               (unsigned)sample_count, (uint32_t)C5VRX_ADC_DUMP_BASE_ADDR);
+        if (binary_transport) {
+            printf("C5VRX_IQ_BINARY_BEGIN samples=%u bytes=%u packet_type=%u\n",
+                   (unsigned)sample_count,
+                   (unsigned)(C5VRX_USB_IQ_DESCRIPTOR_BYTES +
+                              sample_count * sizeof(uint32_t)),
+                   C5VRX_USB_PACKET_IQ_U32_BLOCK);
+        } else {
+            printf("C5VRX_IQ_BEGIN samples=%u base=0x%08" PRIx32 "\n",
+                   (unsigned)sample_count, (uint32_t)C5VRX_ADC_DUMP_BASE_ADDR);
+        }
+        fflush(stdout);
     }
 
     for (size_t i = 0; i < sample_count; ++i) {
@@ -125,12 +228,16 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
         if (s.q < min_q) min_q = s.q;
         if (s.q > max_q) max_q = s.q;
 
-        if (print_raw_words) {
+        if (print_raw_words && !binary_transport) {
             printf("IQ:%08" PRIx32 "\n", raw);
         }
     }
 
-    if (print_raw_words) {
+    if (binary_transport) {
+        write_binary_iq_packet(words, sample_count);
+        printf("C5VRX_IQ_BINARY_END samples=%u\n", (unsigned)sample_count);
+        fflush(stdout);
+    } else if (print_raw_words) {
         printf("C5VRX_IQ_END\n");
     }
 
