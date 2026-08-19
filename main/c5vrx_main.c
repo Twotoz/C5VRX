@@ -119,6 +119,17 @@ void app_main(void)
     }
 
 #if CONFIG_C5VRX_RF_BACKEND_WIFI5
+    /* Bring USB control up before touching the Wi-Fi/RF stack. PING must remain
+     * available even if a vendor/driver call stalls or fails during first-board
+     * bring-up. STATUS may report status-wifi until the backend is ready. */
+    ESP_ERROR_CHECK(c5vrx_control_start(
+        band,
+        channel,
+        C5VRX_CFG_HT40,
+        C5VRX_CFG_DIRECT_TUNE));
+    ESP_LOGI(TAG,
+             "C5VRX_BOOT stage=USB_CONTROL_READY rf_ready=0; PING available before Wi-Fi bring-up");
+
     ESP_LOGI(TAG, "RF backend: public ESP-IDF 5 GHz Wi-Fi driver");
 
     bool wifi_ready = false;
@@ -133,11 +144,9 @@ void app_main(void)
         ESP_LOGI(TAG, "C5VRX_BOOT stage=WIFI5_READY bw=%u",
                  active_ht40 ? 40u : 20u);
     } else {
-        /* Keep USB diagnostics alive even when RF bring-up fails. The first
-         * hardware board must report the failing stage instead of rebooting
-         * before PING/STATUS can be used. */
+        /* Keep USB diagnostics alive even when RF bring-up fails. */
         ESP_LOGE(TAG,
-                 "C5VRX_BOOT stage=WIFI5_FAILED code=%d name=%s; continuing with USB diagnostics",
+                 "C5VRX_BOOT stage=WIFI5_FAILED code=%d name=%s; USB control already active",
                  (int)err, esp_err_to_name(err));
     }
 
@@ -153,12 +162,6 @@ void app_main(void)
     } else {
         ESP_LOGW(TAG, "Skipping RF dump startup because the Wi-Fi RX backend is not ready");
     }
-
-    ESP_ERROR_CHECK(c5vrx_control_start(
-        band,
-        channel,
-        active_ht40,
-        C5VRX_CFG_DIRECT_TUNE));
 
     ESP_LOGI(TAG, "USB control ready: select bands/channels, trigger IQ captures and control the CVBS proof output");
     if (wifi_ready) {
