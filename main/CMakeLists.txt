@@ -30,6 +30,7 @@ idf_component_register(
         esp_netif
         esp_driver_parlio
         esp_driver_bitscrambler
+        esp_driver_usb_serial_jtag
         esp_timer
         esp_app_format
         heap
