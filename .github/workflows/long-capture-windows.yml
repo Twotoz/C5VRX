@@ -8,6 +8,11 @@ on:
       - tools/C5VRX_LongCapture.py
       - tools/c5vrx_usb_protocol.py
       - .github/workflows/long-capture-windows.yml
+  pull_request:
+    paths:
+      - tools/C5VRX_LongCapture.py
+      - tools/c5vrx_usb_protocol.py
+      - .github/workflows/long-capture-windows.yml
   workflow_dispatch:
 
 jobs:
