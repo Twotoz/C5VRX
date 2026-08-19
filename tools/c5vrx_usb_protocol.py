@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Versioned, CRC-protected C5VRX USB preview stream framing."""
+"""Versioned, CRC-protected C5VRX USB stream framing."""
 
 from __future__ import annotations
 
@@ -15,12 +15,15 @@ HEADER = struct.Struct("<8sBBHIIQI")
 HEADER_BYTES = HEADER.size
 PAYLOAD_CRC = struct.Struct("<I")
 FRAME_DESCRIPTOR = struct.Struct("<HHHBB")
+IQ_DESCRIPTOR = struct.Struct("<II")  # word_count, flags
 MAX_PAYLOAD_BYTES = 1024 * 1024
 
 PACKET_STREAM_INFO = 1
 PACKET_GRAY8_FRAME = 2
 PACKET_STREAM_END = 3
+PACKET_IQ_U32_BLOCK = 4
 PIXEL_FORMAT_GRAY8 = 1
+IQ_FLAG_NONE = 0
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,25 @@ def encode_packet(packet_type: int, sequence: int, timestamp_us: int,
     header_crc = zlib.crc32(prefix[:28]) & 0xFFFFFFFF
     header = prefix[:28] + struct.pack("<I", header_crc)
     return header + payload + PAYLOAD_CRC.pack(zlib.crc32(payload) & 0xFFFFFFFF)
+
+
+def decode_iq_block(packet: Packet) -> list[int]:
+    """Decode one PACKET_IQ_U32_BLOCK payload into packed C5 IQ words."""
+    if packet.packet_type != PACKET_IQ_U32_BLOCK:
+        raise ValueError("not an IQ block packet")
+    if len(packet.payload) < IQ_DESCRIPTOR.size:
+        raise ValueError("short IQ descriptor")
+    word_count, flags = IQ_DESCRIPTOR.unpack_from(packet.payload)
+    if flags != IQ_FLAG_NONE:
+        raise ValueError(f"unsupported IQ flags: {flags}")
+    raw = packet.payload[IQ_DESCRIPTOR.size:]
+    if len(raw) != word_count * 4:
+        raise ValueError(
+            f"IQ payload size mismatch: words={word_count} bytes={len(raw)}"
+        )
+    if not word_count:
+        return []
+    return list(struct.unpack(f"<{word_count}I", raw))
 
 
 class StreamDecoder:
@@ -135,10 +157,15 @@ def self_test() -> None:
     frame = bytes((n * 17) & 0xFF for n in range(160 * 120))
     info = encode_packet(PACKET_STREAM_INFO, 3, 1000, descriptor)
     video = encode_packet(PACKET_GRAY8_FRAME, 4, 2000, descriptor + frame)
+    iq_words = [0x2522304C, 0xB36DF7F4, 0x2520F45E]
+    iq_payload = IQ_DESCRIPTOR.pack(len(iq_words), IQ_FLAG_NONE) + struct.pack(
+        f"<{len(iq_words)}I", *iq_words
+    )
+    iq = encode_packet(PACKET_IQ_U32_BLOCK, 5, 2500, iq_payload)
     damaged = bytearray(video)
     damaged[-1] ^= 0x80
-    end = encode_packet(PACKET_STREAM_END, 5, 3000, b"")
-    wire = b"boot\r\n" + info + bytes(damaged) + b"noise\n" + video + end
+    end = encode_packet(PACKET_STREAM_END, 6, 3000, b"")
+    wire = b"boot\r\n" + info + bytes(damaged) + b"noise\n" + video + iq + end
 
     decoder = StreamDecoder()
     events: list[tuple[str, object]] = []
@@ -151,9 +178,11 @@ def self_test() -> None:
     assert "noise" in lines
     assert "PAYLOAD_CRC" in errors
     assert [packet.packet_type for packet in packets] == [
-        PACKET_STREAM_INFO, PACKET_GRAY8_FRAME, PACKET_STREAM_END,
+        PACKET_STREAM_INFO, PACKET_GRAY8_FRAME, PACKET_IQ_U32_BLOCK,
+        PACKET_STREAM_END,
     ]
     assert packets[1].payload[FRAME_DESCRIPTOR.size:] == frame
+    assert decode_iq_block(packets[2]) == iq_words
     print("c5vrx_usb_protocol: PASS")
 
 
