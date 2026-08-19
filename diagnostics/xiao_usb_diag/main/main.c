@@ -16,11 +16,12 @@ static void usb_write_line(const char *s)
 
 void app_main(void)
 {
-    usb_serial_jtag_driver_config_t cfg = {
-        .rx_buffer_size = 1024,
-        .tx_buffer_size = 1024,
-        .intr_priority = 0,
-    };
+    /* Use the IDF-provided default initializer instead of naming fields that
+     * differ between ESP-IDF point releases. Override only the ring sizes we
+     * actually care about for this diagnostic. */
+    usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+    cfg.rx_buffer_size = 1024;
+    cfg.tx_buffer_size = 1024;
 
     esp_err_t err = usb_serial_jtag_driver_install(&cfg);
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
