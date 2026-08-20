@@ -42,8 +42,17 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-4"
+APP_BUILD = "video-proof-5"
 C5_RX_MAX_MHZ = 5885
+VIDEO_LINE_RATES_HZ = {
+    "PAL": 15_625.0,
+    "NTSC": 15_734.264,
+}
+VIDEO_FIELD_PERIOD_US = {
+    "PAL": 20_000.0,
+    "NTSC": 1_000_000.0 / 59.94,
+}
+VIDEO_SYNC_MIN_SCORE = 0.65
 
 FPV_BANDS = {
     "A": [5865, 5845, 5825, 5805, 5785, 5765, 5745, 5725],
@@ -192,6 +201,8 @@ class C5VRXApp(tk.Tk):
             self.live_video_width * self.live_video_height)
         self.live_video_row = 0
         self.live_video_rows_seen: set[int] = set()
+        self.live_video_standard_scores = {"PAL": 0.0, "NTSC": 0.0}
+        self.live_video_rejected_blocks = 0
         self.first_test_active = False
         self.first_test_fine_sent = False
         self.first_test_center = 5805
@@ -381,7 +392,7 @@ class C5VRXApp(tk.Tk):
         )
         self.live_iq_stop_btn.pack(side="left", padx=8)
         ttk.Label(iq_live_controls, text="Raster clock").pack(side="left", padx=(8, 3))
-        self.video_sample_rate_var = tk.StringVar(value="40")
+        self.video_sample_rate_var = tk.StringVar(value="80")
         ttk.Combobox(
             iq_live_controls,
             textvariable=self.video_sample_rate_var,
@@ -389,9 +400,19 @@ class C5VRXApp(tk.Tk):
             values=["20", "40", "80"],
             width=5,
         ).pack(side="left")
+        ttk.Label(iq_live_controls, text="Standard").pack(
+            side="left", padx=(8, 3))
+        self.video_standard_var = tk.StringVar(value="Auto")
+        ttk.Combobox(
+            iq_live_controls,
+            textvariable=self.video_standard_var,
+            state="readonly",
+            values=["Auto", "PAL", "NTSC"],
+            width=6,
+        ).pack(side="left")
         ttk.Label(
             iq_live_controls,
-            text="MS/s hypothesis; slowly fills a PAL raster from retriggered strips.",
+            text="MS/s; rejects unlocked noise and slowly fills a detected video raster.",
         ).pack(side="left", padx=8)
 
     def refresh_ports(self) -> None:
@@ -818,6 +839,8 @@ class C5VRXApp(tk.Tk):
         self.live_video_pixels[:] = bytes(len(self.live_video_pixels))
         self.live_video_row = 0
         self.live_video_rows_seen.clear()
+        self.live_video_standard_scores = {"PAL": 0.0, "NTSC": 0.0}
+        self.live_video_rejected_blocks = 0
         self.live_iq_start_btn.configure(state="disabled")
         self.live_iq_stop_btn.configure(state="normal")
         # Replace any previous diagnostic drawing immediately. This also gives
@@ -829,7 +852,7 @@ class C5VRXApp(tk.Tk):
             self.live_video_height,
         )
         self.preview_status_var.set(
-            f"{APP_BUILD}: starting A1 IQ -> PAL raster; VTX must be A1 (5865 MHz)")
+            f"{APP_BUILD}: starting A1 IQ -> PAL/NTSC raster; VTX must be A1 (5865 MHz)")
         self.send_command("BW 40")
         self.after(100, lambda: self.send_command("SET A 1"))
         self.after(220, lambda: self.send_command("USB PREVIEW START"))
@@ -884,8 +907,84 @@ class C5VRXApp(tk.Tk):
             pi, pq = ci, cq
         return values
 
+    @staticmethod
+    def _sync_fold_candidate(
+            binned: list[float], period_bins: int) -> tuple[int, float, int]:
+        """Return sync-window phase, normalized score and FM polarity.
+
+        A polarity of +1 means the detected sync plateau is already below the
+        blanking baseline. -1 means the RF tap is spectrally inverted and the
+        discriminator must be inverted before extracting luma.
+        """
+        if period_bins < 8 or len(binned) < period_bins * 2:
+            return 0, 0.0, 1
+        sums = [0.0] * period_bins
+        counts = [0] * period_bins
+        for index, value in enumerate(binned):
+            phase = index % period_bins
+            sums[phase] += value
+            counts[phase] += 1
+        folded = [
+            sums[index] / counts[index] if counts[index] else 0.0
+            for index in range(period_bins)
+        ]
+        sync_bins = max(2, int(round(period_bins * 0.073)))
+        circular = folded + folded[:sync_bins]
+        window_sum = sum(circular[:sync_bins])
+        window_means = [window_sum / sync_bins]
+        for phase in range(1, period_bins):
+            window_sum += (
+                circular[phase + sync_bins - 1] - circular[phase - 1])
+            window_means.append(window_sum / sync_bins)
+        baseline = statistics.fmean(binned)
+        low_phase = min(
+            range(period_bins), key=window_means.__getitem__)
+        high_phase = max(
+            range(period_bins), key=window_means.__getitem__)
+        low_contrast = baseline - window_means[low_phase]
+        high_contrast = window_means[high_phase] - baseline
+        noise = max(1e-9, statistics.pstdev(binned))
+        if low_contrast >= high_contrast:
+            return low_phase, low_contrast / noise, 1
+        return high_phase, high_contrast / noise, -1
+
+    def _select_video_timing(
+            self, binned: list[float], raster_msps: float,
+            bin_size: int) -> tuple[str, float, int, float, int]:
+        requested = self.video_standard_var.get()
+        standards = ("PAL", "NTSC") if requested == "Auto" else (requested,)
+        candidates: dict[str, tuple[float, int, float, int]] = {}
+        for standard in standards:
+            period = raster_msps * 1_000_000.0 / VIDEO_LINE_RATES_HZ[standard]
+            period_bins = max(8, int(round(period / bin_size)))
+            phase, score, polarity = self._sync_fold_candidate(
+                binned, period_bins)
+            candidates[standard] = (period, phase, score, polarity)
+
+        if requested == "Auto":
+            best_now = max(candidates, key=lambda name: candidates[name][2])
+            if candidates[best_now][2] >= VIDEO_SYNC_MIN_SCORE:
+                for standard in ("PAL", "NTSC"):
+                    self.live_video_standard_scores[standard] = (
+                        self.live_video_standard_scores[standard] * 0.85 +
+                        candidates[standard][2])
+            standard = max(
+                self.live_video_standard_scores,
+                key=self.live_video_standard_scores.__getitem__)
+            if not any(self.live_video_standard_scores.values()):
+                standard = best_now
+        else:
+            standard = requested
+        period, phase, score, polarity = candidates[standard]
+        return standard, period, phase, score, polarity
+
     def _process_live_iq_block(
             self, words: list[int], timestamp_us: int | None = None) -> None:
+        clipped_words = sum(
+            1 for word in words
+            if any(abs(value) >= 511 for value in self._decode_iq(word))
+        )
+        clipped_percent = 100.0 * clipped_words / max(1, len(words))
         fm = self._fm_discriminator(words)
         if len(fm) < 512:
             return
@@ -899,30 +998,24 @@ class C5VRXApp(tk.Tk):
             for offset in range(0, len(fm) - bin_size + 1, bin_size)
         ]
         raster_msps = float(self.video_sample_rate_var.get())
-        period = raster_msps * 1_000_000.0 / 15_625.0
-        period_bins = max(8, int(round(period / bin_size)))
-        sync_bins = max(2, int(round(period_bins * 0.073)))
+        (video_standard, period, sync_phase,
+         sync_score, fm_polarity) = self._select_video_timing(
+             binned, raster_msps, bin_size)
 
-        # Fold all complete line periods in this finite block. CVBS horizontal
-        # sync is the most repeatable ~7.3% plateau in a PAL line. Test both FM
-        # polarities because the dump tap's spectral inversion is not known.
-        phase_means: list[float] = []
-        for phase in range(period_bins):
-            samples: list[float] = []
-            cursor = phase
-            while cursor + sync_bins <= len(binned):
-                samples.extend(binned[cursor:cursor + sync_bins])
-                cursor += period_bins
-            phase_means.append(
-                statistics.fmean(samples) if samples else 0.0)
-        baseline = statistics.fmean(binned)
-        low_phase = min(range(len(phase_means)), key=phase_means.__getitem__)
-        high_phase = max(range(len(phase_means)), key=phase_means.__getitem__)
-        low_contrast = baseline - phase_means[low_phase]
-        high_contrast = phase_means[high_phase] - baseline
-        sync_phase = low_phase if low_contrast >= high_contrast else high_phase
-        noise = max(1e-9, statistics.pstdev(binned))
-        sync_score = max(low_contrast, high_contrast) / noise
+        # Do not stretch ordinary RF noise into a convincing full-contrast
+        # picture. Only a repeated horizontal-sync candidate may update the
+        # raster; rejected blocks leave the last locked pixels untouched.
+        if sync_score < VIDEO_SYNC_MIN_SCORE:
+            self.live_video_rejected_blocks += 1
+            self.after(
+                0, self.preview_status_var.set,
+                f"{APP_BUILD}: no {video_standard} H-sync lock "
+                f"(score {sync_score:.2f} < {VIDEO_SYNC_MIN_SCORE:.2f}); "
+                "pixels not updated")
+            return
+
+        if fm_polarity < 0:
+            fm = [-value for value in fm]
 
         line_starts: list[int] = []
         cursor = sync_phase * bin_size
@@ -960,9 +1053,10 @@ class C5VRXApp(tk.Tk):
             if timestamp_us is not None:
                 line_time_us = timestamp_us - (
                     len(fm) - start_sample) * 1_000_000.0 / physical_rate_hz
-                field_phase = line_time_us % 20_000.0
+                field_period_us = VIDEO_FIELD_PERIOD_US[video_standard]
+                field_phase = line_time_us % field_period_us
                 target_row = int(
-                    field_phase * self.live_video_height / 20_000.0)
+                    field_phase * self.live_video_height / field_period_us)
             else:
                 target_row = self.live_video_row
                 self.live_video_row = (
@@ -980,8 +1074,10 @@ class C5VRXApp(tk.Tk):
                        if self.live_iq_source_msps else "source MS/s pending")
         coverage = 100.0 * len(self.live_video_rows_seen) / self.live_video_height
         lock_text = (
-            f"H-sync fold score {sync_score:.2f}; "
-            f"raster {raster_msps:.0f} MS/s; {coverage:.0f}% rows")
+            f"{video_standard} H-sync score {sync_score:.2f}; "
+            f"raster {raster_msps:.0f} MS/s; {coverage:.0f}% rows; "
+            f"clipped {clipped_percent:.1f}%; "
+            f"rejected {self.live_video_rejected_blocks}")
         self.after(0, self._show_live_iq_frame, bytes(self.live_video_pixels),
                    source_text, usb_mbit, block_rate, lock_text)
 

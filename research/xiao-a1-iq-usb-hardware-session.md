@@ -277,3 +277,30 @@ clean image. The next experiment should reduce VTX coupling (lower power,
 greater distance or attenuation) until most I/Q extrema remain inside roughly
 +/-250 to +/-350, then compare the 20, 40 and 80 MS/s raster hypotheses while
 looking for a stable image correlated with camera motion.
+
+Offline decoding of the complete CRC-framed session later exposed a more
+specific timing error. A broad horizontal-period search over VTX-on captures
+peaked at about 5088 source samples per line. This is consistent with an
+approximately 80 MS/s source and the 15.734 kHz NTSC line rate, whereas the
+GUI had defaulted to a 40 MS/s PAL fold. That old setting effectively treated
+each physical line as roughly two candidate lines and used a 20 ms PAL field
+period for vertical placement, explaining why the raster responded strongly
+to the VTX but did not resemble the camera scene.
+
+GUI build `video-proof-5` defaults to the 80 MS/s hypothesis, evaluates PAL
+and NTSC sync candidates, remembers the stronger standard across captures,
+normalizes unknown discriminator polarity, and refuses to repaint pixels when
+the horizontal-sync score is below 0.65. This prevents ordinary VTX-off noise
+from being contrast-stretched into a fake full-frame image. The companion
+`tools/analyze_receiver_session.py` utility reads the raw mixed ASCII/binary
+session log, validates packet CRCs, reassembles finite IQ chunks, segments
+capture runs, and reports power, clipping and PAL/NTSC fold scores.
+
+For a future genuinely continuous path, the preferred USB unit is neither one
+raw-IQ capture nor one USB transaction per video line. WBFM, synchronization
+and pixel reduction must happen on the device; then groups of roughly 8 to 16
+decoded lines should be sent as CRC-protected strips. This retains low latency
+without paying framing and scheduling overhead for every line. Complete
+160x120 GRAY8 frames are only 19200 bytes and remain a useful simple fallback.
+The unsolved bottleneck is continuous phase-bearing RF acquisition, not the
+bandwidth required for a reduced grayscale image.
