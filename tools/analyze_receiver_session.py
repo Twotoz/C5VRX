@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import statistics
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,9 +14,11 @@ from C5VRX_Flasher import C5VRXApp, VIDEO_LINE_RATES_HZ
 from c5vrx_usb_protocol import (
     PACKET_IQ_U32_BLOCK,
     PACKET_IQ_U32_CHUNK,
+    PACKET_PHASE8_CHUNK,
     StreamDecoder,
     decode_iq_block,
     decode_iq_chunk,
+    decode_phase8_chunk,
 )
 
 
@@ -23,14 +26,16 @@ from c5vrx_usb_protocol import (
 class Capture:
     capture_id: int
     timestamp_us: int
-    words: list[int]
+    transport: str
+    words: list[int] | None = None
+    phases: bytes | None = None
 
 
 @dataclass
 class Metrics:
     capture: Capture
-    average_power: float
-    clipped_percent: float
+    average_power: float | None
+    clipped_percent: float | None
     pal_score: float
     ntsc_score: float
 
@@ -49,6 +54,9 @@ def read_captures(path: Path) -> tuple[list[Capture], list[str]]:
     chunk_groups: dict[int, dict[int, tuple[int, ...]]] = {}
     chunk_totals: dict[int, int] = {}
     chunk_timestamps: dict[int, int] = {}
+    phase_groups: dict[int, dict[int, bytes]] = {}
+    phase_totals: dict[int, int] = {}
+    phase_timestamps: dict[int, int] = {}
     errors: list[str] = []
     with path.open("rb") as stream:
         while data := stream.read(1024 * 1024):
@@ -61,7 +69,16 @@ def read_captures(path: Path) -> tuple[list[Capture], list[str]]:
                 packet = value
                 if packet.packet_type == PACKET_IQ_U32_BLOCK:
                     complete.append(Capture(
-                        -1, packet.timestamp_us, decode_iq_block(packet)))
+                        -1, packet.timestamp_us, "raw-IQ32",
+                        words=decode_iq_block(packet)))
+                    continue
+                if packet.packet_type == PACKET_PHASE8_CHUNK:
+                    chunk = decode_phase8_chunk(packet)
+                    phase_groups.setdefault(chunk.capture_id, {})[
+                        chunk.offset_samples] = chunk.phases
+                    phase_totals[chunk.capture_id] = chunk.total_samples
+                    phase_timestamps.setdefault(
+                        chunk.capture_id, packet.timestamp_us)
                     continue
                 if packet.packet_type != PACKET_IQ_U32_CHUNK:
                     continue
@@ -80,29 +97,49 @@ def read_captures(path: Path) -> tuple[list[Capture], list[str]]:
             words.extend(chunks[offset])
         if words and len(words) == chunk_totals[capture_id]:
             complete.append(Capture(
-                capture_id, chunk_timestamps[capture_id], words))
+                capture_id, chunk_timestamps[capture_id], "raw-IQ32",
+                words=words))
+    for capture_id, chunks in phase_groups.items():
+        phases = bytearray()
+        for offset in sorted(chunks):
+            if offset != len(phases):
+                phases.clear()
+                break
+            phases.extend(chunks[offset])
+        if phases and len(phases) == phase_totals[capture_id]:
+            complete.append(Capture(
+                capture_id, phase_timestamps[capture_id], "phase8",
+                phases=bytes(phases)))
     complete.sort(key=lambda capture: capture.timestamp_us)
     return complete, errors
 
 
 def capture_metrics(capture: Capture, sample_rate_msps: float,
                     include_sync: bool = True) -> Metrics:
-    power = 0
-    clipped = 0
-    for word in capture.words:
-        i, q = C5VRXApp._decode_iq(word)
-        power += i * i + q * q
-        if abs(i) >= 511 or abs(q) >= 511:
-            clipped += 1
+    if capture.phases is not None:
+        fm = C5VRXApp._phase8_discriminator(capture.phases)
+        average_power = None
+        clipped_percent = None
+    else:
+        assert capture.words is not None
+        power = 0
+        clipped = 0
+        for word in capture.words:
+            i, q = C5VRXApp._decode_iq(word)
+            power += i * i + q * q
+            if abs(i) >= 511 or abs(q) >= 511:
+                clipped += 1
+        average_power = power / len(capture.words)
+        clipped_percent = clipped * 100.0 / len(capture.words)
+        fm = C5VRXApp._fm_discriminator(capture.words)
     if not include_sync:
         return Metrics(
             capture,
-            power / len(capture.words),
-            clipped * 100.0 / len(capture.words),
+            average_power,
+            clipped_percent,
             0.0,
             0.0,
         )
-    fm = C5VRXApp._fm_discriminator(capture.words)
     bin_size = 16
     binned = [
         statistics.fmean(fm[offset:offset + bin_size])
@@ -115,8 +152,8 @@ def capture_metrics(capture: Capture, sample_rate_msps: float,
             binned, max(8, int(round(period / bin_size))))[1]
     return Metrics(
         capture,
-        power / len(capture.words),
-        clipped * 100.0 / len(capture.words),
+        average_power,
+        clipped_percent,
         scores["PAL"],
         scores["NTSC"],
     )
@@ -134,6 +171,13 @@ def split_runs(captures: list[Capture], gap_us: int) -> list[list[Capture]]:
 
 def median(values: list[float]) -> float:
     return statistics.median(values) if values else 0.0
+
+
+def numeric_text(values: list[float | None], suffix: str = "") -> str:
+    present = [value for value in values if value is not None and math.isfinite(value)]
+    if not present:
+        return "n/a"
+    return f"{median(present):.2f}{suffix}"
 
 
 def main() -> None:
@@ -169,11 +213,16 @@ def main() -> None:
         ntsc = [item.ntsc_score for item in sync_metrics]
         standard = "NTSC" if median(ntsc) > median(pal) else "PAL"
         duration = (run[-1].timestamp_us - run[0].timestamp_us) / 1_000_000.0
+        present_powers = [value for value in powers if value is not None]
+        power_text = (f"median={median(present_powers):.0f} "
+                      f"range={min(present_powers):.0f}..{max(present_powers):.0f}"
+                      if present_powers else "n/a (Phase8)")
+        transports = ",".join(sorted({capture.transport for capture in run}))
         print(
             f"run {index}: ids={run[0].capture_id}..{run[-1].capture_id} "
             f"captures={len(run)} duration={duration:.1f}s "
-            f"power median={median(powers):.0f} range={min(powers):.0f}..{max(powers):.0f} "
-            f"clipped median={median(clipping):.2f}% "
+            f"transport={transports} power {power_text} "
+            f"clipped median={numeric_text(clipping, '%')} "
             f"PAL score median={median(pal):.2f} "
             f"NTSC score median={median(ntsc):.2f} candidate={standard} "
             f"metric_samples={len(metrics)} sync_samples={len(sync_metrics)}"

@@ -24,6 +24,7 @@ PACKET_GRAY8_FRAME = 2
 PACKET_STREAM_END = 3
 PACKET_IQ_U32_BLOCK = 4
 PACKET_IQ_U32_CHUNK = 5
+PACKET_PHASE8_CHUNK = 6
 PIXEL_FORMAT_GRAY8 = 1
 IQ_FLAG_NONE = 0
 
@@ -35,6 +36,15 @@ class IQChunk:
     offset_words: int
     flags: int
     words: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class Phase8Chunk:
+    capture_id: int
+    total_samples: int
+    offset_samples: int
+    flags: int
+    phases: bytes
 
 
 @dataclass(frozen=True)
@@ -96,6 +106,30 @@ def decode_iq_chunk(packet: Packet) -> IQChunk:
         )
     words = struct.unpack(f"<{chunk_words}I", raw)
     return IQChunk(capture_id, total_words, offset_words, flags, words)
+
+
+def decode_phase8_chunk(packet: Packet) -> Phase8Chunk:
+    """Decode one independently CRC-protected unsigned phase8 fragment."""
+    if packet.packet_type != PACKET_PHASE8_CHUNK:
+        raise ValueError("not a phase8 chunk packet")
+    if len(packet.payload) < IQ_CHUNK_DESCRIPTOR.size:
+        raise ValueError("short phase8 chunk descriptor")
+    (capture_id, total_samples, offset_samples,
+     chunk_samples, flags) = IQ_CHUNK_DESCRIPTOR.unpack_from(packet.payload)
+    phases = packet.payload[IQ_CHUNK_DESCRIPTOR.size:]
+    if chunk_samples == 0 or len(phases) != chunk_samples:
+        raise ValueError(
+            f"phase8 chunk size mismatch: samples={chunk_samples}"
+            f" bytes={len(phases)}"
+        )
+    if (offset_samples > total_samples or
+            chunk_samples > total_samples - offset_samples):
+        raise ValueError(
+            f"phase8 chunk bounds invalid: offset={offset_samples}"
+            f" samples={chunk_samples} total={total_samples}"
+        )
+    return Phase8Chunk(
+        capture_id, total_samples, offset_samples, flags, phases)
 
 
 class StreamDecoder:
@@ -208,11 +242,14 @@ def self_test() -> None:
         9, len(iq_words), 0, len(chunk_words), 1
     ) + struct.pack(f"<{len(chunk_words)}I", *chunk_words)
     iq_chunk = encode_packet(PACKET_IQ_U32_CHUNK, 6, 2600, chunk_payload)
+    phase_payload = IQ_CHUNK_DESCRIPTOR.pack(10, 5, 0, 5, 3) + \
+        bytes([0, 63, 127, 191, 255])
+    phase_chunk = encode_packet(PACKET_PHASE8_CHUNK, 7, 2700, phase_payload)
     damaged = bytearray(video)
     damaged[-1] ^= 0x80
-    end = encode_packet(PACKET_STREAM_END, 7, 3000, b"")
+    end = encode_packet(PACKET_STREAM_END, 8, 3000, b"")
     wire = (b"boot\r\n" + info + bytes(damaged) + b"noise\n" + video +
-            iq + iq_chunk + end)
+            iq + iq_chunk + phase_chunk + end)
 
     decoder = StreamDecoder()
     events: list[tuple[str, object]] = []
@@ -226,12 +263,14 @@ def self_test() -> None:
     assert any(str(error).startswith("PAYLOAD_CRC") for error in errors)
     assert [packet.packet_type for packet in packets] == [
         PACKET_STREAM_INFO, PACKET_GRAY8_FRAME, PACKET_IQ_U32_BLOCK,
-        PACKET_IQ_U32_CHUNK,
+        PACKET_IQ_U32_CHUNK, PACKET_PHASE8_CHUNK,
         PACKET_STREAM_END,
     ]
     assert packets[1].payload[FRAME_DESCRIPTOR.size:] == frame
     assert decode_iq_block(packets[2]) == iq_words
     assert list(decode_iq_chunk(packets[3]).words) == chunk_words
+    assert decode_phase8_chunk(packets[4]).phases == bytes(
+        [0, 63, 127, 191, 255])
     print("c5vrx_usb_protocol: PASS")
 
 

@@ -32,6 +32,7 @@ from c5vrx_usb_protocol import (
     PACKET_GRAY8_FRAME,
     PACKET_IQ_U32_BLOCK,
     PACKET_IQ_U32_CHUNK,
+    PACKET_PHASE8_CHUNK,
     PACKET_STREAM_END,
     PACKET_STREAM_INFO,
     PIXEL_FORMAT_GRAY8,
@@ -39,10 +40,11 @@ from c5vrx_usb_protocol import (
     StreamDecoder,
     decode_iq_block,
     decode_iq_chunk,
+    decode_phase8_chunk,
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-5"
+APP_BUILD = "video-proof-6"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -186,6 +188,7 @@ class C5VRXApp(tk.Tk):
         self.live_iq_capture_timestamp_us: int | None = None
         self.live_iq_total_words = 0
         self.live_iq_chunks: dict[int, tuple[int, ...]] = {}
+        self.live_phase8_chunks: dict[int, bytes] = {}
         self.live_iq_source_msps: float | None = None
         self.live_iq_usb_started = 0.0
         self.live_iq_usb_bytes = 0
@@ -203,6 +206,8 @@ class C5VRXApp(tk.Tk):
         self.live_video_rows_seen: set[int] = set()
         self.live_video_standard_scores = {"PAL": 0.0, "NTSC": 0.0}
         self.live_video_rejected_blocks = 0
+        self.device_phase8_supported = False
+        self.live_transport_name = "raw-IQ32"
         self.first_test_active = False
         self.first_test_fine_sent = False
         self.first_test_center = 5805
@@ -462,6 +467,9 @@ class C5VRXApp(tk.Tk):
 
         self.disconnect_serial()
         self.profile_mismatch_warned = False
+        # Capabilities belong to the newly connected firmware.  Do not carry
+        # Phase8 support over when the user reconnects an older build.
+        self.device_phase8_supported = False
         candidate: serial.Serial | None = None
         try:
             # Configure native USB-Serial/JTAG control lines before opening.
@@ -548,6 +556,10 @@ class C5VRXApp(tk.Tk):
         self.disconnect_serial()
 
     def _parse_device_line(self, line: str) -> None:
+        if line.startswith(("C5VRX_READY", "C5VRX_STATUS")):
+            fields = self._fields(line)
+            self.device_phase8_supported = \
+                fields.get("phase8_capture") == "1"
         if (line.startswith("C5VRX_USB_PREVIEW state=START") and
                 self.live_iq_active):
             fields = self._fields(line)
@@ -591,7 +603,9 @@ class C5VRXApp(tk.Tk):
                     self.live_iq_source_msps = float(fields["finite_fill_msps"])
             except (KeyError, ValueError):
                 pass
-        if line.startswith("C5VRX_CAPTURE_DONE") and self.live_iq_active:
+        if line.startswith(("C5VRX_CAPTURE_DONE",
+                            "C5VRX_PHASE8_CAPTURE_DONE")) and \
+                self.live_iq_active:
             self.live_iq_capture_done = "code=0" in line
             if not self.live_iq_capture_done:
                 fields = self._fields(line)
@@ -636,6 +650,9 @@ class C5VRXApp(tk.Tk):
     def _handle_usb_packet(self, packet: Packet) -> None:
         if packet.packet_type in {PACKET_IQ_U32_BLOCK, PACKET_IQ_U32_CHUNK}:
             self._handle_iq_usb_packet(packet)
+            return
+        if packet.packet_type == PACKET_PHASE8_CHUNK:
+            self._handle_phase8_usb_packet(packet)
             return
         if self.preview_sequence is not None and packet.sequence != (
                 self.preview_sequence + 1) & 0xFFFFFFFF:
@@ -728,6 +745,42 @@ class C5VRXApp(tk.Tk):
             self._finish_iq_usb_block(
                 assembled, self.live_iq_capture_timestamp_us)
 
+    def _handle_phase8_usb_packet(self, packet: Packet) -> None:
+        self.live_iq_usb_bytes += 32 + len(packet.payload) + 4
+        try:
+            chunk = decode_phase8_chunk(packet)
+        except ValueError as exc:
+            self.sink.write(f"C5VRX_PHASE8_CHUNK_DROP reason={exc}\n")
+            return
+        if self.live_iq_capture_id != chunk.capture_id:
+            self.live_iq_capture_id = chunk.capture_id
+            self.live_iq_capture_timestamp_us = packet.timestamp_us
+            self.live_iq_total_words = chunk.total_samples
+            self.live_phase8_chunks = {}
+        if chunk.total_samples != self.live_iq_total_words:
+            self.sink.write("C5VRX_PHASE8_CHUNK_DROP reason=MIXED_TOTAL\n")
+            return
+        existing = self.live_phase8_chunks.get(chunk.offset_samples)
+        if existing is not None and existing != chunk.phases:
+            self.sink.write(
+                "C5VRX_PHASE8_CHUNK_DROP reason=CONFLICTING_DUPLICATE\n")
+            return
+        self.live_phase8_chunks[chunk.offset_samples] = chunk.phases
+        if sum(len(data) for data in self.live_phase8_chunks.values()) != \
+                chunk.total_samples:
+            return
+        assembled = bytearray()
+        expected_offset = 0
+        for offset in sorted(self.live_phase8_chunks):
+            if offset != expected_offset:
+                return
+            data = self.live_phase8_chunks[offset]
+            assembled.extend(data)
+            expected_offset += len(data)
+        if expected_offset == chunk.total_samples:
+            self._finish_phase8_usb_block(
+                bytes(assembled), self.live_iq_capture_timestamp_us)
+
     def _finish_iq_usb_block(
             self, words: list[int], timestamp_us: int | None = None) -> None:
         self.iq_words = words
@@ -741,6 +794,19 @@ class C5VRXApp(tk.Tk):
             self.after(0, self.preview_status_var.set,
                        f"Captured {len(words)} CRC-valid IQ words")
             self.after(0, self.render_iq_preview)
+
+    def _finish_phase8_usb_block(
+            self, phases: bytes, timestamp_us: int | None = None) -> None:
+        self.iq_capture_active = False
+        self.live_iq_packet_done = True
+        if self.live_iq_active:
+            self.live_iq_blocks += 1
+            self._process_live_phase8_block(phases, timestamp_us)
+            self._live_iq_maybe_continue()
+        else:
+            self.after(
+                0, self.preview_status_var.set,
+                f"Captured {len(phases)} CRC-valid phase8 samples")
 
     def _apply_status_line(self, line: str) -> None:
         fields = self._fields(line)
@@ -829,6 +895,7 @@ class C5VRXApp(tk.Tk):
         self.live_iq_capture_id = None
         self.live_iq_capture_timestamp_us = None
         self.live_iq_chunks = {}
+        self.live_phase8_chunks = {}
         self.live_iq_source_msps = None
         self.live_iq_transport_ready = False
         self.live_iq_capture_retries = 0
@@ -877,8 +944,14 @@ class C5VRXApp(tk.Tk):
         self.live_iq_capture_timestamp_us = None
         self.live_iq_total_words = 0
         self.live_iq_chunks = {}
+        self.live_phase8_chunks = {}
         self.live_iq_request_started = time.monotonic()
-        self.send_command("CAPTURE 16384")
+        if self.device_phase8_supported:
+            self.live_transport_name = "phase8"
+            self.send_command("CAPTURE PHASE8 16384")
+        else:
+            self.live_transport_name = "raw-IQ32 fallback"
+            self.send_command("CAPTURE 16384")
 
     def _live_iq_maybe_continue(self) -> None:
         if (self.live_iq_active and self.live_iq_capture_done and
@@ -905,6 +978,20 @@ class C5VRXApp(tk.Tk):
             values.append(math.atan2(cq * pi - ci * pq,
                                      ci * pi + cq * pq))
             pi, pq = ci, cq
+        return values
+
+    @staticmethod
+    def _phase8_discriminator(phases: bytes) -> list[float]:
+        """Convert wrapped unsigned phase bytes into normalized FM deltas."""
+        if len(phases) < 2:
+            return []
+        radians_per_code = 2.0 * math.pi / 256.0
+        previous = phases[0]
+        values: list[float] = []
+        for current in phases[1:]:
+            signed_delta = ((current - previous + 128) & 0xFF) - 128
+            values.append(signed_delta * radians_per_code)
+            previous = current
         return values
 
     @staticmethod
@@ -986,6 +1073,17 @@ class C5VRXApp(tk.Tk):
         )
         clipped_percent = 100.0 * clipped_words / max(1, len(words))
         fm = self._fm_discriminator(words)
+        self._process_live_fm_block(
+            fm, timestamp_us, f"{clipped_percent:.1f}%")
+
+    def _process_live_phase8_block(
+            self, phases: bytes, timestamp_us: int | None = None) -> None:
+        fm = self._phase8_discriminator(phases)
+        self._process_live_fm_block(fm, timestamp_us, "n/a (Phase8)")
+
+    def _process_live_fm_block(
+            self, fm: list[float], timestamp_us: int | None,
+            clipped_text: str) -> None:
         if len(fm) < 512:
             return
 
@@ -1074,9 +1172,10 @@ class C5VRXApp(tk.Tk):
                        if self.live_iq_source_msps else "source MS/s pending")
         coverage = 100.0 * len(self.live_video_rows_seen) / self.live_video_height
         lock_text = (
+            f"{self.live_transport_name}; "
             f"{video_standard} H-sync score {sync_score:.2f}; "
             f"raster {raster_msps:.0f} MS/s; {coverage:.0f}% rows; "
-            f"clipped {clipped_percent:.1f}%; "
+            f"clipped {clipped_text}; "
             f"rejected {self.live_video_rejected_blocks}")
         self.after(0, self._show_live_iq_frame, bytes(self.live_video_pixels),
                    source_text, usb_mbit, block_rate, lock_text)

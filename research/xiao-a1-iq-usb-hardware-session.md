@@ -304,3 +304,29 @@ without paying framing and scheduling overhead for every line. Complete
 160x120 GRAY8 frames are only 19200 bytes and remain a useful simple fallback.
 The unsolved bottleneck is continuous phase-bearing RF acquisition, not the
 bandwidth required for a reduced grayscale image.
+
+## Phase8 finite-capture acceleration
+
+GUI/firmware build `video-proof-6` adds a compact finite-capture path without
+moving PAL/NTSC reconstruction onto the C5. `CAPTURE PHASE8 16384` still uses
+the same bounded, variance-validated vendor capture. Firmware calculates the
+block I/Q mean, removes that DC offset, quantizes every complex sample angle to
+one unsigned byte through a small lookup table, and sends packet type 6 in 1024
+sample CRC-protected chunks.
+
+This changes a 16384-sample capture from 65536 raw data bytes in 64 type-5
+chunks to 16384 phase bytes in 16 type-6 chunks. Sample count and nominal RF
+detail are retained; only absolute amplitude and fine phase precision are
+discarded. The PC unwraps adjacent phase bytes into the FM discriminator and
+continues to perform binning, PAL/NTSC selection, horizontal-sync scoring,
+polarity correction and 160x120 rendering. New firmware advertises
+`phase8_capture=1`; the same exe automatically falls back to raw type-5 IQ for
+older firmware.
+
+The firmware, protocol decoder and Windows host path compile and pass their
+offline framing checks. The expected transport reduction is fourfold, but an
+actual block rate must be measured after flashing this build. This remains a
+retriggered finite source and does not solve the gaps between captures.
+`tools/analyze_receiver_session.py` now understands both raw-IQ32 and Phase8
+session packets, although Phase8 deliberately cannot report absolute power or
+clipping because those amplitude values are no longer transported.

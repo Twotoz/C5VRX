@@ -74,6 +74,13 @@ c5vrx_iq10_sample_t c5vrx_adc_decode_word(uint32_t raw);
 esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words);
 
 /**
+ * Capture finite IQ, remove block DC, quantize complex angle to unsigned
+ * phase8, and send CRC-protected USB chunks. This preserves one phase sample
+ * per source sample while reducing transport from four bytes to one byte.
+ */
+esp_err_t c5vrx_adc_dump_capture_phase8(size_t sample_count);
+
+/**
  * Re-trigger the finite vendor dump repeatedly and measure block hashes and
  * I/Q discontinuity at block boundaries.
  *

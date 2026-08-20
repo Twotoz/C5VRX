@@ -262,7 +262,7 @@ static void print_status(void)
         return;
     }
 
-    printf("C5VRX_STATUS firmware=%s version=%s idf=%s protocol=8 profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d\n",
+    printf("C5VRX_STATUS firmware=%s version=%s idf=%s protocol=8 profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d phase8_capture=1\n",
            app->project_name,
            app->version,
            esp_get_idf_version(),
@@ -335,7 +335,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CAPTURE_PHASE8_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -1021,6 +1021,21 @@ static void handle_line(char *line)
     }
 
     unsigned samples = 0;
+    if (sscanf(line, "CAPTURE PHASE8 %u", &samples) == 1 ||
+        sscanf(line, "CAPTURE_PHASE8_%u", &samples) == 1) {
+        if (samples < 256 || samples > C5VRX_ADC_DUMP_MAX_SAMPLES) {
+            printf("C5VRX_ERR invalid-phase8-capture range=256-%u\n",
+                   (unsigned)C5VRX_ADC_DUMP_MAX_SAMPLES);
+            fflush(stdout);
+            return;
+        }
+        printf("C5VRX_PHASE8_CAPTURE_BEGIN samples=%u\n", samples);
+        fflush(stdout);
+        const esp_err_t err = c5vrx_adc_dump_capture_phase8(samples);
+        printf("C5VRX_PHASE8_CAPTURE_DONE code=%d\n", (int)err);
+        fflush(stdout);
+        return;
+    }
     if (sscanf(line, "CAPTURE %u", &samples) == 1) {
         if (samples < 256 || samples > C5VRX_ADC_DUMP_MAX_SAMPLES) {
             printf("C5VRX_ERR invalid-capture range=256-%u\n",
@@ -1047,7 +1062,7 @@ static void console_task(void *arg)
     size_t used = 0;
     uint8_t input[64];
 
-    printf("C5VRX_READY protocol=8 usb_preview_binary=1 lab_session_artifacts=1\n");
+    printf("C5VRX_READY protocol=8 usb_preview_binary=1 phase8_capture=1 lab_session_artifacts=1\n");
     print_help();
 
     for (;;) {

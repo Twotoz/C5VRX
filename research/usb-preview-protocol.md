@@ -1,6 +1,6 @@
 # USB preview protocol v1
 
-**IMPLEMENTED / NOT PHYSICALLY TESTED**
+**IMPLEMENTED; TYPES 1-5 PHYSICALLY EXERCISED, TYPE 6 AWAITS BOARD TEST**
 
 The USB Serial/JTAG byte stream carries normal newline-delimited diagnostics
 and binary preview packets together. A Receiver Console parser scans for the
@@ -32,10 +32,20 @@ Packet types:
 | 1 | `STREAM_INFO` | eight-byte image descriptor |
 | 2 | `GRAY8_FRAME` | descriptor followed by `stride * height` bytes |
 | 3 | `STREAM_END` | 64-bit count of device-dropped frames |
+| 4 | `IQ_U32_BLOCK` | legacy IQ descriptor plus packed 32-bit I/Q words |
+| 5 | `IQ_U32_CHUNK` | finite raw-IQ capture fragment |
+| 6 | `PHASE8_CHUNK` | finite unsigned phase-byte capture fragment |
 
 The image descriptor is `width:u16, height:u16, stride:u16, pixel_format:u8,
 flags:u8`. Pixel format 1 is GRAY8. Flag bit 0 means the frame was assembled
 while the adaptive horizontal and vertical sync tracker was locked.
+
+Types 5 and 6 share the 20-byte descriptor `capture_id:u32,
+total_samples:u32, offset_samples:u32, chunk_samples:u32, flags:u32`. For type
+5 each sample is one packed little-endian `uint32_t`; type 6 carries one byte
+per sample. Flag bit 0 marks the first fragment and bit 1 the last. Each chunk
+has independent framing and CRC, and the host accepts a capture only when all
+offsets form one contiguous range of the declared total.
 
 The firmware holds the C stdio lock across a complete packet. CRC and magic
 recovery remain necessary because USB disconnect, reset or transport loss can
