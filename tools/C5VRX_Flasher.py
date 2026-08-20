@@ -44,7 +44,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-7"
+APP_BUILD = "video-proof-8"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -206,6 +206,11 @@ class C5VRXApp(tk.Tk):
         self.live_video_rows_seen: set[int] = set()
         self.live_video_standard_scores = {"PAL": 0.0, "NTSC": 0.0}
         self.live_video_rejected_blocks = 0
+        self.live_video_black: float | None = None
+        self.live_video_white: float | None = None
+        self.live_video_display_offset = 0
+        self.live_video_vertical_pending: int | None = None
+        self.live_video_vertical_pending_hits = 0
         self.device_phase8_supported = False
         self.live_transport_name = "raw-IQ32"
         self.first_test_active = False
@@ -908,6 +913,11 @@ class C5VRXApp(tk.Tk):
         self.live_video_rows_seen.clear()
         self.live_video_standard_scores = {"PAL": 0.0, "NTSC": 0.0}
         self.live_video_rejected_blocks = 0
+        self.live_video_black = None
+        self.live_video_white = None
+        self.live_video_display_offset = 0
+        self.live_video_vertical_pending = None
+        self.live_video_vertical_pending_hits = 0
         self.live_iq_start_btn.configure(state="disabled")
         self.live_iq_stop_btn.configure(state="normal")
         # Replace any previous diagnostic drawing immediately. This also gives
@@ -1143,8 +1153,23 @@ class C5VRXApp(tk.Tk):
             return
         scale_values = sorted(
             value for _start_sample, row in active_lines for value in row)
-        black = scale_values[len(scale_values) // 20]
-        white = scale_values[(len(scale_values) * 19) // 20]
+        block_black = scale_values[len(scale_values) // 20]
+        block_white = scale_values[(len(scale_values) * 19) // 20]
+        if self.live_video_black is None or self.live_video_white is None:
+            self.live_video_black = block_black
+            self.live_video_white = block_white
+        else:
+            # Every finite block contains only a few adjacent lines. Scaling
+            # each block independently makes strip boundaries look like lines
+            # placed at the wrong height. A slow shared scale keeps brightness
+            # coherent while still following gradual RF-level changes.
+            scale_alpha = 0.08
+            self.live_video_black += scale_alpha * (
+                block_black - self.live_video_black)
+            self.live_video_white += scale_alpha * (
+                block_white - self.live_video_white)
+        black = self.live_video_black
+        white = self.live_video_white
         span = max(1e-6, white - black)
         physical_rate_hz = raster_msps * 1_000_000.0
         for start_sample, row in active_lines:
@@ -1171,14 +1196,76 @@ class C5VRXApp(tk.Tk):
         source_text = (f"{self.live_iq_source_msps:.3f} MS/s finite-fill estimate"
                        if self.live_iq_source_msps else "source MS/s pending")
         coverage = 100.0 * len(self.live_video_rows_seen) / self.live_video_height
+        self._update_vertical_display_offset()
+        display_pixels = self._vertically_aligned_pixels()
         lock_text = (
             f"{self.live_transport_name}; "
             f"{video_standard} H-sync score {sync_score:.2f}; "
             f"raster {raster_msps:.0f} MS/s; {coverage:.0f}% rows; "
+            f"vertical rotate {self.live_video_display_offset}; "
             f"clipped {clipped_text}; "
             f"rejected {self.live_video_rejected_blocks}")
-        self.after(0, self._show_live_iq_frame, bytes(self.live_video_pixels),
+        self.after(0, self._show_live_iq_frame, display_pixels,
                    source_text, usb_mbit, block_rate, lock_text)
+
+    def _update_vertical_display_offset(self) -> None:
+        """Move the circular field-time seam into the vertical blanking gap."""
+        height = self.live_video_height
+        width = self.live_video_width
+        if len(self.live_video_rows_seen) < int(height * 0.70):
+            return
+        if self.live_iq_blocks % 8:
+            return
+
+        row_means = [
+            statistics.fmean(
+                self.live_video_pixels[row * width:(row + 1) * width])
+            for row in range(height)
+        ]
+        blank_rows = max(4, height // 16)
+        candidates: list[tuple[float, int]] = []
+        baseline = statistics.median(row_means)
+        for start in range(height):
+            window_rows = [(start + index) % height
+                           for index in range(blank_rows)]
+            if not all(row in self.live_video_rows_seen for row in window_rows):
+                continue
+            after_rows = [(start + blank_rows + index) % height
+                          for index in range(3)]
+            if not all(row in self.live_video_rows_seen for row in after_rows):
+                continue
+            blank_mean = statistics.fmean(row_means[row] for row in window_rows)
+            after_mean = statistics.fmean(row_means[row] for row in after_rows)
+            score = (baseline - blank_mean) + max(0.0, after_mean - blank_mean) * 0.35
+            candidates.append((score, (start + blank_rows) % height))
+        if not candidates:
+            return
+        score, candidate = max(candidates)
+        if score < 12.0:
+            return
+
+        pending = self.live_video_vertical_pending
+        if pending is None:
+            self.live_video_vertical_pending = candidate
+            self.live_video_vertical_pending_hits = 1
+            return
+        distance = abs(((candidate - pending + height // 2) % height) -
+                       height // 2)
+        if distance <= 3:
+            self.live_video_vertical_pending_hits += 1
+            if self.live_video_vertical_pending_hits >= 2:
+                self.live_video_display_offset = candidate
+        else:
+            self.live_video_vertical_pending = candidate
+            self.live_video_vertical_pending_hits = 1
+
+    def _vertically_aligned_pixels(self) -> bytes:
+        width = self.live_video_width
+        offset_bytes = self.live_video_display_offset * width
+        pixels = bytes(self.live_video_pixels)
+        if not offset_bytes:
+            return pixels
+        return pixels[offset_bytes:] + pixels[:offset_bytes]
 
     def _show_live_iq_frame(self, pixels: bytes, source_text: str,
                             usb_mbit: float, block_rate: float,

@@ -338,3 +338,23 @@ remains a retriggered finite source and does not solve the gaps between
 captures. `tools/analyze_receiver_session.py` understands both raw-IQ32 and
 Phase8 session packets, although Phase8 deliberately cannot report absolute
 power or clipping because those amplitude values are no longer transported.
+
+## Circular vertical-field alignment
+
+The finite blocks expose only a few consecutive NTSC lines and normally do not
+contain a complete vertical-sync interval. Absolute device timestamps can place
+those lines consistently within a 16.68 ms circular field, but the circle's
+zero is unrelated to the camera's vertical blanking. The resulting picture can
+therefore be geometrically correct yet wrap roughly one third of the scene from
+the bottom to the top, or vice versa.
+
+Host build `video-proof-8` keeps timestamp-based row placement, then searches
+the sufficiently populated circular raster for a stable dark vertical-blanking
+window followed by active video. It requires at least 70 percent row coverage,
+a minimum blanking score and the same candidate twice before rotating only the
+displayed rows. The capture-time raster remains untouched. It also replaces
+per-block percentile stretching with a slowly adapting shared black/white
+scale; otherwise each two-to-three-line block can acquire a different contrast
+and create false horizontal strip boundaries. An offline synthetic seam test
+validates the circular rotation, but real-camera convergence still requires a
+physical `video-proof-8` run.
