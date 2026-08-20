@@ -179,3 +179,27 @@ filtering and substantial reduction before native Full-Speed USB. If the C5
 PHY cannot expose a safe continuous DMA path, an external analog receiver or
 SDR front-end is required; the public Wi-Fi promiscuous API and the recovered
 finite `adctrig()` diagnostic are not sufficient by themselves.
+
+## Ultra-slow video-proof host mode
+
+The first PC renderer incorrectly used `finite_fill_msps` as the PAL raster
+sample clock. That number measures total vendor-call duration and is explicitly
+uncalibrated; it cannot establish the physical sample cadence. A second GUI bug
+redrew the diagnostic WBFM waveform whenever the preview canvas was configured,
+which could overwrite a video raster that had just been assembled.
+
+The Receiver Console now keeps the decoded raster visible and offers explicit
+20, 40 and 80 MS/s raster-clock hypotheses, defaulting to 40 MS/s. It removes
+the measured block I/Q DC offset before phase differencing, folds each finite
+block at the selected 15625 Hz PAL line period, searches both FM polarities for
+the repeated horizontal-sync plateau, reduces active portions to 160 pixels,
+and uses device packet timestamps modulo the 20 ms PAL field period to fill a
+160x120 grayscale raster slowly. Coverage and horizontal-sync fold score remain
+visible so ordinary RF noise is not mislabeled as decoded video.
+
+Offline replay of the 34-block hardware session exercised every new rendering
+path and filled 67 of 120 rows at the 40 MS/s hypothesis without protocol
+errors. The resulting raster was static-like and did not establish convincing
+PAL lock or a recognizable scene. The new mode therefore fixes the display and
+clock-assumption defects and provides a direct hardware proof experiment, but
+the saved session itself remains IQ/RF evidence rather than video evidence.

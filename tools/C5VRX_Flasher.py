@@ -172,6 +172,7 @@ class C5VRXApp(tk.Tk):
         self.live_iq_capture_done = False
         self.live_iq_packet_done = False
         self.live_iq_capture_id: int | None = None
+        self.live_iq_capture_timestamp_us: int | None = None
         self.live_iq_total_words = 0
         self.live_iq_chunks: dict[int, tuple[int, ...]] = {}
         self.live_iq_source_msps: float | None = None
@@ -187,6 +188,7 @@ class C5VRXApp(tk.Tk):
         self.live_video_pixels = bytearray(
             self.live_video_width * self.live_video_height)
         self.live_video_row = 0
+        self.live_video_rows_seen: set[int] = set()
         self.first_test_active = False
         self.first_test_fine_sent = False
         self.first_test_center = 5805
@@ -341,7 +343,7 @@ class C5VRXApp(tk.Tk):
 
         self.preview_canvas = tk.Canvas(tab, height=280, background="black", highlightthickness=1)
         self.preview_canvas.pack(fill="both", expand=True)
-        self.preview_canvas.bind("<Configure>", lambda _e: self.render_iq_preview())
+        self.preview_canvas.bind("<Configure>", self._redraw_preview)
 
         self.preview_status_var = tk.StringVar(value="No IQ capture yet")
         ttk.Label(tab, textvariable=self.preview_status_var).pack(anchor="w", pady=(8, 0))
@@ -362,7 +364,7 @@ class C5VRXApp(tk.Tk):
         iq_live_controls.pack(fill="x", pady=(8, 0))
         self.live_iq_start_btn = ttk.Button(
             iq_live_controls,
-            text="LIVE IQ -> PC VIDEO (A1)",
+            text="ULTRA-SLOW VIDEO PROOF (A1)",
             command=self.start_live_iq_video,
         )
         self.live_iq_start_btn.pack(side="left")
@@ -373,9 +375,18 @@ class C5VRXApp(tk.Tk):
             state="disabled",
         )
         self.live_iq_stop_btn.pack(side="left", padx=8)
+        ttk.Label(iq_live_controls, text="Raster clock").pack(side="left", padx=(8, 3))
+        self.video_sample_rate_var = tk.StringVar(value="40")
+        ttk.Combobox(
+            iq_live_controls,
+            textvariable=self.video_sample_rate_var,
+            state="readonly",
+            values=["20", "40", "80"],
+            width=5,
+        ).pack(side="left")
         ttk.Label(
             iq_live_controls,
-            text="Current source: retriggered 16K blocks (live update, not gapless). DSP and rendering run on this PC.",
+            text="MS/s hypothesis; slowly fills a PAL raster from retriggered strips.",
         ).pack(side="left", padx=8)
 
     def refresh_ports(self) -> None:
@@ -637,7 +648,7 @@ class C5VRXApp(tk.Tk):
             except ValueError as exc:
                 self.sink.write(f"C5VRX_IQ_PACKET_DROP reason={exc}\n")
                 return
-            self._finish_iq_usb_block(words)
+            self._finish_iq_usb_block(words, packet.timestamp_us)
             return
 
         try:
@@ -647,6 +658,7 @@ class C5VRXApp(tk.Tk):
             return
         if self.live_iq_capture_id != chunk.capture_id:
             self.live_iq_capture_id = chunk.capture_id
+            self.live_iq_capture_timestamp_us = packet.timestamp_us
             self.live_iq_total_words = chunk.total_words
             self.live_iq_chunks = {}
         if chunk.total_words != self.live_iq_total_words:
@@ -669,15 +681,17 @@ class C5VRXApp(tk.Tk):
             assembled.extend(words)
             expected_offset += len(words)
         if expected_offset == chunk.total_words:
-            self._finish_iq_usb_block(assembled)
+            self._finish_iq_usb_block(
+                assembled, self.live_iq_capture_timestamp_us)
 
-    def _finish_iq_usb_block(self, words: list[int]) -> None:
+    def _finish_iq_usb_block(
+            self, words: list[int], timestamp_us: int | None = None) -> None:
         self.iq_words = words
         self.iq_capture_active = False
         self.live_iq_packet_done = True
         if self.live_iq_active:
             self.live_iq_blocks += 1
-            self._process_live_iq_block(words)
+            self._process_live_iq_block(words, timestamp_us)
             self._live_iq_maybe_continue()
         else:
             self.after(0, self.preview_status_var.set,
@@ -769,6 +783,7 @@ class C5VRXApp(tk.Tk):
         self.live_iq_capture_done = False
         self.live_iq_packet_done = False
         self.live_iq_capture_id = None
+        self.live_iq_capture_timestamp_us = None
         self.live_iq_chunks = {}
         self.live_iq_source_msps = None
         self.live_iq_transport_ready = False
@@ -778,6 +793,7 @@ class C5VRXApp(tk.Tk):
         self.live_iq_blocks = 0
         self.live_video_pixels[:] = bytes(len(self.live_video_pixels))
         self.live_video_row = 0
+        self.live_video_rows_seen.clear()
         self.live_iq_start_btn.configure(state="disabled")
         self.live_iq_stop_btn.configure(state="normal")
         self.preview_status_var.set(
@@ -803,6 +819,7 @@ class C5VRXApp(tk.Tk):
         self.live_iq_capture_done = False
         self.live_iq_packet_done = False
         self.live_iq_capture_id = None
+        self.live_iq_capture_timestamp_us = None
         self.live_iq_total_words = 0
         self.live_iq_chunks = {}
         self.live_iq_request_started = time.monotonic()
@@ -817,72 +834,73 @@ class C5VRXApp(tk.Tk):
     def _fm_discriminator(words: list[int]) -> list[float]:
         if len(words) < 2:
             return []
+        decoded = [C5VRXApp._decode_iq(raw) for raw in words]
+        # The recovered dump has a sizeable, block-dependent I/Q DC offset.
+        # Removing it before phase differencing prevents the carrier circle
+        # from orbiting an artificial origin and makes CVBS sync plateaus much
+        # easier to detect.
+        mean_i = statistics.fmean(value[0] for value in decoded)
+        mean_q = statistics.fmean(value[1] for value in decoded)
         values: list[float] = []
-        pi, pq = C5VRXApp._decode_iq(words[0])
-        for raw in words[1:]:
-            ci, cq = C5VRXApp._decode_iq(raw)
+        pi = decoded[0][0] - mean_i
+        pq = decoded[0][1] - mean_q
+        for raw_i, raw_q in decoded[1:]:
+            ci = raw_i - mean_i
+            cq = raw_q - mean_q
             values.append(math.atan2(cq * pi - ci * pq,
                                      ci * pi + cq * pq))
             pi, pq = ci, cq
         return values
 
-    def _process_live_iq_block(self, words: list[int]) -> None:
+    def _process_live_iq_block(
+            self, words: list[int], timestamp_us: int | None = None) -> None:
         fm = self._fm_discriminator(words)
         if len(fm) < 512:
             return
 
-        # Work in 16-sample bins: fast enough for Tk/serial coexistence while
-        # retaining a several-hundred-sample PAL-compatible sync plateau.
+        # Work in 16-sample bins. The vendor call duration is not the physical
+        # sample clock, so the user-selectable RF-raster hypothesis below is
+        # deliberately independent from finite_fill_msps.
         bin_size = 16
         binned = [
             statistics.fmean(fm[offset:offset + bin_size])
             for offset in range(0, len(fm) - bin_size + 1, bin_size)
         ]
-        ordered = sorted(binned)
-        low_threshold = ordered[max(0, len(ordered) // 14)]
-        runs: list[tuple[int, int]] = []
-        start: int | None = None
-        for index, value in enumerate(binned):
-            if value <= low_threshold and start is None:
-                start = index
-            elif value > low_threshold and start is not None:
-                if index - start >= 3:
-                    runs.append((start * bin_size, index * bin_size))
-                start = None
-        if start is not None and len(binned) - start >= 3:
-            runs.append((start * bin_size, len(binned) * bin_size))
+        raster_msps = float(self.video_sample_rate_var.get())
+        period = raster_msps * 1_000_000.0 / 15_625.0
+        period_bins = max(8, int(round(period / bin_size)))
+        sync_bins = max(2, int(round(period_bins * 0.073)))
 
-        hint = None
-        if self.live_iq_source_msps and self.live_iq_source_msps > 1.0:
-            hint = self.live_iq_source_msps * 1_000_000.0 / 15_625.0
-        centers = [(left + right) // 2 for left, right in runs]
+        # Fold all complete line periods in this finite block. CVBS horizontal
+        # sync is the most repeatable ~7.3% plateau in a PAL line. Test both FM
+        # polarities because the dump tap's spectral inversion is not known.
+        phase_means: list[float] = []
+        for phase in range(period_bins):
+            samples: list[float] = []
+            cursor = phase
+            while cursor + sync_bins <= len(binned):
+                samples.extend(binned[cursor:cursor + sync_bins])
+                cursor += period_bins
+            phase_means.append(
+                statistics.fmean(samples) if samples else 0.0)
+        baseline = statistics.fmean(binned)
+        low_phase = min(range(len(phase_means)), key=phase_means.__getitem__)
+        high_phase = max(range(len(phase_means)), key=phase_means.__getitem__)
+        low_contrast = baseline - phase_means[low_phase]
+        high_contrast = phase_means[high_phase] - baseline
+        sync_phase = low_phase if low_contrast >= high_contrast else high_phase
+        noise = max(1e-9, statistics.pstdev(binned))
+        sync_score = max(low_contrast, high_contrast) / noise
+
         line_starts: list[int] = []
-        if centers:
-            line_starts.append(centers[0])
-            for center in centers[1:]:
-                spacing = center - line_starts[-1]
-                low = 0.65 * hint if hint else 2500
-                high = 1.35 * hint if hint else 7500
-                if low <= spacing <= high:
-                    line_starts.append(center)
+        cursor = sync_phase * bin_size
+        while cursor - period >= 0:
+            cursor -= period
+        while cursor + period <= len(fm):
+            line_starts.append(int(cursor))
+            cursor += period
 
-        periods = [b - a for a, b in zip(line_starts, line_starts[1:])]
-        sync_locked = bool(periods)
-        period = statistics.median(periods) if periods else hint
-        if not period or period < 500:
-            period = 5120.0  # explicitly reported below as unlocked fallback
-        if len(line_starts) < 2:
-            deepest = min(range(len(binned)), key=binned.__getitem__) * bin_size
-            first = deepest
-            while first >= period:
-                first -= int(period)
-            line_starts = []
-            cursor = first
-            while cursor + period <= len(fm):
-                line_starts.append(int(cursor))
-                cursor += period
-
-        active_lines: list[list[float]] = []
+        active_lines: list[tuple[int, list[float]]] = []
         for start_sample in line_starts:
             active_begin = int(start_sample + period * 0.16)
             active_end = int(start_sample + period * 0.96)
@@ -894,29 +912,44 @@ class C5VRXApp(tk.Tk):
                 left = x * len(source) // self.live_video_width
                 right = max(left + 1, (x + 1) * len(source) // self.live_video_width)
                 row.append(statistics.fmean(source[left:right]))
-            active_lines.append(row)
+            active_lines.append((start_sample, row))
 
         if not active_lines:
             self.after(0, self.preview_status_var.set,
                        "IQ received; no complete video-line candidate in this block")
             return
-        scale_values = sorted(value for row in active_lines for value in row)
+        scale_values = sorted(
+            value for _start_sample, row in active_lines for value in row)
         black = scale_values[len(scale_values) // 20]
         white = scale_values[(len(scale_values) * 19) // 20]
         span = max(1e-6, white - black)
-        for row in active_lines:
-            base = self.live_video_row * self.live_video_width
+        physical_rate_hz = raster_msps * 1_000_000.0
+        for start_sample, row in active_lines:
+            if timestamp_us is not None:
+                line_time_us = timestamp_us - (
+                    len(fm) - start_sample) * 1_000_000.0 / physical_rate_hz
+                field_phase = line_time_us % 20_000.0
+                target_row = int(
+                    field_phase * self.live_video_height / 20_000.0)
+            else:
+                target_row = self.live_video_row
+                self.live_video_row = (
+                    self.live_video_row + 1) % self.live_video_height
+            base = target_row * self.live_video_width
             for x, value in enumerate(row):
                 self.live_video_pixels[base + x] = max(
                     0, min(255, int((value - black) * 255.0 / span)))
-            self.live_video_row = (self.live_video_row + 1) % self.live_video_height
+            self.live_video_rows_seen.add(target_row)
 
         elapsed = max(1e-6, time.monotonic() - self.live_iq_usb_started)
         usb_mbit = self.live_iq_usb_bytes * 8.0 / elapsed / 1_000_000.0
         block_rate = self.live_iq_blocks / elapsed
         source_text = (f"{self.live_iq_source_msps:.3f} MS/s finite-fill estimate"
                        if self.live_iq_source_msps else "source MS/s pending")
-        lock_text = "line spacing detected" if sync_locked else "sync unlocked/fallback"
+        coverage = 100.0 * len(self.live_video_rows_seen) / self.live_video_height
+        lock_text = (
+            f"H-sync fold score {sync_score:.2f}; "
+            f"raster {raster_msps:.0f} MS/s; {coverage:.0f}% rows")
         self.after(0, self._show_live_iq_frame, bytes(self.live_video_pixels),
                    source_text, usb_mbit, block_rate, lock_text)
 
@@ -1021,6 +1054,21 @@ class C5VRXApp(tk.Tk):
         canvas.create_line(*pts, fill="#35a7ff", width=1)
         canvas.create_text(8, 8, anchor="nw", text="WBFM discriminator — diagnostic preview, not decoded video yet", fill="white")
 
+    def _redraw_preview(self, _event: object | None = None) -> None:
+        """Keep decoded video visible when the preview canvas is resized."""
+        if self.preview_image is None:
+            if not self.live_iq_active:
+                self.render_iq_preview()
+            return
+        canvas = self.preview_canvas
+        canvas.delete("all")
+        canvas.create_image(
+            max(0, canvas.winfo_width() // 2),
+            max(0, canvas.winfo_height() // 2),
+            image=self.preview_image,
+            anchor="center",
+        )
+
     def _show_gray_frame(self, payload: bytes, width: int, height: int) -> None:
         self.preview_frame = payload
         self.preview_width = width
@@ -1031,14 +1079,7 @@ class C5VRXApp(tk.Tk):
         except tk.TclError:
             self.preview_status_var.set("Valid GRAY8 frame received; Tk cannot render PGM on this system")
             return
-        canvas = self.preview_canvas
-        canvas.delete("all")
-        canvas.create_image(
-            max(0, canvas.winfo_width() // 2),
-            max(0, canvas.winfo_height() // 2),
-            image=self.preview_image,
-            anchor="center",
-        )
+        self._redraw_preview()
         self.preview_status_var.set(f"Live USB preview: {width}×{height} GRAY8, CRC valid")
 
     def clear_preview(self) -> None:
