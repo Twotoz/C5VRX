@@ -251,3 +251,29 @@ scaled display-image reference, and integer-scales the 160x120 raster to fit
 the preview canvas. `_show_gray_frame()` now returns an explicit success flag;
 `C5VRX_HOST_VIDEO_FRAME` is emitted only after successful rendering, while a
 failure emits `C5VRX_HOST_VIDEO_RENDER_ERROR` and preserves its error status.
+
+## VTX-off versus VTX-on hardware comparison
+
+The operator performed two consecutive A1 / 5865 MHz, 40 MHz preview runs and
+identified the first as VTX off and the second as VTX on. This produced the
+first controlled evidence that the displayed raster responds to the intended
+RF source rather than only to an internal or host-generated pattern.
+
+With the VTX off, average block power was normally about 2300 to 4800 and the
+40 MS/s PAL horizontal-sync fold score stayed near 0.21 to 0.34. I/Q extrema
+were usually within roughly -180 to +190. With the VTX on, average power was
+commonly about 20000 to 70000, with an observed peak above 108000, and the fold
+score rose to 0.50 to 1.57. Many VTX-on blocks reached the signed 10-bit rails
+at -512 and +511. Both runs continued to deliver complete finite captures and
+successfully rendered host frames; each long run had one recoverable USB
+payload-CRC resynchronization.
+
+The large and repeatable off/on separation proves RF-source-dependent IQ and
+raster data. The stronger 15625 Hz fold score is encouraging evidence of
+line-periodic structure at the 40 MS/s clock hypothesis, but it is not yet a
+stable PAL lock or recognizable video proof. Frequent rail hits also indicate
+clipping or overload, which can destroy the FM phase information needed for a
+clean image. The next experiment should reduce VTX coupling (lower power,
+greater distance or attenuation) until most I/Q extrema remain inside roughly
++/-250 to +/-350, then compare the 20, 40 and 80 MS/s raster hypotheses while
+looking for a stable image correlated with camera motion.
