@@ -221,3 +221,19 @@ binary still shows a waveform, a host-render failure never reports a raster
 frame, and a working renderer shows grayscale raster data. These changes do
 not upgrade the RF evidence to PAL video proof; recognizable scene content and
 credible horizontal synchronization are still required for that claim.
+
+During the next reconnect attempt, the newest session recorded zero incoming
+serial bytes even though COM10 remained present. An exclusive direct pyserial
+probe reproduced the failure: the port opened but writes timed out, and after
+a Windows PnP restart one write succeeded without any response. A subsequent
+reset-line transition immediately made that handle stale again. This exposed a
+host-side native-USB hazard in the ordinary connect path: constructing
+`serial.Serial(port, ...)` opens the device with pyserial's default DTR/RTS
+state before the application can release those lines. On ESP32-C5
+USB-Serial/JTAG, that transition may reset the device during connect.
+
+GUI build `video-proof-3` now constructs a closed serial object, sets DTR and
+RTS false, and only then opens COM10. Failed candidates are explicitly closed.
+This prevents the console's normal Connect action from generating an
+unintended reset transition. It cannot revive a C5 that is already stuck; that
+still requires a real board reset or removal of every power source once.

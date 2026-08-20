@@ -42,7 +42,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-2"
+APP_BUILD = "video-proof-3"
 C5_RX_MAX_MHZ = 5885
 
 FPV_BANDS = {
@@ -440,8 +440,21 @@ class C5VRXApp(tk.Tk):
 
         self.disconnect_serial()
         self.profile_mismatch_warned = False
+        candidate: serial.Serial | None = None
         try:
-            self.ser = serial.Serial(port, 115200, timeout=0.15, write_timeout=1)
+            # Configure native USB-Serial/JTAG control lines before opening.
+            # serial.Serial(port, ...) opens first with the pyserial defaults;
+            # on ESP32-C5 that DTR/RTS transition can reset the device and make
+            # the just-opened Windows handle stale before the first PING.
+            candidate = serial.Serial()
+            candidate.port = port
+            candidate.baudrate = 115200
+            candidate.timeout = 0.15
+            candidate.write_timeout = 1
+            candidate.dtr = False
+            candidate.rts = False
+            candidate.open()
+            self.ser = candidate
             self.serial_stop.clear()
             self.serial_thread = threading.Thread(target=self._serial_reader, daemon=True)
             self.serial_thread.start()
@@ -452,6 +465,11 @@ class C5VRXApp(tk.Tk):
             self.after(450, lambda: self.send_command("STATUS"))
             return True
         except Exception as exc:
+            if candidate is not None:
+                try:
+                    candidate.close()
+                except Exception:
+                    pass
             self.ser = None
             self.connection_var.set("Disconnected")
             self.connect_btn.configure(text="Connect")
