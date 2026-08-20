@@ -85,3 +85,11 @@ ROM downloader or an application crash. The control reader, control replies,
 ESP logs and framed IQ/video packets were therefore moved onto one shared,
 direct `usb_serial_jtag_*` transport. The new control reader assembles command
 lines itself instead of using `fgets(stdin)`.
+
+That direct transport was then proven on the physical XIAO. After a verified
+flash and the required USB power-cycle, the normal receiver emitted
+`C5VRX_READY`, the Windows console classified `C5VRX_RUNTIME_READY
+handshake=PASS`, `PING` returned `C5VRX_PONG`, and Wi-Fi completed with
+`C5VRX_BOOT stage=WIFI5_READY`. A1 boot tuning read back channel 173 at 40 MHz.
+Early `STATUS` calls returned code 259 only while Wi-Fi initialization was still
+in progress; this is the intended fail-open control-before-RF startup order.
