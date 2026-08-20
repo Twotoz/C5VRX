@@ -21,6 +21,7 @@
 
 static const char *TAG = "c5vrx_adc_dump";
 static portMUX_TYPE s_capture_lock = portMUX_INITIALIZER_UNLOCKED;
+static bool s_prefer_vendor_capture;
 
 /* Recovered from C5 v6.0.2 adctrig() disassembly. These are intentionally
  * private diagnostic constants, not presented as documented SoC registers. */
@@ -75,28 +76,97 @@ c5vrx_iq10_sample_t c5vrx_adc_decode_word(uint32_t raw)
     };
 }
 
-static uint32_t trigger_dump(size_t sample_count)
+typedef struct {
+    uint32_t final_control;
+    size_t changed_words;
+    int64_t elapsed_us;
+    bool complete;
+    const char *engine;
+} capture_result_t;
+
+static uint32_t capture_sentinel(size_t index)
 {
+    return 0xa5c30000u ^ ((uint32_t)index * 0x9e3779b9u);
+}
+
+static void prepare_capture_sentinel(size_t sample_count)
+{
+    volatile uint32_t *const words =
+        (volatile uint32_t *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR;
+    for (size_t i = 0; i < sample_count; ++i) words[i] = capture_sentinel(i);
+    __asm__ __volatile__("fence iorw, iorw" ::: "memory");
+}
+
+static size_t count_changed_capture_words(size_t sample_count)
+{
+    volatile const uint32_t *const words =
+        (volatile const uint32_t *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR;
+    size_t changed = 0;
+    for (size_t i = 0; i < sample_count; ++i)
+        if (words[i] != capture_sentinel(i)) ++changed;
+    return changed;
+}
+
+static capture_result_t trigger_dump(size_t sample_count)
+{
+    capture_result_t result = {0};
+    prepare_capture_sentinel(sample_count);
+
     /* Historical tooling passes N-1. The complete ownership/trigger/wait/
      * restore sequence runs from LP RAM with an LP-RAM stack; no FreeRTOS or
      * flash code executes while the MAC owns the affected HP-SRAM banks. */
-    portENTER_CRITICAL(&s_capture_lock);
+    if (!s_prefer_vendor_capture) {
+        const int64_t begin_us = esp_timer_get_time();
+        portENTER_CRITICAL(&s_capture_lock);
 #if CONFIG_ESP_SYSTEM_HW_STACK_GUARD
-    /* The C5 assist-debug unit checks SP against the current FreeRTOS task's
-     * HP-RAM bounds. Pause it before the deliberate LP-RAM stack switch and
-     * resume it only after assembly has restored the original task SP. */
-    esp_hw_stack_guard_monitor_stop();
+        /* The C5 assist-debug unit checks SP against the current FreeRTOS
+         * task's HP-RAM bounds. Pause it only for the LP stack switch. */
+        esp_hw_stack_guard_monitor_stop();
 #endif
-    const uint32_t control =
-        c5vrx_lp_capture_mode0((int32_t)sample_count - 1);
-    c5vrx_lp_capture_stage = 0;
+        result.final_control =
+            c5vrx_lp_capture_mode0((int32_t)sample_count - 1);
+        c5vrx_lp_capture_stage = 0;
 #if CONFIG_ESP_SYSTEM_HW_STACK_GUARD
-    esp_hw_stack_guard_monitor_start();
+        esp_hw_stack_guard_monitor_start();
 #endif
-    portEXIT_CRITICAL(&s_capture_lock);
-    phy_pbus_clear_reg();
+        portEXIT_CRITICAL(&s_capture_lock);
+        result.elapsed_us = esp_timer_get_time() - begin_us;
+        phy_pbus_clear_reg();
+        __asm__ __volatile__("fence iorw, iorw" ::: "memory");
+        result.changed_words = count_changed_capture_words(sample_count);
+        const size_t tolerance = sample_count / 100u + 1u;
+        result.complete =
+            (result.final_control & C5VRX_FE_DUMP_DONE_BIT) != 0u &&
+            result.changed_words + tolerance >= sample_count;
+        result.engine = "LP_RAM_MONOLITHIC";
+        if (result.complete) return result;
+
+        /* The source clone is bounded and safe, but hardware has repeatedly
+         * failed to arm it. Prefer the complete hash-pinned vendor routine
+         * after the first miss. Its dump RAM is excluded from the heap. */
+        s_prefer_vendor_capture = true;
+    }
+
+    prepare_capture_sentinel(sample_count);
+    set_dump_mode(0);
+    const int64_t vendor_begin_us = esp_timer_get_time();
+    adctrig((int32_t)sample_count - 1,
+            0,  /* software trigger */
+            0,  /* trigger case */
+            1,  /* historical field; physical rate remains unproven */
+            0,  /* trigger then dump */
+            0,  /* automatic RX gain */
+            0, 0, 0);
+    result.elapsed_us = esp_timer_get_time() - vendor_begin_us;
     __asm__ __volatile__("fence iorw, iorw" ::: "memory");
-    return control;
+    result.final_control =
+        *(volatile const uint32_t *)(uintptr_t)C5VRX_FE_DUMP_CONTROL_REG;
+    result.changed_words = count_changed_capture_words(sample_count);
+    const size_t tolerance = sample_count / 100u + 1u;
+    result.complete = result.elapsed_us < 900000 &&
+                      result.changed_words + tolerance >= sample_count;
+    result.engine = "VENDOR_ADCTRIG_SENTINEL_VALIDATED";
+    return result;
 }
 
 static uint32_t fnv1a_dump_hash(volatile const uint32_t *words, size_t sample_count)
@@ -229,21 +299,24 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
 
     /* Mode 0 is the recovered normal packed 10-bit I/Q dump path. */
     set_dump_mode(0);
-    const int64_t capture_start_us = esp_timer_get_time();
-    const uint32_t final_control = trigger_dump(sample_count);
-    const int64_t capture_elapsed_us = esp_timer_get_time() - capture_start_us;
-    const bool capture_done = (final_control & C5VRX_FE_DUMP_DONE_BIT) != 0u;
+    const capture_result_t capture = trigger_dump(sample_count);
+    const int64_t capture_elapsed_us = capture.elapsed_us;
+    const bool capture_done = capture.complete;
     const double finite_fill_msps =
         capture_done && capture_elapsed_us > 0
             ? (double)sample_count / (double)capture_elapsed_us
             : 0.0;
-    printf("C5VRX_CAPTURE_KERNEL engine=LP_RAM_MONOLITHIC final_control=%08" PRIx32
+    printf("C5VRX_CAPTURE_KERNEL engine=%s final_control=%08" PRIx32
            " done=%u timeout=%u elapsed_us=%" PRId64
+           " changed_words=%u requested_words=%u"
            " finite_fill_msps=%.6f rate_classification=%s\n",
-           final_control,
+           capture.engine,
+           capture.final_control,
            capture_done ? 1u : 0u,
            capture_done ? 0u : 1u,
            capture_elapsed_us,
+           (unsigned)capture.changed_words,
+           (unsigned)sample_count,
            finite_fill_msps,
            capture_done
                ? "FINITE_FILL_ESTIMATE_NOT_CALIBRATED"
@@ -542,7 +615,8 @@ esp_err_t c5vrx_adc_dump_capture_chained(size_t block_count,
              (unsigned)sample_count);
 
     for (size_t block = 0; block < block_count; ++block) {
-        (void)trigger_dump(sample_count);
+        const capture_result_t capture = trigger_dump(sample_count);
+        if (!capture.complete) return ESP_ERR_TIMEOUT;
 
         const uint32_t hash = fnv1a_dump_hash(words, sample_count);
         const c5vrx_iq10_sample_t first = c5vrx_adc_decode_word(words[0]);

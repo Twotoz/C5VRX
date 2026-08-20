@@ -117,3 +117,14 @@ preview lifecycle now uses real scheduler ticks, has idempotent START/STOP
 commands, and avoids a potentially blocking STREAM_END write during teardown.
 The Receiver Console waits for `START code=0` before its first capture and
 retries a bounded RF timeout without tearing down the binary transport.
+
+Follow-up hardware testing showed that 4096-word captures and repeated
+16384-word captures all failed identically in the LP register clone: the
+length field changed correctly, but the completion bit never asserted. This
+rules out the 64 KiB block size as the cause. The capture path therefore uses
+the complete, hash-pinned Espressif `adctrig()` as a fallback after the first
+bounded LP miss. Before either attempt, CPU-owned dump RAM is filled with a
+per-word sentinel. Vendor output is accepted only when it returns before the
+recovered vendor timeout and at least 99 percent of the requested words have
+actually replaced their sentinel. This retains fail-closed stale-RAM rejection
+while returning to the vendor path that produced the earlier RF-dependent IQ.
