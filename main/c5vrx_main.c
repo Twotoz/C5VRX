@@ -19,6 +19,7 @@
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_rf.h"
 #include "c5vrx_wifi5.h"
+#include "c5vrx_usb_transport.h"
 
 static const char *TAG = "C5VRX";
 extern volatile uint32_t c5vrx_lp_capture_stage;
@@ -70,10 +71,12 @@ static esp_err_t c5vrx_usb_console_init(void)
 
     /* Bypass stdio once so first-board logs can distinguish driver bring-up
      * from a later VFS/control problem. */
+    const esp_err_t transport_err = c5vrx_usb_transport_init();
+    if (transport_err != ESP_OK) return transport_err;
+    esp_log_set_vprintf(c5vrx_usb_vprintf);
     static const char marker[] =
         "C5VRX_USB_DRIVER_READY transport=usb_serial_jtag vfs=driver\n";
-    (void)usb_serial_jtag_write_bytes(
-        marker, sizeof(marker) - 1u, pdMS_TO_TICKS(100));
+    (void)c5vrx_usb_write(marker, sizeof(marker) - 1u);
     return ESP_OK;
 #else
     return ESP_ERR_NOT_SUPPORTED;

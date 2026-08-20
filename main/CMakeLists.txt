@@ -21,6 +21,7 @@ idf_component_register(
         "c5vrx_cvbs_live_out.c"
         "c5vrx_cvbs_sync.c"
         "c5vrx_usb_preview.c"
+        "c5vrx_usb_transport.c"
         "c5vrx_bench.c"
     INCLUDE_DIRS "."
     REQUIRES

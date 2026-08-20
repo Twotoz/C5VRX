@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "c5vrx_cvbs_sync.h"
+#include "c5vrx_usb_transport.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -105,16 +106,13 @@ static void write_packet(unsigned type,
     uint8_t trailer[4];
     put_le32(trailer, payload_crc);
 
-    /* The magic + lengths + two CRCs make arbitrary interleaved console text
-     * recoverable. The stdio lock prevents well-behaved diagnostics from
-     * entering a packet in the first place. */
-    flockfile(stdout);
-    (void)fwrite(header, 1, sizeof(header), stdout);
-    if (first_count) (void)fwrite(first, 1, first_count, stdout);
-    if (second_count) (void)fwrite(second, 1, second_count, stdout);
-    (void)fwrite(trailer, 1, sizeof(trailer), stdout);
-    (void)fflush(stdout);
-    funlockfile(stdout);
+    const c5vrx_usb_iovec_t packet[] = {
+        {.data = header, .size = sizeof(header)},
+        {.data = first, .size = first_count},
+        {.data = second, .size = second_count},
+        {.data = trailer, .size = sizeof(trailer)},
+    };
+    (void)c5vrx_usb_writev(packet, sizeof(packet) / sizeof(packet[0]));
 }
 
 static void make_descriptor(uint8_t descriptor[FRAME_DESCRIPTOR_BYTES],

@@ -11,6 +11,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/usb_serial_jtag.h"
 
 #include "c5vrx_adc_dump.h"
 #include "c5vrx_cvbs_out.h"
@@ -24,9 +25,15 @@
 #include "c5vrx_rf_probes.h"
 #include "c5vrx_usb_preview.h"
 #include "c5vrx_bench.h"
+#include "c5vrx_usb_transport.h"
 #include "esp_app_desc.h"
 #include "esp_idf_version.h"
 #include "esp_timer.h"
+
+/* Control replies must never depend on newlib/VFS. The direct USB driver is
+ * the known-good transport on the physical XIAO and serializes output with IQ
+ * packets through c5vrx_usb_transport. */
+#define printf c5vrx_usb_printf
 
 typedef struct {
     c5vrx_band_t band;
@@ -1036,17 +1043,38 @@ static void handle_line(char *line)
 static void console_task(void *arg)
 {
     (void)arg;
-    char line[128];
+    char line[128] = {0};
+    size_t used = 0;
+    uint8_t input[64];
 
     printf("C5VRX_READY protocol=8 usb_preview_binary=1 lab_session_artifacts=1\n");
     print_help();
 
     for (;;) {
-        if (fgets(line, sizeof(line), stdin) != NULL) {
-            handle_line(line);
-        } else {
-            clearerr(stdin);
+        const int count = usb_serial_jtag_read_bytes(
+            input, sizeof(input), pdMS_TO_TICKS(20));
+        if (count < 0) {
             vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+        for (int i = 0; i < count; ++i) {
+            const uint8_t byte = input[i];
+            if (byte == '\r' || byte == '\n') {
+                if (used) {
+                    line[used] = '\0';
+                    handle_line(line);
+                    used = 0;
+                }
+                continue;
+            }
+            if (byte < 0x20u || byte > 0x7eu) continue;
+            if (used + 1u < sizeof(line)) {
+                line[used++] = (char)byte;
+            } else {
+                used = 0;
+                printf("C5VRX_ERR command-too-long max=%u\n",
+                       (unsigned)(sizeof(line) - 1u));
+            }
         }
     }
 }

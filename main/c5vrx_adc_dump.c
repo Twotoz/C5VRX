@@ -15,6 +15,9 @@
 #include "freertos/task.h"
 #include "c5vrx_rf_dump_producer.h"
 #include "c5vrx_usb_preview.h"
+#include "c5vrx_usb_transport.h"
+
+#define printf c5vrx_usb_printf
 
 static const char *TAG = "c5vrx_adc_dump";
 static portMUX_TYPE s_capture_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -155,11 +158,6 @@ static uint32_t iq_payload_crc(const uint8_t descriptor[C5VRX_USB_IQ_CHUNK_DESCR
     return ~crc;
 }
 
-static bool write_exact(const void *data, size_t count)
-{
-    return count == 0u || fwrite(data, 1, count, stdout) == count;
-}
-
 static unsigned write_binary_iq_chunks(volatile const uint32_t *words,
                                        size_t sample_count)
 {
@@ -205,16 +203,15 @@ static unsigned write_binary_iq_chunks(volatile const uint32_t *words,
          * TX buffer. Each fragment has its own header and payload CRC, so a
          * short write loses at most one fragment and the next magic marker
          * restores framing. */
-        flockfile(stdout);
-        const bool ok =
-            write_exact(header, sizeof(header)) &&
-            write_exact(descriptor, sizeof(descriptor)) &&
-            write_exact((const void *)(words + offset),
-                        chunk_words * sizeof(uint32_t)) &&
-            write_exact(trailer, sizeof(trailer)) &&
-            fflush(stdout) == 0;
-        funlockfile(stdout);
-        if (!ok) ++failed_chunks;
+        const c5vrx_usb_iovec_t packet[] = {
+            {.data = header, .size = sizeof(header)},
+            {.data = descriptor, .size = sizeof(descriptor)},
+            {.data = (const void *)(words + offset),
+             .size = chunk_words * sizeof(uint32_t)},
+            {.data = trailer, .size = sizeof(trailer)},
+        };
+        if (c5vrx_usb_writev(packet, sizeof(packet) / sizeof(packet[0])) !=
+            ESP_OK) ++failed_chunks;
     }
     return failed_chunks;
 }

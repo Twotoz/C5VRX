@@ -18,6 +18,7 @@ import time
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from tkinter import messagebox
 
 import esptool
 import serial
@@ -235,11 +236,22 @@ class C5VRXXIAOApp(C5VRXApp):
     def _done_ok(self) -> None:
         self._finish_flash()
         self.sink.write("\n=== FLASH COMPLETE ===\n")
-        self.connection_var.set("Firmware flashed — waiting for C5VRX runtime...")
+        self.sink.write(
+            "C5VRX_POST_FLASH_ACTION required=PHYSICAL_USB_POWER_CYCLE "
+            "steps=UNPLUG_5S_REPLUG_THEN_CONNECT "
+            "reason=WINDOWS_NATIVE_USB_ENDPOINT\n")
+        self.connection_var.set(
+            "Flash verified — unplug USB for 5 seconds, replug, then press Connect")
         self._runtime_seen = False
-        self._runtime_waiting = True
-        self._runtime_deadline = time.monotonic() + 30.0
-        self._schedule_runtime_reconnect(700)
+        self._runtime_waiting = False
+        messagebox.showinfo(
+            "C5VRX Receiver Console",
+            "Firmware was written and verified.\n\n"
+            "1. Unplug the XIAO USB cable for 5 seconds.\n"
+            "2. Reconnect it without pressing BOOT or RESET.\n"
+            "3. Press Connect.\n\n"
+            "The console will not probe the stale post-flash Windows endpoint.",
+        )
 
     def _schedule_runtime_reconnect(self, delay_ms: int) -> None:
         if self._runtime_reconnect_scheduled or not self._runtime_waiting:

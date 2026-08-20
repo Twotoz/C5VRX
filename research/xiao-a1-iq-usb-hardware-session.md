@@ -78,3 +78,10 @@ After flashing or an abnormal capture/console close, Windows can show COM10 as
 present while the endpoint returns write timeouts or no bytes. A physical USB
 disconnect/reconnect has been the reliable recovery. Do not misclassify that
 host endpoint state as an RF or firmware result.
+
+The normal app was later observed by JTAG at `esp_cpu_wait_for_intr` while the
+VFS console still returned zero bytes. This proved the silent state was not the
+ROM downloader or an application crash. The control reader, control replies,
+ESP logs and framed IQ/video packets were therefore moved onto one shared,
+direct `usb_serial_jtag_*` transport. The new control reader assembles command
+lines itself instead of using `fgets(stdin)`.
