@@ -128,3 +128,18 @@ per-word sentinel. Vendor output is accepted only when it returns before the
 recovered vendor timeout and at least 99 percent of the requested words have
 actually replaced their sentinel. This retains fail-closed stale-RAM rejection
 while returning to the vendor path that produced the earlier RF-dependent IQ.
+
+The first hybrid hardware run proved binary transport and full sentinel
+replacement, but also exposed two stricter requirements. Three consecutive
+blocks were perfectly constant (`I=101`, `Q=40`) despite all 16384 sentinel
+words being replaced, so replacement alone is not proof of usable IQ. On the
+fourth call a tick interrupt entered `int_wdt.c:reconfigure_ticks` while
+`adctrig()` owned SRAM and caused a store-access panic. The decoded backtrace
+placed `adctrig` below the interrupt handler and watchdog tick hook.
+
+The LP clone is therefore no longer run before the vendor capture. The complete
+vendor path is called inside a short critical section (successful hardware
+calls measured about 2 ms), preventing the tick hook from running during SRAM
+ownership changes. Acceptance additionally requires at least one percent of
+adjacent words to differ. A fully overwritten but constant block now fails
+closed and is never transported as video IQ.
