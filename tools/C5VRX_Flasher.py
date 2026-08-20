@@ -42,7 +42,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-3"
+APP_BUILD = "video-proof-4"
 C5_RX_MAX_MHZ = 5885
 
 FPV_BANDS = {
@@ -168,6 +168,7 @@ class C5VRXApp(tk.Tk):
         self.preview_width = 160
         self.preview_height = 120
         self.preview_image: tk.PhotoImage | None = None
+        self.preview_display_image: tk.PhotoImage | None = None
         self.preview_sequence: int | None = None
         self.live_iq_active = False
         self.live_iq_capture_done = False
@@ -987,8 +988,11 @@ class C5VRXApp(tk.Tk):
     def _show_live_iq_frame(self, pixels: bytes, source_text: str,
                             usb_mbit: float, block_rate: float,
                             lock_text: str) -> None:
-        self._show_gray_frame(
-            pixels, self.live_video_width, self.live_video_height)
+        if not self._show_gray_frame(
+                pixels, self.live_video_width, self.live_video_height):
+            self.sink.write(
+                f"C5VRX_HOST_VIDEO_RENDER_ERROR build={APP_BUILD}\n")
+            return
         self.live_video_host_frames += 1
         if self.live_video_host_frames == 1 or self.live_video_host_frames % 10 == 0:
             self.sink.write(
@@ -1078,30 +1082,58 @@ class C5VRXApp(tk.Tk):
             return
         canvas = self.preview_canvas
         canvas.delete("all")
+        scale = max(1, min(
+            max(1, canvas.winfo_width()) // max(1, self.preview_width),
+            max(1, canvas.winfo_height()) // max(1, self.preview_height),
+        ))
+        self.preview_display_image = (
+            self.preview_image.zoom(scale, scale)
+            if scale > 1 else self.preview_image
+        )
         canvas.create_image(
             max(0, canvas.winfo_width() // 2),
             max(0, canvas.winfo_height() // 2),
-            image=self.preview_image,
+            image=self.preview_display_image,
             anchor="center",
         )
 
-    def _show_gray_frame(self, payload: bytes, width: int, height: int) -> None:
+    def _show_gray_frame(self, payload: bytes, width: int, height: int) -> bool:
+        if len(payload) != width * height:
+            self.preview_status_var.set(
+                f"GRAY8 render rejected: {len(payload)} bytes for {width}x{height}")
+            return False
         self.preview_frame = payload
         self.preview_width = width
         self.preview_height = height
-        pgm = f"P5\n{width} {height}\n255\n".encode("ascii") + payload
         try:
-            self.preview_image = tk.PhotoImage(data=pgm, format="PGM")
+            # The Tcl/Tk distributed with current Python on Windows does not
+            # include a PGM image decoder. Populate a native PhotoImage using
+            # RGB rows instead; 160x120 is deliberately small enough for this
+            # deterministic path and needs no Pillow runtime dependency.
+            image = tk.PhotoImage(width=width, height=height)
+            rows = []
+            for y in range(height):
+                row = payload[y * width:(y + 1) * width]
+                rows.append("{" + " ".join(
+                    f"#{value:02x}{value:02x}{value:02x}" for value in row
+                ) + "}")
+            image.put(" ".join(rows))
+            self.preview_image = image
         except tk.TclError:
-            self.preview_status_var.set("Valid GRAY8 frame received; Tk cannot render PGM on this system")
-            return
+            self.preview_image = None
+            self.preview_display_image = None
+            self.preview_status_var.set(
+                "Valid GRAY8 frame received, but Tk pixel rendering failed")
+            return False
         self._redraw_preview()
         self.preview_status_var.set(f"Live USB preview: {width}×{height} GRAY8, CRC valid")
+        return True
 
     def clear_preview(self) -> None:
         self.iq_words = []
         self.preview_frame = None
         self.preview_image = None
+        self.preview_display_image = None
         self.preview_status_var.set(f"{APP_BUILD}: video raster cleared")
         self.render_iq_preview()
 

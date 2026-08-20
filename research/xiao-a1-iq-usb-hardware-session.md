@@ -237,3 +237,17 @@ RTS false, and only then opens COM10. Failed candidates are explicitly closed.
 This prevents the console's normal Connect action from generating an
 unintended reset transition. It cannot revive a C5 that is already stuck; that
 still requires a real board reset or removal of every power source once.
+
+After the runtime recovered, host markers proved that raster processing was
+active (`frame=1` and `frame=10`), but the placeholder remained visible. A
+standalone test against the exact Windows Tcl/Tk runtime reproduced the cause:
+both raw and base64 PGM inputs failed with `image format "PGM" is not
+supported`, while direct `PhotoImage.put()` RGB pixels succeeded. The earlier
+host-frame marker was emitted after `_show_gray_frame()` even when that method
+had returned early, so it proved decoding but not successful presentation.
+
+GUI build `video-proof-4` uses direct grayscale-to-RGB PhotoImage rows, keeps a
+scaled display-image reference, and integer-scales the 160x120 raster to fit
+the preview canvas. `_show_gray_frame()` now returns an explicit success flag;
+`C5VRX_HOST_VIDEO_FRAME` is emitted only after successful rendering, while a
+failure emits `C5VRX_HOST_VIDEO_RENDER_ERROR` and preserves its error status.
