@@ -93,3 +93,11 @@ handshake=PASS`, `PING` returned `C5VRX_PONG`, and Wi-Fi completed with
 `C5VRX_BOOT stage=WIFI5_READY`. A1 boot tuning read back channel 173 at 40 MHz.
 Early `STATUS` calls returned code 259 only while Wi-Fi initialization was still
 in progress; this is the intended fail-open control-before-RF startup order.
+
+The first repeated type-5 hardware run transferred 43 complete 16384-word
+blocks with zero protocol errors and zero device write failures. Every capture
+timed out at the former 10 ms LP-kernel deadline and every reconstructed block
+had the identical CRC32 `023ecbba`. This proves the chunked USB transport while
+also proving those words were stale SRAM, not 43 fresh RF captures. Timeout data
+is now rejected instead of published, and the CPU-cycle deadline was increased
+to 50 ms while remaining below the configured 300 ms interrupt watchdog.

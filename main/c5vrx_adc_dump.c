@@ -232,22 +232,27 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
     const int64_t capture_start_us = esp_timer_get_time();
     const uint32_t final_control = trigger_dump(sample_count);
     const int64_t capture_elapsed_us = esp_timer_get_time() - capture_start_us;
+    const bool capture_done = (final_control & C5VRX_FE_DUMP_DONE_BIT) != 0u;
     const double finite_fill_msps =
-        capture_elapsed_us > 0
+        capture_done && capture_elapsed_us > 0
             ? (double)sample_count / (double)capture_elapsed_us
             : 0.0;
     printf("C5VRX_CAPTURE_KERNEL engine=LP_RAM_MONOLITHIC final_control=%08" PRIx32
            " done=%u timeout=%u elapsed_us=%" PRId64
            " finite_fill_msps=%.6f rate_classification=%s\n",
            final_control,
-           (final_control & C5VRX_FE_DUMP_DONE_BIT) ? 1u : 0u,
-           (final_control & C5VRX_FE_DUMP_DONE_BIT) ? 0u : 1u,
+           capture_done ? 1u : 0u,
+           capture_done ? 0u : 1u,
            capture_elapsed_us,
            finite_fill_msps,
-           (final_control & C5VRX_FE_DUMP_DONE_BIT)
+           capture_done
                ? "FINITE_FILL_ESTIMATE_NOT_CALIBRATED"
                : "INVALID_TIMEOUT");
     fflush(stdout);
+
+    /* Never publish stale/uninitialized HP SRAM as IQ. A timeout is a valid
+     * hardware diagnostic result, not a successful capture. */
+    if (!capture_done) return ESP_ERR_TIMEOUT;
 
     volatile const uint32_t *const words =
         (volatile const uint32_t *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR;

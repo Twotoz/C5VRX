@@ -136,10 +136,12 @@ c5vrx_lp_capture_mode0:
     sw      t2, 0(t1)                /* producer triggered */
 
     /* Do not depend on the vendor modem timer while modem SRAM ownership is
-     * changing. mcycle is CPU-local and keeps this poll bounded to 10 ms at
-     * the configured 240 MHz CPU clock, well below the interrupt watchdog. */
+     * changing. mcycle is CPU-local and keeps this poll bounded to 50 ms at
+     * the configured 240 MHz CPU clock, still well below the 300 ms interrupt
+     * watchdog. Hardware showed that the former 10 ms deadline always expired
+     * before bit 18 and returned the same stale SRAM block repeatedly. */
     csrr    t4, mcycle
-    li      t5, 2400000
+    li      t5, 12000000
 1:
     lw      t6, 0(t0)
     li      t1, 0x00040000
