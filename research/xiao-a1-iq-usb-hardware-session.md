@@ -323,10 +323,18 @@ polarity correction and 160x120 rendering. New firmware advertises
 `phase8_capture=1`; the same exe automatically falls back to raw type-5 IQ for
 older firmware.
 
-The firmware, protocol decoder and Windows host path compile and pass their
-offline framing checks. The expected transport reduction is fourfold, but an
-actual block rate must be measured after flashing this build. This remains a
-retriggered finite source and does not solve the gaps between captures.
-`tools/analyze_receiver_session.py` now understands both raw-IQ32 and Phase8
-session packets, although Phase8 deliberately cannot report absolute power or
-clipping because those amplitude values are no longer transported.
+The first physical `video-proof-6` run reached the new command and completed
+the 16384-word RF capture, but returned code 257 (`ESP_ERR_NO_MEM`) before the
+binary-begin marker. Wi-Fi initialization had left no contiguous 16 KiB
+internal-heap allocation for the original whole-capture phase buffer. Build
+`video-proof-7` removes that allocation: it encodes and immediately transmits
+one 1024-byte chunk through fixed static scratch storage, so peak Phase8
+working storage is bounded and independent of capture length.
+
+The revised firmware, protocol decoder and Windows host path compile and pass
+their offline framing checks. The expected transport reduction is fourfold,
+but an actual block rate must be measured after flashing `video-proof-7`. This
+remains a retriggered finite source and does not solve the gaps between
+captures. `tools/analyze_receiver_session.py` understands both raw-IQ32 and
+Phase8 session packets, although Phase8 deliberately cannot report absolute
+power or clipping because those amplitude values are no longer transported.

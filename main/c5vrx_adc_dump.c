@@ -5,12 +5,10 @@
 #include <inttypes.h>
 #include <limits.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
 #include "esp_log.h"
-#include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -44,6 +42,7 @@ static const uint8_t s_iq_usb_magic[8] = {
 static uint32_t s_iq_usb_sequence;
 static uint32_t s_iq_capture_id;
 static uint8_t s_phase8_lut[1024];
+static uint8_t s_phase8_chunk[C5VRX_USB_PHASE8_CHUNK_SAMPLES];
 static bool s_phase8_lut_ready;
 
 /*
@@ -288,56 +287,47 @@ static unsigned write_binary_iq_chunks(volatile const uint32_t *words,
     return failed_chunks;
 }
 
-static unsigned write_binary_phase8_chunks(const uint8_t *samples,
-                                            size_t sample_count)
+static esp_err_t write_binary_phase8_chunk(const uint8_t *samples,
+                                           size_t total_samples,
+                                           size_t offset,
+                                           size_t chunk_samples,
+                                           uint32_t capture_id)
 {
-    const uint32_t capture_id = s_iq_capture_id++;
-    unsigned failed_chunks = 0;
+    uint32_t flags = 0u;
+    if (offset == 0u) flags |= C5VRX_USB_IQ_CHUNK_FLAG_FIRST;
+    if (offset + chunk_samples == total_samples)
+        flags |= C5VRX_USB_IQ_CHUNK_FLAG_LAST;
 
-    for (size_t offset = 0; offset < sample_count;
-         offset += C5VRX_USB_PHASE8_CHUNK_SAMPLES) {
-        size_t chunk_samples = sample_count - offset;
-        if (chunk_samples > C5VRX_USB_PHASE8_CHUNK_SAMPLES)
-            chunk_samples = C5VRX_USB_PHASE8_CHUNK_SAMPLES;
+    uint8_t descriptor[C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES] = {0};
+    put_le32(descriptor, capture_id);
+    put_le32(descriptor + 4u, (uint32_t)total_samples);
+    put_le32(descriptor + 8u, (uint32_t)offset);
+    put_le32(descriptor + 12u, (uint32_t)chunk_samples);
+    put_le32(descriptor + 16u, flags);
 
-        uint32_t flags = 0u;
-        if (offset == 0u) flags |= C5VRX_USB_IQ_CHUNK_FLAG_FIRST;
-        if (offset + chunk_samples == sample_count)
-            flags |= C5VRX_USB_IQ_CHUNK_FLAG_LAST;
+    uint8_t header[C5VRX_USB_HEADER_BYTES] = {0};
+    memcpy(header, s_iq_usb_magic, sizeof(s_iq_usb_magic));
+    header[8] = C5VRX_USB_PREVIEW_PROTOCOL_VERSION;
+    header[9] = C5VRX_USB_PACKET_PHASE8_CHUNK;
+    put_le16(header + 10u, C5VRX_USB_HEADER_BYTES);
+    put_le32(header + 12u, s_iq_usb_sequence++);
+    put_le32(header + 16u,
+             C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES +
+                 (uint32_t)chunk_samples);
+    put_le64(header + 20u, (uint64_t)esp_timer_get_time());
+    put_le32(header + 28u, crc32_bytes(header, 28u));
 
-        uint8_t descriptor[C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES] = {0};
-        put_le32(descriptor, capture_id);
-        put_le32(descriptor + 4u, (uint32_t)sample_count);
-        put_le32(descriptor + 8u, (uint32_t)offset);
-        put_le32(descriptor + 12u, (uint32_t)chunk_samples);
-        put_le32(descriptor + 16u, flags);
-
-        uint8_t header[C5VRX_USB_HEADER_BYTES] = {0};
-        memcpy(header, s_iq_usb_magic, sizeof(s_iq_usb_magic));
-        header[8] = C5VRX_USB_PREVIEW_PROTOCOL_VERSION;
-        header[9] = C5VRX_USB_PACKET_PHASE8_CHUNK;
-        put_le16(header + 10u, C5VRX_USB_HEADER_BYTES);
-        put_le32(header + 12u, s_iq_usb_sequence++);
-        put_le32(header + 16u,
-                 C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES +
-                     (uint32_t)chunk_samples);
-        put_le64(header + 20u, (uint64_t)esp_timer_get_time());
-        put_le32(header + 28u, crc32_bytes(header, 28u));
-
-        const uint32_t payload_crc =
-            byte_payload_crc(descriptor, samples + offset, chunk_samples);
-        uint8_t trailer[4];
-        put_le32(trailer, payload_crc);
-        const c5vrx_usb_iovec_t packet[] = {
-            {.data = header, .size = sizeof(header)},
-            {.data = descriptor, .size = sizeof(descriptor)},
-            {.data = samples + offset, .size = chunk_samples},
-            {.data = trailer, .size = sizeof(trailer)},
-        };
-        if (c5vrx_usb_writev(packet, sizeof(packet) / sizeof(packet[0])) !=
-            ESP_OK) ++failed_chunks;
-    }
-    return failed_chunks;
+    const uint32_t payload_crc =
+        byte_payload_crc(descriptor, samples, chunk_samples);
+    uint8_t trailer[4];
+    put_le32(trailer, payload_crc);
+    const c5vrx_usb_iovec_t packet[] = {
+        {.data = header, .size = sizeof(header)},
+        {.data = descriptor, .size = sizeof(descriptor)},
+        {.data = samples, .size = chunk_samples},
+        {.data = trailer, .size = sizeof(trailer)},
+    };
+    return c5vrx_usb_writev(packet, sizeof(packet) / sizeof(packet[0]));
 }
 
 static float phase8_coarse_center(unsigned code5)
@@ -487,8 +477,6 @@ esp_err_t c5vrx_adc_dump_capture_phase8(size_t sample_count)
     esp_err_t err = c5vrx_adc_dump_capture(sample_count, false);
     if (err != ESP_OK) return err;
 
-    uint8_t *phase8 = heap_caps_malloc(sample_count, MALLOC_CAP_INTERNAL);
-    if (!phase8) return ESP_ERR_NO_MEM;
     initialize_phase8_lut();
 
     volatile const uint32_t *const words =
@@ -503,25 +491,42 @@ esp_err_t c5vrx_adc_dump_capture_phase8(size_t sample_count)
     const int32_t mean_i = (int32_t)(sum_i / (int64_t)sample_count);
     const int32_t mean_q = (int32_t)(sum_q / (int64_t)sample_count);
 
-    const int64_t encode_begin_us = esp_timer_get_time();
-    for (size_t i = 0; i < sample_count; ++i) {
-        const c5vrx_iq10_sample_t sample = c5vrx_adc_decode_word(words[i]);
-        const int16_t centered_i = clamp_iq10((int32_t)sample.i - mean_i);
-        const int16_t centered_q = clamp_iq10((int32_t)sample.q - mean_q);
-        const unsigned i5 = (((uint16_t)centered_i & 0x3ffu) >> 5) & 0x1fu;
-        const unsigned q5 = (((uint16_t)centered_q & 0x3ffu) >> 5) & 0x1fu;
-        phase8[i] = s_phase8_lut[(i5 << 5) | q5];
-    }
-    const int64_t encode_us = esp_timer_get_time() - encode_begin_us;
-
     printf("C5VRX_PHASE8_BINARY_BEGIN samples=%u chunk_samples=%u packet_type=%u dc_i=%ld dc_q=%ld\n",
            (unsigned)sample_count, C5VRX_USB_PHASE8_CHUNK_SAMPLES,
            C5VRX_USB_PACKET_PHASE8_CHUNK, (long)mean_i, (long)mean_q);
     fflush(stdout);
-    const int64_t transport_begin_us = esp_timer_get_time();
-    const unsigned failed_chunks =
-        write_binary_phase8_chunks(phase8, sample_count);
-    const int64_t transport_us = esp_timer_get_time() - transport_begin_us;
+    const uint32_t capture_id = s_iq_capture_id++;
+    int64_t encode_us = 0;
+    int64_t transport_us = 0;
+    unsigned failed_chunks = 0;
+    for (size_t offset = 0; offset < sample_count;
+         offset += C5VRX_USB_PHASE8_CHUNK_SAMPLES) {
+        size_t chunk_samples = sample_count - offset;
+        if (chunk_samples > C5VRX_USB_PHASE8_CHUNK_SAMPLES)
+            chunk_samples = C5VRX_USB_PHASE8_CHUNK_SAMPLES;
+
+        const int64_t encode_begin_us = esp_timer_get_time();
+        for (size_t i = 0; i < chunk_samples; ++i) {
+            const c5vrx_iq10_sample_t sample =
+                c5vrx_adc_decode_word(words[offset + i]);
+            const int16_t centered_i =
+                clamp_iq10((int32_t)sample.i - mean_i);
+            const int16_t centered_q =
+                clamp_iq10((int32_t)sample.q - mean_q);
+            const unsigned i5 =
+                (((uint16_t)centered_i & 0x3ffu) >> 5) & 0x1fu;
+            const unsigned q5 =
+                (((uint16_t)centered_q & 0x3ffu) >> 5) & 0x1fu;
+            s_phase8_chunk[i] = s_phase8_lut[(i5 << 5) | q5];
+        }
+        encode_us += esp_timer_get_time() - encode_begin_us;
+
+        const int64_t transport_begin_us = esp_timer_get_time();
+        if (write_binary_phase8_chunk(
+                s_phase8_chunk, sample_count, offset, chunk_samples,
+                capture_id) != ESP_OK) ++failed_chunks;
+        transport_us += esp_timer_get_time() - transport_begin_us;
+    }
     const unsigned chunks = (unsigned)(
         (sample_count + C5VRX_USB_PHASE8_CHUNK_SAMPLES - 1u) /
         C5VRX_USB_PHASE8_CHUNK_SAMPLES);
@@ -529,7 +534,6 @@ esp_err_t c5vrx_adc_dump_capture_phase8(size_t sample_count)
            (unsigned)sample_count, chunks, failed_chunks,
            (long long)encode_us, (long long)transport_us);
     fflush(stdout);
-    free(phase8);
     return failed_chunks ? ESP_FAIL : ESP_OK;
 }
 
