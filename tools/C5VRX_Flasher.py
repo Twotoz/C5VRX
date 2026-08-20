@@ -179,6 +179,9 @@ class C5VRXApp(tk.Tk):
         self.live_iq_usb_bytes = 0
         self.live_iq_blocks = 0
         self.live_iq_request_started = 0.0
+        self.live_iq_transport_ready = False
+        self.live_iq_capture_retries = 0
+        self.live_iq_max_retries = 3
         self.live_video_width = 160
         self.live_video_height = 120
         self.live_video_pixels = bytearray(
@@ -490,6 +493,19 @@ class C5VRXApp(tk.Tk):
         self.disconnect_serial()
 
     def _parse_device_line(self, line: str) -> None:
+        if (line.startswith("C5VRX_USB_PREVIEW state=START") and
+                self.live_iq_active):
+            fields = self._fields(line)
+            if fields.get("code") == "0":
+                if not self.live_iq_transport_ready:
+                    self.live_iq_transport_ready = True
+                    self.after(0, self.preview_status_var.set,
+                               "Binary IQ transport ready; requesting fresh A1 capture")
+                    self.after(1, self._request_live_iq_capture)
+            else:
+                self.after(0, self.stop_live_iq_video,
+                           f"binary transport failed ({line})")
+            return
         if (self.first_test_active and not self.first_test_fine_sent
                 and line.startswith("C5VRX_PRODUCER_CADENCE mode=0 ")):
             fields = self._fields(line)
@@ -523,8 +539,20 @@ class C5VRXApp(tk.Tk):
         if line.startswith("C5VRX_CAPTURE_DONE") and self.live_iq_active:
             self.live_iq_capture_done = "code=0" in line
             if not self.live_iq_capture_done:
-                self.after(0, self.stop_live_iq_video, "device capture failed")
+                fields = self._fields(line)
+                if (fields.get("code") == "263" and
+                        self.live_iq_capture_retries < self.live_iq_max_retries):
+                    self.live_iq_capture_retries += 1
+                    retry = self.live_iq_capture_retries
+                    self.after(
+                        0, self.preview_status_var.set,
+                        f"RF capture timeout; retry {retry}/{self.live_iq_max_retries}")
+                    self.after(100, self._request_live_iq_capture)
+                else:
+                    self.after(0, self.stop_live_iq_video,
+                               f"device capture failed after {self.live_iq_capture_retries} retries")
             else:
+                self.live_iq_capture_retries = 0
                 self._live_iq_maybe_continue()
         if line.startswith("IQ:") and self.iq_capture_active:
             try:
@@ -743,6 +771,8 @@ class C5VRXApp(tk.Tk):
         self.live_iq_capture_id = None
         self.live_iq_chunks = {}
         self.live_iq_source_msps = None
+        self.live_iq_transport_ready = False
+        self.live_iq_capture_retries = 0
         self.live_iq_usb_started = time.monotonic()
         self.live_iq_usb_bytes = 0
         self.live_iq_blocks = 0
@@ -755,11 +785,11 @@ class C5VRXApp(tk.Tk):
         self.send_command("BW 40")
         self.after(100, lambda: self.send_command("SET A 1"))
         self.after(220, lambda: self.send_command("USB PREVIEW START"))
-        self.after(500, self._request_live_iq_capture)
 
     def stop_live_iq_video(self, reason: str = "user") -> None:
         was_active = self.live_iq_active
         self.live_iq_active = False
+        self.live_iq_transport_ready = False
         if hasattr(self, "live_iq_start_btn"):
             self.live_iq_start_btn.configure(state="normal")
             self.live_iq_stop_btn.configure(state="disabled")
@@ -768,7 +798,7 @@ class C5VRXApp(tk.Tk):
         self.preview_status_var.set(f"IQ video stopped: {reason}")
 
     def _request_live_iq_capture(self) -> None:
-        if not self.live_iq_active:
+        if not self.live_iq_active or not self.live_iq_transport_ready:
             return
         self.live_iq_capture_done = False
         self.live_iq_packet_done = False

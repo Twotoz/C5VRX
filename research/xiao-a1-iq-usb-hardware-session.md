@@ -101,3 +101,19 @@ had the identical CRC32 `023ecbba`. This proves the chunked USB transport while
 also proving those words were stale SRAM, not 43 fresh RF captures. Timeout data
 is now rejected instead of published, and the CPU-cycle deadline was increased
 to 50 ms while remaining below the configured 300 ms interrupt watchdog.
+
+With that deadline, the first physical capture attempt still timed out after
+51.701 ms with `final_control=80004000` and no done bit. A following attempt
+completed after 38.631 ms with `final_control=80044000`, `done=1`, and a
+0.424115 MS/s finite-fill estimate. This is the first direct proof that this
+bounded kernel reached a fresh hardware completion. The estimate includes
+trigger/fill overhead and is not a calibrated producer sample rate.
+
+That successful payload fell back to ASCII because the preview lifecycle had
+already returned `STOP code=263`; a later `START` consequently returned code
+257 while the old task still existed. The stop loop used
+`pdMS_TO_TICKS(1)`, which can round to zero at the configured tick rate. The
+preview lifecycle now uses real scheduler ticks, has idempotent START/STOP
+commands, and avoids a potentially blocking STREAM_END write during teardown.
+The Receiver Console waits for `START code=0` before its first capture and
+retries a bounded RF timeout without tearing down the binary transport.

@@ -19,7 +19,6 @@
 #define FRAME_DESCRIPTOR_BYTES 8u
 #define PACKET_STREAM_INFO 1u
 #define PACKET_GRAY8_FRAME 2u
-#define PACKET_STREAM_END 3u
 #define PIXEL_FORMAT_GRAY8 1u
 #define FIRST_ACTIVE_FIELD_LINE 20u
 #define ACTIVE_FIELD_LINES 240u
@@ -158,9 +157,11 @@ static void preview_task(void *arg)
         taskEXIT_CRITICAL(&s_preview.lock);
     }
 
-    uint8_t end_payload[8];
-    put_le64(end_payload, s_preview.dropped);
-    write_packet(PACKET_STREAM_END, end_payload, sizeof(end_payload), NULL, 0u);
+    /*
+     * Do not send STREAM_END here.  A stopped host may no longer drain USB,
+     * making the task block in the direct writer while stop() waits for it.
+     * The ASCII STOP acknowledgement is the authoritative lifecycle marker.
+     */
     s_preview.task = NULL;
     vTaskDelete(NULL);
 }
@@ -186,7 +187,9 @@ static void publish_frame(void)
 
 esp_err_t c5vrx_usb_preview_start(void)
 {
-    if (s_preview.running) return ESP_ERR_INVALID_STATE;
+    /* START is deliberately idempotent for reconnecting Windows hosts. */
+    if (s_preview.running) return ESP_OK;
+    if (s_preview.task) return ESP_ERR_INVALID_STATE;
     memset(&s_preview, 0, offsetof(preview_state_t, lock));
     c5vrx_cvbs_sync_init(&s_preview.sync);
     s_preview.current_row = C5VRX_CVBS_SYNC_NO_LINE;
@@ -213,11 +216,13 @@ esp_err_t c5vrx_usb_preview_start(void)
 
 esp_err_t c5vrx_usb_preview_stop(void)
 {
-    if (!s_preview.running) return ESP_ERR_INVALID_STATE;
+    /* STOP is deliberately idempotent as well. */
+    if (!s_preview.running && !s_preview.task) return ESP_OK;
     s_preview.running = false;
     if (s_preview.task) xTaskNotifyGive(s_preview.task);
-    for (unsigned i = 0; i < 100u && s_preview.task; ++i)
-        vTaskDelay(pdMS_TO_TICKS(1));
+    /* One scheduler tick per iteration; pdMS_TO_TICKS(1) can round to zero. */
+    for (unsigned i = 0; i < 50u && s_preview.task; ++i)
+        vTaskDelay(1);
     if (s_preview.task) return ESP_ERR_TIMEOUT;
     free(s_preview.frame[0]);
     free(s_preview.frame[1]);
