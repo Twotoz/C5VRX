@@ -10,12 +10,14 @@
 
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_private/hw_stack_guard.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "c5vrx_rf_dump_producer.h"
 #include "c5vrx_usb_preview.h"
 
 static const char *TAG = "c5vrx_adc_dump";
+static portMUX_TYPE s_capture_lock = portMUX_INITIALIZER_UNLOCKED;
 
 /* Recovered from C5 v6.0.2 adctrig() disassembly. These are intentionally
  * private diagnostic constants, not presented as documented SoC registers. */
@@ -24,13 +26,17 @@ static const char *TAG = "c5vrx_adc_dump";
 #define C5VRX_FE_DUMP_DONE_BIT    (1u << 18)
 
 #define C5VRX_USB_HEADER_BYTES 32u
-#define C5VRX_USB_IQ_DESCRIPTOR_BYTES 8u
-#define C5VRX_USB_PACKET_IQ_U32_BLOCK 4u
+#define C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES 20u
+#define C5VRX_USB_PACKET_IQ_U32_CHUNK 5u
+#define C5VRX_USB_IQ_CHUNK_WORDS 256u
+#define C5VRX_USB_IQ_CHUNK_FLAG_FIRST (1u << 0)
+#define C5VRX_USB_IQ_CHUNK_FLAG_LAST  (1u << 1)
 
 static const uint8_t s_iq_usb_magic[8] = {
     0x00, 'C', '5', 'V', 'R', 'X', 0xa5, 0x5a
 };
 static uint32_t s_iq_usb_sequence;
+static uint32_t s_iq_capture_id;
 
 /*
  * Prototype is independently documented by historical Espressif RF-test
@@ -47,6 +53,9 @@ extern void adctrig(int32_t smp_num_aft_trig,
                     int32_t rx_gain0,
                     int32_t rx_gain0_wait_us);
 extern void set_dump_mode(int mode);
+extern void phy_pbus_clear_reg(void);
+extern uint32_t c5vrx_lp_capture_mode0(int32_t sample_count_minus_one);
+extern volatile uint32_t c5vrx_lp_capture_stage;
 
 static int16_t sign_extend_10(uint32_t value)
 {
@@ -63,19 +72,28 @@ c5vrx_iq10_sample_t c5vrx_adc_decode_word(uint32_t raw)
     };
 }
 
-static void trigger_dump(size_t sample_count)
+static uint32_t trigger_dump(size_t sample_count)
 {
-    /* Historical tooling passes N-1; adctrig adds one internally. */
-    adctrig((int32_t)sample_count - 1,
-            0,  /* software trigger */
-            0,  /* trigger case */
-            1,  /* historical sample_80m value; C5 rate unproven */
-            0,  /* trigger then dump */
-            0,  /* automatic RX gain */
-            0,
-            0,
-            0);
+    /* Historical tooling passes N-1. The complete ownership/trigger/wait/
+     * restore sequence runs from LP RAM with an LP-RAM stack; no FreeRTOS or
+     * flash code executes while the MAC owns the affected HP-SRAM banks. */
+    portENTER_CRITICAL(&s_capture_lock);
+#if CONFIG_ESP_SYSTEM_HW_STACK_GUARD
+    /* The C5 assist-debug unit checks SP against the current FreeRTOS task's
+     * HP-RAM bounds. Pause it before the deliberate LP-RAM stack switch and
+     * resume it only after assembly has restored the original task SP. */
+    esp_hw_stack_guard_monitor_stop();
+#endif
+    const uint32_t control =
+        c5vrx_lp_capture_mode0((int32_t)sample_count - 1);
+    c5vrx_lp_capture_stage = 0;
+#if CONFIG_ESP_SYSTEM_HW_STACK_GUARD
+    esp_hw_stack_guard_monitor_start();
+#endif
+    portEXIT_CRITICAL(&s_capture_lock);
+    phy_pbus_clear_reg();
     __asm__ __volatile__("fence iorw, iorw" ::: "memory");
+    return control;
 }
 
 static uint32_t fnv1a_dump_hash(volatile const uint32_t *words, size_t sample_count)
@@ -123,12 +141,12 @@ static uint32_t crc32_bytes(const uint8_t *data, size_t count)
     return ~crc32_update(UINT32_MAX, data, count);
 }
 
-static uint32_t iq_payload_crc(const uint8_t descriptor[C5VRX_USB_IQ_DESCRIPTOR_BYTES],
+static uint32_t iq_payload_crc(const uint8_t descriptor[C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES],
                                volatile const uint32_t *words,
                                size_t sample_count)
 {
     uint32_t crc = crc32_update(UINT32_MAX, descriptor,
-                                C5VRX_USB_IQ_DESCRIPTOR_BYTES);
+                                C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES);
     uint8_t raw[4];
     for (size_t i = 0; i < sample_count; ++i) {
         put_le32(raw, words[i]);
@@ -137,41 +155,68 @@ static uint32_t iq_payload_crc(const uint8_t descriptor[C5VRX_USB_IQ_DESCRIPTOR_
     return ~crc;
 }
 
-static void write_binary_iq_packet(volatile const uint32_t *words,
-                                   size_t sample_count)
+static bool write_exact(const void *data, size_t count)
 {
-    uint8_t descriptor[C5VRX_USB_IQ_DESCRIPTOR_BYTES] = {0};
-    put_le32(descriptor, (uint32_t)sample_count);
-    put_le32(descriptor + 4u, 0u); /* flags */
+    return count == 0u || fwrite(data, 1, count, stdout) == count;
+}
 
-    uint8_t header[C5VRX_USB_HEADER_BYTES] = {0};
-    memcpy(header, s_iq_usb_magic, sizeof(s_iq_usb_magic));
-    header[8] = C5VRX_USB_PREVIEW_PROTOCOL_VERSION;
-    header[9] = C5VRX_USB_PACKET_IQ_U32_BLOCK;
-    put_le16(header + 10u, C5VRX_USB_HEADER_BYTES);
-    put_le32(header + 12u, s_iq_usb_sequence++);
-    put_le32(header + 16u,
-             C5VRX_USB_IQ_DESCRIPTOR_BYTES +
-                 (uint32_t)sample_count * sizeof(uint32_t));
-    put_le64(header + 20u, (uint64_t)esp_timer_get_time());
-    put_le32(header + 28u, crc32_bytes(header, 28u));
+static unsigned write_binary_iq_chunks(volatile const uint32_t *words,
+                                       size_t sample_count)
+{
+    const uint32_t capture_id = s_iq_capture_id++;
+    unsigned failed_chunks = 0;
 
-    const uint32_t payload_crc = iq_payload_crc(descriptor, words, sample_count);
-    uint8_t trailer[4];
-    put_le32(trailer, payload_crc);
+    for (size_t offset = 0; offset < sample_count;
+         offset += C5VRX_USB_IQ_CHUNK_WORDS) {
+        size_t chunk_words = sample_count - offset;
+        if (chunk_words > C5VRX_USB_IQ_CHUNK_WORDS)
+            chunk_words = C5VRX_USB_IQ_CHUNK_WORDS;
 
-    /* Framed binary is only selected while the host has explicitly opened the
-     * USB preview transport. Keep stdout locked so diagnostic text from other
-     * tasks cannot be inserted inside a packet. ESP32-C5 is little-endian, so
-     * the packed uint32_t dump words can be written directly on the wire. */
-    flockfile(stdout);
-    (void)fwrite(header, 1, sizeof(header), stdout);
-    (void)fwrite(descriptor, 1, sizeof(descriptor), stdout);
-    (void)fwrite((const void *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR,
-                 sizeof(uint32_t), sample_count, stdout);
-    (void)fwrite(trailer, 1, sizeof(trailer), stdout);
-    (void)fflush(stdout);
-    funlockfile(stdout);
+        uint32_t flags = 0u;
+        if (offset == 0u) flags |= C5VRX_USB_IQ_CHUNK_FLAG_FIRST;
+        if (offset + chunk_words == sample_count)
+            flags |= C5VRX_USB_IQ_CHUNK_FLAG_LAST;
+
+        uint8_t descriptor[C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES] = {0};
+        put_le32(descriptor, capture_id);
+        put_le32(descriptor + 4u, (uint32_t)sample_count);
+        put_le32(descriptor + 8u, (uint32_t)offset);
+        put_le32(descriptor + 12u, (uint32_t)chunk_words);
+        put_le32(descriptor + 16u, flags);
+
+        uint8_t header[C5VRX_USB_HEADER_BYTES] = {0};
+        memcpy(header, s_iq_usb_magic, sizeof(s_iq_usb_magic));
+        header[8] = C5VRX_USB_PREVIEW_PROTOCOL_VERSION;
+        header[9] = C5VRX_USB_PACKET_IQ_U32_CHUNK;
+        put_le16(header + 10u, C5VRX_USB_HEADER_BYTES);
+        put_le32(header + 12u, s_iq_usb_sequence++);
+        put_le32(header + 16u,
+                 C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES +
+                     (uint32_t)chunk_words * sizeof(uint32_t));
+        put_le64(header + 20u, (uint64_t)esp_timer_get_time());
+        put_le32(header + 28u, crc32_bytes(header, 28u));
+
+        const uint32_t payload_crc =
+            iq_payload_crc(descriptor, words + offset, chunk_words);
+        uint8_t trailer[4];
+        put_le32(trailer, payload_crc);
+
+        /* A 1 KiB fragment fits comfortably inside the configured 4 KiB USB
+         * TX buffer. Each fragment has its own header and payload CRC, so a
+         * short write loses at most one fragment and the next magic marker
+         * restores framing. */
+        flockfile(stdout);
+        const bool ok =
+            write_exact(header, sizeof(header)) &&
+            write_exact(descriptor, sizeof(descriptor)) &&
+            write_exact((const void *)(words + offset),
+                        chunk_words * sizeof(uint32_t)) &&
+            write_exact(trailer, sizeof(trailer)) &&
+            fflush(stdout) == 0;
+        funlockfile(stdout);
+        if (!ok) ++failed_chunks;
+    }
+    return failed_chunks;
 }
 
 esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
@@ -187,7 +232,25 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
 
     /* Mode 0 is the recovered normal packed 10-bit I/Q dump path. */
     set_dump_mode(0);
-    trigger_dump(sample_count);
+    const int64_t capture_start_us = esp_timer_get_time();
+    const uint32_t final_control = trigger_dump(sample_count);
+    const int64_t capture_elapsed_us = esp_timer_get_time() - capture_start_us;
+    const double finite_fill_msps =
+        capture_elapsed_us > 0
+            ? (double)sample_count / (double)capture_elapsed_us
+            : 0.0;
+    printf("C5VRX_CAPTURE_KERNEL engine=LP_RAM_MONOLITHIC final_control=%08" PRIx32
+           " done=%u timeout=%u elapsed_us=%" PRId64
+           " finite_fill_msps=%.6f rate_classification=%s\n",
+           final_control,
+           (final_control & C5VRX_FE_DUMP_DONE_BIT) ? 1u : 0u,
+           (final_control & C5VRX_FE_DUMP_DONE_BIT) ? 0u : 1u,
+           capture_elapsed_us,
+           finite_fill_msps,
+           (final_control & C5VRX_FE_DUMP_DONE_BIT)
+               ? "FINITE_FILL_ESTIMATE_NOT_CALIBRATED"
+               : "INVALID_TIMEOUT");
+    fflush(stdout);
 
     volatile const uint32_t *const words =
         (volatile const uint32_t *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR;
@@ -204,11 +267,10 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
 
     if (print_raw_words) {
         if (binary_transport) {
-            printf("C5VRX_IQ_BINARY_BEGIN samples=%u bytes=%u packet_type=%u\n",
+            printf("C5VRX_IQ_BINARY_BEGIN samples=%u chunk_words=%u packet_type=%u\n",
                    (unsigned)sample_count,
-                   (unsigned)(C5VRX_USB_IQ_DESCRIPTOR_BYTES +
-                              sample_count * sizeof(uint32_t)),
-                   C5VRX_USB_PACKET_IQ_U32_BLOCK);
+                   C5VRX_USB_IQ_CHUNK_WORDS,
+                   C5VRX_USB_PACKET_IQ_U32_CHUNK);
         } else {
             printf("C5VRX_IQ_BEGIN samples=%u base=0x%08" PRIx32 "\n",
                    (unsigned)sample_count, (uint32_t)C5VRX_ADC_DUMP_BASE_ADDR);
@@ -234,8 +296,13 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
     }
 
     if (binary_transport) {
-        write_binary_iq_packet(words, sample_count);
-        printf("C5VRX_IQ_BINARY_END samples=%u\n", (unsigned)sample_count);
+        const unsigned failed_chunks =
+            write_binary_iq_chunks(words, sample_count);
+        printf("C5VRX_IQ_BINARY_END samples=%u chunks=%u write_failures=%u\n",
+               (unsigned)sample_count,
+               (unsigned)((sample_count + C5VRX_USB_IQ_CHUNK_WORDS - 1u) /
+                          C5VRX_USB_IQ_CHUNK_WORDS),
+               failed_chunks);
         fflush(stdout);
     } else if (print_raw_words) {
         printf("C5VRX_IQ_END\n");
@@ -473,7 +540,7 @@ esp_err_t c5vrx_adc_dump_capture_chained(size_t block_count,
              (unsigned)sample_count);
 
     for (size_t block = 0; block < block_count; ++block) {
-        trigger_dump(sample_count);
+        (void)trigger_dump(sample_count);
 
         const uint32_t hash = fnv1a_dump_hash(words, sample_count);
         const c5vrx_iq10_sample_t first = c5vrx_adc_decode_word(words[0]);

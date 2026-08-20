@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import statistics
 import sys
 import threading
 import time
@@ -29,11 +30,15 @@ from c5vrx_lab import SessionRecorder
 from c5vrx_usb_protocol import (
     FRAME_DESCRIPTOR,
     PACKET_GRAY8_FRAME,
+    PACKET_IQ_U32_BLOCK,
+    PACKET_IQ_U32_CHUNK,
     PACKET_STREAM_END,
     PACKET_STREAM_INFO,
     PIXEL_FORMAT_GRAY8,
     Packet,
     StreamDecoder,
+    decode_iq_block,
+    decode_iq_chunk,
 )
 
 APP_TITLE = "C5VRX Receiver Console"
@@ -163,6 +168,22 @@ class C5VRXApp(tk.Tk):
         self.preview_height = 120
         self.preview_image: tk.PhotoImage | None = None
         self.preview_sequence: int | None = None
+        self.live_iq_active = False
+        self.live_iq_capture_done = False
+        self.live_iq_packet_done = False
+        self.live_iq_capture_id: int | None = None
+        self.live_iq_total_words = 0
+        self.live_iq_chunks: dict[int, tuple[int, ...]] = {}
+        self.live_iq_source_msps: float | None = None
+        self.live_iq_usb_started = 0.0
+        self.live_iq_usb_bytes = 0
+        self.live_iq_blocks = 0
+        self.live_iq_request_started = 0.0
+        self.live_video_width = 160
+        self.live_video_height = 120
+        self.live_video_pixels = bytearray(
+            self.live_video_width * self.live_video_height)
+        self.live_video_row = 0
         self.first_test_active = False
         self.first_test_fine_sent = False
         self.first_test_center = 5805
@@ -253,7 +274,7 @@ class C5VRXApp(tk.Tk):
         band_combo.bind("<<ComboboxSelected>>", lambda _e: self.update_channel_label())
 
         ttk.Label(row, text="Channel").pack(side="left")
-        self.channel_var = tk.StringVar(value="4")
+        self.channel_var = tk.StringVar(value="1")
         channel_combo = ttk.Combobox(row, textvariable=self.channel_var, state="readonly", values=[str(i) for i in range(1, 9)], width=6)
         channel_combo.pack(side="left", padx=(6, 16))
         channel_combo.bind("<<ComboboxSelected>>", lambda _e: self.update_channel_label())
@@ -334,6 +355,26 @@ class C5VRXApp(tk.Tk):
         ).pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Clear", command=self.clear_preview).pack(side="left", padx=8)
 
+        iq_live_controls = ttk.Frame(tab)
+        iq_live_controls.pack(fill="x", pady=(8, 0))
+        self.live_iq_start_btn = ttk.Button(
+            iq_live_controls,
+            text="LIVE IQ -> PC VIDEO (A1)",
+            command=self.start_live_iq_video,
+        )
+        self.live_iq_start_btn.pack(side="left")
+        self.live_iq_stop_btn = ttk.Button(
+            iq_live_controls,
+            text="STOP IQ VIDEO",
+            command=self.stop_live_iq_video,
+            state="disabled",
+        )
+        self.live_iq_stop_btn.pack(side="left", padx=8)
+        ttk.Label(
+            iq_live_controls,
+            text="Current source: retriggered 16K blocks (live update, not gapless). DSP and rendering run on this PC.",
+        ).pack(side="left", padx=8)
+
     def refresh_ports(self) -> None:
         selected_device = self.selected_port()
         ports = list(list_ports.comports())
@@ -402,6 +443,7 @@ class C5VRXApp(tk.Tk):
 
     def disconnect_serial(self) -> None:
         self.serial_stop.set()
+        self.live_iq_active = False
         self.preview_sequence = None
         ser = self.ser
         self.ser = None
@@ -471,6 +513,19 @@ class C5VRXApp(tk.Tk):
             self.iq_capture_active = True
             self.after(0, self.preview_status_var.set, "Receiving IQ samples over USB-C...")
             return
+        if line.startswith("C5VRX_CAPTURE_KERNEL"):
+            fields = self._fields(line)
+            try:
+                if fields.get("done") == "1":
+                    self.live_iq_source_msps = float(fields["finite_fill_msps"])
+            except (KeyError, ValueError):
+                pass
+        if line.startswith("C5VRX_CAPTURE_DONE") and self.live_iq_active:
+            self.live_iq_capture_done = "code=0" in line
+            if not self.live_iq_capture_done:
+                self.after(0, self.stop_live_iq_video, "device capture failed")
+            else:
+                self._live_iq_maybe_continue()
         if line.startswith("IQ:") and self.iq_capture_active:
             try:
                 self.iq_words.append(int(line[3:], 16))
@@ -496,6 +551,9 @@ class C5VRXApp(tk.Tk):
         return fields
 
     def _handle_usb_packet(self, packet: Packet) -> None:
+        if packet.packet_type in {PACKET_IQ_U32_BLOCK, PACKET_IQ_U32_CHUNK}:
+            self._handle_iq_usb_packet(packet)
+            return
         if self.preview_sequence is not None and packet.sequence != (
                 self.preview_sequence + 1) & 0xFFFFFFFF:
             self.sink.write(
@@ -542,6 +600,61 @@ class C5VRXApp(tk.Tk):
         self.after(0, self._show_gray_frame, pixels, width, height)
         if not (flags & 1):
             self.sink.write("C5VRX_PREVIEW_WARNING reason=SYNC_UNLOCKED\n")
+
+    def _handle_iq_usb_packet(self, packet: Packet) -> None:
+        self.live_iq_usb_bytes += 32 + len(packet.payload) + 4
+        if packet.packet_type == PACKET_IQ_U32_BLOCK:
+            try:
+                words = decode_iq_block(packet)
+            except ValueError as exc:
+                self.sink.write(f"C5VRX_IQ_PACKET_DROP reason={exc}\n")
+                return
+            self._finish_iq_usb_block(words)
+            return
+
+        try:
+            chunk = decode_iq_chunk(packet)
+        except ValueError as exc:
+            self.sink.write(f"C5VRX_IQ_CHUNK_DROP reason={exc}\n")
+            return
+        if self.live_iq_capture_id != chunk.capture_id:
+            self.live_iq_capture_id = chunk.capture_id
+            self.live_iq_total_words = chunk.total_words
+            self.live_iq_chunks = {}
+        if chunk.total_words != self.live_iq_total_words:
+            self.sink.write("C5VRX_IQ_CHUNK_DROP reason=MIXED_TOTAL\n")
+            return
+        existing = self.live_iq_chunks.get(chunk.offset_words)
+        if existing is not None and existing != chunk.words:
+            self.sink.write("C5VRX_IQ_CHUNK_DROP reason=CONFLICTING_DUPLICATE\n")
+            return
+        self.live_iq_chunks[chunk.offset_words] = chunk.words
+
+        if sum(len(words) for words in self.live_iq_chunks.values()) != chunk.total_words:
+            return
+        assembled: list[int] = []
+        expected_offset = 0
+        for offset in sorted(self.live_iq_chunks):
+            if offset != expected_offset:
+                return
+            words = self.live_iq_chunks[offset]
+            assembled.extend(words)
+            expected_offset += len(words)
+        if expected_offset == chunk.total_words:
+            self._finish_iq_usb_block(assembled)
+
+    def _finish_iq_usb_block(self, words: list[int]) -> None:
+        self.iq_words = words
+        self.iq_capture_active = False
+        self.live_iq_packet_done = True
+        if self.live_iq_active:
+            self.live_iq_blocks += 1
+            self._process_live_iq_block(words)
+            self._live_iq_maybe_continue()
+        else:
+            self.after(0, self.preview_status_var.set,
+                       f"Captured {len(words)} CRC-valid IQ words")
+            self.after(0, self.render_iq_preview)
 
     def _apply_status_line(self, line: str) -> None:
         fields = self._fields(line)
@@ -619,6 +732,172 @@ class C5VRXApp(tk.Tk):
     def start_usb_preview(self) -> None:
         self.send_command("USB PREVIEW START")
         self.after(100, lambda: self.send_command("LIVE START"))
+
+    def start_live_iq_video(self) -> None:
+        if not self.ser or not self.ser.is_open:
+            messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
+            return
+        self.live_iq_active = True
+        self.live_iq_capture_done = False
+        self.live_iq_packet_done = False
+        self.live_iq_capture_id = None
+        self.live_iq_chunks = {}
+        self.live_iq_source_msps = None
+        self.live_iq_usb_started = time.monotonic()
+        self.live_iq_usb_bytes = 0
+        self.live_iq_blocks = 0
+        self.live_video_pixels[:] = bytes(len(self.live_video_pixels))
+        self.live_video_row = 0
+        self.live_iq_start_btn.configure(state="disabled")
+        self.live_iq_stop_btn.configure(state="normal")
+        self.preview_status_var.set(
+            "Starting A1 IQ -> PC WBFM/video; VTX should be on A1 (5865 MHz)")
+        self.send_command("BW 40")
+        self.after(100, lambda: self.send_command("SET A 1"))
+        self.after(220, lambda: self.send_command("USB PREVIEW START"))
+        self.after(500, self._request_live_iq_capture)
+
+    def stop_live_iq_video(self, reason: str = "user") -> None:
+        was_active = self.live_iq_active
+        self.live_iq_active = False
+        if hasattr(self, "live_iq_start_btn"):
+            self.live_iq_start_btn.configure(state="normal")
+            self.live_iq_stop_btn.configure(state="disabled")
+        if was_active and self.ser and self.ser.is_open:
+            self.send_command("USB PREVIEW STOP")
+        self.preview_status_var.set(f"IQ video stopped: {reason}")
+
+    def _request_live_iq_capture(self) -> None:
+        if not self.live_iq_active:
+            return
+        self.live_iq_capture_done = False
+        self.live_iq_packet_done = False
+        self.live_iq_capture_id = None
+        self.live_iq_total_words = 0
+        self.live_iq_chunks = {}
+        self.live_iq_request_started = time.monotonic()
+        self.send_command("CAPTURE 16384")
+
+    def _live_iq_maybe_continue(self) -> None:
+        if (self.live_iq_active and self.live_iq_capture_done and
+                self.live_iq_packet_done):
+            self.after(1, self._request_live_iq_capture)
+
+    @staticmethod
+    def _fm_discriminator(words: list[int]) -> list[float]:
+        if len(words) < 2:
+            return []
+        values: list[float] = []
+        pi, pq = C5VRXApp._decode_iq(words[0])
+        for raw in words[1:]:
+            ci, cq = C5VRXApp._decode_iq(raw)
+            values.append(math.atan2(cq * pi - ci * pq,
+                                     ci * pi + cq * pq))
+            pi, pq = ci, cq
+        return values
+
+    def _process_live_iq_block(self, words: list[int]) -> None:
+        fm = self._fm_discriminator(words)
+        if len(fm) < 512:
+            return
+
+        # Work in 16-sample bins: fast enough for Tk/serial coexistence while
+        # retaining a several-hundred-sample PAL-compatible sync plateau.
+        bin_size = 16
+        binned = [
+            statistics.fmean(fm[offset:offset + bin_size])
+            for offset in range(0, len(fm) - bin_size + 1, bin_size)
+        ]
+        ordered = sorted(binned)
+        low_threshold = ordered[max(0, len(ordered) // 14)]
+        runs: list[tuple[int, int]] = []
+        start: int | None = None
+        for index, value in enumerate(binned):
+            if value <= low_threshold and start is None:
+                start = index
+            elif value > low_threshold and start is not None:
+                if index - start >= 3:
+                    runs.append((start * bin_size, index * bin_size))
+                start = None
+        if start is not None and len(binned) - start >= 3:
+            runs.append((start * bin_size, len(binned) * bin_size))
+
+        hint = None
+        if self.live_iq_source_msps and self.live_iq_source_msps > 1.0:
+            hint = self.live_iq_source_msps * 1_000_000.0 / 15_625.0
+        centers = [(left + right) // 2 for left, right in runs]
+        line_starts: list[int] = []
+        if centers:
+            line_starts.append(centers[0])
+            for center in centers[1:]:
+                spacing = center - line_starts[-1]
+                low = 0.65 * hint if hint else 2500
+                high = 1.35 * hint if hint else 7500
+                if low <= spacing <= high:
+                    line_starts.append(center)
+
+        periods = [b - a for a, b in zip(line_starts, line_starts[1:])]
+        sync_locked = bool(periods)
+        period = statistics.median(periods) if periods else hint
+        if not period or period < 500:
+            period = 5120.0  # explicitly reported below as unlocked fallback
+        if len(line_starts) < 2:
+            deepest = min(range(len(binned)), key=binned.__getitem__) * bin_size
+            first = deepest
+            while first >= period:
+                first -= int(period)
+            line_starts = []
+            cursor = first
+            while cursor + period <= len(fm):
+                line_starts.append(int(cursor))
+                cursor += period
+
+        active_lines: list[list[float]] = []
+        for start_sample in line_starts:
+            active_begin = int(start_sample + period * 0.16)
+            active_end = int(start_sample + period * 0.96)
+            if active_begin < 0 or active_end > len(fm) or active_end <= active_begin:
+                continue
+            source = fm[active_begin:active_end]
+            row: list[float] = []
+            for x in range(self.live_video_width):
+                left = x * len(source) // self.live_video_width
+                right = max(left + 1, (x + 1) * len(source) // self.live_video_width)
+                row.append(statistics.fmean(source[left:right]))
+            active_lines.append(row)
+
+        if not active_lines:
+            self.after(0, self.preview_status_var.set,
+                       "IQ received; no complete video-line candidate in this block")
+            return
+        scale_values = sorted(value for row in active_lines for value in row)
+        black = scale_values[len(scale_values) // 20]
+        white = scale_values[(len(scale_values) * 19) // 20]
+        span = max(1e-6, white - black)
+        for row in active_lines:
+            base = self.live_video_row * self.live_video_width
+            for x, value in enumerate(row):
+                self.live_video_pixels[base + x] = max(
+                    0, min(255, int((value - black) * 255.0 / span)))
+            self.live_video_row = (self.live_video_row + 1) % self.live_video_height
+
+        elapsed = max(1e-6, time.monotonic() - self.live_iq_usb_started)
+        usb_mbit = self.live_iq_usb_bytes * 8.0 / elapsed / 1_000_000.0
+        block_rate = self.live_iq_blocks / elapsed
+        source_text = (f"{self.live_iq_source_msps:.3f} MS/s finite-fill estimate"
+                       if self.live_iq_source_msps else "source MS/s pending")
+        lock_text = "line spacing detected" if sync_locked else "sync unlocked/fallback"
+        self.after(0, self._show_live_iq_frame, bytes(self.live_video_pixels),
+                   source_text, usb_mbit, block_rate, lock_text)
+
+    def _show_live_iq_frame(self, pixels: bytes, source_text: str,
+                            usb_mbit: float, block_rate: float,
+                            lock_text: str) -> None:
+        self._show_gray_frame(
+            pixels, self.live_video_width, self.live_video_height)
+        self.preview_status_var.set(
+            f"A1 IQ->PC video | {source_text} | USB {usb_mbit:.2f} Mbit/s | "
+            f"{block_rate:.2f} blocks/s | {lock_text} | RETRIGGERED, NOT GAPLESS")
 
     def first_hardware_test(self) -> None:
         if not self.ser or not self.ser.is_open:

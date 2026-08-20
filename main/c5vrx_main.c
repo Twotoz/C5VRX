@@ -21,6 +21,7 @@
 #include "c5vrx_wifi5.h"
 
 static const char *TAG = "C5VRX";
+extern volatile uint32_t c5vrx_lp_capture_stage;
 
 #if CONFIG_C5VRX_RX_HT40
 #define C5VRX_CFG_HT40 true
@@ -116,6 +117,14 @@ void app_main(void)
 {
     /* Native USB control must be alive before NVS, Wi-Fi or vendor RF code. */
     ESP_ERROR_CHECK(c5vrx_usb_console_init());
+
+    const uint32_t prior_lp_stage = c5vrx_lp_capture_stage;
+    c5vrx_lp_capture_stage = 0;
+    if (prior_lp_stage >= 1u && prior_lp_stage <= 7u) {
+        printf("C5VRX_LP_BOOT_RECOVERY prior_stage=%" PRIu32
+               " classification=PREVIOUS_CAPTURE_RESET\n", prior_lp_stage);
+        fflush(stdout);
+    }
 
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {

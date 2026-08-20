@@ -44,7 +44,7 @@ static struct {
  * ordinary allocations can never become silent RF-writer victims. A link-time
  * assertion separately rejects static .bss overlap. */
 #if CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER
-SOC_RESERVE_MEMORY_REGION(0x40830000u, 0x40840000u, c5vrx_rf_dump_ram);
+SOC_RESERVE_MEMORY_REGION(0x40830000u, 0x40850000u, c5vrx_rf_dump_ram);
 #endif
 
 extern char _bss_end;
@@ -63,7 +63,8 @@ bool c5vrx_rf_dump_memory_reserved(void)
 {
     return (uintptr_t)&_bss_end <= 0x40830000u &&
            esp_ptr_dma_capable((const void *)(uintptr_t)0x40830000u) &&
-           esp_ptr_internal((const void *)(uintptr_t)0x40830000u);
+           esp_ptr_internal((const void *)(uintptr_t)0x40830000u) &&
+           esp_ptr_internal((const void *)(uintptr_t)0x4084ffffu);
 }
 
 static c5vrx_rf_dump_registers_t read_registers(void)

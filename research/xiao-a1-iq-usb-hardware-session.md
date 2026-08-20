@@ -1,0 +1,80 @@
+# XIAO ESP32-C5 A1 IQ/USB hardware session
+
+Date: 2026-08-20. Hardware: Seeed Studio XIAO ESP32-C5 rev v1.0,
+8 MB flash, native USB Serial/JTAG. ESP-IDF: v6.0.2.
+
+## Proven on the physical board
+
+- A complete verified flash boots the normal receiver firmware and answers
+  `PING` with `C5VRX_PONG` after the native USB endpoint has re-enumerated.
+- `SET A 1` selects 5865 MHz through Wi-Fi channel 173. `STATUS` readback has
+  reported band A, channel 1, 5865 MHz, channel 173 and 40 MHz bandwidth.
+- The minimal direct USB diagnostic proved application USB RX and TX on the
+  board. The earlier silent normal console was therefore a stdio/VFS software
+  issue, not a different Windows driver requirement.
+- Earlier finite A1 captures gave a repeatable VTX OFF/ON/OFF energy change and
+  a ring-like IQ distribution with the VTX on. This is strong RF-dependent IQ
+  evidence, but not proof of decoded analog video.
+
+## Hard limits and honest classifications
+
+- One recovered FE/ADC dump is at most 65536 bytes: 16384 packed `uint32_t`
+  words. Firmware must never ask this producer for more than 16384 words.
+- Multiple finite dumps are separately retriggered. They are not gapless and
+  must not be presented as one continuous PAL frame.
+- The producer sample rate is not yet calibrated. `finite_fill_msps` is logged
+  only as a finite-fill timing estimate when the hardware done bit is seen.
+- Native USB Serial/JTAG is Full Speed. Continuous raw 32-bit IQ at a possible
+  tens-of-MS/s producer rate does not fit. A final continuous design needs
+  on-device phase difference/WBFM, anti-alias filtering, decimation and compact
+  packing before USB; PC-side sync and image rendering can then do the heavier
+  video work.
+
+## Capture safety changes
+
+The recovered RF dump handoff can temporarily give the MAC ownership of HP
+SRAM used by normal application code and stacks. The bounded capture kernel now
+runs entirely from LP RAM, switches to an LP-RAM stack, pauses the hardware
+stack guard around that deliberate switch, polls with a CPU-cycle deadline,
+disables the producer and restores CPU SRAM ownership before returning.
+
+This path remains experimental until `C5VRX_CAPTURE_KERNEL` plus a complete IQ
+payload are observed repeatedly on hardware. RF capture is command-triggered;
+it no longer starts automatically during boot, so USB control remains available
+for diagnosis.
+
+## USB transport and Receiver Console
+
+Packet type 4 (legacy) contains one large IQ block. Packet type 5 fragments a
+finite capture into independently CRC-protected chunks. Its little-endian
+descriptor is five `uint32_t` values:
+
+1. capture id;
+2. total words;
+3. word offset;
+4. words in this chunk;
+5. flags (bit 0 first, bit 1 last).
+
+The current chunk size is 256 IQ words (1024 data bytes). The host validates
+each chunk, rejects mixed/conflicting captures and reassembles only contiguous
+offsets. CRC errors include packet type, sequence, payload size and both CRCs.
+
+The combined XIAO Receiver Console exe includes an A1 IQ-to-PC-video mode. It
+repeatedly requests safe 16K blocks, performs an FM discriminator on the PC,
+finds candidate horizontal line spacing, resamples active line portions to 160
+pixels and updates a 160x120 grayscale image row by row. It reports USB Mbit/s,
+blocks/s and the finite-fill MS/s estimate. Until a continuous producer exists,
+the UI explicitly labels this mode `RETRIGGERED, NOT GAPLESS`.
+
+## Windows flashing/USB behavior
+
+An esptool `SerialTimeoutException: Write timeout` occurs during bootloader sync,
+before firmware is written. A fresh manual flash action often succeeds because
+the failed in-process invocation has finally released COM10. The XIAO flasher
+therefore runs every esptool attempt in a new OS process, waits for exclusive
+port access and retries only after that process and its Win32 handle are gone.
+
+After flashing or an abnormal capture/console close, Windows can show COM10 as
+present while the endpoint returns write timeouts or no bytes. A physical USB
+disconnect/reconnect has been the reliable recovery. Do not misclassify that
+host endpoint state as an RF or firmware result.
