@@ -42,6 +42,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
+APP_BUILD = "video-proof-2"
 C5_RX_MAX_MHZ = 5885
 
 FPV_BANDS = {
@@ -179,6 +180,7 @@ class C5VRXApp(tk.Tk):
         self.live_iq_usb_started = 0.0
         self.live_iq_usb_bytes = 0
         self.live_iq_blocks = 0
+        self.live_video_host_frames = 0
         self.live_iq_request_started = 0.0
         self.live_iq_transport_ready = False
         self.live_iq_capture_retries = 0
@@ -203,7 +205,8 @@ class C5VRXApp(tk.Tk):
         ttk.Label(
             root,
             text=(f"Firmware: {self.firmware_profile['display_name']}  •  "
-                  f"AV: {self.firmware_profile['av_pin_summary']}"),
+                  f"AV: {self.firmware_profile['av_pin_summary']}  •  "
+                  f"GUI: {APP_BUILD}"),
             foreground="#2457a6",
         ).pack(anchor="w", pady=(4, 0))
 
@@ -335,8 +338,8 @@ class C5VRXApp(tk.Tk):
         ttk.Label(
             tab,
             text=(
-                "Displays framed 160×120 GRAY8 video reduced on the C5 from the CVBS sample stream. "
-                "Finite IQ waveform preview remains available as a diagnostic fallback."
+                "Displays only the 160×120 grayscale video-proof raster. "
+                "The old blue WBFM diagnostic graph is disabled in this build."
             ),
             wraplength=760,
         ).pack(anchor="w", pady=(4, 10))
@@ -345,7 +348,8 @@ class C5VRXApp(tk.Tk):
         self.preview_canvas.pack(fill="both", expand=True)
         self.preview_canvas.bind("<Configure>", self._redraw_preview)
 
-        self.preview_status_var = tk.StringVar(value="No IQ capture yet")
+        self.preview_status_var = tk.StringVar(
+            value=f"{APP_BUILD}: waiting for video-proof capture")
         ttk.Label(tab, textvariable=self.preview_status_var).pack(anchor="w", pady=(8, 0))
 
         preview_controls = ttk.Frame(tab)
@@ -791,13 +795,22 @@ class C5VRXApp(tk.Tk):
         self.live_iq_usb_started = time.monotonic()
         self.live_iq_usb_bytes = 0
         self.live_iq_blocks = 0
+        self.live_video_host_frames = 0
         self.live_video_pixels[:] = bytes(len(self.live_video_pixels))
         self.live_video_row = 0
         self.live_video_rows_seen.clear()
         self.live_iq_start_btn.configure(state="disabled")
         self.live_iq_stop_btn.configure(state="normal")
+        # Replace any previous diagnostic drawing immediately. This also gives
+        # an unmistakable visual indication that the video-only GUI build is
+        # running before the first RF block arrives.
+        self._show_gray_frame(
+            bytes(self.live_video_pixels),
+            self.live_video_width,
+            self.live_video_height,
+        )
         self.preview_status_var.set(
-            "Starting A1 IQ -> PC WBFM/video; VTX should be on A1 (5865 MHz)")
+            f"{APP_BUILD}: starting A1 IQ -> PAL raster; VTX must be A1 (5865 MHz)")
         self.send_command("BW 40")
         self.after(100, lambda: self.send_command("SET A 1"))
         self.after(220, lambda: self.send_command("USB PREVIEW START"))
@@ -958,8 +971,13 @@ class C5VRXApp(tk.Tk):
                             lock_text: str) -> None:
         self._show_gray_frame(
             pixels, self.live_video_width, self.live_video_height)
+        self.live_video_host_frames += 1
+        if self.live_video_host_frames == 1 or self.live_video_host_frames % 10 == 0:
+            self.sink.write(
+                f"C5VRX_HOST_VIDEO_FRAME build={APP_BUILD} "
+                f"frame={self.live_video_host_frames} {lock_text}\n")
         self.preview_status_var.set(
-            f"A1 IQ->PC video | {source_text} | USB {usb_mbit:.2f} Mbit/s | "
+            f"{APP_BUILD} | A1 IQ->PC PAL raster | {source_text} | USB {usb_mbit:.2f} Mbit/s | "
             f"{block_rate:.2f} blocks/s | {lock_text} | RETRIGGERED, NOT GAPLESS")
 
     def first_hardware_test(self) -> None:
@@ -1019,40 +1037,20 @@ class C5VRXApp(tk.Tk):
         canvas = getattr(self, "preview_canvas", None)
         if not canvas:
             return
+        if self.preview_image is not None:
+            self._redraw_preview()
+            return
         canvas.delete("all")
         width = max(40, canvas.winfo_width())
         height = max(80, canvas.winfo_height())
-
-        if len(self.iq_words) < 3:
-            canvas.create_text(width / 2, height / 2, text="Capture IQ to see the FM discriminator waveform", fill="white")
-            return
-
-        target_points = max(100, min(width, 1200))
-        step = max(1, (len(self.iq_words) - 1) // target_points)
-        values: list[float] = []
-
-        pi, pq = self._decode_iq(self.iq_words[0])
-        for idx in range(1, len(self.iq_words), step):
-            ci, cq = self._decode_iq(self.iq_words[idx])
-            real = ci * pi + cq * pq
-            imag = cq * pi - ci * pq
-            values.append(math.atan2(imag, real))
-            pi, pq = ci, cq
-
-        if not values:
-            return
-        scale = (height * 0.42) / math.pi
-        mid = height / 2
-        pts: list[float] = []
-        denom = max(1, len(values) - 1)
-        for i, value in enumerate(values):
-            x = i * (width - 1) / denom
-            y = mid - value * scale
-            pts.extend((x, y))
-
-        canvas.create_line(0, mid, width, mid, fill="#555")
-        canvas.create_line(*pts, fill="#35a7ff", width=1)
-        canvas.create_text(8, 8, anchor="nw", text="WBFM discriminator — diagnostic preview, not decoded video yet", fill="white")
+        canvas.create_text(
+            width / 2,
+            height / 2,
+            text=(f"{APP_BUILD}\n\nNo waveform display in this build.\n"
+                  "Press ULTRA-SLOW VIDEO PROOF (A1)."),
+            fill="white",
+            justify="center",
+        )
 
     def _redraw_preview(self, _event: object | None = None) -> None:
         """Keep decoded video visible when the preview canvas is resized."""
@@ -1086,7 +1084,7 @@ class C5VRXApp(tk.Tk):
         self.iq_words = []
         self.preview_frame = None
         self.preview_image = None
-        self.preview_status_var.set("No IQ capture yet")
+        self.preview_status_var.set(f"{APP_BUILD}: video raster cleared")
         self.render_iq_preview()
 
     def export_codex_bundle(self) -> None:

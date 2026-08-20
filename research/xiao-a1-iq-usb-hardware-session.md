@@ -203,3 +203,21 @@ errors. The resulting raster was static-like and did not establish convincing
 PAL lock or a recognizable scene. The new mode therefore fixes the display and
 clock-assumption defects and provides a direct hardware proof experiment, but
 the saved session itself remains IQ/RF evidence rather than video evidence.
+
+A later physical run again delivered more than twenty consecutive, varying
+16384-word blocks at roughly 8.42 to 8.49 MS/s finite-fill estimate, with 64/64
+CRC chunks, zero USB write failures and clean preview teardown. The operator
+still saw the blue WBFM diagnostic graph. Session errors contained no host
+decoder exception, and the running process resolved to the newly built XIAO
+console. The remaining ambiguity was therefore in presentation rather than RF
+capture or transport: a retained diagnostic canvas could be mistaken for video
+progress, and a failed grayscale-image render could leave it visible.
+
+GUI build `video-proof-2` removes the WBFM canvas renderer entirely. It shows
+the build identifier in the header, paints a black 160x120 raster immediately
+when the proof starts, and emits `C5VRX_HOST_VIDEO_FRAME` after the first and
+every tenth host raster update. This makes three outcomes unambiguous: an old
+binary still shows a waveform, a host-render failure never reports a raster
+frame, and a working renderer shows grayscale raster data. These changes do
+not upgrade the RF evidence to PAL video proof; recognizable scene content and
+credible horizontal synchronization are still required for that claim.
