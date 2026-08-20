@@ -143,3 +143,39 @@ calls measured about 2 ms), preventing the tick hook from running during SRAM
 ownership changes. Acceptance additionally requires at least one percent of
 adjacent words to differ. A fully overwritten but constant block now fails
 closed and is never transported as video IQ.
+
+## Stable variance-validated hardware run
+
+The next physical XIAO run validated that stricter path. One preview session
+completed 34 consecutive 16384-word captures with all of the following true:
+
+- every kernel returned `done=1`, `timeout=0` and `final_control=00004000`;
+- all 16384 sentinel words changed in every capture;
+- 16367 to 16378 adjacent words changed in each block, rejecting the earlier
+  constant-buffer failure mode;
+- every capture produced all 64 independently CRC-protected type-5 chunks with
+  `write_failures=0` and ended with `C5VRX_CAPTURE_DONE code=0`;
+- I/Q means, extrema and average power varied from block to block; and
+- no Store access fault, watchdog panic or reboot occurred. Preview teardown
+  completed with `C5VRX_USB_PREVIEW state=STOP code=0`.
+
+The finite-fill time was 1.928 to 1.985 ms, corresponding to a repeatable
+8.25 to 8.50 MS/s finite-fill estimate (normally about 8.45 MS/s). This remains
+an estimate that includes trigger overhead, not a calibrated physical sample
+clock. The durable Windows session recorded 34 capture kernels, 34 binary ends
+and 34 successful completions, with no panic marker.
+
+This result proves repeatable, fresh, varying finite IQ acquisition and robust
+binary USB delivery. It does not prove live PAL video. A 16384-sample block at
+the estimated cadence spans only about 1.94 ms, while PAL frames span 20 ms.
+Observed command/capture/USB cycles delivered only about 3.4 to 3.6 blocks per
+second at roughly 1.9 Mbit/s. More than 99 percent of the source timeline is
+therefore absent, and every block starts at an unrelated video phase. Painting
+candidate rows from successive retriggered blocks can provide a WBFM diagnostic
+or line montage, but must not be described as a decoded live video frame.
+
+True live output requires a continuous baseband producer plus on-device WBFM,
+filtering and substantial reduction before native Full-Speed USB. If the C5
+PHY cannot expose a safe continuous DMA path, an external analog receiver or
+SDR front-end is required; the public Wi-Fi promiscuous API and the recovered
+finite `adctrig()` diagnostic are not sufficient by themselves.
