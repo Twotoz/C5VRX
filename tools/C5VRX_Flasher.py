@@ -46,7 +46,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-23-burst-validated-hsync"
+APP_BUILD = "video-proof-24-polarity-locked-hsync"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -57,6 +57,7 @@ VIDEO_FIELD_PERIOD_US = {
     "NTSC": 1_000_000.0 / 59.94,
 }
 VIDEO_SYNC_MIN_SCORE = 0.65
+VIDEO_POLARITY_LOCK_VOTES = 3.0
 VIDEO_VERTICAL_PHASE_GATE_US = 750.0
 VIDEO_VERTICAL_PHASE_GAIN = 0.05
 VIDEO_VERTICAL_FREQUENCY_GAIN = 0.10
@@ -300,6 +301,8 @@ class C5VRXApp(tk.Tk):
         self.live_video_vertical_standard: str | None = None
         self.live_video_requested_standard = "Auto"
         self.live_video_requested_sample_rate = 80.0
+        self.live_video_fm_polarity_votes = 0.0
+        self.live_video_fm_polarity_lock: int | None = None
         self.live_video_color_oscillators: dict[
             tuple[str, float, int], tuple[list[float], list[float]]] = {}
         self.live_video_color_locked_lines = 0
@@ -1121,6 +1124,8 @@ class C5VRXApp(tk.Tk):
         self.live_video_requested_standard = self.video_standard_var.get()
         self.live_video_requested_sample_rate = float(
             self.video_sample_rate_var.get())
+        self.live_video_fm_polarity_votes = 0.0
+        self.live_video_fm_polarity_lock = None
         self.live_video_vertical_anchor_us = None
         self.live_video_vertical_last_event_us = None
         self.live_video_vertical_lock_events = 0
@@ -1424,34 +1429,62 @@ class C5VRXApp(tk.Tk):
             fm: list[float] | None = None) -> tuple[str, float, int, float, int]:
         requested = self.live_video_requested_standard
         standards = ("PAL", "NTSC") if requested == "Auto" else (requested,)
-        candidates: dict[str, tuple[float, int, float, int, float]] = {}
+        timing_options: dict[
+            str, tuple[float, list[tuple[int, float, int]]]] = {}
         for standard in standards:
             period = raster_msps * 1_000_000.0 / VIDEO_LINE_RATES_HZ[standard]
             period_bins = max(8, int(round(period / bin_size)))
-            sync_options = self._sync_fold_candidates(binned, period_bins)
-            phase, score, polarity = sync_options[0]
+            timing_options[standard] = (
+                period, self._sync_fold_candidates(binned, period_bins))
+
+        # FM discriminator polarity is a property of the fixed RF/IF path; it
+        # cannot reverse from one three-line capture to the next. Active color
+        # edges can nevertheless look like a strong sync plateau and their
+        # chroma can look even more coherent than the true back-porch burst.
+        # Learn the session polarity from the strongest folded candidates, then
+        # permanently reject opposite-polarity candidates until the user starts
+        # a new proof. Waiting for three votes is harmless because picture rows
+        # are already withheld until vertical sync has been acquired.
+        evidence_standard = max(
+            timing_options,
+            key=lambda name: timing_options[name][1][0][1],
+        )
+        evidence_score = timing_options[evidence_standard][1][0][1]
+        evidence_polarity = timing_options[evidence_standard][1][0][2]
+        if (self.live_video_fm_polarity_lock is None and
+                evidence_score >= VIDEO_SYNC_MIN_SCORE):
+            self.live_video_fm_polarity_votes = max(
+                -VIDEO_POLARITY_LOCK_VOTES,
+                min(VIDEO_POLARITY_LOCK_VOTES,
+                    self.live_video_fm_polarity_votes + evidence_polarity),
+            )
+            if abs(self.live_video_fm_polarity_votes) >= \
+                    VIDEO_POLARITY_LOCK_VOTES:
+                self.live_video_fm_polarity_lock = (
+                    1 if self.live_video_fm_polarity_votes > 0.0 else -1)
+
+        candidates: dict[str, tuple[float, int, float, int, float]] = {}
+        for standard in standards:
+            period, sync_options = timing_options[standard]
+            required_polarity = (
+                self.live_video_fm_polarity_lock
+                if self.live_video_fm_polarity_lock is not None else
+                sync_options[0][2])
+            matching_options = [
+                option for option in sync_options
+                if option[2] == required_polarity]
+            if matching_options:
+                # Candidates are returned in descending sync contrast. Burst
+                # remains useful for PAL/NTSC identification and color phase,
+                # but it must not move H-sync into active picture content.
+                phase, score, polarity = matching_options[0]
+            else:
+                phase, _score, polarity = sync_options[0]
+                score = 0.0
             color_coherence = 0.0
             if fm is not None:
-                best_sync_score = max(1e-9, score)
-                evaluated = [
-                    (candidate_phase, candidate_score, candidate_polarity,
-                     self._color_standard_coherence(
-                         fm, standard, raster_msps, period,
-                         candidate_phase * bin_size))
-                    for (candidate_phase, candidate_score,
-                         candidate_polarity) in sync_options
-                    if candidate_score >= 0.45
-                ]
-                if evaluated:
-                    strongest_burst = max(item[3] for item in evaluated)
-                    if strongest_burst >= 0.15:
-                        phase, score, polarity, color_coherence = max(
-                            evaluated,
-                            key=lambda item: (
-                                item[3] + 0.45 * item[1] / best_sync_score),
-                        )
-                    else:
-                        color_coherence = evaluated[0][3]
+                color_coherence = self._color_standard_coherence(
+                    fm, standard, raster_msps, period, phase * bin_size)
             candidates[standard] = (
                 period, phase, score, polarity, color_coherence)
 
