@@ -359,11 +359,16 @@ static int16_t clamp_iq10(int32_t value)
     return (int16_t)value;
 }
 
-esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
+static esp_err_t capture_internal(size_t sample_count, bool print_raw_words,
+                                  bool summarize)
 {
     if (sample_count == 0 || sample_count > C5VRX_ADC_DUMP_MAX_SAMPLES) {
         ESP_LOGE(TAG, "sample_count must be 1..%u", (unsigned)C5VRX_ADC_DUMP_MAX_SAMPLES);
         return ESP_ERR_INVALID_ARG;
+    }
+    if (!c5vrx_rf_dump_memory_reserved()) {
+        ESP_LOGE(TAG, "RF dump RAM is not excluded from the system heap");
+        return ESP_ERR_INVALID_STATE;
     }
 
     ESP_LOGW(TAG,
@@ -403,6 +408,10 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
 
     volatile const uint32_t *const words =
         (volatile const uint32_t *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR;
+
+    /* Phase8 performs its own DC-mean pass immediately afterward. Avoid a
+     * redundant full-buffer statistics pass on that latency-sensitive path. */
+    if (!print_raw_words && !summarize) return ESP_OK;
 
     int64_t sum_i = 0;
     int64_t sum_q = 0;
@@ -468,13 +477,18 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
     return ESP_OK;
 }
 
+esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
+{
+    return capture_internal(sample_count, print_raw_words, true);
+}
+
 esp_err_t c5vrx_adc_dump_capture_phase8(size_t sample_count)
 {
     if (sample_count < 256u || sample_count > C5VRX_ADC_DUMP_MAX_SAMPLES)
         return ESP_ERR_INVALID_ARG;
     if (!c5vrx_usb_preview_running()) return ESP_ERR_INVALID_STATE;
 
-    esp_err_t err = c5vrx_adc_dump_capture(sample_count, false);
+    esp_err_t err = capture_internal(sample_count, false, false);
     if (err != ESP_OK) return err;
 
     initialize_phase8_lut();

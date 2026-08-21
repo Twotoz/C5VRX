@@ -1114,7 +1114,9 @@ esp_err_t c5vrx_control_start(c5vrx_band_t band,
         .started = true,
     };
 
-    if (xTaskCreate(console_task, "c5vrx_usbctl", 4096, NULL, 5, NULL) != pdPASS) {
+    /* The finite RF dump calls vendor code and logging from this task.  Keep
+     * explicit headroom so a diagnostic burst cannot reach the stack guard. */
+    if (xTaskCreate(console_task, "c5vrx_usbctl", 6144, NULL, 5, NULL) != pdPASS) {
         s_state.started = false;
         return ESP_ERR_NO_MEM;
     }

@@ -4,6 +4,7 @@
 
 #include "sdkconfig.h"
 #include "esp_idf_version.h"
+#include "esp_heap_caps.h"
 #include "esp_memory_utils.h"
 #include "heap_memory_layout.h"
 
@@ -43,9 +44,19 @@ static struct {
  * this fixed 64 KiB HP-SRAM window. Reserve it before heap initialization so
  * ordinary allocations can never become silent RF-writer victims. A link-time
  * assertion separately rejects static .bss overlap. */
-#if CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER
-SOC_RESERVE_MEMORY_REGION(0x40830000u, 0x40850000u, c5vrx_rf_dump_ram);
-#endif
+SOC_RESERVE_MEMORY_REGION(0x40830000u, 0x40840000u, c5vrx_rf_dump_ram);
+
+/* SOC_RESERVE_MEMORY_REGION() only marks its input section as compiler-used.
+ * Application components are linked from archives, so --gc-sections can still
+ * discard that otherwise-unreferenced section.  This volatile read gives the
+ * reservation record a live relocation and keeps it inside IDF's collected
+ * .reserved_memory_address table. */
+static bool reservation_record_matches(void)
+{
+    const volatile soc_reserved_region_t *const region =
+        &reserved_region_c5vrx_rf_dump_ram;
+    return region->start == 0x40830000u && region->end == 0x40840000u;
+}
 
 extern char _bss_end;
 
@@ -61,10 +72,16 @@ bool c5vrx_rf_dump_producer_available(void)
 
 bool c5vrx_rf_dump_memory_reserved(void)
 {
-    return (uintptr_t)&_bss_end <= 0x40830000u &&
+    /* The address-capability checks alone do not prove that heap initialization
+     * honored the reservation.  Reject captures if either endpoint belongs to
+     * a registered heap, preventing RF DMA from corrupting FreeRTOS state. */
+    return reservation_record_matches() &&
+           (uintptr_t)&_bss_end <= 0x40830000u &&
            esp_ptr_dma_capable((const void *)(uintptr_t)0x40830000u) &&
            esp_ptr_internal((const void *)(uintptr_t)0x40830000u) &&
-           esp_ptr_internal((const void *)(uintptr_t)0x4084ffffu);
+           esp_ptr_internal((const void *)(uintptr_t)0x4083ffffu) &&
+           !heap_caps_check_integrity_addr(0x40830000u, false) &&
+           !heap_caps_check_integrity_addr(0x4083ffffu, false);
 }
 
 static c5vrx_rf_dump_registers_t read_registers(void)

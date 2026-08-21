@@ -40,11 +40,15 @@ idf_component_register(
 
 target_bitscrambler_add_src("c5vrx_wbfm_4to1.bsasm")
 
+# The vendor adctrig() capture path is used by the normal finite-capture
+# commands as well as the optional reconstructed producer.  Its fixed 64 KiB
+# HP-SRAM destination must therefore be protected in every firmware profile.
+target_link_options(${COMPONENT_LIB} INTERFACE
+    "-T${CMAKE_CURRENT_LIST_DIR}/c5vrx_rf_dump_memory.ld")
+set_property(TARGET ${COMPONENT_LIB} APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_LIST_DIR}/c5vrx_rf_dump_memory.ld")
+
 if(CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER)
-    target_link_options(${COMPONENT_LIB} INTERFACE
-        "SHELL:-T ${CMAKE_CURRENT_LIST_DIR}/c5vrx_rf_dump_memory.ld")
-    set_property(TARGET ${COMPONENT_LIB} APPEND PROPERTY LINK_DEPENDS
-        "${CMAKE_CURRENT_LIST_DIR}/c5vrx_rf_dump_memory.ld")
     set(C5VRX_AUDITED_RFTEST "${IDF_PATH}/components/esp_phy/lib/esp32c5/librftest.a")
     if(NOT EXISTS "${C5VRX_AUDITED_RFTEST}")
         message(FATAL_ERROR "Experimental RF dump producer requires ESP32-C5 librftest.a")

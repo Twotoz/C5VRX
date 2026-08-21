@@ -180,7 +180,7 @@ class C5VRXXIAOApp(C5VRXApp):
             base_args = self._replace_esptool_option(
                 base_args, "--before", "usb-reset")
             base_args = self._replace_esptool_option(
-                base_args, "--after", "hard-reset")
+                base_args, "--after", "watchdog-reset")
 
             argv = base_args + ["--port", port, "write-flash"]
             for offset, path in files:
@@ -237,20 +237,32 @@ class C5VRXXIAOApp(C5VRXApp):
         self._finish_flash()
         self.sink.write("\n=== FLASH COMPLETE ===\n")
         self.sink.write(
+            "C5VRX_FLASH_IMAGE_VERIFIED reset=WATCHDOG "
+            "runtime=PROBING\n")
+        self.connection_var.set(
+            "Firmware image verified — waiting for C5VRX runtime handshake...")
+        self._runtime_seen = False
+        self._runtime_waiting = True
+        self._runtime_deadline = time.monotonic() + 30.0
+        self._schedule_runtime_reconnect(1200)
+
+    def _runtime_recovery_required(self, reason: str) -> None:
+        self._runtime_waiting = False
+        self.disconnect_serial()
+        self.sink.write(
             "C5VRX_POST_FLASH_ACTION required=PHYSICAL_USB_POWER_CYCLE "
             "steps=UNPLUG_5S_REPLUG_THEN_CONNECT "
-            "reason=WINDOWS_NATIVE_USB_ENDPOINT\n")
+            f"reason={reason}\n")
         self.connection_var.set(
-            "Flash verified — unplug USB for 5 seconds, replug, then press Connect")
-        self._runtime_seen = False
-        self._runtime_waiting = False
-        messagebox.showinfo(
+            "Runtime not verified — unplug USB for 5 seconds, replug, then Connect")
+        messagebox.showwarning(
             "C5VRX Receiver Console",
-            "Firmware was written and verified.\n\n"
+            "The firmware image was written, but the C5VRX runtime did not answer.\n\n"
             "1. Unplug the XIAO USB cable for 5 seconds.\n"
             "2. Reconnect it without pressing BOOT or RESET.\n"
             "3. Press Connect.\n\n"
-            "The console will not probe the stale post-flash Windows endpoint.",
+            "Do not start video proof until the terminal shows C5VRX_PONG or "
+            "C5VRX_READY.",
         )
 
     def _schedule_runtime_reconnect(self, delay_ms: int) -> None:
@@ -268,11 +280,10 @@ class C5VRXXIAOApp(C5VRXApp):
         if self._runtime_seen or not self._runtime_waiting:
             return
         if time.monotonic() >= self._runtime_deadline:
-            self._runtime_waiting = False
             self.sink.write(
                 "C5VRX_RUNTIME_TIMEOUT no=PONG/READY duration_s=30 "
                 "classification=USB_REENUMERATION_OR_RUNTIME_NOT_READY\n")
-            self.connection_var.set("Flashed, but runtime did not become ready")
+            self._runtime_recovery_required("NO_PONG_OR_READY_AFTER_WATCHDOG_RESET")
             return
         self.refresh_ports()
         port = self.selected_port()
@@ -302,7 +313,7 @@ class C5VRXXIAOApp(C5VRXApp):
             self.sink.write(
                 "C5VRX_RUNTIME_TIMEOUT no=PONG/READY duration_s~10 "
                 "classification=FIRMWARE_BOOT_OR_CONTROL_NOT_READY\n")
-            self.connection_var.set("USB open, but C5VRX runtime did not answer")
+            self._runtime_recovery_required("NO_PONG_OR_READY_AFTER_12_PROBES")
             return
         self._runtime_probe_remaining -= 1
         try:

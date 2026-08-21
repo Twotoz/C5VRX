@@ -12,6 +12,11 @@
 
 static StaticSemaphore_t s_tx_mutex_storage;
 static SemaphoreHandle_t s_tx_mutex;
+/* Formatting this on each caller's stack consumed half of the 4 KiB USB
+ * control-task stack.  A queued capture can log while that task is already
+ * deep in the RF capture path, which caused a reproducible stack exception.
+ * The transport mutex also makes a shared formatting buffer safe. */
+static char s_printf_buffer[2048];
 
 esp_err_t c5vrx_usb_transport_init(void)
 {
@@ -68,13 +73,22 @@ esp_err_t c5vrx_usb_write(const void *data, size_t size)
 
 int c5vrx_usb_vprintf(const char *format, va_list args)
 {
-    char line[2048];
-    const int required = vsnprintf(line, sizeof(line), format, args);
-    if (required < 0) return required;
-    const size_t count = (size_t)required < sizeof(line)
+    if (!s_tx_mutex) return -1;
+    if (xSemaphoreTake(s_tx_mutex, pdMS_TO_TICKS(2500)) != pdTRUE) return -1;
+
+    const int required = vsnprintf(
+        s_printf_buffer, sizeof(s_printf_buffer), format, args);
+    if (required < 0) {
+        xSemaphoreGive(s_tx_mutex);
+        return required;
+    }
+    const size_t count = (size_t)required < sizeof(s_printf_buffer)
                              ? (size_t)required
-                             : sizeof(line) - 1u;
-    return c5vrx_usb_write(line, count) == ESP_OK ? required : -1;
+                             : sizeof(s_printf_buffer) - 1u;
+    const esp_err_t result = write_locked(
+        (const uint8_t *)s_printf_buffer, count);
+    xSemaphoreGive(s_tx_mutex);
+    return result == ESP_OK ? required : -1;
 }
 
 int c5vrx_usb_printf(const char *format, ...)

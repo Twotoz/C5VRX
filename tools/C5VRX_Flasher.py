@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import queue
 import statistics
 import sys
 import threading
@@ -44,7 +45,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-8"
+APP_BUILD = "video-proof-15-low-latency-credit-pump"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -129,20 +130,61 @@ def load_flash_plan() -> tuple[list[str], list[tuple[str, Path]]]:
 class TextSink:
     def __init__(self, text: tk.Text):
         self.text = text
+        self.pending: queue.Queue[str] = queue.Queue(maxsize=2048)
+        self.dropped = 0
+        self.text.after(25, self._drain)
 
     def write(self, s: str) -> int:
+        original_length = len(s)
+        if original_length > 16384:
+            s = (f"[on-screen line truncated from {original_length} chars; "
+                 "full bytes remain in the session bundle]\n" + s[-4096:])
         if s:
-            self.text.after(0, self._append, s)
-        return len(s)
+            try:
+                self.pending.put_nowait(s)
+            except queue.Full:
+                # The durable session recorder remains authoritative. Keep the
+                # on-screen console recent without ever stalling USB draining.
+                try:
+                    self.pending.get_nowait()
+                    self.pending.task_done()
+                except queue.Empty:
+                    pass
+                self.dropped += 1
+                try:
+                    self.pending.put_nowait(s)
+                except queue.Full:
+                    self.dropped += 1
+        return original_length
 
     def flush(self) -> None:
         pass
 
-    def _append(self, s: str) -> None:
-        self.text.configure(state="normal")
-        self.text.insert("end", s)
-        self.text.see("end")
-        self.text.configure(state="disabled")
+    def _drain(self) -> None:
+        chunks: list[str] = []
+        size = 0
+        while size < 131072:
+            try:
+                chunk = self.pending.get_nowait()
+            except queue.Empty:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            self.pending.task_done()
+        if chunks:
+            self.text.configure(state="normal")
+            self.text.insert("end", "".join(chunks))
+            line_count = int(self.text.index("end-1c").split(".")[0])
+            if line_count > 4000:
+                self.text.delete("1.0", f"{line_count - 4000 + 1}.0")
+            char_count = int(self.text.count(
+                "1.0", "end-1c", "chars")[0])
+            if char_count > 300000:
+                self.text.delete(
+                    "1.0", f"1.0 + {char_count - 300000} chars")
+            self.text.see("end")
+            self.text.configure(state="disabled")
+        self.text.after(25, self._drain)
 
 
 class C5VRXApp(tk.Tk):
@@ -198,6 +240,18 @@ class C5VRXApp(tk.Tk):
         self.live_iq_transport_ready = False
         self.live_iq_capture_retries = 0
         self.live_iq_max_retries = 3
+        self.live_iq_fast_mode = False
+        self.live_iq_pipeline_target = 1
+        self.live_iq_commands_outstanding = 0
+        self.live_iq_refill_pending = False
+        self.live_iq_last_transport_progress = 0.0
+        self.live_iq_watchdog_generation = 0
+        self.live_iq_recoveries = 0
+        self.live_iq_transport_losses = 0
+        self.live_iq_processing_generation = 0
+        self.live_iq_processing_queue: queue.Queue[
+            tuple[str, object, int | None]] = queue.Queue(maxsize=4)
+        self.live_iq_processing_drops = 0
         self.live_video_width = 160
         self.live_video_height = 120
         self.live_video_pixels = bytearray(
@@ -211,6 +265,12 @@ class C5VRXApp(tk.Tk):
         self.live_video_display_offset = 0
         self.live_video_vertical_pending: int | None = None
         self.live_video_vertical_pending_hits = 0
+        self.live_video_requested_standard = "Auto"
+        self.live_video_requested_sample_rate = 80.0
+        self.live_video_render_pending = False
+        self.live_video_pending_frame: tuple[
+            bytes, str, float, float, str] | None = None
+        self.live_video_pending_status: str | None = None
         self.device_phase8_supported = False
         self.live_transport_name = "raw-IQ32"
         self.first_test_active = False
@@ -259,6 +319,7 @@ class C5VRXApp(tk.Tk):
         self.log = tk.Text(root, height=12, wrap="word", state="disabled", font=("Consolas", 9))
         self.log.pack(fill="both", expand=False, pady=(10, 0))
         self.sink = TextSink(self.log)
+        self.after(33, self._poll_live_iq_frame)
 
         export_row = ttk.Frame(root)
         export_row.pack(fill="x", pady=(8, 0))
@@ -376,7 +437,9 @@ class C5VRXApp(tk.Tk):
 
         preview_controls = ttk.Frame(tab)
         preview_controls.pack(fill="x", pady=(8, 0))
-        ttk.Button(preview_controls, text="Capture 16K IQ", command=self.capture_iq_16k).pack(side="left")
+        self.capture_16k_btn = ttk.Button(
+            preview_controls, text="Capture 16K IQ", command=self.capture_iq_16k)
+        self.capture_16k_btn.pack(side="left")
         ttk.Button(preview_controls, text="Start live preview", command=self.start_usb_preview).pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Stop live preview", command=lambda: self.send_command("USB PREVIEW STOP")).pack(side="left")
         ttk.Button(
@@ -394,6 +457,12 @@ class C5VRXApp(tk.Tk):
             command=self.start_live_iq_video,
         )
         self.live_iq_start_btn.pack(side="left")
+        self.live_iq_fast_start_btn = ttk.Button(
+            iq_live_controls,
+            text="FAST VIDEO PROOF (A1)",
+            command=self.start_fast_live_iq_video,
+        )
+        self.live_iq_fast_start_btn.pack(side="left", padx=(8, 0))
         self.live_iq_stop_btn = ttk.Button(
             iq_live_controls,
             text="STOP IQ VIDEO",
@@ -484,7 +553,11 @@ class C5VRXApp(tk.Tk):
             candidate = serial.Serial()
             candidate.port = port
             candidate.baudrate = 115200
-            candidate.timeout = 0.15
+            # A finite capture ends with much less than a 4 KiB read.  The old
+            # 150 ms timeout therefore became a 150 ms dead period whenever a
+            # single lost marker drained the command queue.  Fast proof needs
+            # a short tail timeout and immediate draining of available bytes.
+            candidate.timeout = 0.01
             candidate.write_timeout = 1
             candidate.dtr = False
             candidate.rts = False
@@ -533,9 +606,16 @@ class C5VRXApp(tk.Tk):
         decoder = StreamDecoder()
         try:
             while not self.serial_stop.is_set() and ser.is_open:
-                raw = ser.read(4096)
+                waiting = min(65536, ser.in_waiting)
+                raw = ser.read(waiting if waiting else 1)
                 if not raw:
                     continue
+                # Coalesce bytes that arrived with the first byte.  This keeps
+                # durable session recording efficient without waiting for an
+                # arbitrary fixed-size read to fill.
+                waiting = min(65536 - len(raw), ser.in_waiting)
+                if waiting:
+                    raw += ser.read(waiting)
                 self.session.record_raw(raw)
                 for kind, value in decoder.feed(raw):
                     if kind == "line":
@@ -551,6 +631,10 @@ class C5VRXApp(tk.Tk):
                         self.session.record_error("USB_PROTOCOL", str(value))
                         self.sink.write(
                             f"C5VRX_PREVIEW_RESYNC reason={value}\n")
+                        if (self.live_iq_active and
+                                str(value).startswith("PAYLOAD_CRC")):
+                            self.live_iq_transport_losses += 1
+                            self._note_live_iq_transport_progress()
         except Exception as exc:
             if not self.serial_stop.is_set():
                 self.session.record_error("SERIAL_READER", str(exc))
@@ -561,6 +645,16 @@ class C5VRXApp(tk.Tk):
         self.disconnect_serial()
 
     def _parse_device_line(self, line: str) -> None:
+        if (self.live_iq_active and line.startswith((
+                "C5VRX_CAPTURE_KERNEL",
+                "C5VRX_IQ_BINARY_BEGIN",
+                "C5VRX_IQ_BINARY_END",
+                "C5VRX_PHASE8_CAPTURE_BEGIN",
+                "C5VRX_PHASE8_BINARY_BEGIN",
+                "C5VRX_PHASE8_BINARY_END",
+                "C5VRX_CAPTURE_DONE",
+                "C5VRX_PHASE8_CAPTURE_DONE"))):
+            self._note_live_iq_transport_progress()
         if line.startswith(("C5VRX_READY", "C5VRX_STATUS")):
             fields = self._fields(line)
             self.device_phase8_supported = \
@@ -571,9 +665,12 @@ class C5VRXApp(tk.Tk):
             if fields.get("code") == "0":
                 if not self.live_iq_transport_ready:
                     self.live_iq_transport_ready = True
-                    self.after(0, self.preview_status_var.set,
-                               "Binary IQ transport ready; requesting fresh A1 capture")
-                    self.after(1, self._request_live_iq_capture)
+                    self.live_video_pending_status = (
+                        "Binary IQ transport ready; requesting fresh A1 capture")
+                    # This parser already runs on the serial thread. Queue the
+                    # first captures directly so a busy Tk renderer cannot
+                    # hold the transport idle.
+                    self._refill_live_iq_pipeline()
             else:
                 self.after(0, self.stop_live_iq_video,
                            f"binary transport failed ({line})")
@@ -612,6 +709,12 @@ class C5VRXApp(tk.Tk):
                             "C5VRX_PHASE8_CAPTURE_DONE")) and \
                 self.live_iq_active:
             self.live_iq_capture_done = "code=0" in line
+            fast_phase8_credit_pump = (
+                self.live_iq_fast_mode and self.device_phase8_supported)
+            if not fast_phase8_credit_pump or not self.live_iq_capture_done:
+                self.live_iq_commands_outstanding = max(
+                    0, self.live_iq_commands_outstanding - 1)
+            self.live_iq_packet_done = False
             if not self.live_iq_capture_done:
                 fields = self._fields(line)
                 if (fields.get("code") == "263" and
@@ -621,13 +724,29 @@ class C5VRXApp(tk.Tk):
                     self.after(
                         0, self.preview_status_var.set,
                         f"RF capture timeout; retry {retry}/{self.live_iq_max_retries}")
-                    self.after(100, self._request_live_iq_capture)
+                    self._schedule_live_iq_refill(100)
                 else:
                     self.after(0, self.stop_live_iq_video,
                                f"device capture failed after {self.live_iq_capture_retries} retries")
             else:
                 self.live_iq_capture_retries = 0
-                self._live_iq_maybe_continue()
+                # A completion line is emitted only after every binary chunk
+                # has been handed to USB.  Refill here instead of on the first
+                # chunk so commands cannot accumulate behind an active dump.
+                if fast_phase8_credit_pump:
+                    # Fast Phase8 refills when a new capture ID is observed,
+                    # not here. Completion lines can be lost during a protocol
+                    # resync; using them as credits permanently drained the
+                    # real firmware queue while the host still believed it was
+                    # full.
+                    pass
+                elif self.live_iq_fast_mode:
+                    # _parse_device_line runs on the serial-reader thread.
+                    # Refill directly; routing this through Tk added about
+                    # 230 ms of idle time whenever PhotoImage was rendering.
+                    self._refill_live_iq_pipeline()
+                else:
+                    self._schedule_live_iq_refill(250)
         if line.startswith("IQ:") and self.iq_capture_active:
             try:
                 self.iq_words.append(int(line[3:], 16))
@@ -708,6 +827,7 @@ class C5VRXApp(tk.Tk):
 
     def _handle_iq_usb_packet(self, packet: Packet) -> None:
         self.live_iq_usb_bytes += 32 + len(packet.payload) + 4
+        self._note_live_iq_transport_progress()
         if packet.packet_type == PACKET_IQ_U32_BLOCK:
             try:
                 words = decode_iq_block(packet)
@@ -752,6 +872,7 @@ class C5VRXApp(tk.Tk):
 
     def _handle_phase8_usb_packet(self, packet: Packet) -> None:
         self.live_iq_usb_bytes += 32 + len(packet.payload) + 4
+        self._note_live_iq_transport_progress()
         try:
             chunk = decode_phase8_chunk(packet)
         except ValueError as exc:
@@ -762,6 +883,14 @@ class C5VRXApp(tk.Tk):
             self.live_iq_capture_timestamp_us = packet.timestamp_us
             self.live_iq_total_words = chunk.total_samples
             self.live_phase8_chunks = {}
+            if self.live_iq_active and self.live_iq_fast_mode:
+                # The first valid packet from a capture proves that firmware
+                # consumed one command. Replace that credit immediately. This
+                # is resilient to a lost CAPTURE_DONE line and behaves like a
+                # bounded version of repeatedly clicking Capture 16K.
+                self.live_iq_commands_outstanding = max(
+                    0, self.live_iq_commands_outstanding - 1)
+                self._refill_live_iq_pipeline()
         if chunk.total_samples != self.live_iq_total_words:
             self.sink.write("C5VRX_PHASE8_CHUNK_DROP reason=MIXED_TOTAL\n")
             return
@@ -793,8 +922,7 @@ class C5VRXApp(tk.Tk):
         self.live_iq_packet_done = True
         if self.live_iq_active:
             self.live_iq_blocks += 1
-            self._process_live_iq_block(words, timestamp_us)
-            self._live_iq_maybe_continue()
+            self._enqueue_live_iq_processing("raw", words, timestamp_us)
         else:
             self.after(0, self.preview_status_var.set,
                        f"Captured {len(words)} CRC-valid IQ words")
@@ -806,8 +934,7 @@ class C5VRXApp(tk.Tk):
         self.live_iq_packet_done = True
         if self.live_iq_active:
             self.live_iq_blocks += 1
-            self._process_live_phase8_block(phases, timestamp_us)
-            self._live_iq_maybe_continue()
+            self._enqueue_live_iq_processing("phase8", phases, timestamp_us)
         else:
             self.after(
                 0, self.preview_status_var.set,
@@ -891,10 +1018,30 @@ class C5VRXApp(tk.Tk):
         self.after(100, lambda: self.send_command("LIVE START"))
 
     def start_live_iq_video(self) -> None:
+        self._start_live_iq_video(fast=False)
+
+    def start_fast_live_iq_video(self) -> None:
+        self._start_live_iq_video(fast=True)
+
+    def _start_live_iq_video(self, fast: bool) -> None:
         if not self.ser or not self.ser.is_open:
             messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
             return
         self.live_iq_active = True
+        self.live_iq_fast_mode = fast
+        # Fast Phase8 keeps four command credits in the firmware input queue.
+        # This matches sustained manual Capture 16K clicking while remaining
+        # strictly bounded, and it tolerates isolated protocol resync losses.
+        self.live_iq_pipeline_target = 4 if fast else 1
+        self.live_iq_commands_outstanding = 0
+        self.live_iq_refill_pending = False
+        self.live_iq_last_transport_progress = time.monotonic()
+        self.live_iq_watchdog_generation += 1
+        self.live_iq_recoveries = 0
+        self.live_iq_transport_losses = 0
+        self.live_iq_processing_generation += 1
+        self.live_iq_processing_queue = queue.Queue(maxsize=4)
+        self.live_iq_processing_drops = 0
         self.live_iq_capture_done = False
         self.live_iq_packet_done = False
         self.live_iq_capture_id = None
@@ -918,8 +1065,24 @@ class C5VRXApp(tk.Tk):
         self.live_video_display_offset = 0
         self.live_video_vertical_pending = None
         self.live_video_vertical_pending_hits = 0
+        self.live_video_requested_standard = self.video_standard_var.get()
+        self.live_video_requested_sample_rate = float(
+            self.video_sample_rate_var.get())
+        self.live_video_render_pending = False
+        self.live_video_pending_frame = None
+        self.live_video_pending_status = None
         self.live_iq_start_btn.configure(state="disabled")
+        self.live_iq_fast_start_btn.configure(state="disabled")
         self.live_iq_stop_btn.configure(state="normal")
+        self.capture_btn.configure(state="disabled")
+        self.capture_16k_btn.configure(state="disabled")
+        processing_generation = self.live_iq_processing_generation
+        processing_queue = self.live_iq_processing_queue
+        threading.Thread(
+            target=self._live_iq_processing_worker,
+            args=(processing_generation, processing_queue),
+            daemon=True,
+        ).start()
         # Replace any previous diagnostic drawing immediately. This also gives
         # an unmistakable visual indication that the video-only GUI build is
         # running before the first RF block arrives.
@@ -929,18 +1092,29 @@ class C5VRXApp(tk.Tk):
             self.live_video_height,
         )
         self.preview_status_var.set(
-            f"{APP_BUILD}: starting A1 IQ -> PAL/NTSC raster; VTX must be A1 (5865 MHz)")
+            f"{APP_BUILD}: starting {'FAST pipelined' if fast else 'single-request'} "
+            "A1 IQ -> PAL/NTSC raster; VTX must be A1 (5865 MHz)")
         self.send_command("BW 40")
         self.after(100, lambda: self.send_command("SET A 1"))
         self.after(220, lambda: self.send_command("USB PREVIEW START"))
+        watchdog_generation = self.live_iq_watchdog_generation
+        self.after(500, self._live_iq_watchdog, watchdog_generation)
 
     def stop_live_iq_video(self, reason: str = "user") -> None:
         was_active = self.live_iq_active
         self.live_iq_active = False
+        self.live_iq_watchdog_generation += 1
+        self.live_iq_processing_generation += 1
         self.live_iq_transport_ready = False
+        self.live_iq_commands_outstanding = 0
+        self.live_iq_refill_pending = False
+        self.live_video_pending_frame = None
         if hasattr(self, "live_iq_start_btn"):
             self.live_iq_start_btn.configure(state="normal")
+            self.live_iq_fast_start_btn.configure(state="normal")
             self.live_iq_stop_btn.configure(state="disabled")
+            self.capture_btn.configure(state="normal")
+            self.capture_16k_btn.configure(state="normal")
         if was_active and self.ser and self.ser.is_open:
             self.send_command("USB PREVIEW STOP")
         self.preview_status_var.set(f"IQ video stopped: {reason}")
@@ -948,13 +1122,6 @@ class C5VRXApp(tk.Tk):
     def _request_live_iq_capture(self) -> None:
         if not self.live_iq_active or not self.live_iq_transport_ready:
             return
-        self.live_iq_capture_done = False
-        self.live_iq_packet_done = False
-        self.live_iq_capture_id = None
-        self.live_iq_capture_timestamp_us = None
-        self.live_iq_total_words = 0
-        self.live_iq_chunks = {}
-        self.live_phase8_chunks = {}
         self.live_iq_request_started = time.monotonic()
         if self.device_phase8_supported:
             self.live_transport_name = "phase8"
@@ -962,11 +1129,106 @@ class C5VRXApp(tk.Tk):
         else:
             self.live_transport_name = "raw-IQ32 fallback"
             self.send_command("CAPTURE 16384")
+        self.live_iq_commands_outstanding += 1
 
-    def _live_iq_maybe_continue(self) -> None:
-        if (self.live_iq_active and self.live_iq_capture_done and
-                self.live_iq_packet_done):
-            self.after(1, self._request_live_iq_capture)
+    def _schedule_live_iq_refill(self, delay_ms: int = 0) -> None:
+        if self.live_iq_refill_pending or not self.live_iq_active:
+            return
+        self.live_iq_refill_pending = True
+        self.after(delay_ms, self._refill_live_iq_pipeline)
+
+    def _refill_live_iq_pipeline(self) -> None:
+        self.live_iq_refill_pending = False
+        if not self.live_iq_active or not self.live_iq_transport_ready:
+            return
+        # Keep the raw-IQ fallback strictly single-request because each block
+        # is four times larger than Phase8.
+        target = self.live_iq_pipeline_target
+        if not self.device_phase8_supported:
+            target = 1
+        while self.live_iq_commands_outstanding < target:
+            self._request_live_iq_capture()
+
+    def _note_live_iq_transport_progress(self) -> None:
+        if self.live_iq_active:
+            self.live_iq_last_transport_progress = time.monotonic()
+
+    def _enqueue_live_iq_processing(self, kind: str, payload: object,
+                                    timestamp_us: int | None) -> None:
+        """Keep serial draining while signal processing runs independently."""
+        item = (kind, payload, timestamp_us)
+        try:
+            self.live_iq_processing_queue.put_nowait(item)
+            return
+        except queue.Full:
+            pass
+
+        # Video proof is a live diagnostic view. Prefer the newest capture to
+        # blocking the USB reader behind stale rasters and losing wire bytes.
+        try:
+            self.live_iq_processing_queue.get_nowait()
+            self.live_iq_processing_queue.task_done()
+        except queue.Empty:
+            pass
+        self.live_iq_processing_drops += 1
+        try:
+            self.live_iq_processing_queue.put_nowait(item)
+        except queue.Full:
+            self.live_iq_processing_drops += 1
+
+    def _live_iq_processing_worker(
+            self, generation: int,
+            processing_queue: queue.Queue[
+                tuple[str, object, int | None]]) -> None:
+        while (self.live_iq_active and
+               generation == self.live_iq_processing_generation):
+            try:
+                kind, payload, timestamp_us = \
+                    processing_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            try:
+                if (not self.live_iq_active or
+                        generation != self.live_iq_processing_generation):
+                    continue
+                if kind == "phase8":
+                    assert isinstance(payload, bytes)
+                    self._process_live_phase8_block(payload, timestamp_us)
+                else:
+                    assert isinstance(payload, list)
+                    self._process_live_iq_block(payload, timestamp_us)
+            except Exception as exc:
+                self.sink.write(
+                    "C5VRX_HOST_VIDEO_PROCESSING_ERROR "
+                    f"type={type(exc).__name__} detail={exc}\n")
+            finally:
+                processing_queue.task_done()
+
+    def _live_iq_watchdog(self, generation: int) -> None:
+        if (generation != self.live_iq_watchdog_generation or
+                not self.live_iq_active):
+            return
+        if self.live_iq_transport_ready:
+            idle_s = time.monotonic() - self.live_iq_last_transport_progress
+            if idle_s >= 1.25:
+                self.live_iq_recoveries += 1
+                self.live_iq_commands_outstanding = 0
+                self.live_iq_capture_done = False
+                self.live_iq_packet_done = False
+                self.live_iq_capture_id = None
+                self.live_iq_chunks = {}
+                self.live_phase8_chunks = {}
+                self.live_iq_last_transport_progress = time.monotonic()
+                self.sink.write(
+                    "C5VRX_HOST_VIDEO_RECOVERY "
+                    f"count={self.live_iq_recoveries} idle_ms={idle_s * 1000:.0f} "
+                    f"pipeline_target={self.live_iq_pipeline_target} "
+                    "reason=GHOSTED_CAPTURE_SLOTS\n")
+                self.preview_status_var.set(
+                    f"Recovering continuous video pipeline after {idle_s:.2f} s "
+                    "without capture progress")
+                self._refill_live_iq_pipeline()
+        self.after(500, self._live_iq_watchdog, generation)
 
     @staticmethod
     def _fm_discriminator(words: list[int]) -> list[float]:
@@ -1048,7 +1310,7 @@ class C5VRXApp(tk.Tk):
     def _select_video_timing(
             self, binned: list[float], raster_msps: float,
             bin_size: int) -> tuple[str, float, int, float, int]:
-        requested = self.video_standard_var.get()
+        requested = self.live_video_requested_standard
         standards = ("PAL", "NTSC") if requested == "Auto" else (requested,)
         candidates: dict[str, tuple[float, int, float, int]] = {}
         for standard in standards:
@@ -1105,7 +1367,7 @@ class C5VRXApp(tk.Tk):
             statistics.fmean(fm[offset:offset + bin_size])
             for offset in range(0, len(fm) - bin_size + 1, bin_size)
         ]
-        raster_msps = float(self.video_sample_rate_var.get())
+        raster_msps = self.live_video_requested_sample_rate
         (video_standard, period, sync_phase,
          sync_score, fm_polarity) = self._select_video_timing(
              binned, raster_msps, bin_size)
@@ -1148,8 +1410,8 @@ class C5VRXApp(tk.Tk):
             active_lines.append((start_sample, row))
 
         if not active_lines:
-            self.after(0, self.preview_status_var.set,
-                       "IQ received; no complete video-line candidate in this block")
+            self.live_video_pending_status = (
+                "IQ received; no complete video-line candidate in this block")
             return
         scale_values = sorted(
             value for _start_sample, row in active_lines for value in row)
@@ -1205,8 +1467,41 @@ class C5VRXApp(tk.Tk):
             f"vertical rotate {self.live_video_display_offset}; "
             f"clipped {clipped_text}; "
             f"rejected {self.live_video_rejected_blocks}")
-        self.after(0, self._show_live_iq_frame, display_pixels,
-                   source_text, usb_mbit, block_rate, lock_text)
+        self._queue_live_iq_frame(
+            display_pixels, source_text, usb_mbit, block_rate, lock_text)
+
+    def _queue_live_iq_frame(self, pixels: bytes, source_text: str,
+                             usb_mbit: float, block_rate: float,
+                             lock_text: str) -> None:
+        """Keep only the newest pending raster while Tk is drawing.
+
+        A native PhotoImage update is deliberately much slower than the USB
+        transport. Coalescing prevents fast proof mode from building an
+        unbounded queue of stale frames while still drawing as fast as Tk can.
+        """
+        self.live_video_pending_frame = (
+            pixels, source_text, usb_mbit, block_rate, lock_text)
+
+    def _poll_live_iq_frame(self) -> None:
+        """Render the newest worker result without cross-thread Tk calls."""
+        pending = self.live_video_pending_frame
+        self.live_video_pending_frame = None
+        if pending is not None and self.live_iq_active:
+            self._show_live_iq_frame(*pending)
+        elif self.live_video_pending_status is not None and self.live_iq_active:
+            self.preview_status_var.set(self.live_video_pending_status)
+        self.live_video_pending_status = None
+        self.after(33, self._poll_live_iq_frame)
+
+    def _render_pending_live_iq_frame(self) -> None:
+        pending = self.live_video_pending_frame
+        self.live_video_pending_frame = None
+        if pending is not None and self.live_iq_active:
+            self._show_live_iq_frame(*pending)
+        self.live_video_render_pending = False
+        if self.live_video_pending_frame is not None and self.live_iq_active:
+            self.live_video_render_pending = True
+            self.after_idle(self._render_pending_live_iq_frame)
 
     def _update_vertical_display_offset(self) -> None:
         """Move the circular field-time seam into the vertical blanking gap."""
@@ -1282,7 +1577,13 @@ class C5VRXApp(tk.Tk):
                 f"frame={self.live_video_host_frames} {lock_text}\n")
         self.preview_status_var.set(
             f"{APP_BUILD} | A1 IQ->PC PAL raster | {source_text} | USB {usb_mbit:.2f} Mbit/s | "
-            f"{block_rate:.2f} blocks/s | {lock_text} | RETRIGGERED, NOT GAPLESS")
+            f"{block_rate:.2f} blocks/s | "
+            f"{'FAST pipeline' if self.live_iq_fast_mode else 'single request'} "
+            f"{self.live_iq_commands_outstanding}/{self.live_iq_pipeline_target} | "
+            f"recoveries {self.live_iq_recoveries}; "
+            f"CRC losses {self.live_iq_transport_losses}; "
+            f"host drops {self.live_iq_processing_drops} | "
+            f"{lock_text} | RETRIGGERED, NOT GAPLESS")
 
     def first_hardware_test(self) -> None:
         if not self.ser or not self.ser.is_open:
@@ -1388,18 +1689,15 @@ class C5VRXApp(tk.Tk):
         self.preview_width = width
         self.preview_height = height
         try:
-            # The Tcl/Tk distributed with current Python on Windows does not
-            # include a PGM image decoder. Populate a native PhotoImage using
-            # RGB rows instead; 160x120 is deliberately small enough for this
-            # deterministic path and needs no Pillow runtime dependency.
-            image = tk.PhotoImage(width=width, height=height)
-            rows = []
-            for y in range(height):
-                row = payload[y * width:(y + 1) * width]
-                rows.append("{" + " ".join(
-                    f"#{value:02x}{value:02x}{value:02x}" for value in row
-                ) + "}")
-            image.put(" ".join(rows))
+            # Tk's Windows build lacks PGM but does support binary PPM. Expand
+            # gray bytes into RGB in C-backed slice operations; this avoids
+            # creating 19,200 Tcl color strings for every displayed frame.
+            rgb = bytearray(len(payload) * 3)
+            rgb[0::3] = payload
+            rgb[1::3] = payload
+            rgb[2::3] = payload
+            ppm = f"P6\n{width} {height}\n255\n".encode("ascii") + bytes(rgb)
+            image = tk.PhotoImage(data=ppm, format="PPM")
             self.preview_image = image
         except tk.TclError:
             self.preview_image = None
