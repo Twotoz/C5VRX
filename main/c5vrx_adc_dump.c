@@ -41,6 +41,7 @@ static const uint8_t s_iq_usb_magic[8] = {
 };
 static uint32_t s_iq_usb_sequence;
 static uint32_t s_iq_capture_id;
+static uint64_t s_last_capture_completed_us;
 static uint8_t s_phase8_lut[1024];
 static uint8_t s_phase8_chunk[C5VRX_USB_PHASE8_CHUNK_SAMPLES];
 static bool s_phase8_lut_ready;
@@ -81,6 +82,7 @@ typedef struct {
     size_t changed_words;
     size_t transition_words;
     int64_t elapsed_us;
+    uint64_t completed_us;
     bool complete;
     const char *engine;
 } capture_result_t;
@@ -145,7 +147,9 @@ static capture_result_t trigger_dump(size_t sample_count)
             0,  /* automatic RX gain */
             0, 0, 0);
     portEXIT_CRITICAL(&s_capture_lock);
-    result.elapsed_us = esp_timer_get_time() - vendor_begin_us;
+    const int64_t vendor_end_us = esp_timer_get_time();
+    result.elapsed_us = vendor_end_us - vendor_begin_us;
+    result.completed_us = (uint64_t)vendor_end_us;
     __asm__ __volatile__("fence iorw, iorw" ::: "memory");
     result.final_control =
         *(volatile const uint32_t *)(uintptr_t)C5VRX_FE_DUMP_CONTROL_REG;
@@ -230,7 +234,8 @@ static uint32_t byte_payload_crc(
 }
 
 static unsigned write_binary_iq_chunks(volatile const uint32_t *words,
-                                       size_t sample_count)
+                                       size_t sample_count,
+                                       uint64_t capture_timestamp_us)
 {
     const uint32_t capture_id = s_iq_capture_id++;
     unsigned failed_chunks = 0;
@@ -262,7 +267,11 @@ static unsigned write_binary_iq_chunks(volatile const uint32_t *words,
         put_le32(header + 16u,
                  C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES +
                      (uint32_t)chunk_words * sizeof(uint32_t));
-        put_le64(header + 20u, (uint64_t)esp_timer_get_time());
+        /* Timestamp the sampled RF block, not this later USB write. All
+         * fragments from one capture deliberately carry the same acquisition
+         * timestamp so the host raster PLL is independent of encode/USB
+         * latency and cannot roll vertically under transport load. */
+        put_le64(header + 20u, capture_timestamp_us);
         put_le32(header + 28u, crc32_bytes(header, 28u));
 
         const uint32_t payload_crc =
@@ -291,7 +300,8 @@ static esp_err_t write_binary_phase8_chunk(const uint8_t *samples,
                                            size_t total_samples,
                                            size_t offset,
                                            size_t chunk_samples,
-                                           uint32_t capture_id)
+                                           uint32_t capture_id,
+                                           uint64_t capture_timestamp_us)
 {
     uint32_t flags = 0u;
     if (offset == 0u) flags |= C5VRX_USB_IQ_CHUNK_FLAG_FIRST;
@@ -314,7 +324,7 @@ static esp_err_t write_binary_phase8_chunk(const uint8_t *samples,
     put_le32(header + 16u,
              C5VRX_USB_IQ_CHUNK_DESCRIPTOR_BYTES +
                  (uint32_t)chunk_samples);
-    put_le64(header + 20u, (uint64_t)esp_timer_get_time());
+    put_le64(header + 20u, capture_timestamp_us);
     put_le32(header + 28u, crc32_bytes(header, 28u));
 
     const uint32_t payload_crc =
@@ -378,6 +388,7 @@ static esp_err_t capture_internal(size_t sample_count, bool print_raw_words,
     /* Mode 0 is the recovered normal packed 10-bit I/Q dump path. */
     set_dump_mode(0);
     const capture_result_t capture = trigger_dump(sample_count);
+    s_last_capture_completed_us = capture.completed_us;
     const int64_t capture_elapsed_us = capture.elapsed_us;
     const bool capture_done = capture.complete;
     const double finite_fill_msps =
@@ -455,7 +466,8 @@ static esp_err_t capture_internal(size_t sample_count, bool print_raw_words,
 
     if (binary_transport) {
         const unsigned failed_chunks =
-            write_binary_iq_chunks(words, sample_count);
+            write_binary_iq_chunks(
+                words, sample_count, s_last_capture_completed_us);
         printf("C5VRX_IQ_BINARY_END samples=%u chunks=%u write_failures=%u\n",
                (unsigned)sample_count,
                (unsigned)((sample_count + C5VRX_USB_IQ_CHUNK_WORDS - 1u) /
@@ -505,9 +517,10 @@ esp_err_t c5vrx_adc_dump_capture_phase8(size_t sample_count)
     const int32_t mean_i = (int32_t)(sum_i / (int64_t)sample_count);
     const int32_t mean_q = (int32_t)(sum_q / (int64_t)sample_count);
 
-    printf("C5VRX_PHASE8_BINARY_BEGIN samples=%u chunk_samples=%u packet_type=%u dc_i=%ld dc_q=%ld\n",
+    printf("C5VRX_PHASE8_BINARY_BEGIN samples=%u chunk_samples=%u packet_type=%u dc_i=%ld dc_q=%ld capture_timestamp_us=%llu\n",
            (unsigned)sample_count, C5VRX_USB_PHASE8_CHUNK_SAMPLES,
-           C5VRX_USB_PACKET_PHASE8_CHUNK, (long)mean_i, (long)mean_q);
+           C5VRX_USB_PACKET_PHASE8_CHUNK, (long)mean_i, (long)mean_q,
+           (unsigned long long)s_last_capture_completed_us);
     fflush(stdout);
     const uint32_t capture_id = s_iq_capture_id++;
     int64_t encode_us = 0;
@@ -538,7 +551,8 @@ esp_err_t c5vrx_adc_dump_capture_phase8(size_t sample_count)
         const int64_t transport_begin_us = esp_timer_get_time();
         if (write_binary_phase8_chunk(
                 s_phase8_chunk, sample_count, offset, chunk_samples,
-                capture_id) != ESP_OK) ++failed_chunks;
+                capture_id, s_last_capture_completed_us) != ESP_OK)
+            ++failed_chunks;
         transport_us += esp_timer_get_time() - transport_begin_us;
     }
     const unsigned chunks = (unsigned)(

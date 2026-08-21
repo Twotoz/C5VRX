@@ -23,6 +23,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import esptool
+import numpy as np
 import serial
 from serial.tools import list_ports
 
@@ -45,7 +46,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-15-low-latency-credit-pump"
+APP_BUILD = "video-proof-23-burst-validated-hsync"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -56,6 +57,28 @@ VIDEO_FIELD_PERIOD_US = {
     "NTSC": 1_000_000.0 / 59.94,
 }
 VIDEO_SYNC_MIN_SCORE = 0.65
+VIDEO_VERTICAL_PHASE_GATE_US = 750.0
+VIDEO_VERTICAL_PHASE_GAIN = 0.05
+VIDEO_VERTICAL_FREQUENCY_GAIN = 0.10
+VIDEO_VERTICAL_MIN_CALIBRATION_FIELDS = 100
+VIDEO_ACTIVE_START_LINES = {
+    "NTSC": 20.0,
+    "PAL": 23.0,
+}
+VIDEO_COLOR_SUBCARRIER_HZ = {
+    "PAL": 4_433_618.75,
+    "NTSC": 3_579_545.0,
+}
+# Fractions of one line measured from the leading edge of horizontal sync.
+# Both standards place the reference burst on the back porch before active
+# video. Keeping this window clear of sync and active luma is important: false
+# burst lock would turn ordinary monochrome detail into colored noise.
+VIDEO_COLOR_BURST_WINDOW = {
+    "PAL": (0.083, 0.135),
+    "NTSC": (0.082, 0.135),
+}
+VIDEO_COLOR_MIN_BURST_LEVEL = 0.018
+VIDEO_COLOR_MIN_COHERENCE = 0.30
 
 FPV_BANDS = {
     "A": [5865, 5845, 5825, 5805, 5785, 5765, 5745, 5725],
@@ -256,6 +279,8 @@ class C5VRXApp(tk.Tk):
         self.live_video_height = 120
         self.live_video_pixels = bytearray(
             self.live_video_width * self.live_video_height)
+        self.live_video_rgb_pixels = bytearray(
+            self.live_video_width * self.live_video_height * 3)
         self.live_video_row = 0
         self.live_video_rows_seen: set[int] = set()
         self.live_video_standard_scores = {"PAL": 0.0, "NTSC": 0.0}
@@ -265,8 +290,26 @@ class C5VRXApp(tk.Tk):
         self.live_video_display_offset = 0
         self.live_video_vertical_pending: int | None = None
         self.live_video_vertical_pending_hits = 0
+        self.live_video_vertical_anchor_us: float | None = None
+        self.live_video_vertical_last_event_us: float | None = None
+        self.live_video_vertical_lock_events = 0
+        self.live_video_vertical_candidate_us: float | None = None
+        self.live_video_vertical_candidate_hits = 0
+        self.live_video_vertical_candidate_standard: str | None = None
+        self.live_video_field_period_us = VIDEO_FIELD_PERIOD_US["NTSC"]
+        self.live_video_vertical_standard: str | None = None
         self.live_video_requested_standard = "Auto"
         self.live_video_requested_sample_rate = 80.0
+        self.live_video_color_oscillators: dict[
+            tuple[str, float, int], tuple[list[float], list[float]]] = {}
+        self.live_video_color_locked_lines = 0
+        self.live_video_monochrome_lines = 0
+        self.live_video_color_burst_level = 0.0
+        self.live_video_color_burst_coherence = 0.0
+        self.live_video_color_line_counter = 0
+        self.live_video_color_bias = {"PAL": 0j, "NTSC": 0j}
+        self.live_video_color_bias_samples = {"PAL": 0, "NTSC": 0}
+        self.live_video_color_valid_rows: set[int] = set()
         self.live_video_render_pending = False
         self.live_video_pending_frame: tuple[
             bytes, str, float, float, str] | None = None
@@ -421,8 +464,9 @@ class C5VRXApp(tk.Tk):
         ttk.Label(
             tab,
             text=(
-                "Displays only the 160×120 grayscale video-proof raster. "
-                "The old blue WBFM diagnostic graph is disabled in this build."
+                "Displays a 160×120 PAL/NTSC video-proof raster with burst-locked "
+                "color and an automatic monochrome fallback. The old blue WBFM "
+                "diagnostic graph is disabled in this build."
             ),
             wraplength=760,
         ).pack(anchor="w", pady=(4, 10))
@@ -1056,18 +1100,38 @@ class C5VRXApp(tk.Tk):
         self.live_iq_blocks = 0
         self.live_video_host_frames = 0
         self.live_video_pixels[:] = bytes(len(self.live_video_pixels))
+        self.live_video_rgb_pixels[:] = bytes(len(self.live_video_rgb_pixels))
         self.live_video_row = 0
         self.live_video_rows_seen.clear()
         self.live_video_standard_scores = {"PAL": 0.0, "NTSC": 0.0}
         self.live_video_rejected_blocks = 0
         self.live_video_black = None
         self.live_video_white = None
+        self.live_video_color_locked_lines = 0
+        self.live_video_monochrome_lines = 0
+        self.live_video_color_burst_level = 0.0
+        self.live_video_color_burst_coherence = 0.0
+        self.live_video_color_line_counter = 0
+        self.live_video_color_bias = {"PAL": 0j, "NTSC": 0j}
+        self.live_video_color_bias_samples = {"PAL": 0, "NTSC": 0}
+        self.live_video_color_valid_rows.clear()
         self.live_video_display_offset = 0
         self.live_video_vertical_pending = None
         self.live_video_vertical_pending_hits = 0
         self.live_video_requested_standard = self.video_standard_var.get()
         self.live_video_requested_sample_rate = float(
             self.video_sample_rate_var.get())
+        self.live_video_vertical_anchor_us = None
+        self.live_video_vertical_last_event_us = None
+        self.live_video_vertical_lock_events = 0
+        self.live_video_vertical_candidate_us = None
+        self.live_video_vertical_candidate_hits = 0
+        self.live_video_vertical_candidate_standard = None
+        initial_standard = (
+            self.live_video_requested_standard
+            if self.live_video_requested_standard != "Auto" else "NTSC")
+        self.live_video_field_period_us = VIDEO_FIELD_PERIOD_US[initial_standard]
+        self.live_video_vertical_standard = None
         self.live_video_render_pending = False
         self.live_video_pending_frame = None
         self.live_video_pending_status = None
@@ -1267,16 +1331,17 @@ class C5VRXApp(tk.Tk):
         return values
 
     @staticmethod
-    def _sync_fold_candidate(
-            binned: list[float], period_bins: int) -> tuple[int, float, int]:
-        """Return sync-window phase, normalized score and FM polarity.
+    def _sync_fold_candidates(
+            binned: list[float], period_bins: int,
+            limit: int = 6) -> list[tuple[int, float, int]]:
+        """Return distinct sync-window candidates by normalized contrast.
 
         A polarity of +1 means the detected sync plateau is already below the
         blanking baseline. -1 means the RF tap is spectrally inverted and the
         discriminator must be inverted before extracting luma.
         """
         if period_bins < 8 or len(binned) < period_bins * 2:
-            return 0, 0.0, 1
+            return [(0, 0.0, 1)]
         sums = [0.0] * period_bins
         counts = [0] * period_bins
         for index, value in enumerate(binned):
@@ -1296,29 +1361,99 @@ class C5VRXApp(tk.Tk):
                 circular[phase + sync_bins - 1] - circular[phase - 1])
             window_means.append(window_sum / sync_bins)
         baseline = statistics.fmean(binned)
-        low_phase = min(
-            range(period_bins), key=window_means.__getitem__)
-        high_phase = max(
-            range(period_bins), key=window_means.__getitem__)
-        low_contrast = baseline - window_means[low_phase]
-        high_contrast = window_means[high_phase] - baseline
         noise = max(1e-9, statistics.pstdev(binned))
-        if low_contrast >= high_contrast:
-            return low_phase, low_contrast / noise, 1
-        return high_phase, high_contrast / noise, -1
+        ranked: list[tuple[int, float, int]] = []
+        for phase, mean in enumerate(window_means):
+            low_contrast = baseline - mean
+            high_contrast = mean - baseline
+            if low_contrast >= high_contrast:
+                ranked.append((phase, low_contrast / noise, 1))
+            else:
+                ranked.append((phase, high_contrast / noise, -1))
+        ranked.sort(key=lambda item: item[1], reverse=True)
+
+        # A single real sync plateau produces many adjacent high-scoring
+        # windows. Keep separated alternatives so burst validation can compare
+        # genuine H-sync against repeated vertical picture edges.
+        selected: list[tuple[int, float, int]] = []
+        for candidate in ranked:
+            phase = candidate[0]
+            if any(min(abs(phase - old[0]),
+                       period_bins - abs(phase - old[0])) < sync_bins
+                   for old in selected):
+                continue
+            selected.append(candidate)
+            if len(selected) >= limit:
+                break
+        return selected or [(0, 0.0, 1)]
+
+    @staticmethod
+    def _sync_fold_candidate(
+            binned: list[float], period_bins: int) -> tuple[int, float, int]:
+        """Return the strongest folded candidate for compatibility/tests."""
+        return C5VRXApp._sync_fold_candidates(binned, period_bins, 1)[0]
+
+    def _color_standard_coherence(
+            self, fm: list[float], standard: str, raster_msps: float,
+            period: float, sync_sample: int) -> float:
+        """Score PAL/NTSC using energy coherent with that standard's burst."""
+        cos_values, sin_values = self._color_oscillator(
+            standard, raster_msps, period)
+        begin_fraction, end_fraction = VIDEO_COLOR_BURST_WINDOW[standard]
+        scores: list[float] = []
+        cursor = float(sync_sample)
+        while cursor - period >= 0:
+            cursor -= period
+        while cursor + period <= len(fm):
+            line_start = int(cursor)
+            phasor, rms = self._quadrature_component(
+                fm,
+                int(cursor + period * begin_fraction),
+                int(cursor + period * end_fraction),
+                line_start,
+                cos_values,
+                sin_values)
+            scores.append(abs(phasor) / max(
+                1e-9, math.sqrt(2.0) * rms))
+            cursor += period
+        return statistics.median(scores) if scores else 0.0
 
     def _select_video_timing(
             self, binned: list[float], raster_msps: float,
-            bin_size: int) -> tuple[str, float, int, float, int]:
+            bin_size: int,
+            fm: list[float] | None = None) -> tuple[str, float, int, float, int]:
         requested = self.live_video_requested_standard
         standards = ("PAL", "NTSC") if requested == "Auto" else (requested,)
-        candidates: dict[str, tuple[float, int, float, int]] = {}
+        candidates: dict[str, tuple[float, int, float, int, float]] = {}
         for standard in standards:
             period = raster_msps * 1_000_000.0 / VIDEO_LINE_RATES_HZ[standard]
             period_bins = max(8, int(round(period / bin_size)))
-            phase, score, polarity = self._sync_fold_candidate(
-                binned, period_bins)
-            candidates[standard] = (period, phase, score, polarity)
+            sync_options = self._sync_fold_candidates(binned, period_bins)
+            phase, score, polarity = sync_options[0]
+            color_coherence = 0.0
+            if fm is not None:
+                best_sync_score = max(1e-9, score)
+                evaluated = [
+                    (candidate_phase, candidate_score, candidate_polarity,
+                     self._color_standard_coherence(
+                         fm, standard, raster_msps, period,
+                         candidate_phase * bin_size))
+                    for (candidate_phase, candidate_score,
+                         candidate_polarity) in sync_options
+                    if candidate_score >= 0.45
+                ]
+                if evaluated:
+                    strongest_burst = max(item[3] for item in evaluated)
+                    if strongest_burst >= 0.15:
+                        phase, score, polarity, color_coherence = max(
+                            evaluated,
+                            key=lambda item: (
+                                item[3] + 0.45 * item[1] / best_sync_score),
+                        )
+                    else:
+                        color_coherence = evaluated[0][3]
+            candidates[standard] = (
+                period, phase, score, polarity, color_coherence)
 
         if requested == "Auto":
             best_now = max(candidates, key=lambda name: candidates[name][2])
@@ -1332,10 +1467,236 @@ class C5VRXApp(tk.Tk):
                 key=self.live_video_standard_scores.__getitem__)
             if not any(self.live_video_standard_scores.values()):
                 standard = best_now
+            # PAL and NTSC line rates differ by less than one percent, so a
+            # three-line finite capture cannot always separate them by H-sync
+            # alone. Their color subcarriers are far apart. A coherent burst
+            # therefore supplies a much stronger and faster standard decision.
+            color_standard = max(
+                candidates, key=lambda name: candidates[name][4])
+            other_standard = (
+                "NTSC" if color_standard == "PAL" else "PAL")
+            color_score = candidates[color_standard][4]
+            other_score = candidates[other_standard][4]
+            if color_score >= 0.15 and color_score >= other_score + 0.08:
+                standard = color_standard
         else:
             standard = requested
-        period, phase, score, polarity = candidates[standard]
+        period, phase, score, polarity, _color_coherence = candidates[standard]
         return standard, period, phase, score, polarity
+
+    def _color_oscillator(
+            self, standard: str, raster_msps: float,
+            period: float) -> tuple[list[float], list[float]]:
+        """Return one line of cached color-subcarrier quadrature samples."""
+        sample_count = int(math.ceil(period)) + 2
+        key = (standard, raster_msps, sample_count)
+        cached = self.live_video_color_oscillators.get(key)
+        if cached is not None:
+            return cached
+        omega = (2.0 * math.pi * VIDEO_COLOR_SUBCARRIER_HZ[standard] /
+                 (raster_msps * 1_000_000.0))
+        cos_values = [math.cos(omega * index)
+                      for index in range(sample_count)]
+        sin_values = [math.sin(omega * index)
+                      for index in range(sample_count)]
+        cached = (cos_values, sin_values)
+        self.live_video_color_oscillators[key] = cached
+        return cached
+
+    @staticmethod
+    def _quadrature_component(
+            samples: list[float], begin: int, end: int, line_start: int,
+            cos_values: list[float],
+            sin_values: list[float]) -> tuple[complex, float]:
+        """Correlate a CVBS interval with the color subcarrier.
+
+        Removing the interval mean rejects luma and sync energy before the
+        quadrature correlation. The returned complex value retains the native
+        CVBS amplitude so it can be normalized against the luma span later.
+        """
+        begin = max(line_start, begin)
+        end = min(len(samples), end, line_start + len(cos_values))
+        count = end - begin
+        if count < 4:
+            return 0j, 0.0
+        mean = statistics.fmean(samples[begin:end])
+        cosine_sum = 0.0
+        sine_sum = 0.0
+        energy = 0.0
+        for index in range(begin, end):
+            value = samples[index] - mean
+            phase_index = index - line_start
+            cosine_sum += value * cos_values[phase_index]
+            sine_sum += value * sin_values[phase_index]
+            energy += value * value
+        scale = 2.0 / count
+        # e^-jwt correlation: the negative sine term preserves the conventional
+        # positive complex phase for cos(wt + phase).
+        phasor = complex(cosine_sum * scale, -sine_sum * scale)
+        return phasor, math.sqrt(energy / count)
+
+    @staticmethod
+    def _color_rgb(
+            standard: str, y: float, relative_chroma: complex,
+            luma_span: float, line_number: int) -> tuple[int, int, int]:
+        """Convert burst-relative PAL U/V or NTSC I/Q into display RGB."""
+        y = max(0.0, min(1.0, y))
+        chroma = relative_chroma / max(1e-6, luma_span)
+        chroma *= 0.72
+
+        if standard == "PAL":
+            # PAL swings the burst +/-45 degrees around the -U axis while the
+            # V component changes sign on alternate physical lines. Restore
+            # that line's absolute U/V axes from its own burst reference.
+            swing = 1.0 if line_number % 2 == 0 else -1.0
+            burst_axis = math.radians(135.0 * swing)
+            absolute = chroma * complex(
+                math.cos(burst_axis), math.sin(burst_axis))
+            u = max(-0.75, min(0.75, -absolute.imag))
+            v = max(-0.75, min(0.75, swing * absolute.real))
+            red = y + 1.140 * v
+            green = y - 0.395 * u - 0.581 * v
+            blue = y + 2.032 * u
+        else:
+            # NTSC burst is 180 degrees from the color reference. Rotate the
+            # conventional I/Q axes by the 33 degree modulation offset.
+            iq = (-chroma) * complex(
+                math.cos(math.radians(-33.0)),
+                math.sin(math.radians(-33.0)))
+            raw_i = iq.real
+            raw_q = -iq.imag
+            # Two independent captures of the supplied SMPTE bars through the
+            # Caddx Ant show the same +97 degree chroma-axis error. This matrix
+            # is the least-squares observed-I/Q -> reference-I/Q calibration,
+            # averaged across both screenshots. It corrects hue and the unequal
+            # quadrature gains without changing luma.
+            i_value = 0.31835 * raw_i - 1.84549 * raw_q
+            q_value = 1.24641 * raw_i - 0.71014 * raw_q
+            i_value = max(-0.75, min(0.75, i_value))
+            q_value = max(-0.75, min(0.75, q_value))
+            # The third locked SMPTE capture leaves only the yellow sector a
+            # little orange: its negative-Q magnitude is low while the other
+            # five bar hues are already correct. Apply a smooth quadrant-only
+            # correction so red, green, cyan, blue and magenta do not rotate.
+            quadrant_total = abs(i_value) + abs(q_value)
+            if i_value > 0.0 and q_value < 0.0 and quadrant_total > 1e-9:
+                yellow_weight = min(
+                    1.0,
+                    4.0 * i_value * (-q_value) /
+                    (quadrant_total * quadrant_total),
+                )
+                q_value = max(-0.75, q_value * (1.0 + 0.14 * yellow_weight))
+            red = y + 0.956 * i_value + 0.621 * q_value
+            green = y - 0.272 * i_value - 0.647 * q_value
+            blue = y - 1.106 * i_value + 1.703 * q_value
+
+        return tuple(
+            max(0, min(255, int(round(channel * 255.0))))
+            for channel in (red, green, blue)
+        )
+
+    def _observe_vertical_sync(
+            self, event_time_us: float, standard: str) -> None:
+        """Discipline field placement and rate from sparse broad V-sync lines."""
+        nominal_period = VIDEO_FIELD_PERIOD_US[standard]
+        if self.live_video_vertical_standard != standard:
+            self.live_video_vertical_standard = standard
+            self.live_video_vertical_anchor_us = None
+            self.live_video_vertical_last_event_us = None
+            self.live_video_vertical_lock_events = 0
+            self.live_video_field_period_us = nominal_period
+
+        anchor = self.live_video_vertical_anchor_us
+        if anchor is None:
+            self.live_video_vertical_anchor_us = event_time_us
+            self.live_video_vertical_last_event_us = event_time_us
+            self.live_video_vertical_lock_events = 1
+            # Do not retain rows assembled using an arbitrary USB timestamp
+            # phase. Start the visible raster at the first proven field sync.
+            self.live_video_pixels[:] = bytes(len(self.live_video_pixels))
+            self.live_video_rgb_pixels[:] = bytes(
+                len(self.live_video_rgb_pixels))
+            self.live_video_rows_seen.clear()
+            self.live_video_color_valid_rows.clear()
+            self.live_video_display_offset = 0
+            return
+
+        period = self.live_video_field_period_us
+        fields_from_anchor = int(round((event_time_us - anchor) / period))
+        predicted = anchor + fields_from_anchor * period
+        phase_error = event_time_us - predicted
+        # The Caddx field clock in the measured bundle differs from nominal by
+        # only a fraction of a microsecond per field. That still accumulates
+        # into a rolling frame seam. The old narrow candidate gate eventually
+        # rejected every real V-sync and left the raster free-running. Keep a
+        # conservative gate for false picture candidates, but use accepted
+        # long-baseline phase error to discipline both phase and frequency.
+        if abs(phase_error) > VIDEO_VERTICAL_PHASE_GATE_US:
+            return
+        if fields_from_anchor:
+            period_correction = (
+                VIDEO_VERTICAL_FREQUENCY_GAIN * phase_error /
+                fields_from_anchor)
+            period_correction = max(-2.0, min(2.0, period_correction))
+            period = max(
+                nominal_period * 0.995,
+                min(nominal_period * 1.005, period + period_correction),
+            )
+            self.live_video_field_period_us = period
+        self.live_video_vertical_anchor_us = (
+            anchor + VIDEO_VERTICAL_PHASE_GAIN * phase_error)
+        self.live_video_vertical_lock_events += 1
+        self.live_video_vertical_last_event_us = event_time_us
+
+    def _observe_vertical_candidate(
+            self, event_time_us: float, standard: str,
+            direct_lock: bool) -> None:
+        """Acquire V-lock from sparse but field-coherent broad-sync evidence."""
+        nominal_period = VIDEO_FIELD_PERIOD_US[standard]
+        if direct_lock:
+            self._observe_vertical_sync(event_time_us, standard)
+            self.live_video_vertical_candidate_us = None
+            self.live_video_vertical_candidate_hits = 0
+            self.live_video_vertical_candidate_standard = None
+            return
+
+        anchor = self.live_video_vertical_anchor_us
+        if anchor is not None:
+            self._observe_vertical_sync(event_time_us, standard)
+            return
+
+        if self.live_video_vertical_candidate_standard != standard:
+            self.live_video_vertical_candidate_standard = standard
+            self.live_video_vertical_candidate_us = None
+            self.live_video_vertical_candidate_hits = 0
+
+        previous = self.live_video_vertical_candidate_us
+        coherent = False
+        calibration_period: float | None = None
+        if previous is not None and event_time_us > previous:
+            delta = event_time_us - previous
+            fields = max(1, int(round(delta / nominal_period)))
+            coherent = abs(delta - fields * nominal_period) <= 350.0
+            measured_period = delta / fields
+            if (coherent and
+                    fields >= VIDEO_VERTICAL_MIN_CALIBRATION_FIELDS and
+                    nominal_period * 0.995 <= measured_period <=
+                    nominal_period * 1.005):
+                calibration_period = measured_period
+        self.live_video_vertical_candidate_hits = (
+            self.live_video_vertical_candidate_hits + 1 if coherent else 1)
+        self.live_video_vertical_candidate_us = event_time_us
+        if self.live_video_vertical_candidate_hits >= 2:
+            self._observe_vertical_sync(event_time_us, standard)
+            # Sparse capture often gives us a much better clock measurement
+            # before it gives us a picture. When the two acquisition events
+            # span enough fields, start the raster at that measured rate rather
+            # than painting with nominal timing and slowly shearing it later.
+            if calibration_period is not None:
+                self.live_video_field_period_us = calibration_period
+            self.live_video_vertical_candidate_us = None
+            self.live_video_vertical_candidate_hits = 0
+            self.live_video_vertical_candidate_standard = None
 
     def _process_live_iq_block(
             self, words: list[int], timestamp_us: int | None = None) -> None:
@@ -1370,15 +1731,14 @@ class C5VRXApp(tk.Tk):
         raster_msps = self.live_video_requested_sample_rate
         (video_standard, period, sync_phase,
          sync_score, fm_polarity) = self._select_video_timing(
-             binned, raster_msps, bin_size)
+             binned, raster_msps, bin_size, fm)
 
         # Do not stretch ordinary RF noise into a convincing full-contrast
         # picture. Only a repeated horizontal-sync candidate may update the
         # raster; rejected blocks leave the last locked pixels untouched.
         if sync_score < VIDEO_SYNC_MIN_SCORE:
             self.live_video_rejected_blocks += 1
-            self.after(
-                0, self.preview_status_var.set,
+            self.live_video_pending_status = (
                 f"{APP_BUILD}: no {video_standard} H-sync lock "
                 f"(score {sync_score:.2f} < {VIDEO_SYNC_MIN_SCORE:.2f}); "
                 "pixels not updated")
@@ -1395,26 +1755,134 @@ class C5VRXApp(tk.Tk):
             line_starts.append(int(cursor))
             cursor += period
 
-        active_lines: list[tuple[int, list[float]]] = []
+        # Identify NTSC/PAL vertical serration intervals from the captured
+        # waveform itself. Normal H-sync occupies about 7% of a line; vertical
+        # sync holds the composite signal below the sync/porch midpoint for
+        # roughly half or more of consecutive lines. Those lines are timing
+        # evidence, not picture rows, and must never be painted into the image.
+        vertical_line_starts: set[int] = set()
+        strong_vertical_starts: list[int] = []
         for start_sample in line_starts:
+            line_end = min(len(fm), int(start_sample + period))
+            sync_end = int(start_sample + period * 0.073)
+            porch_begin = int(start_sample + period * 0.083)
+            porch_end = int(start_sample + period * 0.135)
+            if (sync_end <= start_sample or porch_end <= porch_begin or
+                    line_end <= start_sample):
+                continue
+            sync_mean = statistics.fmean(fm[start_sample:sync_end])
+            porch_mean = statistics.fmean(fm[porch_begin:porch_end])
+            threshold = (sync_mean + porch_mean) * 0.5
+            low_fraction = sum(
+                value < threshold for value in fm[start_sample:line_end]) / (
+                    line_end - start_sample)
+            if low_fraction >= 0.45:
+                vertical_line_starts.add(start_sample)
+            if low_fraction >= 0.55:
+                strong_vertical_starts.append(start_sample)
+
+        broad_vertical_starts = sorted(vertical_line_starts)
+        direct_vertical_lock = (
+            len(strong_vertical_starts) >= 2 and sync_score >= 1.20)
+        tentative_vertical_lock = (
+            bool(broad_vertical_starts) and sync_score >= 0.80)
+        if (timestamp_us is not None and
+                (direct_vertical_lock or tentative_vertical_lock)):
+            vertical_sample = min(
+                strong_vertical_starts
+                if direct_vertical_lock else broad_vertical_starts)
+            vertical_time_us = timestamp_us - (
+                len(fm) - vertical_sample) / raster_msps
+            self._observe_vertical_candidate(
+                vertical_time_us, video_standard, direct_vertical_lock)
+
+        if timestamp_us is not None and self.live_video_vertical_anchor_us is None:
+            self.live_video_pending_status = (
+                f"{APP_BUILD}: waiting for captured {video_standard} vertical sync; "
+                f"coherent candidates {self.live_video_vertical_candidate_hits}/2; "
+                "picture rows withheld to prevent jumping")
+            return
+
+        cos_values, sin_values = self._color_oscillator(
+            video_standard, raster_msps, period)
+        burst_begin_fraction, burst_end_fraction = \
+            VIDEO_COLOR_BURST_WINDOW[video_standard]
+        active_lines: list[
+            tuple[int, int, list[float], list[complex], float, float]] = []
+        for start_sample in line_starts:
+            if start_sample in vertical_line_starts:
+                continue
+            line_start = int(start_sample)
             active_begin = int(start_sample + period * 0.16)
             active_end = int(start_sample + period * 0.96)
             if active_begin < 0 or active_end > len(fm) or active_end <= active_begin:
                 continue
+            burst_begin = int(start_sample + period * burst_begin_fraction)
+            burst_end = int(start_sample + period * burst_end_fraction)
+            burst_phasor, burst_rms = self._quadrature_component(
+                fm, burst_begin, burst_end, line_start,
+                cos_values, sin_values)
+            burst_amplitude = abs(burst_phasor)
+            burst_coherence = burst_amplitude / max(
+                1e-9, math.sqrt(2.0) * burst_rms)
+            burst_reference = (
+                burst_phasor.conjugate() / burst_amplitude
+                if burst_amplitude > 1e-9 else 0j)
             source = fm[active_begin:active_end]
             row: list[float] = []
+            row_chroma: list[complex] = []
             for x in range(self.live_video_width):
                 left = x * len(source) // self.live_video_width
                 right = max(left + 1, (x + 1) * len(source) // self.live_video_width)
                 row.append(statistics.fmean(source[left:right]))
-            active_lines.append((start_sample, row))
+                pixel_phasor, _pixel_rms = self._quadrature_component(
+                    fm, active_begin + left, active_begin + right,
+                    line_start, cos_values, sin_values)
+                row_chroma.append(pixel_phasor * burst_reference)
+
+            # Composite chroma bandwidth is much lower than the 160-pixel
+            # luma raster. A short symmetric filter rejects fine luma edges
+            # that otherwise alias into vivid magenta/green dot crawl.
+            if row_chroma:
+                raw_chroma = row_chroma
+                row_chroma = []
+                for x in range(len(raw_chroma)):
+                    weighted = 0j
+                    weight_total = 0
+                    for delta, weight in ((-2, 1), (-1, 2), (0, 4),
+                                          (1, 2), (2, 1)):
+                        source_x = x + delta
+                        if 0 <= source_x < len(raw_chroma):
+                            weighted += raw_chroma[source_x] * weight
+                            weight_total += weight
+                    row_chroma.append(weighted / weight_total)
+
+            if timestamp_us is not None:
+                line_time_us = timestamp_us - (
+                    len(fm) - start_sample) * 1_000_000.0 / (
+                        raster_msps * 1_000_000.0)
+                line_reference_us = (
+                    self.live_video_vertical_anchor_us
+                    if self.live_video_vertical_anchor_us is not None else 0.0)
+                line_number = int(round(
+                    (line_time_us - line_reference_us) *
+                    VIDEO_LINE_RATES_HZ[video_standard] /
+                    1_000_000.0))
+            else:
+                line_number = self.live_video_color_line_counter
+                self.live_video_color_line_counter += 1
+            active_lines.append((
+                start_sample, line_number, row, row_chroma,
+                burst_amplitude, burst_coherence))
 
         if not active_lines:
             self.live_video_pending_status = (
                 "IQ received; no complete video-line candidate in this block")
             return
         scale_values = sorted(
-            value for _start_sample, row in active_lines for value in row)
+            value for (_start_sample, _line_number, row, _row_chroma,
+                       _burst_amplitude, _burst_coherence) in active_lines
+            for value in row)
         block_black = scale_values[len(scale_values) // 20]
         block_white = scale_values[(len(scale_values) * 19) // 20]
         if self.live_video_black is None or self.live_video_white is None:
@@ -1434,22 +1902,94 @@ class C5VRXApp(tk.Tk):
         white = self.live_video_white
         span = max(1e-6, white - black)
         physical_rate_hz = raster_msps * 1_000_000.0
-        for start_sample, row in active_lines:
-            if timestamp_us is not None:
+        for (start_sample, line_number, row, row_chroma,
+             burst_amplitude, burst_coherence) in active_lines:
+            if (timestamp_us is not None and
+                    self.live_video_vertical_anchor_us is not None):
                 line_time_us = timestamp_us - (
                     len(fm) - start_sample) * 1_000_000.0 / physical_rate_hz
-                field_period_us = VIDEO_FIELD_PERIOD_US[video_standard]
-                field_phase = line_time_us % field_period_us
+                field_period_us = self.live_video_field_period_us
+                field_phase = (
+                    line_time_us - self.live_video_vertical_anchor_us) % \
+                    field_period_us
+                # Conventional receivers hide the vertical blanking interval.
+                # Mapping the entire field exposed about nine dark/noisy rows
+                # above the camera's top OSD. Start at the first active-picture
+                # line and expand the remaining field into the display raster.
+                active_start_us = (
+                    VIDEO_ACTIVE_START_LINES[video_standard] * 1_000_000.0 /
+                    VIDEO_LINE_RATES_HZ[video_standard])
+                if field_phase < active_start_us:
+                    continue
+                active_period_us = field_period_us - active_start_us
                 target_row = int(
-                    field_phase * self.live_video_height / field_period_us)
+                    (field_phase - active_start_us) * self.live_video_height /
+                    active_period_us)
             else:
                 target_row = self.live_video_row
                 self.live_video_row = (
                     self.live_video_row + 1) % self.live_video_height
             base = target_row * self.live_video_width
+            rgb_base = base * 3
+            burst_level = burst_amplitude / span
+            color_locked = (
+                burst_level >= VIDEO_COLOR_MIN_BURST_LEVEL and
+                burst_coherence >= VIDEO_COLOR_MIN_COHERENCE)
+            color_total = (self.live_video_color_locked_lines +
+                           self.live_video_monochrome_lines)
+            color_alpha = 1.0 if color_total == 0 else 0.10
+            self.live_video_color_burst_level += color_alpha * (
+                burst_level - self.live_video_color_burst_level)
+            self.live_video_color_burst_coherence += color_alpha * (
+                burst_coherence - self.live_video_color_burst_coherence)
+            if color_locked:
+                self.live_video_color_locked_lines += 1
+                row_bias = sum(row_chroma, 0j) / max(1, len(row_chroma))
+                bias_samples = self.live_video_color_bias_samples[video_standard]
+                if bias_samples == 0:
+                    self.live_video_color_bias[video_standard] = row_bias
+                else:
+                    bias_alpha = 0.025
+                    self.live_video_color_bias[video_standard] += bias_alpha * (
+                        row_bias - self.live_video_color_bias[video_standard])
+                self.live_video_color_bias_samples[video_standard] = \
+                    bias_samples + 1
+                self.live_video_color_valid_rows.add(target_row)
+            else:
+                self.live_video_monochrome_lines += 1
+
             for x, value in enumerate(row):
-                self.live_video_pixels[base + x] = max(
-                    0, min(255, int((value - black) * 255.0 / span)))
+                y = max(0.0, min(1.0, (value - black) / span))
+                luma = max(0, min(255, int(round(y * 255.0))))
+                self.live_video_pixels[base + x] = luma
+                if color_locked:
+                    red, green, blue = self._color_rgb(
+                        video_standard, y,
+                        row_chroma[x] -
+                        self.live_video_color_bias[video_standard],
+                        span, line_number)
+                elif target_row in self.live_video_color_valid_rows:
+                    # A noisy one-line burst must not turn a previously valid
+                    # color row gray. Preserve its chroma differences and move
+                    # all three channels together to follow the new luma.
+                    pixel_base = rgb_base + x * 3
+                    old_red = self.live_video_rgb_pixels[pixel_base]
+                    old_green = self.live_video_rgb_pixels[pixel_base + 1]
+                    old_blue = self.live_video_rgb_pixels[pixel_base + 2]
+                    old_luma = (
+                        0.299 * old_red + 0.587 * old_green +
+                        0.114 * old_blue)
+                    luma_delta = luma - old_luma
+                    red = max(0, min(255, int(round(old_red + luma_delta))))
+                    green = max(
+                        0, min(255, int(round(old_green + luma_delta))))
+                    blue = max(0, min(255, int(round(old_blue + luma_delta))))
+                else:
+                    red = green = blue = luma
+                pixel_base = rgb_base + x * 3
+                self.live_video_rgb_pixels[pixel_base] = red
+                self.live_video_rgb_pixels[pixel_base + 1] = green
+                self.live_video_rgb_pixels[pixel_base + 2] = blue
             self.live_video_rows_seen.add(target_row)
 
         elapsed = max(1e-6, time.monotonic() - self.live_iq_usb_started)
@@ -1458,13 +1998,29 @@ class C5VRXApp(tk.Tk):
         source_text = (f"{self.live_iq_source_msps:.3f} MS/s finite-fill estimate"
                        if self.live_iq_source_msps else "source MS/s pending")
         coverage = 100.0 * len(self.live_video_rows_seen) / self.live_video_height
-        self._update_vertical_display_offset()
-        display_pixels = self._vertically_aligned_pixels()
+        # Field zero now comes from broad vertical-sync pulses. Never rotate
+        # based on picture darkness; SMPTE PLUGE and black bars fooled the old
+        # heuristic and moved large row groups into the middle of the image.
+        self.live_video_display_offset = 0
+        display_pixels = bytes(self.live_video_rgb_pixels)
+        color_locked_now = (
+            self.live_video_color_burst_level >= VIDEO_COLOR_MIN_BURST_LEVEL and
+            self.live_video_color_burst_coherence >= VIDEO_COLOR_MIN_COHERENCE)
+        color_text = (
+            f"{video_standard} color burst "
+            f"{self.live_video_color_burst_level * 100.0:.1f}% "
+            f"coherence {self.live_video_color_burst_coherence:.2f}"
+            if color_locked_now else
+            f"monochrome fallback; burst "
+            f"{self.live_video_color_burst_level * 100.0:.1f}% "
+            f"coherence {self.live_video_color_burst_coherence:.2f}")
         lock_text = (
             f"{self.live_transport_name}; "
             f"{video_standard} H-sync score {sync_score:.2f}; "
+            f"{color_text}; "
             f"raster {raster_msps:.0f} MS/s; {coverage:.0f}% rows; "
-            f"vertical rotate {self.live_video_display_offset}; "
+            f"V-lock {self.live_video_vertical_lock_events} "
+            f"field {self.live_video_field_period_us:.2f} us; "
             f"clipped {clipped_text}; "
             f"rejected {self.live_video_rejected_blocks}")
         self._queue_live_iq_frame(
@@ -1562,10 +2118,38 @@ class C5VRXApp(tk.Tk):
             return pixels
         return pixels[offset_bytes:] + pixels[:offset_bytes]
 
+    def _vertically_aligned_rgb_pixels(self) -> bytes:
+        row_bytes = self.live_video_width * 3
+        offset_bytes = self.live_video_display_offset * row_bytes
+        pixels = bytes(self.live_video_rgb_pixels)
+        if not offset_bytes:
+            return pixels
+        return pixels[offset_bytes:] + pixels[:offset_bytes]
+
+    @staticmethod
+    def _vertical_median_rgb(pixels: bytes, width: int, height: int) -> bytes:
+        """Remove isolated horizontal impulse rows without temporal smearing."""
+        row_bytes = width * 3
+        if width <= 0 or height < 3 or len(pixels) != row_bytes * height:
+            return pixels
+        source = np.frombuffer(pixels, dtype=np.uint8).reshape(
+            height, width, 3)
+        filtered = source.copy()
+        above = source[:-2]
+        center = source[1:-1]
+        below = source[2:]
+        filtered[1:-1] = np.maximum(
+            np.minimum(above, center),
+            np.minimum(np.maximum(above, center), below),
+        )
+        return filtered.tobytes()
+
     def _show_live_iq_frame(self, pixels: bytes, source_text: str,
                             usb_mbit: float, block_rate: float,
                             lock_text: str) -> None:
-        if not self._show_gray_frame(
+        pixels = self._vertical_median_rgb(
+            pixels, self.live_video_width, self.live_video_height)
+        if not self._show_rgb_frame(
                 pixels, self.live_video_width, self.live_video_height):
             self.sink.write(
                 f"C5VRX_HOST_VIDEO_RENDER_ERROR build={APP_BUILD}\n")
@@ -1576,7 +2160,7 @@ class C5VRXApp(tk.Tk):
                 f"C5VRX_HOST_VIDEO_FRAME build={APP_BUILD} "
                 f"frame={self.live_video_host_frames} {lock_text}\n")
         self.preview_status_var.set(
-            f"{APP_BUILD} | A1 IQ->PC PAL raster | {source_text} | USB {usb_mbit:.2f} Mbit/s | "
+            f"{APP_BUILD} | A1 IQ->PC color raster | {source_text} | USB {usb_mbit:.2f} Mbit/s | "
             f"{block_rate:.2f} blocks/s | "
             f"{'FAST pipeline' if self.live_iq_fast_mode else 'single request'} "
             f"{self.live_iq_commands_outstanding}/{self.live_iq_pipeline_target} | "
@@ -1707,6 +2291,28 @@ class C5VRXApp(tk.Tk):
             return False
         self._redraw_preview()
         self.preview_status_var.set(f"Live USB preview: {width}×{height} GRAY8, CRC valid")
+        return True
+
+    def _show_rgb_frame(self, payload: bytes, width: int, height: int) -> bool:
+        if len(payload) != width * height * 3:
+            self.preview_status_var.set(
+                f"RGB24 render rejected: {len(payload)} bytes for {width}x{height}")
+            return False
+        self.preview_frame = payload
+        self.preview_width = width
+        self.preview_height = height
+        try:
+            ppm = f"P6\n{width} {height}\n255\n".encode("ascii") + payload
+            self.preview_image = tk.PhotoImage(data=ppm, format="PPM")
+        except tk.TclError:
+            self.preview_image = None
+            self.preview_display_image = None
+            self.preview_status_var.set(
+                "Valid RGB24 frame received, but Tk pixel rendering failed")
+            return False
+        self._redraw_preview()
+        self.preview_status_var.set(
+            f"Live color preview: {width}×{height} RGB24, burst validated")
         return True
 
     def clear_preview(self) -> None:
