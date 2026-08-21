@@ -402,6 +402,7 @@ The USB protocol exposes bounded producer, DSP and streaming diagnostics:
 
 ```text
 CAPTURE 16384
+CAPTURE PHASE8 16384
 PRODUCER CADENCE PROBE ALL
 WRAP FLAG PROBE 0
 PHASE CONTINUITY PROBE 0
@@ -427,9 +428,13 @@ CVBS LOCK PROBE 5000
 PIPELINE STATS
 ```
 
-`CAPTURE` gets a real finite packed-I/Q block. `CHAIN` repeatedly retriggers the
-vendor dump and reports hashes plus boundary discontinuity, explicitly testing
-whether finite captures are useful as a temporary near-live source.
+`CAPTURE` gets a real finite packed-I/Q block. `CAPTURE PHASE8` removes the
+per-block I/Q DC offset on the C5 and sends one unsigned phase byte per sample,
+reducing the finite USB payload from four bytes to one while leaving phase
+difference, video synchronization and raster work on the PC. `CHAIN`
+repeatedly retriggers the vendor dump and reports hashes plus boundary
+discontinuity, explicitly testing whether finite captures are useful as a
+temporary near-live source.
 
 `LIVE START` uses measured capabilities and fails closed while rate, phase,
 anti-alias bandwidth or processing margin is missing. `LIVE EXPERIMENTAL START`
@@ -438,8 +443,11 @@ persistent BitScrambler, conditioner and PARLIO.
 
 Protocol 8 carries preview data in versioned binary packets with an eight-byte
 magic marker, packet type, sequence, lengths, timestamp, header CRC and payload
-CRC. `STREAM_INFO`, `GRAY8_FRAME` and `STREAM_END` packets allow clean startup,
-frame-loss reporting and resynchronisation after corruption or disconnect. See
+CRC. Packet type 6 carries CRC-protected Phase8 capture chunks; the Receiver
+Console selects it when firmware reports `phase8_capture=1` and otherwise
+falls back to type-5 raw IQ. `STREAM_INFO`, `GRAY8_FRAME` and `STREAM_END`
+packets allow clean startup, frame-loss reporting and resynchronisation after
+corruption or disconnect. See
 [`research/usb-preview-protocol.md`](research/usb-preview-protocol.md).
 
 `CVBS LOCK PROBE 5000` is the bounded real-VTX qualification step. It reports

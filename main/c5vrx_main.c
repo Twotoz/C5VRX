@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 
 #include <inttypes.h>
+#include <stdio.h>
 
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
@@ -8,6 +9,8 @@
 #include "nvs_flash.h"
 #include "esp_chip_info.h"
 #include "esp_log.h"
+#include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_vfs.h"
 
 #include "c5vrx_adc_dump.h"
 #include "c5vrx_channels.h"
@@ -16,8 +19,10 @@
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_rf.h"
 #include "c5vrx_wifi5.h"
+#include "c5vrx_usb_transport.h"
 
 static const char *TAG = "C5VRX";
+extern volatile uint32_t c5vrx_lp_capture_stage;
 
 #if CONFIG_C5VRX_RX_HT40
 #define C5VRX_CFG_HT40 true
@@ -36,6 +41,47 @@ static const char *TAG = "C5VRX";
 #else
 #define C5VRX_CFG_ADC_PRINT_RAW false
 #endif
+
+/*
+ * CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG registers the USB Serial/JTAG VFS, but
+ * ESP-IDF's default VFS path uses the simple polling helpers.  Real XIAO C5
+ * hardware proved that the interrupt-driven USB Serial/JTAG driver itself is
+ * reliable while the old fgets(stdin) control path can remain silent.
+ *
+ * Install the driver explicitly and switch the already-registered VFS to it so
+ * every existing printf/fgets/fwrite user (control console, IQ binary transport,
+ * logs and USB preview) shares the same proven native-USB path.
+ */
+static esp_err_t c5vrx_usb_console_init(void)
+{
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+    if (!usb_serial_jtag_is_driver_installed()) {
+        usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+        cfg.rx_buffer_size = 2048;
+        cfg.tx_buffer_size = 4096;
+        const esp_err_t err = usb_serial_jtag_driver_install(&cfg);
+        if (err != ESP_OK) {
+            return err;
+        }
+    }
+
+    usb_serial_jtag_vfs_use_driver();
+    setvbuf(stdin, NULL, _IONBF, 0);
+    setvbuf(stdout, NULL, _IONBF, 0);
+
+    /* Bypass stdio once so first-board logs can distinguish driver bring-up
+     * from a later VFS/control problem. */
+    const esp_err_t transport_err = c5vrx_usb_transport_init();
+    if (transport_err != ESP_OK) return transport_err;
+    esp_log_set_vprintf(c5vrx_usb_vprintf);
+    static const char marker[] =
+        "C5VRX_USB_DRIVER_READY transport=usb_serial_jtag vfs=driver\n";
+    (void)c5vrx_usb_write(marker, sizeof(marker) - 1u);
+    return ESP_OK;
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
 
 static c5vrx_band_t configured_band(void)
 {
@@ -72,6 +118,17 @@ static void maybe_run_adc_dump(const c5vrx_frequency_plan_t *plan)
 
 void app_main(void)
 {
+    /* Native USB control must be alive before NVS, Wi-Fi or vendor RF code. */
+    ESP_ERROR_CHECK(c5vrx_usb_console_init());
+
+    const uint32_t prior_lp_stage = c5vrx_lp_capture_stage;
+    c5vrx_lp_capture_stage = 0;
+    if (prior_lp_stage >= 1u && prior_lp_stage <= 7u) {
+        printf("C5VRX_LP_BOOT_RECOVERY prior_stage=%" PRIu32
+               " classification=PREVIOUS_CAPTURE_RESET\n", prior_lp_stage);
+        fflush(stdout);
+    }
+
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -119,27 +176,58 @@ void app_main(void)
     }
 
 #if CONFIG_C5VRX_RF_BACKEND_WIFI5
-    ESP_LOGI(TAG, "RF backend: public ESP-IDF 5 GHz Wi-Fi driver");
-    ESP_ERROR_CHECK(c5vrx_wifi5_start(plan.wifi_channel, C5VRX_CFG_HT40));
+    /* Bring USB control up before touching the Wi-Fi/RF stack. PING must remain
+     * available even if a vendor/driver call stalls or fails during first-board
+     * bring-up. STATUS may report status-wifi until the backend is ready. */
+    ESP_ERROR_CHECK(c5vrx_control_start(
+        band,
+        channel,
+        C5VRX_CFG_HT40,
+        C5VRX_CFG_DIRECT_TUNE));
+    ESP_LOGI(TAG,
+             "C5VRX_BOOT stage=USB_CONTROL_READY rf_ready=0; PING available before Wi-Fi bring-up");
 
-    if (C5VRX_CFG_DIRECT_TUNE && !plan.exact_wifi_center) {
+    ESP_LOGI(TAG, "RF backend: public ESP-IDF 5 GHz Wi-Fi driver");
+
+    bool wifi_ready = false;
+    bool active_ht40 = false;
+    err = c5vrx_wifi5_start(plan.wifi_channel, C5VRX_CFG_HT40);
+    if (err == ESP_OK) {
+        wifi_ready = true;
+        c5vrx_wifi5_status_t startup_status = {0};
+        if (c5vrx_wifi5_get_status(&startup_status) == ESP_OK) {
+            active_ht40 = startup_status.ht40;
+        }
+        ESP_LOGI(TAG, "C5VRX_BOOT stage=WIFI5_READY bw=%u",
+                 active_ht40 ? 40u : 20u);
+    } else {
+        /* Keep USB diagnostics alive even when RF bring-up fails. */
+        ESP_LOGE(TAG,
+                 "C5VRX_BOOT stage=WIFI5_FAILED code=%d name=%s; USB control already active",
+                 (int)err, esp_err_to_name(err));
+    }
+
+    if (wifi_ready && C5VRX_CFG_DIRECT_TUNE && !plan.exact_wifi_center) {
         err = c5vrx_phy_set_frequency_mhz(target.mhz);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "Experimental direct tune failed: %s", esp_err_to_name(err));
         }
     }
 
-    maybe_run_adc_dump(&plan);
-
-    ESP_ERROR_CHECK(c5vrx_control_start(
-        band,
-        channel,
-        C5VRX_CFG_HT40,
-        C5VRX_CFG_DIRECT_TUNE));
+    if (wifi_ready) {
+        maybe_run_adc_dump(&plan);
+    } else {
+        ESP_LOGW(TAG, "Skipping RF dump startup because the Wi-Fi RX backend is not ready");
+    }
 
     ESP_LOGI(TAG, "USB control ready: select bands/channels, trigger IQ captures and control the CVBS proof output");
-    ESP_LOGW(TAG,
-             "Promiscuous Wi-Fi RX proves the 5 GHz RF path is active; live analog FPV still requires continuous FE/baseband sample capture and WBFM demodulation.");
+    if (wifi_ready) {
+        ESP_LOGW(TAG,
+                 "Promiscuous Wi-Fi RX proves the 5 GHz RF path is active; live analog FPV still requires continuous FE/baseband sample capture and WBFM demodulation.");
+    } else {
+        ESP_LOGW(TAG,
+                 "RF backend startup failed, but USB control remains available for diagnosis and recovery.");
+    }
 
     while (true) {
         c5vrx_wifi5_status_t status;

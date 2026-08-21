@@ -68,6 +68,77 @@ esp_err_t c5vrx_wifi5_init(void)
     return ESP_OK;
 }
 
+static esp_err_t configure_5g_bandwidth(bool request_ht40, bool *active_ht40)
+{
+    if (!active_ht40) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *active_ht40 = false;
+
+    /* ESP32-C5 only permits 40 MHz with 802.11an. The default 5 GHz
+     * protocol set also enables 11ac/11ax, for which ESP-IDF rejects BW40. */
+    wifi_protocols_t protocols = {
+        .ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G |
+                  WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX,
+        .ghz_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N,
+    };
+    esp_err_t err = esp_wifi_set_protocols(WIFI_IF_STA, &protocols);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to select 5 GHz 802.11a/n protocols: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    wifi_protocols_t protocol_readback = {0};
+    err = esp_wifi_get_protocols(WIFI_IF_STA, &protocol_readback);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read back Wi-Fi protocols: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+    const uint16_t required_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N;
+    if ((protocol_readback.ghz_5g & required_5g) != required_5g ||
+        (protocol_readback.ghz_5g & (WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX)) != 0) {
+        ESP_LOGE(TAG, "Unexpected 5 GHz protocol readback: 0x%04x",
+                 (unsigned)protocol_readback.ghz_5g);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    wifi_bandwidths_t bandwidths = {
+        .ghz_2g = WIFI_BW20,
+        .ghz_5g = request_ht40 ? WIFI_BW40 : WIFI_BW20,
+    };
+    err = esp_wifi_set_bandwidths(WIFI_IF_STA, &bandwidths);
+    if (err != ESP_OK && request_ht40) {
+        ESP_LOGW(TAG,
+                 "40 MHz bandwidth rejected (%s); falling back to 20 MHz without aborting",
+                 esp_err_to_name(err));
+        bandwidths.ghz_5g = WIFI_BW20;
+        err = esp_wifi_set_bandwidths(WIFI_IF_STA, &bandwidths);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure 5 GHz bandwidth: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    wifi_bandwidths_t bandwidth_readback = {0};
+    err = esp_wifi_get_bandwidths(WIFI_IF_STA, &bandwidth_readback);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read back 5 GHz bandwidth: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    *active_ht40 = bandwidth_readback.ghz_5g == WIFI_BW40;
+    if (request_ht40 && !*active_ht40) {
+        ESP_LOGW(TAG, "HT40 requested but readback is 20 MHz; continuing safely");
+    }
+    ESP_LOGI(TAG, "5 GHz protocol=802.11a/n bandwidth=%s",
+             *active_ht40 ? "40 MHz" : "20 MHz");
+    return ESP_OK;
+}
+
 esp_err_t c5vrx_wifi5_start(uint16_t channel, bool ht40)
 {
     esp_err_t err = c5vrx_wifi5_init();
@@ -78,9 +149,9 @@ esp_err_t c5vrx_wifi5_start(uint16_t channel, bool ht40)
         return ESP_ERR_INVALID_ARG;
     }
 
-    err = esp_wifi_set_bandwidth(WIFI_IF_STA, ht40 ? WIFI_BW40 : WIFI_BW20);
+    bool active_ht40 = false;
+    err = configure_5g_bandwidth(ht40, &active_ht40);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set %s bandwidth: %s", ht40 ? "40 MHz" : "20 MHz", esp_err_to_name(err));
         return err;
     }
 
@@ -99,7 +170,7 @@ esp_err_t c5vrx_wifi5_start(uint16_t channel, bool ht40)
     }
 
     s_requested_channel = channel;
-    s_ht40 = ht40;
+    s_ht40 = active_ht40;
     s_promiscuous = true;
 
     uint8_t primary = 0;
@@ -108,7 +179,7 @@ esp_err_t c5vrx_wifi5_start(uint16_t channel, bool ht40)
     if (err == ESP_OK) {
         ESP_LOGW(TAG,
                  "5 GHz public-driver RX active: requested ch%u, readback ch%u, BW=%s, promiscuous=1",
-                 channel, primary, ht40 ? "40 MHz" : "20 MHz");
+                 channel, primary, active_ht40 ? "40 MHz" : "20 MHz");
     }
     return err;
 }

@@ -7,6 +7,7 @@ idf_component_register(
         "c5vrx_wifi5.c"
         "c5vrx_phy_hacks.c"
         "c5vrx_adc_dump.c"
+        "c5vrx_lp_capture.S"
         "c5vrx_rf_dump_producer.c"
         "c5vrx_rf_probes.c"
         "c5vrx_channels.c"
@@ -20,6 +21,7 @@ idf_component_register(
         "c5vrx_cvbs_live_out.c"
         "c5vrx_cvbs_sync.c"
         "c5vrx_usb_preview.c"
+        "c5vrx_usb_transport.c"
         "c5vrx_bench.c"
     INCLUDE_DIRS "."
     REQUIRES
@@ -30,6 +32,7 @@ idf_component_register(
         esp_netif
         esp_driver_parlio
         esp_driver_bitscrambler
+        esp_driver_usb_serial_jtag
         esp_timer
         esp_app_format
         heap
@@ -37,11 +40,15 @@ idf_component_register(
 
 target_bitscrambler_add_src("c5vrx_wbfm_4to1.bsasm")
 
+# The vendor adctrig() capture path is used by the normal finite-capture
+# commands as well as the optional reconstructed producer.  Its fixed 64 KiB
+# HP-SRAM destination must therefore be protected in every firmware profile.
+target_link_options(${COMPONENT_LIB} INTERFACE
+    "-T${CMAKE_CURRENT_LIST_DIR}/c5vrx_rf_dump_memory.ld")
+set_property(TARGET ${COMPONENT_LIB} APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_LIST_DIR}/c5vrx_rf_dump_memory.ld")
+
 if(CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER)
-    target_link_options(${COMPONENT_LIB} INTERFACE
-        "SHELL:-T ${CMAKE_CURRENT_LIST_DIR}/c5vrx_rf_dump_memory.ld")
-    set_property(TARGET ${COMPONENT_LIB} APPEND PROPERTY LINK_DEPENDS
-        "${CMAKE_CURRENT_LIST_DIR}/c5vrx_rf_dump_memory.ld")
     set(C5VRX_AUDITED_RFTEST "${IDF_PATH}/components/esp_phy/lib/esp32c5/librftest.a")
     if(NOT EXISTS "${C5VRX_AUDITED_RFTEST}")
         message(FATAL_ERROR "Experimental RF dump producer requires ESP32-C5 librftest.a")

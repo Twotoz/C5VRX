@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import math
+import queue
+import statistics
 import sys
 import threading
 import time
@@ -21,6 +23,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import esptool
+import numpy as np
 import serial
 from serial.tools import list_ports
 
@@ -29,15 +32,53 @@ from c5vrx_lab import SessionRecorder
 from c5vrx_usb_protocol import (
     FRAME_DESCRIPTOR,
     PACKET_GRAY8_FRAME,
+    PACKET_IQ_U32_BLOCK,
+    PACKET_IQ_U32_CHUNK,
+    PACKET_PHASE8_CHUNK,
     PACKET_STREAM_END,
     PACKET_STREAM_INFO,
     PIXEL_FORMAT_GRAY8,
     Packet,
     StreamDecoder,
+    decode_iq_block,
+    decode_iq_chunk,
+    decode_phase8_chunk,
 )
 
 APP_TITLE = "C5VRX Receiver Console"
+APP_BUILD = "video-proof-23-burst-validated-hsync"
 C5_RX_MAX_MHZ = 5885
+VIDEO_LINE_RATES_HZ = {
+    "PAL": 15_625.0,
+    "NTSC": 15_734.264,
+}
+VIDEO_FIELD_PERIOD_US = {
+    "PAL": 20_000.0,
+    "NTSC": 1_000_000.0 / 59.94,
+}
+VIDEO_SYNC_MIN_SCORE = 0.65
+VIDEO_VERTICAL_PHASE_GATE_US = 750.0
+VIDEO_VERTICAL_PHASE_GAIN = 0.05
+VIDEO_VERTICAL_FREQUENCY_GAIN = 0.10
+VIDEO_VERTICAL_MIN_CALIBRATION_FIELDS = 100
+VIDEO_ACTIVE_START_LINES = {
+    "NTSC": 20.0,
+    "PAL": 23.0,
+}
+VIDEO_COLOR_SUBCARRIER_HZ = {
+    "PAL": 4_433_618.75,
+    "NTSC": 3_579_545.0,
+}
+# Fractions of one line measured from the leading edge of horizontal sync.
+# Both standards place the reference burst on the back porch before active
+# video. Keeping this window clear of sync and active luma is important: false
+# burst lock would turn ordinary monochrome detail into colored noise.
+VIDEO_COLOR_BURST_WINDOW = {
+    "PAL": (0.083, 0.135),
+    "NTSC": (0.082, 0.135),
+}
+VIDEO_COLOR_MIN_BURST_LEVEL = 0.018
+VIDEO_COLOR_MIN_COHERENCE = 0.30
 
 FPV_BANDS = {
     "A": [5865, 5845, 5825, 5805, 5785, 5765, 5745, 5725],
@@ -112,20 +153,61 @@ def load_flash_plan() -> tuple[list[str], list[tuple[str, Path]]]:
 class TextSink:
     def __init__(self, text: tk.Text):
         self.text = text
+        self.pending: queue.Queue[str] = queue.Queue(maxsize=2048)
+        self.dropped = 0
+        self.text.after(25, self._drain)
 
     def write(self, s: str) -> int:
+        original_length = len(s)
+        if original_length > 16384:
+            s = (f"[on-screen line truncated from {original_length} chars; "
+                 "full bytes remain in the session bundle]\n" + s[-4096:])
         if s:
-            self.text.after(0, self._append, s)
-        return len(s)
+            try:
+                self.pending.put_nowait(s)
+            except queue.Full:
+                # The durable session recorder remains authoritative. Keep the
+                # on-screen console recent without ever stalling USB draining.
+                try:
+                    self.pending.get_nowait()
+                    self.pending.task_done()
+                except queue.Empty:
+                    pass
+                self.dropped += 1
+                try:
+                    self.pending.put_nowait(s)
+                except queue.Full:
+                    self.dropped += 1
+        return original_length
 
     def flush(self) -> None:
         pass
 
-    def _append(self, s: str) -> None:
-        self.text.configure(state="normal")
-        self.text.insert("end", s)
-        self.text.see("end")
-        self.text.configure(state="disabled")
+    def _drain(self) -> None:
+        chunks: list[str] = []
+        size = 0
+        while size < 131072:
+            try:
+                chunk = self.pending.get_nowait()
+            except queue.Empty:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            self.pending.task_done()
+        if chunks:
+            self.text.configure(state="normal")
+            self.text.insert("end", "".join(chunks))
+            line_count = int(self.text.index("end-1c").split(".")[0])
+            if line_count > 4000:
+                self.text.delete("1.0", f"{line_count - 4000 + 1}.0")
+            char_count = int(self.text.count(
+                "1.0", "end-1c", "chars")[0])
+            if char_count > 300000:
+                self.text.delete(
+                    "1.0", f"1.0 + {char_count - 300000} chars")
+            self.text.see("end")
+            self.text.configure(state="disabled")
+        self.text.after(25, self._drain)
 
 
 class C5VRXApp(tk.Tk):
@@ -162,7 +244,78 @@ class C5VRXApp(tk.Tk):
         self.preview_width = 160
         self.preview_height = 120
         self.preview_image: tk.PhotoImage | None = None
+        self.preview_display_image: tk.PhotoImage | None = None
         self.preview_sequence: int | None = None
+        self.live_iq_active = False
+        self.live_iq_capture_done = False
+        self.live_iq_packet_done = False
+        self.live_iq_capture_id: int | None = None
+        self.live_iq_capture_timestamp_us: int | None = None
+        self.live_iq_total_words = 0
+        self.live_iq_chunks: dict[int, tuple[int, ...]] = {}
+        self.live_phase8_chunks: dict[int, bytes] = {}
+        self.live_iq_source_msps: float | None = None
+        self.live_iq_usb_started = 0.0
+        self.live_iq_usb_bytes = 0
+        self.live_iq_blocks = 0
+        self.live_video_host_frames = 0
+        self.live_iq_request_started = 0.0
+        self.live_iq_transport_ready = False
+        self.live_iq_capture_retries = 0
+        self.live_iq_max_retries = 3
+        self.live_iq_fast_mode = False
+        self.live_iq_pipeline_target = 1
+        self.live_iq_commands_outstanding = 0
+        self.live_iq_refill_pending = False
+        self.live_iq_last_transport_progress = 0.0
+        self.live_iq_watchdog_generation = 0
+        self.live_iq_recoveries = 0
+        self.live_iq_transport_losses = 0
+        self.live_iq_processing_generation = 0
+        self.live_iq_processing_queue: queue.Queue[
+            tuple[str, object, int | None]] = queue.Queue(maxsize=4)
+        self.live_iq_processing_drops = 0
+        self.live_video_width = 160
+        self.live_video_height = 120
+        self.live_video_pixels = bytearray(
+            self.live_video_width * self.live_video_height)
+        self.live_video_rgb_pixels = bytearray(
+            self.live_video_width * self.live_video_height * 3)
+        self.live_video_row = 0
+        self.live_video_rows_seen: set[int] = set()
+        self.live_video_standard_scores = {"PAL": 0.0, "NTSC": 0.0}
+        self.live_video_rejected_blocks = 0
+        self.live_video_black: float | None = None
+        self.live_video_white: float | None = None
+        self.live_video_display_offset = 0
+        self.live_video_vertical_pending: int | None = None
+        self.live_video_vertical_pending_hits = 0
+        self.live_video_vertical_anchor_us: float | None = None
+        self.live_video_vertical_last_event_us: float | None = None
+        self.live_video_vertical_lock_events = 0
+        self.live_video_vertical_candidate_us: float | None = None
+        self.live_video_vertical_candidate_hits = 0
+        self.live_video_vertical_candidate_standard: str | None = None
+        self.live_video_field_period_us = VIDEO_FIELD_PERIOD_US["NTSC"]
+        self.live_video_vertical_standard: str | None = None
+        self.live_video_requested_standard = "Auto"
+        self.live_video_requested_sample_rate = 80.0
+        self.live_video_color_oscillators: dict[
+            tuple[str, float, int], tuple[list[float], list[float]]] = {}
+        self.live_video_color_locked_lines = 0
+        self.live_video_monochrome_lines = 0
+        self.live_video_color_burst_level = 0.0
+        self.live_video_color_burst_coherence = 0.0
+        self.live_video_color_line_counter = 0
+        self.live_video_color_bias = {"PAL": 0j, "NTSC": 0j}
+        self.live_video_color_bias_samples = {"PAL": 0, "NTSC": 0}
+        self.live_video_color_valid_rows: set[int] = set()
+        self.live_video_render_pending = False
+        self.live_video_pending_frame: tuple[
+            bytes, str, float, float, str] | None = None
+        self.live_video_pending_status: str | None = None
+        self.device_phase8_supported = False
+        self.live_transport_name = "raw-IQ32"
         self.first_test_active = False
         self.first_test_fine_sent = False
         self.first_test_center = 5805
@@ -177,7 +330,8 @@ class C5VRXApp(tk.Tk):
         ttk.Label(
             root,
             text=(f"Firmware: {self.firmware_profile['display_name']}  •  "
-                  f"AV: {self.firmware_profile['av_pin_summary']}"),
+                  f"AV: {self.firmware_profile['av_pin_summary']}  •  "
+                  f"GUI: {APP_BUILD}"),
             foreground="#2457a6",
         ).pack(anchor="w", pady=(4, 0))
 
@@ -208,6 +362,7 @@ class C5VRXApp(tk.Tk):
         self.log = tk.Text(root, height=12, wrap="word", state="disabled", font=("Consolas", 9))
         self.log.pack(fill="both", expand=False, pady=(10, 0))
         self.sink = TextSink(self.log)
+        self.after(33, self._poll_live_iq_frame)
 
         export_row = ttk.Frame(root)
         export_row.pack(fill="x", pady=(8, 0))
@@ -253,7 +408,7 @@ class C5VRXApp(tk.Tk):
         band_combo.bind("<<ComboboxSelected>>", lambda _e: self.update_channel_label())
 
         ttk.Label(row, text="Channel").pack(side="left")
-        self.channel_var = tk.StringVar(value="4")
+        self.channel_var = tk.StringVar(value="1")
         channel_combo = ttk.Combobox(row, textvariable=self.channel_var, state="readonly", values=[str(i) for i in range(1, 9)], width=6)
         channel_combo.pack(side="left", padx=(6, 16))
         channel_combo.bind("<<ComboboxSelected>>", lambda _e: self.update_channel_label())
@@ -309,22 +464,26 @@ class C5VRXApp(tk.Tk):
         ttk.Label(
             tab,
             text=(
-                "Displays framed 160×120 GRAY8 video reduced on the C5 from the CVBS sample stream. "
-                "Finite IQ waveform preview remains available as a diagnostic fallback."
+                "Displays a 160×120 PAL/NTSC video-proof raster with burst-locked "
+                "color and an automatic monochrome fallback. The old blue WBFM "
+                "diagnostic graph is disabled in this build."
             ),
             wraplength=760,
         ).pack(anchor="w", pady=(4, 10))
 
         self.preview_canvas = tk.Canvas(tab, height=280, background="black", highlightthickness=1)
         self.preview_canvas.pack(fill="both", expand=True)
-        self.preview_canvas.bind("<Configure>", lambda _e: self.render_iq_preview())
+        self.preview_canvas.bind("<Configure>", self._redraw_preview)
 
-        self.preview_status_var = tk.StringVar(value="No IQ capture yet")
+        self.preview_status_var = tk.StringVar(
+            value=f"{APP_BUILD}: waiting for video-proof capture")
         ttk.Label(tab, textvariable=self.preview_status_var).pack(anchor="w", pady=(8, 0))
 
         preview_controls = ttk.Frame(tab)
         preview_controls.pack(fill="x", pady=(8, 0))
-        ttk.Button(preview_controls, text="Capture 16K IQ", command=self.capture_iq_16k).pack(side="left")
+        self.capture_16k_btn = ttk.Button(
+            preview_controls, text="Capture 16K IQ", command=self.capture_iq_16k)
+        self.capture_16k_btn.pack(side="left")
         ttk.Button(preview_controls, text="Start live preview", command=self.start_usb_preview).pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Stop live preview", command=lambda: self.send_command("USB PREVIEW STOP")).pack(side="left")
         ttk.Button(
@@ -333,6 +492,51 @@ class C5VRXApp(tk.Tk):
             command=lambda: self.send_command("CVBS LOCK PROBE 5000"),
         ).pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Clear", command=self.clear_preview).pack(side="left", padx=8)
+
+        iq_live_controls = ttk.Frame(tab)
+        iq_live_controls.pack(fill="x", pady=(8, 0))
+        self.live_iq_start_btn = ttk.Button(
+            iq_live_controls,
+            text="ULTRA-SLOW VIDEO PROOF (A1)",
+            command=self.start_live_iq_video,
+        )
+        self.live_iq_start_btn.pack(side="left")
+        self.live_iq_fast_start_btn = ttk.Button(
+            iq_live_controls,
+            text="FAST VIDEO PROOF (A1)",
+            command=self.start_fast_live_iq_video,
+        )
+        self.live_iq_fast_start_btn.pack(side="left", padx=(8, 0))
+        self.live_iq_stop_btn = ttk.Button(
+            iq_live_controls,
+            text="STOP IQ VIDEO",
+            command=self.stop_live_iq_video,
+            state="disabled",
+        )
+        self.live_iq_stop_btn.pack(side="left", padx=8)
+        ttk.Label(iq_live_controls, text="Raster clock").pack(side="left", padx=(8, 3))
+        self.video_sample_rate_var = tk.StringVar(value="80")
+        ttk.Combobox(
+            iq_live_controls,
+            textvariable=self.video_sample_rate_var,
+            state="readonly",
+            values=["20", "40", "80"],
+            width=5,
+        ).pack(side="left")
+        ttk.Label(iq_live_controls, text="Standard").pack(
+            side="left", padx=(8, 3))
+        self.video_standard_var = tk.StringVar(value="Auto")
+        ttk.Combobox(
+            iq_live_controls,
+            textvariable=self.video_standard_var,
+            state="readonly",
+            values=["Auto", "PAL", "NTSC"],
+            width=6,
+        ).pack(side="left")
+        ttk.Label(
+            iq_live_controls,
+            text="MS/s; rejects unlocked noise and slowly fills a detected video raster.",
+        ).pack(side="left", padx=8)
 
     def refresh_ports(self) -> None:
         selected_device = self.selected_port()
@@ -381,8 +585,28 @@ class C5VRXApp(tk.Tk):
 
         self.disconnect_serial()
         self.profile_mismatch_warned = False
+        # Capabilities belong to the newly connected firmware.  Do not carry
+        # Phase8 support over when the user reconnects an older build.
+        self.device_phase8_supported = False
+        candidate: serial.Serial | None = None
         try:
-            self.ser = serial.Serial(port, 115200, timeout=0.15, write_timeout=1)
+            # Configure native USB-Serial/JTAG control lines before opening.
+            # serial.Serial(port, ...) opens first with the pyserial defaults;
+            # on ESP32-C5 that DTR/RTS transition can reset the device and make
+            # the just-opened Windows handle stale before the first PING.
+            candidate = serial.Serial()
+            candidate.port = port
+            candidate.baudrate = 115200
+            # A finite capture ends with much less than a 4 KiB read.  The old
+            # 150 ms timeout therefore became a 150 ms dead period whenever a
+            # single lost marker drained the command queue.  Fast proof needs
+            # a short tail timeout and immediate draining of available bytes.
+            candidate.timeout = 0.01
+            candidate.write_timeout = 1
+            candidate.dtr = False
+            candidate.rts = False
+            candidate.open()
+            self.ser = candidate
             self.serial_stop.clear()
             self.serial_thread = threading.Thread(target=self._serial_reader, daemon=True)
             self.serial_thread.start()
@@ -393,6 +617,11 @@ class C5VRXApp(tk.Tk):
             self.after(450, lambda: self.send_command("STATUS"))
             return True
         except Exception as exc:
+            if candidate is not None:
+                try:
+                    candidate.close()
+                except Exception:
+                    pass
             self.ser = None
             self.connection_var.set("Disconnected")
             self.connect_btn.configure(text="Connect")
@@ -402,6 +631,7 @@ class C5VRXApp(tk.Tk):
 
     def disconnect_serial(self) -> None:
         self.serial_stop.set()
+        self.live_iq_active = False
         self.preview_sequence = None
         ser = self.ser
         self.ser = None
@@ -420,9 +650,16 @@ class C5VRXApp(tk.Tk):
         decoder = StreamDecoder()
         try:
             while not self.serial_stop.is_set() and ser.is_open:
-                raw = ser.read(4096)
+                waiting = min(65536, ser.in_waiting)
+                raw = ser.read(waiting if waiting else 1)
                 if not raw:
                     continue
+                # Coalesce bytes that arrived with the first byte.  This keeps
+                # durable session recording efficient without waiting for an
+                # arbitrary fixed-size read to fill.
+                waiting = min(65536 - len(raw), ser.in_waiting)
+                if waiting:
+                    raw += ser.read(waiting)
                 self.session.record_raw(raw)
                 for kind, value in decoder.feed(raw):
                     if kind == "line":
@@ -438,6 +675,10 @@ class C5VRXApp(tk.Tk):
                         self.session.record_error("USB_PROTOCOL", str(value))
                         self.sink.write(
                             f"C5VRX_PREVIEW_RESYNC reason={value}\n")
+                        if (self.live_iq_active and
+                                str(value).startswith("PAYLOAD_CRC")):
+                            self.live_iq_transport_losses += 1
+                            self._note_live_iq_transport_progress()
         except Exception as exc:
             if not self.serial_stop.is_set():
                 self.session.record_error("SERIAL_READER", str(exc))
@@ -448,6 +689,36 @@ class C5VRXApp(tk.Tk):
         self.disconnect_serial()
 
     def _parse_device_line(self, line: str) -> None:
+        if (self.live_iq_active and line.startswith((
+                "C5VRX_CAPTURE_KERNEL",
+                "C5VRX_IQ_BINARY_BEGIN",
+                "C5VRX_IQ_BINARY_END",
+                "C5VRX_PHASE8_CAPTURE_BEGIN",
+                "C5VRX_PHASE8_BINARY_BEGIN",
+                "C5VRX_PHASE8_BINARY_END",
+                "C5VRX_CAPTURE_DONE",
+                "C5VRX_PHASE8_CAPTURE_DONE"))):
+            self._note_live_iq_transport_progress()
+        if line.startswith(("C5VRX_READY", "C5VRX_STATUS")):
+            fields = self._fields(line)
+            self.device_phase8_supported = \
+                fields.get("phase8_capture") == "1"
+        if (line.startswith("C5VRX_USB_PREVIEW state=START") and
+                self.live_iq_active):
+            fields = self._fields(line)
+            if fields.get("code") == "0":
+                if not self.live_iq_transport_ready:
+                    self.live_iq_transport_ready = True
+                    self.live_video_pending_status = (
+                        "Binary IQ transport ready; requesting fresh A1 capture")
+                    # This parser already runs on the serial thread. Queue the
+                    # first captures directly so a busy Tk renderer cannot
+                    # hold the transport idle.
+                    self._refill_live_iq_pipeline()
+            else:
+                self.after(0, self.stop_live_iq_video,
+                           f"binary transport failed ({line})")
+            return
         if (self.first_test_active and not self.first_test_fine_sent
                 and line.startswith("C5VRX_PRODUCER_CADENCE mode=0 ")):
             fields = self._fields(line)
@@ -471,6 +742,55 @@ class C5VRXApp(tk.Tk):
             self.iq_capture_active = True
             self.after(0, self.preview_status_var.set, "Receiving IQ samples over USB-C...")
             return
+        if line.startswith("C5VRX_CAPTURE_KERNEL"):
+            fields = self._fields(line)
+            try:
+                if fields.get("done") == "1":
+                    self.live_iq_source_msps = float(fields["finite_fill_msps"])
+            except (KeyError, ValueError):
+                pass
+        if line.startswith(("C5VRX_CAPTURE_DONE",
+                            "C5VRX_PHASE8_CAPTURE_DONE")) and \
+                self.live_iq_active:
+            self.live_iq_capture_done = "code=0" in line
+            fast_phase8_credit_pump = (
+                self.live_iq_fast_mode and self.device_phase8_supported)
+            if not fast_phase8_credit_pump or not self.live_iq_capture_done:
+                self.live_iq_commands_outstanding = max(
+                    0, self.live_iq_commands_outstanding - 1)
+            self.live_iq_packet_done = False
+            if not self.live_iq_capture_done:
+                fields = self._fields(line)
+                if (fields.get("code") == "263" and
+                        self.live_iq_capture_retries < self.live_iq_max_retries):
+                    self.live_iq_capture_retries += 1
+                    retry = self.live_iq_capture_retries
+                    self.after(
+                        0, self.preview_status_var.set,
+                        f"RF capture timeout; retry {retry}/{self.live_iq_max_retries}")
+                    self._schedule_live_iq_refill(100)
+                else:
+                    self.after(0, self.stop_live_iq_video,
+                               f"device capture failed after {self.live_iq_capture_retries} retries")
+            else:
+                self.live_iq_capture_retries = 0
+                # A completion line is emitted only after every binary chunk
+                # has been handed to USB.  Refill here instead of on the first
+                # chunk so commands cannot accumulate behind an active dump.
+                if fast_phase8_credit_pump:
+                    # Fast Phase8 refills when a new capture ID is observed,
+                    # not here. Completion lines can be lost during a protocol
+                    # resync; using them as credits permanently drained the
+                    # real firmware queue while the host still believed it was
+                    # full.
+                    pass
+                elif self.live_iq_fast_mode:
+                    # _parse_device_line runs on the serial-reader thread.
+                    # Refill directly; routing this through Tk added about
+                    # 230 ms of idle time whenever PhotoImage was rendering.
+                    self._refill_live_iq_pipeline()
+                else:
+                    self._schedule_live_iq_refill(250)
         if line.startswith("IQ:") and self.iq_capture_active:
             try:
                 self.iq_words.append(int(line[3:], 16))
@@ -496,6 +816,12 @@ class C5VRXApp(tk.Tk):
         return fields
 
     def _handle_usb_packet(self, packet: Packet) -> None:
+        if packet.packet_type in {PACKET_IQ_U32_BLOCK, PACKET_IQ_U32_CHUNK}:
+            self._handle_iq_usb_packet(packet)
+            return
+        if packet.packet_type == PACKET_PHASE8_CHUNK:
+            self._handle_phase8_usb_packet(packet)
+            return
         if self.preview_sequence is not None and packet.sequence != (
                 self.preview_sequence + 1) & 0xFFFFFFFF:
             self.sink.write(
@@ -542,6 +868,121 @@ class C5VRXApp(tk.Tk):
         self.after(0, self._show_gray_frame, pixels, width, height)
         if not (flags & 1):
             self.sink.write("C5VRX_PREVIEW_WARNING reason=SYNC_UNLOCKED\n")
+
+    def _handle_iq_usb_packet(self, packet: Packet) -> None:
+        self.live_iq_usb_bytes += 32 + len(packet.payload) + 4
+        self._note_live_iq_transport_progress()
+        if packet.packet_type == PACKET_IQ_U32_BLOCK:
+            try:
+                words = decode_iq_block(packet)
+            except ValueError as exc:
+                self.sink.write(f"C5VRX_IQ_PACKET_DROP reason={exc}\n")
+                return
+            self._finish_iq_usb_block(words, packet.timestamp_us)
+            return
+
+        try:
+            chunk = decode_iq_chunk(packet)
+        except ValueError as exc:
+            self.sink.write(f"C5VRX_IQ_CHUNK_DROP reason={exc}\n")
+            return
+        if self.live_iq_capture_id != chunk.capture_id:
+            self.live_iq_capture_id = chunk.capture_id
+            self.live_iq_capture_timestamp_us = packet.timestamp_us
+            self.live_iq_total_words = chunk.total_words
+            self.live_iq_chunks = {}
+        if chunk.total_words != self.live_iq_total_words:
+            self.sink.write("C5VRX_IQ_CHUNK_DROP reason=MIXED_TOTAL\n")
+            return
+        existing = self.live_iq_chunks.get(chunk.offset_words)
+        if existing is not None and existing != chunk.words:
+            self.sink.write("C5VRX_IQ_CHUNK_DROP reason=CONFLICTING_DUPLICATE\n")
+            return
+        self.live_iq_chunks[chunk.offset_words] = chunk.words
+
+        if sum(len(words) for words in self.live_iq_chunks.values()) != chunk.total_words:
+            return
+        assembled: list[int] = []
+        expected_offset = 0
+        for offset in sorted(self.live_iq_chunks):
+            if offset != expected_offset:
+                return
+            words = self.live_iq_chunks[offset]
+            assembled.extend(words)
+            expected_offset += len(words)
+        if expected_offset == chunk.total_words:
+            self._finish_iq_usb_block(
+                assembled, self.live_iq_capture_timestamp_us)
+
+    def _handle_phase8_usb_packet(self, packet: Packet) -> None:
+        self.live_iq_usb_bytes += 32 + len(packet.payload) + 4
+        self._note_live_iq_transport_progress()
+        try:
+            chunk = decode_phase8_chunk(packet)
+        except ValueError as exc:
+            self.sink.write(f"C5VRX_PHASE8_CHUNK_DROP reason={exc}\n")
+            return
+        if self.live_iq_capture_id != chunk.capture_id:
+            self.live_iq_capture_id = chunk.capture_id
+            self.live_iq_capture_timestamp_us = packet.timestamp_us
+            self.live_iq_total_words = chunk.total_samples
+            self.live_phase8_chunks = {}
+            if self.live_iq_active and self.live_iq_fast_mode:
+                # The first valid packet from a capture proves that firmware
+                # consumed one command. Replace that credit immediately. This
+                # is resilient to a lost CAPTURE_DONE line and behaves like a
+                # bounded version of repeatedly clicking Capture 16K.
+                self.live_iq_commands_outstanding = max(
+                    0, self.live_iq_commands_outstanding - 1)
+                self._refill_live_iq_pipeline()
+        if chunk.total_samples != self.live_iq_total_words:
+            self.sink.write("C5VRX_PHASE8_CHUNK_DROP reason=MIXED_TOTAL\n")
+            return
+        existing = self.live_phase8_chunks.get(chunk.offset_samples)
+        if existing is not None and existing != chunk.phases:
+            self.sink.write(
+                "C5VRX_PHASE8_CHUNK_DROP reason=CONFLICTING_DUPLICATE\n")
+            return
+        self.live_phase8_chunks[chunk.offset_samples] = chunk.phases
+        if sum(len(data) for data in self.live_phase8_chunks.values()) != \
+                chunk.total_samples:
+            return
+        assembled = bytearray()
+        expected_offset = 0
+        for offset in sorted(self.live_phase8_chunks):
+            if offset != expected_offset:
+                return
+            data = self.live_phase8_chunks[offset]
+            assembled.extend(data)
+            expected_offset += len(data)
+        if expected_offset == chunk.total_samples:
+            self._finish_phase8_usb_block(
+                bytes(assembled), self.live_iq_capture_timestamp_us)
+
+    def _finish_iq_usb_block(
+            self, words: list[int], timestamp_us: int | None = None) -> None:
+        self.iq_words = words
+        self.iq_capture_active = False
+        self.live_iq_packet_done = True
+        if self.live_iq_active:
+            self.live_iq_blocks += 1
+            self._enqueue_live_iq_processing("raw", words, timestamp_us)
+        else:
+            self.after(0, self.preview_status_var.set,
+                       f"Captured {len(words)} CRC-valid IQ words")
+            self.after(0, self.render_iq_preview)
+
+    def _finish_phase8_usb_block(
+            self, phases: bytes, timestamp_us: int | None = None) -> None:
+        self.iq_capture_active = False
+        self.live_iq_packet_done = True
+        if self.live_iq_active:
+            self.live_iq_blocks += 1
+            self._enqueue_live_iq_processing("phase8", phases, timestamp_us)
+        else:
+            self.after(
+                0, self.preview_status_var.set,
+                f"Captured {len(phases)} CRC-valid phase8 samples")
 
     def _apply_status_line(self, line: str) -> None:
         fields = self._fields(line)
@@ -620,6 +1061,1114 @@ class C5VRXApp(tk.Tk):
         self.send_command("USB PREVIEW START")
         self.after(100, lambda: self.send_command("LIVE START"))
 
+    def start_live_iq_video(self) -> None:
+        self._start_live_iq_video(fast=False)
+
+    def start_fast_live_iq_video(self) -> None:
+        self._start_live_iq_video(fast=True)
+
+    def _start_live_iq_video(self, fast: bool) -> None:
+        if not self.ser or not self.ser.is_open:
+            messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
+            return
+        self.live_iq_active = True
+        self.live_iq_fast_mode = fast
+        # Fast Phase8 keeps four command credits in the firmware input queue.
+        # This matches sustained manual Capture 16K clicking while remaining
+        # strictly bounded, and it tolerates isolated protocol resync losses.
+        self.live_iq_pipeline_target = 4 if fast else 1
+        self.live_iq_commands_outstanding = 0
+        self.live_iq_refill_pending = False
+        self.live_iq_last_transport_progress = time.monotonic()
+        self.live_iq_watchdog_generation += 1
+        self.live_iq_recoveries = 0
+        self.live_iq_transport_losses = 0
+        self.live_iq_processing_generation += 1
+        self.live_iq_processing_queue = queue.Queue(maxsize=4)
+        self.live_iq_processing_drops = 0
+        self.live_iq_capture_done = False
+        self.live_iq_packet_done = False
+        self.live_iq_capture_id = None
+        self.live_iq_capture_timestamp_us = None
+        self.live_iq_chunks = {}
+        self.live_phase8_chunks = {}
+        self.live_iq_source_msps = None
+        self.live_iq_transport_ready = False
+        self.live_iq_capture_retries = 0
+        self.live_iq_usb_started = time.monotonic()
+        self.live_iq_usb_bytes = 0
+        self.live_iq_blocks = 0
+        self.live_video_host_frames = 0
+        self.live_video_pixels[:] = bytes(len(self.live_video_pixels))
+        self.live_video_rgb_pixels[:] = bytes(len(self.live_video_rgb_pixels))
+        self.live_video_row = 0
+        self.live_video_rows_seen.clear()
+        self.live_video_standard_scores = {"PAL": 0.0, "NTSC": 0.0}
+        self.live_video_rejected_blocks = 0
+        self.live_video_black = None
+        self.live_video_white = None
+        self.live_video_color_locked_lines = 0
+        self.live_video_monochrome_lines = 0
+        self.live_video_color_burst_level = 0.0
+        self.live_video_color_burst_coherence = 0.0
+        self.live_video_color_line_counter = 0
+        self.live_video_color_bias = {"PAL": 0j, "NTSC": 0j}
+        self.live_video_color_bias_samples = {"PAL": 0, "NTSC": 0}
+        self.live_video_color_valid_rows.clear()
+        self.live_video_display_offset = 0
+        self.live_video_vertical_pending = None
+        self.live_video_vertical_pending_hits = 0
+        self.live_video_requested_standard = self.video_standard_var.get()
+        self.live_video_requested_sample_rate = float(
+            self.video_sample_rate_var.get())
+        self.live_video_vertical_anchor_us = None
+        self.live_video_vertical_last_event_us = None
+        self.live_video_vertical_lock_events = 0
+        self.live_video_vertical_candidate_us = None
+        self.live_video_vertical_candidate_hits = 0
+        self.live_video_vertical_candidate_standard = None
+        initial_standard = (
+            self.live_video_requested_standard
+            if self.live_video_requested_standard != "Auto" else "NTSC")
+        self.live_video_field_period_us = VIDEO_FIELD_PERIOD_US[initial_standard]
+        self.live_video_vertical_standard = None
+        self.live_video_render_pending = False
+        self.live_video_pending_frame = None
+        self.live_video_pending_status = None
+        self.live_iq_start_btn.configure(state="disabled")
+        self.live_iq_fast_start_btn.configure(state="disabled")
+        self.live_iq_stop_btn.configure(state="normal")
+        self.capture_btn.configure(state="disabled")
+        self.capture_16k_btn.configure(state="disabled")
+        processing_generation = self.live_iq_processing_generation
+        processing_queue = self.live_iq_processing_queue
+        threading.Thread(
+            target=self._live_iq_processing_worker,
+            args=(processing_generation, processing_queue),
+            daemon=True,
+        ).start()
+        # Replace any previous diagnostic drawing immediately. This also gives
+        # an unmistakable visual indication that the video-only GUI build is
+        # running before the first RF block arrives.
+        self._show_gray_frame(
+            bytes(self.live_video_pixels),
+            self.live_video_width,
+            self.live_video_height,
+        )
+        self.preview_status_var.set(
+            f"{APP_BUILD}: starting {'FAST pipelined' if fast else 'single-request'} "
+            "A1 IQ -> PAL/NTSC raster; VTX must be A1 (5865 MHz)")
+        self.send_command("BW 40")
+        self.after(100, lambda: self.send_command("SET A 1"))
+        self.after(220, lambda: self.send_command("USB PREVIEW START"))
+        watchdog_generation = self.live_iq_watchdog_generation
+        self.after(500, self._live_iq_watchdog, watchdog_generation)
+
+    def stop_live_iq_video(self, reason: str = "user") -> None:
+        was_active = self.live_iq_active
+        self.live_iq_active = False
+        self.live_iq_watchdog_generation += 1
+        self.live_iq_processing_generation += 1
+        self.live_iq_transport_ready = False
+        self.live_iq_commands_outstanding = 0
+        self.live_iq_refill_pending = False
+        self.live_video_pending_frame = None
+        if hasattr(self, "live_iq_start_btn"):
+            self.live_iq_start_btn.configure(state="normal")
+            self.live_iq_fast_start_btn.configure(state="normal")
+            self.live_iq_stop_btn.configure(state="disabled")
+            self.capture_btn.configure(state="normal")
+            self.capture_16k_btn.configure(state="normal")
+        if was_active and self.ser and self.ser.is_open:
+            self.send_command("USB PREVIEW STOP")
+        self.preview_status_var.set(f"IQ video stopped: {reason}")
+
+    def _request_live_iq_capture(self) -> None:
+        if not self.live_iq_active or not self.live_iq_transport_ready:
+            return
+        self.live_iq_request_started = time.monotonic()
+        if self.device_phase8_supported:
+            self.live_transport_name = "phase8"
+            self.send_command("CAPTURE PHASE8 16384")
+        else:
+            self.live_transport_name = "raw-IQ32 fallback"
+            self.send_command("CAPTURE 16384")
+        self.live_iq_commands_outstanding += 1
+
+    def _schedule_live_iq_refill(self, delay_ms: int = 0) -> None:
+        if self.live_iq_refill_pending or not self.live_iq_active:
+            return
+        self.live_iq_refill_pending = True
+        self.after(delay_ms, self._refill_live_iq_pipeline)
+
+    def _refill_live_iq_pipeline(self) -> None:
+        self.live_iq_refill_pending = False
+        if not self.live_iq_active or not self.live_iq_transport_ready:
+            return
+        # Keep the raw-IQ fallback strictly single-request because each block
+        # is four times larger than Phase8.
+        target = self.live_iq_pipeline_target
+        if not self.device_phase8_supported:
+            target = 1
+        while self.live_iq_commands_outstanding < target:
+            self._request_live_iq_capture()
+
+    def _note_live_iq_transport_progress(self) -> None:
+        if self.live_iq_active:
+            self.live_iq_last_transport_progress = time.monotonic()
+
+    def _enqueue_live_iq_processing(self, kind: str, payload: object,
+                                    timestamp_us: int | None) -> None:
+        """Keep serial draining while signal processing runs independently."""
+        item = (kind, payload, timestamp_us)
+        try:
+            self.live_iq_processing_queue.put_nowait(item)
+            return
+        except queue.Full:
+            pass
+
+        # Video proof is a live diagnostic view. Prefer the newest capture to
+        # blocking the USB reader behind stale rasters and losing wire bytes.
+        try:
+            self.live_iq_processing_queue.get_nowait()
+            self.live_iq_processing_queue.task_done()
+        except queue.Empty:
+            pass
+        self.live_iq_processing_drops += 1
+        try:
+            self.live_iq_processing_queue.put_nowait(item)
+        except queue.Full:
+            self.live_iq_processing_drops += 1
+
+    def _live_iq_processing_worker(
+            self, generation: int,
+            processing_queue: queue.Queue[
+                tuple[str, object, int | None]]) -> None:
+        while (self.live_iq_active and
+               generation == self.live_iq_processing_generation):
+            try:
+                kind, payload, timestamp_us = \
+                    processing_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            try:
+                if (not self.live_iq_active or
+                        generation != self.live_iq_processing_generation):
+                    continue
+                if kind == "phase8":
+                    assert isinstance(payload, bytes)
+                    self._process_live_phase8_block(payload, timestamp_us)
+                else:
+                    assert isinstance(payload, list)
+                    self._process_live_iq_block(payload, timestamp_us)
+            except Exception as exc:
+                self.sink.write(
+                    "C5VRX_HOST_VIDEO_PROCESSING_ERROR "
+                    f"type={type(exc).__name__} detail={exc}\n")
+            finally:
+                processing_queue.task_done()
+
+    def _live_iq_watchdog(self, generation: int) -> None:
+        if (generation != self.live_iq_watchdog_generation or
+                not self.live_iq_active):
+            return
+        if self.live_iq_transport_ready:
+            idle_s = time.monotonic() - self.live_iq_last_transport_progress
+            if idle_s >= 1.25:
+                self.live_iq_recoveries += 1
+                self.live_iq_commands_outstanding = 0
+                self.live_iq_capture_done = False
+                self.live_iq_packet_done = False
+                self.live_iq_capture_id = None
+                self.live_iq_chunks = {}
+                self.live_phase8_chunks = {}
+                self.live_iq_last_transport_progress = time.monotonic()
+                self.sink.write(
+                    "C5VRX_HOST_VIDEO_RECOVERY "
+                    f"count={self.live_iq_recoveries} idle_ms={idle_s * 1000:.0f} "
+                    f"pipeline_target={self.live_iq_pipeline_target} "
+                    "reason=GHOSTED_CAPTURE_SLOTS\n")
+                self.preview_status_var.set(
+                    f"Recovering continuous video pipeline after {idle_s:.2f} s "
+                    "without capture progress")
+                self._refill_live_iq_pipeline()
+        self.after(500, self._live_iq_watchdog, generation)
+
+    @staticmethod
+    def _fm_discriminator(words: list[int]) -> list[float]:
+        if len(words) < 2:
+            return []
+        decoded = [C5VRXApp._decode_iq(raw) for raw in words]
+        # The recovered dump has a sizeable, block-dependent I/Q DC offset.
+        # Removing it before phase differencing prevents the carrier circle
+        # from orbiting an artificial origin and makes CVBS sync plateaus much
+        # easier to detect.
+        mean_i = statistics.fmean(value[0] for value in decoded)
+        mean_q = statistics.fmean(value[1] for value in decoded)
+        values: list[float] = []
+        pi = decoded[0][0] - mean_i
+        pq = decoded[0][1] - mean_q
+        for raw_i, raw_q in decoded[1:]:
+            ci = raw_i - mean_i
+            cq = raw_q - mean_q
+            values.append(math.atan2(cq * pi - ci * pq,
+                                     ci * pi + cq * pq))
+            pi, pq = ci, cq
+        return values
+
+    @staticmethod
+    def _phase8_discriminator(phases: bytes) -> list[float]:
+        """Convert wrapped unsigned phase bytes into normalized FM deltas."""
+        if len(phases) < 2:
+            return []
+        radians_per_code = 2.0 * math.pi / 256.0
+        previous = phases[0]
+        values: list[float] = []
+        for current in phases[1:]:
+            signed_delta = ((current - previous + 128) & 0xFF) - 128
+            values.append(signed_delta * radians_per_code)
+            previous = current
+        return values
+
+    @staticmethod
+    def _sync_fold_candidates(
+            binned: list[float], period_bins: int,
+            limit: int = 6) -> list[tuple[int, float, int]]:
+        """Return distinct sync-window candidates by normalized contrast.
+
+        A polarity of +1 means the detected sync plateau is already below the
+        blanking baseline. -1 means the RF tap is spectrally inverted and the
+        discriminator must be inverted before extracting luma.
+        """
+        if period_bins < 8 or len(binned) < period_bins * 2:
+            return [(0, 0.0, 1)]
+        sums = [0.0] * period_bins
+        counts = [0] * period_bins
+        for index, value in enumerate(binned):
+            phase = index % period_bins
+            sums[phase] += value
+            counts[phase] += 1
+        folded = [
+            sums[index] / counts[index] if counts[index] else 0.0
+            for index in range(period_bins)
+        ]
+        sync_bins = max(2, int(round(period_bins * 0.073)))
+        circular = folded + folded[:sync_bins]
+        window_sum = sum(circular[:sync_bins])
+        window_means = [window_sum / sync_bins]
+        for phase in range(1, period_bins):
+            window_sum += (
+                circular[phase + sync_bins - 1] - circular[phase - 1])
+            window_means.append(window_sum / sync_bins)
+        baseline = statistics.fmean(binned)
+        noise = max(1e-9, statistics.pstdev(binned))
+        ranked: list[tuple[int, float, int]] = []
+        for phase, mean in enumerate(window_means):
+            low_contrast = baseline - mean
+            high_contrast = mean - baseline
+            if low_contrast >= high_contrast:
+                ranked.append((phase, low_contrast / noise, 1))
+            else:
+                ranked.append((phase, high_contrast / noise, -1))
+        ranked.sort(key=lambda item: item[1], reverse=True)
+
+        # A single real sync plateau produces many adjacent high-scoring
+        # windows. Keep separated alternatives so burst validation can compare
+        # genuine H-sync against repeated vertical picture edges.
+        selected: list[tuple[int, float, int]] = []
+        for candidate in ranked:
+            phase = candidate[0]
+            if any(min(abs(phase - old[0]),
+                       period_bins - abs(phase - old[0])) < sync_bins
+                   for old in selected):
+                continue
+            selected.append(candidate)
+            if len(selected) >= limit:
+                break
+        return selected or [(0, 0.0, 1)]
+
+    @staticmethod
+    def _sync_fold_candidate(
+            binned: list[float], period_bins: int) -> tuple[int, float, int]:
+        """Return the strongest folded candidate for compatibility/tests."""
+        return C5VRXApp._sync_fold_candidates(binned, period_bins, 1)[0]
+
+    def _color_standard_coherence(
+            self, fm: list[float], standard: str, raster_msps: float,
+            period: float, sync_sample: int) -> float:
+        """Score PAL/NTSC using energy coherent with that standard's burst."""
+        cos_values, sin_values = self._color_oscillator(
+            standard, raster_msps, period)
+        begin_fraction, end_fraction = VIDEO_COLOR_BURST_WINDOW[standard]
+        scores: list[float] = []
+        cursor = float(sync_sample)
+        while cursor - period >= 0:
+            cursor -= period
+        while cursor + period <= len(fm):
+            line_start = int(cursor)
+            phasor, rms = self._quadrature_component(
+                fm,
+                int(cursor + period * begin_fraction),
+                int(cursor + period * end_fraction),
+                line_start,
+                cos_values,
+                sin_values)
+            scores.append(abs(phasor) / max(
+                1e-9, math.sqrt(2.0) * rms))
+            cursor += period
+        return statistics.median(scores) if scores else 0.0
+
+    def _select_video_timing(
+            self, binned: list[float], raster_msps: float,
+            bin_size: int,
+            fm: list[float] | None = None) -> tuple[str, float, int, float, int]:
+        requested = self.live_video_requested_standard
+        standards = ("PAL", "NTSC") if requested == "Auto" else (requested,)
+        candidates: dict[str, tuple[float, int, float, int, float]] = {}
+        for standard in standards:
+            period = raster_msps * 1_000_000.0 / VIDEO_LINE_RATES_HZ[standard]
+            period_bins = max(8, int(round(period / bin_size)))
+            sync_options = self._sync_fold_candidates(binned, period_bins)
+            phase, score, polarity = sync_options[0]
+            color_coherence = 0.0
+            if fm is not None:
+                best_sync_score = max(1e-9, score)
+                evaluated = [
+                    (candidate_phase, candidate_score, candidate_polarity,
+                     self._color_standard_coherence(
+                         fm, standard, raster_msps, period,
+                         candidate_phase * bin_size))
+                    for (candidate_phase, candidate_score,
+                         candidate_polarity) in sync_options
+                    if candidate_score >= 0.45
+                ]
+                if evaluated:
+                    strongest_burst = max(item[3] for item in evaluated)
+                    if strongest_burst >= 0.15:
+                        phase, score, polarity, color_coherence = max(
+                            evaluated,
+                            key=lambda item: (
+                                item[3] + 0.45 * item[1] / best_sync_score),
+                        )
+                    else:
+                        color_coherence = evaluated[0][3]
+            candidates[standard] = (
+                period, phase, score, polarity, color_coherence)
+
+        if requested == "Auto":
+            best_now = max(candidates, key=lambda name: candidates[name][2])
+            if candidates[best_now][2] >= VIDEO_SYNC_MIN_SCORE:
+                for standard in ("PAL", "NTSC"):
+                    self.live_video_standard_scores[standard] = (
+                        self.live_video_standard_scores[standard] * 0.85 +
+                        candidates[standard][2])
+            standard = max(
+                self.live_video_standard_scores,
+                key=self.live_video_standard_scores.__getitem__)
+            if not any(self.live_video_standard_scores.values()):
+                standard = best_now
+            # PAL and NTSC line rates differ by less than one percent, so a
+            # three-line finite capture cannot always separate them by H-sync
+            # alone. Their color subcarriers are far apart. A coherent burst
+            # therefore supplies a much stronger and faster standard decision.
+            color_standard = max(
+                candidates, key=lambda name: candidates[name][4])
+            other_standard = (
+                "NTSC" if color_standard == "PAL" else "PAL")
+            color_score = candidates[color_standard][4]
+            other_score = candidates[other_standard][4]
+            if color_score >= 0.15 and color_score >= other_score + 0.08:
+                standard = color_standard
+        else:
+            standard = requested
+        period, phase, score, polarity, _color_coherence = candidates[standard]
+        return standard, period, phase, score, polarity
+
+    def _color_oscillator(
+            self, standard: str, raster_msps: float,
+            period: float) -> tuple[list[float], list[float]]:
+        """Return one line of cached color-subcarrier quadrature samples."""
+        sample_count = int(math.ceil(period)) + 2
+        key = (standard, raster_msps, sample_count)
+        cached = self.live_video_color_oscillators.get(key)
+        if cached is not None:
+            return cached
+        omega = (2.0 * math.pi * VIDEO_COLOR_SUBCARRIER_HZ[standard] /
+                 (raster_msps * 1_000_000.0))
+        cos_values = [math.cos(omega * index)
+                      for index in range(sample_count)]
+        sin_values = [math.sin(omega * index)
+                      for index in range(sample_count)]
+        cached = (cos_values, sin_values)
+        self.live_video_color_oscillators[key] = cached
+        return cached
+
+    @staticmethod
+    def _quadrature_component(
+            samples: list[float], begin: int, end: int, line_start: int,
+            cos_values: list[float],
+            sin_values: list[float]) -> tuple[complex, float]:
+        """Correlate a CVBS interval with the color subcarrier.
+
+        Removing the interval mean rejects luma and sync energy before the
+        quadrature correlation. The returned complex value retains the native
+        CVBS amplitude so it can be normalized against the luma span later.
+        """
+        begin = max(line_start, begin)
+        end = min(len(samples), end, line_start + len(cos_values))
+        count = end - begin
+        if count < 4:
+            return 0j, 0.0
+        mean = statistics.fmean(samples[begin:end])
+        cosine_sum = 0.0
+        sine_sum = 0.0
+        energy = 0.0
+        for index in range(begin, end):
+            value = samples[index] - mean
+            phase_index = index - line_start
+            cosine_sum += value * cos_values[phase_index]
+            sine_sum += value * sin_values[phase_index]
+            energy += value * value
+        scale = 2.0 / count
+        # e^-jwt correlation: the negative sine term preserves the conventional
+        # positive complex phase for cos(wt + phase).
+        phasor = complex(cosine_sum * scale, -sine_sum * scale)
+        return phasor, math.sqrt(energy / count)
+
+    @staticmethod
+    def _color_rgb(
+            standard: str, y: float, relative_chroma: complex,
+            luma_span: float, line_number: int) -> tuple[int, int, int]:
+        """Convert burst-relative PAL U/V or NTSC I/Q into display RGB."""
+        y = max(0.0, min(1.0, y))
+        chroma = relative_chroma / max(1e-6, luma_span)
+        chroma *= 0.72
+
+        if standard == "PAL":
+            # PAL swings the burst +/-45 degrees around the -U axis while the
+            # V component changes sign on alternate physical lines. Restore
+            # that line's absolute U/V axes from its own burst reference.
+            swing = 1.0 if line_number % 2 == 0 else -1.0
+            burst_axis = math.radians(135.0 * swing)
+            absolute = chroma * complex(
+                math.cos(burst_axis), math.sin(burst_axis))
+            u = max(-0.75, min(0.75, -absolute.imag))
+            v = max(-0.75, min(0.75, swing * absolute.real))
+            red = y + 1.140 * v
+            green = y - 0.395 * u - 0.581 * v
+            blue = y + 2.032 * u
+        else:
+            # NTSC burst is 180 degrees from the color reference. Rotate the
+            # conventional I/Q axes by the 33 degree modulation offset.
+            iq = (-chroma) * complex(
+                math.cos(math.radians(-33.0)),
+                math.sin(math.radians(-33.0)))
+            raw_i = iq.real
+            raw_q = -iq.imag
+            # Two independent captures of the supplied SMPTE bars through the
+            # Caddx Ant show the same +97 degree chroma-axis error. This matrix
+            # is the least-squares observed-I/Q -> reference-I/Q calibration,
+            # averaged across both screenshots. It corrects hue and the unequal
+            # quadrature gains without changing luma.
+            i_value = 0.31835 * raw_i - 1.84549 * raw_q
+            q_value = 1.24641 * raw_i - 0.71014 * raw_q
+            i_value = max(-0.75, min(0.75, i_value))
+            q_value = max(-0.75, min(0.75, q_value))
+            # The third locked SMPTE capture leaves only the yellow sector a
+            # little orange: its negative-Q magnitude is low while the other
+            # five bar hues are already correct. Apply a smooth quadrant-only
+            # correction so red, green, cyan, blue and magenta do not rotate.
+            quadrant_total = abs(i_value) + abs(q_value)
+            if i_value > 0.0 and q_value < 0.0 and quadrant_total > 1e-9:
+                yellow_weight = min(
+                    1.0,
+                    4.0 * i_value * (-q_value) /
+                    (quadrant_total * quadrant_total),
+                )
+                q_value = max(-0.75, q_value * (1.0 + 0.14 * yellow_weight))
+            red = y + 0.956 * i_value + 0.621 * q_value
+            green = y - 0.272 * i_value - 0.647 * q_value
+            blue = y - 1.106 * i_value + 1.703 * q_value
+
+        return tuple(
+            max(0, min(255, int(round(channel * 255.0))))
+            for channel in (red, green, blue)
+        )
+
+    def _observe_vertical_sync(
+            self, event_time_us: float, standard: str) -> None:
+        """Discipline field placement and rate from sparse broad V-sync lines."""
+        nominal_period = VIDEO_FIELD_PERIOD_US[standard]
+        if self.live_video_vertical_standard != standard:
+            self.live_video_vertical_standard = standard
+            self.live_video_vertical_anchor_us = None
+            self.live_video_vertical_last_event_us = None
+            self.live_video_vertical_lock_events = 0
+            self.live_video_field_period_us = nominal_period
+
+        anchor = self.live_video_vertical_anchor_us
+        if anchor is None:
+            self.live_video_vertical_anchor_us = event_time_us
+            self.live_video_vertical_last_event_us = event_time_us
+            self.live_video_vertical_lock_events = 1
+            # Do not retain rows assembled using an arbitrary USB timestamp
+            # phase. Start the visible raster at the first proven field sync.
+            self.live_video_pixels[:] = bytes(len(self.live_video_pixels))
+            self.live_video_rgb_pixels[:] = bytes(
+                len(self.live_video_rgb_pixels))
+            self.live_video_rows_seen.clear()
+            self.live_video_color_valid_rows.clear()
+            self.live_video_display_offset = 0
+            return
+
+        period = self.live_video_field_period_us
+        fields_from_anchor = int(round((event_time_us - anchor) / period))
+        predicted = anchor + fields_from_anchor * period
+        phase_error = event_time_us - predicted
+        # The Caddx field clock in the measured bundle differs from nominal by
+        # only a fraction of a microsecond per field. That still accumulates
+        # into a rolling frame seam. The old narrow candidate gate eventually
+        # rejected every real V-sync and left the raster free-running. Keep a
+        # conservative gate for false picture candidates, but use accepted
+        # long-baseline phase error to discipline both phase and frequency.
+        if abs(phase_error) > VIDEO_VERTICAL_PHASE_GATE_US:
+            return
+        if fields_from_anchor:
+            period_correction = (
+                VIDEO_VERTICAL_FREQUENCY_GAIN * phase_error /
+                fields_from_anchor)
+            period_correction = max(-2.0, min(2.0, period_correction))
+            period = max(
+                nominal_period * 0.995,
+                min(nominal_period * 1.005, period + period_correction),
+            )
+            self.live_video_field_period_us = period
+        self.live_video_vertical_anchor_us = (
+            anchor + VIDEO_VERTICAL_PHASE_GAIN * phase_error)
+        self.live_video_vertical_lock_events += 1
+        self.live_video_vertical_last_event_us = event_time_us
+
+    def _observe_vertical_candidate(
+            self, event_time_us: float, standard: str,
+            direct_lock: bool) -> None:
+        """Acquire V-lock from sparse but field-coherent broad-sync evidence."""
+        nominal_period = VIDEO_FIELD_PERIOD_US[standard]
+        if direct_lock:
+            self._observe_vertical_sync(event_time_us, standard)
+            self.live_video_vertical_candidate_us = None
+            self.live_video_vertical_candidate_hits = 0
+            self.live_video_vertical_candidate_standard = None
+            return
+
+        anchor = self.live_video_vertical_anchor_us
+        if anchor is not None:
+            self._observe_vertical_sync(event_time_us, standard)
+            return
+
+        if self.live_video_vertical_candidate_standard != standard:
+            self.live_video_vertical_candidate_standard = standard
+            self.live_video_vertical_candidate_us = None
+            self.live_video_vertical_candidate_hits = 0
+
+        previous = self.live_video_vertical_candidate_us
+        coherent = False
+        calibration_period: float | None = None
+        if previous is not None and event_time_us > previous:
+            delta = event_time_us - previous
+            fields = max(1, int(round(delta / nominal_period)))
+            coherent = abs(delta - fields * nominal_period) <= 350.0
+            measured_period = delta / fields
+            if (coherent and
+                    fields >= VIDEO_VERTICAL_MIN_CALIBRATION_FIELDS and
+                    nominal_period * 0.995 <= measured_period <=
+                    nominal_period * 1.005):
+                calibration_period = measured_period
+        self.live_video_vertical_candidate_hits = (
+            self.live_video_vertical_candidate_hits + 1 if coherent else 1)
+        self.live_video_vertical_candidate_us = event_time_us
+        if self.live_video_vertical_candidate_hits >= 2:
+            self._observe_vertical_sync(event_time_us, standard)
+            # Sparse capture often gives us a much better clock measurement
+            # before it gives us a picture. When the two acquisition events
+            # span enough fields, start the raster at that measured rate rather
+            # than painting with nominal timing and slowly shearing it later.
+            if calibration_period is not None:
+                self.live_video_field_period_us = calibration_period
+            self.live_video_vertical_candidate_us = None
+            self.live_video_vertical_candidate_hits = 0
+            self.live_video_vertical_candidate_standard = None
+
+    def _process_live_iq_block(
+            self, words: list[int], timestamp_us: int | None = None) -> None:
+        clipped_words = sum(
+            1 for word in words
+            if any(abs(value) >= 511 for value in self._decode_iq(word))
+        )
+        clipped_percent = 100.0 * clipped_words / max(1, len(words))
+        fm = self._fm_discriminator(words)
+        self._process_live_fm_block(
+            fm, timestamp_us, f"{clipped_percent:.1f}%")
+
+    def _process_live_phase8_block(
+            self, phases: bytes, timestamp_us: int | None = None) -> None:
+        fm = self._phase8_discriminator(phases)
+        self._process_live_fm_block(fm, timestamp_us, "n/a (Phase8)")
+
+    def _process_live_fm_block(
+            self, fm: list[float], timestamp_us: int | None,
+            clipped_text: str) -> None:
+        if len(fm) < 512:
+            return
+
+        # Work in 16-sample bins. The vendor call duration is not the physical
+        # sample clock, so the user-selectable RF-raster hypothesis below is
+        # deliberately independent from finite_fill_msps.
+        bin_size = 16
+        binned = [
+            statistics.fmean(fm[offset:offset + bin_size])
+            for offset in range(0, len(fm) - bin_size + 1, bin_size)
+        ]
+        raster_msps = self.live_video_requested_sample_rate
+        (video_standard, period, sync_phase,
+         sync_score, fm_polarity) = self._select_video_timing(
+             binned, raster_msps, bin_size, fm)
+
+        # Do not stretch ordinary RF noise into a convincing full-contrast
+        # picture. Only a repeated horizontal-sync candidate may update the
+        # raster; rejected blocks leave the last locked pixels untouched.
+        if sync_score < VIDEO_SYNC_MIN_SCORE:
+            self.live_video_rejected_blocks += 1
+            self.live_video_pending_status = (
+                f"{APP_BUILD}: no {video_standard} H-sync lock "
+                f"(score {sync_score:.2f} < {VIDEO_SYNC_MIN_SCORE:.2f}); "
+                "pixels not updated")
+            return
+
+        if fm_polarity < 0:
+            fm = [-value for value in fm]
+
+        line_starts: list[int] = []
+        cursor = sync_phase * bin_size
+        while cursor - period >= 0:
+            cursor -= period
+        while cursor + period <= len(fm):
+            line_starts.append(int(cursor))
+            cursor += period
+
+        # Identify NTSC/PAL vertical serration intervals from the captured
+        # waveform itself. Normal H-sync occupies about 7% of a line; vertical
+        # sync holds the composite signal below the sync/porch midpoint for
+        # roughly half or more of consecutive lines. Those lines are timing
+        # evidence, not picture rows, and must never be painted into the image.
+        vertical_line_starts: set[int] = set()
+        strong_vertical_starts: list[int] = []
+        for start_sample in line_starts:
+            line_end = min(len(fm), int(start_sample + period))
+            sync_end = int(start_sample + period * 0.073)
+            porch_begin = int(start_sample + period * 0.083)
+            porch_end = int(start_sample + period * 0.135)
+            if (sync_end <= start_sample or porch_end <= porch_begin or
+                    line_end <= start_sample):
+                continue
+            sync_mean = statistics.fmean(fm[start_sample:sync_end])
+            porch_mean = statistics.fmean(fm[porch_begin:porch_end])
+            threshold = (sync_mean + porch_mean) * 0.5
+            low_fraction = sum(
+                value < threshold for value in fm[start_sample:line_end]) / (
+                    line_end - start_sample)
+            if low_fraction >= 0.45:
+                vertical_line_starts.add(start_sample)
+            if low_fraction >= 0.55:
+                strong_vertical_starts.append(start_sample)
+
+        broad_vertical_starts = sorted(vertical_line_starts)
+        direct_vertical_lock = (
+            len(strong_vertical_starts) >= 2 and sync_score >= 1.20)
+        tentative_vertical_lock = (
+            bool(broad_vertical_starts) and sync_score >= 0.80)
+        if (timestamp_us is not None and
+                (direct_vertical_lock or tentative_vertical_lock)):
+            vertical_sample = min(
+                strong_vertical_starts
+                if direct_vertical_lock else broad_vertical_starts)
+            vertical_time_us = timestamp_us - (
+                len(fm) - vertical_sample) / raster_msps
+            self._observe_vertical_candidate(
+                vertical_time_us, video_standard, direct_vertical_lock)
+
+        if timestamp_us is not None and self.live_video_vertical_anchor_us is None:
+            self.live_video_pending_status = (
+                f"{APP_BUILD}: waiting for captured {video_standard} vertical sync; "
+                f"coherent candidates {self.live_video_vertical_candidate_hits}/2; "
+                "picture rows withheld to prevent jumping")
+            return
+
+        cos_values, sin_values = self._color_oscillator(
+            video_standard, raster_msps, period)
+        burst_begin_fraction, burst_end_fraction = \
+            VIDEO_COLOR_BURST_WINDOW[video_standard]
+        active_lines: list[
+            tuple[int, int, list[float], list[complex], float, float]] = []
+        for start_sample in line_starts:
+            if start_sample in vertical_line_starts:
+                continue
+            line_start = int(start_sample)
+            active_begin = int(start_sample + period * 0.16)
+            active_end = int(start_sample + period * 0.96)
+            if active_begin < 0 or active_end > len(fm) or active_end <= active_begin:
+                continue
+            burst_begin = int(start_sample + period * burst_begin_fraction)
+            burst_end = int(start_sample + period * burst_end_fraction)
+            burst_phasor, burst_rms = self._quadrature_component(
+                fm, burst_begin, burst_end, line_start,
+                cos_values, sin_values)
+            burst_amplitude = abs(burst_phasor)
+            burst_coherence = burst_amplitude / max(
+                1e-9, math.sqrt(2.0) * burst_rms)
+            burst_reference = (
+                burst_phasor.conjugate() / burst_amplitude
+                if burst_amplitude > 1e-9 else 0j)
+            source = fm[active_begin:active_end]
+            row: list[float] = []
+            row_chroma: list[complex] = []
+            for x in range(self.live_video_width):
+                left = x * len(source) // self.live_video_width
+                right = max(left + 1, (x + 1) * len(source) // self.live_video_width)
+                row.append(statistics.fmean(source[left:right]))
+                pixel_phasor, _pixel_rms = self._quadrature_component(
+                    fm, active_begin + left, active_begin + right,
+                    line_start, cos_values, sin_values)
+                row_chroma.append(pixel_phasor * burst_reference)
+
+            # Composite chroma bandwidth is much lower than the 160-pixel
+            # luma raster. A short symmetric filter rejects fine luma edges
+            # that otherwise alias into vivid magenta/green dot crawl.
+            if row_chroma:
+                raw_chroma = row_chroma
+                row_chroma = []
+                for x in range(len(raw_chroma)):
+                    weighted = 0j
+                    weight_total = 0
+                    for delta, weight in ((-2, 1), (-1, 2), (0, 4),
+                                          (1, 2), (2, 1)):
+                        source_x = x + delta
+                        if 0 <= source_x < len(raw_chroma):
+                            weighted += raw_chroma[source_x] * weight
+                            weight_total += weight
+                    row_chroma.append(weighted / weight_total)
+
+            if timestamp_us is not None:
+                line_time_us = timestamp_us - (
+                    len(fm) - start_sample) * 1_000_000.0 / (
+                        raster_msps * 1_000_000.0)
+                line_reference_us = (
+                    self.live_video_vertical_anchor_us
+                    if self.live_video_vertical_anchor_us is not None else 0.0)
+                line_number = int(round(
+                    (line_time_us - line_reference_us) *
+                    VIDEO_LINE_RATES_HZ[video_standard] /
+                    1_000_000.0))
+            else:
+                line_number = self.live_video_color_line_counter
+                self.live_video_color_line_counter += 1
+            active_lines.append((
+                start_sample, line_number, row, row_chroma,
+                burst_amplitude, burst_coherence))
+
+        if not active_lines:
+            self.live_video_pending_status = (
+                "IQ received; no complete video-line candidate in this block")
+            return
+        scale_values = sorted(
+            value for (_start_sample, _line_number, row, _row_chroma,
+                       _burst_amplitude, _burst_coherence) in active_lines
+            for value in row)
+        block_black = scale_values[len(scale_values) // 20]
+        block_white = scale_values[(len(scale_values) * 19) // 20]
+        if self.live_video_black is None or self.live_video_white is None:
+            self.live_video_black = block_black
+            self.live_video_white = block_white
+        else:
+            # Every finite block contains only a few adjacent lines. Scaling
+            # each block independently makes strip boundaries look like lines
+            # placed at the wrong height. A slow shared scale keeps brightness
+            # coherent while still following gradual RF-level changes.
+            scale_alpha = 0.08
+            self.live_video_black += scale_alpha * (
+                block_black - self.live_video_black)
+            self.live_video_white += scale_alpha * (
+                block_white - self.live_video_white)
+        black = self.live_video_black
+        white = self.live_video_white
+        span = max(1e-6, white - black)
+        physical_rate_hz = raster_msps * 1_000_000.0
+        for (start_sample, line_number, row, row_chroma,
+             burst_amplitude, burst_coherence) in active_lines:
+            if (timestamp_us is not None and
+                    self.live_video_vertical_anchor_us is not None):
+                line_time_us = timestamp_us - (
+                    len(fm) - start_sample) * 1_000_000.0 / physical_rate_hz
+                field_period_us = self.live_video_field_period_us
+                field_phase = (
+                    line_time_us - self.live_video_vertical_anchor_us) % \
+                    field_period_us
+                # Conventional receivers hide the vertical blanking interval.
+                # Mapping the entire field exposed about nine dark/noisy rows
+                # above the camera's top OSD. Start at the first active-picture
+                # line and expand the remaining field into the display raster.
+                active_start_us = (
+                    VIDEO_ACTIVE_START_LINES[video_standard] * 1_000_000.0 /
+                    VIDEO_LINE_RATES_HZ[video_standard])
+                if field_phase < active_start_us:
+                    continue
+                active_period_us = field_period_us - active_start_us
+                target_row = int(
+                    (field_phase - active_start_us) * self.live_video_height /
+                    active_period_us)
+            else:
+                target_row = self.live_video_row
+                self.live_video_row = (
+                    self.live_video_row + 1) % self.live_video_height
+            base = target_row * self.live_video_width
+            rgb_base = base * 3
+            burst_level = burst_amplitude / span
+            color_locked = (
+                burst_level >= VIDEO_COLOR_MIN_BURST_LEVEL and
+                burst_coherence >= VIDEO_COLOR_MIN_COHERENCE)
+            color_total = (self.live_video_color_locked_lines +
+                           self.live_video_monochrome_lines)
+            color_alpha = 1.0 if color_total == 0 else 0.10
+            self.live_video_color_burst_level += color_alpha * (
+                burst_level - self.live_video_color_burst_level)
+            self.live_video_color_burst_coherence += color_alpha * (
+                burst_coherence - self.live_video_color_burst_coherence)
+            if color_locked:
+                self.live_video_color_locked_lines += 1
+                row_bias = sum(row_chroma, 0j) / max(1, len(row_chroma))
+                bias_samples = self.live_video_color_bias_samples[video_standard]
+                if bias_samples == 0:
+                    self.live_video_color_bias[video_standard] = row_bias
+                else:
+                    bias_alpha = 0.025
+                    self.live_video_color_bias[video_standard] += bias_alpha * (
+                        row_bias - self.live_video_color_bias[video_standard])
+                self.live_video_color_bias_samples[video_standard] = \
+                    bias_samples + 1
+                self.live_video_color_valid_rows.add(target_row)
+            else:
+                self.live_video_monochrome_lines += 1
+
+            for x, value in enumerate(row):
+                y = max(0.0, min(1.0, (value - black) / span))
+                luma = max(0, min(255, int(round(y * 255.0))))
+                self.live_video_pixels[base + x] = luma
+                if color_locked:
+                    red, green, blue = self._color_rgb(
+                        video_standard, y,
+                        row_chroma[x] -
+                        self.live_video_color_bias[video_standard],
+                        span, line_number)
+                elif target_row in self.live_video_color_valid_rows:
+                    # A noisy one-line burst must not turn a previously valid
+                    # color row gray. Preserve its chroma differences and move
+                    # all three channels together to follow the new luma.
+                    pixel_base = rgb_base + x * 3
+                    old_red = self.live_video_rgb_pixels[pixel_base]
+                    old_green = self.live_video_rgb_pixels[pixel_base + 1]
+                    old_blue = self.live_video_rgb_pixels[pixel_base + 2]
+                    old_luma = (
+                        0.299 * old_red + 0.587 * old_green +
+                        0.114 * old_blue)
+                    luma_delta = luma - old_luma
+                    red = max(0, min(255, int(round(old_red + luma_delta))))
+                    green = max(
+                        0, min(255, int(round(old_green + luma_delta))))
+                    blue = max(0, min(255, int(round(old_blue + luma_delta))))
+                else:
+                    red = green = blue = luma
+                pixel_base = rgb_base + x * 3
+                self.live_video_rgb_pixels[pixel_base] = red
+                self.live_video_rgb_pixels[pixel_base + 1] = green
+                self.live_video_rgb_pixels[pixel_base + 2] = blue
+            self.live_video_rows_seen.add(target_row)
+
+        elapsed = max(1e-6, time.monotonic() - self.live_iq_usb_started)
+        usb_mbit = self.live_iq_usb_bytes * 8.0 / elapsed / 1_000_000.0
+        block_rate = self.live_iq_blocks / elapsed
+        source_text = (f"{self.live_iq_source_msps:.3f} MS/s finite-fill estimate"
+                       if self.live_iq_source_msps else "source MS/s pending")
+        coverage = 100.0 * len(self.live_video_rows_seen) / self.live_video_height
+        # Field zero now comes from broad vertical-sync pulses. Never rotate
+        # based on picture darkness; SMPTE PLUGE and black bars fooled the old
+        # heuristic and moved large row groups into the middle of the image.
+        self.live_video_display_offset = 0
+        display_pixels = bytes(self.live_video_rgb_pixels)
+        color_locked_now = (
+            self.live_video_color_burst_level >= VIDEO_COLOR_MIN_BURST_LEVEL and
+            self.live_video_color_burst_coherence >= VIDEO_COLOR_MIN_COHERENCE)
+        color_text = (
+            f"{video_standard} color burst "
+            f"{self.live_video_color_burst_level * 100.0:.1f}% "
+            f"coherence {self.live_video_color_burst_coherence:.2f}"
+            if color_locked_now else
+            f"monochrome fallback; burst "
+            f"{self.live_video_color_burst_level * 100.0:.1f}% "
+            f"coherence {self.live_video_color_burst_coherence:.2f}")
+        lock_text = (
+            f"{self.live_transport_name}; "
+            f"{video_standard} H-sync score {sync_score:.2f}; "
+            f"{color_text}; "
+            f"raster {raster_msps:.0f} MS/s; {coverage:.0f}% rows; "
+            f"V-lock {self.live_video_vertical_lock_events} "
+            f"field {self.live_video_field_period_us:.2f} us; "
+            f"clipped {clipped_text}; "
+            f"rejected {self.live_video_rejected_blocks}")
+        self._queue_live_iq_frame(
+            display_pixels, source_text, usb_mbit, block_rate, lock_text)
+
+    def _queue_live_iq_frame(self, pixels: bytes, source_text: str,
+                             usb_mbit: float, block_rate: float,
+                             lock_text: str) -> None:
+        """Keep only the newest pending raster while Tk is drawing.
+
+        A native PhotoImage update is deliberately much slower than the USB
+        transport. Coalescing prevents fast proof mode from building an
+        unbounded queue of stale frames while still drawing as fast as Tk can.
+        """
+        self.live_video_pending_frame = (
+            pixels, source_text, usb_mbit, block_rate, lock_text)
+
+    def _poll_live_iq_frame(self) -> None:
+        """Render the newest worker result without cross-thread Tk calls."""
+        pending = self.live_video_pending_frame
+        self.live_video_pending_frame = None
+        if pending is not None and self.live_iq_active:
+            self._show_live_iq_frame(*pending)
+        elif self.live_video_pending_status is not None and self.live_iq_active:
+            self.preview_status_var.set(self.live_video_pending_status)
+        self.live_video_pending_status = None
+        self.after(33, self._poll_live_iq_frame)
+
+    def _render_pending_live_iq_frame(self) -> None:
+        pending = self.live_video_pending_frame
+        self.live_video_pending_frame = None
+        if pending is not None and self.live_iq_active:
+            self._show_live_iq_frame(*pending)
+        self.live_video_render_pending = False
+        if self.live_video_pending_frame is not None and self.live_iq_active:
+            self.live_video_render_pending = True
+            self.after_idle(self._render_pending_live_iq_frame)
+
+    def _update_vertical_display_offset(self) -> None:
+        """Move the circular field-time seam into the vertical blanking gap."""
+        height = self.live_video_height
+        width = self.live_video_width
+        if len(self.live_video_rows_seen) < int(height * 0.70):
+            return
+        if self.live_iq_blocks % 8:
+            return
+
+        row_means = [
+            statistics.fmean(
+                self.live_video_pixels[row * width:(row + 1) * width])
+            for row in range(height)
+        ]
+        blank_rows = max(4, height // 16)
+        candidates: list[tuple[float, int]] = []
+        baseline = statistics.median(row_means)
+        for start in range(height):
+            window_rows = [(start + index) % height
+                           for index in range(blank_rows)]
+            if not all(row in self.live_video_rows_seen for row in window_rows):
+                continue
+            after_rows = [(start + blank_rows + index) % height
+                          for index in range(3)]
+            if not all(row in self.live_video_rows_seen for row in after_rows):
+                continue
+            blank_mean = statistics.fmean(row_means[row] for row in window_rows)
+            after_mean = statistics.fmean(row_means[row] for row in after_rows)
+            score = (baseline - blank_mean) + max(0.0, after_mean - blank_mean) * 0.35
+            candidates.append((score, (start + blank_rows) % height))
+        if not candidates:
+            return
+        score, candidate = max(candidates)
+        if score < 12.0:
+            return
+
+        pending = self.live_video_vertical_pending
+        if pending is None:
+            self.live_video_vertical_pending = candidate
+            self.live_video_vertical_pending_hits = 1
+            return
+        distance = abs(((candidate - pending + height // 2) % height) -
+                       height // 2)
+        if distance <= 3:
+            self.live_video_vertical_pending_hits += 1
+            if self.live_video_vertical_pending_hits >= 2:
+                self.live_video_display_offset = candidate
+        else:
+            self.live_video_vertical_pending = candidate
+            self.live_video_vertical_pending_hits = 1
+
+    def _vertically_aligned_pixels(self) -> bytes:
+        width = self.live_video_width
+        offset_bytes = self.live_video_display_offset * width
+        pixels = bytes(self.live_video_pixels)
+        if not offset_bytes:
+            return pixels
+        return pixels[offset_bytes:] + pixels[:offset_bytes]
+
+    def _vertically_aligned_rgb_pixels(self) -> bytes:
+        row_bytes = self.live_video_width * 3
+        offset_bytes = self.live_video_display_offset * row_bytes
+        pixels = bytes(self.live_video_rgb_pixels)
+        if not offset_bytes:
+            return pixels
+        return pixels[offset_bytes:] + pixels[:offset_bytes]
+
+    @staticmethod
+    def _vertical_median_rgb(pixels: bytes, width: int, height: int) -> bytes:
+        """Remove isolated horizontal impulse rows without temporal smearing."""
+        row_bytes = width * 3
+        if width <= 0 or height < 3 or len(pixels) != row_bytes * height:
+            return pixels
+        source = np.frombuffer(pixels, dtype=np.uint8).reshape(
+            height, width, 3)
+        filtered = source.copy()
+        above = source[:-2]
+        center = source[1:-1]
+        below = source[2:]
+        filtered[1:-1] = np.maximum(
+            np.minimum(above, center),
+            np.minimum(np.maximum(above, center), below),
+        )
+        return filtered.tobytes()
+
+    def _show_live_iq_frame(self, pixels: bytes, source_text: str,
+                            usb_mbit: float, block_rate: float,
+                            lock_text: str) -> None:
+        pixels = self._vertical_median_rgb(
+            pixels, self.live_video_width, self.live_video_height)
+        if not self._show_rgb_frame(
+                pixels, self.live_video_width, self.live_video_height):
+            self.sink.write(
+                f"C5VRX_HOST_VIDEO_RENDER_ERROR build={APP_BUILD}\n")
+            return
+        self.live_video_host_frames += 1
+        if self.live_video_host_frames == 1 or self.live_video_host_frames % 10 == 0:
+            self.sink.write(
+                f"C5VRX_HOST_VIDEO_FRAME build={APP_BUILD} "
+                f"frame={self.live_video_host_frames} {lock_text}\n")
+        self.preview_status_var.set(
+            f"{APP_BUILD} | A1 IQ->PC color raster | {source_text} | USB {usb_mbit:.2f} Mbit/s | "
+            f"{block_rate:.2f} blocks/s | "
+            f"{'FAST pipeline' if self.live_iq_fast_mode else 'single request'} "
+            f"{self.live_iq_commands_outstanding}/{self.live_iq_pipeline_target} | "
+            f"recoveries {self.live_iq_recoveries}; "
+            f"CRC losses {self.live_iq_transport_losses}; "
+            f"host drops {self.live_iq_processing_drops} | "
+            f"{lock_text} | RETRIGGERED, NOT GAPLESS")
+
     def first_hardware_test(self) -> None:
         if not self.ser or not self.ser.is_open:
             messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
@@ -677,66 +2226,101 @@ class C5VRXApp(tk.Tk):
         canvas = getattr(self, "preview_canvas", None)
         if not canvas:
             return
+        if self.preview_image is not None:
+            self._redraw_preview()
+            return
         canvas.delete("all")
         width = max(40, canvas.winfo_width())
         height = max(80, canvas.winfo_height())
+        canvas.create_text(
+            width / 2,
+            height / 2,
+            text=(f"{APP_BUILD}\n\nNo waveform display in this build.\n"
+                  "Press ULTRA-SLOW VIDEO PROOF (A1)."),
+            fill="white",
+            justify="center",
+        )
 
-        if len(self.iq_words) < 3:
-            canvas.create_text(width / 2, height / 2, text="Capture IQ to see the FM discriminator waveform", fill="white")
-            return
-
-        target_points = max(100, min(width, 1200))
-        step = max(1, (len(self.iq_words) - 1) // target_points)
-        values: list[float] = []
-
-        pi, pq = self._decode_iq(self.iq_words[0])
-        for idx in range(1, len(self.iq_words), step):
-            ci, cq = self._decode_iq(self.iq_words[idx])
-            real = ci * pi + cq * pq
-            imag = cq * pi - ci * pq
-            values.append(math.atan2(imag, real))
-            pi, pq = ci, cq
-
-        if not values:
-            return
-        scale = (height * 0.42) / math.pi
-        mid = height / 2
-        pts: list[float] = []
-        denom = max(1, len(values) - 1)
-        for i, value in enumerate(values):
-            x = i * (width - 1) / denom
-            y = mid - value * scale
-            pts.extend((x, y))
-
-        canvas.create_line(0, mid, width, mid, fill="#555")
-        canvas.create_line(*pts, fill="#35a7ff", width=1)
-        canvas.create_text(8, 8, anchor="nw", text="WBFM discriminator — diagnostic preview, not decoded video yet", fill="white")
-
-    def _show_gray_frame(self, payload: bytes, width: int, height: int) -> None:
-        self.preview_frame = payload
-        self.preview_width = width
-        self.preview_height = height
-        pgm = f"P5\n{width} {height}\n255\n".encode("ascii") + payload
-        try:
-            self.preview_image = tk.PhotoImage(data=pgm, format="PGM")
-        except tk.TclError:
-            self.preview_status_var.set("Valid GRAY8 frame received; Tk cannot render PGM on this system")
+    def _redraw_preview(self, _event: object | None = None) -> None:
+        """Keep decoded video visible when the preview canvas is resized."""
+        if self.preview_image is None:
+            if not self.live_iq_active:
+                self.render_iq_preview()
             return
         canvas = self.preview_canvas
         canvas.delete("all")
+        scale = max(1, min(
+            max(1, canvas.winfo_width()) // max(1, self.preview_width),
+            max(1, canvas.winfo_height()) // max(1, self.preview_height),
+        ))
+        self.preview_display_image = (
+            self.preview_image.zoom(scale, scale)
+            if scale > 1 else self.preview_image
+        )
         canvas.create_image(
             max(0, canvas.winfo_width() // 2),
             max(0, canvas.winfo_height() // 2),
-            image=self.preview_image,
+            image=self.preview_display_image,
             anchor="center",
         )
+
+    def _show_gray_frame(self, payload: bytes, width: int, height: int) -> bool:
+        if len(payload) != width * height:
+            self.preview_status_var.set(
+                f"GRAY8 render rejected: {len(payload)} bytes for {width}x{height}")
+            return False
+        self.preview_frame = payload
+        self.preview_width = width
+        self.preview_height = height
+        try:
+            # Tk's Windows build lacks PGM but does support binary PPM. Expand
+            # gray bytes into RGB in C-backed slice operations; this avoids
+            # creating 19,200 Tcl color strings for every displayed frame.
+            rgb = bytearray(len(payload) * 3)
+            rgb[0::3] = payload
+            rgb[1::3] = payload
+            rgb[2::3] = payload
+            ppm = f"P6\n{width} {height}\n255\n".encode("ascii") + bytes(rgb)
+            image = tk.PhotoImage(data=ppm, format="PPM")
+            self.preview_image = image
+        except tk.TclError:
+            self.preview_image = None
+            self.preview_display_image = None
+            self.preview_status_var.set(
+                "Valid GRAY8 frame received, but Tk pixel rendering failed")
+            return False
+        self._redraw_preview()
         self.preview_status_var.set(f"Live USB preview: {width}×{height} GRAY8, CRC valid")
+        return True
+
+    def _show_rgb_frame(self, payload: bytes, width: int, height: int) -> bool:
+        if len(payload) != width * height * 3:
+            self.preview_status_var.set(
+                f"RGB24 render rejected: {len(payload)} bytes for {width}x{height}")
+            return False
+        self.preview_frame = payload
+        self.preview_width = width
+        self.preview_height = height
+        try:
+            ppm = f"P6\n{width} {height}\n255\n".encode("ascii") + payload
+            self.preview_image = tk.PhotoImage(data=ppm, format="PPM")
+        except tk.TclError:
+            self.preview_image = None
+            self.preview_display_image = None
+            self.preview_status_var.set(
+                "Valid RGB24 frame received, but Tk pixel rendering failed")
+            return False
+        self._redraw_preview()
+        self.preview_status_var.set(
+            f"Live color preview: {width}×{height} RGB24, burst validated")
+        return True
 
     def clear_preview(self) -> None:
         self.iq_words = []
         self.preview_frame = None
         self.preview_image = None
-        self.preview_status_var.set("No IQ capture yet")
+        self.preview_display_image = None
+        self.preview_status_var.set(f"{APP_BUILD}: video raster cleared")
         self.render_iq_preview()
 
     def export_codex_bundle(self) -> None:
