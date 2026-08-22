@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import math
 import queue
+import re
 import statistics
 import sys
 import threading
@@ -249,6 +250,10 @@ class C5VRXApp(tk.Tk):
         # log could silently vanish (looked like "device not responding").
         self._rx_queue: queue.Queue = queue.Queue()
         self.after(40, self._drain_rx_queue)
+        # One-click USB gate validation state (issue #5 staged proof).
+        self._val_active = False
+        self._val_rate = 0
+        self._val_live_result = ""
         self.ser: serial.Serial | None = None
         self.serial_thread: threading.Thread | None = None
         self.serial_stop = threading.Event()
@@ -523,6 +528,12 @@ class C5VRXApp(tk.Tk):
             command=lambda: self.send_command("CVBS LOCK PROBE 5000"),
         ).pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Clear", command=self.clear_preview).pack(side="left", padx=8)
+        self._val_btn = ttk.Button(
+            preview_controls,
+            text="RUN USB VALIDATION & LIVE",
+            command=self.run_usb_validation,
+        )
+        self._val_btn.pack(side="left", padx=(8, 0))
 
         iq_live_controls = ttk.Frame(tab)
         iq_live_controls.pack(fill="x", pady=(8, 0))
@@ -717,6 +728,7 @@ class C5VRXApp(tk.Tk):
                 line = str(value)
                 self.session.record_line(line)
                 self.sink.write(line + "\n")
+                self._val_observe(line)
                 self._parse_device_line(line)
             elif kind == "packet":
                 assert isinstance(value, Packet)
@@ -1128,6 +1140,96 @@ class C5VRXApp(tk.Tk):
     def start_usb_preview(self) -> None:
         self.send_command("USB PREVIEW START")
         self.after(100, lambda: self.send_command("LIVE START"))
+
+    # ---- One-click USB gate validation (issue #5 staged proof). --------
+    _VAL_STEPS = (
+        ("PRODUCER_CADENCE_PROBE_0", 2500, "C5VRX_PRODUCER_CADENCE"),
+        ("WRAP_FLAG_PROBE_0", 2000, "C5VRX_WRAP_FLAG_PROBE"),
+        ("PHASE_CONTINUITY_PROBE_0", 4000, "C5VRX_PHASE_CONTINUITY"),
+        ("__APPLY__", 800, "C5VRX_MEASURED_BANDWIDTH_APPLY"),
+        ("WBFM_HWTEST", 1500, "C5VRX_WBFM_HWTEST"),
+        ("BENCH_PARLIO", 2500, "C5VRX_BENCH_PARLIO"),
+        ("BENCH_RING_PIPELINE_0_1000", 5000, "C5VRX_BENCH_RING_PIPELINE"),
+        ("PRODUCER_SOAK_0_30000", 34000, "C5VRX_PRODUCER_SOAK_DONE"),
+        ("USB PREVIEW START", 1200, "C5VRX_USB_PREVIEW state=START"),
+        ("LIVE START", 1800, "C5VRX_LIVE_START"),
+    )
+
+    def run_usb_validation(self) -> None:
+        if self._val_active:
+            return
+        if not self.ser or not self.ser.is_open:
+            self._alert("warn", "Connect to C5VRX first.")
+            return
+        self._val_active = True
+        self._val_rate = 0
+        self._val_live_result = ""
+        self._val_btn.configure(state="disabled")
+        self.preview_status_var.set(
+            "Validation: ~45 s total. Keep the VTX powered and do NOT "
+            "retune while this runs.")
+        self._val_step(0)
+
+    def _val_observe(self, line: str) -> None:
+        if not self._val_active:
+            return
+        match = re.search(r"complex_samples_per_sec=(\d+)", line)
+        if match:
+            self._val_rate = int(match.group(1))
+        if line.startswith("C5VRX_LIVE_START"):
+            self._val_live_result = line
+        if line.startswith("C5VRX_PRODUCER_SOAK_STAGE"):
+            self.preview_status_var.set(f"Validation soak: {line[:110]}")
+
+    def _val_finish(self, ok: bool, detail: str) -> None:
+        self._val_active = False
+        try:
+            self._val_btn.configure(state="normal")
+        except Exception:
+            pass
+        if ok and "code=0" in self._val_live_result and \
+                "MEASURED_GATES_PASSED" in self._val_live_result:
+            self.preview_status_var.set(
+                "VALIDATION PASSED - live feed running "
+                "(AV out active on the DAC pins).")
+        else:
+            reason = ""
+            match = re.search(r"reason=(\S+)", self._val_live_result)
+            if match:
+                reason = f" reason={match.group(1)}"
+            self.preview_status_var.set(
+                f"Validation stopped: {detail}{reason}")
+
+    def _val_abort(self, detail: str) -> None:
+        self.sink.write(f"> validation aborted: {detail}\n")
+        self._val_finish(False, detail)
+
+    def _val_step(self, index: int) -> None:
+        if not self._val_active:
+            return
+        steps = self._VAL_STEPS
+        if index >= len(steps):
+            self._val_finish(True, "sequence complete")
+            return
+        command, wait_ms, _marker = steps[index]
+        if command == "__APPLY__":
+            if not self._val_rate:
+                self._val_abort(
+                    "cadence probe returned no complex_samples_per_sec")
+                return
+            occupied = min(16000000, self._val_rate // 4 // 1000000 * 1000000)
+            if occupied < 1000000:
+                occupied = max(1000000, self._val_rate // 4)
+            command = (f"APPLY_MEASURED_BANDWIDTH_{occupied}"
+                       "_4_CONFIRMED")
+        if not self.ser or not self.ser.is_open:
+            self._val_abort("serial connection lost")
+            return
+        self.preview_status_var.set(
+            f"Validation {index + 1}/{len(steps)}: {command}")
+        self.send_command(command)
+        self.after(wait_ms, lambda next_index=index + 1: self._val_step(next_index))
+
 
     def start_live_iq_video(self) -> None:
         self._start_live_iq_video(fast=False)
