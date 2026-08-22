@@ -157,11 +157,16 @@ int main(void)
             .sample_rate_hz = 1000000u, .burst_freq_hz = 250000u,
             .line_samples = 1280u, .pal = 0,
         };
+        /* Decoder output contract: one half-rate U/V pair per two
+         * ACTIVE-region samples -> (count - astart) / 2 entries. */
+        const unsigned out_count = (1280u - 210u) / 2u;
         c5vrx_chroma_t c;
         assert(c5vrx_chroma_init(&c, &cfg) == 0);
         enc_t e = {.fs = 1000000u, .fb = 250000u};
         uint8_t y[1280];
         int8_t u[640], v[640];
+        memset(u, 0x7f, sizeof(u)); /* Poison: unwritten must fail loud. */
+        memset(v, 0x7f, sizeof(v));
         bool locked_last = true;
         for (int line = 0; line < 12; ++line) {
             encode_line(&e, 22.0, -14.0, 0, 0, 1, 45); /* No burst. */
@@ -170,7 +175,7 @@ int main(void)
         }
         assert(!locked_last);
         assert(!c.color_lock);
-        for (unsigned k = 0; k < 640u; ++k) {
+        for (unsigned k = 0; k < out_count; ++k) {
             assert(u[k] == 0 && v[k] == 0);
         }
         /* Passthrough luma in the active region. */

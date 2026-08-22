@@ -61,9 +61,13 @@ typedef struct {
 int c5vrx_chroma_init(c5vrx_chroma_t *chroma,
                       const c5vrx_chroma_config_t *config);
 /* Process one complete line of conditioned composite samples.
- * prev_active may be NULL (notch fallback instead of 1H comb).
- * y_out receives count samples; u_out/v_out receive count/2 half-rate
- * samples. Returns the color-lock state used for this line. */
+ * prev_active may be NULL (moving-average luma fallback instead of 1H
+ * comb).
+ * y_out receives `count` samples; u_out/v_out receive half-rate samples
+ * covering only the demodulated active region:
+ * (count - astart) / 2 entries, where astart is the fixed
+ * ACTIVE_START fraction of the line. Returns the color-lock state used
+ * for this line. */
 bool c5vrx_chroma_process_line(c5vrx_chroma_t *chroma,
                                const uint8_t *composite,
                                const uint8_t *prev_active,
