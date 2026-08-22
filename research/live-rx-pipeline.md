@@ -70,7 +70,12 @@ the asynchronous queue.
 ## USB-C receiver preview
 
 The optional preview observes conditioned CVBS samples without owning PARLIO
-or stopping AV. Its adaptive sync tracker distinguishes 60–160-sample H-sync
+or stopping AV. It is a true side tap: the live sink first meets the
+`c5vrx_cvbs_live_out_write()` deadline and only then copies the same samples
+into a bounded 16 KiB SPSC staging ring; the priority-4 preview task drains
+that ring at its own pace. When the ring is full, newest samples are dropped
+and counted instead of growing latency, so USB work can never sit in series
+with RF/DSP/PARLIO. Its adaptive sync tracker distinguishes 60–160-sample H-sync
 pulses from 300–800-sample broad vertical sync, clusters the multiple broad
 pulses in one vertical-sync interval into one field marker, requires three
 plausible 1100–1450-sample line intervals for horizontal lock, expires stale

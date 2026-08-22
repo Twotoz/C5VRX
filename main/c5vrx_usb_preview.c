@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "c5vrx_cvbs_sync.h"
+#include "c5vrx_sample_ring.h"
 #include "c5vrx_usb_transport.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -25,6 +26,12 @@
 #define NOMINAL_LINE_SAMPLES 1280u
 #define NOMINAL_ACTIVE_START 210u
 #define NOMINAL_ACTIVE_SAMPLES 1040u
+
+/* Shallow best-effort staging between the AV hot path and this worker.
+ * Deep enough to absorb scheduler jitter at 1024-sample sink blocks,
+ * small enough that sustained overload drops visibly instead of hiding
+ * in queue growth. */
+#define PREVIEW_STAGE_BYTES 16384u
 
 static const uint8_t s_usb_magic[8] = {0x00, 'C', '5', 'V', 'R', 'X', 0xa5, 0x5a};
 
@@ -46,11 +53,23 @@ typedef struct {
     bool sending[2];
     volatile bool ready;
     volatile bool running;
+    c5vrx_sample_ring_t stage;
     TaskHandle_t task;
     portMUX_TYPE lock;
 } preview_state_t;
 
 static preview_state_t s_preview = {.lock = portMUX_INITIALIZER_UNLOCKED};
+
+/* Kept allocated across stop/start on purpose: a producer may still be
+ * inside submit() while the preview is being stopped, so the staging
+ * storage must outlive every running flag transition. */
+static uint8_t *s_stage_storage;
+
+/* Scratch for draining staged samples in the preview worker only. */
+static uint8_t s_stage_drain[2048];
+
+static void ingest_samples(const uint8_t *cvbs, size_t samples);
+static void update_telemetry(void);
 
 static void put_le16(uint8_t *out, uint16_t value)
 {
@@ -132,8 +151,23 @@ static void preview_task(void *arg)
     write_packet(PACKET_STREAM_INFO, descriptor, sizeof(descriptor), NULL, 0u);
 
     while (s_preview.running) {
-        (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+        (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(20));
         if (!s_preview.running) break;
+
+        /* Drain the AV side tap first: this task runs far below the RF
+         * and AV priorities and only ever sees what survived without
+         * delaying c5vrx_cvbs_live_out_write(). */
+        for (;;) {
+            size_t got;
+            taskENTER_CRITICAL(&s_preview.lock);
+            got = c5vrx_sample_ring_read(&s_preview.stage, s_stage_drain,
+                                         sizeof(s_stage_drain));
+            taskEXIT_CRITICAL(&s_preview.lock);
+            if (!got) break;
+            ingest_samples(s_stage_drain, got);
+        }
+        update_telemetry();
+
         unsigned index = 0;
         bool have_frame = false;
         taskENTER_CRITICAL(&s_preview.lock);
@@ -162,7 +196,11 @@ static void preview_task(void *arg)
      * making the task block in the direct writer while stop() waits for it.
      * The ASCII STOP acknowledgement is the authoritative lifecycle marker.
      */
+    /* Clear the handle under the lock so producers can never hand work to
+     * a task that has already left the scheduler. */
+    taskENTER_CRITICAL(&s_preview.lock);
     s_preview.task = NULL;
+    taskEXIT_CRITICAL(&s_preview.lock);
     vTaskDelete(NULL);
 }
 
@@ -202,6 +240,23 @@ esp_err_t c5vrx_usb_preview_start(void)
         }
         memset(s_preview.frame[i], 0, FRAME_BYTES);
     }
+    if (!s_stage_storage) {
+        s_stage_storage = heap_caps_malloc(PREVIEW_STAGE_BYTES,
+                                           MALLOC_CAP_INTERNAL);
+        if (!s_stage_storage) {
+            free(s_preview.frame[0]);
+            free(s_preview.frame[1]);
+            s_preview.frame[0] = s_preview.frame[1] = NULL;
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    if (!c5vrx_sample_ring_init(&s_preview.stage, s_stage_storage,
+                                PREVIEW_STAGE_BYTES)) {
+        free(s_preview.frame[0]);
+        free(s_preview.frame[1]);
+        s_preview.frame[0] = s_preview.frame[1] = NULL;
+        return ESP_ERR_INVALID_STATE;
+    }
     s_preview.running = true;
     if (xTaskCreate(preview_task, "c5vrx_preview", 3072, NULL, 4,
                     &s_preview.task) != pdPASS) {
@@ -218,7 +273,9 @@ esp_err_t c5vrx_usb_preview_stop(void)
 {
     /* STOP is deliberately idempotent as well. */
     if (!s_preview.running && !s_preview.task) return ESP_OK;
+    taskENTER_CRITICAL(&s_preview.lock);
     s_preview.running = false;
+    taskEXIT_CRITICAL(&s_preview.lock);
     if (s_preview.task) xTaskNotifyGive(s_preview.task);
     /* One scheduler tick per iteration; pdMS_TO_TICKS(1) can round to zero. */
     for (unsigned i = 0; i < 50u && s_preview.task; ++i)
@@ -260,15 +317,37 @@ static void update_telemetry(void)
         .sync_threshold = c5vrx_cvbs_sync_threshold(&s_preview.sync),
         .horizontal_locked = s_preview.sync.horizontal_locked,
         .vertical_locked = s_preview.sync.vertical_locked,
+        .staged_dropped_samples = s_preview.stage.dropped_bytes,
+        .staged_peak_bytes = (uint16_t)(s_preview.stage.peak_bytes > 0xFFFFu ?
+            0xFFFFu : s_preview.stage.peak_bytes),
     };
     taskENTER_CRITICAL(&s_preview.lock);
     s_preview.telemetry = next;
     taskEXIT_CRITICAL(&s_preview.lock);
 }
 
+void c5vrx_usb_preview_submit(const uint8_t *cvbs, size_t samples)
+{
+    if (!cvbs || !samples) return;
+    taskENTER_CRITICAL(&s_preview.lock);
+    /* Notify inside the same critical section: the worker clears its task
+     * handle under this lock too, so a stale handle can never be woken. */
+    if (s_preview.running && s_preview.task &&
+        c5vrx_sample_ring_write(&s_preview.stage, cvbs, samples)) {
+        xTaskNotifyGive(s_preview.task);
+    }
+    taskEXIT_CRITICAL(&s_preview.lock);
+}
+
 void c5vrx_usb_preview_ingest(const uint8_t *cvbs, size_t samples)
 {
     if (!s_preview.running || !cvbs) return;
+    ingest_samples(cvbs, samples);
+    update_telemetry();
+}
+
+static void ingest_samples(const uint8_t *cvbs, size_t samples)
+{
     for (size_t n = 0; n < samples; ++n) {
         const uint8_t value = cvbs[n] & 0x3fu;
         c5vrx_cvbs_sync_event_t event;
@@ -321,5 +400,4 @@ void c5vrx_usb_preview_ingest(const uint8_t *cvbs, size_t samples)
         }
         ++s_preview.line_phase;
     }
-    update_telemetry();
 }

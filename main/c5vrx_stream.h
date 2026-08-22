@@ -60,6 +60,10 @@ typedef struct {
     int bias_q8;          /* Input code representing zero deviation, Q8. */
     int gain_q8;          /* Gain applied around bias, Q8; 256 = 1.0. */
     bool invert;
+    bool external_bias;   /* When set, bias_q8 is the fixed pivot for the
+                           * centered input and the internal DC tracker is
+                           * bypassed. Used by structure-derived level
+                           * recovery; default off keeps legacy behavior. */
     uint8_t sync_code;
     uint8_t blank_code;
     uint8_t black_code;

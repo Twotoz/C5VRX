@@ -30,6 +30,8 @@ typedef struct {
     uint16_t reader;
     uint16_t last_writer;
     uint32_t available_words;
+    uint64_t producer_absolute;
+    uint64_t consumer_absolute;
     bool reader_valid;
     bool discontinuity;
     bool fatal;
@@ -122,6 +124,7 @@ static bool ring_acquire(c5vrx_rf_source_t *source,
             (before.pointer - ctx->last_writer) & RING_MASK;
         if (before.pointer < ctx->last_writer)
             ++ctx->stats.wraps_observed;
+        ctx->producer_absolute += produced;
         ctx->available_words += produced;
         if (ctx->available_words >= RING_WORDS - ctx->guard_words) {
             ctx->stats.missed_words += ctx->available_words;
@@ -196,6 +199,7 @@ static bool ring_acquire(c5vrx_rf_source_t *source,
     }
 
     if (after.pointer < before.pointer) ++ctx->stats.wraps_observed;
+    ctx->producer_absolute += observed_advance;
     ctx->available_words += observed_advance;
     ctx->last_writer = after.pointer;
     ctx->last_observation_cycle = last_cycle;
@@ -203,8 +207,20 @@ static bool ring_acquire(c5vrx_rf_source_t *source,
     const uint16_t start = ctx->reader;
     ctx->reader = (uint16_t)((ctx->reader + count) & RING_MASK);
     ctx->available_words -= count;
+    ctx->consumer_absolute += count;
     ctx->stats.reader_pointer = ctx->reader;
     ctx->stats.writer_pointer = after.pointer;
+    {
+        const uint64_t lag = ctx->producer_absolute -
+                             ctx->consumer_absolute;
+        const uint32_t lag32 = lag > UINT32_MAX ? UINT32_MAX
+                                                : (uint32_t)lag;
+        ctx->stats.lag_words = lag32;
+        if (lag32 > ctx->stats.lag_words_max)
+            ctx->stats.lag_words_max = lag32;
+    }
+    ctx->stats.producer_absolute_words = ctx->producer_absolute;
+    ctx->stats.consumer_absolute_words = ctx->consumer_absolute;
     ++ctx->stats.blocks;
     ctx->stats.words += count;
     *block = (c5vrx_rf_block_t) {

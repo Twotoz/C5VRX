@@ -54,6 +54,13 @@ typedef struct {
     uint64_t wraps_observed;
     uint64_t fatal_stops;
     uint64_t copy_cycles_total;
+    /* Monotonic stream positions (issue #5 section 1): producer and
+     * consumer counters extend the wrapped hardware pointer into an
+     * infinite logical stream; lag is their difference. */
+    uint64_t producer_absolute_words;
+    uint64_t consumer_absolute_words;
+    uint32_t lag_words;
+    uint32_t lag_words_max;
     c5vrx_live_ring_failure_t fatal_reason;
     uint32_t maximum_copy_cycles;
     uint16_t reader_pointer;

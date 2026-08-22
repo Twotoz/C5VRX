@@ -22,6 +22,11 @@ idf_component_register(
         "c5vrx_cvbs_sync.c"
         "c5vrx_usb_preview.c"
         "c5vrx_usb_transport.c"
+        "c5vrx_sample_ring.c"
+        "c5vrx_video_timing.c"
+        "c5vrx_cvbs_levels.c"
+        "c5vrx_clock_bridge.c"
+        "c5vrx_chroma.c"
         "c5vrx_bench.c"
     INCLUDE_DIRS "."
     REQUIRES

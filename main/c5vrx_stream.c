@@ -86,9 +86,18 @@ void c5vrx_cvbs_condition(c5vrx_cvbs_conditioner_t *conditioner,
     uint8_t hi = 0u;
     for (size_t i = 0; i < count; ++i) {
         const int input_q8 = ((int)(phase_delta[i] & 0x3fu)) << 8;
-        /* Very slow DC tracker: roughly 3.3 ms at 20 MS/s for 2^16 samples. */
-        conditioner->dc_q8 += (input_q8 - conditioner->dc_q8) >> 16;
-        int centered_q8 = input_q8 - conditioner->dc_q8;
+        int reference_q8;
+        if (cfg->external_bias) {
+            /* Structure-derived level recovery owns the pivot: measured
+             * blanking pinned by the levels estimator, no self-tracking. */
+            conditioner->dc_q8 = cfg->bias_q8;
+            reference_q8 = conditioner->dc_q8;
+        } else {
+            /* Very slow DC tracker: roughly 3.3 ms at 20 MS/s. */
+            conditioner->dc_q8 += (input_q8 - conditioner->dc_q8) >> 16;
+            reference_q8 = conditioner->dc_q8;
+        }
+        int centered_q8 = input_q8 - reference_q8;
         if (cfg->invert) {
             centered_q8 = -centered_q8;
         }

@@ -12,11 +12,47 @@
 - `c5vrx_rf_source_t` block ownership/acquire/release interface;
 - bounded four-block producer/consumer queue and high-water accounting;
 - separate source and processing tasks with drop/backpressure counters;
+- monotonic stream accounting in the ring source: `producer_absolute` /
+  `consumer_absolute` extend the wrapped hardware pointer into an infinite
+  logical stream; lag current/max are part of `C5VRX_LIVE_RING_STATS`
+  (issue #5 section 1 bookkeeping);
+- canonical video timing observer (`c5vrx_video_timing`, host-tested):
+  standards-correct vertical-interval state machine (equalizing/serration
+  pulses, half-line grid phase), PAL/NTSC classification from field
+  duration over the measured line period with hysteresis, field parity
+  validated by the alternating interlace signature (slips counted, never
+  inferred from brightness), and composite/FM polarity learned through
+  configurable votes then held across ordinary blocks - opposite-polarity
+  sync candidates are rejected and counted (PR #9 lesson folded in,
+  issue comment 2);
+- structure-derived composite level recovery (`c5vrx_cvbs_levels`,
+  host-tested): minimum-envelope sync tip / back-porch estimators that
+  burst energy cannot lift, a multi-second-release peak-white envelope,
+  and slew-limited bias/gain recommendations feeding the conditioner's
+  new external-bias pivot mode (issue #5 section 5);
+- residual fractional clock bridge (`c5vrx_clock_bridge`, host-tested):
+  Q32 fixed-point rate adapter with bounded elastic FIFO, linear or
+  Catmull-Rom cubic interpolation (cubic measurably preserves more
+  chroma amplitude at mismatched ratios), occupancy telemetry and counted
+  drops (issue #5 section 4);
+- PAL/NTSC color decoder core (`c5vrx_chroma`, host-tested): continuous-NCO
+  burst PLL with evidence-based V-axis switch tracking, quadrature U/V
+  demodulation over a phase-neutral centered moving-average reference,
+  1H line-comb Y/C separation with luma-referenced fallback, clean color
+  killer without burst lock (issue #5 section 8 core);
 - persistent sample-domain route through the existing 4:1 C5 BitScrambler WBFM
   transform (no CPU `atan2` in the live path);
 - configurable DC tracking, bias, polarity, Q8 gain, optional one-pole filter,
   and output clamp;
 - two-buffer 20 MS/s PARLIO/GDMA live sample sink;
+- USB preview decoupled from the AV hot path: the pipeline sink calls
+  `c5vrx_cvbs_live_out_write()` first and then hands the same samples to a
+  bounded 16 KiB SPSC staging ring (`c5vrx_usb_preview_submit`); the priority-4
+  preview worker drains that ring and owns all sync tracking/frame assembly.
+  The staging ring drops newest samples when full and counts them
+  (`staged_drop_samples`, `staged_peak_bytes` in `C5VRX_CVBS_LOCK`), so USB can
+  add latency to itself but never to RF/DSP/PARLIO. `c5vrx_usb_preview_ingest`
+  remains only for synthetic `BENCH USB_PREVIEW`;
 - finite vendor dump adapter and `NEARLIVE START` diagnostic;
 - source/output underruns, dropped blocks, discontinuities, stage timing,
   achieved rate, WBFM/CVBS ranges, occupancy and high-water diagnostics.

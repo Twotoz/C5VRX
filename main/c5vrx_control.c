@@ -54,12 +54,16 @@ static bool s_parlio_bench_passed;
 static bool s_mode0_soak_passed;
 static bool s_synthetic_pipeline_passed;
 
+/* Issue #5 invariant: USB may never sit in series with AV. The PARLIO
+ * deadline write runs first; the preview side tap afterwards is bounded
+ * and drops instead of ever delaying c5vrx_cvbs_live_out_write(). */
 static esp_err_t live_output_with_preview(const uint8_t *samples,
                                           size_t count,
                                           void *context)
 {
-    c5vrx_usb_preview_ingest(samples, count);
-    return c5vrx_cvbs_live_out_write(samples, count, context);
+    const esp_err_t err = c5vrx_cvbs_live_out_write(samples, count, context);
+    c5vrx_usb_preview_submit(samples, count);
+    return err;
 }
 
 static uint32_t live_maximum_plausible_rate(void)
@@ -134,7 +138,7 @@ static esp_err_t stop_live_sources(c5vrx_stream_stats_t *pipeline_stats,
 static void print_ring_stats(const c5vrx_live_ring_stats_t *stats)
 {
     if (!stats) return;
-    printf("C5VRX_LIVE_RING_STATS blocks=%llu words=%llu dropped=%llu missed_words=%llu overruns=%llu discontinuities=%llu wraps=%llu fatal_stops=%llu fatal_reason=%s copy_cycles_total=%llu max_copy_cycles=%u\n",
+    printf("C5VRX_LIVE_RING_STATS blocks=%llu words=%llu dropped=%llu missed_words=%llu overruns=%llu discontinuities=%llu wraps=%llu fatal_stops=%llu fatal_reason=%s copy_cycles_total=%llu max_copy_cycles=%u producer_abs=%llu consumer_abs=%llu lag=%u lag_max=%u\n",
            (unsigned long long)stats->blocks,
            (unsigned long long)stats->words,
            (unsigned long long)stats->dropped_blocks,
@@ -145,7 +149,11 @@ static void print_ring_stats(const c5vrx_live_ring_stats_t *stats)
            (unsigned long long)stats->fatal_stops,
            c5vrx_live_ring_failure_name(stats->fatal_reason),
            (unsigned long long)stats->copy_cycles_total,
-           (unsigned)stats->maximum_copy_cycles);
+           (unsigned)stats->maximum_copy_cycles,
+           (unsigned long long)stats->producer_absolute_words,
+           (unsigned long long)stats->consumer_absolute_words,
+           (unsigned)stats->lag_words,
+           (unsigned)stats->lag_words_max);
 }
 
 #define C5VRX_LIVE_CVBS_SAMPLE_RATE_HZ 20000000u
@@ -165,7 +173,7 @@ static void print_cvbs_lock_status(const c5vrx_usb_preview_stats_t *stats)
         (uint32_t)((uint64_t)C5VRX_LIVE_CVBS_SAMPLE_RATE_HZ * 1000u /
                    stats->line_period_samples) : 0u;
     const bool locked = stats->horizontal_locked && stats->vertical_locked;
-    printf("C5VRX_CVBS_LOCK running=%u h_locked=%u v_locked=%u hsyncs=%u vsyncs=%u frames_completed=%u frames_sent=%u frames_dropped=%u rejected_pulses=%u lock_acquisitions=%u lock_losses=%u line_period_samples=%u line_rate_millihz=%u hsync_width=%u vsync_width=%u threshold=%u timing=%s classification=%s\n",
+    printf("C5VRX_CVBS_LOCK running=%u h_locked=%u v_locked=%u hsyncs=%u vsyncs=%u frames_completed=%u frames_sent=%u frames_dropped=%u rejected_pulses=%u lock_acquisitions=%u lock_losses=%u line_period_samples=%u line_rate_millihz=%u hsync_width=%u vsync_width=%u threshold=%u timing=%s classification=%s staged_drop_samples=%u staged_peak_bytes=%u\n",
            c5vrx_usb_preview_running() ? 1u : 0u,
            stats->horizontal_locked ? 1u : 0u,
            stats->vertical_locked ? 1u : 0u,
@@ -179,7 +187,9 @@ static void print_cvbs_lock_status(const c5vrx_usb_preview_stats_t *stats)
            (unsigned)stats->last_vsync_width, (unsigned)stats->sync_threshold,
            cvbs_timing_name(stats->line_period_samples),
            locked ? "LOCKED" :
-               (c5vrx_usb_preview_running() ? "ACQUIRING" : "STOPPED"));
+               (c5vrx_usb_preview_running() ? "ACQUIRING" : "STOPPED"),
+           (unsigned)stats->staged_dropped_samples,
+           (unsigned)stats->staged_peak_bytes);
     fflush(stdout);
 }
 
