@@ -16,6 +16,9 @@ test:
 		main/c5vrx_sample_ring.c tests/sample_ring_test.c -o /tmp/c5vrx-sample-ring-test
 	/tmp/c5vrx-sample-ring-test
 	$(CC) -std=c11 -Wall -Wextra -Werror -pedantic -Imain \
+		main/c5vrx_preview_geometry.c tests/preview_geometry_test.c -o /tmp/c5vrx-preview-geometry-test
+	/tmp/c5vrx-preview-geometry-test
+	$(CC) -std=c11 -Wall -Wextra -Werror -pedantic -Imain \
 		main/c5vrx_video_timing.c tests/video_timing_test.c -o /tmp/c5vrx-video-timing-test
 	/tmp/c5vrx-video-timing-test
 	$(CC) -std=c11 -Wall -Wextra -Werror -pedantic -Imain \

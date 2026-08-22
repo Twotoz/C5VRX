@@ -23,6 +23,7 @@ idf_component_register(
         "c5vrx_usb_preview.c"
         "c5vrx_usb_transport.c"
         "c5vrx_sample_ring.c"
+        "c5vrx_preview_geometry.c"
         "c5vrx_video_timing.c"
         "c5vrx_cvbs_levels.c"
         "c5vrx_clock_bridge.c"

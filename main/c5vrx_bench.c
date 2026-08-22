@@ -141,6 +141,8 @@ esp_err_t c5vrx_bench_usb_preview(void)
     for (unsigned i = 210u; i < 1250u; ++i)
         line[i] = (uint8_t)(20u + (i - 210u) * 43u / 1040u);
     esp_err_t err = c5vrx_usb_preview_start();
+    uint16_t preview_w = 0u, preview_h = 0u;
+    c5vrx_usb_preview_get_size(&preview_w, &preview_h);
     const int64_t first_us = esp_timer_get_time();
     if (err == ESP_OK) {
         memset(line, 0, 520u);
@@ -156,7 +158,7 @@ esp_err_t c5vrx_bench_usb_preview(void)
     const uint64_t us = (uint64_t)(esp_timer_get_time() - first_us);
     printf("C5VRX_BENCH_USB_PREVIEW input_samples=%u output_bytes=%u duration_us=%llu hv_sync_tracker=1 binary_protocol_version=%u transport_throughput_requires_connected_host=1 classification=%s code=%d\n",
            266u * 1280u,
-           C5VRX_USB_PREVIEW_WIDTH * C5VRX_USB_PREVIEW_HEIGHT,
+           (unsigned)(preview_w * preview_h),
            (unsigned long long)us,
            C5VRX_USB_PREVIEW_PROTOCOL_VERSION,
            err == ESP_OK ? "MEASURED_ON_HARDWARE_REDUCER_ONLY" : "FAILED",

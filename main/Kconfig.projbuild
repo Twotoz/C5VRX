@@ -235,3 +235,23 @@ config C5VRX_LIVE_CVBS_FILTER_SHIFT
         VTX capture and bandwidth measurement.
 
 endmenu
+
+config C5VRX_USB_PREVIEW_WIDTH
+    int "USB preview width rung (160/176/192/224/256/320)"
+    range 160 320
+    default 320
+    help
+        Resolution-ladder rung for the grayscale USB side tap (issue #5
+        comment 1). Off-ladder combinations fall back to 160x120 at
+        start. Full-Speed USB sustains roughly 0.6-0.8 MB/s: expect
+        ~30-40 fps at 160x120 down to ~7-10 fps at 320x240; frame
+        drops under load are counted in frames_dropped.
+
+config C5VRX_USB_PREVIEW_HEIGHT
+    int "USB preview height rung (120/132/144/168/192/240)"
+    range 120 240
+    default 240
+    help
+        Height rung paired with the width above. Rows map bob-style
+        onto every scanned line of each field, preserving PAL ~50 /
+        NTSC ~59.94 field-native motion at every rung.

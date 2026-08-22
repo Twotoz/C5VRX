@@ -7,8 +7,16 @@
 #include <stdint.h>
 #include "esp_err.h"
 
-#define C5VRX_USB_PREVIEW_WIDTH 160u
-#define C5VRX_USB_PREVIEW_HEIGHT 120u
+/* Boot-time default rung (Kconfig-overridable); runtime changes go
+ * through c5vrx_usb_preview_set_size(). Ladder rungs only - see
+ * c5vrx_preview_geometry.h for the bandwidth ceilings per rung. */
+#ifndef C5VRX_USB_PREVIEW_DEFAULT_WIDTH
+#define C5VRX_USB_PREVIEW_DEFAULT_WIDTH 320u
+#endif
+#ifndef C5VRX_USB_PREVIEW_DEFAULT_HEIGHT
+#define C5VRX_USB_PREVIEW_DEFAULT_HEIGHT 240u
+#endif
+
 #define C5VRX_USB_PREVIEW_PROTOCOL_VERSION 1u
 
 typedef struct {
@@ -29,11 +37,19 @@ typedef struct {
     bool vertical_locked;
     uint32_t staged_dropped_samples;
     uint16_t staged_peak_bytes;
+    uint16_t width;
+    uint16_t height;
 } c5vrx_usb_preview_stats_t;
 
 esp_err_t c5vrx_usb_preview_start(void);
 esp_err_t c5vrx_usb_preview_stop(void);
 bool c5vrx_usb_preview_running(void);
+
+/* Select a resolution-ladder rung for the next start. Rejected while
+ * the preview is running (stop first); non-rung sizes are rejected so
+ * host upscaling can never masquerade as transported detail. */
+esp_err_t c5vrx_usb_preview_set_size(uint16_t width, uint16_t height);
+void c5vrx_usb_preview_get_size(uint16_t *width, uint16_t *height);
 
 /* Best-effort side-tap entry for the AV hot path: never blocks, never
  * grows latency. When the preview is not running this costs one flag

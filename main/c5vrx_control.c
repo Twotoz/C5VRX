@@ -173,7 +173,7 @@ static void print_cvbs_lock_status(const c5vrx_usb_preview_stats_t *stats)
         (uint32_t)((uint64_t)C5VRX_LIVE_CVBS_SAMPLE_RATE_HZ * 1000u /
                    stats->line_period_samples) : 0u;
     const bool locked = stats->horizontal_locked && stats->vertical_locked;
-    printf("C5VRX_CVBS_LOCK running=%u h_locked=%u v_locked=%u hsyncs=%u vsyncs=%u frames_completed=%u frames_sent=%u frames_dropped=%u rejected_pulses=%u lock_acquisitions=%u lock_losses=%u line_period_samples=%u line_rate_millihz=%u hsync_width=%u vsync_width=%u threshold=%u timing=%s classification=%s staged_drop_samples=%u staged_peak_bytes=%u\n",
+    printf("C5VRX_CVBS_LOCK running=%u h_locked=%u v_locked=%u hsyncs=%u vsyncs=%u frames_completed=%u frames_sent=%u frames_dropped=%u rejected_pulses=%u lock_acquisitions=%u lock_losses=%u line_period_samples=%u line_rate_millihz=%u hsync_width=%u vsync_width=%u threshold=%u timing=%s classification=%s staged_drop_samples=%u staged_peak_bytes=%u preview_w=%u preview_h=%u\n",
            c5vrx_usb_preview_running() ? 1u : 0u,
            stats->horizontal_locked ? 1u : 0u,
            stats->vertical_locked ? 1u : 0u,
@@ -189,7 +189,8 @@ static void print_cvbs_lock_status(const c5vrx_usb_preview_stats_t *stats)
            locked ? "LOCKED" :
                (c5vrx_usb_preview_running() ? "ACQUIRING" : "STOPPED"),
            (unsigned)stats->staged_dropped_samples,
-           (unsigned)stats->staged_peak_bytes);
+           (unsigned)stats->staged_peak_bytes,
+           (unsigned)stats->width, (unsigned)stats->height);
     fflush(stdout);
 }
 
@@ -345,7 +346,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CAPTURE_PHASE8_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CAPTURE_PHASE8_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,USB_PREVIEW_SIZE_<W_H_LADDER>,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -599,8 +600,10 @@ static void handle_line(char *line)
     if (strcasecmp(line, "USB PREVIEW START") == 0 ||
         strcasecmp(line, "USB_PREVIEW_START") == 0) {
         const esp_err_t err = c5vrx_usb_preview_start();
+        uint16_t pw = 0u, ph = 0u;
+        c5vrx_usb_preview_get_size(&pw, &ph);
         printf("C5VRX_USB_PREVIEW state=START width=%u height=%u encoding=GRAY8 code=%d\n",
-               C5VRX_USB_PREVIEW_WIDTH, C5VRX_USB_PREVIEW_HEIGHT, (int)err);
+               (unsigned)pw, (unsigned)ph, (int)err);
         fflush(stdout);
         return;
     }
@@ -608,6 +611,22 @@ static void handle_line(char *line)
         strcasecmp(line, "USB_PREVIEW_STOP") == 0) {
         const esp_err_t err = c5vrx_usb_preview_stop();
         printf("C5VRX_USB_PREVIEW state=STOP code=%d\n", (int)err);
+        fflush(stdout);
+        return;
+    }
+    unsigned preview_w = 0u, preview_h = 0u;
+    if (sscanf(line, "USB_PREVIEW_SIZE_%u_%u", &preview_w, &preview_h) == 2 ||
+        sscanf(line, "USB PREVIEW SIZE %u %u",
+               &preview_w, &preview_h) == 2) {
+        const esp_err_t err = c5vrx_usb_preview_set_size(
+            (uint16_t)preview_w, (uint16_t)preview_h);
+        /* Full-Speed USB payload ceilings per rung (~0.6-0.8 MB/s):
+         * 320x240 tops out near 7-10 fps; temporal motion is preserved
+         * by frame drops, which stay visible in frames_dropped. */
+        printf("C5VRX_USB_PREVIEW_SIZE code=%d width=%u height=%u classification=%s\n",
+               (int)err, preview_w, preview_h,
+               err == ESP_OK ? "LADDER_RUNG_ACCEPTED_APPLIES_NEXT_START"
+                             : "REJECTED_RUNNING_OR_OFF_LADDER");
         fflush(stdout);
         return;
     }
