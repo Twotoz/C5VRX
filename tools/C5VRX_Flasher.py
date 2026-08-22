@@ -232,8 +232,16 @@ class C5VRXApp(tk.Tk):
         )
         self.profile_mismatch_warned = False
         self.title(f"{APP_TITLE} — {self.firmware_profile['display_name']}")
-        self.geometry("860x650")
-        self.minsize(760, 580)
+        # Fit the host screen: ~92% of the work area, then maximize so
+        # nothing is out of reach on small laptop panels.
+        screen_w = max(760, self.winfo_screenwidth() - 48)
+        screen_h = max(560, self.winfo_screenheight() - 96)
+        self.geometry(f"{min(1500, screen_w)}x{min(1000, screen_h)}")
+        self.minsize(720, 540)
+        try:
+            self.state("zoomed")
+        except tk.TclError:
+            pass
 
         self._busy = False
         self.ser: serial.Serial | None = None
@@ -365,6 +373,21 @@ class C5VRXApp(tk.Tk):
         self.log = tk.Text(root, height=12, wrap="word", state="disabled", font=("Consolas", 9))
         self.log.pack(fill="both", expand=False, pady=(10, 0))
         self.sink = TextSink(self.log)
+
+        # Free-form console entry: run any firmware command by typing it
+        # and pressing Enter or Send (e.g. the validation sequence in
+        # research/a1-live-av-validation-plan.md).
+        cmd_row = ttk.Frame(root)
+        cmd_row.pack(fill="x", pady=(6, 0))
+        ttk.Label(cmd_row, text="Command:").pack(side="left")
+        self.cmd_var = tk.StringVar()
+        self.cmd_entry = ttk.Entry(cmd_row, textvariable=self.cmd_var)
+        self.cmd_entry.pack(side="left", fill="x", expand=True, padx=(6, 6))
+        self.cmd_entry.bind("<Return>", self._send_console_command)
+        ttk.Button(
+            cmd_row, text="Send", command=self._send_console_command
+        ).pack(side="left")
+
         self.after(33, self._poll_live_iq_frame)
 
         export_row = ttk.Frame(root)
@@ -1059,6 +1082,13 @@ class C5VRXApp(tk.Tk):
     def capture_iq_16k(self) -> None:
         self.samples_var.set("16384")
         self.capture_iq()
+
+    def _send_console_command(self, *_args: object) -> None:
+        command = self.cmd_var.get().strip()
+        if not command:
+            return
+        self.cmd_var.set("")
+        self.send_command(command)
 
     def start_usb_preview(self) -> None:
         self.send_command("USB PREVIEW START")
