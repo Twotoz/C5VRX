@@ -244,6 +244,11 @@ class C5VRXApp(tk.Tk):
             pass
 
         self._busy = False
+        # Serial RX events are marshalled through a queue into the Tk main
+        # loop: tkinter is not thread-safe, so worker-thread writes to the
+        # log could silently vanish (looked like "device not responding").
+        self._rx_queue: queue.Queue = queue.Queue()
+        self.after(40, self._drain_rx_queue)
         self.ser: serial.Serial | None = None
         self.serial_thread: threading.Thread | None = None
         self.serial_stop = threading.Event()
@@ -688,28 +693,56 @@ class C5VRXApp(tk.Tk):
                     raw += ser.read(waiting)
                 self.session.record_raw(raw)
                 for kind, value in decoder.feed(raw):
-                    if kind == "line":
-                        line = str(value)
-                        self.session.record_line(line)
-                        self.sink.write(line + "\n")
-                        self._parse_device_line(line)
-                    elif kind == "packet":
-                        assert isinstance(value, Packet)
-                        self.session.record_packet(value)
-                        self._handle_usb_packet(value)
-                    else:
-                        self.session.record_error("USB_PROTOCOL", str(value))
-                        self.sink.write(
-                            f"C5VRX_PREVIEW_RESYNC reason={value}\n")
-                        if (self.live_iq_active and
-                                str(value).startswith("PAYLOAD_CRC")):
-                            self.live_iq_transport_losses += 1
-                            self._note_live_iq_transport_progress()
+                    self._rx_queue.put((kind, value))
         except Exception as exc:
             if not self.serial_stop.is_set():
                 self.session.record_error("SERIAL_READER", str(exc))
-                self.sink.write(f"\nSerial reader stopped: {exc}\n")
-                self.after(0, self._serial_lost)
+                self._rx_queue.put(
+                    ("line", f"SERIAL LOST: {exc}\n"))
+                try:
+                    self.after(0, self._serial_lost)
+                except Exception:
+                    pass
+
+    def _drain_rx_queue(self) -> None:
+        """Main-thread consumer: every UI touch happens here."""
+        drained = 0
+        while drained < 1024:
+            try:
+                kind, value = self._rx_queue.get_nowait()
+            except queue.Empty:
+                break
+            drained += 1
+            if kind == "line":
+                line = str(value)
+                self.session.record_line(line)
+                self.sink.write(line + "\n")
+                self._parse_device_line(line)
+            elif kind == "packet":
+                assert isinstance(value, Packet)
+                self.session.record_packet(value)
+                self._handle_usb_packet(value)
+            else:
+                self.session.record_error("USB_PROTOCOL", str(value))
+                self.sink.write(
+                    f"C5VRX_PREVIEW_RESYNC reason={value}\n")
+                if (self.live_iq_active and
+                        str(value).startswith("PAYLOAD_CRC")):
+                    self.live_iq_transport_losses += 1
+                    self._note_live_iq_transport_progress()
+        self.after(30, self._drain_rx_queue)
+
+    def _alert(self, kind: str, message: str) -> None:
+        """Warning/error that cannot hide behind the maximized window."""
+        self.lift()
+        self.attributes("-topmost", True)
+        try:
+            if kind == "warn":
+                messagebox.showwarning(APP_TITLE, message, parent=self)
+            else:
+                messagebox.showerror(APP_TITLE, message, parent=self)
+        finally:
+            self.attributes("-topmost", False)
 
     def _serial_lost(self) -> None:
         self.disconnect_serial()
@@ -1051,7 +1084,7 @@ class C5VRXApp(tk.Tk):
     def send_command(self, command: str) -> None:
         ser = self.ser
         if not ser or not ser.is_open:
-            messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
+            self._alert("warn", "Connect to C5VRX first.")
             return
         try:
             self.session.record_command(command.strip())
@@ -1059,7 +1092,9 @@ class C5VRXApp(tk.Tk):
             ser.flush()
             self.sink.write(f"> {command}\n")
         except Exception as exc:
-            messagebox.showerror(APP_TITLE, f"USB command failed:\n\n{exc}")
+            self._alert("error", f"USB command failed:\n\n{exc}\n\n"
+                                 "The device likely rebooted or the COM "
+                                 "port disappeared - reconnect and retry.")
             self.disconnect_serial()
 
     def apply_channel(self) -> None:
