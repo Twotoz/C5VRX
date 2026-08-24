@@ -18,6 +18,8 @@ static SemaphoreHandle_t s_tx_mutex;
  * The transport mutex also makes a shared formatting buffer safe. */
 static char s_printf_buffer[2048];
 
+#define USB_TOTAL_WRITE_DEADLINE_MS 2500u
+
 esp_err_t c5vrx_usb_transport_init(void)
 {
     if (!s_tx_mutex) {
@@ -26,11 +28,15 @@ esp_err_t c5vrx_usb_transport_init(void)
     return s_tx_mutex ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
-static esp_err_t write_locked(const uint8_t *data, size_t size)
+static esp_err_t write_locked(const uint8_t *data, size_t size,
+                              TickType_t packet_start,
+                              TickType_t packet_deadline)
 {
     size_t offset = 0;
     unsigned empty_writes = 0;
     while (offset < size) {
+        if (xTaskGetTickCount() - packet_start >= packet_deadline)
+            return ESP_ERR_TIMEOUT;
         const int written = usb_serial_jtag_write_bytes(
             data + offset, size - offset, pdMS_TO_TICKS(100));
         if (written < 0) return ESP_FAIL;
@@ -52,13 +58,17 @@ esp_err_t c5vrx_usb_writev(const c5vrx_usb_iovec_t *parts, size_t part_count)
         return ESP_ERR_TIMEOUT;
 
     esp_err_t result = ESP_OK;
+    const TickType_t packet_start = xTaskGetTickCount();
+    const TickType_t packet_deadline =
+        pdMS_TO_TICKS(USB_TOTAL_WRITE_DEADLINE_MS);
     for (size_t i = 0; i < part_count; ++i) {
         if (!parts[i].size) continue;
         if (!parts[i].data) {
             result = ESP_ERR_INVALID_ARG;
             break;
         }
-        result = write_locked(parts[i].data, parts[i].size);
+        result = write_locked(parts[i].data, parts[i].size,
+                              packet_start, packet_deadline);
         if (result != ESP_OK) break;
     }
     xSemaphoreGive(s_tx_mutex);
@@ -86,7 +96,8 @@ int c5vrx_usb_vprintf(const char *format, va_list args)
                              ? (size_t)required
                              : sizeof(s_printf_buffer) - 1u;
     const esp_err_t result = write_locked(
-        (const uint8_t *)s_printf_buffer, count);
+        (const uint8_t *)s_printf_buffer, count, xTaskGetTickCount(),
+        pdMS_TO_TICKS(USB_TOTAL_WRITE_DEADLINE_MS));
     xSemaphoreGive(s_tx_mutex);
     return result == ESP_OK ? required : -1;
 }
