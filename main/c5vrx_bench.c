@@ -151,13 +151,14 @@ esp_err_t c5vrx_bench_parlio_clock(uint32_t clock_hz)
     if (err == ESP_OK &&
         (after.mailbox_drops != before.mailbox_drops ||
          after.qualification_underruns != before.qualification_underruns ||
+         after.phase_mismatch_drops != before.phase_mismatch_drops ||
          after.guardian_failures != before.guardian_failures))
         err = ESP_ERR_INVALID_STATE;
     c5vrx_cvbs_live_out_qualification_end();
     const uint64_t us = (uint64_t)(esp_timer_get_time() - first_us);
     const esp_err_t stop_err = c5vrx_cvbs_live_out_stop();
     if (err == ESP_OK) err = stop_err;
-    printf("C5VRX_BENCH_PARLIO clock_hz=%u samples=%u duration_us=%llu samples_per_sec=%llu live_blocks=%llu live_blocks_retired=%llu filler_blocks=%llu mailbox_drops=%llu qualification_underruns=%llu guardian_failures=%llu underrun=%u production_clock=%u classification=%s code=%d\n",
+    printf("C5VRX_BENCH_PARLIO clock_hz=%u samples=%u duration_us=%llu samples_per_sec=%llu live_blocks=%llu live_blocks_retired=%llu filler_blocks=%llu mailbox_drops=%llu qualification_underruns=%llu phase_mismatch_drops=%llu guardian_failures=%llu underrun=%u production_clock=%u classification=%s code=%d\n",
            (unsigned)clock_hz, blocks * 4096u, (unsigned long long)us,
            (unsigned long long)(us ? (uint64_t)blocks * 4096u * 1000000u / us : 0u),
            (unsigned long long)(after.live_blocks - before.live_blocks),
@@ -165,6 +166,7 @@ esp_err_t c5vrx_bench_parlio_clock(uint32_t clock_hz)
            (unsigned long long)(after.filler_blocks - before.filler_blocks),
            (unsigned long long)(after.mailbox_drops - before.mailbox_drops),
            (unsigned long long)(after.qualification_underruns - before.qualification_underruns),
+           (unsigned long long)(after.phase_mismatch_drops - before.phase_mismatch_drops),
            (unsigned long long)(after.guardian_failures - before.guardian_failures),
            err == ESP_OK ? 0u : 1u,
            clock_hz == C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ ? 1u : 0u,

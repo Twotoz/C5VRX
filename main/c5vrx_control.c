@@ -66,14 +66,22 @@ static esp_err_t live_output_with_preview(const uint8_t *samples,
      * short lease.  USB can therefore never delay or backpressure AV. */
     c5vrx_cvbs_sync_tracker_t timing;
     c5vrx_live_pipeline_get_timing(&timing);
-    c5vrx_cvbs_live_out_update_timing(&timing);
     /* Never put unlocked/noise waveform on the connector. The independent AV
      * guardian keeps standards-correct black/sync running while timing
      * reacquires, including after an explicit stream epoch change. */
     const bool legal_live = timing.horizontal_locked && timing.vertical_locked &&
         timing.standard != C5VRX_VIDEO_STANDARD_UNKNOWN;
-    const esp_err_t av_err = legal_live ?
-        c5vrx_cvbs_live_out_write(samples, count, context) : ESP_OK;
+    esp_err_t av_err = ESP_OK;
+    if (legal_live) {
+        const bool starting = !c5vrx_cvbs_live_out_running();
+        if (starting)
+            av_err = c5vrx_cvbs_live_out_start_aligned(
+                samples, count, &timing);
+        if (av_err == ESP_OK && !starting) {
+            c5vrx_cvbs_live_out_update_timing(&timing);
+            av_err = c5vrx_cvbs_live_out_write(samples, count, context);
+        }
+    }
     if (av_err == ESP_OK && c5vrx_usb_preview_consumer_active()) {
         c5vrx_usb_preview_ingest_timed(samples, count, &timing);
     }
@@ -153,7 +161,6 @@ static esp_err_t start_ring_live(c5vrx_rf_dump_mode_t mode,
     if (err == ESP_OK) err = c5vrx_live_ring_source_create(
         &s_ring_source, mode, block_words, 512u,
         live_maximum_plausible_rate());
-    if (err == ESP_OK) err = c5vrx_cvbs_live_out_start(block_words / 4u);
     const c5vrx_live_pipeline_config_t config = {
         .source = &s_ring_source, .sink = live_output_with_preview,
         .maximum_input_words = block_words,
@@ -869,6 +876,8 @@ static void handle_line(char *line)
             av_workload_after.mailbox_drops == av_before.mailbox_drops &&
             av_workload_after.qualification_underruns ==
                 av_before.qualification_underruns &&
+            av_workload_after.phase_mismatch_drops ==
+                av_before.phase_mismatch_drops &&
             av_after.guardian_failures == av_before.guardian_failures;
         const bool rate_pass = s_capabilities.measured_source_rate &&
             (uint64_t)pipeline.achieved_input_rate_hz * 100u >=
@@ -899,7 +908,7 @@ static void handle_line(char *line)
             select_measured_ring_block();
         }
         print_ring_stats(&ring);
-        printf("C5VRX_BENCH_RING_PIPELINE mode=%u duration_ms=%u block_words=%u blocks=%llu input_rate=%u measured_source_rate=%u rate_pass=%u copy_bytes_per_second=%llu copy_cycles_total=%llu copy_cpu_percent=%u zero_copy_action=%s dropped=%llu output_underruns=%llu av_mailbox_drops=%llu av_qualification_underruns=%llu av_guardian_failures=%llu av_pass=%u deadline_headroom_x1000=%u two_x_deadline_headroom_pass=%u synthetic_margin_pass=%u matrix_seen_mask=0x%02x matrix_pass_mask=0x%02x selected_block_words=%u classification=%s code=%d\n",
+        printf("C5VRX_BENCH_RING_PIPELINE mode=%u duration_ms=%u block_words=%u blocks=%llu input_rate=%u measured_source_rate=%u rate_pass=%u copy_bytes_per_second=%llu copy_cycles_total=%llu copy_cpu_percent=%u zero_copy_action=%s dropped=%llu output_underruns=%llu av_mailbox_drops=%llu av_qualification_underruns=%llu av_phase_mismatch_drops=%llu av_guardian_failures=%llu av_pass=%u deadline_headroom_x1000=%u two_x_deadline_headroom_pass=%u synthetic_margin_pass=%u matrix_seen_mask=0x%02x matrix_pass_mask=0x%02x selected_block_words=%u classification=%s code=%d\n",
                ring_bench_mode, ring_bench_ms, ring_bench_words,
                (unsigned long long)pipeline.blocks_processed,
                (unsigned)pipeline.achieved_input_rate_hz,
@@ -912,6 +921,7 @@ static void handle_line(char *line)
                (unsigned long long)pipeline.output_underruns,
                (unsigned long long)(av_workload_after.mailbox_drops - av_before.mailbox_drops),
                (unsigned long long)(av_workload_after.qualification_underruns - av_before.qualification_underruns),
+               (unsigned long long)(av_workload_after.phase_mismatch_drops - av_before.phase_mismatch_drops),
                (unsigned long long)(av_after.guardian_failures - av_before.guardian_failures),
                av_pass ? 1u : 0u,
                (unsigned)ring.deadline_headroom_x1000,
@@ -1079,7 +1089,6 @@ static void handle_line(char *line)
         esp_err_t err = c5vrx_usb_preview_prepare();
         if (err == ESP_OK)
             err = c5vrx_finite_chain_source_create(&s_finite_source, 16384u);
-        if (err == ESP_OK) err = c5vrx_cvbs_live_out_start(4096u);
         const c5vrx_live_pipeline_config_t config = {
             .source = &s_finite_source, .sink = live_output_with_preview,
             .maximum_input_words = 16384u,

@@ -19,20 +19,25 @@ typedef struct {
     parlio_tx_unit_handle_t tx;
     uint8_t *dma[2];
     uint8_t *mailbox[2];
+    uint64_t mailbox_filler_start_sample[2];
     uint64_t mailbox_filler_end_sample[2];
+    bool mailbox_phase_valid[2];
     bool dma_live[2];
     bool mailbox_ready[2];
     bool mailbox_in_use[2];
     unsigned mailbox_write;
     size_t samples;
     uint64_t filler_sample;
+    uint64_t pending_live_filler_start_sample;
     uint64_t pending_live_filler_end_sample;
+    bool pending_live_phase_valid;
     uint64_t live_blocks;
     uint64_t live_blocks_retired;
     uint64_t filler_blocks;
     uint64_t mailbox_drops;
     uint64_t qualification_underruns;
     uint64_t guardian_failures;
+    uint64_t phase_mismatch_drops;
     uint32_t qualification_unsubmitted;
     TaskHandle_t guardian;
     portMUX_TYPE lock;
@@ -42,6 +47,52 @@ typedef struct {
 } live_out_state_t;
 
 static live_out_state_t s_out = {.lock = portMUX_INITIALIZER_UNLOCKED};
+
+typedef struct {
+    bool valid;
+    c5vrx_video_standard_t standard;
+    uint64_t initial_filler_sample;
+    uint64_t first_live_start_sample;
+    uint64_t first_live_end_sample;
+    const uint8_t *first_live_samples;
+} aligned_start_t;
+
+static aligned_start_t s_aligned_start;
+
+static bool filler_coordinate(const c5vrx_cvbs_sync_tracker_t *timing,
+                              uint32_t output_clock_hz,
+                              uint64_t *end_sample,
+                              uint64_t *frame_samples)
+{
+    if (!timing || !output_clock_hz || !timing->horizontal_locked ||
+        !timing->vertical_locked || !timing->last_vsync_start ||
+        timing->standard == C5VRX_VIDEO_STANDARD_UNKNOWN) return false;
+    const bool ntsc = timing->standard == C5VRX_VIDEO_STANDARD_NTSC;
+    const uint32_t line_samples = ntsc ?
+        (uint32_t)(((uint64_t)output_clock_hz * 1000u + 7867000u) /
+                   15734000u) :
+        (uint32_t)(((uint64_t)output_clock_hz * 64u + 500000u) /
+                   1000000u);
+    const uint32_t equalizing_halves = ntsc ? 6u : 5u;
+    const uint32_t field_half_lines = ntsc ? 525u : 625u;
+    const uint32_t frame_half_lines = field_half_lines * 2u;
+    const uint64_t since_vsync = timing->samples_seen >=
+        timing->last_vsync_start ?
+        timing->samples_seen - timing->last_vsync_start : 0u;
+    const uint32_t source_rate = timing->sample_rate_hz ?
+        timing->sample_rate_hz : C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ;
+    const uint64_t field_phase = timing->odd_field ? 0u :
+        (uint64_t)field_half_lines * line_samples / 2u;
+    const uint64_t broad_pulse_phase = field_phase +
+        (uint64_t)equalizing_halves * line_samples / 2u;
+    const uint64_t frame =
+        (uint64_t)line_samples * frame_half_lines / 2u;
+    if (end_sample) *end_sample = (broad_pulse_phase +
+        (since_vsync * output_clock_hz + source_rate / 2u) / source_rate) %
+        frame;
+    if (frame_samples) *frame_samples = frame;
+    return true;
+}
 
 static uint8_t legal_filler_sample(uint64_t sample)
 {
@@ -108,10 +159,29 @@ static bool on_switched(parlio_tx_unit_handle_t unit,
 static bool take_live_block(uint8_t *destination, uint64_t *filler_end_sample)
 {
     int found = -1;
+    const bool ntsc = s_out.filler_standard == C5VRX_VIDEO_STANDARD_NTSC;
+    const uint32_t line_samples = ntsc ?
+        (uint32_t)(((uint64_t)s_out.clock_hz * 1000u + 7867000u) /
+                   15734000u) :
+        (uint32_t)(((uint64_t)s_out.clock_hz * 64u + 500000u) /
+                   1000000u);
+    const uint64_t frame_samples = (uint64_t)line_samples *
+        (ntsc ? 1050u : PAL_FRAME_HALF_LINES) / 2u;
     taskENTER_CRITICAL(&s_out.lock);
     for (unsigned n = 0; n < 2u; ++n) {
         const unsigned index = (s_out.mailbox_write + n) & 1u;
         if (!s_out.mailbox_ready[index] || s_out.mailbox_in_use[index]) continue;
+        if (s_out.mailbox_phase_valid[index] && frame_samples &&
+            s_out.mailbox_filler_start_sample[index] % frame_samples !=
+                s_out.filler_sample % frame_samples) {
+            /* Never splice a newly resumed live block onto a queued filler
+             * tail at a different H/V coordinate. Drop this stale block so
+             * the producer can publish a phase-current replacement; legal
+             * filler remains continuous meanwhile. */
+            s_out.mailbox_ready[index] = false;
+            ++s_out.phase_mismatch_drops;
+            continue;
+        }
         s_out.mailbox_ready[index] = false;
         s_out.mailbox_in_use[index] = true;
         found = (int)index;
@@ -176,25 +246,66 @@ esp_err_t c5vrx_cvbs_live_out_start(size_t block_samples)
         block_samples, C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ);
 }
 
+esp_err_t c5vrx_cvbs_live_out_start_aligned(
+    const uint8_t *first_live_samples, size_t block_samples,
+    const c5vrx_cvbs_sync_tracker_t *first_live_timing)
+{
+    if (s_out.tx || !first_live_samples || !block_samples)
+        return ESP_ERR_INVALID_STATE;
+    uint64_t live_end = 0u, frame = 0u;
+    if (!filler_coordinate(first_live_timing,
+            C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ, &live_end, &frame))
+        return ESP_ERR_INVALID_ARG;
+    const uint64_t live_start =
+        (live_end + frame - block_samples % frame) % frame;
+    const uint64_t queued_filler = (2u * block_samples) % frame;
+    s_aligned_start = (aligned_start_t) {
+        .valid = true,
+        .standard = first_live_timing->standard,
+        .initial_filler_sample =
+            (live_start + frame - queued_filler) % frame,
+        .first_live_start_sample = live_start,
+        .first_live_end_sample = live_end,
+        .first_live_samples = first_live_samples,
+    };
+    return c5vrx_cvbs_live_out_start(block_samples);
+}
+
+bool c5vrx_cvbs_live_out_running(void)
+{
+    return s_out.running && s_out.tx != NULL;
+}
+
 esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
                                             uint32_t output_clock_hz)
 {
     if (s_out.tx) return ESP_ERR_INVALID_STATE;
     if (!block_samples || output_clock_hz < 16000000u ||
         output_clock_hz > 30000000u) return ESP_ERR_INVALID_ARG;
+    const aligned_start_t aligned = s_aligned_start;
+    s_aligned_start.valid = false;
     s_out.samples = block_samples;
     s_out.clock_hz = output_clock_hz;
     s_out.live_blocks = s_out.live_blocks_retired = 0u;
     s_out.filler_blocks = s_out.mailbox_drops = 0u;
     s_out.qualification_underruns = 0u;
     s_out.guardian_failures = 0u;
+    s_out.phase_mismatch_drops = 0u;
     s_out.qualification_unsubmitted = 0u;
-    s_out.filler_sample = 0u;
-    s_out.pending_live_filler_end_sample = 0u;
+    s_out.filler_sample = aligned.valid ? aligned.initial_filler_sample : 0u;
+    s_out.pending_live_filler_start_sample = aligned.valid ?
+        aligned.first_live_start_sample : 0u;
+    s_out.pending_live_filler_end_sample = aligned.valid ?
+        aligned.first_live_end_sample : 0u;
+    s_out.pending_live_phase_valid = aligned.valid;
     s_out.mailbox_write = 0u;
-    s_out.filler_standard = C5VRX_VIDEO_STANDARD_PAL;
+    s_out.filler_standard = aligned.valid ?
+        aligned.standard : C5VRX_VIDEO_STANDARD_PAL;
     for (unsigned i = 0; i < 2u; ++i) {
         s_out.dma_live[i] = false;
+        s_out.mailbox_ready[i] = false;
+        s_out.mailbox_in_use[i] = false;
+        s_out.mailbox_phase_valid[i] = false;
         s_out.dma[i] = heap_caps_malloc(
             block_samples, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
         s_out.mailbox[i] = heap_caps_malloc(block_samples, MALLOC_CAP_INTERNAL);
@@ -203,6 +314,15 @@ esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
             return ESP_ERR_NO_MEM;
         }
         fill_legal_filler(s_out.dma[i]);
+    }
+    if (aligned.valid) {
+        memcpy(s_out.mailbox[0], aligned.first_live_samples, block_samples);
+        s_out.mailbox_filler_start_sample[0] =
+            aligned.first_live_start_sample;
+        s_out.mailbox_filler_end_sample[0] = aligned.first_live_end_sample;
+        s_out.mailbox_phase_valid[0] = true;
+        s_out.mailbox_ready[0] = true;
+        s_out.mailbox_write = 1u;
     }
     const parlio_tx_unit_config_t config = {
         .clk_src = PARLIO_CLK_SRC_DEFAULT, .clk_in_gpio_num = -1,
@@ -253,8 +373,11 @@ esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *samples, size_t count,
     memcpy(s_out.mailbox[index], samples, count);
     taskENTER_CRITICAL(&s_out.lock);
     s_out.mailbox_ready[index] = true;
+    s_out.mailbox_filler_start_sample[index] =
+        s_out.pending_live_filler_start_sample;
     s_out.mailbox_filler_end_sample[index] =
         s_out.pending_live_filler_end_sample;
+    s_out.mailbox_phase_valid[index] = s_out.pending_live_phase_valid;
     s_out.mailbox_in_use[index] = false;
     s_out.mailbox_write = (unsigned)index ^ 1u;
     taskEXIT_CRITICAL(&s_out.lock);
@@ -285,8 +408,11 @@ esp_err_t c5vrx_cvbs_live_out_write_wait(const uint8_t *samples, size_t count,
             memcpy(s_out.mailbox[index], samples, count);
             taskENTER_CRITICAL(&s_out.lock);
             s_out.mailbox_ready[index] = true;
+            s_out.mailbox_filler_start_sample[index] =
+                s_out.pending_live_filler_start_sample;
             s_out.mailbox_filler_end_sample[index] =
                 s_out.pending_live_filler_end_sample;
+            s_out.mailbox_phase_valid[index] = s_out.pending_live_phase_valid;
             s_out.mailbox_in_use[index] = false;
             s_out.mailbox_write = (unsigned)index ^ 1u;
             if (s_out.qualification_unsubmitted)
@@ -331,7 +457,9 @@ esp_err_t c5vrx_cvbs_live_out_stop(void)
     s_out.samples = 0u;
     s_out.clock_hz = 0u;
     s_out.filler_sample = 0u;
+    s_out.pending_live_filler_start_sample = 0u;
     s_out.pending_live_filler_end_sample = 0u;
+    s_out.pending_live_phase_valid = false;
     s_out.mailbox_ready[0] = s_out.mailbox_ready[1] = false;
     s_out.mailbox_in_use[0] = s_out.mailbox_in_use[1] = false;
     return ESP_OK;
@@ -347,6 +475,7 @@ void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
         .mailbox_drops = s_out.mailbox_drops,
         .qualification_underruns = s_out.qualification_underruns,
         .guardian_failures = s_out.guardian_failures,
+        .phase_mismatch_drops = s_out.phase_mismatch_drops,
         .guardian_running = s_out.guardian != NULL,
     };
 }
@@ -354,50 +483,29 @@ void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
 void c5vrx_cvbs_live_out_update_timing(
     const c5vrx_cvbs_sync_tracker_t *timing)
 {
-    if (!s_out.running || !s_out.clock_hz || !timing ||
-        !timing->horizontal_locked || !timing->vertical_locked ||
-        !timing->last_vsync_start ||
-        timing->standard == C5VRX_VIDEO_STANDARD_UNKNOWN) return;
-    const bool ntsc = timing->standard == C5VRX_VIDEO_STANDARD_NTSC;
-    const uint32_t line_samples = ntsc ?
-        (uint32_t)(((uint64_t)s_out.clock_hz * 1000u + 7867000u) /
-                   15734000u) :
-        (uint32_t)(((uint64_t)s_out.clock_hz * 64u + 500000u) /
-                   1000000u);
-    const uint32_t equalizing_halves = ntsc ? 6u : 5u;
-    const uint32_t field_half_lines = ntsc ? 525u : 625u;
-    const uint64_t since_vsync = timing->samples_seen >=
-        timing->last_vsync_start ?
-        timing->samples_seen - timing->last_vsync_start : 0u;
-    const uint32_t source_rate = timing->sample_rate_hz ?
-        timing->sample_rate_hz : C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ;
-    /* last_vsync_start is the first broad pulse; legal_filler_sample() places
-     * that pulse after the leading equalising half-lines. Convert the live
-     * stream tail into this synthetic frame coordinate. This offset is the
-     * missing link between arbitrary RF-capture time and legal filler phase. */
-    /* In the synthetic frame, the broad pulse of the half-line-shifted
-     * (tracker odd_field=true) field is the first occurrence. The other
-     * field begins 625 PAL / 525 NTSC half-lines later. Keep that parity:
-     * mapping both V-syncs to the first occurrence would splice a half-line
-     * into every alternate fallback transition. */
-    const uint64_t field_phase = timing->odd_field ? 0u :
-        (uint64_t)field_half_lines * line_samples / 2u;
-    const uint64_t broad_pulse_phase = field_phase +
-        (uint64_t)equalizing_halves * line_samples / 2u;
-    const uint64_t filler_end = broad_pulse_phase +
-        (since_vsync * s_out.clock_hz + source_rate / 2u) / source_rate;
+    uint64_t filler_end = 0u, frame = 0u;
+    if (!s_out.running || !filler_coordinate(
+            timing, s_out.clock_hz, &filler_end, &frame)) return;
+    const uint64_t filler_start =
+        (filler_end + frame - s_out.samples % frame) % frame;
     taskENTER_CRITICAL(&s_out.lock);
     s_out.filler_standard = timing->standard;
     /* Attach phase-anchored canonical time to the next live mailbox block.
      * The guardian applies it only when that block enters actual PARLIO queue
      * order; producer-ahead timing can therefore never move the live cursor. */
+    s_out.pending_live_filler_start_sample = filler_start;
     s_out.pending_live_filler_end_sample = filler_end;
+    s_out.pending_live_phase_valid = true;
     taskEXIT_CRITICAL(&s_out.lock);
 }
 #else
 esp_err_t c5vrx_cvbs_live_out_start(size_t n) { (void)n; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t n, uint32_t r)
 { (void)n; (void)r; return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t c5vrx_cvbs_live_out_start_aligned(
+    const uint8_t *s, size_t n, const c5vrx_cvbs_sync_tracker_t *t)
+{ (void)s; (void)n; (void)t; return ESP_ERR_NOT_SUPPORTED; }
+bool c5vrx_cvbs_live_out_running(void) { return false; }
 esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *s, size_t n, void *c)
 { (void)s; (void)n; (void)c; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t c5vrx_cvbs_live_out_write_wait(const uint8_t *s, size_t n, uint32_t t)
