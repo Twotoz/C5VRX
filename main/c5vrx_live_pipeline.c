@@ -46,11 +46,13 @@ typedef struct {
     bool have_previous_wbfm;
     uint8_t previous_retained_phase;
     bool have_previous_retained_phase;
-    TaskHandle_t idle_task;
-    bool idle_wdt_removed;
 } live_state_t;
 
 static live_state_t s_live;
+/* Kept outside s_live so a failed task creation may clear pipeline ownership
+ * without losing the information required to retry watchdog restoration. */
+static TaskHandle_t s_idle_task;
+static bool s_idle_wdt_removed;
 
 static void update_max_u64(uint64_t *maximum, uint64_t value)
 {
@@ -64,21 +66,23 @@ static esp_err_t suspend_idle_watchdog_for_ring(void)
         s_live.config.source->kind != C5VRX_RF_SOURCE_CONTINUOUS) {
         return ESP_OK;
     }
-    s_live.idle_task = xTaskGetIdleTaskHandleForCore(xPortGetCoreID());
-    if (!s_live.idle_task ||
-        esp_task_wdt_status(s_live.idle_task) != ESP_OK) {
+    s_idle_task = xTaskGetIdleTaskHandleForCore(xPortGetCoreID());
+    if (!s_idle_task || esp_task_wdt_status(s_idle_task) != ESP_OK) {
         return ESP_OK;
     }
-    const esp_err_t err = esp_task_wdt_delete(s_live.idle_task);
-    if (err == ESP_OK) s_live.idle_wdt_removed = true;
+    const esp_err_t err = esp_task_wdt_delete(s_idle_task);
+    if (err == ESP_OK) s_idle_wdt_removed = true;
     return err;
 }
 
 static esp_err_t restore_idle_watchdog(void)
 {
-    if (!s_live.idle_wdt_removed) return ESP_OK;
-    const esp_err_t err = esp_task_wdt_add(s_live.idle_task);
-    if (err == ESP_OK) s_live.idle_wdt_removed = false;
+    if (!s_idle_wdt_removed) return ESP_OK;
+    const esp_err_t err = esp_task_wdt_add(s_idle_task);
+    if (err == ESP_OK) {
+        s_idle_wdt_removed = false;
+        s_idle_task = NULL;
+    }
     return err;
 }
 
@@ -372,6 +376,8 @@ esp_err_t c5vrx_live_pipeline_start(const c5vrx_live_pipeline_config_t *config)
         (config->maximum_input_words & 3u) || s_live.task) {
         return ESP_ERR_INVALID_ARG;
     }
+    const esp_err_t pending_watchdog_err = restore_idle_watchdog();
+    if (pending_watchdog_err != ESP_OK) return pending_watchdog_err;
     memset(&s_live, 0, sizeof(s_live));
     s_live.config = *config;
     const size_t output_capacity = config->maximum_input_words / 4u;
@@ -408,32 +414,34 @@ esp_err_t c5vrx_live_pipeline_start(const c5vrx_live_pipeline_config_t *config)
      * handoff instead of a permanently-runnable producer starving AV. */
     if (xTaskCreate(pipeline_task, "c5vrx_live", 4096, NULL, 19,
                     &s_live.task) != pdPASS) {
-        (void)restore_idle_watchdog();
+        const esp_err_t restore_err = restore_idle_watchdog();
         free(s_live.wbfm); free(s_live.cvbs); free(s_live.sink_pending);
         c5vrx_wbfm_hw_destroy(s_live.wbfm_hw);
         memset(&s_live, 0, sizeof(s_live));
-        return ESP_ERR_NO_MEM;
+        return restore_err == ESP_OK ? ESP_ERR_NO_MEM : restore_err;
     }
     if (xTaskCreate(source_task, "c5vrx_source", 3072, NULL, 18,
                     &s_live.source_task) != pdPASS) {
         s_live.stop = true;
         xTaskNotifyGive(s_live.task);
         while (s_live.task) vTaskDelay(pdMS_TO_TICKS(1));
-        (void)restore_idle_watchdog();
+        const esp_err_t restore_err = restore_idle_watchdog();
         free(s_live.wbfm);
         free(s_live.cvbs);
         free(s_live.sink_pending);
         c5vrx_wbfm_hw_destroy(s_live.wbfm_hw);
         memset(&s_live, 0, sizeof(s_live));
-        return ESP_ERR_NO_MEM;
+        return restore_err == ESP_OK ? ESP_ERR_NO_MEM : restore_err;
     }
     return ESP_OK;
 }
 
 esp_err_t c5vrx_live_pipeline_stop(void)
 {
-    if (!s_live.task && !s_live.source_task && !s_live.wbfm_hw)
+    if (!s_live.task && !s_live.source_task && !s_live.wbfm_hw) {
+        if (s_idle_wdt_removed) return restore_idle_watchdog();
         return ESP_ERR_INVALID_STATE;
+    }
     s_live.stop = true;
     if (s_live.task) xTaskNotifyGive(s_live.task);
     for (unsigned i = 0; i < 1000u && (s_live.task || s_live.source_task); ++i) {
