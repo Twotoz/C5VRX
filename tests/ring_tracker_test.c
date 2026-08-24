@@ -8,6 +8,23 @@
 
 int main(void)
 {
+    /* A LIVE epoch starts at the first observed writer position. Until the
+     * producer advances, the tracker must expose zero readable words; data
+     * behind that position may be stale SRAM from an earlier run. */
+    c5vrx_ring_tracker_t fresh;
+    assert(c5vrx_ring_tracker_init(&fresh, 16384u, 512u,
+                                   240000000u, 88000000u) == 0);
+    assert(c5vrx_ring_tracker_observe(&fresh, 12000u, 1000u) ==
+           C5VRX_RING_TRACK_OK);
+    const uint64_t fresh_start = fresh.consumer_absolute;
+    assert(fresh.consumer_absolute == fresh.producer_absolute);
+    assert(c5vrx_ring_tracker_lag(&fresh) == 0u);
+    assert(c5vrx_ring_tracker_observe(&fresh, 3808u, 2000u) ==
+           C5VRX_RING_TRACK_OK);
+    assert(fresh.wraps == 1u);
+    assert(fresh.consumer_absolute == fresh_start);
+    assert(c5vrx_ring_tracker_lag(&fresh) == 8192u);
+
     c5vrx_ring_tracker_t t;
     assert(c5vrx_ring_tracker_init(&t, 16384u, 512u,
                                    240000000u, 88000000u) == 0);
