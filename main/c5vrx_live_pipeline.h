@@ -86,7 +86,7 @@ esp_err_t c5vrx_live_ring_source_create(c5vrx_rf_source_t *source,
 void c5vrx_live_ring_source_get_stats(const c5vrx_rf_source_t *source,
                                       c5vrx_live_ring_stats_t *stats);
 const char *c5vrx_live_ring_failure_name(c5vrx_live_ring_failure_t failure);
-void c5vrx_live_ring_source_destroy(c5vrx_rf_source_t *source);
+esp_err_t c5vrx_live_ring_source_destroy(c5vrx_rf_source_t *source);
 
 #ifdef __cplusplus
 }
