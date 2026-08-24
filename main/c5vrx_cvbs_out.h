@@ -18,6 +18,15 @@ typedef enum {
 } c5vrx_cvbs_display_t;
 
 typedef struct {
+    uint16_t hsync_samples;
+    uint16_t equalizing_samples;
+    uint16_t broad_sync_samples;
+    uint8_t pre_equalizing_half_lines;
+    uint8_t broad_sync_half_lines;
+    uint8_t post_equalizing_half_lines;
+} c5vrx_cvbs_timing_t;
+
+typedef struct {
     bool running;
     bool task_running;
     c5vrx_cvbs_display_t display;
@@ -50,6 +59,17 @@ const char *c5vrx_cvbs_display_name(c5vrx_cvbs_display_t display);
 
 /** Snapshot actual PARLIO buffer retirement and refill health. */
 void c5vrx_cvbs_output_get_stats(c5vrx_cvbs_output_stats_t *stats);
+
+/**
+ * Queue PAL sync-shape tuning for the next complete frame boundary.
+ * Sample widths are at the fixed 20 MS/s output clock. The bounded ranges
+ * prevent an experimental GUI setting from removing sync or active video.
+ */
+esp_err_t c5vrx_cvbs_output_set_timing(const c5vrx_cvbs_timing_t *timing);
+void c5vrx_cvbs_output_reset_timing(void);
+void c5vrx_cvbs_output_get_timing(c5vrx_cvbs_timing_t *active,
+                                  c5vrx_cvbs_timing_t *requested,
+                                  bool *pending);
 
 /**
  * Start the analog-output proof generator.

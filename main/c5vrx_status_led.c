@@ -15,7 +15,11 @@ static gpio_num_t s_gpio = GPIO_NUM_NC;
 
 static void set_led(bool on)
 {
-    const int level = CONFIG_C5VRX_STATUS_LED_ACTIVE_LOW ? !on : on;
+#ifdef CONFIG_C5VRX_STATUS_LED_ACTIVE_LOW
+    const int level = !on;
+#else
+    const int level = on;
+#endif
     gpio_set_level(s_gpio, level);
 }
 

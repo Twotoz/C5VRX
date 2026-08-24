@@ -49,7 +49,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-27-av-health"
+APP_BUILD = "video-proof-28-av-sync-tuning"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -372,11 +372,14 @@ class C5VRXApp(tk.Tk):
         notebook.pack(fill="both", expand=True)
 
         control_tab = ttk.Frame(notebook, padding=12)
+        av_tune_tab = ttk.Frame(notebook, padding=12)
         preview_tab = ttk.Frame(notebook, padding=12)
         notebook.add(control_tab, text="Flash & Control")
+        notebook.add(av_tune_tab, text="AV Sync Tuning")
         notebook.add(preview_tab, text="USB Preview")
 
         self._build_control_tab(control_tab)
+        self._build_av_tune_tab(av_tune_tab)
         self._build_preview_tab(preview_tab)
 
         self.log = tk.Text(root, height=12, wrap="word", state="disabled", font=("Consolas", 9))
@@ -567,6 +570,104 @@ class C5VRXApp(tk.Tk):
             text="MS/s; rejects unlocked noise and slowly fills a detected video raster.",
         ).pack(side="left", padx=8)
 
+    def _build_av_tune_tab(self, tab: ttk.Frame) -> None:
+        ttk.Label(
+            tab, text="PAL composite sync tuning", font=("Segoe UI", 14, "bold")
+        ).pack(anchor="w")
+        ttk.Label(
+            tab,
+            text=(
+                "Use this when the always-on AV picture rolls or the display will not "
+                "hold sync. Values are bounded and applied together at the next complete "
+                "PAL frame; AV output keeps running. Start with the vertical pulse counts, "
+                "then adjust pulse widths only if needed. One sample is 0.05 µs."
+            ),
+            wraplength=760,
+        ).pack(anchor="w", pady=(4, 10))
+
+        self.av_tune_vars = {
+            "hsync": tk.IntVar(value=94),
+            "equalizing": tk.IntVar(value=47),
+            "broad_sync": tk.IntVar(value=546),
+            "pre_eq": tk.IntVar(value=5),
+            "broad_half": tk.IntVar(value=5),
+            "post_eq": tk.IntVar(value=5),
+        }
+        controls = ttk.Frame(tab)
+        controls.pack(fill="both", expand=True)
+        definitions = (
+            ("H-sync width (samples)", "hsync", 76, 116),
+            ("Equalizing pulse width (samples)", "equalizing", 36, 58),
+            ("Broad/vertical pulse width (samples)", "broad_sync", 500, 580),
+            ("Pre-equalizing half-lines", "pre_eq", 3, 7),
+            ("Broad-sync half-lines", "broad_half", 3, 7),
+            ("Post-equalizing half-lines", "post_eq", 3, 7),
+        )
+        for row, (label, key, minimum, maximum) in enumerate(definitions):
+            ttk.Label(controls, text=label).grid(
+                row=row, column=0, sticky="w", padx=(0, 12), pady=4)
+            tk.Scale(
+                controls,
+                from_=minimum,
+                to=maximum,
+                resolution=1,
+                orient="horizontal",
+                variable=self.av_tune_vars[key],
+                length=430,
+                showvalue=True,
+            ).grid(row=row, column=1, sticky="ew", pady=2)
+        controls.columnconfigure(1, weight=1)
+
+        buttons = ttk.Frame(tab)
+        buttons.pack(fill="x", pady=(10, 0))
+        ttk.Button(
+            buttons, text="Apply sync tuning", command=self.apply_av_tuning
+        ).pack(side="left", ipady=4)
+        ttk.Button(
+            buttons, text="Reset PAL defaults", command=self.reset_av_tuning
+        ).pack(side="left", padx=8)
+        ttk.Button(
+            buttons,
+            text="Read device values",
+            command=lambda: self.send_command("AV TUNE STATUS"),
+        ).pack(side="left")
+        ttk.Button(
+            buttons,
+            text="Show AV test pattern",
+            command=lambda: self.send_command("CVBS TEST"),
+        ).pack(side="left", padx=8)
+
+        self.av_tune_status_var = tk.StringVar(
+            value="PAL defaults: H 4.70 µs, equalizing 2.35 µs, broad 27.30 µs; 5/5/5 half-lines"
+        )
+        ttk.Label(
+            tab, textvariable=self.av_tune_status_var, wraplength=760
+        ).pack(anchor="w", pady=(10, 0))
+
+    def apply_av_tuning(self) -> None:
+        values = {key: int(var.get()) for key, var in self.av_tune_vars.items()}
+        command = (
+            f"AV TUNE {values['hsync']} {values['equalizing']} "
+            f"{values['broad_sync']} {values['pre_eq']} "
+            f"{values['broad_half']} {values['post_eq']}"
+        )
+        if self.send_command(command):
+            self.av_tune_status_var.set(
+                "Tuning queued; the firmware will switch atomically at the next PAL frame")
+
+    def reset_av_tuning(self) -> None:
+        defaults = {
+            "hsync": 94,
+            "equalizing": 47,
+            "broad_sync": 546,
+            "pre_eq": 5,
+            "broad_half": 5,
+            "post_eq": 5,
+        }
+        for key, value in defaults.items():
+            self.av_tune_vars[key].set(value)
+        self.send_command("AV TUNE RESET")
+
     def refresh_ports(self) -> None:
         selected_device = self.selected_port()
         ports = list(list_ports.comports())
@@ -650,6 +751,8 @@ class C5VRXApp(tk.Tk):
             av_generation = self.av_poll_generation
             self.after(250, lambda: self.send_command("PING"))
             self.after(450, lambda: self.send_command("STATUS"))
+            self.after(
+                600, lambda: self.send_command("AV TUNE STATUS", quiet=True))
             self.after(750, lambda: self._poll_av_status(av_generation))
             return True
         except Exception as exc:
@@ -735,6 +838,8 @@ class C5VRXApp(tk.Tk):
     def _parse_device_line(self, line: str) -> None:
         if line.startswith("C5VRX_AV_STATUS"):
             self.after(0, self._apply_av_status_line, line)
+        if line.startswith("C5VRX_AV_TUNE"):
+            self.after(0, self._apply_av_tune_line, line)
             return
         if (self.live_iq_active and line.startswith((
                 "C5VRX_CAPTURE_KERNEL",
@@ -893,6 +998,32 @@ class C5VRXApp(tk.Tk):
                  "WARN": "#b05a00", "FAIL": "#b00020"}.get(
                      health, "#7a5b00")
         self.av_health_label.configure(fg=color)
+
+    def _apply_av_tune_line(self, line: str) -> None:
+        fields = self._fields(line)
+        keys = (
+            "hsync", "equalizing", "broad_sync",
+            "pre_eq", "broad_half", "post_eq",
+        )
+        try:
+            for key in keys:
+                value = fields.get(f"requested_{key}") or fields[key]
+                self.av_tune_vars[key].set(int(value))
+        except (KeyError, TypeError, ValueError):
+            self.av_tune_status_var.set(f"Invalid tuning response: {line}")
+            return
+        pending = fields.get("pending", "0") == "1"
+        code = fields.get("code", "?")
+        h_us = int(self.av_tune_vars["hsync"].get()) * 0.05
+        eq_us = int(self.av_tune_vars["equalizing"].get()) * 0.05
+        broad_us = int(self.av_tune_vars["broad_sync"].get()) * 0.05
+        self.av_tune_status_var.set(
+            f"Device {'queued' if pending else 'active'}: H {h_us:.2f} µs, "
+            f"equalizing {eq_us:.2f} µs, broad {broad_us:.2f} µs; "
+            f"{self.av_tune_vars['pre_eq'].get()}/"
+            f"{self.av_tune_vars['broad_half'].get()}/"
+            f"{self.av_tune_vars['post_eq'].get()} half-lines; code={code}"
+        )
 
     def _poll_av_status(self, generation: int) -> None:
         if generation != self.av_poll_generation:

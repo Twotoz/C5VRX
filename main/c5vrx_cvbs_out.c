@@ -36,16 +36,15 @@
 #define C5VRX_CVBS_FIELD_HALF_LINES     625u
 #define C5VRX_CVBS_FRAME_HALF_LINES     1250u
 
-#define C5VRX_CVBS_HSYNC_SAMPLES        94u   /* 4.70 us */
-#define C5VRX_CVBS_EQ_SAMPLES           47u   /* 2.35 us */
-#define C5VRX_CVBS_BROAD_SYNC_SAMPLES   546u  /* 27.30 us */
+#define C5VRX_CVBS_HSYNC_DEFAULT        94u   /* 4.70 us */
+#define C5VRX_CVBS_EQ_DEFAULT           47u   /* 2.35 us */
+#define C5VRX_CVBS_BROAD_SYNC_DEFAULT   546u  /* 27.30 us */
 #define C5VRX_CVBS_ACTIVE_START         210u  /* 10.50 us after line datum */
 #define C5VRX_CVBS_ACTIVE_END           1250u /* leaves 1.50 us front porch */
 #define C5VRX_CVBS_ACTIVE_SAMPLES       (C5VRX_CVBS_ACTIVE_END - C5VRX_CVBS_ACTIVE_START)
 
-#define C5VRX_CVBS_EQ_HALF_LINES        5u
-#define C5VRX_CVBS_BROAD_HALF_LINES     5u
-#define C5VRX_CVBS_NORMAL_START_HALF    15u
+#define C5VRX_CVBS_EQ_HALF_DEFAULT      5u
+#define C5VRX_CVBS_BROAD_HALF_DEFAULT   5u
 /*
  * Starting active video at local half-line 49 gives 576 active half-lines
  * (288 full lines) per field while keeping the first active half-line aligned
@@ -118,6 +117,23 @@ static uint32_t s_service_max_us;
 static uint64_t s_start_us;
 static uint64_t s_last_service_us;
 static uint32_t s_stack_min_bytes;
+static c5vrx_cvbs_timing_t s_active_timing = {
+    .hsync_samples = C5VRX_CVBS_HSYNC_DEFAULT,
+    .equalizing_samples = C5VRX_CVBS_EQ_DEFAULT,
+    .broad_sync_samples = C5VRX_CVBS_BROAD_SYNC_DEFAULT,
+    .pre_equalizing_half_lines = C5VRX_CVBS_EQ_HALF_DEFAULT,
+    .broad_sync_half_lines = C5VRX_CVBS_BROAD_HALF_DEFAULT,
+    .post_equalizing_half_lines = C5VRX_CVBS_EQ_HALF_DEFAULT,
+};
+static c5vrx_cvbs_timing_t s_requested_timing = {
+    .hsync_samples = C5VRX_CVBS_HSYNC_DEFAULT,
+    .equalizing_samples = C5VRX_CVBS_EQ_DEFAULT,
+    .broad_sync_samples = C5VRX_CVBS_BROAD_SYNC_DEFAULT,
+    .pre_equalizing_half_lines = C5VRX_CVBS_EQ_HALF_DEFAULT,
+    .broad_sync_half_lines = C5VRX_CVBS_BROAD_HALF_DEFAULT,
+    .post_equalizing_half_lines = C5VRX_CVBS_EQ_HALF_DEFAULT,
+};
+static bool s_timing_pending;
 
 static uint8_t cvbs_code_from_mv(unsigned mv);
 static uint8_t grayscale_code(unsigned active_x);
@@ -280,18 +296,18 @@ static void build_templates(void)
     const uint8_t blank = cvbs_code_from_mv(300);
 
     memset(s_eq_half, blank, sizeof(s_eq_half));
-    memset(s_eq_half, sync, C5VRX_CVBS_EQ_SAMPLES);
+    memset(s_eq_half, sync, s_active_timing.equalizing_samples);
 
     memset(s_broad_half, blank, sizeof(s_broad_half));
-    memset(s_broad_half, sync, C5VRX_CVBS_BROAD_SYNC_SAMPLES);
+    memset(s_broad_half, sync, s_active_timing.broad_sync_samples);
 
     memset(s_blank_first, blank, sizeof(s_blank_first));
-    memset(s_blank_first, sync, C5VRX_CVBS_HSYNC_SAMPLES);
+    memset(s_blank_first, sync, s_active_timing.hsync_samples);
     memset(s_blank_second, blank, sizeof(s_blank_second));
 
     for (unsigned phase = 0; phase < 2; ++phase) {
         memset(s_active_first[phase], blank, sizeof(s_active_first[phase]));
-        memset(s_active_first[phase], sync, C5VRX_CVBS_HSYNC_SAMPLES);
+        memset(s_active_first[phase], sync, s_active_timing.hsync_samples);
         add_pal_burst(s_active_first[phase], phase);
 
         for (unsigned p = C5VRX_CVBS_ACTIVE_START;
@@ -316,17 +332,24 @@ static const uint8_t *template_for_half_line(uint16_t frame_half_line)
     const unsigned field_pos =
         (unsigned)(frame_half_line % C5VRX_CVBS_FIELD_HALF_LINES);
 
-    if (field_pos < C5VRX_CVBS_EQ_HALF_LINES) {
+    const unsigned broad_start =
+        s_active_timing.pre_equalizing_half_lines;
+    const unsigned post_start = broad_start +
+        s_active_timing.broad_sync_half_lines;
+    const unsigned normal_start = post_start +
+        s_active_timing.post_equalizing_half_lines;
+
+    if (field_pos < broad_start) {
         return s_eq_half;
     }
-    if (field_pos < C5VRX_CVBS_EQ_HALF_LINES + C5VRX_CVBS_BROAD_HALF_LINES) {
+    if (field_pos < post_start) {
         return s_broad_half;
     }
-    if (field_pos < C5VRX_CVBS_NORMAL_START_HALF) {
+    if (field_pos < normal_start) {
         return s_eq_half;
     }
 
-    const unsigned normal_offset = field_pos - C5VRX_CVBS_NORMAL_START_HALF;
+    const unsigned normal_offset = field_pos - normal_start;
     const bool first_half = ((normal_offset & 1u) == 0u);
     const bool active = (field_pos >= C5VRX_CVBS_ACTIVE_START_HALF);
 
@@ -346,7 +369,11 @@ static void overlay_active_half(uint8_t *half, uint16_t frame_half_line)
 {
     const unsigned field_pos = frame_half_line % C5VRX_CVBS_FIELD_HALF_LINES;
     if (field_pos < C5VRX_CVBS_ACTIVE_START_HALF) return;
-    const unsigned normal_offset = field_pos - C5VRX_CVBS_NORMAL_START_HALF;
+    const unsigned normal_start =
+        s_active_timing.pre_equalizing_half_lines +
+        s_active_timing.broad_sync_half_lines +
+        s_active_timing.post_equalizing_half_lines;
+    const unsigned normal_offset = field_pos - normal_start;
     const bool first_half = (normal_offset & 1u) == 0u;
     const unsigned y = (field_pos - C5VRX_CVBS_ACTIVE_START_HALF) / 2u;
     const unsigned start = first_half ? C5VRX_CVBS_ACTIVE_START : 0u;
@@ -370,8 +397,18 @@ static void build_next_chunk(uint8_t *dst)
         /* Apply state only where a complete PAL frame begins. A request made
          * while a chunk is being built can never split logo/snow/test content
          * across an arbitrary scanline. */
-        if (s_next_half_line == 0u)
+        if (s_next_half_line == 0u) {
             s_active_display = s_requested_display;
+            bool timing_changed = false;
+            portENTER_CRITICAL(&s_stats_mux);
+            if (s_timing_pending) {
+                s_active_timing = s_requested_timing;
+                s_timing_pending = false;
+                timing_changed = true;
+            }
+            portEXIT_CRITICAL(&s_stats_mux);
+            if (timing_changed) build_templates();
+        }
         const uint8_t *src = template_for_half_line(s_next_half_line);
         uint8_t *half = dst + i * C5VRX_CVBS_HALF_LINE_SAMPLES;
         memcpy(half,
@@ -840,6 +877,72 @@ void c5vrx_cvbs_output_get_stats(c5vrx_cvbs_output_stats_t *stats)
     stats->health = c5vrx_av_health_classify(&health_input);
 }
 
+static bool timing_valid(const c5vrx_cvbs_timing_t *timing)
+{
+    if (!timing ||
+        timing->hsync_samples < 76u || timing->hsync_samples > 116u ||
+        timing->equalizing_samples < 36u ||
+        timing->equalizing_samples > 58u ||
+        timing->broad_sync_samples < 500u ||
+        timing->broad_sync_samples > 580u ||
+        timing->pre_equalizing_half_lines < 3u ||
+        timing->pre_equalizing_half_lines > 7u ||
+        timing->broad_sync_half_lines < 3u ||
+        timing->broad_sync_half_lines > 7u ||
+        timing->post_equalizing_half_lines < 3u ||
+        timing->post_equalizing_half_lines > 7u) {
+        return false;
+    }
+    return (unsigned)timing->pre_equalizing_half_lines +
+           timing->broad_sync_half_lines +
+           timing->post_equalizing_half_lines < C5VRX_CVBS_ACTIVE_START_HALF;
+}
+
+static bool timing_equal(const c5vrx_cvbs_timing_t *a,
+                         const c5vrx_cvbs_timing_t *b)
+{
+    return a->hsync_samples == b->hsync_samples &&
+           a->equalizing_samples == b->equalizing_samples &&
+           a->broad_sync_samples == b->broad_sync_samples &&
+           a->pre_equalizing_half_lines == b->pre_equalizing_half_lines &&
+           a->broad_sync_half_lines == b->broad_sync_half_lines &&
+           a->post_equalizing_half_lines == b->post_equalizing_half_lines;
+}
+
+esp_err_t c5vrx_cvbs_output_set_timing(const c5vrx_cvbs_timing_t *timing)
+{
+    if (!timing_valid(timing)) return ESP_ERR_INVALID_ARG;
+    portENTER_CRITICAL(&s_stats_mux);
+    s_requested_timing = *timing;
+    s_timing_pending = !timing_equal(&s_active_timing, timing);
+    portEXIT_CRITICAL(&s_stats_mux);
+    return ESP_OK;
+}
+
+void c5vrx_cvbs_output_reset_timing(void)
+{
+    const c5vrx_cvbs_timing_t defaults = {
+        .hsync_samples = C5VRX_CVBS_HSYNC_DEFAULT,
+        .equalizing_samples = C5VRX_CVBS_EQ_DEFAULT,
+        .broad_sync_samples = C5VRX_CVBS_BROAD_SYNC_DEFAULT,
+        .pre_equalizing_half_lines = C5VRX_CVBS_EQ_HALF_DEFAULT,
+        .broad_sync_half_lines = C5VRX_CVBS_BROAD_HALF_DEFAULT,
+        .post_equalizing_half_lines = C5VRX_CVBS_EQ_HALF_DEFAULT,
+    };
+    (void)c5vrx_cvbs_output_set_timing(&defaults);
+}
+
+void c5vrx_cvbs_output_get_timing(c5vrx_cvbs_timing_t *active,
+                                  c5vrx_cvbs_timing_t *requested,
+                                  bool *pending)
+{
+    portENTER_CRITICAL(&s_stats_mux);
+    if (active) *active = s_active_timing;
+    if (requested) *requested = s_requested_timing;
+    if (pending) *pending = s_timing_pending;
+    portEXIT_CRITICAL(&s_stats_mux);
+}
+
 esp_err_t c5vrx_cvbs_test_start(void)
 {
     return start_output(C5VRX_CVBS_DISPLAY_TEST);
@@ -879,6 +982,17 @@ void c5vrx_cvbs_output_get_stats(c5vrx_cvbs_output_stats_t *stats)
     if (!stats) return;
     memset(stats, 0, sizeof(*stats));
     stats->health = C5VRX_AV_HEALTH_FAIL;
+}
+esp_err_t c5vrx_cvbs_output_set_timing(const c5vrx_cvbs_timing_t *timing)
+{ (void)timing; return ESP_ERR_NOT_SUPPORTED; }
+void c5vrx_cvbs_output_reset_timing(void) {}
+void c5vrx_cvbs_output_get_timing(c5vrx_cvbs_timing_t *active,
+                                  c5vrx_cvbs_timing_t *requested,
+                                  bool *pending)
+{
+    if (active) memset(active, 0, sizeof(*active));
+    if (requested) memset(requested, 0, sizeof(*requested));
+    if (pending) *pending = false;
 }
 
 esp_err_t c5vrx_cvbs_test_stop(void)

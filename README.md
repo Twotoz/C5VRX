@@ -387,6 +387,16 @@ and DMA heap. `classification=OK` means the PAL output engine is being serviced;
 it does **not** mean a VTX is locked. `CVBS LOCK PROBE` remains the separate RF
 input/video-timing test.
 
+The Receiver Console's **AV Sync Tuning** tab can adjust the PAL H-sync,
+equalizing and broad-sync pulse widths plus the pre/broad/post vertical pulse
+counts while AV remains active. Values are deliberately bounded around the PAL
+nominals and are applied together on the next complete frame boundary. Use
+this to diagnose a rolling monitor, then promote a physically proven setting
+to a board default; it is not a substitute for checking PAL/NTSC support,
+the 75-ohm termination and DAC voltage levels. The equivalent commands are
+`AV TUNE STATUS`, `AV TUNE RESET` and
+`AV TUNE <hsync> <equalizing> <broad_sync> <pre_eq> <broad_half> <post_eq>`.
+
 On the XIAO ESP32-C5, the active-low yellow USER LED on GPIO27 mirrors this AV
 health without using USB: one short pulse per second means healthy logo/test
 output, two pulses means healthy unlocked snow, three pulses means a recorded
@@ -452,6 +462,9 @@ LIVE STOP
 USB PREVIEW START
 USB PREVIEW STOP
 AV STATUS
+AV TUNE STATUS
+AV TUNE 94 47 546 5 5 5
+AV TUNE RESET
 CVBS LOCK STATUS
 CVBS LOCK PROBE 5000
 PIPELINE STATS

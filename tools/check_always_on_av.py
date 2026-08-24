@@ -38,6 +38,10 @@ def main() -> None:
     assert "C5VRX_CVBS_DISPLAY_SNOW" in control
     assert "s_isr_switches" in output
     assert "s_missed_switches" in output
+    assert "s_timing_pending" in output
+    assert "if (s_next_half_line == 0u)" in output
+    assert "C5VRX_AV_TUNE" in control
+    assert "applies=NEXT_PAL_FRAME" in control
 
     chunk_half_lines = 40
     half_line_samples = 640

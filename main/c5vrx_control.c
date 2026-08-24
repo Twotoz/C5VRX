@@ -403,6 +403,29 @@ static void print_av_status(void)
     fflush(stdout);
 }
 
+static void print_av_tune_status(esp_err_t code)
+{
+    c5vrx_cvbs_timing_t active = {0}, requested = {0};
+    bool pending = false;
+    c5vrx_cvbs_output_get_timing(&active, &requested, &pending);
+    printf("C5VRX_AV_TUNE hsync=%u equalizing=%u broad_sync=%u pre_eq=%u broad_half=%u post_eq=%u requested_hsync=%u requested_equalizing=%u requested_broad_sync=%u requested_pre_eq=%u requested_broad_half=%u requested_post_eq=%u pending=%u sample_rate_hz=20000000 applies=NEXT_PAL_FRAME code=%d\n",
+           (unsigned)active.hsync_samples,
+           (unsigned)active.equalizing_samples,
+           (unsigned)active.broad_sync_samples,
+           (unsigned)active.pre_equalizing_half_lines,
+           (unsigned)active.broad_sync_half_lines,
+           (unsigned)active.post_equalizing_half_lines,
+           (unsigned)requested.hsync_samples,
+           (unsigned)requested.equalizing_samples,
+           (unsigned)requested.broad_sync_samples,
+           (unsigned)requested.pre_equalizing_half_lines,
+           (unsigned)requested.broad_sync_half_lines,
+           (unsigned)requested.post_equalizing_half_lines,
+           pending ? 1u : 0u,
+           (int)code);
+    fflush(stdout);
+}
+
 static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 {
     c5vrx_fpv_channel_t target;
@@ -456,7 +479,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,AV_STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>_SAFE_PHASE8,CAPTURE_PHASE8_<256-16384>,CAPTURE_RAW_<256-16384>_EXPLICIT_ASCII,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,AV_STATUS,AV_TUNE_STATUS,AV_TUNE_RESET,AV_TUNE_<hsync>_<equalizing>_<broad_sync>_<pre_eq>_<broad_half>_<post_eq>,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>_SAFE_PHASE8,CAPTURE_PHASE8_<256-16384>,CAPTURE_RAW_<256-16384>_EXPLICIT_ASCII,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -559,6 +582,43 @@ static void handle_line(char *line)
     if (strcasecmp(line, "AV STATUS") == 0 ||
         strcasecmp(line, "AV_STATUS") == 0) {
         print_av_status();
+        return;
+    }
+    if (strcasecmp(line, "AV TUNE STATUS") == 0 ||
+        strcasecmp(line, "AV_TUNE_STATUS") == 0) {
+        print_av_tune_status(ESP_OK);
+        return;
+    }
+    if (strcasecmp(line, "AV TUNE RESET") == 0 ||
+        strcasecmp(line, "AV_TUNE_RESET") == 0) {
+        c5vrx_cvbs_output_reset_timing();
+        print_av_tune_status(ESP_OK);
+        return;
+    }
+    unsigned tune_hsync = 0, tune_equalizing = 0, tune_broad = 0;
+    unsigned tune_pre = 0, tune_broad_half = 0, tune_post = 0;
+    if (sscanf(line, "AV TUNE %u %u %u %u %u %u",
+               &tune_hsync, &tune_equalizing, &tune_broad,
+               &tune_pre, &tune_broad_half, &tune_post) == 6 ||
+        sscanf(line, "AV_TUNE_%u_%u_%u_%u_%u_%u",
+               &tune_hsync, &tune_equalizing, &tune_broad,
+               &tune_pre, &tune_broad_half, &tune_post) == 6) {
+        if (tune_hsync > UINT16_MAX || tune_equalizing > UINT16_MAX ||
+            tune_broad > UINT16_MAX || tune_pre > UINT8_MAX ||
+            tune_broad_half > UINT8_MAX || tune_post > UINT8_MAX) {
+            print_av_tune_status(ESP_ERR_INVALID_ARG);
+            return;
+        }
+        const c5vrx_cvbs_timing_t timing = {
+            .hsync_samples = (uint16_t)tune_hsync,
+            .equalizing_samples = (uint16_t)tune_equalizing,
+            .broad_sync_samples = (uint16_t)tune_broad,
+            .pre_equalizing_half_lines = (uint8_t)tune_pre,
+            .broad_sync_half_lines = (uint8_t)tune_broad_half,
+            .post_equalizing_half_lines = (uint8_t)tune_post,
+        };
+        const esp_err_t err = c5vrx_cvbs_output_set_timing(&timing);
+        print_av_tune_status(err);
         return;
     }
     if (c5vrx_live_pipeline_running() &&
