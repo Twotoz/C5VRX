@@ -28,9 +28,16 @@ typedef struct {
     unsigned mailbox_write;
     size_t samples;
     uint64_t filler_sample;
+    uint64_t filler_step_q32;
+    uint64_t filler_frame_q32;
     uint64_t pending_live_filler_start_sample;
     uint64_t pending_live_filler_end_sample;
     bool pending_live_phase_valid;
+    uint64_t timing_anchor_source_sample;
+    uint64_t timing_anchor_phase_q32;
+    uint64_t timing_source_step_q32;
+    uint64_t timing_stream_epoch;
+    bool timing_anchor_valid;
     uint64_t live_blocks;
     uint64_t live_blocks_retired;
     uint64_t filler_blocks;
@@ -56,6 +63,9 @@ typedef struct {
     uint64_t first_live_start_sample;
     uint64_t first_live_end_sample;
     const uint8_t *first_live_samples;
+    uint64_t timing_source_sample;
+    uint64_t timing_source_step_q32;
+    uint64_t timing_stream_epoch;
 } aligned_start_t;
 
 static aligned_start_t s_aligned_start;
@@ -63,17 +73,14 @@ static aligned_start_t s_aligned_start;
 static bool filler_coordinate(const c5vrx_cvbs_sync_tracker_t *timing,
                               uint32_t output_clock_hz,
                               uint64_t *end_sample,
-                              uint64_t *frame_samples)
+                              uint64_t *frame_samples,
+                              uint64_t *step_q32)
 {
     if (!timing || !output_clock_hz || !timing->horizontal_locked ||
         !timing->vertical_locked || !timing->last_vsync_start ||
         timing->standard == C5VRX_VIDEO_STANDARD_UNKNOWN) return false;
     const bool ntsc = timing->standard == C5VRX_VIDEO_STANDARD_NTSC;
-    const uint32_t line_samples = ntsc ?
-        (uint32_t)(((uint64_t)output_clock_hz * 1000u + 7867000u) /
-                   15734000u) :
-        (uint32_t)(((uint64_t)output_clock_hz * 64u + 500000u) /
-                   1000000u);
+    const uint32_t line_rate = ntsc ? 15734u : 15625u;
     const uint32_t equalizing_halves = ntsc ? 6u : 5u;
     const uint32_t field_half_lines = ntsc ? 525u : 625u;
     const uint32_t frame_half_lines = field_half_lines * 2u;
@@ -82,55 +89,55 @@ static bool filler_coordinate(const c5vrx_cvbs_sync_tracker_t *timing,
         timing->samples_seen - timing->last_vsync_start : 0u;
     const uint32_t source_rate = timing->sample_rate_hz ?
         timing->sample_rate_hz : C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ;
+    const uint64_t step =
+        (((uint64_t)2u * line_rate) << 32u) / output_clock_hz;
     const uint64_t field_phase = timing->odd_field ? 0u :
-        (uint64_t)field_half_lines * line_samples / 2u;
+        (uint64_t)field_half_lines << 32u;
     const uint64_t broad_pulse_phase = field_phase +
-        (uint64_t)equalizing_halves * line_samples / 2u;
-    const uint64_t frame =
-        (uint64_t)line_samples * frame_half_lines / 2u;
-    if (end_sample) *end_sample = (broad_pulse_phase +
-        (since_vsync * output_clock_hz + source_rate / 2u) / source_rate) %
-        frame;
+        ((uint64_t)equalizing_halves << 32u);
+    const uint64_t frame = (uint64_t)frame_half_lines << 32u;
+    const uint64_t source_step =
+        (((uint64_t)2u * line_rate) << 32u) / source_rate;
+    if (end_sample) *end_sample =
+        (broad_pulse_phase + since_vsync * source_step) % frame;
     if (frame_samples) *frame_samples = frame;
+    if (step_q32) *step_q32 = step;
     return true;
 }
 
 static uint8_t legal_filler_sample(uint64_t sample)
 {
     const bool ntsc = s_out.filler_standard == C5VRX_VIDEO_STANDARD_NTSC;
-    const uint32_t clock = s_out.clock_hz;
-    const uint32_t line_samples = ntsc ?
-        (uint32_t)(((uint64_t)clock * 1000u + 7867000u) / 15734000u) :
-        (uint32_t)(((uint64_t)clock * 64u + 500000u) / 1000000u);
-    const uint32_t frame_half_lines = ntsc ? 1050u : PAL_FRAME_HALF_LINES;
-    const uint64_t position = sample %
-        ((uint64_t)line_samples * frame_half_lines / 2u);
-    const uint32_t half =
-        (uint32_t)((position * 2u) / line_samples);
-    const uint32_t half_start = half * line_samples / 2u;
-    const uint32_t phase = (uint32_t)position - half_start;
+    const uint32_t line_rate = ntsc ? 15734u : 15625u;
+    const uint32_t half = (uint32_t)(sample >> 32u);
+    const uint32_t phase = (uint32_t)sample;
     const uint32_t local = half % (ntsc ? 525u : 625u);
     const uint32_t equalizing_halves = ntsc ? 6u : 5u;
-    const uint32_t eq_samples =
-        (uint32_t)(((uint64_t)clock * 235u + 50000000u) / 100000000u);
-    const uint32_t broad_samples =
-        (uint32_t)(((uint64_t)clock * 273u + 5000000u) / 10000000u);
-    const uint32_t hsync_samples =
-        (uint32_t)(((uint64_t)clock * 47u + 5000000u) / 10000000u);
-    unsigned pulse = 0u;
+    const uint32_t eq_phase = (uint32_t)(
+        (((uint64_t)235u * 2u * line_rate) << 32u) / 100000000u);
+    const uint32_t broad_phase = (uint32_t)(
+        (((uint64_t)273u * 2u * line_rate) << 32u) / 10000000u);
+    const uint32_t hsync_phase = (uint32_t)(
+        (((uint64_t)47u * 2u * line_rate) << 32u) / 10000000u);
+    uint32_t pulse = 0u;
     if (local < equalizing_halves ||
         (local >= 2u * equalizing_halves &&
-         local < 3u * equalizing_halves)) pulse = eq_samples;
+         local < 3u * equalizing_halves)) pulse = eq_phase;
     else if (local >= equalizing_halves &&
-             local < 2u * equalizing_halves) pulse = broad_samples;
-    else if ((half & 1u) == 0u) pulse = hsync_samples;
+             local < 2u * equalizing_halves) pulse = broad_phase;
+    else if ((half & 1u) == 0u) pulse = hsync_phase;
     return phase < pulse ? 0u : 19u;
 }
 
 static void fill_legal_filler(uint8_t *buffer)
 {
     for (size_t i = 0; i < s_out.samples; ++i)
-        buffer[i] = legal_filler_sample(s_out.filler_sample++);
+    {
+        buffer[i] = legal_filler_sample(s_out.filler_sample);
+        s_out.filler_sample += s_out.filler_step_q32;
+        if (s_out.filler_sample >= s_out.filler_frame_q32)
+            s_out.filler_sample -= s_out.filler_frame_q32;
+    }
 }
 
 static esp_err_t queue_dma(unsigned index)
@@ -160,14 +167,7 @@ static bool on_switched(parlio_tx_unit_handle_t unit,
 static bool take_live_block(uint8_t *destination, uint64_t *filler_end_sample)
 {
     int found = -1;
-    const bool ntsc = s_out.filler_standard == C5VRX_VIDEO_STANDARD_NTSC;
-    const uint32_t line_samples = ntsc ?
-        (uint32_t)(((uint64_t)s_out.clock_hz * 1000u + 7867000u) /
-                   15734000u) :
-        (uint32_t)(((uint64_t)s_out.clock_hz * 64u + 500000u) /
-                   1000000u);
-    const uint64_t frame_samples = (uint64_t)line_samples *
-        (ntsc ? 1050u : PAL_FRAME_HALF_LINES) / 2u;
+    const uint64_t frame_samples = s_out.filler_frame_q32;
     taskENTER_CRITICAL(&s_out.lock);
     for (unsigned n = 0; n < 2u; ++n) {
         const unsigned index = (s_out.mailbox_write + n) & 1u;
@@ -222,7 +222,9 @@ static void guardian_task(void *arg)
                  * same H/V phase instead of treating RF capture start as a
                  * synthetic frame boundary. */
                 s_out.filler_sample = live_filler_end ? live_filler_end :
-                    s_out.filler_sample + s_out.samples;
+                    (s_out.filler_sample +
+                     s_out.samples * s_out.filler_step_q32) %
+                        s_out.filler_frame_q32;
             }
             else {
                 fill_legal_filler(s_out.dma[index]);
@@ -254,13 +256,14 @@ esp_err_t c5vrx_cvbs_live_out_start_aligned(
 {
     if (s_out.tx || !first_live_samples || !block_samples)
         return ESP_ERR_INVALID_STATE;
-    uint64_t live_end = 0u, frame = 0u;
+    uint64_t live_end = 0u, frame = 0u, step = 0u;
     if (!filler_coordinate(first_live_timing,
-            C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ, &live_end, &frame))
+            C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ, &live_end, &frame, &step))
         return ESP_ERR_INVALID_ARG;
     const uint64_t live_start =
-        (live_end + frame - block_samples % frame) % frame;
-    const uint64_t queued_filler = (2u * block_samples) % frame;
+        (live_end + frame - (block_samples * step) % frame) % frame;
+    const uint64_t queued_filler =
+        (2u * block_samples * step) % frame;
     s_aligned_start = (aligned_start_t) {
         .valid = true,
         .standard = first_live_timing->standard,
@@ -269,6 +272,15 @@ esp_err_t c5vrx_cvbs_live_out_start_aligned(
         .first_live_start_sample = live_start,
         .first_live_end_sample = live_end,
         .first_live_samples = first_live_samples,
+        .timing_source_sample = first_live_timing->samples_seen,
+        .timing_source_step_q32 =
+            (((uint64_t)2u *
+              (first_live_timing->standard == C5VRX_VIDEO_STANDARD_NTSC ?
+                   15734u : 15625u)) << 32u) /
+            (first_live_timing->sample_rate_hz ?
+                 first_live_timing->sample_rate_hz :
+                 C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ),
+        .timing_stream_epoch = first_live_timing->stream_epoch,
     };
     return c5vrx_cvbs_live_out_start(block_samples);
 }
@@ -310,9 +322,21 @@ esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
     s_out.pending_live_filler_end_sample = aligned.valid ?
         aligned.first_live_end_sample : 0u;
     s_out.pending_live_phase_valid = aligned.valid;
+    s_out.timing_anchor_valid = aligned.valid;
+    s_out.timing_anchor_source_sample = aligned.timing_source_sample;
+    s_out.timing_anchor_phase_q32 = aligned.first_live_end_sample;
+    s_out.timing_source_step_q32 = aligned.timing_source_step_q32;
+    s_out.timing_stream_epoch = aligned.timing_stream_epoch;
     s_out.mailbox_write = 0u;
     s_out.filler_standard = aligned.valid ?
         aligned.standard : C5VRX_VIDEO_STANDARD_PAL;
+    const bool filler_ntsc =
+        s_out.filler_standard == C5VRX_VIDEO_STANDARD_NTSC;
+    const uint32_t filler_line_rate = filler_ntsc ? 15734u : 15625u;
+    s_out.filler_step_q32 =
+        (((uint64_t)2u * filler_line_rate) << 32u) / output_clock_hz;
+    s_out.filler_frame_q32 =
+        (uint64_t)(filler_ntsc ? 1050u : PAL_FRAME_HALF_LINES) << 32u;
     for (unsigned i = 0; i < 2u; ++i) {
         s_out.dma_live[i] = false;
         s_out.mailbox_ready[i] = false;
@@ -469,9 +493,12 @@ esp_err_t c5vrx_cvbs_live_out_stop(void)
     s_out.samples = 0u;
     s_out.clock_hz = 0u;
     s_out.filler_sample = 0u;
+    s_out.filler_step_q32 = 0u;
+    s_out.filler_frame_q32 = 0u;
     s_out.pending_live_filler_start_sample = 0u;
     s_out.pending_live_filler_end_sample = 0u;
     s_out.pending_live_phase_valid = false;
+    s_out.timing_anchor_valid = false;
     s_out.mailbox_ready[0] = s_out.mailbox_ready[1] = false;
     s_out.mailbox_in_use[0] = s_out.mailbox_in_use[1] = false;
     return ESP_OK;
@@ -495,13 +522,38 @@ void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
 void c5vrx_cvbs_live_out_update_timing(
     const c5vrx_cvbs_sync_tracker_t *timing)
 {
-    uint64_t filler_end = 0u, frame = 0u;
+    uint64_t filler_end = 0u, frame = 0u, step = 0u;
     if (!s_out.running || !filler_coordinate(
-            timing, s_out.clock_hz, &filler_end, &frame)) return;
-    const uint64_t filler_start =
-        (filler_end + frame - s_out.samples % frame) % frame;
+            timing, s_out.clock_hz, &filler_end, &frame, &step)) return;
+    const uint32_t line_rate =
+        timing->standard == C5VRX_VIDEO_STANDARD_NTSC ? 15734u : 15625u;
+    const uint32_t source_rate = timing->sample_rate_hz ?
+        timing->sample_rate_hz : C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ;
+    const uint64_t source_step =
+        (((uint64_t)2u * line_rate) << 32u) / source_rate;
     taskENTER_CRITICAL(&s_out.lock);
-    s_out.filler_standard = timing->standard;
+    if (!s_out.timing_anchor_valid ||
+        s_out.timing_stream_epoch != timing->stream_epoch ||
+        s_out.filler_standard != timing->standard) {
+        if (s_out.timing_anchor_valid) s_out.realign_required = true;
+        s_out.timing_anchor_valid = true;
+        s_out.timing_anchor_source_sample = timing->samples_seen;
+        s_out.timing_anchor_phase_q32 = filler_end;
+        s_out.timing_source_step_q32 = source_step;
+        s_out.timing_stream_epoch = timing->stream_epoch;
+    } else {
+        const uint64_t elapsed = timing->samples_seen >=
+            s_out.timing_anchor_source_sample ?
+            timing->samples_seen - s_out.timing_anchor_source_sample : 0u;
+        filler_end = (s_out.timing_anchor_phase_q32 +
+            elapsed * s_out.timing_source_step_q32) % frame;
+        /* Rebase every block so the multiply stays bounded indefinitely;
+         * unlike a V-sync reanchor, this preserves the accumulated fraction. */
+        s_out.timing_anchor_source_sample = timing->samples_seen;
+        s_out.timing_anchor_phase_q32 = filler_end;
+    }
+    const uint64_t filler_start =
+        (filler_end + frame - (s_out.samples * step) % frame) % frame;
     /* Attach phase-anchored canonical time to the next live mailbox block.
      * The guardian applies it only when that block enters actual PARLIO queue
      * order; producer-ahead timing can therefore never move the live cursor. */
