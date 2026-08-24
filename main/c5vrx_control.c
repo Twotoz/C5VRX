@@ -147,7 +147,7 @@ static esp_err_t start_ring_live(c5vrx_rf_dump_mode_t mode,
     s_ring_live = err == ESP_OK;
     if (err != ESP_OK) {
         (void)c5vrx_cvbs_live_out_stop();
-        c5vrx_live_ring_source_destroy(&s_ring_source);
+        (void)c5vrx_live_ring_source_destroy(&s_ring_source);
     }
     return err;
 }
@@ -164,15 +164,18 @@ static esp_err_t stop_live_sources(c5vrx_stream_stats_t *pipeline_stats,
     if (pipeline_stats) c5vrx_live_pipeline_get_stats(pipeline_stats);
     if (ring_stats && s_ring_live)
         c5vrx_live_ring_source_get_stats(&s_ring_source, ring_stats);
-    (void)c5vrx_cvbs_live_out_stop();
+    const esp_err_t output_err = c5vrx_cvbs_live_out_stop();
+    esp_err_t source_err = ESP_OK;
     if (s_ring_live) {
-        c5vrx_live_ring_source_destroy(&s_ring_source);
+        source_err = c5vrx_live_ring_source_destroy(&s_ring_source);
         s_ring_live = false;
     } else if (s_finite_live) {
         c5vrx_finite_chain_source_destroy(&s_finite_source);
         s_finite_live = false;
     }
-    return err;
+    if (err != ESP_OK) return err;
+    if (output_err != ESP_OK) return output_err;
+    return source_err;
 }
 
 static void print_ring_stats(const c5vrx_live_ring_stats_t *stats)
@@ -455,6 +458,14 @@ static esp_err_t run_deep_probe(void)
 
 static void handle_line(char *line)
 {
+    const esp_err_t soak_watchdog_err =
+        c5vrx_producer_soak_restore_watchdog();
+    if (soak_watchdog_err != ESP_OK) {
+        printf("C5VRX_ERR soak-idle-watchdog-restore code=%d\n",
+               (int)soak_watchdog_err);
+        fflush(stdout);
+        return;
+    }
     while (*line && isspace((unsigned char)*line)) {
         ++line;
     }
