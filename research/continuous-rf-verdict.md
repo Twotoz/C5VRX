@@ -102,7 +102,7 @@ video-deviation scale. No intermediate AV framebuffer is allocated.
 The `AV DIRECT PROBE` command runs this overlap for 100 ms, then reports writer
 advance, pointer changes, completed bursts, successful rearms, gap cycles,
 inferred source rate, guard canaries and full register restoration. Passing
-requires a 70--90 MS/s measured writer rate, at least four bursts, zero rearm
+requires a 30--36 MS/s measured writer rate, at least four bursts, zero rearm
 failures and bounded measured gaps; the result remains
 `STITCHED_CONTINUOUS_IQ_CANDIDATE_AV_LOCK_TEST_REQUIRED` until a real VTX and AV
 decoder lock to the output. Failure restores the standards-correct PAL logo and
@@ -127,6 +127,14 @@ AV without requiring a USB command. Loss of RF may select snow/no-signal, but
 must not remove CVBS sync or make the goggles lose input lock. The measured-rate
 handoff must therefore graduate to an always-on state machine after the
 physical calibrated AV-lock test passes.
+
+The first calibrated A1 test measured 31.537950 MS/s with 39/39 successful
+rearms and zero failures. Its subsequent AV run did not restart the writer and
+reported zero lead; the same process then produced a zero-rate calibration
+with the VTX off. This is a producer-session lifecycle result, not a channel
+lock result. The corrected handoff keeps calibration and AV inside one
+configured RF session and performs the destructive FE/PBUS restore only once
+after the AV observation.
 
 Primary consumer-path sources:
 

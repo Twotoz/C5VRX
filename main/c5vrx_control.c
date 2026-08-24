@@ -627,7 +627,6 @@ static void run_direct_av_probe(void)
     fflush(stdout);
     esp_err_t calibration_configure_err = ESP_ERR_NOT_SUPPORTED;
     esp_err_t calibration_execute_err = ESP_ERR_INVALID_STATE;
-    esp_err_t calibration_stop_err = ESP_ERR_INVALID_STATE;
     if (c5vrx_rf_dump_memory_reserved()) {
         calibration_configure_err = c5vrx_rf_dump_configure(
             C5VRX_ADC_DUMP_MAX_SAMPLES,
@@ -636,7 +635,6 @@ static void run_direct_av_probe(void)
     if (calibration_configure_err == ESP_OK) {
         calibration_execute_err = execute_direct_kernel(
             C5VRX_DIRECT_AV_CALIBRATION_MS, false, NULL);
-        calibration_stop_err = c5vrx_rf_dump_stop();
     }
     c5vrx_direct_av_probe_stats_t calibration = {0};
     c5vrx_direct_av_probe_get_stats(&calibration);
@@ -645,9 +643,11 @@ static void run_direct_av_probe(void)
         (1000u / C5VRX_DIRECT_AV_CALIBRATION_MS);
     const uint32_t calibrated_output_rate_hz =
         (calibrated_source_rate_hz + 2u) / 4u;
+    const bool calibration_canaries_ok =
+        c5vrx_rf_dump_canaries_intact();
     const bool calibration_ok = calibration_configure_err == ESP_OK &&
         calibration_execute_err == ESP_OK &&
-        calibration_stop_err == ESP_OK && calibration.lead_acquired &&
+        calibration.lead_acquired &&
         calibration.bursts_completed >= 8u &&
         calibration.rearms_succeeded >= 7u &&
         calibration.rearm_failures == 0u &&
@@ -655,14 +655,14 @@ static void run_direct_av_probe(void)
         calibrated_source_rate_hz <= C5VRX_DIRECT_AV_MAX_RATE_HZ &&
         calibrated_output_rate_hz >= 4000000u &&
         calibrated_output_rate_hz <= 20000000u &&
-        c5vrx_rf_dump_last_restore_ok();
+        calibration_canaries_ok;
     printf("C5VRX_DIRECT_AV_CALIBRATION_DONE code=%d configure=%d "
-           "execute=%d stop=%d source_rate_hz=%u output_rate_hz=%u "
+           "execute=%d session_held=%u source_rate_hz=%u output_rate_hz=%u "
            "bursts_completed=%u rearms_succeeded=%u rearm_failures=%u "
            "classification=%s\n",
            calibration_ok ? 0 : (int)ESP_FAIL,
            (int)calibration_configure_err,
-           (int)calibration_execute_err, (int)calibration_stop_err,
+           (int)calibration_execute_err, calibration_ok ? 1u : 0u,
            (unsigned)calibrated_source_rate_hz,
            (unsigned)calibrated_output_rate_hz,
            (unsigned)calibration.bursts_completed,
@@ -671,18 +671,15 @@ static void run_direct_av_probe(void)
            calibration_ok ? "RATE_CALIBRATED" : "RATE_CALIBRATION_FAILED");
     fflush(stdout);
     if (!calibration_ok) {
-        printf("C5VRX_DIRECT_AV_PROBE_DONE code=%d "
+        const esp_err_t cleanup_err =
+            calibration_configure_err == ESP_OK ? c5vrx_rf_dump_stop() :
+                                                  ESP_ERR_INVALID_STATE;
+        printf("C5VRX_DIRECT_AV_PROBE_DONE code=%d cleanup=%d "
                "classification=REJECTED reason=RATE_CALIBRATION_FAILED\n",
-               (int)ESP_FAIL);
+               (int)ESP_FAIL, (int)cleanup_err);
         fflush(stdout);
         return;
     }
-
-    /* The public RF stop path restores several FE/DMA registers. Give that
-     * restore one scheduler tick to settle before arming the measured-rate
-     * AV pass; back-to-back manual probes showed that an immediate retrigger
-     * can occasionally acquire no producer lead at all. */
-    vTaskDelay(pdMS_TO_TICKS(10u));
 
     printf("C5VRX_DIRECT_AV_PROBE_BEGIN duration_ms=%u lead_words=%u "
            "rf_to_av=REARMED_BURSTS_BITSCRAMBLER_PARLIO usb_payload=NONE "
@@ -709,10 +706,12 @@ static void run_direct_av_probe(void)
         prepared = prepare_err == ESP_OK;
     }
     if (prepared) {
-        configure_err = c5vrx_rf_dump_configure(
-            C5VRX_ADC_DUMP_MAX_SAMPLES,
-            C5VRX_RF_DUMP_MODE_ORDINARY_RX);
-        configured = configure_err == ESP_OK;
+        /* Keep the exact producer configuration and FE/PBUS state which made
+         * the calibration pass. The LP kernel returned CPU SRAM ownership and
+         * disabled capture, but intentionally did not run the destructive
+         * public stop/restore/reconfigure transition between the two passes. */
+        configure_err = calibration_configure_err;
+        configured = true;
     }
 
     if (configured) {
@@ -722,8 +721,10 @@ static void run_direct_av_probe(void)
          * task's HP-RAM bounds and deterministically panics. */
         execute_err = execute_direct_kernel(
             C5VRX_DIRECT_AV_PROBE_MS, true, &final_control);
-        stop_err = c5vrx_rf_dump_stop();
     }
+    /* The one shared producer session is restored exactly once, irrespective
+     * of AV prepare/execute success. */
+    stop_err = c5vrx_rf_dump_stop();
     if (prepared) {
         finish_err = c5vrx_cvbs_direct_rf_finish();
     }

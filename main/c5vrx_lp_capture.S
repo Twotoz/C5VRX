@@ -241,10 +241,17 @@ c5vrx_lp_direct_av_probe_mode0:
     sw      t1, 0(t0)
     fence   iorw, iorw
 
-    /* Exact mode-0 enable and software-trigger pulse. */
+    /* Exact mode-0 enable edge and software-trigger pulse.  A preceding
+     * bounded calibration invocation deliberately leaves the configured
+     * producer disabled, so every invocation must create the real falling /
+     * rising edge instead of assuming configure() started the writer. */
     li      t0, 0x600a9004
     lw      t1, 0(t0)
     li      t2, 0x80000000
+    not     a2, t2
+    and     t1, t1, a2
+    sw      t1, 0(t0)
+    fence   iorw, iorw
     or      t1, t1, t2
     sw      t1, 0(t0)
     li      t2, 0x00080000

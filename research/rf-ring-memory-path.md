@@ -146,3 +146,15 @@ FIFO-empty. Direct AV now performs a 20-ms producer-only calibration while the
 PAL logo remains active, configures PARLIO to measured-rate/4, and then runs the
 RF-to-AV overlap. This avoids hard-coding the RF-test clock across channels or
 PLL variation.
+
+The first calibrated physical pass measured 31.537950 MS/s and completed
+39/39 calibration rearms, but the following AV pass acquired no lead. A second
+calibration also remained at zero. This isolates a repeat-start defect in the
+stop/restore/reconfigure transition rather than VTX detection: the successful
+calibration occurred with the VTX on, while the failed retry occurred with it
+off. Calibration and AV now retain one configured producer session, each LP
+invocation generates an explicit enable falling/rising edge and software
+trigger, and the full vendor-style stop/restore executes exactly once after AV.
+PARLIO is also clock-paused before its looping transaction is queued so it
+cannot transiently report FIFO-empty before the RF writer owns a half-block
+lead.

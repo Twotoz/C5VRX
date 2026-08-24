@@ -1117,6 +1117,13 @@ esp_err_t c5vrx_cvbs_direct_rf_prepare(uint32_t output_clock_hz)
     err = parlio_new_tx_unit(&cfg, &s_direct_tx);
     if (err == ESP_OK) err = parlio_tx_unit_enable(s_direct_tx);
     if (err == ESP_OK) {
+        /* Pause the consumer before queueing its looping transaction.  Doing
+         * this only after transmit() left a short scheduling window in which
+         * an empty BitScrambler input could raise FIFO-empty before the LP
+         * producer had acquired its measured half-block lead. */
+        parlio_ll_tx_enable_clock(&PARL_IO, false);
+    }
+    if (err == ESP_OK) {
         const parlio_transmit_config_t transmit = {
             .idle_value = 32u,
             .bitscrambler_program = NULL,
@@ -1130,11 +1137,10 @@ esp_err_t c5vrx_cvbs_direct_rf_prepare(uint32_t output_clock_hz)
     }
     if (err != ESP_OK) goto fail;
 
-    /* The transaction and circular descriptors are now mounted. Pause only
-     * the PARLIO source clock; GDMA/BitScrambler stay armed and backpressured.
+    /* The transaction and circular descriptors are now mounted with the
+     * PARLIO source clock paused; GDMA/BitScrambler stay armed/backpressured.
      * The LP-RAM probe enables this documented clock bit after the MAC writer
      * is half a block ahead, avoiding a stale-data race at startup. */
-    parlio_ll_tx_enable_clock(&PARL_IO, false);
     return ESP_OK;
 
 fail:
