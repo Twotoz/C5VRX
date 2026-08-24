@@ -197,6 +197,36 @@ static esp_err_t start_ring_live(c5vrx_rf_dump_mode_t mode,
     return err;
 }
 
+static esp_err_t start_experimental_ring_live(
+    c5vrx_rf_dump_mode_t mode, size_t *selected_block_words)
+{
+    /* Every ring slot must be internal DMA memory. The XIAO profile starts at
+     * 1024 words, releasing 60 KiB across the five-slot queue versus 4096.
+     * Starting small is important: failed oversized BitScrambler/DMA setup can
+     * leave the peripheral driver unable to complete a same-boot retry. Larger
+     * profiles retain the throughput-first order. */
+    static const size_t xiao_candidates[] = {1024u, 2048u, 4096u};
+    static const size_t default_candidates[] = {4096u, 2048u, 1024u};
+    const bool xiao = strcmp(CONFIG_C5VRX_BOARD_PROFILE, "xiao-esp32c5") == 0;
+    const size_t *candidates = xiao ? xiao_candidates : default_candidates;
+    const size_t candidate_count = sizeof(xiao_candidates) /
+                                   sizeof(xiao_candidates[0]);
+    if (selected_block_words) *selected_block_words = 0u;
+    esp_err_t err = ESP_ERR_NO_MEM;
+    for (unsigned i = 0; i < candidate_count; ++i) {
+        err = start_ring_live(mode, candidates[i]);
+        printf("C5VRX_LIVE_EXPERIMENTAL_ALLOC mode=%u block_words=%u code=%d\n",
+               (unsigned)mode, (unsigned)candidates[i], (int)err);
+        fflush(stdout);
+        if (err == ESP_OK) {
+            if (selected_block_words) *selected_block_words = candidates[i];
+            break;
+        }
+        if (err != ESP_ERR_NO_MEM) break;
+    }
+    return err;
+}
+
 static esp_err_t stop_live_sources(c5vrx_stream_stats_t *pipeline_stats,
                                    c5vrx_live_ring_stats_t *ring_stats)
 {
@@ -667,10 +697,11 @@ static void handle_line(char *line)
     unsigned live_mode = 0;
     if (sscanf(line, "LIVE EXPERIMENTAL START %u", &live_mode) == 1 ||
         sscanf(line, "LIVE_EXPERIMENTAL_START_%u", &live_mode) == 1) {
-        const esp_err_t err = start_ring_live(
-            (c5vrx_rf_dump_mode_t)live_mode, 4096u);
-        printf("C5VRX_LIVE_EXPERIMENTAL_START mode=%u code=%d source=EXPERIMENTAL_RING_SOURCE_UNPROVEN anti_alias_safe=UNKNOWN phase_continuity=UNKNOWN\n",
-               live_mode, (int)err);
+        size_t selected_block_words = 0u;
+        const esp_err_t err = start_experimental_ring_live(
+            (c5vrx_rf_dump_mode_t)live_mode, &selected_block_words);
+        printf("C5VRX_LIVE_EXPERIMENTAL_START mode=%u block_words=%u code=%d source=EXPERIMENTAL_RING_SOURCE_UNPROVEN anti_alias_safe=UNKNOWN phase_continuity=UNKNOWN\n",
+               live_mode, (unsigned)selected_block_words, (int)err);
         fflush(stdout); return;
     }
     if (strcasecmp(line, "LIVE STOP") == 0 ||
