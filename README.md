@@ -373,7 +373,8 @@ content only at a complete frame boundary:
 
 - `LOGO`: the RF backend has not produced an accepted sample block yet;
 - `SNOW`: varying RF samples exist, but no gapless H/V-locked video exists;
-- live video: reserved for a future continuous SRAM-safe producer.
+- live video: available only through the bounded direct RF-to-AV candidate
+  until physical rate, arbitration and decoder lock pass.
 
 Once the receiver enters `SNOW`, later gaps do not flash the logo over genuine
 static. `STATUS` reports the on-wire state as `av_display=LOGO|SNOW|TEST`.
@@ -405,11 +406,18 @@ health without using USB: one short pulse per second means healthy logo/test
 output, two pulses means healthy unlocked snow, three pulses means a recorded
 deadline warning, and a fast blink means the AV task/DMA stream is unhealthy.
 
+`AV DIRECT PROBE` is the bounded gapless-path experiment. It replaces the logo
+for 100 ms with `RF ring -> circular GDMA -> inline BitScrambler WBFM 4:1 ->
+20 MS/s PARLIO -> six-bit DAC`, then restores the logo and reports the measured
+writer rate and wraps over USB. The Receiver Console exposes the same action as
+**DIRECT RF -> AV PROBE (A1, 100 ms)**. A passing machine record is still only a
+rate/continuity candidate until the connected AV decoder visibly locks.
+
 ### Test-readiness status
 
-- **IMPLEMENTED / NOT PHYSICALLY TESTED:** modular RF block ABI, bounded queue,
-  C5 BitScrambler WBFM, configurable sample conditioner, two-buffer PARLIO
-  sink, branded PAL renderer, DevKitC and XIAO build profiles.
+- **IMPLEMENTED / NOT PHYSICALLY TESTED:** modular RF block ABI, direct circular
+  ring/GDMA/BitScrambler/PARLIO candidate, configurable sample conditioner,
+  two-buffer proof renderer, DevKitC and XIAO build profiles.
 - **UNKNOWN UNTIL MEASURED ON HARDWARE:** RF sample validity/rate/gaps, conditioner
   calibration, 75-ohm DAC levels and real monitor/VTX behavior.
 - **EXPERIMENTAL RING SOURCE UNPROVEN:** the guarded source exists, but physical
@@ -442,6 +450,7 @@ The USB protocol exposes bounded producer, DSP and streaming diagnostics:
 CAPTURE 16384
 CAPTURE PHASE8 16384
 CAPTURE RAW 16384
+AV DIRECT PROBE
 PRODUCER CADENCE PROBE ALL
 WRAP FLAG PROBE 0
 PHASE CONTINUITY PROBE 0

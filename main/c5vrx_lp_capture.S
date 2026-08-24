@@ -178,10 +178,195 @@ c5vrx_lp_capture_mode0:
     ret
     .size   c5vrx_lp_capture_mode0, .-c5vrx_lp_capture_mode0
 
+/*
+ * uint32_t c5vrx_lp_direct_av_probe_mode0(uint32_t duration_cycles,
+ *                                         uint32_t lead_words)
+ *
+ * All normal driver work is complete before entry. PARLIO/GDMA/BitScrambler
+ * are loop-armed but the PARLIO TX clock at PCR+0xb4 bit 18 is paused. This
+ * LP-RAM routine grants dump ownership, starts the exact mode-0 producer,
+ * waits for a writer lead, enables the clock for a bounded observation, then
+ * disables both engines and restores CPU ownership before touching HP RAM.
+ */
+    .section .rtc.text,"ax",@progbits
+    .align  2
+    .global c5vrx_lp_direct_av_probe_mode0
+    .type   c5vrx_lp_direct_av_probe_mode0, @function
+c5vrx_lp_direct_av_probe_mode0:
+    mv      t0, sp
+    la      sp, c5vrx_lp_capture_stack_top
+    addi    sp, sp, -48
+    sw      t0, 16(sp)
+    sw      ra, 20(sp)
+    sw      a0, 24(sp)               /* bounded run cycles */
+    sw      a1, 28(sp)               /* requested lead words */
+    sw      zero, 32(sp)
+    sw      zero, 36(sp)
+    sw      zero, 40(sp)
+
+    la      t0, c5vrx_lp_direct_writer_advance
+    sw      zero, 0(t0)
+    la      t0, c5vrx_lp_direct_pointer_changes
+    sw      zero, 0(t0)
+    la      t0, c5vrx_lp_direct_pointer_wraps
+    sw      zero, 0(t0)
+    la      t0, c5vrx_lp_direct_lead_acquired
+    sw      zero, 0(t0)
+
+    /* Save and grant the vendor-observed two-bank/64-KiB MAC dump window. */
+    li      t0, 0x60095004
+    lw      t1, 0(t0)
+    sw      t1, 0(sp)
+    li      t2, 0xfffef0ff
+    and     t1, t1, t2
+    li      t2, 0x00010200
+    or      t1, t1, t2
+    sw      t1, 0(t0)
+    fence   iorw, iorw
+
+    /* Exact mode-0 enable and software-trigger pulse. */
+    li      t0, 0x600a9004
+    lw      t1, 0(t0)
+    li      t2, 0x80000000
+    or      t1, t1, t2
+    sw      t1, 0(t0)
+    li      t2, 0x00080000
+    or      t1, t1, t2
+    sw      t1, 0(t0)
+    not     t2, t2
+    and     t1, t1, t2
+    sw      t1, 0(t0)
+    fence   iorw, iorw
+
+    /* Tight pointer tracking establishes an actual half-ring lead. Give up
+     * after 50 ms at 240 MHz; in that case PARLIO is never enabled. */
+    li      t3, 0x600a9008
+    lw      t4, 0(t3)
+    li      t5, 0x3fff
+    and     t4, t4, t5              /* previous pointer */
+    sw      zero, 32(sp)            /* accumulated lead */
+    csrr    t5, mcycle
+1:
+    lw      t6, 0(t3)
+    li      a2, 0x3fff
+    and     t6, t6, a2              /* current pointer */
+    sub     a2, t6, t4
+    li      a3, 0x3fff
+    and     a2, a2, a3              /* modulo advance */
+    beqz    a2, 2f
+    lw      a3, 32(sp)
+    add     a3, a3, a2
+    sw      a3, 32(sp)
+    mv      t4, t6
+2:
+    lw      a3, 32(sp)
+    lw      a2, 28(sp)
+    bgeu    a3, a2, 3f
+    csrr    a2, mcycle
+    sub     a2, a2, t5
+    li      a3, 12000000
+    bltu    a2, a3, 1b
+    j       7f
+
+3:
+    la      a2, c5vrx_lp_direct_lead_acquired
+    li      a3, 1
+    sw      a3, 0(a2)
+    /* PCR_PARL_CLK_TX_CONF_REG, documented TX clock enable bit 18. */
+    li      a2, 0x600960b4
+    lw      a3, 0(a2)
+    li      a4, 0x00040000
+    or      a3, a3, a4
+    sw      a3, 0(a2)
+    fence   iorw, iorw
+
+    sw      zero, 32(sp)            /* measured writer advance */
+    sw      zero, 36(sp)            /* pointer changes */
+    sw      zero, 40(sp)            /* wraps */
+    csrr    t5, mcycle
+4:
+    lw      t6, 0(t3)
+    li      a2, 0x3fff
+    and     t6, t6, a2
+    sub     a2, t6, t4
+    li      a3, 0x3fff
+    and     a2, a2, a3
+    beqz    a2, 6f
+    lw      a3, 32(sp)
+    add     a3, a3, a2
+    sw      a3, 32(sp)
+    lw      a3, 36(sp)
+    addi    a3, a3, 1
+    sw      a3, 36(sp)
+    bgeu    t6, t4, 5f
+    lw      a3, 40(sp)
+    addi    a3, a3, 1
+    sw      a3, 40(sp)
+5:
+    mv      t4, t6
+6:
+    csrr    a2, mcycle
+    sub     a2, a2, t5
+    lw      a3, 24(sp)
+    bltu    a2, a3, 4b
+
+7:
+    /* Stop PARLIO consumption before removing MAC ownership. */
+    li      a2, 0x600960b4
+    lw      a3, 0(a2)
+    li      a4, 0xfffbffff
+    and     a3, a3, a4
+    sw      a3, 0(a2)
+    li      a2, 0x80000000
+    not     a2, a2
+    lw      t1, 0(t0)
+    and     t1, t1, a2
+    sw      t1, 0(t0)
+    fence   iorw, iorw
+
+    li      a2, 0x60095004
+    lw      a3, 0(sp)
+    sw      a3, 0(a2)
+    fence   iorw, iorw
+
+    la      a2, c5vrx_lp_direct_writer_advance
+    lw      a3, 32(sp)
+    sw      a3, 0(a2)
+    la      a2, c5vrx_lp_direct_pointer_changes
+    lw      a3, 36(sp)
+    sw      a3, 0(a2)
+    la      a2, c5vrx_lp_direct_pointer_wraps
+    lw      a3, 40(sp)
+    sw      a3, 0(a2)
+    la      a2, c5vrx_lp_direct_last_pointer
+    sw      t4, 0(a2)
+
+    mv      a0, t1
+    lw      ra, 20(sp)
+    lw      t0, 16(sp)
+    mv      sp, t0
+    ret
+    .size c5vrx_lp_direct_av_probe_mode0, .-c5vrx_lp_direct_av_probe_mode0
+
     .section .rtc_noinit,"aw",@nobits
     .balign 16
     .global c5vrx_lp_capture_stage
 c5vrx_lp_capture_stage:
+    .word   0
+    .global c5vrx_lp_direct_writer_advance
+c5vrx_lp_direct_writer_advance:
+    .word   0
+    .global c5vrx_lp_direct_pointer_changes
+c5vrx_lp_direct_pointer_changes:
+    .word   0
+    .global c5vrx_lp_direct_pointer_wraps
+c5vrx_lp_direct_pointer_wraps:
+    .word   0
+    .global c5vrx_lp_direct_lead_acquired
+c5vrx_lp_direct_lead_acquired:
+    .word   0
+    .global c5vrx_lp_direct_last_pointer
+c5vrx_lp_direct_last_pointer:
     .word   0
     .balign 16
 c5vrx_lp_capture_stack:

@@ -58,6 +58,12 @@ static bool s_physical_burst_gate_passed;
 static uint8_t s_ring_block_bench_seen;
 static uint8_t s_ring_block_bench_passed;
 static size_t s_selected_ring_block_words;
+static portMUX_TYPE s_direct_av_probe_mux = portMUX_INITIALIZER_UNLOCKED;
+
+#define C5VRX_DIRECT_AV_PROBE_MS       100u
+#define C5VRX_DIRECT_AV_LEAD_WORDS     8192u
+#define C5VRX_DIRECT_AV_MIN_RATE_HZ    70000000u
+#define C5VRX_DIRECT_AV_MAX_RATE_HZ    90000000u
 
 static esp_err_t live_output_with_preview(const uint8_t *samples,
                                           size_t count,
@@ -480,7 +486,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,AV_STATUS,AV_TUNE_STATUS,AV_TUNE_RESET,AV_TUNE_<hsync>_<equalizing>_<broad_sync>_<pre_eq>_<broad_half>_<post_eq>,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>_SAFE_PHASE8,CAPTURE_PHASE8_<256-16384>,CAPTURE_RAW_<256-16384>_EXPLICIT_ASCII,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,AV_STATUS,AV_DIRECT_PROBE,AV_TUNE_STATUS,AV_TUNE_RESET,AV_TUNE_<hsync>_<equalizing>_<broad_sync>_<pre_eq>_<broad_half>_<post_eq>,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>_SAFE_PHASE8,CAPTURE_PHASE8_<256-16384>,CAPTURE_RAW_<256-16384>_EXPLICIT_ASCII,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -546,6 +552,92 @@ static esp_err_t run_deep_probe(void)
     return result;
 }
 
+static void run_direct_av_probe(void)
+{
+    if (c5vrx_live_pipeline_running() || s_ring_live || s_finite_live) {
+        printf("C5VRX_DIRECT_AV_PROBE_DONE code=%d classification=REJECTED "
+               "reason=ANOTHER_RF_PIPELINE_IS_ACTIVE\n",
+               (int)ESP_ERR_INVALID_STATE);
+        fflush(stdout);
+        return;
+    }
+    printf("C5VRX_DIRECT_AV_PROBE_BEGIN duration_ms=%u lead_words=%u "
+           "rf_to_av=RING_GDMA_BITSCRAMBLER_PARLIO usb_payload=NONE "
+           "phase_gain=3 warning=AV_SWITCHES_TO_VTX_FOR_100MS\n",
+           C5VRX_DIRECT_AV_PROBE_MS, C5VRX_DIRECT_AV_LEAD_WORDS);
+    fflush(stdout);
+
+    esp_err_t prepare_err = ESP_ERR_NOT_SUPPORTED;
+    esp_err_t configure_err = ESP_ERR_INVALID_STATE;
+    esp_err_t stop_err = ESP_ERR_INVALID_STATE;
+    esp_err_t finish_err = ESP_ERR_INVALID_STATE;
+    uint32_t final_control = 0u;
+    bool prepared = false;
+    bool configured = false;
+
+    if (c5vrx_rf_dump_memory_reserved()) {
+        prepare_err = c5vrx_cvbs_direct_rf_prepare();
+        prepared = prepare_err == ESP_OK;
+    }
+    if (prepared) {
+        configure_err = c5vrx_rf_dump_configure(
+            C5VRX_ADC_DUMP_MAX_SAMPLES,
+            C5VRX_RF_DUMP_MODE_ORDINARY_RX);
+        configured = configure_err == ESP_OK;
+    }
+
+    if (configured) {
+        const uint32_t duration_cycles =
+            (uint32_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000u *
+            C5VRX_DIRECT_AV_PROBE_MS;
+        /* Once MAC owns the RF ring, no normal interrupt or FreeRTOS code may
+         * touch the affected HP-SRAM banks. The complete writer/consumer
+         * overlap therefore runs on the dedicated LP stack with interrupts
+         * masked and remains below the configured interrupt-watchdog window. */
+        portENTER_CRITICAL(&s_direct_av_probe_mux);
+        final_control = c5vrx_lp_direct_av_probe_mode0(
+            duration_cycles, C5VRX_DIRECT_AV_LEAD_WORDS);
+        portEXIT_CRITICAL(&s_direct_av_probe_mux);
+        stop_err = c5vrx_rf_dump_stop();
+    }
+    if (prepared) {
+        finish_err = c5vrx_cvbs_direct_rf_finish();
+    }
+
+    c5vrx_direct_av_probe_stats_t stats = {0};
+    c5vrx_direct_av_probe_get_stats(&stats);
+    const uint32_t source_rate_hz =
+        stats.writer_advance_words * (1000u / C5VRX_DIRECT_AV_PROBE_MS);
+    const bool wraps_continuously = stats.lead_acquired &&
+        stats.pointer_changes > 0u && stats.pointer_wraps >= 4u &&
+        stats.writer_advance_words >= 4u * C5VRX_ADC_DUMP_MAX_SAMPLES;
+    const bool rate_compatible =
+        source_rate_hz >= C5VRX_DIRECT_AV_MIN_RATE_HZ &&
+        source_rate_hz <= C5VRX_DIRECT_AV_MAX_RATE_HZ;
+    const bool cleanup_ok = stop_err == ESP_OK && finish_err == ESP_OK &&
+        c5vrx_rf_dump_last_restore_ok();
+    const bool passed = configured && wraps_continuously &&
+        rate_compatible && cleanup_ok;
+
+    printf("C5VRX_DIRECT_AV_PROBE_DONE code=%d prepare=%d configure=%d "
+           "stop=%d finish=%d lead=%u writer_advance_words=%u "
+           "pointer_changes=%u wraps=%u last_pointer=%u "
+           "source_rate_hz=%u rate_target_hz=80000000 final_control=%08x "
+           "restore_ok=%u canaries_ok=%u classification=%s\n",
+           passed ? 0 : (int)ESP_FAIL,
+           (int)prepare_err, (int)configure_err, (int)stop_err,
+           (int)finish_err, (unsigned)stats.lead_acquired,
+           (unsigned)stats.writer_advance_words,
+           (unsigned)stats.pointer_changes, (unsigned)stats.pointer_wraps,
+           (unsigned)stats.last_pointer, (unsigned)source_rate_hz,
+           (unsigned)final_control,
+           c5vrx_rf_dump_last_restore_ok() ? 1u : 0u,
+           c5vrx_rf_dump_last_canaries_ok() ? 1u : 0u,
+           passed ? "GAPLESS_RATE_CANDIDATE_AV_LOCK_PHYSICAL_TEST_REQUIRED" :
+                    "FAILED_NO_GAPLESS_CLAIM");
+    fflush(stdout);
+}
+
 static void handle_line(char *line)
 {
     const esp_err_t soak_watchdog_err =
@@ -594,6 +686,11 @@ static void handle_line(char *line)
         strcasecmp(line, "AV_TUNE_RESET") == 0) {
         c5vrx_cvbs_output_reset_timing();
         print_av_tune_status(ESP_OK);
+        return;
+    }
+    if (strcasecmp(line, "AV DIRECT PROBE") == 0 ||
+        strcasecmp(line, "AV_DIRECT_PROBE") == 0) {
+        run_direct_av_probe();
         return;
     }
     unsigned tune_hsync = 0, tune_equalizing = 0, tune_broad = 0;

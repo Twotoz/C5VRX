@@ -11,12 +11,18 @@
 #include "sdkconfig.h"
 #include "driver/gpio.h"
 #include "driver/parlio_tx.h"
+#include "driver/bitscrambler.h"
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "hal/parlio_ll.h"
+#include "soc/parl_io_struct.h"
+
+#include "c5vrx_adc_dump.h"
+#include "c5vrx_wbfm_hw.h"
 
 /*
  * Analog-first output proof.
@@ -110,6 +116,8 @@ static uint8_t s_snow_tile[C5VRX_CVBS_SNOW_TILE_BYTES] __attribute__((aligned(64
 static uint8_t *s_chunk[2];
 
 static parlio_tx_unit_handle_t s_tx;
+static parlio_tx_unit_handle_t s_direct_tx;
+static bitscrambler_handle_t s_direct_bs;
 static c5vrx_cvbs_stream_state_t s_stream;
 static uint16_t s_next_half_line;
 static uint32_t s_frame_counter;
@@ -895,6 +903,27 @@ const char *c5vrx_cvbs_display_name(c5vrx_cvbs_display_t display)
     }
 }
 
+static esp_err_t destroy_rendered_output(void)
+{
+    esp_err_t err = ESP_OK;
+    if (s_tx) {
+        const esp_err_t disable_err = parlio_tx_unit_disable(s_tx);
+        if (disable_err != ESP_OK && disable_err != ESP_ERR_INVALID_STATE)
+            err = disable_err;
+    }
+    stop_stream_task();
+    if (s_tx) {
+        const esp_err_t del_err = parlio_del_tx_unit(s_tx);
+        if (err == ESP_OK) err = del_err;
+        s_tx = NULL;
+    }
+    free(s_chunk[0]);
+    free(s_chunk[1]);
+    s_chunk[0] = s_chunk[1] = NULL;
+    s_running = false;
+    return err;
+}
+
 void c5vrx_cvbs_output_get_stats(c5vrx_cvbs_output_stats_t *stats)
 {
     if (!stats) return;
@@ -1033,6 +1062,96 @@ bool c5vrx_cvbs_test_running(void)
     return s_running;
 }
 
+esp_err_t c5vrx_cvbs_direct_rf_prepare(void)
+{
+    if (s_direct_tx || s_direct_bs) return ESP_ERR_INVALID_STATE;
+    esp_err_t err = destroy_rendered_output();
+    if (err != ESP_OK) {
+        (void)start_output(C5VRX_CVBS_DISPLAY_LOGO);
+        return err;
+    }
+
+    err = c5vrx_wbfm_hw_direct_parlio_create(&s_direct_bs);
+    if (err != ESP_OK) goto fail;
+
+    const parlio_tx_unit_config_t cfg = {
+        .clk_src = PARLIO_CLK_SRC_DEFAULT,
+        .clk_in_gpio_num = -1,
+        .input_clk_src_freq_hz = 0,
+        .output_clk_freq_hz = C5VRX_CVBS_SAMPLE_RATE_HZ,
+        .data_width = 8,
+        .data_gpio_nums = {
+            CONFIG_C5VRX_CVBS_D0_GPIO,
+            CONFIG_C5VRX_CVBS_D1_GPIO,
+            CONFIG_C5VRX_CVBS_D2_GPIO,
+            CONFIG_C5VRX_CVBS_D3_GPIO,
+            CONFIG_C5VRX_CVBS_D4_GPIO,
+            CONFIG_C5VRX_CVBS_D5_GPIO,
+            CONFIG_C5VRX_CVBS_D6_GPIO,
+            CONFIG_C5VRX_CVBS_D7_GPIO,
+        },
+        .clk_out_gpio_num = -1,
+        .valid_gpio_num = -1,
+        .valid_start_delay = 0,
+        .valid_stop_delay = 0,
+        .trans_queue_depth = 1,
+        .max_transfer_size = C5VRX_ADC_DUMP_MAX_SAMPLES * sizeof(uint32_t),
+        .dma_burst_size = 32,
+        .shift_edge = PARLIO_SHIFT_EDGE_NEG,
+        .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
+    };
+    err = parlio_new_tx_unit(&cfg, &s_direct_tx);
+    if (err == ESP_OK) err = parlio_tx_unit_enable(s_direct_tx);
+    if (err == ESP_OK) {
+        const parlio_transmit_config_t transmit = {
+            .idle_value = 32u,
+            .bitscrambler_program = NULL,
+            .flags.loop_transmission = true,
+        };
+        err = parlio_tx_unit_transmit(
+            s_direct_tx,
+            (const void *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR,
+            C5VRX_ADC_DUMP_MAX_SAMPLES * sizeof(uint32_t) * 8u,
+            &transmit);
+    }
+    if (err != ESP_OK) goto fail;
+
+    /* The transaction and circular descriptors are now mounted. Pause only
+     * the PARLIO source clock; GDMA/BitScrambler stay armed and backpressured.
+     * The LP-RAM probe enables this documented clock bit after the MAC writer
+     * is half a ring ahead, avoiding a stale-data race at startup. */
+    parlio_ll_tx_enable_clock(&PARL_IO, false);
+    return ESP_OK;
+
+fail:
+    if (s_direct_tx) {
+        (void)parlio_tx_unit_disable(s_direct_tx);
+        (void)parlio_del_tx_unit(s_direct_tx);
+        s_direct_tx = NULL;
+    }
+    c5vrx_wbfm_hw_direct_parlio_destroy(s_direct_bs);
+    s_direct_bs = NULL;
+    (void)start_output(C5VRX_CVBS_DISPLAY_LOGO);
+    return err;
+}
+
+esp_err_t c5vrx_cvbs_direct_rf_finish(void)
+{
+    /* The LP kernel leaves this clock disabled before returning ownership. */
+    parlio_ll_tx_enable_clock(&PARL_IO, false);
+    esp_err_t err = ESP_OK;
+    if (s_direct_tx) {
+        err = parlio_tx_unit_disable(s_direct_tx);
+        const esp_err_t del_err = parlio_del_tx_unit(s_direct_tx);
+        if (err == ESP_OK) err = del_err;
+        s_direct_tx = NULL;
+    }
+    c5vrx_wbfm_hw_direct_parlio_destroy(s_direct_bs);
+    s_direct_bs = NULL;
+    const esp_err_t restart_err = start_output(C5VRX_CVBS_DISPLAY_LOGO);
+    return err == ESP_OK ? restart_err : err;
+}
+
 #else
 
 esp_err_t c5vrx_cvbs_test_start(void)
@@ -1074,5 +1193,10 @@ bool c5vrx_cvbs_test_running(void)
 {
     return false;
 }
+
+esp_err_t c5vrx_cvbs_direct_rf_prepare(void)
+{ return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t c5vrx_cvbs_direct_rf_finish(void)
+{ return ESP_ERR_NOT_SUPPORTED; }
 
 #endif

@@ -232,9 +232,10 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
     /* Public C5 headers identify 0x60095004 as HP SRAM ownership, not a
      * sample clock: [11:8]=2 grants the MAC/dump writer the selected memory
      * bank and bit 16 adds the vendor-observed 64 KiB offset. */
-    REG32(HP_SRAM_USAGE) =
-        (REG32(HP_SRAM_USAGE) & 0xfffff0ffu) | 0x00000200u;
-    REG32(HP_SRAM_USAGE) |= 0x00010000u;
+    /* Ownership is deliberately deferred until start. Configuration returns
+     * to normal C/FreeRTOS code, which cannot safely run after this mux grants
+     * the dump engine the selected HP-SRAM banks. The direct AV probe performs
+     * the handoff, start and restoration entirely from LP RAM. */
     REG32(DUMP_CTRL) &= ~0x00300000u;
     REG32(DUMP_CTRL) &= ~CTRL_MODE_BIT;
 
@@ -260,6 +261,10 @@ esp_err_t c5vrx_rf_dump_start(void)
 {
     if (!c5vrx_rf_dump_producer_available()) return ESP_ERR_NOT_SUPPORTED;
     if (!s_configured || s_running) return ESP_ERR_INVALID_STATE;
+    REG32(HP_SRAM_USAGE) =
+        (REG32(HP_SRAM_USAGE) & 0xfffff0ffu) | 0x00000200u;
+    REG32(HP_SRAM_USAGE) |= 0x00010000u;
+    __asm__ __volatile__("fence iorw, iorw" ::: "memory");
     REG32(DUMP_CTRL) |= CTRL_ENABLE_BIT;
     /* Exact mode-0 software trigger from the pinned C5 adctrig routine. This
      * occurs after enable and proves that a decoded Wi-Fi packet trigger is
@@ -271,6 +276,24 @@ esp_err_t c5vrx_rf_dump_start(void)
     __asm__ __volatile__("fence iorw, iorw" ::: "memory");
     s_running = true;
     return ESP_OK;
+}
+
+extern volatile uint32_t c5vrx_lp_direct_writer_advance;
+extern volatile uint32_t c5vrx_lp_direct_pointer_changes;
+extern volatile uint32_t c5vrx_lp_direct_pointer_wraps;
+extern volatile uint32_t c5vrx_lp_direct_lead_acquired;
+extern volatile uint32_t c5vrx_lp_direct_last_pointer;
+
+void c5vrx_direct_av_probe_get_stats(c5vrx_direct_av_probe_stats_t *stats)
+{
+    if (!stats) return;
+    *stats = (c5vrx_direct_av_probe_stats_t) {
+        .writer_advance_words = c5vrx_lp_direct_writer_advance,
+        .pointer_changes = c5vrx_lp_direct_pointer_changes,
+        .pointer_wraps = c5vrx_lp_direct_pointer_wraps,
+        .lead_acquired = c5vrx_lp_direct_lead_acquired,
+        .last_pointer = c5vrx_lp_direct_last_pointer,
+    };
 }
 
 esp_err_t c5vrx_rf_dump_get_status(c5vrx_rf_dump_status_t *status)

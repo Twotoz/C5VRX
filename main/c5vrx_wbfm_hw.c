@@ -20,6 +20,8 @@ static const char *TAG = "c5vrx_wbfm_hw";
 BITSCRAMBLER_PROGRAM(c5vrx_wbfm_4to1_program, "c5vrx_wbfm_4to1");
 BITSCRAMBLER_PROGRAM(c5vrx_wbfm_phase8_4to1_program,
                     "c5vrx_wbfm_phase8_4to1");
+BITSCRAMBLER_PROGRAM(c5vrx_wbfm_direct6_4to1_program,
+                    "c5vrx_wbfm_direct6_4to1");
 
 #define C5VRX_WBFM_TEST_OUTPUT_SAMPLES 256u
 #define C5VRX_WBFM_TEST_DECIMATION     4u
@@ -87,7 +89,8 @@ uint8_t c5vrx_wbfm_coarse_phase6(uint32_t packed_iq)
 }
 
 static void build_phase_lut(uint16_t lut[C5VRX_WBFM_LUT_WORDS],
-                            int dc_i, int dc_q, unsigned phase_bits)
+                            int dc_i, int dc_q, unsigned phase_bits,
+                            unsigned phase_gain)
 {
     for (unsigned i5 = 0; i5 < 32u; ++i5) {
         for (unsigned q5 = 0; q5 < 32u; ++q5) {
@@ -97,14 +100,61 @@ static void build_phase_lut(uint16_t lut[C5VRX_WBFM_LUT_WORDS],
                 phase += 2.0f * C5VRX_PI_F;
             }
             const unsigned modulus = 1u << phase_bits;
-            const uint8_t p = (uint8_t)lrintf(
-                phase * ((float)modulus / (2.0f * C5VRX_PI_F)));
+            const uint8_t p = (uint8_t)(phase_gain * (unsigned)lrintf(
+                phase * ((float)modulus / (2.0f * C5VRX_PI_F))));
             const uint8_t bias_minus =
                 (uint8_t)((modulus / 2u) - p);
             lut[(i5 << 5) | q5] =
                 (uint16_t)p | ((uint16_t)bias_minus << 8);
         }
     }
+}
+
+esp_err_t c5vrx_wbfm_hw_direct_parlio_create(bitscrambler_handle_t *handle)
+{
+    if (!handle) return ESP_ERR_INVALID_ARG;
+    *handle = NULL;
+    uint16_t *lut = heap_caps_malloc(
+        C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t), MALLOC_CAP_INTERNAL);
+    if (!lut) return ESP_ERR_NO_MEM;
+    /* A retained sample spans four 80 MS/s RF intervals. At the representative
+     * +/-2.5 MHz analog-video deviation that is about +/-32 phase8 codes.
+     * Three-times phase scaling maps it to roughly DAC codes 8..56 after the
+     * direct program drops the two LSBs. This is a bounded first-hardware
+     * calibration, not a claim about final polarity or voltage levels. */
+    build_phase_lut(lut, 0, 0, 8u, 3u);
+
+    const bitscrambler_config_t cfg = {
+        .dir = BITSCRAMBLER_DIR_TX,
+        .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
+    };
+    bitscrambler_handle_t bs = NULL;
+    esp_err_t err = bitscrambler_new(&cfg, &bs);
+    if (err == ESP_OK) err = bitscrambler_enable(bs);
+    if (err == ESP_OK)
+        err = bitscrambler_load_program(bs, c5vrx_wbfm_direct6_4to1_program);
+    if (err == ESP_OK)
+        err = bitscrambler_load_lut(
+            bs, lut, C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t));
+    if (err == ESP_OK) err = bitscrambler_reset(bs);
+    if (err == ESP_OK) err = bitscrambler_start(bs);
+    free(lut);
+    if (err != ESP_OK) {
+        if (bs) {
+            (void)bitscrambler_disable(bs);
+            bitscrambler_free(bs);
+        }
+        return err;
+    }
+    *handle = bs;
+    return ESP_OK;
+}
+
+void c5vrx_wbfm_hw_direct_parlio_destroy(bitscrambler_handle_t handle)
+{
+    if (!handle) return;
+    (void)bitscrambler_disable(handle);
+    bitscrambler_free(handle);
 }
 
 uint8_t c5vrx_wbfm_hw_context_phase6(
@@ -137,7 +187,7 @@ static esp_err_t update_dc_lut(c5vrx_wbfm_hw_context_t *ctx,
     if (q5 > 15) q5 = 15;
     if (i5 == ctx->applied_i_dc5 && q5 == ctx->applied_q_dc5) return ESP_OK;
     build_phase_lut(ctx->lut, i5 * 32, q5 * 32,
-                    ctx->kernel == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u);
+                    ctx->kernel == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u, 1u);
     const esp_err_t err = bitscrambler_load_lut(
         ctx->bs, ctx->lut, C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t));
     if (err == ESP_OK) {
@@ -174,7 +224,7 @@ esp_err_t c5vrx_wbfm_hw_create_kernel(
     }
     ctx->kernel = kernel;
     build_phase_lut(ctx->lut, 0, 0,
-                    kernel == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u);
+                    kernel == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u, 1u);
 
     const size_t max_transfer = maximum_input_words * sizeof(uint32_t);
     esp_err_t err = bitscrambler_loopback_create(

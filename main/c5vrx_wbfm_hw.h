@@ -4,6 +4,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "driver/bitscrambler.h"
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -69,6 +70,15 @@ esp_err_t c5vrx_wbfm_hw_probe_dump(size_t sample_count);
  */
 esp_err_t c5vrx_wbfm_hw_self_test(void);
 esp_err_t c5vrx_wbfm_hw_self_test_kernel(c5vrx_wbfm_kernel_t kernel);
+
+/**
+ * Configure the C5 BitScrambler as a direct PARLIO TX decorator.  The program
+ * consumes the fixed packed-IQ format at four input words per 20 MHz output
+ * sample and drives the existing six-bit resistor DAC without an intermediate
+ * framebuffer.  The caller owns PARLIO and must stop it before destroy.
+ */
+esp_err_t c5vrx_wbfm_hw_direct_parlio_create(bitscrambler_handle_t *handle);
+void c5vrx_wbfm_hw_direct_parlio_destroy(bitscrambler_handle_t handle);
 
 #ifdef __cplusplus
 }

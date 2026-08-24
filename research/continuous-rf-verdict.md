@@ -1,9 +1,10 @@
 # ESP32-C5 continuous RF stream investigation
 
-Status: **no application-usable continuous stream is proven**. The C5 has an
-internal, hardware-written RF/FE dump ring, but the only recovered callable
-wrapper is a bounded diagnostic which stops the engine before returning. No
-public ESP-IDF, GDMA or BitScrambler endpoint exposes that producer.
+Status: **a hardware-only continuous-stream candidate is implemented but not
+yet physically proven**. The C5 has an internal, hardware-written RF/FE dump
+ring. The public API still exposes only a bounded diagnostic, but the recovered
+producer register sequence can now feed a documented circular
+GDMA/BitScrambler/PARLIO consumer without CPU or USB sample transport.
 
 This is a negative engineering result, not proof that the silicon is incapable.
 It defines one focused physical experiment which can falsify or advance the
@@ -78,6 +79,38 @@ No public source, header, example, ROM symbol implementation, RF-test utility
 or documentation found in this survey provides a C5 SDR API or a supported
 Wi-Fi-RF-to-GDMA route.
 
+## Direct circular RF-to-AV candidate
+
+ESP-IDF v6.0.2 does document and implement the missing *consumer* half:
+
+- PARLIO TX supports loop transmission using a GDMA link that returns to its
+  start;
+- a TX BitScrambler can attach inline to PARLIO;
+- the BitScrambler may consume more input bytes than it emits, so the C5VRX
+  program consumes four packed 32-bit I/Q words per eight-bit output item;
+- at the measured design target of roughly 80 MS/s in and 20 MS/s out, PARLIO
+  can clock those output items directly to the six-bit resistor DAC.
+
+C5VRX therefore pre-arms a circular GDMA read of the complete 64 KiB RF ring,
+starts the RF writer from LP RAM, waits until the writer is half a ring ahead,
+then enables the PARLIO clock. The BitScrambler performs coarse phase lookup,
+modulo phase subtraction (WBFM), 4:1 rate conversion and an initial three-times
+video-deviation scale. No intermediate AV framebuffer is allocated.
+
+The `AV DIRECT PROBE` command runs this overlap for 100 ms, then reports writer
+advance, pointer changes, wraps, inferred source rate, guard canaries and full
+register restoration. Passing requires a 70--90 MS/s measured writer rate and
+multiple wraps; the result remains
+`GAPLESS_RATE_CANDIDATE_AV_LOCK_PHYSICAL_TEST_REQUIRED` until a real VTX and AV
+decoder lock to the output. Failure restores the standards-correct PAL logo and
+makes no gapless claim.
+
+Primary consumer-path sources:
+
+- [ESP-IDF v6.0.2 PARLIO BitScrambler integration](https://github.com/espressif/esp-idf/blob/v6.0.2/components/esp_driver_parlio/src/parlio_bitscrambler.c)
+- [ESP-IDF v6.0.2 PARLIO TX loop API](https://github.com/espressif/esp-idf/blob/v6.0.2/components/esp_driver_parlio/include/driver/parlio_tx.h)
+- [ESP32-C5 BitScrambler peripheral attachment selectors](https://github.com/espressif/esp-idf/blob/v6.0.2/components/esp_hal_dma/esp32c5/include/hal/bitscrambler_peri_select.h)
+
 ## Producer-level follow-up
 
 The wrapper boundary is no longer the end of the static investigation. See
@@ -130,10 +163,12 @@ primitives without claiming recovered-video lock.
 
 ## Verdict
 
-**CONTINUOUS RF PRODUCER UNKNOWN / NOT PROVEN.** There is no public ESP32-C5
-SDR API. Static reverse engineering shows a promising hardware pre-trigger ring
-but also a finite one-second owner which tears it down, no public DMA consumer,
-and an extreme raw bus rate. C5VRX must not claim live analog FPV reception.
+**DIRECT CONTINUOUS CANDIDATE IMPLEMENTED / PHYSICAL PASS PENDING.** There is no
+public ESP32-C5 SDR API and the RF producer remains an audited, pinned internal
+interface. The direct consumer no longer depends on a CPU copy loop: it uses
+the documented circular PARLIO GDMA and inline BitScrambler path. C5VRX must
+still not claim live analog FPV reception until the physical rate/wrap probe,
+simultaneous ring arbitration and VTX-to-AV lock pass on the target XIAO.
 
 The unresolved question remains:
 
@@ -144,7 +179,8 @@ Final producer pass: the historical `sample_80m` write is overwritten by the
 later overlapping mode selector before capture enable. Eight distinct active
 rates are therefore not established statically. Firmware now measures the
 unchanged vendor argument paths and fails closed rather than forcing that
-field. The next milestone is physical `RF DEEP PROBE` measurement.
+field. The next milestone is physical `AV DIRECT PROBE` measurement followed by
+a scope/decoder check of discriminator polarity, gain and loaded DAC voltage.
 
 For the focused tap, processing, mode and WBFM-bandwidth answer, see
 [`rf-iq-dump-verdict.md`](rf-iq-dump-verdict.md).

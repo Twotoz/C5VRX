@@ -56,5 +56,22 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
 esp_err_t c5vrx_rf_dump_start(void);
 esp_err_t c5vrx_rf_dump_get_status(c5vrx_rf_dump_status_t *status);
 esp_err_t c5vrx_rf_dump_stop(void);
+
+typedef struct {
+    uint32_t writer_advance_words;
+    uint32_t pointer_changes;
+    uint32_t pointer_wraps;
+    uint32_t lead_acquired;
+    uint32_t last_pointer;
+} c5vrx_direct_av_probe_stats_t;
+
+/**
+ * Run the already-configured mode-0 producer from LP RAM while a pre-armed
+ * direct PARLIO transaction consumes the ring. Both duration and lead are
+ * bounded; CPU SRAM ownership and the PARLIO clock are restored before return.
+ */
+uint32_t c5vrx_lp_direct_av_probe_mode0(uint32_t duration_cycles,
+                                       uint32_t lead_words);
+void c5vrx_direct_av_probe_get_stats(c5vrx_direct_av_probe_stats_t *stats);
 esp_err_t c5vrx_rf_dump_read_registers(c5vrx_rf_dump_registers_t *registers);
 bool c5vrx_rf_dump_last_restore_ok(void);

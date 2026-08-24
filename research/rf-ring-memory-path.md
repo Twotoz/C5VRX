@@ -64,3 +64,28 @@ memory/bus resources. No public arbitration guarantee proves 320 MB/s write plus
 320 MB/s read. Sustainable rates, stalls and whether PARLIO deadlines survive
 are **UNKNOWN**. The correct evidence is the prepared cadence/soak/ring copy and
 BitScrambler/PARLIO benchmarks while the producer is active.
+
+## Hardware-only direct probe
+
+The first direct candidate avoids both CPU copying and the BitScrambler
+loopback driver's output buffer. PARLIO owns a circular GDMA read descriptor for
+the complete fixed RF ring. A TX BitScrambler attached to PARLIO consumes four
+packed I/Q words, emits one six-bit-biased discriminator byte, and PARLIO sends
+that byte at 20 MS/s to the resistor DAC.
+
+Normal code prepares all descriptors while the CPU still owns HP-SRAM. A
+bounded routine linked into LP RAM then performs the unsafe ownership interval:
+
+1. grant the recovered RF/MAC owner access to the dump banks;
+2. enable and software-trigger the mode-0 writer;
+3. measure an 8192-word writer lead;
+4. enable the already-armed PARLIO clock;
+5. count pointer advance and ring wraps for 100 ms;
+6. stop PARLIO, stop the writer, and restore CPU SRAM ownership.
+
+Interrupts remain masked only across that bounded LP routine. The 100 ms test
+is below the configured interrupt-watchdog window and the generated PAL logo is
+restarted before USB reports the result. This proves neither bus arbitration
+nor AV lock statically; `AV DIRECT PROBE` exists specifically to measure those
+remaining physical properties without risking another unbounded USB/FreeRTOS
+wedge.

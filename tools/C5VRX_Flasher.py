@@ -49,7 +49,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-29-deadline-safe-av"
+APP_BUILD = "video-proof-30-direct-gapless-av-probe"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -525,6 +525,23 @@ class C5VRXApp(tk.Tk):
         ).pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Clear", command=self.clear_preview).pack(side="left", padx=8)
 
+        direct_av_controls = ttk.Frame(tab)
+        direct_av_controls.pack(fill="x", pady=(8, 0))
+        self.direct_av_probe_btn = ttk.Button(
+            direct_av_controls,
+            text="DIRECT RF -> AV PROBE (A1, 100 ms)",
+            command=self.start_direct_av_probe,
+        )
+        self.direct_av_probe_btn.pack(side="left")
+        ttk.Label(
+            direct_av_controls,
+            text=(
+                "Temporarily routes the circular RF ring through hardware WBFM "
+                "straight to AV; USB only receives the result afterwards."
+            ),
+            wraplength=610,
+        ).pack(side="left", padx=10)
+
         iq_live_controls = ttk.Frame(tab)
         iq_live_controls.pack(fill="x", pady=(8, 0))
         self.live_iq_start_btn = ttk.Button(
@@ -838,6 +855,24 @@ class C5VRXApp(tk.Tk):
     def _parse_device_line(self, line: str) -> None:
         if line.startswith("C5VRX_AV_STATUS"):
             self.after(0, self._apply_av_status_line, line)
+        if line.startswith("C5VRX_DIRECT_AV_PROBE_BEGIN"):
+            self.after(
+                0, self.preview_status_var.set,
+                "Direct RF -> AV is active now; watch the AV display")
+            return
+        if line.startswith("C5VRX_DIRECT_AV_PROBE_DONE"):
+            fields = self._fields(line)
+            passed = fields.get("code") == "0"
+            rate = fields.get("source_rate_hz", "unknown")
+            wraps = fields.get("wraps", "unknown")
+            result = "PASS candidate" if passed else "FAILED"
+            self.after(
+                0, self.preview_status_var.set,
+                f"Direct RF -> AV {result}: source={rate} samples/s, "
+                f"ring wraps={wraps}; report whether the AV display locked")
+            if hasattr(self, "direct_av_probe_btn"):
+                self.after(0, self.direct_av_probe_btn.configure, state="normal")
+            return
         if line.startswith("C5VRX_AV_TUNE"):
             self.after(0, self._apply_av_tune_line, line)
             return
@@ -1365,6 +1400,26 @@ class C5VRXApp(tk.Tk):
     def capture_iq_16k(self) -> None:
         self.samples_var.set("16384")
         self.capture_iq()
+
+    def start_direct_av_probe(self) -> None:
+        if not self.ser or not self.ser.is_open:
+            messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
+            return
+        if self.live_iq_active:
+            self.stop_live_iq_video("switching to direct RF -> AV probe")
+        self.usb_preview_active = False
+        self.usb_preview_receiving = False
+        self.band_var.set("A")
+        self.channel_var.set("1")
+        self.bw_var.set("40")
+        self.update_channel_label()
+        self.preview_status_var.set(
+            f"{APP_BUILD}: arming A1 direct RF -> AV probe; watch the AV display")
+        self.direct_av_probe_btn.configure(state="disabled")
+        self.send_command("USB PREVIEW STOP")
+        self.after(100, lambda: self.send_command("BW 40"))
+        self.after(220, lambda: self.send_command("SET A 1"))
+        self.after(450, lambda: self.send_command("AV DIRECT PROBE"))
 
     def start_experimental_usb_preview(self) -> None:
         # Continuous RF dump ownership removes CPU access to HP-SRAM on the
