@@ -49,7 +49,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-32-lp-rearmed-continuous-iq"
+APP_BUILD = "video-proof-33-physical-32m85-iq-to-av"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -536,7 +536,7 @@ class C5VRXApp(tk.Tk):
         ttk.Label(
             direct_av_controls,
             text=(
-                "Temporarily routes the circular RF ring through hardware WBFM "
+                "Temporarily routes LP-rearmed RF blocks through hardware WBFM "
                 "straight to AV; USB only receives the result afterwards."
             ),
             wraplength=610,

@@ -66,12 +66,14 @@ static StaticSemaphore_t s_direct_av_probe_done_buffer;
 static SemaphoreHandle_t s_direct_av_probe_done;
 static volatile uint32_t s_direct_av_probe_duration_cycles;
 static volatile uint32_t s_direct_av_probe_lead_words;
+static volatile uint32_t s_direct_av_probe_enable_parlio;
 static volatile uint32_t s_direct_av_probe_final_control;
 
+#define C5VRX_DIRECT_AV_CALIBRATION_MS 20u
 #define C5VRX_DIRECT_AV_PROBE_MS       100u
 #define C5VRX_DIRECT_AV_LEAD_WORDS     8192u
-#define C5VRX_DIRECT_AV_MIN_RATE_HZ    70000000u
-#define C5VRX_DIRECT_AV_MAX_RATE_HZ    90000000u
+#define C5VRX_DIRECT_AV_MIN_RATE_HZ    30000000u
+#define C5VRX_DIRECT_AV_MAX_RATE_HZ    36000000u
 #define C5VRX_DIRECT_AV_MAX_GAP_CYCLES 2400u
 #define C5VRX_DIRECT_AV_MAX_GAP_PPM    10000u
 
@@ -83,16 +85,39 @@ static void direct_av_probe_task(void *arg)
         const uint32_t duration_cycles =
             s_direct_av_probe_duration_cycles;
         const uint32_t lead_words = s_direct_av_probe_lead_words;
+        const uint32_t enable_parlio = s_direct_av_probe_enable_parlio;
 
         /* This task's stack is the dedicated LP-RAM buffer registered with
          * FreeRTOS. A context switch therefore programs the C5 hardware stack
          * guard with LP bounds before the MAC takes ownership of HP SRAM. */
         portENTER_CRITICAL(&s_direct_av_probe_mux);
         s_direct_av_probe_final_control =
-            c5vrx_lp_direct_av_probe_mode0(duration_cycles, lead_words);
+            c5vrx_lp_direct_av_probe_mode0(
+                duration_cycles, lead_words, enable_parlio);
         portEXIT_CRITICAL(&s_direct_av_probe_mux);
         (void)xSemaphoreGive(s_direct_av_probe_done);
     }
+}
+
+static esp_err_t execute_direct_kernel(uint32_t duration_ms,
+                                       bool enable_parlio,
+                                       uint32_t *final_control)
+{
+    if (!duration_ms || !s_direct_av_probe_task || !s_direct_av_probe_done)
+        return ESP_ERR_INVALID_STATE;
+    while (xSemaphoreTake(s_direct_av_probe_done, 0) == pdTRUE) {}
+    s_direct_av_probe_duration_cycles =
+        (uint32_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000u * duration_ms;
+    s_direct_av_probe_lead_words = C5VRX_DIRECT_AV_LEAD_WORDS;
+    s_direct_av_probe_enable_parlio = enable_parlio ? 1u : 0u;
+    s_direct_av_probe_final_control = 0u;
+    xTaskNotifyGive(s_direct_av_probe_task);
+    if (xSemaphoreTake(s_direct_av_probe_done,
+                       pdMS_TO_TICKS(duration_ms + 100u)) != pdTRUE)
+        return ESP_ERR_TIMEOUT;
+    if (final_control)
+        *final_control = s_direct_av_probe_final_control;
+    return ESP_OK;
 }
 
 static esp_err_t live_output_with_preview(const uint8_t *samples,
@@ -591,12 +616,83 @@ static void run_direct_av_probe(void)
         fflush(stdout);
         return;
     }
+
+    /* Measure the producer before creating its consumer. The RF clock is not
+     * an API contract and the physical C5 disproved the old 80-MS/s design
+     * assumption. During this short pass the standards-correct logo keeps its
+     * own PARLIO transaction; the LP kernel never touches that clock. */
+    printf("C5VRX_DIRECT_AV_CALIBRATION_BEGIN duration_ms=%u "
+           "consumer=DISABLED av_display=UNCHANGED\n",
+           C5VRX_DIRECT_AV_CALIBRATION_MS);
+    fflush(stdout);
+    esp_err_t calibration_configure_err = ESP_ERR_NOT_SUPPORTED;
+    esp_err_t calibration_execute_err = ESP_ERR_INVALID_STATE;
+    esp_err_t calibration_stop_err = ESP_ERR_INVALID_STATE;
+    if (c5vrx_rf_dump_memory_reserved()) {
+        calibration_configure_err = c5vrx_rf_dump_configure(
+            C5VRX_ADC_DUMP_MAX_SAMPLES,
+            C5VRX_RF_DUMP_MODE_ORDINARY_RX);
+    }
+    if (calibration_configure_err == ESP_OK) {
+        calibration_execute_err = execute_direct_kernel(
+            C5VRX_DIRECT_AV_CALIBRATION_MS, false, NULL);
+        calibration_stop_err = c5vrx_rf_dump_stop();
+    }
+    c5vrx_direct_av_probe_stats_t calibration = {0};
+    c5vrx_direct_av_probe_get_stats(&calibration);
+    const uint32_t calibrated_source_rate_hz =
+        calibration.writer_advance_words *
+        (1000u / C5VRX_DIRECT_AV_CALIBRATION_MS);
+    const uint32_t calibrated_output_rate_hz =
+        (calibrated_source_rate_hz + 2u) / 4u;
+    const bool calibration_ok = calibration_configure_err == ESP_OK &&
+        calibration_execute_err == ESP_OK &&
+        calibration_stop_err == ESP_OK && calibration.lead_acquired &&
+        calibration.bursts_completed >= 8u &&
+        calibration.rearms_succeeded >= 7u &&
+        calibration.rearm_failures == 0u &&
+        calibrated_source_rate_hz >= C5VRX_DIRECT_AV_MIN_RATE_HZ &&
+        calibrated_source_rate_hz <= C5VRX_DIRECT_AV_MAX_RATE_HZ &&
+        calibrated_output_rate_hz >= 4000000u &&
+        calibrated_output_rate_hz <= 20000000u &&
+        c5vrx_rf_dump_last_restore_ok();
+    printf("C5VRX_DIRECT_AV_CALIBRATION_DONE code=%d configure=%d "
+           "execute=%d stop=%d source_rate_hz=%u output_rate_hz=%u "
+           "bursts_completed=%u rearms_succeeded=%u rearm_failures=%u "
+           "classification=%s\n",
+           calibration_ok ? 0 : (int)ESP_FAIL,
+           (int)calibration_configure_err,
+           (int)calibration_execute_err, (int)calibration_stop_err,
+           (unsigned)calibrated_source_rate_hz,
+           (unsigned)calibrated_output_rate_hz,
+           (unsigned)calibration.bursts_completed,
+           (unsigned)calibration.rearms_succeeded,
+           (unsigned)calibration.rearm_failures,
+           calibration_ok ? "RATE_CALIBRATED" : "RATE_CALIBRATION_FAILED");
+    fflush(stdout);
+    if (!calibration_ok) {
+        printf("C5VRX_DIRECT_AV_PROBE_DONE code=%d "
+               "classification=REJECTED reason=RATE_CALIBRATION_FAILED\n",
+               (int)ESP_FAIL);
+        fflush(stdout);
+        return;
+    }
+
+    /* The public RF stop path restores several FE/DMA registers. Give that
+     * restore one scheduler tick to settle before arming the measured-rate
+     * AV pass; back-to-back manual probes showed that an immediate retrigger
+     * can occasionally acquire no producer lead at all. */
+    vTaskDelay(pdMS_TO_TICKS(10u));
+
     printf("C5VRX_DIRECT_AV_PROBE_BEGIN duration_ms=%u lead_words=%u "
            "rf_to_av=REARMED_BURSTS_BITSCRAMBLER_PARLIO usb_payload=NONE "
-           "phase_gain=3 probe_stack=FREERTOS_REGISTERED_LP_4096 "
+           "phase_gain=1 probe_stack=FREERTOS_REGISTERED_LP_4096 "
            "producer=BOUNDED_16384_WORD_REARMED_IN_LP_RAM "
+           "source_rate_hz=%u av_output_rate_hz=%u "
            "warning=AV_SWITCHES_TO_VTX_FOR_100MS\n",
-           C5VRX_DIRECT_AV_PROBE_MS, C5VRX_DIRECT_AV_LEAD_WORDS);
+           C5VRX_DIRECT_AV_PROBE_MS, C5VRX_DIRECT_AV_LEAD_WORDS,
+           (unsigned)calibrated_source_rate_hz,
+           (unsigned)calibrated_output_rate_hz);
     fflush(stdout);
 
     esp_err_t prepare_err = ESP_ERR_NOT_SUPPORTED;
@@ -609,7 +705,7 @@ static void run_direct_av_probe(void)
     bool configured = false;
 
     if (c5vrx_rf_dump_memory_reserved()) {
-        prepare_err = c5vrx_cvbs_direct_rf_prepare();
+        prepare_err = c5vrx_cvbs_direct_rf_prepare(calibrated_output_rate_hz);
         prepared = prepare_err == ESP_OK;
     }
     if (prepared) {
@@ -620,28 +716,12 @@ static void run_direct_av_probe(void)
     }
 
     if (configured) {
-        const uint32_t duration_cycles =
-            (uint32_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000u *
-            C5VRX_DIRECT_AV_PROBE_MS;
         /* A real context switch to the statically-created LP-stack task is
          * required. Calling the LP kernel from this USB task and changing SP
          * by hand leaves the C5 hardware stack guard programmed with the USB
          * task's HP-RAM bounds and deterministically panics. */
-        if (s_direct_av_probe_task && s_direct_av_probe_done) {
-            while (xSemaphoreTake(s_direct_av_probe_done, 0) == pdTRUE) {}
-            s_direct_av_probe_duration_cycles = duration_cycles;
-            s_direct_av_probe_lead_words = C5VRX_DIRECT_AV_LEAD_WORDS;
-            s_direct_av_probe_final_control = 0u;
-            xTaskNotifyGive(s_direct_av_probe_task);
-            if (xSemaphoreTake(
-                    s_direct_av_probe_done,
-                    pdMS_TO_TICKS(C5VRX_DIRECT_AV_PROBE_MS + 100u)) == pdTRUE) {
-                final_control = s_direct_av_probe_final_control;
-                execute_err = ESP_OK;
-            } else {
-                execute_err = ESP_ERR_TIMEOUT;
-            }
-        }
+        execute_err = execute_direct_kernel(
+            C5VRX_DIRECT_AV_PROBE_MS, true, &final_control);
         stop_err = c5vrx_rf_dump_stop();
     }
     if (prepared) {
@@ -668,9 +748,10 @@ static void run_direct_av_probe(void)
         stats.gap_cycles_max <= C5VRX_DIRECT_AV_MAX_GAP_CYCLES &&
         gap_ppm <= C5VRX_DIRECT_AV_MAX_GAP_PPM &&
         stats.writer_advance_words >= 4u * C5VRX_ADC_DUMP_MAX_SAMPLES;
-    const bool rate_compatible =
-        source_rate_hz >= C5VRX_DIRECT_AV_MIN_RATE_HZ &&
-        source_rate_hz <= C5VRX_DIRECT_AV_MAX_RATE_HZ;
+    const uint32_t rate_min_hz = calibrated_source_rate_hz * 95u / 100u;
+    const uint32_t rate_max_hz = calibrated_source_rate_hz * 105u / 100u;
+    const bool rate_compatible = source_rate_hz >= rate_min_hz &&
+        source_rate_hz <= rate_max_hz;
     const bool cleanup_ok = stop_err == ESP_OK && finish_err == ESP_OK &&
         c5vrx_rf_dump_last_restore_ok();
     const bool passed = configured && execute_err == ESP_OK &&
@@ -683,7 +764,9 @@ static void run_direct_av_probe(void)
            "bursts_completed=%u rearms_succeeded=%u rearm_failures=%u "
            "gap_cycles_total=%u gap_cycles_max=%u last_gap_cycles=%u "
            "gap_max_ns=%u gap_ppm=%u "
-           "source_rate_hz=%u rate_target_hz=80000000 final_control=%08x "
+           "source_rate_hz=%u calibrated_source_rate_hz=%u "
+           "av_output_rate_hz=%u "
+           "final_control=%08x "
            "lp_stack_min_free_bytes=%u restore_ok=%u canaries_ok=%u "
            "classification=%s\n",
            passed ? 0 : (int)ESP_FAIL,
@@ -701,6 +784,8 @@ static void run_direct_av_probe(void)
            (unsigned)stats.last_gap_cycles,
            (unsigned)gap_max_ns, (unsigned)gap_ppm,
            (unsigned)source_rate_hz,
+           (unsigned)calibrated_source_rate_hz,
+           (unsigned)calibrated_output_rate_hz,
            (unsigned)final_control,
            (unsigned)lp_stack_min_free_bytes,
            c5vrx_rf_dump_last_restore_ok() ? 1u : 0u,

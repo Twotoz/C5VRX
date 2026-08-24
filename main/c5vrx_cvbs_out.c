@@ -1074,9 +1074,11 @@ bool c5vrx_cvbs_test_running(void)
     return s_running;
 }
 
-esp_err_t c5vrx_cvbs_direct_rf_prepare(void)
+esp_err_t c5vrx_cvbs_direct_rf_prepare(uint32_t output_clock_hz)
 {
     if (s_direct_tx || s_direct_bs) return ESP_ERR_INVALID_STATE;
+    if (output_clock_hz < 4000000u || output_clock_hz > 20000000u)
+        return ESP_ERR_INVALID_ARG;
     esp_err_t err = destroy_rendered_output();
     if (err != ESP_OK) {
         (void)start_output(C5VRX_CVBS_DISPLAY_LOGO);
@@ -1090,7 +1092,7 @@ esp_err_t c5vrx_cvbs_direct_rf_prepare(void)
         .clk_src = PARLIO_CLK_SRC_DEFAULT,
         .clk_in_gpio_num = -1,
         .input_clk_src_freq_hz = 0,
-        .output_clk_freq_hz = C5VRX_CVBS_SAMPLE_RATE_HZ,
+        .output_clk_freq_hz = output_clock_hz,
         .data_width = 8,
         .data_gpio_nums = {
             CONFIG_C5VRX_CVBS_D0_GPIO,
@@ -1131,7 +1133,7 @@ esp_err_t c5vrx_cvbs_direct_rf_prepare(void)
     /* The transaction and circular descriptors are now mounted. Pause only
      * the PARLIO source clock; GDMA/BitScrambler stay armed and backpressured.
      * The LP-RAM probe enables this documented clock bit after the MAC writer
-     * is half a ring ahead, avoiding a stale-data race at startup. */
+     * is half a block ahead, avoiding a stale-data race at startup. */
     parlio_ll_tx_enable_clock(&PARL_IO, false);
     return ESP_OK;
 
@@ -1206,8 +1208,8 @@ bool c5vrx_cvbs_test_running(void)
     return false;
 }
 
-esp_err_t c5vrx_cvbs_direct_rf_prepare(void)
-{ return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t c5vrx_cvbs_direct_rf_prepare(uint32_t output_clock_hz)
+{ (void)output_clock_hz; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t c5vrx_cvbs_direct_rf_finish(void)
 { return ESP_ERR_NOT_SUPPORTED; }
 

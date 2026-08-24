@@ -180,7 +180,8 @@ c5vrx_lp_capture_mode0:
 
 /*
  * uint32_t c5vrx_lp_direct_av_probe_mode0(uint32_t duration_cycles,
- *                                         uint32_t lead_words)
+ *                                         uint32_t lead_words,
+ *                                         uint32_t enable_parlio)
  *
  * All normal driver work is complete before entry. PARLIO/GDMA/BitScrambler
  * are loop-armed but the PARLIO TX clock at PCR+0xb4 bit 18 is paused. This
@@ -197,6 +198,7 @@ c5vrx_lp_direct_av_probe_mode0:
     sw      ra, 68(sp)
     sw      a0, 72(sp)               /* bounded run cycles */
     sw      a1, 76(sp)               /* requested lead words */
+    sw      a2, 24(sp)               /* enable paused PARLIO consumer */
     sw      zero, 32(sp)
     sw      zero, 36(sp)
     sw      zero, 40(sp)
@@ -289,6 +291,8 @@ c5vrx_lp_direct_av_probe_mode0:
     la      a2, c5vrx_lp_direct_lead_acquired
     li      a3, 1
     sw      a3, 0(a2)
+    lw      a2, 24(sp)
+    beqz    a2, 13f
     /* PCR_PARL_CLK_TX_CONF_REG, documented TX clock enable bit 18. */
     li      a2, 0x600960b4
     lw      a3, 0(a2)
@@ -296,6 +300,7 @@ c5vrx_lp_direct_av_probe_mode0:
     or      a3, a3, a4
     sw      a3, 0(a2)
     fence   iorw, iorw
+13:
 
     sw      zero, 32(sp)            /* measured writer advance */
     sw      zero, 36(sp)            /* pointer changes */
@@ -410,11 +415,14 @@ c5vrx_lp_direct_av_probe_mode0:
 
 7:
     /* Stop PARLIO consumption before removing MAC ownership. */
+    lw      a2, 24(sp)
+    beqz    a2, 14f
     li      a2, 0x600960b4
     lw      a3, 0(a2)
     li      a4, 0xfffbffff
     and     a3, a3, a4
     sw      a3, 0(a2)
+14:
     li      a2, 0x80000000
     not     a2, a2
     lw      t1, 0(t0)

@@ -86,7 +86,8 @@ extern uint8_t c5vrx_lp_direct_task_stack_top[];
  * bounded; CPU SRAM ownership and the PARLIO clock are restored before return.
  */
 uint32_t c5vrx_lp_direct_av_probe_mode0(uint32_t duration_cycles,
-                                       uint32_t lead_words);
+                                         uint32_t lead_words,
+                                         uint32_t enable_parlio);
 void c5vrx_direct_av_probe_get_stats(c5vrx_direct_av_probe_stats_t *stats);
 esp_err_t c5vrx_rf_dump_read_registers(c5vrx_rf_dump_registers_t *registers);
 bool c5vrx_rf_dump_last_restore_ok(void);

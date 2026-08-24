@@ -136,3 +136,13 @@ successful/failed rearms and total/maximum gap cycles. Passing is deliberately
 named `STITCHED_CONTINUOUS_IQ_CANDIDATE_AV_LOCK_TEST_REQUIRED`: only the board
 can establish whether the measured restart gaps are short enough for a decoder
 to retain horizontal and vertical lock.
+
+The first rearmed physical run completed 201/201 rearms with zero failures, a
+maximum measured gap of 204 CPU cycles (816 ns), and 3,284,975 observed words
+in 100 ms. This establishes an aggregate source rate near 32.85 MS/s and
+rejects the earlier 80-MS/s design assumption. The old 20-MS/s PARLIO consumer
+therefore overran its 8.21-MS/s post-decimation producer and correctly emitted
+FIFO-empty. Direct AV now performs a 20-ms producer-only calibration while the
+PAL logo remains active, configures PARLIO to measured-rate/4, and then runs the
+RF-to-AV overlap. This avoids hard-coding the RF-test clock across channels or
+PLL variation.

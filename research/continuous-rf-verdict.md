@@ -108,6 +108,26 @@ failures and bounded measured gaps; the result remains
 decoder lock to the output. Failure restores the standards-correct PAL logo and
 makes no continuous-IQ claim.
 
+Physical rearm evidence now measures approximately 32.85 MS/s, 201 successful
+rearms out of 201 attempts, zero failures and an 816-ns worst restart gap. The
+firmware no longer assumes 80 MS/s: every direct test first runs a bounded
+producer-only calibration without disturbing the logo, derives the consumer
+clock as measured source rate divided by four, and only then creates the
+PARLIO/BitScrambler transaction. At this measured rate the direct phase LUT uses
+unity gain; the previous gain of three belonged to the rejected 80-MS/s model
+and would wrap large analog-video phase deviations.
+
+### Autonomous receiver acceptance requirement
+
+The bounded direct probe is a hardware qualification step, not the intended
+product mode. The receiver is only complete when applying USB or module-bay
+power autonomously starts a standards-correct CVBS carrier, tunes the selected
+5.8-GHz channel, and continuously routes a present analog VTX through WBFM to
+AV without requiring a USB command. Loss of RF may select snow/no-signal, but
+must not remove CVBS sync or make the goggles lose input lock. The measured-rate
+handoff must therefore graduate to an always-on state machine after the
+physical calibrated AV-lock test passes.
+
 Primary consumer-path sources:
 
 - [ESP-IDF v6.0.2 PARLIO BitScrambler integration](https://github.com/espressif/esp-idf/blob/v6.0.2/components/esp_driver_parlio/src/parlio_bitscrambler.c)

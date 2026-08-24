@@ -117,12 +117,13 @@ esp_err_t c5vrx_wbfm_hw_direct_parlio_create(bitscrambler_handle_t *handle)
     uint16_t *lut = heap_caps_malloc(
         C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t), MALLOC_CAP_INTERNAL);
     if (!lut) return ESP_ERR_NO_MEM;
-    /* A retained sample spans four 80 MS/s RF intervals. At the representative
-     * +/-2.5 MHz analog-video deviation that is about +/-32 phase8 codes.
-     * Three-times phase scaling maps it to roughly DAC codes 8..56 after the
-     * direct program drops the two LSBs. This is a bounded first-hardware
-     * calibration, not a claim about final polarity or voltage levels. */
-    build_phase_lut(lut, 0, 0, 8u, 3u);
+    /* Physical hardware measures about 32.85 MS/s. A retained sample spans
+     * four RF intervals, so representative +/-2.5 MHz analog-video deviation
+     * is already about +/-78 phase8 codes. Unity phase scaling maps that to
+     * roughly DAC codes 12..52 after the direct program drops two LSBs.
+     * Retaining the old 80-MS/s gain of three wraps the discriminator and
+     * destroys sync polarity. */
+    build_phase_lut(lut, 0, 0, 8u, 1u);
 
     const bitscrambler_config_t cfg = {
         .dir = BITSCRAMBLER_DIR_TX,

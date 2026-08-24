@@ -92,11 +92,11 @@ esp_err_t c5vrx_cvbs_test_stop(void);
 bool c5vrx_cvbs_test_running(void);
 
 /**
- * Replace the rendered PAL source with a paused, looped fixed RF-ring ->
+ * Replace the rendered PAL source with a paused, looped fixed RF-block ->
  * BitScrambler -> PARLIO transaction.  A bounded LP-RAM probe starts the
  * PARLIO clock only after the RF writer has acquired a safe lead.
  */
-esp_err_t c5vrx_cvbs_direct_rf_prepare(void);
+esp_err_t c5vrx_cvbs_direct_rf_prepare(uint32_t output_clock_hz);
 esp_err_t c5vrx_cvbs_direct_rf_finish(void);
 
 #ifdef __cplusplus
