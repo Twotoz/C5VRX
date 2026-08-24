@@ -19,11 +19,20 @@ int main(void)
     const uint64_t fresh_start = fresh.consumer_absolute;
     assert(fresh.consumer_absolute == fresh.producer_absolute);
     assert(c5vrx_ring_tracker_lag(&fresh) == 0u);
-    assert(c5vrx_ring_tracker_observe(&fresh, 3808u, 2000u) ==
+    assert(c5vrx_ring_tracker_observe(&fresh, 3808u, 31000u) ==
            C5VRX_RING_TRACK_OK);
     assert(fresh.wraps == 1u);
     assert(fresh.consumer_absolute == fresh_start);
     assert(c5vrx_ring_tracker_lag(&fresh) == 8192u);
+
+    c5vrx_ring_tracker_t impossible;
+    assert(c5vrx_ring_tracker_init(&impossible, 16384u, 512u,
+                                   240000000u, 88000000u) == 0);
+    assert(c5vrx_ring_tracker_observe(&impossible, 12000u, 1000u) ==
+           C5VRX_RING_TRACK_OK);
+    assert(c5vrx_ring_tracker_observe(&impossible, 3808u, 2000u) ==
+           C5VRX_RING_TRACK_INTERVAL_AMBIGUOUS);
+    assert(impossible.ambiguous_intervals == 1u);
 
     c5vrx_ring_tracker_t t;
     assert(c5vrx_ring_tracker_init(&t, 16384u, 512u,
