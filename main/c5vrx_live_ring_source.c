@@ -366,15 +366,17 @@ const char *c5vrx_live_ring_failure_name(c5vrx_live_ring_failure_t failure)
     }
 }
 
-void c5vrx_live_ring_source_destroy(c5vrx_rf_source_t *source)
+esp_err_t c5vrx_live_ring_source_destroy(c5vrx_rf_source_t *source)
 {
-    if (!source) return;
+    if (!source) return ESP_ERR_INVALID_ARG;
+    esp_err_t err = ESP_OK;
     ring_context_t *ctx = source->context;
     if (ctx) {
-        (void)c5vrx_rf_dump_stop();
+        err = c5vrx_rf_dump_stop();
         for (unsigned i = 0; i < RING_BUFFER_COUNT; ++i)
             free(ctx->slots[i].words);
         free(ctx);
     }
     memset(source, 0, sizeof(*source));
+    return err;
 }
