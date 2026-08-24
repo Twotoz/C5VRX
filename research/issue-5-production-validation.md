@@ -36,6 +36,11 @@ timeline, drops stale side blocks, and parks on lease expiry or transport stall.
 5. Start the Receiver Console preview. It sends quiet leases only until the
    first valid frame; successful binary writes then maintain the lease. Stop
    reading, unplug and reconnect repeatedly. AV/timing epoch may not change.
+6. Only after the archived PAL and NTSC scope report passes the burst checks
+   below, send `APPLY PHYSICAL BURST GATE CONFIRMED`. This volatile gate is
+   cleared by reboot, RF-capability invalidation, or a failed configured-kernel
+   self-test. Until it is recorded, production `LIVE START` remains disabled;
+   use the explicitly experimental path for measurement work.
 
 ## Scope and 75-ohm gates
 

@@ -30,6 +30,9 @@ typedef struct {
     uint64_t filler_sample;
     uint64_t filler_step_q32;
     uint64_t filler_frame_q32;
+    uint32_t filler_eq_phase_q32;
+    uint32_t filler_broad_phase_q32;
+    uint32_t filler_hsync_phase_q32;
     uint64_t pending_live_filler_start_sample;
     uint64_t pending_live_filler_end_sample;
     bool pending_live_phase_valid;
@@ -71,6 +74,18 @@ typedef struct {
 
 static aligned_start_t s_aligned_start;
 
+static uint32_t pulse_phase_q32(uint32_t duration_numerator,
+                                uint32_t duration_denominator,
+                                uint32_t line_rate_numerator,
+                                uint32_t line_rate_denominator)
+{
+    const __uint128_t numerator = (__uint128_t)duration_numerator * 2u *
+        line_rate_numerator << 32u;
+    const uint64_t denominator =
+        (uint64_t)duration_denominator * line_rate_denominator;
+    return (uint32_t)(numerator / denominator);
+}
+
 static bool filler_coordinate(const c5vrx_cvbs_sync_tracker_t *timing,
                               uint32_t output_clock_hz,
                               uint64_t *end_sample,
@@ -81,7 +96,8 @@ static bool filler_coordinate(const c5vrx_cvbs_sync_tracker_t *timing,
         !timing->vertical_locked || !timing->last_vsync_start ||
         timing->standard == C5VRX_VIDEO_STANDARD_UNKNOWN) return false;
     const bool ntsc = timing->standard == C5VRX_VIDEO_STANDARD_NTSC;
-    const uint32_t line_rate = ntsc ? 15734u : 15625u;
+    const uint32_t line_rate_num = ntsc ? 15750000u : 15625u;
+    const uint32_t line_rate_den = ntsc ? 1001u : 1u;
     const uint32_t equalizing_halves = ntsc ? 6u : 5u;
     const uint32_t field_half_lines = ntsc ? 525u : 625u;
     const uint32_t frame_half_lines = field_half_lines * 2u;
@@ -91,14 +107,16 @@ static bool filler_coordinate(const c5vrx_cvbs_sync_tracker_t *timing,
     const uint32_t source_rate = timing->sample_rate_hz ?
         timing->sample_rate_hz : C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ;
     const uint64_t step =
-        (((uint64_t)2u * line_rate) << 32u) / output_clock_hz;
+        (((uint64_t)2u * line_rate_num) << 32u) /
+        ((uint64_t)line_rate_den * output_clock_hz);
     const uint64_t field_phase = timing->odd_field ? 0u :
         (uint64_t)field_half_lines << 32u;
     const uint64_t broad_pulse_phase = field_phase +
         ((uint64_t)equalizing_halves << 32u);
     const uint64_t frame = (uint64_t)frame_half_lines << 32u;
     const uint64_t source_step =
-        (((uint64_t)2u * line_rate) << 32u) / source_rate;
+        (((uint64_t)2u * line_rate_num) << 32u) /
+        ((uint64_t)line_rate_den * source_rate);
     if (end_sample) *end_sample =
         (broad_pulse_phase + since_vsync * source_step) % frame;
     if (frame_samples) *frame_samples = frame;
@@ -109,24 +127,18 @@ static bool filler_coordinate(const c5vrx_cvbs_sync_tracker_t *timing,
 static uint8_t legal_filler_sample(uint64_t sample)
 {
     const bool ntsc = s_out.filler_standard == C5VRX_VIDEO_STANDARD_NTSC;
-    const uint32_t line_rate = ntsc ? 15734u : 15625u;
     const uint32_t half = (uint32_t)(sample >> 32u);
     const uint32_t phase = (uint32_t)sample;
     const uint32_t local = half % (ntsc ? 525u : 625u);
     const uint32_t equalizing_halves = ntsc ? 6u : 5u;
-    const uint32_t eq_phase = (uint32_t)(
-        (((uint64_t)235u * 2u * line_rate) << 32u) / 100000000u);
-    const uint32_t broad_phase = (uint32_t)(
-        (((uint64_t)273u * 2u * line_rate) << 32u) / 10000000u);
-    const uint32_t hsync_phase = (uint32_t)(
-        (((uint64_t)47u * 2u * line_rate) << 32u) / 10000000u);
     uint32_t pulse = 0u;
     if (local < equalizing_halves ||
         (local >= 2u * equalizing_halves &&
-         local < 3u * equalizing_halves)) pulse = eq_phase;
+         local < 3u * equalizing_halves)) pulse = s_out.filler_eq_phase_q32;
     else if (local >= equalizing_halves &&
-             local < 2u * equalizing_halves) pulse = broad_phase;
-    else if ((half & 1u) == 0u) pulse = hsync_phase;
+             local < 2u * equalizing_halves)
+        pulse = s_out.filler_broad_phase_q32;
+    else if ((half & 1u) == 0u) pulse = s_out.filler_hsync_phase_q32;
     return phase < pulse ? 0u : 19u;
 }
 
@@ -282,10 +294,12 @@ esp_err_t c5vrx_cvbs_live_out_start_aligned(
         .timing_source_step_q32 =
             (((uint64_t)2u *
               (first_live_timing->standard == C5VRX_VIDEO_STANDARD_NTSC ?
-                   15734u : 15625u)) << 32u) /
-            (first_live_timing->sample_rate_hz ?
-                 first_live_timing->sample_rate_hz :
-                 C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ),
+                   15750000u : 15625u)) << 32u) /
+            ((uint64_t)(first_live_timing->standard ==
+                 C5VRX_VIDEO_STANDARD_NTSC ? 1001u : 1u) *
+             (first_live_timing->sample_rate_hz ?
+                  first_live_timing->sample_rate_hz :
+                  C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ)),
         .timing_stream_epoch = first_live_timing->stream_epoch,
     };
     return c5vrx_cvbs_live_out_start(block_samples);
@@ -339,11 +353,20 @@ esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
         aligned.standard : C5VRX_VIDEO_STANDARD_PAL;
     const bool filler_ntsc =
         s_out.filler_standard == C5VRX_VIDEO_STANDARD_NTSC;
-    const uint32_t filler_line_rate = filler_ntsc ? 15734u : 15625u;
+    const uint32_t filler_line_rate_num =
+        filler_ntsc ? 15750000u : 15625u;
+    const uint32_t filler_line_rate_den = filler_ntsc ? 1001u : 1u;
     s_out.filler_step_q32 =
-        (((uint64_t)2u * filler_line_rate) << 32u) / output_clock_hz;
+        (((uint64_t)2u * filler_line_rate_num) << 32u) /
+        ((uint64_t)filler_line_rate_den * output_clock_hz);
     s_out.filler_frame_q32 =
         (uint64_t)(filler_ntsc ? 1050u : PAL_FRAME_HALF_LINES) << 32u;
+    s_out.filler_eq_phase_q32 = pulse_phase_q32(
+        235u, 100000000u, filler_line_rate_num, filler_line_rate_den);
+    s_out.filler_broad_phase_q32 = pulse_phase_q32(
+        273u, 10000000u, filler_line_rate_num, filler_line_rate_den);
+    s_out.filler_hsync_phase_q32 = pulse_phase_q32(
+        47u, 10000000u, filler_line_rate_num, filler_line_rate_den);
     for (unsigned i = 0; i < 2u; ++i) {
         s_out.dma_live[i] = false;
         s_out.mailbox_ready[i] = false;
@@ -533,12 +556,14 @@ void c5vrx_cvbs_live_out_update_timing(
     uint64_t filler_end = 0u, frame = 0u, step = 0u;
     if (!s_out.running || !filler_coordinate(
             timing, s_out.clock_hz, &filler_end, &frame, &step)) return;
-    const uint32_t line_rate =
-        timing->standard == C5VRX_VIDEO_STANDARD_NTSC ? 15734u : 15625u;
+    const bool ntsc = timing->standard == C5VRX_VIDEO_STANDARD_NTSC;
+    const uint32_t line_rate_num = ntsc ? 15750000u : 15625u;
+    const uint32_t line_rate_den = ntsc ? 1001u : 1u;
     const uint32_t source_rate = timing->sample_rate_hz ?
         timing->sample_rate_hz : C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ;
     const uint64_t source_step =
-        (((uint64_t)2u * line_rate) << 32u) / source_rate;
+        (((uint64_t)2u * line_rate_num) << 32u) /
+        ((uint64_t)line_rate_den * source_rate);
     taskENTER_CRITICAL(&s_out.lock);
     if (!s_out.timing_anchor_valid ||
         s_out.timing_stream_epoch != timing->stream_epoch ||

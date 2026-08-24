@@ -53,6 +53,7 @@ static bool s_wbfm_self_test_passed;
 static bool s_parlio_bench_passed;
 static bool s_mode0_soak_passed;
 static bool s_synthetic_pipeline_passed;
+static bool s_physical_burst_gate_passed;
 static uint8_t s_ring_block_bench_seen;
 static uint8_t s_ring_block_bench_passed;
 static size_t s_selected_ring_block_words;
@@ -108,6 +109,7 @@ static void invalidate_rf_capabilities(void)
 {
     memset(&s_capabilities, 0, sizeof(s_capabilities));
     s_mode0_soak_passed = false;
+    s_physical_burst_gate_passed = false;
     s_ring_block_bench_seen = 0u;
     s_ring_block_bench_passed = 0u;
     s_selected_ring_block_words = 0u;
@@ -136,7 +138,8 @@ static void select_measured_ring_block(void)
             s_capabilities.pipeline_service_headroom_valid = true;
             s_capabilities.bitscrambler_path_available =
                 s_wbfm_self_test_passed && s_parlio_bench_passed &&
-                s_synthetic_pipeline_passed;
+                s_synthetic_pipeline_passed &&
+                s_physical_burst_gate_passed;
             return;
         }
     }
@@ -446,7 +449,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CAPTURE_PHASE8_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CAPTURE_PHASE8_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -570,7 +573,7 @@ static void handle_line(char *line)
         const char *reason = NULL;
         const c5vrx_consumer_strategy_t strategy =
             c5vrx_select_consumer(&s_capabilities, &reason);
-        printf("C5VRX_CAPABILITIES measured_source_rate=%u source_bandwidth_known=%u phase_continuity_valid=%u continuous_wrap_valid=%u writer_position_valid=%u adjacent_memory_valid=%u pipeline_service_headroom_valid=%u selected_ring_block_words=%u ring_block_bench_seen_mask=0x%02x ring_block_bench_pass_mask=0x%02x hardware_decimation_available=%u sparse_factor_allowed=%u bitscrambler_path_available=%u cpu_margin_percent=%d selected=%s fail_reason=%s\n",
+        printf("C5VRX_CAPABILITIES measured_source_rate=%u source_bandwidth_known=%u phase_continuity_valid=%u continuous_wrap_valid=%u writer_position_valid=%u adjacent_memory_valid=%u pipeline_service_headroom_valid=%u selected_ring_block_words=%u ring_block_bench_seen_mask=0x%02x ring_block_bench_pass_mask=0x%02x hardware_decimation_available=%u sparse_factor_allowed=%u physical_burst_gate_passed=%u bitscrambler_path_available=%u cpu_margin_percent=%d selected=%s fail_reason=%s\n",
                (unsigned)s_capabilities.measured_source_rate,
                s_capabilities.source_bandwidth_known ? 1u : 0u,
                s_capabilities.phase_continuity_valid ? 1u : 0u,
@@ -582,6 +585,7 @@ static void handle_line(char *line)
                s_ring_block_bench_seen, s_ring_block_bench_passed,
                s_capabilities.hardware_decimation_available ? 1u : 0u,
                s_capabilities.sparse_factor_allowed,
+               s_physical_burst_gate_passed ? 1u : 0u,
                s_capabilities.bitscrambler_path_available ? 1u : 0u,
                s_capabilities.cpu_margin_percent,
                c5vrx_consumer_strategy_name(strategy), reason ? reason : "NONE");
@@ -618,6 +622,16 @@ static void handle_line(char *line)
                (int)err,
                c5vrx_consumer_strategy_name(strategy),
                classification, reason ? reason : "NONE");
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "APPLY PHYSICAL BURST GATE CONFIRMED") == 0 ||
+        strcasecmp(line, "APPLY_PHYSICAL_BURST_GATE_CONFIRMED") == 0) {
+        /* This volatile attestation is entered only after the archived scope
+         * report passes PAL and NTSC burst amplitude/frequency/phase. A reboot,
+         * RF-capability invalidation, or failed kernel self-test revokes it. */
+        s_physical_burst_gate_passed = true;
+        select_measured_ring_block();
+        printf("C5VRX_PHYSICAL_BURST_GATE passed=1 persistence=UNTIL_REBOOT_OR_INVALIDATION classification=OPERATOR_CONFIRMED_ARCHIVED_MEASUREMENT_REQUIRED\n");
         fflush(stdout); return;
     }
     unsigned measured_bandwidth = 0, measured_factor = 0;
@@ -1141,6 +1155,8 @@ static void handle_line(char *line)
         const esp_err_t err =
             c5vrx_wbfm_hw_self_test_kernel(C5VRX_CFG_WBFM_KERNEL);
         s_wbfm_self_test_passed = err == ESP_OK;
+        if (err != ESP_OK) s_physical_burst_gate_passed = false;
+        select_measured_ring_block();
         printf("C5VRX_WBFM_HWTEST_DONE kernel=phase%u code=%d\n",
                C5VRX_CFG_WBFM_KERNEL == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u,
                (int)err);
