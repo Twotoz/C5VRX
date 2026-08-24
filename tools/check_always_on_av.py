@@ -33,7 +33,11 @@ def main() -> None:
     assert "s_active_display = s_requested_display" in output
     assert "snow_code()" in output
     assert "av_display=%s" in control
+    assert "C5VRX_AV_STATUS" in control
+    assert "scope=AV_DMA_NOT_RF_LOCK" in control
     assert "C5VRX_CVBS_DISPLAY_SNOW" in control
+    assert "s_isr_switches" in output
+    assert "s_missed_switches" in output
 
     chunk_half_lines = 40
     half_line_samples = 640

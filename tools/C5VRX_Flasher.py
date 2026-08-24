@@ -49,7 +49,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-26-always-on-av"
+APP_BUILD = "video-proof-27-av-health"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -234,6 +234,7 @@ class C5VRXApp(tk.Tk):
             },
         )
         self.profile_mismatch_warned = False
+        self.av_poll_generation = 0
         self.title(f"{APP_TITLE} — {self.firmware_profile['display_name']}")
         self.geometry("860x650")
         self.minsize(760, 580)
@@ -361,6 +362,11 @@ class C5VRXApp(tk.Tk):
 
         self.connection_var = tk.StringVar(value="Disconnected")
         ttk.Label(root, textvariable=self.connection_var).pack(anchor="w", pady=(0, 8))
+        self.av_health_var = tk.StringVar(
+            value="AV output: waiting for hardware telemetry")
+        self.av_health_label = tk.Label(
+            root, textvariable=self.av_health_var, anchor="w", fg="#7a5b00")
+        self.av_health_label.pack(fill="x", anchor="w", pady=(0, 8))
 
         notebook = ttk.Notebook(root)
         notebook.pack(fill="both", expand=True)
@@ -451,13 +457,17 @@ class C5VRXApp(tk.Tk):
             values=["1024", "2048", "4096", "8192", "16384"],
             width=10,
         ).pack(side="left", padx=8)
-        self.capture_btn = ttk.Button(cap_row, text="Capture IQ", command=self.capture_iq)
+        self.capture_btn = ttk.Button(
+            cap_row, text="Capture Phase8 (safe)", command=self.capture_iq)
         self.capture_btn.pack(side="left")
         ttk.Button(cap_row, text="Status", command=lambda: self.send_command("STATUS")).pack(side="left", padx=8)
+        ttk.Button(
+            cap_row, text="AV health",
+            command=lambda: self.send_command("AV STATUS")).pack(side="left")
 
         ttk.Label(
             capture_box,
-            text="CAPTURE uses the recovered Espressif RF-test dump path. It is a finite diagnostic capture, not continuous video yet.",
+            text="Uses one bounded binary Phase8 capture. Raw ASCII IQ is kept out of the normal GUI because it can monopolize native USB.",
         ).pack(anchor="w", pady=(8, 0))
 
         diag_box = ttk.LabelFrame(tab, text="First hardware diagnostics", padding=10)
@@ -507,7 +517,7 @@ class C5VRXApp(tk.Tk):
         ttk.Button(preview_controls, text="Stop live preview", command=self.stop_usb_preview).pack(side="left")
         ttk.Button(
             preview_controls,
-            text="Measure CVBS lock (5 s)",
+            text="Measure RF video lock (5 s)",
             command=lambda: self.send_command("CVBS LOCK PROBE 5000"),
         ).pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Clear", command=self.clear_preview).pack(side="left", padx=8)
@@ -636,8 +646,11 @@ class C5VRXApp(tk.Tk):
             self.connection_var.set(f"Connected: {port}")
             self.connect_btn.configure(text="Disconnect")
             self.sink.write(f"\n=== CONNECTED: {port} ===\n")
+            self.av_poll_generation += 1
+            av_generation = self.av_poll_generation
             self.after(250, lambda: self.send_command("PING"))
             self.after(450, lambda: self.send_command("STATUS"))
+            self.after(750, lambda: self._poll_av_status(av_generation))
             return True
         except Exception as exc:
             if candidate is not None:
@@ -653,6 +666,7 @@ class C5VRXApp(tk.Tk):
             return False
 
     def disconnect_serial(self) -> None:
+        self.av_poll_generation += 1
         self.serial_stop.set()
         self.live_iq_active = False
         self.experimental_live_pending = False
@@ -669,6 +683,9 @@ class C5VRXApp(tk.Tk):
                 pass
         self.connection_var.set("Disconnected")
         self.connect_btn.configure(text="Connect")
+        if hasattr(self, "av_health_var"):
+            self.av_health_var.set("AV output: disconnected")
+            self.av_health_label.configure(fg="#7a5b00")
 
     def _serial_reader(self) -> None:
         ser = self.ser
@@ -716,6 +733,9 @@ class C5VRXApp(tk.Tk):
         self.disconnect_serial()
 
     def _parse_device_line(self, line: str) -> None:
+        if line.startswith("C5VRX_AV_STATUS"):
+            self.after(0, self._apply_av_status_line, line)
+            return
         if (self.live_iq_active and line.startswith((
                 "C5VRX_CAPTURE_KERNEL",
                 "C5VRX_IQ_BINARY_BEGIN",
@@ -807,11 +827,8 @@ class C5VRXApp(tk.Tk):
                             "C5VRX_PHASE8_CAPTURE_DONE")) and \
                 self.live_iq_active:
             self.live_iq_capture_done = "code=0" in line
-            fast_phase8_credit_pump = (
-                self.live_iq_fast_mode and self.device_phase8_supported)
-            if not fast_phase8_credit_pump or not self.live_iq_capture_done:
-                self.live_iq_commands_outstanding = max(
-                    0, self.live_iq_commands_outstanding - 1)
+            self.live_iq_commands_outstanding = max(
+                0, self.live_iq_commands_outstanding - 1)
             self.live_iq_packet_done = False
             if not self.live_iq_capture_done:
                 fields = self._fields(line)
@@ -831,20 +848,11 @@ class C5VRXApp(tk.Tk):
                 # A completion line is emitted only after every binary chunk
                 # has been handed to USB.  Refill here instead of on the first
                 # chunk so commands cannot accumulate behind an active dump.
-                if fast_phase8_credit_pump:
-                    # Fast Phase8 refills when a new capture ID is observed,
-                    # not here. Completion lines can be lost during a protocol
-                    # resync; using them as credits permanently drained the
-                    # real firmware queue while the host still believed it was
-                    # full.
-                    pass
-                elif self.live_iq_fast_mode:
-                    # _parse_device_line runs on the serial-reader thread.
-                    # Refill directly; routing this through Tk added about
-                    # 230 ms of idle time whenever PhotoImage was rendering.
-                    self._refill_live_iq_pipeline()
-                else:
-                    self._schedule_live_iq_refill(250)
+                # AV owns the hardware deadline. Never queue a second capture
+                # behind the active one; leave a short recovery gap before the
+                # next bounded RF/USB transaction.
+                self._schedule_live_iq_refill(
+                    50 if self.live_iq_fast_mode else 250)
         if line.startswith("IQ:") and self.iq_capture_active:
             try:
                 self.iq_words.append(int(line[3:], 16))
@@ -868,6 +876,39 @@ class C5VRXApp(tk.Tk):
                 key, value = part.split("=", 1)
                 fields[key] = value
         return fields
+
+    def _apply_av_status_line(self, line: str) -> None:
+        fields = self._fields(line)
+        health = fields.get("classification", "UNKNOWN")
+        display = fields.get("display", "UNKNOWN")
+        age = fields.get("last_service_age_us", "?")
+        maximum = fields.get("service_us_max", "?")
+        deadline = fields.get("deadline_us", "?")
+        missed = fields.get("missed", "?")
+        self.av_health_var.set(
+            f"AV DMA: {health} — display {display}; service age {age} µs; "
+            f"worst {maximum}/{deadline} µs; missed {missed} "
+            "(separate from RF video lock)")
+        color = {"OK": "#167323", "STARTING": "#7a5b00",
+                 "WARN": "#b05a00", "FAIL": "#b00020"}.get(
+                     health, "#7a5b00")
+        self.av_health_label.configure(fg=color)
+
+    def _poll_av_status(self, generation: int) -> None:
+        if generation != self.av_poll_generation:
+            return
+        ser = self.ser
+        if not ser or not ser.is_open:
+            return
+        if (not self.live_iq_active and not self.iq_capture_active and
+                not self.usb_transport_stalled):
+            self.send_command("AV STATUS", quiet=True)
+        elif self.live_iq_active:
+            self.av_health_var.set(
+                "AV DMA: local GPIO27 heartbeat active; USB polling paused "
+                "during preview to protect AV priority")
+            self.av_health_label.configure(fg="#7a5b00")
+        self.after(1000, lambda: self._poll_av_status(generation))
 
     def _handle_usb_packet(self, packet: Packet) -> None:
         if packet.packet_type in {PACKET_IQ_U32_BLOCK, PACKET_IQ_U32_CHUNK}:
@@ -1000,14 +1041,6 @@ class C5VRXApp(tk.Tk):
             self.live_iq_capture_timestamp_us = packet.timestamp_us
             self.live_iq_total_words = chunk.total_samples
             self.live_phase8_chunks = {}
-            if self.live_iq_active and self.live_iq_fast_mode:
-                # The first valid packet from a capture proves that firmware
-                # consumed one command. Replace that credit immediately. This
-                # is resilient to a lost CAPTURE_DONE line and behaves like a
-                # bounded version of repeatedly clicking Capture 16K.
-                self.live_iq_commands_outstanding = max(
-                    0, self.live_iq_commands_outstanding - 1)
-                self._refill_live_iq_pipeline()
         if chunk.total_samples != self.live_iq_total_words:
             self.sink.write("C5VRX_PHASE8_CHUNK_DROP reason=MIXED_TOTAL\n")
             return
@@ -1165,7 +1198,7 @@ class C5VRXApp(tk.Tk):
             "USB transport stopped after one write timeout; reconnect or "
             "power-cycle the XIAO before retrying")
 
-    def send_command(self, command: str) -> bool:
+    def send_command(self, command: str, quiet: bool = False) -> bool:
         normalized = command.strip()
         ser = self.ser
         if not ser or not ser.is_open:
@@ -1175,8 +1208,9 @@ class C5VRXApp(tk.Tk):
             return False
         if self.usb_transport_stalled:
             return False
-        self.session.record_command(normalized)
-        self.sink.write(f"> {normalized}\n")
+        if not quiet:
+            self.session.record_command(normalized)
+            self.sink.write(f"> {normalized}\n")
         return self._write_serial_bytes(
             (normalized + "\n").encode("ascii"), retries=3)
 
@@ -1195,7 +1229,7 @@ class C5VRXApp(tk.Tk):
 
     def capture_iq(self) -> None:
         self.session.next_iq_label("receiver-console-capture")
-        self.send_command(f"CAPTURE {int(self.samples_var.get())}")
+        self.send_command(f"CAPTURE PHASE8 {int(self.samples_var.get())}")
 
     def capture_iq_16k(self) -> None:
         self.samples_var.set("16384")
@@ -1256,9 +1290,10 @@ class C5VRXApp(tk.Tk):
         self.usb_preview_active = True
         self.usb_preview_receiving = False
         self.live_iq_fast_mode = fast
-        # Two Phase8 credits overlap RF acquisition with USB draining without
-        # saturating the native USB command endpoint with a four-command burst.
-        self.live_iq_pipeline_target = 2 if fast else 1
+        # One command at a time is deliberate: the previous two-credit pump
+        # could monopolize native USB while the always-on AV refill task was
+        # approaching its 1.28 ms deadline.
+        self.live_iq_pipeline_target = 1
         self.live_iq_commands_outstanding = 0
         self.live_iq_refill_pending = False
         self.live_iq_last_transport_progress = time.monotonic()
@@ -1383,12 +1418,13 @@ class C5VRXApp(tk.Tk):
         if not self.live_iq_active or not self.live_iq_transport_ready:
             return False
         self.live_iq_request_started = time.monotonic()
-        if self.device_phase8_supported:
-            self.live_transport_name = "phase8"
-            sent = self.send_command("CAPTURE PHASE8 16384")
-        else:
-            self.live_transport_name = "raw-IQ32 fallback"
-            sent = self.send_command("CAPTURE 16384")
+        if not self.device_phase8_supported:
+            self.after(
+                0, self.stop_live_iq_video,
+                "firmware is too old: Phase8 binary transport required")
+            return False
+        self.live_transport_name = "phase8"
+        sent = self.send_command("CAPTURE PHASE8 16384")
         if sent:
             self.live_iq_commands_outstanding += 1
         return sent

@@ -328,6 +328,8 @@ static void print_status(void)
     c5vrx_fpv_channel_t target;
     c5vrx_frequency_plan_t plan;
     c5vrx_wifi5_status_t wifi = {0};
+    c5vrx_cvbs_output_stats_t av = {0};
+    c5vrx_cvbs_output_get_stats(&av);
 
     if (!c5vrx_get_fpv_channel(s_state.band, s_state.channel, &target) ||
         !c5vrx_plan_frequency(target.mhz, &plan)) {
@@ -343,7 +345,7 @@ static void print_status(void)
         return;
     }
 
-    printf("C5VRX_STATUS firmware=%s version=%s idf=%s protocol=8 profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d av_display=%s phase8_capture=1 heap_internal_free=%u heap_internal_min=%u heap_internal_largest=%u heap_dma_free=%u heap_dma_largest=%u\n",
+    printf("C5VRX_STATUS firmware=%s version=%s idf=%s protocol=8 profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d av_display=%s av_health=%s av_retired=%u av_missed=%u phase8_capture=1 heap_internal_free=%u heap_internal_min=%u heap_internal_largest=%u heap_dma_free=%u heap_dma_largest=%u\n",
            app->project_name,
            app->version,
            esp_get_idf_version(),
@@ -361,11 +363,41 @@ static void print_status(void)
            s_state.direct_tune_enabled ? 1 : 0,
            c5vrx_cvbs_test_running() ? 1 : 0,
            c5vrx_cvbs_display_name(c5vrx_cvbs_output_display()),
+           c5vrx_av_health_name(av.health),
+           (unsigned)av.retired_buffers,
+           (unsigned)av.missed_switches,
            (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_free_size(
                MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_largest_free_block(
+               MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+    fflush(stdout);
+}
+
+static void print_av_status(void)
+{
+    c5vrx_cvbs_output_stats_t stats = {0};
+    c5vrx_cvbs_output_get_stats(&stats);
+    printf("C5VRX_AV_STATUS classification=%s running=%u task=%u display=%s frame_equiv=%u retired=%u serviced=%u switch_hz=%u last_service_age_us=%llu service_us_avg=%u service_us_max=%u deadline_us=%u headroom_us=%d missed=%u unexpected=%u queue_errors=%u stack_min_bytes=%u heap_dma_largest=%u scope=AV_DMA_NOT_RF_LOCK\n",
+           c5vrx_av_health_name(stats.health),
+           stats.running ? 1u : 0u,
+           stats.task_running ? 1u : 0u,
+           c5vrx_cvbs_display_name(stats.display),
+           (unsigned)stats.frame_equivalent,
+           (unsigned)stats.retired_buffers,
+           (unsigned)stats.serviced_buffers,
+           (unsigned)stats.switch_hz,
+           (unsigned long long)stats.last_service_age_us,
+           (unsigned)stats.service_avg_us,
+           (unsigned)stats.service_max_us,
+           (unsigned)stats.deadline_us,
+           (int)stats.headroom_us,
+           (unsigned)stats.missed_switches,
+           (unsigned)stats.unexpected_switches,
+           (unsigned)stats.queue_errors,
+           (unsigned)stats.stack_min_bytes,
            (unsigned)heap_caps_get_largest_free_block(
                MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
     fflush(stdout);
@@ -424,7 +456,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CAPTURE_PHASE8_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,AV_STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>_SAFE_PHASE8,CAPTURE_PHASE8_<256-16384>,CAPTURE_RAW_<256-16384>_EXPLICIT_ASCII,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -522,6 +554,11 @@ static void handle_line(char *line)
     }
     if (strcasecmp(line, "STATUS") == 0) {
         print_status();
+        return;
+    }
+    if (strcasecmp(line, "AV STATUS") == 0 ||
+        strcasecmp(line, "AV_STATUS") == 0) {
+        print_av_status();
         return;
     }
     if (c5vrx_live_pipeline_running() &&
@@ -1259,6 +1296,24 @@ static void handle_line(char *line)
     }
 
     unsigned samples = 0;
+    if (sscanf(line, "CAPTURE RAW %u", &samples) == 1 ||
+        sscanf(line, "CAPTURE_RAW_%u", &samples) == 1) {
+        if (samples < 256 || samples > C5VRX_ADC_DUMP_MAX_SAMPLES) {
+            printf("C5VRX_ERR invalid-raw-capture range=256-%u\n",
+                   (unsigned)C5VRX_ADC_DUMP_MAX_SAMPLES);
+            fflush(stdout);
+            return;
+        }
+        printf("C5VRX_CAPTURE_BEGIN samples=%u transport=ASCII_EXPLICIT\n",
+               samples);
+        fflush(stdout);
+        const esp_err_t err = c5vrx_adc_dump_capture(samples, true);
+        if (err == ESP_OK)
+            (void)c5vrx_cvbs_output_set_display(C5VRX_CVBS_DISPLAY_SNOW);
+        printf("C5VRX_CAPTURE_DONE code=%d\n", (int)err);
+        fflush(stdout);
+        return;
+    }
     if (sscanf(line, "CAPTURE PHASE8 %u", &samples) == 1 ||
         sscanf(line, "CAPTURE_PHASE8_%u", &samples) == 1) {
         if (samples < 256 || samples > C5VRX_ADC_DUMP_MAX_SAMPLES) {
@@ -1287,12 +1342,13 @@ static void handle_line(char *line)
             fflush(stdout);
             return;
         }
-        printf("C5VRX_CAPTURE_BEGIN samples=%u\n", samples);
+        printf("C5VRX_PHASE8_CAPTURE_BEGIN samples=%u alias=CAPTURE\n", samples);
         fflush(stdout);
-        const esp_err_t err = c5vrx_adc_dump_capture(samples, true);
-        if (err == ESP_OK)
+        const esp_err_t err = c5vrx_adc_dump_capture_phase8(samples);
+        if (err == ESP_OK) {
             (void)c5vrx_cvbs_output_set_display(C5VRX_CVBS_DISPLAY_SNOW);
-        printf("C5VRX_CAPTURE_DONE code=%d\n", (int)err);
+        }
+        printf("C5VRX_PHASE8_CAPTURE_DONE code=%d alias=CAPTURE\n", (int)err);
         fflush(stdout);
         return;
     }

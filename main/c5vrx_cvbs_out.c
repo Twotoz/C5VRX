@@ -14,6 +14,7 @@
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -57,6 +58,7 @@
  * physical XIAO while using 30,720 fewer heap bytes than the proof build. */
 #define C5VRX_CVBS_CHUNK_HALF_LINES     40u
 #define C5VRX_CVBS_CHUNK_SAMPLES        (C5VRX_CVBS_CHUNK_HALF_LINES * C5VRX_CVBS_HALF_LINE_SAMPLES)
+#define C5VRX_CVBS_CHUNK_DEADLINE_US    ((C5VRX_CVBS_CHUNK_SAMPLES * 1000000u) / C5VRX_CVBS_SAMPLE_RATE_HZ)
 
 #define C5VRX_CVBS_STREAM_STACK         4096u
 #define C5VRX_CVBS_STREAM_PRIORITY      18u
@@ -104,6 +106,18 @@ static volatile c5vrx_cvbs_display_t s_requested_display =
 static volatile c5vrx_cvbs_display_t s_active_display =
     C5VRX_CVBS_DISPLAY_LOGO;
 static uint32_t s_snow_lfsr = 0xc5f0a17du;
+static portMUX_TYPE s_stats_mux = portMUX_INITIALIZER_UNLOCKED;
+static volatile uint32_t s_isr_switches[2];
+static volatile uint32_t s_isr_unexpected;
+static uint32_t s_handled_switches[2];
+static uint32_t s_serviced_buffers;
+static uint32_t s_missed_switches;
+static uint32_t s_queue_errors;
+static uint64_t s_service_total_us;
+static uint32_t s_service_max_us;
+static uint64_t s_start_us;
+static uint64_t s_last_service_us;
+static uint32_t s_stack_min_bytes;
 
 static uint8_t cvbs_code_from_mv(unsigned mv);
 static uint8_t grayscale_code(unsigned active_x);
@@ -450,13 +464,22 @@ static bool IRAM_ATTR on_buffer_switched(
     }
 
     uint32_t bit = 0;
+    unsigned index = 0;
     if (edata->old_buffer_addr == s_chunk[0]) {
         bit = C5VRX_CVBS_RETIRED_BUF0;
     } else if (edata->old_buffer_addr == s_chunk[1]) {
         bit = C5VRX_CVBS_RETIRED_BUF1;
+        index = 1;
     } else {
+        portENTER_CRITICAL_ISR(&s_stats_mux);
+        ++s_isr_unexpected;
+        portEXIT_CRITICAL_ISR(&s_stats_mux);
         return false;
     }
+
+    portENTER_CRITICAL_ISR(&s_stats_mux);
+    ++s_isr_switches[index];
+    portEXIT_CRITICAL_ISR(&s_stats_mux);
 
     BaseType_t high_task_wakeup = pdFALSE;
     xTaskNotifyFromISR(
@@ -492,6 +515,16 @@ static void stream_task(void *arg)
                 continue;
             }
 
+            uint32_t seen = 0;
+            portENTER_CRITICAL(&s_stats_mux);
+            seen = s_isr_switches[index];
+            const uint32_t delta = seen - s_handled_switches[index];
+            s_handled_switches[index] = seen;
+            if (delta > 1u) s_missed_switches += delta - 1u;
+            portEXIT_CRITICAL(&s_stats_mux);
+
+            const uint64_t service_started_us = esp_timer_get_time();
+
             build_next_chunk(s_chunk[index]);
 
             if (s_stream.stop_requested) {
@@ -500,6 +533,9 @@ static void stream_task(void *arg)
 
             const esp_err_t err = queue_loop_buffer(s_chunk[index]);
             if (err != ESP_OK) {
+                portENTER_CRITICAL(&s_stats_mux);
+                ++s_queue_errors;
+                portEXIT_CRITICAL(&s_stats_mux);
                 if (!s_stream.stop_requested) {
                     ESP_LOGE(TAG,
                              "PAL stream buffer queue failed: %s",
@@ -508,6 +544,21 @@ static void stream_task(void *arg)
                 s_stream.stop_requested = true;
                 break;
             }
+
+            const uint64_t service_finished_us = esp_timer_get_time();
+            const uint32_t service_us = (uint32_t)(
+                service_finished_us - service_started_us);
+            const uint32_t stack_min = (uint32_t)
+                uxTaskGetStackHighWaterMark(NULL);
+            portENTER_CRITICAL(&s_stats_mux);
+            ++s_serviced_buffers;
+            s_service_total_us += service_us;
+            if (service_us > s_service_max_us) s_service_max_us = service_us;
+            s_last_service_us = service_finished_us;
+            if (!s_stack_min_bytes || stack_min < s_stack_min_bytes) {
+                s_stack_min_bytes = stack_min;
+            }
+            portEXIT_CRITICAL(&s_stats_mux);
         }
 
         if (s_stream.stop_requested) {
@@ -515,6 +566,7 @@ static void stream_task(void *arg)
         }
     }
 
+    s_running = false;
     s_stream.task = NULL;
     vTaskDelete(NULL);
 }
@@ -568,6 +620,20 @@ static esp_err_t start_output(c5vrx_cvbs_display_t initial_display)
     s_requested_display = initial_display;
     s_active_display = initial_display;
     s_snow_lfsr = 0xc5f0a17du;
+    const uint64_t start_us = esp_timer_get_time();
+    portENTER_CRITICAL(&s_stats_mux);
+    s_isr_switches[0] = s_isr_switches[1] = 0;
+    s_isr_unexpected = 0;
+    s_handled_switches[0] = s_handled_switches[1] = 0;
+    s_serviced_buffers = 0;
+    s_missed_switches = 0;
+    s_queue_errors = 0;
+    s_service_total_us = 0;
+    s_service_max_us = 0;
+    s_start_us = start_us;
+    s_last_service_us = 0;
+    s_stack_min_bytes = 0;
+    portEXIT_CRITICAL(&s_stats_mux);
     build_next_chunk(s_chunk[0]);
     build_next_chunk(s_chunk[1]);
 
@@ -723,6 +789,57 @@ const char *c5vrx_cvbs_display_name(c5vrx_cvbs_display_t display)
     }
 }
 
+void c5vrx_cvbs_output_get_stats(c5vrx_cvbs_output_stats_t *stats)
+{
+    if (!stats) return;
+    memset(stats, 0, sizeof(*stats));
+    const uint64_t now_us = esp_timer_get_time();
+    uint64_t service_total_us = 0;
+    uint64_t last_service_us = 0;
+    portENTER_CRITICAL(&s_stats_mux);
+    stats->running = s_running;
+    stats->task_running = s_stream.task != NULL && !s_stream.stop_requested;
+    stats->display = s_active_display;
+    stats->retired_buffers = s_isr_switches[0] + s_isr_switches[1];
+    stats->serviced_buffers = s_serviced_buffers;
+    stats->missed_switches = s_missed_switches;
+    stats->unexpected_switches = s_isr_unexpected;
+    stats->queue_errors = s_queue_errors;
+    stats->service_max_us = s_service_max_us;
+    stats->stack_min_bytes = s_stack_min_bytes;
+    service_total_us = s_service_total_us;
+    last_service_us = s_last_service_us;
+    stats->uptime_us = now_us > s_start_us ? now_us - s_start_us : 0;
+    portEXIT_CRITICAL(&s_stats_mux);
+
+    stats->deadline_us = C5VRX_CVBS_CHUNK_DEADLINE_US;
+    stats->last_service_age_us = last_service_us && now_us > last_service_us
+        ? now_us - last_service_us : stats->uptime_us;
+    stats->service_avg_us = stats->serviced_buffers
+        ? (uint32_t)(service_total_us / stats->serviced_buffers) : 0;
+    stats->headroom_us = (int32_t)stats->deadline_us -
+        (int32_t)stats->service_max_us;
+    stats->frame_equivalent = (uint32_t)(
+        ((uint64_t)stats->retired_buffers * C5VRX_CVBS_CHUNK_HALF_LINES) /
+        C5VRX_CVBS_FRAME_HALF_LINES);
+    stats->switch_hz = stats->uptime_us
+        ? (uint32_t)(((uint64_t)stats->retired_buffers * 1000000u) /
+                     stats->uptime_us) : 0;
+    const c5vrx_av_health_input_t health_input = {
+        .running = stats->running,
+        .task_running = stats->task_running,
+        .service_count = stats->serviced_buffers,
+        .uptime_us = stats->uptime_us,
+        .last_service_age_us = stats->last_service_age_us,
+        .service_max_us = stats->service_max_us,
+        .deadline_us = stats->deadline_us,
+        .missed_switches = stats->missed_switches,
+        .unexpected_switches = stats->unexpected_switches,
+        .queue_errors = stats->queue_errors,
+    };
+    stats->health = c5vrx_av_health_classify(&health_input);
+}
+
 esp_err_t c5vrx_cvbs_test_start(void)
 {
     return start_output(C5VRX_CVBS_DISPLAY_TEST);
@@ -757,6 +874,12 @@ c5vrx_cvbs_display_t c5vrx_cvbs_output_display(void)
 { return C5VRX_CVBS_DISPLAY_LOGO; }
 const char *c5vrx_cvbs_display_name(c5vrx_cvbs_display_t display)
 { (void)display; return "UNAVAILABLE"; }
+void c5vrx_cvbs_output_get_stats(c5vrx_cvbs_output_stats_t *stats)
+{
+    if (!stats) return;
+    memset(stats, 0, sizeof(*stats));
+    stats->health = C5VRX_AV_HEALTH_FAIL;
+}
 
 esp_err_t c5vrx_cvbs_test_stop(void)
 {

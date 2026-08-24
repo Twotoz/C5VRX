@@ -13,6 +13,8 @@ idf_component_register(
         "c5vrx_channels.c"
         "c5vrx_control.c"
         "c5vrx_cvbs_out.c"
+        "c5vrx_av_health.c"
+        "c5vrx_status_led.c"
         "c5vrx_wbfm_hw.c"
         "c5vrx_stream.c"
         "c5vrx_live_pipeline.c"

@@ -48,6 +48,12 @@ def main() -> None:
     request = function_source(flasher, "_request_live_iq_capture")
     assert "_refill_live_iq_pipeline" in transport
     assert "CAPTURE PHASE8 16384" in request
+    assert "CAPTURE 16384" not in request
+
+    capture = function_source(flasher, "capture_iq")
+    assert "CAPTURE PHASE8" in capture
+    assert "live_iq_pipeline_target = 1" in \
+        function_source(flasher, "_start_live_iq_video")
 
     stalled = function_source(flasher, "_show_usb_transport_stall")
     assert "live_iq_active = False" in stalled
@@ -62,6 +68,8 @@ def main() -> None:
 
     control_source = control.read_text(encoding="utf-8")
     assert "HP_SRAM_MAC_OWNERSHIP_WEDGES_FREERTOS_USB" in control_source
+    assert 'sscanf(line, "CAPTURE RAW %u"' in control_source
+    assert "alias=CAPTURE" in control_source
     print("C5VRX_SAFE_USB_PREVIEW result=PASS route=CAPTURE_PHASE8_BOUNDED")
 
 

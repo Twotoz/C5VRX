@@ -17,6 +17,7 @@
 #include "c5vrx_channels.h"
 #include "c5vrx_control.h"
 #include "c5vrx_cvbs_out.h"
+#include "c5vrx_status_led.h"
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_rf.h"
 #include "c5vrx_wifi5.h"
@@ -145,12 +146,18 @@ void app_main(void)
     ESP_LOGI(TAG, "Goal: RX5808-class 5.8 GHz reception with direct analog CVBS output");
     ESP_LOGI(TAG, "Chip revision: %u", (unsigned)info.revision);
 
+    const esp_err_t led_err = c5vrx_status_led_init();
+    if (led_err != ESP_OK) {
+        ESP_LOGW(TAG, "Status LED init failed: %s", esp_err_to_name(led_err));
+    }
+
 #if CONFIG_C5VRX_CVBS_OUTPUT_ONLY_TEST
     ESP_LOGW(TAG, "Output-only proof mode: RF/Wi-Fi bring-up is intentionally skipped");
     ESP_ERROR_CHECK(c5vrx_cvbs_test_start());
     ESP_LOGI(TAG, "PAL CVBS test is running continuously; reset/power-off to stop this proof image");
     while (true) {
-        vTaskDelay(pdMS_TO_TICKS(10000));
+        c5vrx_status_led_tick();
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 #endif
 
@@ -246,18 +253,23 @@ void app_main(void)
                  "RF backend startup failed, but USB control remains available for diagnosis and recovery.");
     }
 
+    unsigned monitor_ticks = 0;
     while (true) {
-        c5vrx_wifi5_status_t status;
-        if (c5vrx_wifi5_get_status(&status) == ESP_OK) {
-            ESP_LOGI(TAG,
-                     "wifi5 RX: requested=ch%u readback=ch%u BW=%s promiscuous=%d direct-hook=%s",
-                     status.requested_channel,
-                     status.active_primary_channel,
-                     status.ht40 ? "40" : "20",
-                     status.promiscuous_enabled,
-                     c5vrx_phy_has_direct_frequency_hook() ? "present" : "absent");
+        c5vrx_status_led_tick();
+        if (++monitor_ticks >= 100u) {
+            monitor_ticks = 0;
+            c5vrx_wifi5_status_t status;
+            if (c5vrx_wifi5_get_status(&status) == ESP_OK) {
+                ESP_LOGI(TAG,
+                         "wifi5 RX: requested=ch%u readback=ch%u BW=%s promiscuous=%d direct-hook=%s",
+                         status.requested_channel,
+                         status.active_primary_channel,
+                         status.ht40 ? "40" : "20",
+                         status.promiscuous_enabled,
+                         c5vrx_phy_has_direct_frequency_hook() ? "present" : "absent");
+            }
         }
-        vTaskDelay(pdMS_TO_TICKS(5000));
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 #else
     ESP_LOGW(TAG,
@@ -275,16 +287,21 @@ void app_main(void)
     ESP_ERROR_CHECK(c5vrx_rf_start(&cfg));
     maybe_run_adc_dump(&plan);
 
+    unsigned monitor_ticks = 0;
     while (true) {
-        esp_phy_rx_result_t rx = {0};
-        c5vrx_rf_get_result(&rx);
-        ESP_LOGI(TAG,
-                 "vendor RX: total=%" PRIu32 " desired=%" PRIu32 " rssi=%d flag=%" PRIu32,
-                 rx.phy_rx_total_count,
-                 rx.phy_rx_correct_count,
-                 rx.phy_rx_rssi,
-                 rx.phy_rx_result_flag);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        c5vrx_status_led_tick();
+        if (++monitor_ticks >= 20u) {
+            monitor_ticks = 0;
+            esp_phy_rx_result_t rx = {0};
+            c5vrx_rf_get_result(&rx);
+            ESP_LOGI(TAG,
+                     "vendor RX: total=%" PRIu32 " desired=%" PRIu32 " rssi=%d flag=%" PRIu32,
+                     rx.phy_rx_total_count,
+                     rx.phy_rx_correct_count,
+                     rx.phy_rx_rssi,
+                     rx.phy_rx_result_flag);
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 #endif
 }

@@ -3,7 +3,9 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "esp_err.h"
+#include "c5vrx_av_health.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,6 +17,27 @@ typedef enum {
     C5VRX_CVBS_DISPLAY_TEST,
 } c5vrx_cvbs_display_t;
 
+typedef struct {
+    bool running;
+    bool task_running;
+    c5vrx_cvbs_display_t display;
+    c5vrx_av_health_t health;
+    uint32_t retired_buffers;
+    uint32_t serviced_buffers;
+    uint32_t frame_equivalent;
+    uint32_t switch_hz;
+    uint64_t uptime_us;
+    uint64_t last_service_age_us;
+    uint32_t service_avg_us;
+    uint32_t service_max_us;
+    uint32_t deadline_us;
+    int32_t headroom_us;
+    uint32_t missed_switches;
+    uint32_t unexpected_switches;
+    uint32_t queue_errors;
+    uint32_t stack_min_bytes;
+} c5vrx_cvbs_output_stats_t;
+
 /** Start the receiver's permanent PAL output in the branded logo state. */
 esp_err_t c5vrx_cvbs_output_start(void);
 
@@ -24,6 +47,9 @@ esp_err_t c5vrx_cvbs_output_set_display(c5vrx_cvbs_display_t display);
 /** Current on-wire state and its stable protocol/log name. */
 c5vrx_cvbs_display_t c5vrx_cvbs_output_display(void);
 const char *c5vrx_cvbs_display_name(c5vrx_cvbs_display_t display);
+
+/** Snapshot actual PARLIO buffer retirement and refill health. */
+void c5vrx_cvbs_output_get_stats(c5vrx_cvbs_output_stats_t *stats);
 
 /**
  * Start the analog-output proof generator.

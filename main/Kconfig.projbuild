@@ -198,6 +198,18 @@ config C5VRX_CVBS_D7_GPIO
     default -1
     depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
 
+config C5VRX_STATUS_LED_GPIO
+    int "AV health status LED GPIO (-1 disables)"
+    range -1 28
+    default -1
+    help
+        Optional user LED driven from measured PARLIO AV health. The XIAO
+        ESP32-C5 profile selects its yellow user LED on GPIO27.
+
+config C5VRX_STATUS_LED_ACTIVE_LOW
+    bool "AV health status LED is active-low"
+    default n
+
 config C5VRX_LIVE_CVBS_BIAS_Q8
     int "Live RF conditioner bias (Q8)"
     range 0 16383

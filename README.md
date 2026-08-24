@@ -380,6 +380,18 @@ static. `STATUS` reports the on-wire state as `av_display=LOGO|SNOW|TEST`.
 `CVBS TEST` selects the diagnostic raster and `CVBS STOP` returns to the logo;
 neither command disables the physical AV signal.
 
+`AV STATUS` reports the output side independently from RF lock. It counts
+actual PARLIO DMA buffer retirements and refills, service average/maximum,
+the 1.28 ms refill deadline, missed notifications, queue errors, stack margin
+and DMA heap. `classification=OK` means the PAL output engine is being serviced;
+it does **not** mean a VTX is locked. `CVBS LOCK PROBE` remains the separate RF
+input/video-timing test.
+
+On the XIAO ESP32-C5, the active-low yellow USER LED on GPIO27 mirrors this AV
+health without using USB: one short pulse per second means healthy logo/test
+output, two pulses means healthy unlocked snow, three pulses means a recorded
+deadline warning, and a fast blink means the AV task/DMA stream is unhealthy.
+
 ### Test-readiness status
 
 - **IMPLEMENTED / NOT PHYSICALLY TESTED:** modular RF block ABI, bounded queue,
@@ -416,6 +428,7 @@ The USB protocol exposes bounded producer, DSP and streaming diagnostics:
 ```text
 CAPTURE 16384
 CAPTURE PHASE8 16384
+CAPTURE RAW 16384
 PRODUCER CADENCE PROBE ALL
 WRAP FLAG PROBE 0
 PHASE CONTINUITY PROBE 0
@@ -438,15 +451,17 @@ LIVE EXPERIMENTAL START 0
 LIVE STOP
 USB PREVIEW START
 USB PREVIEW STOP
+AV STATUS
 CVBS LOCK STATUS
 CVBS LOCK PROBE 5000
 PIPELINE STATS
 ```
 
-`CAPTURE` gets a real finite packed-I/Q block. `CAPTURE PHASE8` removes the
-per-block I/Q DC offset on the C5 and sends one unsigned phase byte per sample,
-reducing the finite USB payload from four bytes to one while leaving phase
-difference, video synchronization and raster work on the PC. `CHAIN`
+`CAPTURE` is now a safe alias for `CAPTURE PHASE8`: it removes the per-block
+I/Q DC offset on the C5 and sends one unsigned phase byte per sample, reducing
+the finite USB payload from four bytes to one while leaving phase difference,
+video synchronization and raster work on the PC. A raw line-by-line ASCII dump
+requires the deliberately explicit `CAPTURE RAW` command. `CHAIN`
 repeatedly retriggers the vendor dump and reports hashes plus boundary
 discontinuity, explicitly testing whether finite captures are useful as a
 temporary near-live source.
@@ -456,7 +471,10 @@ anti-alias bandwidth or processing margin is missing. Real XIAO testing also
 proved that continuous MAC dump ownership makes normal HP-SRAM/FreeRTOS USB
 execution unsafe. `LIVE EXPERIMENTAL START` therefore fails closed instead of
 wedging native USB. The Receiver Console's safe preview repeatedly requests
-bounded `CAPTURE PHASE8` blocks. The proven finite vendor capture runs in a
+bounded `CAPTURE PHASE8` blocks, with one command outstanding and a recovery
+gap between captures. AV stays on throughout, but USB polling is paused while
+the preview is active so USB cannot become the AV health monitor's own source
+of contention. The proven finite vendor capture runs in a
 short critical section, validates sentinel replacement and signal variance,
 then returns SRAM ownership before Phase8 encoding and USB transfer. This
 bounded host preview does not make continuous AV output operational: that path
@@ -470,11 +488,11 @@ exclusive continuous HP-SRAM handoff safe.
 
 Protocol 8 carries preview data in versioned binary packets with an eight-byte
 magic marker, packet type, sequence, lengths, timestamp, header CRC and payload
-CRC. Packet type 6 carries CRC-protected Phase8 capture chunks; the Receiver
-Console selects it when firmware reports `phase8_capture=1` and otherwise
-falls back to type-5 raw IQ. `STREAM_INFO`, `GRAY8_FRAME` and `STREAM_END`
+CRC. Packet type 6 carries CRC-protected Phase8 capture chunks; type 5 remains
+defined for explicit raw-IQ research tools. `STREAM_INFO`, `GRAY8_FRAME` and `STREAM_END`
 packets allow clean startup, frame-loss reporting and resynchronisation after
-corruption or disconnect. See
+corruption or disconnect. The Receiver Console requires Phase8 for live preview
+and refuses the old four-byte/raw fallback. See
 [`research/usb-preview-protocol.md`](research/usb-preview-protocol.md).
 
 `CVBS LOCK PROBE 5000` is the bounded real-VTX qualification step. It reports

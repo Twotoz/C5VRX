@@ -39,6 +39,10 @@ CONFIG_C5VRX_CVBS_D5_GPIO=9
 CONFIG_C5VRX_CVBS_D6_GPIO=-1
 CONFIG_C5VRX_CVBS_D7_GPIO=-1
 
+# Yellow USER LED. Seeed's XIAO ESP32-C5 wiring is active-low on GPIO27.
+CONFIG_C5VRX_STATUS_LED_GPIO=27
+CONFIG_C5VRX_STATUS_LED_ACTIVE_LOW=y
+
 # The board includes 8 MB PSRAM, but this profile intentionally does not enable
 # it. RF dump RAM is fixed internal memory and the current PARLIO/GDMA buffers
 # are deliberately kept in DMA-capable internal RAM until hardware benchmarks
