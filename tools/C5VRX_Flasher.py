@@ -49,7 +49,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-28-av-sync-tuning"
+APP_BUILD = "video-proof-29-deadline-safe-av"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,

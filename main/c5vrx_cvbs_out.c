@@ -57,7 +57,19 @@
  * physical XIAO while using 30,720 fewer heap bytes than the proof build. */
 #define C5VRX_CVBS_CHUNK_HALF_LINES     40u
 #define C5VRX_CVBS_CHUNK_SAMPLES        (C5VRX_CVBS_CHUNK_HALF_LINES * C5VRX_CVBS_HALF_LINE_SAMPLES)
-#define C5VRX_CVBS_CHUNK_DEADLINE_US    ((C5VRX_CVBS_CHUNK_SAMPLES * 1000000u) / C5VRX_CVBS_SAMPLE_RATE_HZ)
+#define C5VRX_CVBS_CHUNK_DEADLINE_US    ((uint32_t)(((uint64_t)C5VRX_CVBS_CHUNK_SAMPLES * 1000000ULL) / C5VRX_CVBS_SAMPLE_RATE_HZ))
+#define C5VRX_CVBS_EXPECTED_SWITCH_HZ   (C5VRX_CVBS_SAMPLE_RATE_HZ / C5VRX_CVBS_CHUNK_SAMPLES)
+
+/* Static pictures use one bit for every four 20 MHz output samples. This is
+ * only 9,360 bytes for the complete 1040x288 active picture and, unlike the
+ * old font-per-output-sample renderer, is designed for a 1.28 ms DMA refill
+ * deadline. The measured refill time is exposed through AV STATUS. */
+#define C5VRX_CVBS_PIXEL_SAMPLES        4u
+#define C5VRX_CVBS_LOGICAL_WIDTH        (C5VRX_CVBS_ACTIVE_SAMPLES / C5VRX_CVBS_PIXEL_SAMPLES)
+#define C5VRX_CVBS_ACTIVE_LINES         288u
+#define C5VRX_CVBS_LOGO_BITS            (C5VRX_CVBS_LOGICAL_WIDTH * C5VRX_CVBS_ACTIVE_LINES)
+#define C5VRX_CVBS_LOGO_BYTES           ((C5VRX_CVBS_LOGO_BITS + 7u) / 8u)
+#define C5VRX_CVBS_SNOW_TILE_BYTES      1024u
 
 #define C5VRX_CVBS_STREAM_STACK         4096u
 #define C5VRX_CVBS_STREAM_PRIORITY      18u
@@ -87,6 +99,8 @@ static uint8_t s_blank_first[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligne
 static uint8_t s_blank_second[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
 static uint8_t s_active_first[2][C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
 static uint8_t s_active_second[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
+static uint8_t s_logo_bitmap[C5VRX_CVBS_LOGO_BYTES] __attribute__((aligned(64)));
+static uint8_t s_snow_tile[C5VRX_CVBS_SNOW_TILE_BYTES] __attribute__((aligned(64)));
 
 /* Keep the 51,200-byte always-on stream buffer out of static DRAM. The RF
  * dump writer owns the fixed 0x40830000..0x4083ffff window, so a static array
@@ -105,6 +119,7 @@ static volatile c5vrx_cvbs_display_t s_requested_display =
 static volatile c5vrx_cvbs_display_t s_active_display =
     C5VRX_CVBS_DISPLAY_LOGO;
 static uint32_t s_snow_lfsr = 0xc5f0a17du;
+static uint16_t s_snow_offset;
 static portMUX_TYPE s_stats_mux = portMUX_INITIALIZER_UNLOCKED;
 static volatile uint32_t s_isr_switches[2];
 static volatile uint32_t s_isr_unexpected;
@@ -180,43 +195,14 @@ static bool text_pixel(const char *text, int x, int y, int origin_x,
     return (glyph_row(text[char_index], py) & (1u << (4u - column))) != 0u;
 }
 
-static bool branded_pixel(unsigned x, unsigned y)
+static bool logo_mark(unsigned x, unsigned y)
 {
-    const bool splash = s_frame_counter < 300u; /* 12 seconds at 25 fps. */
-    if (splash) {
-        return text_pixel("C5VRX", x, y, 320, 70, 12) ||
-               text_pixel("ESP32-C5 ANALOG FPV RECEIVER", x, y, 250, 190, 3) ||
-               text_pixel("PAL CVBS OUTPUT", x, y, 380, 230, 3);
-    }
-    if (x < 8u || x >= C5VRX_CVBS_ACTIVE_SAMPLES - 8u || y < 5u || y >= 283u)
-        return true;
-    if ((x % 130u == 0u) || (y % 48u == 0u)) return true;
-    return text_pixel("C5VRX", x, y, 24, 15, 5) ||
-           text_pixel("PAL CVBS PROOF", x, y, 650, 18, 3) ||
-           text_pixel("20 MS/S - 6-BIT DAC", x, y, 590, 252, 3);
+    return text_pixel("C5VRX", x, y, 320, 70, 12) ||
+           text_pixel("ESP32-C5 ANALOG FPV RECEIVER", x, y, 250, 190, 3) ||
+           text_pixel("WAITING FOR VIDEO", x, y, 370, 230, 3);
 }
 
-static uint8_t diagnostic_code(unsigned x, unsigned y)
-{
-    if (branded_pixel(x, y)) return cvbs_code_from_mv(1000);
-    if (s_frame_counter < 300u) return cvbs_code_from_mv(320);
-    if (y >= 210u && y < 238u) {
-        if (x < C5VRX_CVBS_ACTIVE_SAMPLES / 3u) return cvbs_code_from_mv(320);
-        if (x > 2u * C5VRX_CVBS_ACTIVE_SAMPLES / 3u) return cvbs_code_from_mv(1000);
-    }
-    return grayscale_code(x);
-}
-
-static uint8_t logo_code(unsigned x, unsigned y)
-{
-    const bool mark =
-        text_pixel("C5VRX", x, y, 320, 70, 12) ||
-        text_pixel("ESP32-C5 ANALOG FPV RECEIVER", x, y, 250, 190, 3) ||
-        text_pixel("WAITING FOR VIDEO", x, y, 370, 230, 3);
-    return cvbs_code_from_mv(mark ? 1000u : 320u);
-}
-
-static uint8_t snow_code(void)
+static uint8_t next_snow_code(void)
 {
     /* A Galois LFSR gives moving full-range monochrome snow without a
      * framebuffer. H/V sync and blanking remain standards-shaped, so an
@@ -225,6 +211,25 @@ static uint8_t snow_code(void)
     s_snow_lfsr = (s_snow_lfsr >> 1u) ^ (0xd0000001u & (0u - lsb));
     const unsigned mv = 320u + ((s_snow_lfsr >> 16u) & 0xffu) * 680u / 255u;
     return cvbs_code_from_mv(mv);
+}
+
+static void build_compact_picture_data(void)
+{
+    memset(s_logo_bitmap, 0, sizeof(s_logo_bitmap));
+    for (unsigned y = 0; y < C5VRX_CVBS_ACTIVE_LINES; ++y) {
+        for (unsigned lx = 0; lx < C5VRX_CVBS_LOGICAL_WIDTH; ++lx) {
+            const unsigned x = lx * C5VRX_CVBS_PIXEL_SAMPLES +
+                               C5VRX_CVBS_PIXEL_SAMPLES / 2u;
+            if (!logo_mark(x, y)) continue;
+            const unsigned bit = y * C5VRX_CVBS_LOGICAL_WIDTH + lx;
+            s_logo_bitmap[bit >> 3u] |= (uint8_t)(1u << (bit & 7u));
+        }
+    }
+
+    s_snow_lfsr = 0xc5f0a17du;
+    for (unsigned i = 0; i < sizeof(s_snow_tile); ++i) {
+        s_snow_tile[i] = next_snow_code();
+    }
 }
 
 static uint8_t cvbs_code_from_mv(unsigned mv)
@@ -365,6 +370,68 @@ static const uint8_t *template_for_half_line(uint16_t frame_half_line)
     return s_active_first[line_index & 1u];
 }
 
+static bool logo_pixel(unsigned x, unsigned y)
+{
+    const unsigned bit = y * C5VRX_CVBS_LOGICAL_WIDTH +
+                         x / C5VRX_CVBS_PIXEL_SAMPLES;
+    return (s_logo_bitmap[bit >> 3u] & (1u << (bit & 7u))) != 0u;
+}
+
+static void fill_logo(uint8_t *dst, unsigned x, unsigned count, unsigned y)
+{
+    const uint8_t black = cvbs_code_from_mv(320u);
+    const uint8_t white = cvbs_code_from_mv(1000u);
+    while (count) {
+        unsigned run = C5VRX_CVBS_PIXEL_SAMPLES -
+                       (x & (C5VRX_CVBS_PIXEL_SAMPLES - 1u));
+        if (run > count) run = count;
+        const uint8_t code = logo_pixel(x, y) ? white : black;
+        for (unsigned i = 0; i < run; ++i) dst[i] = code;
+        dst += run;
+        x += run;
+        count -= run;
+    }
+}
+
+static void fill_snow(uint8_t *dst, unsigned count)
+{
+    while (count) {
+        unsigned run = C5VRX_CVBS_SNOW_TILE_BYTES - s_snow_offset;
+        if (run > count) run = count;
+        memcpy(dst, s_snow_tile + s_snow_offset, run);
+        dst += run;
+        count -= run;
+        s_snow_offset = (uint16_t)((s_snow_offset + run) &
+                                   (C5VRX_CVBS_SNOW_TILE_BYTES - 1u));
+    }
+    /* A coprime stride makes consecutive scanline fragments move instead of
+     * exposing a stationary 1024-sample repeat. */
+    s_snow_offset = (uint16_t)((s_snow_offset + 467u) &
+                               (C5VRX_CVBS_SNOW_TILE_BYTES - 1u));
+}
+
+static void fill_test(uint8_t *dst, unsigned x, unsigned count, unsigned y)
+{
+    const uint8_t white = cvbs_code_from_mv(1000u);
+    if (y < 4u || y >= C5VRX_CVBS_ACTIVE_LINES - 4u ||
+        (y % 48u) < 2u) {
+        memset(dst, white, count);
+        return;
+    }
+
+    while (count) {
+        const unsigned bar = x / 130u;
+        const unsigned in_bar = x % 130u;
+        unsigned run = 130u - in_bar;
+        if (run > count) run = count;
+        const uint8_t code = in_bar < 4u ? white : grayscale_code(bar * 130u);
+        memset(dst, code, run);
+        dst += run;
+        x += run;
+        count -= run;
+    }
+}
+
 static void overlay_active_half(uint8_t *half, uint16_t frame_half_line)
 {
     const unsigned field_pos = frame_half_line % C5VRX_CVBS_FIELD_HALF_LINES;
@@ -379,15 +446,15 @@ static void overlay_active_half(uint8_t *half, uint16_t frame_half_line)
     const unsigned start = first_half ? C5VRX_CVBS_ACTIVE_START : 0u;
     const unsigned end = first_half ? C5VRX_CVBS_HALF_LINE_SAMPLES
                                     : C5VRX_CVBS_ACTIVE_END - C5VRX_CVBS_HALF_LINE_SAMPLES;
-    for (unsigned p = start; p < end; ++p) {
-        const unsigned x = first_half ? p - C5VRX_CVBS_ACTIVE_START
-                                      : (C5VRX_CVBS_HALF_LINE_SAMPLES - C5VRX_CVBS_ACTIVE_START) + p;
-        if (s_active_display == C5VRX_CVBS_DISPLAY_SNOW)
-            half[p] = snow_code();
-        else if (s_active_display == C5VRX_CVBS_DISPLAY_TEST)
-            half[p] = diagnostic_code(x, y);
-        else
-            half[p] = logo_code(x, y);
+    const unsigned x = first_half ? 0u :
+        C5VRX_CVBS_HALF_LINE_SAMPLES - C5VRX_CVBS_ACTIVE_START;
+    const unsigned count = end - start;
+    if (s_active_display == C5VRX_CVBS_DISPLAY_SNOW) {
+        fill_snow(half + start, count);
+    } else if (s_active_display == C5VRX_CVBS_DISPLAY_TEST) {
+        fill_test(half + start, x, count, y);
+    } else {
+        fill_logo(half + start, x, count, y);
     }
 }
 
@@ -652,11 +719,13 @@ static esp_err_t start_output(c5vrx_cvbs_display_t initial_display)
     }
 
     build_templates();
+    build_compact_picture_data();
     s_next_half_line = 0;
     s_frame_counter = 0;
     s_requested_display = initial_display;
     s_active_display = initial_display;
     s_snow_lfsr = 0xc5f0a17du;
+    s_snow_offset = 0;
     const uint64_t start_us = esp_timer_get_time();
     portENTER_CRITICAL(&s_stats_mux);
     s_isr_switches[0] = s_isr_switches[1] = 0;
@@ -862,6 +931,7 @@ void c5vrx_cvbs_output_get_stats(c5vrx_cvbs_output_stats_t *stats)
     stats->switch_hz = stats->uptime_us
         ? (uint32_t)(((uint64_t)stats->retired_buffers * 1000000u) /
                      stats->uptime_us) : 0;
+    stats->expected_switch_hz = C5VRX_CVBS_EXPECTED_SWITCH_HZ;
     const c5vrx_av_health_input_t health_input = {
         .running = stats->running,
         .task_running = stats->task_running,

@@ -35,6 +35,7 @@ typedef struct {
     uint32_t serviced_buffers;
     uint32_t frame_equivalent;
     uint32_t switch_hz;
+    uint32_t expected_switch_hz;
     uint64_t uptime_us;
     uint64_t last_service_age_us;
     uint32_t service_avg_us;

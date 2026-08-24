@@ -382,8 +382,11 @@ neither command disables the physical AV signal.
 
 `AV STATUS` reports the output side independently from RF lock. It counts
 actual PARLIO DMA buffer retirements and refills, service average/maximum,
-the 1.28 ms refill deadline, missed notifications, queue errors, stack margin
-and DMA heap. `classification=OK` means the PAL output engine is being serviced;
+the 1.28 ms refill deadline, measured versus expected switch rate (about
+781 chunks/s), missed notifications, queue errors, stack margin and DMA heap.
+The static logo is expanded from a compact 1-bit raster and snow from a small
+precomputed tile so the refill task does not render fonts or noise per 20 MHz
+output sample. `classification=OK` means the PAL output engine is being serviced;
 it does **not** mean a VTX is locked. `CVBS LOCK PROBE` remains the separate RF
 input/video-timing test.
 

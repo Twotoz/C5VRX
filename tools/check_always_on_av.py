@@ -31,7 +31,10 @@ def main() -> None:
     assert "C5VRX_CVBS_DISPLAY_LOGO" in output
     assert "C5VRX_CVBS_DISPLAY_SNOW" in output
     assert "s_active_display = s_requested_display" in output
-    assert "snow_code()" in output
+    assert "build_compact_picture_data()" in output
+    assert "fill_snow(half + start, count)" in output
+    assert "1000000ULL" in output
+    assert "expected_switch_hz" in control
     assert "av_display=%s" in control
     assert "C5VRX_AV_STATUS" in control
     assert "scope=AV_DMA_NOT_RF_LOCK" in control

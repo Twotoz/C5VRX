@@ -380,7 +380,7 @@ static void print_av_status(void)
 {
     c5vrx_cvbs_output_stats_t stats = {0};
     c5vrx_cvbs_output_get_stats(&stats);
-    printf("C5VRX_AV_STATUS classification=%s running=%u task=%u display=%s frame_equiv=%u retired=%u serviced=%u switch_hz=%u last_service_age_us=%llu service_us_avg=%u service_us_max=%u deadline_us=%u headroom_us=%d missed=%u unexpected=%u queue_errors=%u stack_min_bytes=%u heap_dma_largest=%u scope=AV_DMA_NOT_RF_LOCK\n",
+    printf("C5VRX_AV_STATUS classification=%s running=%u task=%u display=%s frame_equiv=%u retired=%u serviced=%u switch_hz=%u expected_switch_hz=%u last_service_age_us=%llu service_us_avg=%u service_us_max=%u deadline_us=%u headroom_us=%d missed=%u unexpected=%u queue_errors=%u stack_min_bytes=%u heap_dma_largest=%u scope=AV_DMA_NOT_RF_LOCK\n",
            c5vrx_av_health_name(stats.health),
            stats.running ? 1u : 0u,
            stats.task_running ? 1u : 0u,
@@ -389,6 +389,7 @@ static void print_av_status(void)
            (unsigned)stats.retired_buffers,
            (unsigned)stats.serviced_buffers,
            (unsigned)stats.switch_hz,
+           (unsigned)stats.expected_switch_hz,
            (unsigned long long)stats.last_service_age_us,
            (unsigned)stats.service_avg_us,
            (unsigned)stats.service_max_us,
