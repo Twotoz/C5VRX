@@ -128,7 +128,7 @@ static esp_err_t start_ring_live(c5vrx_rf_dump_mode_t mode,
     esp_err_t err = c5vrx_live_ring_source_create(
         &s_ring_source, mode, block_words, 512u,
         live_maximum_plausible_rate());
-    if (err == ESP_OK) err = c5vrx_cvbs_live_out_start(1024u);
+    if (err == ESP_OK) err = c5vrx_cvbs_live_out_start(block_words / 4u);
     const c5vrx_live_pipeline_config_t config = {
         .source = &s_ring_source, .sink = live_output_with_preview,
         .maximum_input_words = block_words,
