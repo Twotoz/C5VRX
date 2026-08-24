@@ -6,6 +6,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
+#include "sdkconfig.h"
 
 static const char *TAG = "c5vrx_wifi5";
 static bool s_initialized;
@@ -207,6 +208,57 @@ esp_err_t c5vrx_wifi5_get_status(c5vrx_wifi5_status_t *out)
         .promiscuous_enabled = s_promiscuous,
     };
     return ESP_OK;
+}
+
+esp_err_t c5vrx_wifi5_verify_dedicated_receiver(
+    c5vrx_wifi5_dedicated_status_t *out)
+{
+    if (!out) return ESP_ERR_INVALID_ARG;
+    *out = (c5vrx_wifi5_dedicated_status_t) {0};
+    if (!s_initialized || !s_started) return ESP_ERR_INVALID_STATE;
+
+    /* Ensure no association/background-maintenance session survives into
+     * LIVE. A disconnected STA with promiscuous RX does not scan/connect on
+     * its own because C5VRX never calls esp_wifi_connect(). */
+    (void)esp_wifi_disconnect();
+
+    wifi_band_mode_t band = WIFI_BAND_MODE_AUTO;
+    wifi_ps_type_t ps = WIFI_PS_MIN_MODEM;
+    wifi_mode_t mode = WIFI_MODE_NULL;
+    bool promiscuous = false;
+    wifi_ap_record_t ap = {0};
+    esp_err_t err = esp_wifi_get_band_mode(&band);
+    if (err == ESP_OK) err = esp_wifi_get_ps(&ps);
+    if (err == ESP_OK) err = esp_wifi_get_mode(&mode);
+    if (err == ESP_OK) err = esp_wifi_get_promiscuous(&promiscuous);
+    const esp_err_t ap_err = esp_wifi_sta_get_ap_info(&ap);
+
+    out->band_5g_only = band == WIFI_BAND_MODE_5G_ONLY;
+    out->power_save_disabled = ps == WIFI_PS_NONE;
+    out->promiscuous_enabled = promiscuous && mode == WIFI_MODE_STA;
+    out->station_disconnected = ap_err != ESP_OK;
+#if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
+    out->bluetooth_compiled_out = false;
+#else
+    out->bluetooth_compiled_out = true;
+#endif
+#if defined(CONFIG_IEEE802154_ENABLED) && CONFIG_IEEE802154_ENABLED
+    out->ieee802154_compiled_out = false;
+#else
+    out->ieee802154_compiled_out = true;
+#endif
+    out->dedicated = err == ESP_OK && out->band_5g_only &&
+        out->power_save_disabled && out->promiscuous_enabled &&
+        out->station_disconnected && out->bluetooth_compiled_out &&
+        out->ieee802154_compiled_out;
+    ESP_LOGI(TAG,
+             "LIVE radio guard 5g_only=%u ps_off=%u promisc=%u disconnected=%u bt_off=%u 802154_off=%u dedicated=%u",
+             out->band_5g_only, out->power_save_disabled,
+             out->promiscuous_enabled, out->station_disconnected,
+             out->bluetooth_compiled_out, out->ieee802154_compiled_out,
+             out->dedicated);
+    return out->dedicated ? ESP_OK :
+           (err == ESP_OK ? ESP_ERR_INVALID_STATE : err);
 }
 
 void c5vrx_wifi5_stop(void)

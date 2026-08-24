@@ -79,7 +79,7 @@ jobs:
 
       - name: Verify fixed dump-RAM safety assertion is present
         run: >-
-          grep -q 'static DRAM overlaps fixed RF dump RAM'
+          grep -q 'static DRAM overlaps RF dump guard/ring'
           main/c5vrx_rf_dump_memory.ld
 
   cvbs-proof-firmware:

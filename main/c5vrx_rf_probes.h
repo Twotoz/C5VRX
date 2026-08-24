@@ -44,8 +44,27 @@ esp_err_t c5vrx_producer_cadence_probe(c5vrx_rf_dump_mode_t mode,
 esp_err_t c5vrx_producer_wrap_flag_probe(c5vrx_rf_dump_mode_t mode);
 esp_err_t c5vrx_producer_phase_continuity_probe(
     c5vrx_rf_dump_mode_t mode, c5vrx_phase_continuity_t *result);
+
+typedef struct {
+    uint64_t observations;
+    uint64_t exact_wraps;
+    uint64_t producer_absolute;
+    uint64_t ambiguous_intervals;
+    uint32_t pointer_out_of_range;
+    uint32_t producer_stop_events;
+    uint32_t adjacent_canary_failures;
+    uint32_t register_invariant_failures;
+    uint32_t maximum_observation_interval_cycles;
+    uint64_t actual_duration_us;
+    bool content_changed;
+    bool restore_ok;
+    bool wifi_restored;
+    bool idle_watchdog_temporarily_unsubscribed;
+} c5vrx_producer_soak_result_t;
+
 esp_err_t c5vrx_producer_soak(c5vrx_rf_dump_mode_t mode,
-                              uint32_t maximum_duration_ms);
+                              uint32_t maximum_duration_ms,
+                              c5vrx_producer_soak_result_t *result);
 
 typedef struct {
     double observed_offset_hz;

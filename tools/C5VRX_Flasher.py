@@ -2211,7 +2211,7 @@ class C5VRXApp(tk.Tk):
         if not messagebox.askokcancel(
             APP_TITLE,
             f"Set a coherent RF generator to {tone} MHz at a safe, attenuated level. "
-            f"The receiver baseline is {center} MHz. The suite takes about 45 seconds and never enables unbounded capture. Continue?",
+            f"The receiver baseline is {center} MHz. The suite takes about 90 seconds and never enables unbounded capture. Continue?",
         ):
             return
         self.first_test_active = True
@@ -2231,7 +2231,9 @@ class C5VRXApp(tk.Tk):
             "BENCH PARLIO",
             "BENCH PIPELINE",
             "BENCH USB PREVIEW",
-            "BENCH RING PIPELINE 0 1000",
+            "BENCH RING PIPELINE 0 1000 1024",
+            "BENCH RING PIPELINE 0 1000 2048",
+            "BENCH RING PIPELINE 0 1000 4096",
             "USB PREVIEW STOP",
             "CAPABILITIES",
             "STATUS",
