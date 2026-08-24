@@ -53,11 +53,13 @@ then real RF composite. Record actual volts and timing, not visual estimates:
   a known-good RX5808 receiver;
 - at least 60 minutes continuous soak.
 
-Test each achievable `CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ` candidate. Feed the
-measured samples/line and standard line rate into the clock-choice telemetry.
-Prefer bypass when elastic occupancy remains bounded; otherwise validate the
-four-tap streaming Farrow bridge against burst amplitude/phase before enabling
-it. A mathematically attractive bridge is not a winner without scope evidence.
+Benchmark each achievable PARLIO clock candidate. Feed the measured
+samples/line and standard line rate into the clock-choice telemetry. Production
+remains fixed at the native 20 MS/s CVBS source rate. Prefer bypass when elastic
+occupancy remains bounded; otherwise validate and wire the four-tap streaming
+Farrow bridge against burst amplitude/phase before enabling an alternate
+clock. A mathematically attractive bridge is not a winner without scope
+evidence.
 
 ## Release rule
 
@@ -66,4 +68,3 @@ claim sub-millisecond latency, claim superiority to RX5808, or merge a release
 configuration until the archived hardware report contains every measurement
 above. Optional audio remains deliberately outside the AV deadline path and is
 not a release blocker.
-

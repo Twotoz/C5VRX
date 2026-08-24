@@ -13,6 +13,7 @@
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #define YUV411_STRIDE (C5VRX_USB_PREVIEW_WIDTH * 3u / 2u)
@@ -84,6 +85,7 @@ typedef struct {
     volatile bool stream_info_pending;
     bool prepared;
     TaskHandle_t task;
+    SemaphoreHandle_t session_mutex;
     portMUX_TYPE lock;
 } preview_state_t;
 
@@ -197,20 +199,25 @@ static void preview_task(void *arg)
     uint8_t descriptor[FRAME_DESCRIPTOR_BYTES];
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        if (!s_preview.running) continue;
+        /* Serialize the whole bounded USB iteration with session reset. This
+         * task is low priority and never owns RF/AV state, so waiting here
+         * cannot delay the production AV path. */
+        xSemaphoreTake(s_preview.session_mutex, portMAX_DELAY);
+        s_preview.worker_active = true;
+        if (!s_preview.running) goto iteration_done;
         if (s_preview.stream_info_pending) {
             make_descriptor(descriptor, 0u);
             s_preview.stream_info_pending = false;
             if (write_packet(PACKET_STREAM_INFO, descriptor,
                              sizeof(descriptor), NULL, 0u) != ESP_OK) {
                 park_consumer(true);
-                continue;
+                goto iteration_done;
             }
             c5vrx_usb_preview_keepalive();
         }
         if (!c5vrx_usb_preview_consumer_active()) {
             park_consumer(false);
-            continue;
+            goto iteration_done;
         }
         unsigned composite_index = 0u;
         bool have_composite = false;
@@ -238,7 +245,7 @@ static void preview_task(void *arg)
         }
         if (!s_preview.running || !c5vrx_usb_preview_consumer_active()) {
             park_consumer(false);
-            continue;
+            goto iteration_done;
         }
         unsigned index = 0;
         bool have_frame = false;
@@ -250,7 +257,7 @@ static void preview_task(void *arg)
             have_frame = true;
         }
         taskEXIT_CRITICAL(&s_preview.lock);
-        if (!have_frame) continue;
+        if (!have_frame) goto iteration_done;
 
         make_descriptor(descriptor, (uint8_t)(1u |
             (s_preview.burst_locked ? 2u : 0u)));
@@ -265,10 +272,10 @@ static void preview_task(void *arg)
         s_preview.sending[index] = false;
         taskEXIT_CRITICAL(&s_preview.lock);
         if (write_err != ESP_OK) park_consumer(true);
-        else {
-            c5vrx_usb_preview_keepalive();
-            s_preview.worker_active = false;
-        }
+        else c5vrx_usb_preview_keepalive();
+iteration_done:
+        s_preview.worker_active = false;
+        xSemaphoreGive(s_preview.session_mutex);
     }
 
     /*
@@ -300,6 +307,8 @@ static void publish_frame(void)
 esp_err_t c5vrx_usb_preview_prepare(void)
 {
     if (s_preview.prepared) return ESP_OK;
+    s_preview.session_mutex = xSemaphoreCreateMutex();
+    if (!s_preview.session_mutex) return ESP_ERR_NO_MEM;
     for (unsigned i = 0; i < 2u; ++i) {
         s_preview.frame[i] = heap_caps_malloc(FRAME_BYTES, MALLOC_CAP_INTERNAL);
         s_preview.composite[i] = heap_caps_malloc(
@@ -310,6 +319,8 @@ esp_err_t c5vrx_usb_preview_prepare(void)
                 free(s_preview.composite[n]);
                 s_preview.frame[n] = s_preview.composite[n] = NULL;
             }
+            vSemaphoreDelete(s_preview.session_mutex);
+            s_preview.session_mutex = NULL;
             return ESP_ERR_NO_MEM;
         }
         memset(s_preview.frame[i], 0, FRAME_BYTES);
@@ -326,6 +337,8 @@ esp_err_t c5vrx_usb_preview_prepare(void)
         free(s_preview.composite[1]);
         s_preview.frame[0] = s_preview.frame[1] = NULL;
         s_preview.composite[0] = s_preview.composite[1] = NULL;
+        vSemaphoreDelete(s_preview.session_mutex);
+        s_preview.session_mutex = NULL;
         return ESP_ERR_NO_MEM;
     }
     s_preview.prepared = true;
@@ -341,6 +354,9 @@ esp_err_t c5vrx_usb_preview_start(void)
     }
     esp_err_t err = c5vrx_usb_preview_prepare();
     if (err != ESP_OK) return err;
+    /* A reconnect cannot reset decoder or frame state until any old decode or
+     * bounded USB write has fully quiesced. This is a hard epoch boundary. */
+    xSemaphoreTake(s_preview.session_mutex, portMAX_DELAY);
     c5vrx_cvbs_sync_init(&s_preview.sync);
     s_preview.current_row = C5VRX_CVBS_SYNC_NO_LINE;
     s_preview.line_period = NOMINAL_LINE_SAMPLES;
@@ -357,6 +373,7 @@ esp_err_t c5vrx_usb_preview_start(void)
     s_preview.consumer_deadline_us =
         (uint64_t)esp_timer_get_time() + CONSUMER_LEASE_US;
     ++s_preview.session_epoch;
+    xSemaphoreGive(s_preview.session_mutex);
     xTaskNotifyGive(s_preview.task);
     return ESP_OK;
 }
@@ -365,8 +382,13 @@ esp_err_t c5vrx_usb_preview_stop(void)
 {
     /* STOP is deliberately idempotent as well. */
     if (!s_preview.running) return ESP_OK;
+    taskENTER_CRITICAL(&s_preview.lock);
     s_preview.running = false;
+    s_preview.consumer_active = false;
+    taskEXIT_CRITICAL(&s_preview.lock);
+    xSemaphoreTake(s_preview.session_mutex, portMAX_DELAY);
     park_consumer(false);
+    xSemaphoreGive(s_preview.session_mutex);
     return ESP_OK;
 }
 
@@ -384,11 +406,22 @@ void c5vrx_usb_preview_keepalive(void)
 
 bool c5vrx_usb_preview_consumer_active(void)
 {
-    if (!s_preview.running || !s_preview.consumer_active) return false;
-    if ((uint64_t)esp_timer_get_time() <= s_preview.consumer_deadline_us)
-        return true;
-    park_consumer(false);
-    return false;
+    const uint64_t now = (uint64_t)esp_timer_get_time();
+    bool active = false;
+    taskENTER_CRITICAL(&s_preview.lock);
+    if (s_preview.running && s_preview.consumer_active &&
+        now <= s_preview.consumer_deadline_us) {
+        active = true;
+    } else if (s_preview.consumer_active) {
+        /* Expiry must be O(1) on the AV caller: revoke the side cursor but do
+         * not touch decoder state that the USB worker may currently own. */
+        ++s_preview.stale_session_drops;
+        s_preview.consumer_active = false;
+        s_preview.ready = false;
+        s_preview.composite_ready[0] = s_preview.composite_ready[1] = false;
+    }
+    taskEXIT_CRITICAL(&s_preview.lock);
+    return active;
 }
 
 void c5vrx_usb_preview_get_stats(c5vrx_usb_preview_stats_t *stats)

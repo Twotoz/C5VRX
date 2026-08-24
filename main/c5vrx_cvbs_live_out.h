@@ -14,11 +14,17 @@ typedef struct {
     bool guardian_running;
 } c5vrx_cvbs_live_out_stats_t;
 
+#define C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ 20000000u
+
 esp_err_t c5vrx_cvbs_live_out_start(size_t block_samples);
 esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
                                             uint32_t output_clock_hz);
 esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *samples, size_t count,
                                     void *context);
+/* Qualification-only blocking submit. The realtime dataplane must use the
+ * nonblocking write above so AV can never backpressure RF processing. */
+esp_err_t c5vrx_cvbs_live_out_write_wait(const uint8_t *samples, size_t count,
+                                         uint32_t timeout_ms);
 esp_err_t c5vrx_cvbs_live_out_stop(void);
 void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats);
 void c5vrx_cvbs_live_out_update_timing(

@@ -13,11 +13,9 @@
 #include "esp_cpu.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "sdkconfig.h"
-
-#ifndef CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ
-#define CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ 20000000
-#endif
 
 #define BENCH_WORDS 16384u
 #define BENCH_RETAINED 1000000u
@@ -122,7 +120,7 @@ esp_err_t c5vrx_bench_bitscrambler(uint64_t *input_bytes_per_second)
 
 esp_err_t c5vrx_bench_parlio(void)
 {
-    return c5vrx_bench_parlio_clock(CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ);
+    return c5vrx_bench_parlio_clock(C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ);
 }
 
 esp_err_t c5vrx_bench_parlio_clock(uint32_t clock_hz)
@@ -133,16 +131,35 @@ esp_err_t c5vrx_bench_parlio_clock(uint32_t clock_hz)
     memset(samples, 19, 4096u);
     esp_err_t err = c5vrx_cvbs_live_out_start_at_rate(4096u, clock_hz);
     const unsigned blocks = 32u;
+    c5vrx_cvbs_live_out_stats_t before = {0};
+    c5vrx_cvbs_live_out_get_stats(&before);
     const int64_t first_us = esp_timer_get_time();
     for (unsigned i = 0; i < blocks && err == ESP_OK; ++i)
-        err = c5vrx_cvbs_live_out_write(samples, 4096u, NULL);
+        err = c5vrx_cvbs_live_out_write_wait(samples, 4096u, 100u);
+    const TickType_t wait_start = xTaskGetTickCount();
+    c5vrx_cvbs_live_out_stats_t after = before;
+    while (err == ESP_OK && after.live_blocks - before.live_blocks < blocks &&
+           xTaskGetTickCount() - wait_start < pdMS_TO_TICKS(1000u)) {
+        taskYIELD();
+        c5vrx_cvbs_live_out_get_stats(&after);
+    }
+    if (err == ESP_OK && after.live_blocks - before.live_blocks < blocks)
+        err = ESP_ERR_TIMEOUT;
+    if (err == ESP_OK &&
+        (after.mailbox_drops != before.mailbox_drops ||
+         after.filler_blocks != before.filler_blocks))
+        err = ESP_ERR_INVALID_STATE;
     const uint64_t us = (uint64_t)(esp_timer_get_time() - first_us);
     const esp_err_t stop_err = c5vrx_cvbs_live_out_stop();
     if (err == ESP_OK) err = stop_err;
-    printf("C5VRX_BENCH_PARLIO clock_hz=%u samples=%u duration_us=%llu samples_per_sec=%llu underrun=%u classification=%s code=%d\n",
+    printf("C5VRX_BENCH_PARLIO clock_hz=%u samples=%u duration_us=%llu samples_per_sec=%llu live_blocks=%llu filler_blocks=%llu mailbox_drops=%llu underrun=%u production_clock=%u classification=%s code=%d\n",
            (unsigned)clock_hz, blocks * 4096u, (unsigned long long)us,
            (unsigned long long)(us ? (uint64_t)blocks * 4096u * 1000000u / us : 0u),
+           (unsigned long long)(after.live_blocks - before.live_blocks),
+           (unsigned long long)(after.filler_blocks - before.filler_blocks),
+           (unsigned long long)(after.mailbox_drops - before.mailbox_drops),
            err == ESP_OK ? 0u : 1u,
+           clock_hz == C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ ? 1u : 0u,
            err == ESP_OK ? "MEASURED_ON_HARDWARE_SYNTHETIC" : "FAILED",
            (int)err);
     fflush(stdout);

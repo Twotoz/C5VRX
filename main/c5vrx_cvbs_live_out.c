@@ -141,7 +141,7 @@ static void guardian_task(void *arg)
 esp_err_t c5vrx_cvbs_live_out_start(size_t block_samples)
 {
     return c5vrx_cvbs_live_out_start_at_rate(
-        block_samples, CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ);
+        block_samples, C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ);
 }
 
 esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
@@ -221,6 +221,40 @@ esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *samples, size_t count,
     return ESP_OK;
 }
 
+esp_err_t c5vrx_cvbs_live_out_write_wait(const uint8_t *samples, size_t count,
+                                         uint32_t timeout_ms)
+{
+    if (!s_out.running || !samples || count != s_out.samples)
+        return ESP_ERR_INVALID_ARG;
+    const TickType_t start = xTaskGetTickCount();
+    const TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
+    for (;;) {
+        int index = -1;
+        taskENTER_CRITICAL(&s_out.lock);
+        for (unsigned n = 0; n < 2u; ++n) {
+            const unsigned candidate = (s_out.mailbox_write + n) & 1u;
+            if (!s_out.mailbox_ready[candidate] &&
+                !s_out.mailbox_in_use[candidate]) {
+                index = (int)candidate;
+                s_out.mailbox_in_use[candidate] = true;
+                break;
+            }
+        }
+        taskEXIT_CRITICAL(&s_out.lock);
+        if (index >= 0) {
+            memcpy(s_out.mailbox[index], samples, count);
+            taskENTER_CRITICAL(&s_out.lock);
+            s_out.mailbox_ready[index] = true;
+            s_out.mailbox_in_use[index] = false;
+            s_out.mailbox_write = (unsigned)index ^ 1u;
+            taskEXIT_CRITICAL(&s_out.lock);
+            return ESP_OK;
+        }
+        if ((xTaskGetTickCount() - start) >= timeout) return ESP_ERR_TIMEOUT;
+        taskYIELD();
+    }
+}
+
 esp_err_t c5vrx_cvbs_live_out_stop(void)
 {
     s_out.running = false;
@@ -273,6 +307,8 @@ esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t n, uint32_t r)
 { (void)n; (void)r; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *s, size_t n, void *c)
 { (void)s; (void)n; (void)c; return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t c5vrx_cvbs_live_out_write_wait(const uint8_t *s, size_t n, uint32_t t)
+{ (void)s; (void)n; (void)t; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t c5vrx_cvbs_live_out_stop(void) { return ESP_OK; }
 void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
 { if (stats) memset(stats, 0, sizeof(*stats)); }

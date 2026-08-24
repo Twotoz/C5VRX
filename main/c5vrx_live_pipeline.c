@@ -17,10 +17,6 @@
 #include "freertos/task.h"
 #include "sdkconfig.h"
 
-#ifndef CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ
-#define CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ 20000000
-#endif
-
 static const char *TAG = "c5vrx_live";
 #define FINITE_SOURCE_BUFFER_COUNT (C5VRX_RF_BLOCK_QUEUE_CAPACITY + 1u)
 
@@ -436,7 +432,7 @@ esp_err_t c5vrx_live_pipeline_start(const c5vrx_live_pipeline_config_t *config)
     c5vrx_cvbs_conditioner_init(&s_live.conditioner, &config->conditioner);
     c5vrx_cvbs_sync_init(&s_live.timing);
     c5vrx_cvbs_sync_set_sample_rate(
-        &s_live.timing, CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ);
+        &s_live.timing, C5VRX_CVBS_SOURCE_SAMPLE_RATE_HZ);
     c5vrx_cvbs_levels_init(&s_live.levels);
     c5vrx_rf_block_queue_init(&s_live.queue);
     esp_err_t watchdog_err = suspend_idle_watchdog_for_ring();

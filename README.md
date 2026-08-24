@@ -701,9 +701,9 @@ SDKCONFIG_DEFAULTS="sdkconfig.defaults.xiao_receiver_console;sdkconfig.defaults.
 The continuous branch now includes phase6/phase8 hardware WBFM candidates,
 continuous sparse I/Q-DC correction, one canonical PAL/NTSC timing epoch,
 structure-derived CVBS levels, a legal-waveform PARLIO continuity guardian,
-configurable output-clock candidates and an on-demand packed-YUV411 USB side
-reader. USB is preallocated before LIVE and does no recurring decode work
-without an actively draining host lease.
+native-rate production output plus qualification-only clock candidates, and an
+on-demand packed-YUV411 USB side reader. USB is preallocated before LIVE and
+does no recurring decode work without an actively draining host lease.
 
 The exact scope, 75 Ω, latency, colour, USB-abuse and 60-minute soak matrix is
 documented in
