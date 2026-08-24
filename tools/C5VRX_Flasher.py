@@ -242,6 +242,9 @@ class C5VRXApp(tk.Tk):
         self.ser: serial.Serial | None = None
         self.serial_thread: threading.Thread | None = None
         self.serial_stop = threading.Event()
+        self.serial_write_lock = threading.Lock()
+        self.usb_write_retries = 0
+        self.usb_write_failures = 0
         self.iq_words: list[int] = []
         self.iq_capture_active = False
         self.preview_frame: bytes | None = None
@@ -252,6 +255,8 @@ class C5VRXApp(tk.Tk):
         self.preview_sequence: int | None = None
         self.usb_preview_active = False
         self.usb_preview_receiving = False
+        self.experimental_live_pending = False
+        self.experimental_live_active = False
         self.live_iq_active = False
         self.live_iq_capture_done = False
         self.live_iq_packet_done = False
@@ -492,7 +497,12 @@ class C5VRXApp(tk.Tk):
         self.capture_16k_btn = ttk.Button(
             preview_controls, text="Capture 16K IQ", command=self.capture_iq_16k)
         self.capture_16k_btn.pack(side="left")
-        ttk.Button(preview_controls, text="Start live preview", command=self.start_usb_preview).pack(side="left", padx=8)
+        self.experimental_live_btn = ttk.Button(
+            preview_controls,
+            text="Start USB live preview",
+            command=self.start_experimental_usb_preview,
+        )
+        self.experimental_live_btn.pack(side="left", padx=8)
         ttk.Button(preview_controls, text="Stop live preview", command=self.stop_usb_preview).pack(side="left")
         ttk.Button(
             preview_controls,
@@ -610,7 +620,10 @@ class C5VRXApp(tk.Tk):
             # single lost marker drained the command queue.  Fast proof needs
             # a short tail timeout and immediate draining of available bytes.
             candidate.timeout = 0.01
-            candidate.write_timeout = 1
+            # Commands are tiny, but Windows can briefly backpressure OUT
+            # transfers while native USB is delivering a large binary frame.
+            # A short timeout plus bounded retry keeps the UI responsive.
+            candidate.write_timeout = 0.5
             candidate.dtr = False
             candidate.rts = False
             candidate.open()
@@ -640,12 +653,16 @@ class C5VRXApp(tk.Tk):
     def disconnect_serial(self) -> None:
         self.serial_stop.set()
         self.live_iq_active = False
+        self.experimental_live_pending = False
+        self.experimental_live_active = False
+        self.usb_preview_active = False
         self.preview_sequence = None
         ser = self.ser
         self.ser = None
         if ser:
             try:
-                ser.close()
+                with self.serial_write_lock:
+                    ser.close()
             except Exception:
                 pass
         self.connection_var.set("Disconnected")
@@ -711,6 +728,37 @@ class C5VRXApp(tk.Tk):
             fields = self._fields(line)
             self.device_phase8_supported = \
                 fields.get("phase8_capture") == "1"
+        if line.startswith("C5VRX_LIVE_EXPERIMENTAL_START"):
+            fields = self._fields(line)
+            self.experimental_live_pending = False
+            if fields.get("code") == "0":
+                self.experimental_live_active = True
+                self.usb_preview_active = True
+                self.usb_preview_receiving = False
+                block_words = fields.get("block_words", "adaptive")
+                self.after(
+                    0, self.preview_status_var.set,
+                    f"Experimental USB live started ({block_words} ring words); "
+                    "opening preview transport")
+                if self.send_command("USB PREVIEW START"):
+                    self.after(250, self._usb_preview_keepalive)
+            else:
+                self.experimental_live_active = False
+                self.usb_preview_active = False
+                self.after(
+                    0, self.preview_status_var.set,
+                    f"Experimental USB live failed: {line}")
+            return
+        if (line.startswith("C5VRX_USB_PREVIEW state=START") and
+                self.experimental_live_active):
+            fields = self._fields(line)
+            if fields.get("code") == "0":
+                self.after(
+                    0, self.preview_status_var.set,
+                    "Experimental USB live preview running; acquiring CVBS lock")
+            else:
+                self.after(0, self.stop_usb_preview)
+            return
         if (line.startswith("C5VRX_USB_PREVIEW state=START") and
                 self.live_iq_active):
             fields = self._fields(line)
@@ -736,15 +784,11 @@ class C5VRXApp(tk.Tk):
                     center = self.first_test_center
                     tone = center + 2
                     self.first_test_fine_sent = True
-                    try:
-                        assert self.ser is not None
-                        fine_command = f"FINE TUNE VERIFY {center} {tone} {rate}"
-                        self.session.record_command(fine_command)
-                        self.ser.write((fine_command + "\n").encode("ascii"))
-                        self.ser.flush()
-                        self.sink.write(f"> {fine_command}\n")
-                    except Exception as exc:
-                        self.sink.write(f"C5VRX_FINE_TUNE_AUTOMATION_FAILED error={exc}\n")
+                    fine_command = f"FINE TUNE VERIFY {center} {tone} {rate}"
+                    if not self.send_command(fine_command):
+                        self.sink.write(
+                            "C5VRX_FINE_TUNE_AUTOMATION_FAILED "
+                            "error=USB_COMMAND_WRITE_FAILED\n")
         if line.startswith("C5VRX_IQ_BEGIN"):
             self.iq_words = []
             self.iq_capture_active = True
@@ -1049,19 +1093,52 @@ class C5VRXApp(tk.Tk):
             self.bw_var.set(bw)
         self.update_channel_label()
 
-    def send_command(self, command: str) -> None:
+    def _write_serial_bytes(self, payload: bytes, retries: int = 2) -> bool:
+        """Serialize native-USB writes and tolerate bounded Windows stalls."""
+        last_error: Exception | None = None
+        for attempt in range(retries + 1):
+            ser = self.ser
+            if not ser or not ser.is_open:
+                return False
+            try:
+                with self.serial_write_lock:
+                    if ser is not self.ser or not ser.is_open:
+                        return False
+                    written = ser.write(payload)
+                if written == len(payload):
+                    return True
+                last_error = serial.SerialTimeoutException(
+                    f"short USB write {written}/{len(payload)}")
+            except serial.SerialTimeoutException as exc:
+                last_error = exc
+            except (OSError, serial.SerialException) as exc:
+                last_error = exc
+                self.session.record_error("USB_COMMAND_WRITE", str(exc))
+                self.after(0, self._serial_lost)
+                return False
+            if attempt < retries:
+                self.usb_write_retries += 1
+                time.sleep(0.025 * (attempt + 1))
+        self.usb_write_failures += 1
+        self.session.record_error("USB_COMMAND_WRITE_TIMEOUT", str(last_error))
+        self.sink.write(
+            "C5VRX_HOST_USB_WRITE_TIMEOUT "
+            f"bytes={len(payload)} retries={retries} "
+            f"total_failures={self.usb_write_failures}\n")
+        return False
+
+    def send_command(self, command: str) -> bool:
+        normalized = command.strip()
         ser = self.ser
         if not ser or not ser.is_open:
-            messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
-            return
-        try:
-            self.session.record_command(command.strip())
-            ser.write((command.strip() + "\n").encode("ascii"))
-            ser.flush()
-            self.sink.write(f"> {command}\n")
-        except Exception as exc:
-            messagebox.showerror(APP_TITLE, f"USB command failed:\n\n{exc}")
-            self.disconnect_serial()
+            self.after(
+                0, messagebox.showwarning,
+                APP_TITLE, "Connect to C5VRX first.")
+            return False
+        self.session.record_command(normalized)
+        self.sink.write(f"> {normalized}\n")
+        return self._write_serial_bytes(
+            (normalized + "\n").encode("ascii"), retries=3)
 
     def apply_channel(self) -> None:
         band = self.band_var.get()
@@ -1084,28 +1161,43 @@ class C5VRXApp(tk.Tk):
         self.samples_var.set("16384")
         self.capture_iq()
 
-    def start_usb_preview(self) -> None:
-        self.usb_preview_active = True
-        self.usb_preview_receiving = False
-        self.send_command("USB PREVIEW START")
-        self.after(250, self._usb_preview_keepalive)
-        self.after(100, lambda: self.send_command("LIVE START"))
-
-    def stop_usb_preview(self) -> None:
+    def start_experimental_usb_preview(self) -> None:
+        if not self.ser or not self.ser.is_open:
+            messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
+            return
+        if self.live_iq_active:
+            self.stop_live_iq_video("switching to experimental USB live")
+        self.experimental_live_pending = True
+        self.experimental_live_active = False
         self.usb_preview_active = False
         self.usb_preview_receiving = False
-        self.send_command("USB PREVIEW STOP")
+        self.preview_status_var.set(
+            "Starting experimental RF ring; selecting a RAM-safe block size")
+        if not self.send_command("LIVE EXPERIMENTAL START 0"):
+            self.experimental_live_pending = False
+            self.preview_status_var.set("Could not send experimental live command")
+
+    def stop_usb_preview(self) -> None:
+        was_experimental = (
+            self.experimental_live_pending or self.experimental_live_active)
+        self.experimental_live_pending = False
+        self.experimental_live_active = False
+        self.usb_preview_active = False
+        self.usb_preview_receiving = False
+        if was_experimental:
+            self.send_command("LIVE STOP")
+            self.after(100, lambda: self.send_command("USB PREVIEW STOP"))
+        else:
+            self.send_command("USB PREVIEW STOP")
 
     def _usb_preview_keepalive(self) -> None:
         if (not self.usb_preview_active or
                 not self.ser or not self.ser.is_open):
             return
-        try:
-            self.ser.write(b"USB PREVIEW KEEPALIVE\n")
-            self.ser.flush()
-        except Exception:
-            self.disconnect_serial()
-            return
+        # Missing one 250 ms keepalive is safe with the firmware's 750 ms
+        # lease. Serialize it with capture commands and retry once rather than
+        # racing pyserial writes from the Tk and reader threads.
+        self._write_serial_bytes(b"USB PREVIEW KEEPALIVE\n", retries=1)
         self.after(250, self._usb_preview_keepalive)
 
     def start_live_iq_video(self) -> None:
@@ -1122,10 +1214,9 @@ class C5VRXApp(tk.Tk):
         self.usb_preview_active = True
         self.usb_preview_receiving = False
         self.live_iq_fast_mode = fast
-        # Fast Phase8 keeps four command credits in the firmware input queue.
-        # This matches sustained manual Capture 16K clicking while remaining
-        # strictly bounded, and it tolerates isolated protocol resync losses.
-        self.live_iq_pipeline_target = 4 if fast else 1
+        # Two Phase8 credits overlap RF acquisition with USB draining without
+        # saturating the native USB command endpoint with a four-command burst.
+        self.live_iq_pipeline_target = 2 if fast else 1
         self.live_iq_commands_outstanding = 0
         self.live_iq_refill_pending = False
         self.live_iq_last_transport_progress = time.monotonic()
@@ -1237,17 +1328,19 @@ class C5VRXApp(tk.Tk):
             self.send_command("USB PREVIEW STOP")
         self.preview_status_var.set(f"IQ video stopped: {reason}")
 
-    def _request_live_iq_capture(self) -> None:
+    def _request_live_iq_capture(self) -> bool:
         if not self.live_iq_active or not self.live_iq_transport_ready:
-            return
+            return False
         self.live_iq_request_started = time.monotonic()
         if self.device_phase8_supported:
             self.live_transport_name = "phase8"
-            self.send_command("CAPTURE PHASE8 16384")
+            sent = self.send_command("CAPTURE PHASE8 16384")
         else:
             self.live_transport_name = "raw-IQ32 fallback"
-            self.send_command("CAPTURE 16384")
-        self.live_iq_commands_outstanding += 1
+            sent = self.send_command("CAPTURE 16384")
+        if sent:
+            self.live_iq_commands_outstanding += 1
+        return sent
 
     def _schedule_live_iq_refill(self, delay_ms: int = 0) -> None:
         if self.live_iq_refill_pending or not self.live_iq_active:
@@ -1265,7 +1358,9 @@ class C5VRXApp(tk.Tk):
         if not self.device_phase8_supported:
             target = 1
         while self.live_iq_commands_outstanding < target:
-            self._request_live_iq_capture()
+            if not self._request_live_iq_capture():
+                self._schedule_live_iq_refill(100)
+                break
 
     def _note_live_iq_transport_progress(self) -> None:
         if self.live_iq_active:
@@ -2287,17 +2382,16 @@ class C5VRXApp(tk.Tk):
             "CAPABILITIES",
             "STATUS",
         ]
-        try:
-            payload = "".join(command + "\n" for command in commands).encode("ascii")
-            for command in commands:
-                self.session.record_command(command)
-            self.ser.write(payload)
-            self.ser.flush()
+        payload = "".join(command + "\n" for command in commands).encode("ascii")
+        for command in commands:
+            self.session.record_command(command)
+        if self._write_serial_bytes(payload, retries=3):
             self.sink.write("\n=== FIRST HARDWARE TEST QUEUED ===\n")
             for command in commands:
                 self.sink.write(f"> {command}\n")
-        except Exception as exc:
-            messagebox.showerror(APP_TITLE, f"Could not start diagnostics:\n\n{exc}")
+        else:
+            messagebox.showerror(
+                APP_TITLE, "Could not queue diagnostics over native USB.")
 
     @staticmethod
     def _decode_iq(raw: int) -> tuple[int, int]:
