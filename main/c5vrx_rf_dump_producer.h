@@ -63,6 +63,12 @@ typedef struct {
     uint32_t pointer_wraps;
     uint32_t lead_acquired;
     uint32_t last_pointer;
+    uint32_t bursts_completed;
+    uint32_t rearms_succeeded;
+    uint32_t rearm_failures;
+    uint32_t gap_cycles_total;
+    uint32_t gap_cycles_max;
+    uint32_t last_gap_cycles;
 } c5vrx_direct_av_probe_stats_t;
 
 #define C5VRX_LP_DIRECT_TASK_STACK_BYTES 4096u
@@ -71,7 +77,10 @@ extern uint8_t c5vrx_lp_direct_task_stack_top[];
 
 /**
  * Run the already-configured mode-0 producer from LP RAM while a pre-armed
- * direct PARLIO transaction consumes the ring. The caller must itself be a
+ * direct PARLIO transaction consumes back-to-back 16384-word bursts. The C5
+ * dump engine is a bounded one-shot writer; this kernel immediately rearms it
+ * at every completed block and records the observable inter-burst gap. The
+ * caller must itself be a
  * FreeRTOS task with an LP-RAM stack, so the hardware stack guard tracks the
  * real bounds across the ownership interval. Both duration and lead are
  * bounded; CPU SRAM ownership and the PARLIO clock are restored before return.

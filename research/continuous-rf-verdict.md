@@ -1,9 +1,9 @@
 # ESP32-C5 continuous RF stream investigation
 
-Status: **a hardware-only continuous-stream candidate is implemented but not
-yet physically proven**. The C5 has an internal, hardware-written RF/FE dump
-ring. The public API still exposes only a bounded diagnostic, but the recovered
-producer register sequence can now feed a documented circular
+Status: **an LP-RAM-rearmed continuous-stream candidate is implemented but not
+yet physically proven**. Physical XIAO evidence shows that the C5 internal
+RF/FE dump writer stops after exactly 16,384 words; it is not a self-wrapping
+ring. The recovered producer register sequence can nevertheless feed a documented circular
 GDMA/BitScrambler/PARLIO consumer without CPU or USB sample transport.
 
 This is a negative engineering result, not proof that the silicon is incapable.
@@ -91,19 +91,22 @@ ESP-IDF v6.0.2 does document and implement the missing *consumer* half:
 - at the measured design target of roughly 80 MS/s in and 20 MS/s out, PARLIO
   can clock those output items directly to the six-bit resistor DAC.
 
-C5VRX therefore pre-arms a circular GDMA read of the complete 64 KiB RF ring,
-starts the RF writer from LP RAM, waits until the writer is half a ring ahead,
-then enables the PARLIO clock. The BitScrambler performs coarse phase lookup,
+C5VRX therefore pre-arms a circular GDMA read of the complete 64 KiB RF block,
+starts the RF writer from LP RAM, waits until the writer is half a block ahead,
+then enables the PARLIO clock. At every terminal pointer/status pair the same
+LP kernel lowers and raises capture-enable and pulses the software trigger. The
+BitScrambler performs coarse phase lookup,
 modulo phase subtraction (WBFM), 4:1 rate conversion and an initial three-times
 video-deviation scale. No intermediate AV framebuffer is allocated.
 
 The `AV DIRECT PROBE` command runs this overlap for 100 ms, then reports writer
-advance, pointer changes, wraps, inferred source rate, guard canaries and full
-register restoration. Passing requires a 70--90 MS/s measured writer rate and
-multiple wraps; the result remains
-`GAPLESS_RATE_CANDIDATE_AV_LOCK_PHYSICAL_TEST_REQUIRED` until a real VTX and AV
+advance, pointer changes, completed bursts, successful rearms, gap cycles,
+inferred source rate, guard canaries and full register restoration. Passing
+requires a 70--90 MS/s measured writer rate, at least four bursts, zero rearm
+failures and bounded measured gaps; the result remains
+`STITCHED_CONTINUOUS_IQ_CANDIDATE_AV_LOCK_TEST_REQUIRED` until a real VTX and AV
 decoder lock to the output. Failure restores the standards-correct PAL logo and
-makes no gapless claim.
+makes no continuous-IQ claim.
 
 Primary consumer-path sources:
 

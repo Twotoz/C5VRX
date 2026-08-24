@@ -28,5 +28,6 @@ test:
 	python3 tools/c5vrx_lab.py self-test
 	python3 tools/check_safe_usb_preview.py
 	python3 tools/check_always_on_av.py
+	python3 tools/check_tk_after_callbacks.py
 	python3 tools/validate_firmware_profiles.py
 	@if [ -n "$(IDF_PATH)" ]; then python3 tools/audit_rf_dump_producer.py --idf "$(IDF_PATH)"; else echo "SKIP producer audit: IDF_PATH unset"; fi

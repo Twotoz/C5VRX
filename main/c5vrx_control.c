@@ -72,6 +72,8 @@ static volatile uint32_t s_direct_av_probe_final_control;
 #define C5VRX_DIRECT_AV_LEAD_WORDS     8192u
 #define C5VRX_DIRECT_AV_MIN_RATE_HZ    70000000u
 #define C5VRX_DIRECT_AV_MAX_RATE_HZ    90000000u
+#define C5VRX_DIRECT_AV_MAX_GAP_CYCLES 2400u
+#define C5VRX_DIRECT_AV_MAX_GAP_PPM    10000u
 
 static void direct_av_probe_task(void *arg)
 {
@@ -590,8 +592,9 @@ static void run_direct_av_probe(void)
         return;
     }
     printf("C5VRX_DIRECT_AV_PROBE_BEGIN duration_ms=%u lead_words=%u "
-           "rf_to_av=RING_GDMA_BITSCRAMBLER_PARLIO usb_payload=NONE "
+           "rf_to_av=REARMED_BURSTS_BITSCRAMBLER_PARLIO usb_payload=NONE "
            "phase_gain=3 probe_stack=FREERTOS_REGISTERED_LP_4096 "
+           "producer=BOUNDED_16384_WORD_REARMED_IN_LP_RAM "
            "warning=AV_SWITCHES_TO_VTX_FOR_100MS\n",
            C5VRX_DIRECT_AV_PROBE_MS, C5VRX_DIRECT_AV_LEAD_WORDS);
     fflush(stdout);
@@ -651,8 +654,19 @@ static void run_direct_av_probe(void)
         (uint32_t)uxTaskGetStackHighWaterMark(s_direct_av_probe_task) : 0u;
     const uint32_t source_rate_hz =
         stats.writer_advance_words * (1000u / C5VRX_DIRECT_AV_PROBE_MS);
-    const bool wraps_continuously = stats.lead_acquired &&
-        stats.pointer_changes > 0u && stats.pointer_wraps >= 4u &&
+    const uint32_t observation_cycles =
+        (uint32_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000u *
+        C5VRX_DIRECT_AV_PROBE_MS;
+    const uint32_t gap_ppm = observation_cycles ?
+        (uint32_t)(((uint64_t)stats.gap_cycles_total * 1000000u) /
+                   observation_cycles) : UINT32_MAX;
+    const uint32_t gap_max_ns =
+        stats.gap_cycles_max * (1000u / CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ);
+    const bool rearmed_continuously = stats.lead_acquired &&
+        stats.pointer_changes > 0u && stats.bursts_completed >= 4u &&
+        stats.rearms_succeeded >= 3u && stats.rearm_failures == 0u &&
+        stats.gap_cycles_max <= C5VRX_DIRECT_AV_MAX_GAP_CYCLES &&
+        gap_ppm <= C5VRX_DIRECT_AV_MAX_GAP_PPM &&
         stats.writer_advance_words >= 4u * C5VRX_ADC_DUMP_MAX_SAMPLES;
     const bool rate_compatible =
         source_rate_hz >= C5VRX_DIRECT_AV_MIN_RATE_HZ &&
@@ -660,12 +674,15 @@ static void run_direct_av_probe(void)
     const bool cleanup_ok = stop_err == ESP_OK && finish_err == ESP_OK &&
         c5vrx_rf_dump_last_restore_ok();
     const bool passed = configured && execute_err == ESP_OK &&
-        wraps_continuously &&
+        rearmed_continuously &&
         rate_compatible && cleanup_ok;
 
     printf("C5VRX_DIRECT_AV_PROBE_DONE code=%d prepare=%d configure=%d "
            "execute=%d stop=%d finish=%d lead=%u writer_advance_words=%u "
-           "pointer_changes=%u wraps=%u last_pointer=%u "
+           "pointer_changes=%u pointer_restarts=%u last_pointer=%u "
+           "bursts_completed=%u rearms_succeeded=%u rearm_failures=%u "
+           "gap_cycles_total=%u gap_cycles_max=%u last_gap_cycles=%u "
+           "gap_max_ns=%u gap_ppm=%u "
            "source_rate_hz=%u rate_target_hz=80000000 final_control=%08x "
            "lp_stack_min_free_bytes=%u restore_ok=%u canaries_ok=%u "
            "classification=%s\n",
@@ -675,13 +692,21 @@ static void run_direct_av_probe(void)
            (int)finish_err, (unsigned)stats.lead_acquired,
            (unsigned)stats.writer_advance_words,
            (unsigned)stats.pointer_changes, (unsigned)stats.pointer_wraps,
-           (unsigned)stats.last_pointer, (unsigned)source_rate_hz,
+           (unsigned)stats.last_pointer,
+           (unsigned)stats.bursts_completed,
+           (unsigned)stats.rearms_succeeded,
+           (unsigned)stats.rearm_failures,
+           (unsigned)stats.gap_cycles_total,
+           (unsigned)stats.gap_cycles_max,
+           (unsigned)stats.last_gap_cycles,
+           (unsigned)gap_max_ns, (unsigned)gap_ppm,
+           (unsigned)source_rate_hz,
            (unsigned)final_control,
            (unsigned)lp_stack_min_free_bytes,
            c5vrx_rf_dump_last_restore_ok() ? 1u : 0u,
            c5vrx_rf_dump_last_canaries_ok() ? 1u : 0u,
-           passed ? "GAPLESS_RATE_CANDIDATE_AV_LOCK_PHYSICAL_TEST_REQUIRED" :
-                    "FAILED_NO_GAPLESS_CLAIM");
+           passed ? "STITCHED_CONTINUOUS_IQ_CANDIDATE_AV_LOCK_TEST_REQUIRED" :
+                    "FAILED_NO_CONTINUOUS_IQ_CLAIM");
     fflush(stdout);
 }
 

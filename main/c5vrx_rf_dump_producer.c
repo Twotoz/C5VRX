@@ -283,6 +283,12 @@ extern volatile uint32_t c5vrx_lp_direct_pointer_changes;
 extern volatile uint32_t c5vrx_lp_direct_pointer_wraps;
 extern volatile uint32_t c5vrx_lp_direct_lead_acquired;
 extern volatile uint32_t c5vrx_lp_direct_last_pointer;
+extern volatile uint32_t c5vrx_lp_direct_bursts_completed;
+extern volatile uint32_t c5vrx_lp_direct_rearms_succeeded;
+extern volatile uint32_t c5vrx_lp_direct_rearm_failures;
+extern volatile uint32_t c5vrx_lp_direct_gap_cycles_total;
+extern volatile uint32_t c5vrx_lp_direct_gap_cycles_max;
+extern volatile uint32_t c5vrx_lp_direct_last_gap_cycles;
 
 void c5vrx_direct_av_probe_get_stats(c5vrx_direct_av_probe_stats_t *stats)
 {
@@ -293,6 +299,12 @@ void c5vrx_direct_av_probe_get_stats(c5vrx_direct_av_probe_stats_t *stats)
         .pointer_wraps = c5vrx_lp_direct_pointer_wraps,
         .lead_acquired = c5vrx_lp_direct_lead_acquired,
         .last_pointer = c5vrx_lp_direct_last_pointer,
+        .bursts_completed = c5vrx_lp_direct_bursts_completed,
+        .rearms_succeeded = c5vrx_lp_direct_rearms_succeeded,
+        .rearm_failures = c5vrx_lp_direct_rearm_failures,
+        .gap_cycles_total = c5vrx_lp_direct_gap_cycles_total,
+        .gap_cycles_max = c5vrx_lp_direct_gap_cycles_max,
+        .last_gap_cycles = c5vrx_lp_direct_last_gap_cycles,
     };
 }
 

@@ -193,13 +193,19 @@ c5vrx_lp_capture_mode0:
     .global c5vrx_lp_direct_av_probe_mode0
     .type   c5vrx_lp_direct_av_probe_mode0, @function
 c5vrx_lp_direct_av_probe_mode0:
-    addi    sp, sp, -48
-    sw      ra, 20(sp)
-    sw      a0, 24(sp)               /* bounded run cycles */
-    sw      a1, 28(sp)               /* requested lead words */
+    addi    sp, sp, -80
+    sw      ra, 68(sp)
+    sw      a0, 72(sp)               /* bounded run cycles */
+    sw      a1, 76(sp)               /* requested lead words */
     sw      zero, 32(sp)
     sw      zero, 36(sp)
     sw      zero, 40(sp)
+    sw      zero, 44(sp)
+    sw      zero, 48(sp)
+    sw      zero, 52(sp)
+    sw      zero, 56(sp)
+    sw      zero, 60(sp)
+    sw      zero, 64(sp)
 
     la      t0, c5vrx_lp_direct_writer_advance
     sw      zero, 0(t0)
@@ -208,6 +214,18 @@ c5vrx_lp_direct_av_probe_mode0:
     la      t0, c5vrx_lp_direct_pointer_wraps
     sw      zero, 0(t0)
     la      t0, c5vrx_lp_direct_lead_acquired
+    sw      zero, 0(t0)
+    la      t0, c5vrx_lp_direct_bursts_completed
+    sw      zero, 0(t0)
+    la      t0, c5vrx_lp_direct_rearms_succeeded
+    sw      zero, 0(t0)
+    la      t0, c5vrx_lp_direct_rearm_failures
+    sw      zero, 0(t0)
+    la      t0, c5vrx_lp_direct_gap_cycles_total
+    sw      zero, 0(t0)
+    la      t0, c5vrx_lp_direct_gap_cycles_max
+    sw      zero, 0(t0)
+    la      t0, c5vrx_lp_direct_last_gap_cycles
     sw      zero, 0(t0)
 
     /* Save and grant the vendor-observed two-bank/64-KiB MAC dump window. */
@@ -235,8 +253,10 @@ c5vrx_lp_direct_av_probe_mode0:
     sw      t1, 0(t0)
     fence   iorw, iorw
 
-    /* Tight pointer tracking establishes an actual half-ring lead. Give up
-     * after 50 ms at 240 MHz; in that case PARLIO is never enabled. */
+    /* Tight pointer tracking establishes an actual half-block lead. The C5
+     * writer is a bounded 16384-word capture, not a hardware ring: the first
+     * physical direct run stopped exactly at pointer 16383. Give up after
+     * 50 ms at 240 MHz; in that case PARLIO is never enabled. */
     li      t3, 0x600a9008
     lw      t4, 0(t3)
     li      t5, 0x3fff
@@ -257,7 +277,7 @@ c5vrx_lp_direct_av_probe_mode0:
     mv      t4, t6
 2:
     lw      a3, 32(sp)
-    lw      a2, 28(sp)
+    lw      a2, 76(sp)
     bgeu    a3, a2, 3f
     csrr    a2, mcycle
     sub     a2, a2, t5
@@ -279,7 +299,13 @@ c5vrx_lp_direct_av_probe_mode0:
 
     sw      zero, 32(sp)            /* measured writer advance */
     sw      zero, 36(sp)            /* pointer changes */
-    sw      zero, 40(sp)            /* wraps */
+    sw      zero, 40(sp)            /* observed pointer restarts */
+    sw      zero, 44(sp)            /* completed 16384-word bursts */
+    sw      zero, 48(sp)            /* successful software rearms */
+    sw      zero, 52(sp)            /* rearm timeouts */
+    sw      zero, 56(sp)            /* total rearm gap cycles */
+    sw      zero, 60(sp)            /* maximum rearm gap cycles */
+    sw      zero, 64(sp)            /* most recent rearm gap cycles */
     csrr    t5, mcycle
 4:
     lw      t6, 0(t3)
@@ -302,9 +328,84 @@ c5vrx_lp_direct_av_probe_mode0:
 5:
     mv      t4, t6
 6:
+    /* A completed capture asserts bit 18 and parks the pointer at 16383.
+     * Immediately re-enable and pulse the exact mode-0 software trigger from
+     * LP RAM. No scheduler, USB, heap or HP-RAM access exists in this gap. */
+    lw      a2, 0(t0)
+    li      a3, 0x00040000
+    and     a3, a2, a3
+    beqz    a3, 9f
+    li      a3, 0x00003fff
+    bne     t6, a3, 9f
+
+    lw      a3, 44(sp)
+    addi    a3, a3, 1
+    sw      a3, 44(sp)
+    csrr    a4, mcycle              /* completed-burst timestamp */
+
+    /* The start control is edge-sensitive.  The completed one-shot still has
+     * ENABLE high, so merely ORing bit 31 cannot start another capture.  Drop
+     * ENABLE first (which also acknowledges the terminal state), then raise
+     * it before pulsing the software trigger exactly as the vendor wrapper
+     * does for every separate invocation. */
+    li      a3, 0x80000000
+    not     a5, a3
+    and     a2, a2, a5
+    sw      a2, 0(t0)
+    fence   iorw, iorw
+    or      a2, a2, a3
+    sw      a2, 0(t0)
+    li      a3, 0x00080000
+    or      a2, a2, a3
+    sw      a2, 0(t0)
+    not     a3, a3
+    and     a2, a2, a3
+    sw      a2, 0(t0)
+    fence   iorw, iorw
+
+8:
+    /* A pointer departure from 16383 is the first observable evidence that
+     * the new burst accepted its trigger. Bound this handoff to 1 ms so a
+     * failed reconstruction can never wedge the interrupt-masked task. */
+    lw      t6, 0(t3)
+    li      a2, 0x00003fff
+    and     t6, t6, a2
+    bne     t6, a2, 10f
+    csrr    a2, mcycle
+    sub     a3, a2, a4
+    li      a5, 240000
+    bgeu    a3, a5, 11f
+    sub     a3, a2, t5
+    lw      a5, 72(sp)
+    bltu    a3, a5, 8b
+    j       7f
+
+10:
+    csrr    a2, mcycle
+    sub     a3, a2, a4             /* observable rearm gap */
+    sw      a3, 64(sp)
+    lw      a5, 56(sp)
+    add     a5, a5, a3
+    sw      a5, 56(sp)
+    lw      a5, 60(sp)
+    bgeu    a5, a3, 12f
+    sw      a3, 60(sp)
+12:
+    lw      a3, 48(sp)
+    addi    a3, a3, 1
+    sw      a3, 48(sp)
+    j       9f
+
+11:
+    lw      a3, 52(sp)
+    addi    a3, a3, 1
+    sw      a3, 52(sp)
+    j       7f
+
+9:
     csrr    a2, mcycle
     sub     a2, a2, t5
-    lw      a3, 24(sp)
+    lw      a3, 72(sp)
     bltu    a2, a3, 4b
 
 7:
@@ -337,10 +438,28 @@ c5vrx_lp_direct_av_probe_mode0:
     sw      a3, 0(a2)
     la      a2, c5vrx_lp_direct_last_pointer
     sw      t4, 0(a2)
+    la      a2, c5vrx_lp_direct_bursts_completed
+    lw      a3, 44(sp)
+    sw      a3, 0(a2)
+    la      a2, c5vrx_lp_direct_rearms_succeeded
+    lw      a3, 48(sp)
+    sw      a3, 0(a2)
+    la      a2, c5vrx_lp_direct_rearm_failures
+    lw      a3, 52(sp)
+    sw      a3, 0(a2)
+    la      a2, c5vrx_lp_direct_gap_cycles_total
+    lw      a3, 56(sp)
+    sw      a3, 0(a2)
+    la      a2, c5vrx_lp_direct_gap_cycles_max
+    lw      a3, 60(sp)
+    sw      a3, 0(a2)
+    la      a2, c5vrx_lp_direct_last_gap_cycles
+    lw      a3, 64(sp)
+    sw      a3, 0(a2)
 
     mv      a0, t1
-    lw      ra, 20(sp)
-    addi    sp, sp, 48
+    lw      ra, 68(sp)
+    addi    sp, sp, 80
     ret
     .size c5vrx_lp_direct_av_probe_mode0, .-c5vrx_lp_direct_av_probe_mode0
 
@@ -363,6 +482,24 @@ c5vrx_lp_direct_lead_acquired:
     .word   0
     .global c5vrx_lp_direct_last_pointer
 c5vrx_lp_direct_last_pointer:
+    .word   0
+    .global c5vrx_lp_direct_bursts_completed
+c5vrx_lp_direct_bursts_completed:
+    .word   0
+    .global c5vrx_lp_direct_rearms_succeeded
+c5vrx_lp_direct_rearms_succeeded:
+    .word   0
+    .global c5vrx_lp_direct_rearm_failures
+c5vrx_lp_direct_rearm_failures:
+    .word   0
+    .global c5vrx_lp_direct_gap_cycles_total
+c5vrx_lp_direct_gap_cycles_total:
+    .word   0
+    .global c5vrx_lp_direct_gap_cycles_max
+c5vrx_lp_direct_gap_cycles_max:
+    .word   0
+    .global c5vrx_lp_direct_last_gap_cycles
+c5vrx_lp_direct_last_gap_cycles:
     .word   0
     .balign 16
 c5vrx_lp_capture_stack:

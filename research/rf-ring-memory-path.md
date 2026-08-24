@@ -69,7 +69,7 @@ BitScrambler/PARLIO benchmarks while the producer is active.
 
 The first direct candidate avoids both CPU copying and the BitScrambler
 loopback driver's output buffer. PARLIO owns a circular GDMA read descriptor for
-the complete fixed RF ring. A TX BitScrambler attached to PARLIO consumes four
+the complete fixed RF block. A TX BitScrambler attached to PARLIO consumes four
 packed I/Q words, emits one six-bit-biased discriminator byte, and PARLIO sends
 that byte at 20 MS/s to the resistor DAC.
 
@@ -80,8 +80,10 @@ bounded routine linked into LP RAM then performs the unsafe ownership interval:
 2. enable and software-trigger the mode-0 writer;
 3. measure an 8192-word writer lead;
 4. enable the already-armed PARLIO clock;
-5. count pointer advance and ring wraps for 100 ms;
-6. stop PARLIO, stop the writer, and restore CPU SRAM ownership.
+5. detect each terminal pointer/status pair, lower and raise capture-enable,
+   pulse the software trigger, and measure the resulting restart gap;
+6. count pointer advance, completed blocks and successful restarts for 100 ms;
+7. stop PARLIO, stop the writer, and restore CPU SRAM ownership.
 
 Interrupts remain masked only across that bounded LP routine. The 100 ms test
 is below the configured interrupt-watchdog window and the generated PAL logo is
@@ -114,3 +116,23 @@ Neither crash is evidence for or against usable VTX samples: both occurred
 before the bounded RF observation completed. The repaired result adds an
 `execute` code and `lp_stack_min_free_bytes` so the next physical run can
 separate orchestration health from RF continuity and decoder lock.
+
+### Physical one-shot finding and LP-RAM rearm
+
+The repaired physical run completed safely and provided the decisive producer
+measurement: after the 8192-word lead, the pointer advanced another 8148 words,
+then parked at exactly 16383 with the completion bit asserted. The inferred
+81.48 kword/s value was therefore the size of one bounded block divided by the
+100 ms observation window, **not** the RF sample clock. The accessible C5 dump
+writer is a 16,384-word one-shot, not a self-wrapping hardware ring.
+
+The direct kernel now reconstructs continuity at the narrowest possible layer.
+It remains in LP RAM with interrupts masked, observes the terminal state,
+forces a real enable falling/rising edge, pulses the recovered mode-0 software
+trigger, and waits for the pointer to leave 16383. PARLIO and its circular GDMA
+consumer remain armed throughout. No scheduler, heap, USB, HP-RAM stack or CPU
+copy participates in the restart. The result reports completed blocks,
+successful/failed rearms and total/maximum gap cycles. Passing is deliberately
+named `STITCHED_CONTINUOUS_IQ_CANDIDATE_AV_LOCK_TEST_REQUIRED`: only the board
+can establish whether the measured restart gaps are short enough for a decoder
+to retain horizontal and vertical lock.

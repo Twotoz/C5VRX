@@ -49,7 +49,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-31-lp-stack-safe-direct-av"
+APP_BUILD = "video-proof-32-lp-rearmed-continuous-iq"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -864,14 +864,22 @@ class C5VRXApp(tk.Tk):
             fields = self._fields(line)
             passed = fields.get("code") == "0"
             rate = fields.get("source_rate_hz", "unknown")
-            wraps = fields.get("wraps", "unknown")
-            result = "PASS candidate" if passed else "FAILED"
+            bursts = fields.get("bursts_completed", "unknown")
+            rearms = fields.get("rearms_succeeded", "unknown")
+            gap = fields.get("gap_max_ns", "unknown")
+            result = "continuous candidate" if passed else "not continuous"
             self.after(
                 0, self.preview_status_var.set,
                 f"Direct RF -> AV {result}: source={rate} samples/s, "
-                f"ring wraps={wraps}; report whether the AV display locked")
+                f"bursts={bursts}, rearms={rearms}, max gap={gap} ns")
             if hasattr(self, "direct_av_probe_btn"):
-                self.after(0, self.direct_av_probe_btn.configure, state="normal")
+                # tkinter.Misc.after() forwards positional callback arguments
+                # only. Passing ``state`` here as an after() keyword raises in
+                # the serial-reader thread and disconnects an otherwise healthy
+                # device immediately after the probe result arrives.
+                self.after(
+                    0,
+                    lambda: self.direct_av_probe_btn.configure(state="normal"))
             return
         if line.startswith("C5VRX_AV_TUNE"):
             self.after(0, self._apply_av_tune_line, line)
