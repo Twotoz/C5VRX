@@ -59,7 +59,6 @@ static uint8_t legal_filler_sample(uint64_t sample)
     const uint32_t phase = (uint32_t)position - half_start;
     const uint32_t local = half % (ntsc ? 525u : 625u);
     const uint32_t equalizing_halves = ntsc ? 6u : 5u;
-    const uint32_t field_half_lines = ntsc ? 525u : 625u;
     const uint32_t eq_samples =
         (uint32_t)(((uint64_t)clock * 235u + 50000000u) / 100000000u);
     const uint32_t broad_samples =
@@ -366,6 +365,7 @@ void c5vrx_cvbs_live_out_update_timing(
         (uint32_t)(((uint64_t)s_out.clock_hz * 64u + 500000u) /
                    1000000u);
     const uint32_t equalizing_halves = ntsc ? 6u : 5u;
+    const uint32_t field_half_lines = ntsc ? 525u : 625u;
     const uint64_t since_vsync = timing->samples_seen >=
         timing->last_vsync_start ?
         timing->samples_seen - timing->last_vsync_start : 0u;
