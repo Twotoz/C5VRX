@@ -13,6 +13,7 @@ typedef struct {
     uint64_t filler_blocks;
     uint64_t mailbox_drops;
     uint64_t qualification_underruns;
+    uint64_t guardian_failures;
     bool guardian_running;
 } c5vrx_cvbs_live_out_stats_t;
 

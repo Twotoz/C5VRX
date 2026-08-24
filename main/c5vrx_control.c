@@ -840,7 +840,8 @@ static void handle_line(char *line)
             av_before.guardian_running &&
             av_after.mailbox_drops == av_before.mailbox_drops &&
             av_after.qualification_underruns ==
-                av_before.qualification_underruns;
+                av_before.qualification_underruns &&
+            av_after.guardian_failures == av_before.guardian_failures;
         const bool rate_pass = s_capabilities.measured_source_rate &&
             (uint64_t)pipeline.achieved_input_rate_hz * 100u >=
                 (uint64_t)s_capabilities.measured_source_rate * 90u;
@@ -870,7 +871,7 @@ static void handle_line(char *line)
             select_measured_ring_block();
         }
         print_ring_stats(&ring);
-        printf("C5VRX_BENCH_RING_PIPELINE mode=%u duration_ms=%u block_words=%u blocks=%llu input_rate=%u measured_source_rate=%u rate_pass=%u copy_bytes_per_second=%llu copy_cycles_total=%llu copy_cpu_percent=%u zero_copy_action=%s dropped=%llu output_underruns=%llu av_mailbox_drops=%llu av_qualification_underruns=%llu av_pass=%u deadline_headroom_x1000=%u two_x_deadline_headroom_pass=%u synthetic_margin_pass=%u matrix_seen_mask=0x%02x matrix_pass_mask=0x%02x selected_block_words=%u classification=%s code=%d\n",
+        printf("C5VRX_BENCH_RING_PIPELINE mode=%u duration_ms=%u block_words=%u blocks=%llu input_rate=%u measured_source_rate=%u rate_pass=%u copy_bytes_per_second=%llu copy_cycles_total=%llu copy_cpu_percent=%u zero_copy_action=%s dropped=%llu output_underruns=%llu av_mailbox_drops=%llu av_qualification_underruns=%llu av_guardian_failures=%llu av_pass=%u deadline_headroom_x1000=%u two_x_deadline_headroom_pass=%u synthetic_margin_pass=%u matrix_seen_mask=0x%02x matrix_pass_mask=0x%02x selected_block_words=%u classification=%s code=%d\n",
                ring_bench_mode, ring_bench_ms, ring_bench_words,
                (unsigned long long)pipeline.blocks_processed,
                (unsigned)pipeline.achieved_input_rate_hz,
@@ -883,6 +884,7 @@ static void handle_line(char *line)
                (unsigned long long)pipeline.output_underruns,
                (unsigned long long)(av_after.mailbox_drops - av_before.mailbox_drops),
                (unsigned long long)(av_after.qualification_underruns - av_before.qualification_underruns),
+               (unsigned long long)(av_after.guardian_failures - av_before.guardian_failures),
                av_pass ? 1u : 0u,
                (unsigned)ring.deadline_headroom_x1000,
                ring.deadline_headroom_x1000 >= 2000u ? 1u : 0u,

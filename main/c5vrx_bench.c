@@ -182,6 +182,8 @@ esp_err_t c5vrx_bench_usb_preview(void)
     for (unsigned i = 210u; i < 1250u; ++i)
         line[i] = (uint8_t)(20u + (i - 210u) * 43u / 1040u);
     esp_err_t err = c5vrx_usb_preview_start();
+    c5vrx_usb_preview_stats_t before = {0}, progress = {0};
+    c5vrx_usb_preview_get_stats(&before);
     const int64_t first_us = esp_timer_get_time();
     c5vrx_cvbs_sync_tracker_t timing = {0};
     timing.horizontal_locked = true;
@@ -192,16 +194,30 @@ esp_err_t c5vrx_bench_usb_preview(void)
     timing.line_period_samples = 1280u;
     timing.field_id = 1u;
     for (unsigned line_n = 0; line_n < 265u && err == ESP_OK; ++line_n) {
-        timing.last_hsync_start = (uint64_t)line_n * 1280u;
+        timing.last_hsync_start = (uint64_t)(line_n + 1u) * 1280u;
         timing.samples_seen = timing.last_hsync_start + 1280u;
         timing.field_line = (uint16_t)(line_n + 1u);
         c5vrx_usb_preview_ingest_timed(line, 1280u, &timing);
+        const TickType_t wait_start = xTaskGetTickCount();
+        do {
+            vTaskDelay(pdMS_TO_TICKS(1u));
+            c5vrx_usb_preview_get_stats(&progress);
+        } while (progress.samples_ingested < timing.samples_seen &&
+                 xTaskGetTickCount() - wait_start < pdMS_TO_TICKS(100u));
+        if (progress.samples_ingested < timing.samples_seen)
+            err = ESP_ERR_TIMEOUT;
     }
+    if (err == ESP_OK && progress.frames_completed <= before.frames_completed)
+        err = ESP_ERR_INVALID_STATE;
+    if (err == ESP_OK && progress.frames_dropped != before.frames_dropped)
+        err = ESP_ERR_INVALID_STATE;
     const uint64_t us = (uint64_t)(esp_timer_get_time() - first_us);
-    printf("C5VRX_BENCH_USB_PREVIEW input_samples=%u output_bytes=%u duration_us=%llu hv_sync_tracker=1 binary_protocol_version=%u transport_throughput_requires_connected_host=1 classification=%s code=%d\n",
+    printf("C5VRX_BENCH_USB_PREVIEW input_samples=%u output_bytes=%u duration_us=%llu frames_completed=%u frames_dropped=%u reducer_drained=1 hv_sync_tracker=1 binary_protocol_version=%u transport_throughput_requires_connected_host=1 classification=%s code=%d\n",
            265u * 1280u,
            C5VRX_USB_PREVIEW_WIDTH * C5VRX_USB_PREVIEW_HEIGHT * 3u / 2u,
            (unsigned long long)us,
+           (unsigned)(progress.frames_completed - before.frames_completed),
+           (unsigned)(progress.frames_dropped - before.frames_dropped),
            C5VRX_USB_PREVIEW_PROTOCOL_VERSION,
            err == ESP_OK ? "MEASURED_ON_HARDWARE_REDUCER_ONLY" : "FAILED",
            (int)err);

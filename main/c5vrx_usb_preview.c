@@ -54,6 +54,8 @@ typedef struct {
     uint64_t worker_time_us;
     uint32_t session_epoch;
     uint64_t last_field_id;
+    uint64_t expected_next_sample;
+    uint32_t completed_rows[4];
     uint32_t transport_stalls;
     uint32_t stale_session_drops;
     int32_t luma_q8;
@@ -77,6 +79,7 @@ typedef struct {
     c5vrx_cvbs_sync_tracker_t sync;
     c5vrx_usb_preview_stats_t telemetry;
     bool current_line;
+    bool current_row_valid;
     bool sending[2];
     volatile bool ready;
     volatile bool running;
@@ -366,6 +369,10 @@ esp_err_t c5vrx_usb_preview_start(void)
     s_preview.group_count = 0u;
     s_preview.burst_locked = false;
     s_preview.burst_line_key = UINT64_MAX;
+    s_preview.last_field_id = UINT64_MAX;
+    s_preview.expected_next_sample = 0u;
+    memset(s_preview.completed_rows, 0, sizeof(s_preview.completed_rows));
+    s_preview.current_row_valid = false;
     s_preview.worker_active = false;
     s_preview.stream_info_pending = true;
     s_preview.running = true;
@@ -537,15 +544,21 @@ static void decode_timed_block(
         s_preview.worker_active = false;
         return;
     }
-    if (timing->field_id != s_preview.last_field_id) {
+    const uint64_t block_start = timing->samples_seen >= samples ?
+        timing->samples_seen - samples : 0u;
+    const bool gap = s_preview.expected_next_sample &&
+        block_start != s_preview.expected_next_sample;
+    s_preview.expected_next_sample = timing->samples_seen;
+    if (timing->field_id != s_preview.last_field_id || gap) {
         s_preview.last_field_id = timing->field_id;
         s_preview.current_row = C5VRX_CVBS_SYNC_NO_LINE;
         s_preview.current_line = false;
+        s_preview.current_row_valid = false;
         s_preview.x = 0u;
+        s_preview.group_count = 0u;
+        memset(s_preview.completed_rows, 0, sizeof(s_preview.completed_rows));
     }
 
-    const uint64_t block_start = timing->samples_seen >= samples ?
-        timing->samples_seen - samples : 0u;
     const uint32_t period = timing->line_period_samples;
     uint16_t current_line = timing->field_line ?
         (uint16_t)(timing->field_line - 1u) : 0u;
@@ -591,6 +604,9 @@ static void decode_timed_block(
             s_preview.x = 0u;
             s_preview.group_count = 0u;
             s_preview.u_group = s_preview.v_group = 0;
+            /* A row is publishable only if this reducer observed it from
+             * before burst/active video, not after a mid-line start or gap. */
+            s_preview.current_row_valid = phase <= burst_start;
         }
         s_preview.current_line = s_preview.x < C5VRX_USB_PREVIEW_WIDTH;
         const uint64_t line_key = (timing->field_id << 16u) | current_line;
@@ -662,9 +678,18 @@ static void decode_timed_block(
             }
             if (s_preview.x == C5VRX_USB_PREVIEW_WIDTH) {
                 s_preview.current_line = false;
-                if (row == C5VRX_USB_PREVIEW_HEIGHT - 1u) {
+                if (s_preview.current_row_valid)
+                    s_preview.completed_rows[row >> 5u] |=
+                        1u << (row & 31u);
+                const bool complete =
+                    s_preview.completed_rows[0] == UINT32_MAX &&
+                    s_preview.completed_rows[1] == UINT32_MAX &&
+                    s_preview.completed_rows[2] == UINT32_MAX &&
+                    s_preview.completed_rows[3] == 0x00ffffffu;
+                if (row == C5VRX_USB_PREVIEW_HEIGHT - 1u && complete) {
                     publish_frame();
-                    s_preview.x = 0u;
+                    memset(s_preview.completed_rows, 0,
+                           sizeof(s_preview.completed_rows));
                 }
             }
         }
