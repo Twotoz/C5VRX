@@ -19,12 +19,14 @@ typedef struct {
     parlio_tx_unit_handle_t tx;
     uint8_t *dma[2];
     uint8_t *mailbox[2];
+    uint64_t mailbox_end_sample[2];
     bool dma_live[2];
     bool mailbox_ready[2];
     bool mailbox_in_use[2];
     unsigned mailbox_write;
     size_t samples;
     uint64_t filler_sample;
+    uint64_t pending_live_end_sample;
     uint64_t live_blocks;
     uint64_t live_blocks_retired;
     uint64_t filler_blocks;
@@ -102,7 +104,7 @@ static bool on_switched(parlio_tx_unit_handle_t unit,
     return wake == pdTRUE;
 }
 
-static bool take_live_block(uint8_t *destination)
+static bool take_live_block(uint8_t *destination, uint64_t *end_sample)
 {
     int found = -1;
     taskENTER_CRITICAL(&s_out.lock);
@@ -118,6 +120,7 @@ static bool take_live_block(uint8_t *destination)
     if (found < 0) return false;
     memcpy(destination, s_out.mailbox[found], s_out.samples);
     taskENTER_CRITICAL(&s_out.lock);
+    if (end_sample) *end_sample = s_out.mailbox_end_sample[found];
     s_out.mailbox_in_use[found] = false;
     taskEXIT_CRITICAL(&s_out.lock);
     return true;
@@ -134,8 +137,16 @@ static void guardian_task(void *arg)
         for (unsigned index = 0; index < 2u; ++index) {
             if (!(retired & (1u << index))) continue;
             if (s_out.dma_live[index]) ++s_out.live_blocks_retired;
-            s_out.dma_live[index] = take_live_block(s_out.dma[index]);
-            if (s_out.dma_live[index]) ++s_out.live_blocks;
+            uint64_t live_end = 0u;
+            s_out.dma_live[index] =
+                take_live_block(s_out.dma[index], &live_end);
+            if (s_out.dma_live[index]) {
+                ++s_out.live_blocks;
+                /* This is the tail of the buffer just appended to PARLIO's
+                 * actual queue, so any subsequent filler begins after it. */
+                s_out.filler_sample = live_end ? live_end :
+                    s_out.filler_sample + s_out.samples;
+            }
             else {
                 fill_legal_filler(s_out.dma[index]);
                 ++s_out.filler_blocks;
@@ -170,6 +181,7 @@ esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
     s_out.qualification_underruns = 0u;
     s_out.qualification_unsubmitted = 0u;
     s_out.filler_sample = 0u;
+    s_out.pending_live_end_sample = 0u;
     s_out.mailbox_write = 0u;
     s_out.filler_standard = C5VRX_VIDEO_STANDARD_PAL;
     for (unsigned i = 0; i < 2u; ++i) {
@@ -232,6 +244,7 @@ esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *samples, size_t count,
     memcpy(s_out.mailbox[index], samples, count);
     taskENTER_CRITICAL(&s_out.lock);
     s_out.mailbox_ready[index] = true;
+    s_out.mailbox_end_sample[index] = s_out.pending_live_end_sample;
     s_out.mailbox_in_use[index] = false;
     s_out.mailbox_write = (unsigned)index ^ 1u;
     taskEXIT_CRITICAL(&s_out.lock);
@@ -262,6 +275,7 @@ esp_err_t c5vrx_cvbs_live_out_write_wait(const uint8_t *samples, size_t count,
             memcpy(s_out.mailbox[index], samples, count);
             taskENTER_CRITICAL(&s_out.lock);
             s_out.mailbox_ready[index] = true;
+            s_out.mailbox_end_sample[index] = s_out.pending_live_end_sample;
             s_out.mailbox_in_use[index] = false;
             s_out.mailbox_write = (unsigned)index ^ 1u;
             if (s_out.qualification_unsubmitted)
@@ -306,6 +320,7 @@ esp_err_t c5vrx_cvbs_live_out_stop(void)
     s_out.samples = 0u;
     s_out.clock_hz = 0u;
     s_out.filler_sample = 0u;
+    s_out.pending_live_end_sample = 0u;
     s_out.mailbox_ready[0] = s_out.mailbox_ready[1] = false;
     s_out.mailbox_in_use[0] = s_out.mailbox_in_use[1] = false;
     return ESP_OK;
@@ -331,9 +346,10 @@ void c5vrx_cvbs_live_out_update_timing(
         timing->standard == C5VRX_VIDEO_STANDARD_UNKNOWN) return;
     taskENTER_CRITICAL(&s_out.lock);
     s_out.filler_standard = timing->standard;
-    /* Keep legal fallback phase close to the canonical waveform. This value
-     * is only consumed if the mailbox becomes empty. */
-    s_out.filler_sample = timing->samples_seen;
+    /* Attach canonical time to the next live mailbox block. The guardian
+     * advances fallback from the tail of actual PARLIO queue order; it must
+     * never jump the filler cursor to this producer-ahead position. */
+    s_out.pending_live_end_sample = timing->samples_seen;
     taskEXIT_CRITICAL(&s_out.lock);
 }
 #else

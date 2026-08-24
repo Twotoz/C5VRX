@@ -823,12 +823,24 @@ static void handle_line(char *line)
         }
         esp_err_t err = start_ring_live(
             (c5vrx_rf_dump_mode_t)ring_bench_mode, ring_bench_words);
+        c5vrx_cvbs_live_out_stats_t av_before = {0}, av_after = {0};
+        if (err == ESP_OK) {
+            c5vrx_cvbs_live_out_get_stats(&av_before);
+            c5vrx_cvbs_live_out_qualification_begin(UINT32_MAX);
+        }
         if (ring_bench_mode == 0u && ring_bench_ms == 1000u)
             s_capabilities.bitscrambler_path_available = false;
         if (err == ESP_OK) vTaskDelay(pdMS_TO_TICKS(ring_bench_ms));
         c5vrx_stream_stats_t pipeline = {0};
         c5vrx_live_ring_stats_t ring = {0};
         if (err == ESP_OK) err = stop_live_sources(&pipeline, &ring);
+        c5vrx_cvbs_live_out_get_stats(&av_after);
+        c5vrx_cvbs_live_out_qualification_end();
+        const bool av_pass =
+            av_before.guardian_running &&
+            av_after.mailbox_drops == av_before.mailbox_drops &&
+            av_after.qualification_underruns ==
+                av_before.qualification_underruns;
         const bool rate_pass = s_capabilities.measured_source_rate &&
             (uint64_t)pipeline.achieved_input_rate_hz * 100u >=
                 (uint64_t)s_capabilities.measured_source_rate * 90u;
@@ -837,7 +849,7 @@ static void handle_line(char *line)
             ring.wraps_observed > 0u &&
             ring.deadline_headroom_x1000 >= 2000u &&
             pipeline.dropped_rf_blocks == 0u &&
-            pipeline.output_underruns == 0u && rate_pass;
+            pipeline.output_underruns == 0u && av_pass && rate_pass;
         const uint64_t available_cycles =
             (uint64_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000u * ring_bench_ms;
         const unsigned copy_cpu_percent = available_cycles ?
@@ -858,7 +870,7 @@ static void handle_line(char *line)
             select_measured_ring_block();
         }
         print_ring_stats(&ring);
-        printf("C5VRX_BENCH_RING_PIPELINE mode=%u duration_ms=%u block_words=%u blocks=%llu input_rate=%u measured_source_rate=%u rate_pass=%u copy_bytes_per_second=%llu copy_cycles_total=%llu copy_cpu_percent=%u zero_copy_action=%s dropped=%llu output_underruns=%llu deadline_headroom_x1000=%u two_x_deadline_headroom_pass=%u synthetic_margin_pass=%u matrix_seen_mask=0x%02x matrix_pass_mask=0x%02x selected_block_words=%u classification=%s code=%d\n",
+        printf("C5VRX_BENCH_RING_PIPELINE mode=%u duration_ms=%u block_words=%u blocks=%llu input_rate=%u measured_source_rate=%u rate_pass=%u copy_bytes_per_second=%llu copy_cycles_total=%llu copy_cpu_percent=%u zero_copy_action=%s dropped=%llu output_underruns=%llu av_mailbox_drops=%llu av_qualification_underruns=%llu av_pass=%u deadline_headroom_x1000=%u two_x_deadline_headroom_pass=%u synthetic_margin_pass=%u matrix_seen_mask=0x%02x matrix_pass_mask=0x%02x selected_block_words=%u classification=%s code=%d\n",
                ring_bench_mode, ring_bench_ms, ring_bench_words,
                (unsigned long long)pipeline.blocks_processed,
                (unsigned)pipeline.achieved_input_rate_hz,
@@ -869,6 +881,9 @@ static void handle_line(char *line)
                copy_cpu_percent, zero_copy_action,
                (unsigned long long)pipeline.dropped_rf_blocks,
                (unsigned long long)pipeline.output_underruns,
+               (unsigned long long)(av_after.mailbox_drops - av_before.mailbox_drops),
+               (unsigned long long)(av_after.qualification_underruns - av_before.qualification_underruns),
+               av_pass ? 1u : 0u,
                (unsigned)ring.deadline_headroom_x1000,
                ring.deadline_headroom_x1000 >= 2000u ? 1u : 0u,
                s_synthetic_pipeline_passed ? 1u : 0u,
