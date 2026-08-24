@@ -658,6 +658,35 @@ void c5vrx_usb_preview_ingest_timed(
             break;
         }
     }
+    if (slot < 0) {
+        /* The USB cursor is best-effort and latency-bounded: replace the
+         * oldest queued (never the in-use) side block with the newest legal
+         * canonical block. RF/DSP/AV never wait for this cursor. */
+        for (unsigned i = 0; i < 2u; ++i) {
+            if (s_preview.composite_ready[i] &&
+                !s_preview.composite_in_use[i]) {
+                slot = (int)i;
+                s_preview.composite_ready[i] = false;
+                s_preview.composite_in_use[i] = true;
+                ++s_preview.dropped;
+                s_preview.telemetry.frames_dropped =
+                    s_preview.dropped > UINT32_MAX ? UINT32_MAX :
+                    (uint32_t)s_preview.dropped;
+                for (unsigned stale = 0; stale < 2u; ++stale) {
+                    if ((int)stale != slot &&
+                        s_preview.composite_ready[stale] &&
+                        !s_preview.composite_in_use[stale]) {
+                        s_preview.composite_ready[stale] = false;
+                        ++s_preview.dropped;
+                    }
+                }
+                s_preview.telemetry.frames_dropped =
+                    s_preview.dropped > UINT32_MAX ? UINT32_MAX :
+                    (uint32_t)s_preview.dropped;
+                break;
+            }
+        }
+    }
     taskEXIT_CRITICAL(&s_preview.lock);
     if (slot >= 0) {
         memcpy(s_preview.composite[slot], cvbs, samples);
