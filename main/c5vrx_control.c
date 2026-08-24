@@ -1217,7 +1217,11 @@ esp_err_t c5vrx_control_start(c5vrx_band_t band,
 
     /* The finite RF dump calls vendor code and logging from this task.  Keep
      * explicit headroom so a diagnostic burst cannot reach the stack guard. */
-    if (xTaskCreate(console_task, "c5vrx_usbctl", 6144, NULL, 5, NULL) != pdPASS) {
+    /* Normally blocked in the USB driver. When a command or a timed benchmark
+     * completes it must preempt ring workers so LIVE remains controllable on
+     * the single-core C5 without forcing millisecond sleeps into writer
+     * observation. */
+    if (xTaskCreate(console_task, "c5vrx_usbctl", 6144, NULL, 20, NULL) != pdPASS) {
         s_state.started = false;
         return ESP_ERR_NO_MEM;
     }
