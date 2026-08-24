@@ -110,6 +110,13 @@ takes HP-SRAM ownership while FreeRTOS remains active. The command now returns
 `reason=HP_SRAM_MAC_OWNERSHIP_WEDGES_FREERTOS_USB`. Use the Receiver Console's
 safe bounded Phase8 preview; do not retry the continuous ring path.
 
+Normal receiver firmware now starts PAL AV-out independently of RF. Before an
+accepted sample block it shows the built-in C5VRX logo. A successful varying
+finite capture changes the next complete frame to moving snow, because finite
+blocks cannot prove gapless H/V lock. Later sample gaps deliberately retain
+snow instead of flashing back to the logo. Confirm `cvbs=1 av_display=LOGO` at
+boot and `av_display=SNOW` after the first successful capture.
+
 After preserving the sweep data, explicitly import its result for the current
 boot with:
 

@@ -498,7 +498,6 @@ esp_err_t c5vrx_adc_dump_capture_phase8(size_t sample_count)
 {
     if (sample_count < 256u || sample_count > C5VRX_ADC_DUMP_MAX_SAMPLES)
         return ESP_ERR_INVALID_ARG;
-    if (!c5vrx_usb_preview_running()) return ESP_ERR_INVALID_STATE;
 
     esp_err_t err = capture_internal(sample_count, false, false);
     if (err != ESP_OK) return err;

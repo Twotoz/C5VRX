@@ -367,6 +367,19 @@ See [`research/frequency-tuning.md`](research/frequency-tuning.md).
 
 ## Finite I/Q and live-pipeline diagnostics
 
+The XIAO Receiver Console keeps AV-out active from normal receiver boot. Its
+PAL generator uses scanline rendering rather than a framebuffer and changes
+content only at a complete frame boundary:
+
+- `LOGO`: the RF backend has not produced an accepted sample block yet;
+- `SNOW`: varying RF samples exist, but no gapless H/V-locked video exists;
+- live video: reserved for a future continuous SRAM-safe producer.
+
+Once the receiver enters `SNOW`, later gaps do not flash the logo over genuine
+static. `STATUS` reports the on-wire state as `av_display=LOGO|SNOW|TEST`.
+`CVBS TEST` selects the diagnostic raster and `CVBS STOP` returns to the logo;
+neither command disables the physical AV signal.
+
 ### Test-readiness status
 
 - **IMPLEMENTED / NOT PHYSICALLY TESTED:** modular RF block ABI, bounded queue,
@@ -443,10 +456,17 @@ anti-alias bandwidth or processing margin is missing. Real XIAO testing also
 proved that continuous MAC dump ownership makes normal HP-SRAM/FreeRTOS USB
 execution unsafe. `LIVE EXPERIMENTAL START` therefore fails closed instead of
 wedging native USB. The Receiver Console's safe preview repeatedly requests
-bounded `CAPTURE PHASE8` blocks; the LP-RAM kernel restores CPU SRAM ownership
-before every USB transfer. This bounded host preview does not make continuous
-AV output operational: that path needs a dataplane which can keep processing
-and refilling PARLIO without executing FreeRTOS code from MAC-owned HP-SRAM.
+bounded `CAPTURE PHASE8` blocks. The proven finite vendor capture runs in a
+short critical section, validates sentinel replacement and signal variance,
+then returns SRAM ownership before Phase8 encoding and USB transfer. This
+bounded host preview does not make continuous AV output operational: that path
+needs a dataplane which can keep processing and refilling PARLIO without
+executing FreeRTOS code from MAC-owned HP-SRAM.
+
+BitScrambler accelerates the WBFM phase-LUT/decimation transform, but its
+ESP-IDF loopback interface still consumes input and output buffers. It reduces
+CPU and transport load; it does not replace the RF dump buffer or make the
+exclusive continuous HP-SRAM handoff safe.
 
 Protocol 8 carries preview data in versioned binary packets with an eight-byte
 magic marker, packet type, sequence, lengths, timestamp, header CRC and payload

@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "esp_chip_info.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
@@ -186,6 +187,22 @@ void app_main(void)
         C5VRX_CFG_DIRECT_TUNE));
     ESP_LOGI(TAG,
              "C5VRX_BOOT stage=USB_CONTROL_READY rf_ready=0; PING available before Wi-Fi bring-up");
+
+    /* AV is a permanent appliance output, not a side effect of LIVE START.
+     * Bring up a legal PAL raster immediately; until usable samples exist it
+     * carries the built-in C5VRX logo. Display-state changes retain this same
+     * PARLIO stream and are applied only at complete frame boundaries. */
+    const esp_err_t av_err = c5vrx_cvbs_output_start();
+    if (av_err == ESP_OK) {
+        ESP_LOGI(TAG,
+                 "C5VRX_BOOT stage=AV_ALWAYS_ON standard=PAL625 display=LOGO heap_internal_free=%u heap_dma_free=%u heap_dma_largest=%u",
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+    } else {
+        ESP_LOGE(TAG, "C5VRX_BOOT stage=AV_START_FAILED code=%d name=%s",
+                 (int)av_err, esp_err_to_name(av_err));
+    }
 
     ESP_LOGI(TAG, "RF backend: public ESP-IDF 5 GHz Wi-Fi driver");
 

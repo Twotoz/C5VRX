@@ -52,8 +52,10 @@
  */
 #define C5VRX_CVBS_ACTIVE_START_HALF    49u
 
-/* 64 half-lines = 2.048 ms and 40,960 bytes at 20 MS/s. */
-#define C5VRX_CVBS_CHUNK_HALF_LINES     64u
+/* Two 40-half-line DMA chunks keep 2.56 ms already queued on the wire. That
+ * exceeds the 1.93..1.99 ms bounded vendor-capture interval measured on the
+ * physical XIAO while using 30,720 fewer heap bytes than the proof build. */
+#define C5VRX_CVBS_CHUNK_HALF_LINES     40u
 #define C5VRX_CVBS_CHUNK_SAMPLES        (C5VRX_CVBS_CHUNK_HALF_LINES * C5VRX_CVBS_HALF_LINE_SAMPLES)
 
 #define C5VRX_CVBS_STREAM_STACK         4096u
@@ -85,11 +87,11 @@ static uint8_t s_blank_second[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((align
 static uint8_t s_active_first[2][C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
 static uint8_t s_active_second[C5VRX_CVBS_HALF_LINE_SAMPLES] __attribute__((aligned(64)));
 
-/* Keep the 81,920-byte diagnostic stream buffer out of static DRAM.  The RF
+/* Keep the 51,200-byte always-on stream buffer out of static DRAM. The RF
  * dump writer owns the fixed 0x40830000..0x4083ffff window, so a static array
  * this large could make the linker place ordinary application state inside
- * hardware-owned RAM.  DMA-capable buffers are allocated only while the test
- * generator is active; the reserved dump window is excluded from the heap. */
+ * hardware-owned RAM. DMA-capable buffers are allocated when AV starts; the
+ * reserved dump window is excluded from the heap. */
 static uint8_t *s_chunk[2];
 
 static parlio_tx_unit_handle_t s_tx;
@@ -97,6 +99,11 @@ static c5vrx_cvbs_stream_state_t s_stream;
 static uint16_t s_next_half_line;
 static uint32_t s_frame_counter;
 static bool s_running;
+static volatile c5vrx_cvbs_display_t s_requested_display =
+    C5VRX_CVBS_DISPLAY_LOGO;
+static volatile c5vrx_cvbs_display_t s_active_display =
+    C5VRX_CVBS_DISPLAY_LOGO;
+static uint32_t s_snow_lfsr = 0xc5f0a17du;
 
 static uint8_t cvbs_code_from_mv(unsigned mv);
 static uint8_t grayscale_code(unsigned active_x);
@@ -168,6 +175,26 @@ static uint8_t diagnostic_code(unsigned x, unsigned y)
         if (x > 2u * C5VRX_CVBS_ACTIVE_SAMPLES / 3u) return cvbs_code_from_mv(1000);
     }
     return grayscale_code(x);
+}
+
+static uint8_t logo_code(unsigned x, unsigned y)
+{
+    const bool mark =
+        text_pixel("C5VRX", x, y, 320, 70, 12) ||
+        text_pixel("ESP32-C5 ANALOG FPV RECEIVER", x, y, 250, 190, 3) ||
+        text_pixel("WAITING FOR VIDEO", x, y, 370, 230, 3);
+    return cvbs_code_from_mv(mark ? 1000u : 320u);
+}
+
+static uint8_t snow_code(void)
+{
+    /* A Galois LFSR gives moving full-range monochrome snow without a
+     * framebuffer. H/V sync and blanking remain standards-shaped, so an
+     * attached display stays locked instead of confusing noise with no AV. */
+    const uint32_t lsb = s_snow_lfsr & 1u;
+    s_snow_lfsr = (s_snow_lfsr >> 1u) ^ (0xd0000001u & (0u - lsb));
+    const unsigned mv = 320u + ((s_snow_lfsr >> 16u) & 0xffu) * 680u / 255u;
+    return cvbs_code_from_mv(mv);
 }
 
 static uint8_t cvbs_code_from_mv(unsigned mv)
@@ -314,13 +341,23 @@ static void overlay_active_half(uint8_t *half, uint16_t frame_half_line)
     for (unsigned p = start; p < end; ++p) {
         const unsigned x = first_half ? p - C5VRX_CVBS_ACTIVE_START
                                       : (C5VRX_CVBS_HALF_LINE_SAMPLES - C5VRX_CVBS_ACTIVE_START) + p;
-        half[p] = diagnostic_code(x, y);
+        if (s_active_display == C5VRX_CVBS_DISPLAY_SNOW)
+            half[p] = snow_code();
+        else if (s_active_display == C5VRX_CVBS_DISPLAY_TEST)
+            half[p] = diagnostic_code(x, y);
+        else
+            half[p] = logo_code(x, y);
     }
 }
 
 static void build_next_chunk(uint8_t *dst)
 {
     for (unsigned i = 0; i < C5VRX_CVBS_CHUNK_HALF_LINES; ++i) {
+        /* Apply state only where a complete PAL frame begins. A request made
+         * while a chunk is being built can never split logo/snow/test content
+         * across an arbitrary scanline. */
+        if (s_next_half_line == 0u)
+            s_active_display = s_requested_display;
         const uint8_t *src = template_for_half_line(s_next_half_line);
         uint8_t *half = dst + i * C5VRX_CVBS_HALF_LINE_SAMPLES;
         memcpy(half,
@@ -503,10 +540,11 @@ static void stop_stream_task(void)
     }
 }
 
-esp_err_t c5vrx_cvbs_test_start(void)
+static esp_err_t start_output(c5vrx_cvbs_display_t initial_display)
 {
     if (s_running) {
-        return ESP_ERR_INVALID_STATE;
+        s_requested_display = initial_display;
+        return ESP_OK;
     }
     if (!pins_valid()) {
         ESP_LOGE(TAG,
@@ -527,6 +565,9 @@ esp_err_t c5vrx_cvbs_test_start(void)
     build_templates();
     s_next_half_line = 0;
     s_frame_counter = 0;
+    s_requested_display = initial_display;
+    s_active_display = initial_display;
+    s_snow_lfsr = 0xc5f0a17du;
     build_next_chunk(s_chunk[0]);
     build_next_chunk(s_chunk[1]);
 
@@ -639,18 +680,52 @@ esp_err_t c5vrx_cvbs_test_start(void)
 
     s_running = true;
     ESP_LOGW(TAG,
-             "PAL 625/50 composite test active: %u-bit DAC, 20 MS/s, 2x%u-byte DMA chunks",
+             "PAL 625/50 always-on output active: display=%s %u-bit DAC, 20 MS/s, 2x%u-byte DMA chunks",
+             c5vrx_cvbs_display_name(initial_display),
              (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS,
              (unsigned)C5VRX_CVBS_CHUNK_SAMPLES);
 #if CONFIG_C5VRX_CVBS_TEST_COLOR_BURST
     ESP_LOGW(TAG,
-             "Test frame is monochrome; 4.43361875 MHz swinging burst is enabled only as an analog bandwidth/lock stress");
+             "Output is monochrome; 4.43361875 MHz swinging burst is enabled for display lock and analog bandwidth validation");
 #else
-    ESP_LOGW(TAG, "Test frame is monochrome with color burst disabled");
+    ESP_LOGW(TAG, "Output is monochrome with color burst disabled");
 #endif
     ESP_LOGW(TAG,
              "Use a correctly scaled resistor network into a known 75-ohm input; never connect raw 3.3 V GPIOs directly");
     return ESP_OK;
+}
+
+esp_err_t c5vrx_cvbs_output_start(void)
+{
+    return start_output(C5VRX_CVBS_DISPLAY_LOGO);
+}
+
+esp_err_t c5vrx_cvbs_output_set_display(c5vrx_cvbs_display_t display)
+{
+    if (display > C5VRX_CVBS_DISPLAY_TEST) return ESP_ERR_INVALID_ARG;
+    if (!s_running) return ESP_ERR_INVALID_STATE;
+    s_requested_display = display;
+    return ESP_OK;
+}
+
+c5vrx_cvbs_display_t c5vrx_cvbs_output_display(void)
+{
+    return s_active_display;
+}
+
+const char *c5vrx_cvbs_display_name(c5vrx_cvbs_display_t display)
+{
+    switch (display) {
+        case C5VRX_CVBS_DISPLAY_LOGO: return "LOGO";
+        case C5VRX_CVBS_DISPLAY_SNOW: return "SNOW";
+        case C5VRX_CVBS_DISPLAY_TEST: return "TEST";
+        default: return "UNKNOWN";
+    }
+}
+
+esp_err_t c5vrx_cvbs_test_start(void)
+{
+    return start_output(C5VRX_CVBS_DISPLAY_TEST);
 }
 
 esp_err_t c5vrx_cvbs_test_stop(void)
@@ -658,26 +733,9 @@ esp_err_t c5vrx_cvbs_test_stop(void)
     if (!s_running || !s_tx) {
         return ESP_ERR_INVALID_STATE;
     }
-
-    s_running = false;
-    s_stream.stop_requested = true;
-
-    esp_err_t first = parlio_tx_unit_disable(s_tx);
-    stop_stream_task();
-
-    const esp_err_t del = parlio_del_tx_unit(s_tx);
-    if (first == ESP_OK) {
-        first = del;
-    }
-
-    s_tx = NULL;
-    free(s_chunk[0]);
-    free(s_chunk[1]);
-    s_chunk[0] = s_chunk[1] = NULL;
-    s_next_half_line = 0;
-    s_stream.stop_requested = false;
-    ESP_LOGI(TAG, "PAL 625/50 composite test output stopped");
-    return first;
+    s_requested_display = C5VRX_CVBS_DISPLAY_LOGO;
+    ESP_LOGI(TAG, "PAL diagnostics stopped; permanent logo output retained");
+    return ESP_OK;
 }
 
 bool c5vrx_cvbs_test_running(void)
@@ -691,6 +749,14 @@ esp_err_t c5vrx_cvbs_test_start(void)
 {
     return ESP_ERR_NOT_SUPPORTED;
 }
+
+esp_err_t c5vrx_cvbs_output_start(void) { return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t c5vrx_cvbs_output_set_display(c5vrx_cvbs_display_t display)
+{ (void)display; return ESP_ERR_NOT_SUPPORTED; }
+c5vrx_cvbs_display_t c5vrx_cvbs_output_display(void)
+{ return C5VRX_CVBS_DISPLAY_LOGO; }
+const char *c5vrx_cvbs_display_name(c5vrx_cvbs_display_t display)
+{ (void)display; return "UNAVAILABLE"; }
 
 esp_err_t c5vrx_cvbs_test_stop(void)
 {

@@ -6,6 +6,19 @@ The receiver should behave like a classic analog VRX: recover WBFM baseband and
 reconstruct the composite waveform directly. Full PAL/NTSC-to-pixel decoding is
 not part of the core receiver path.
 
+## Permanent receiver output states
+
+The receiver profile owns AV-out continuously after its control task starts.
+Before any accepted RF samples it emits a standards-shaped PAL raster with the
+C5VRX logo. Once varying samples are observed without a continuous H/V lock,
+it emits moving monochrome snow. Missing later blocks retain snow, so ordinary
+static never causes a misleading logo flash. A switch to live waveform data is
+allowed only after a continuous source establishes valid timing.
+
+The renderer is scanline-only. Two 25,600-byte PARLIO DMA chunks provide 2.56
+ms already queued at 20 MS/s, exceeding the 1.93--1.99 ms bounded capture time
+measured on the physical XIAO without allocating a video framebuffer.
+
 ## Primary path
 
 ```text

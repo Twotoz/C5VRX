@@ -9,6 +9,22 @@
 extern "C" {
 #endif
 
+typedef enum {
+    C5VRX_CVBS_DISPLAY_LOGO = 0,
+    C5VRX_CVBS_DISPLAY_SNOW,
+    C5VRX_CVBS_DISPLAY_TEST,
+} c5vrx_cvbs_display_t;
+
+/** Start the receiver's permanent PAL output in the branded logo state. */
+esp_err_t c5vrx_cvbs_output_start(void);
+
+/** Request a tear-free display-state change at the next PAL frame boundary. */
+esp_err_t c5vrx_cvbs_output_set_display(c5vrx_cvbs_display_t display);
+
+/** Current on-wire state and its stable protocol/log name. */
+c5vrx_cvbs_display_t c5vrx_cvbs_output_display(void);
+const char *c5vrx_cvbs_display_name(c5vrx_cvbs_display_t display);
+
 /**
  * Start the analog-output proof generator.
  *
@@ -22,7 +38,7 @@ extern "C" {
  */
 esp_err_t c5vrx_cvbs_test_start(void);
 
-/** Stop the PAL PARLIO test stream. */
+/** Leave diagnostics and return the permanent output to the logo state. */
 esp_err_t c5vrx_cvbs_test_stop(void);
 
 /** True while the PAL test stream is active. */
