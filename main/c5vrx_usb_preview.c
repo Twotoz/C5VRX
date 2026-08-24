@@ -40,6 +40,8 @@ typedef struct {
     uint8_t *composite[2];
     size_t composite_count[2];
     c5vrx_cvbs_sync_tracker_t composite_timing[2];
+    uint64_t composite_sequence[2];
+    uint64_t composite_next_sequence;
     bool composite_ready[2];
     bool composite_in_use[2];
     unsigned fill_index;
@@ -227,11 +229,16 @@ static void preview_task(void *arg)
         taskENTER_CRITICAL(&s_preview.lock);
         for (unsigned i = 0; i < 2u; ++i) {
             if (!s_preview.composite_ready[i]) continue;
-            s_preview.composite_ready[i] = false;
-            s_preview.composite_in_use[i] = true;
+            if (have_composite &&
+                s_preview.composite_sequence[i] >=
+                    s_preview.composite_sequence[composite_index]) continue;
             composite_index = i;
             have_composite = true;
-            break;
+        }
+        if (have_composite) {
+            const unsigned i = composite_index;
+            s_preview.composite_ready[i] = false;
+            s_preview.composite_in_use[i] = true;
         }
         taskEXIT_CRITICAL(&s_preview.lock);
         if (have_composite) {
@@ -740,27 +747,17 @@ void c5vrx_usb_preview_ingest_timed(
          * canonical block. RF/DSP/AV never wait for this cursor. */
         for (unsigned i = 0; i < 2u; ++i) {
             if (s_preview.composite_ready[i] &&
-                !s_preview.composite_in_use[i]) {
-                slot = (int)i;
-                s_preview.composite_ready[i] = false;
-                s_preview.composite_in_use[i] = true;
-                ++s_preview.dropped;
-                s_preview.telemetry.frames_dropped =
-                    s_preview.dropped > UINT32_MAX ? UINT32_MAX :
-                    (uint32_t)s_preview.dropped;
-                for (unsigned stale = 0; stale < 2u; ++stale) {
-                    if ((int)stale != slot &&
-                        s_preview.composite_ready[stale] &&
-                        !s_preview.composite_in_use[stale]) {
-                        s_preview.composite_ready[stale] = false;
-                        ++s_preview.dropped;
-                    }
-                }
-                s_preview.telemetry.frames_dropped =
-                    s_preview.dropped > UINT32_MAX ? UINT32_MAX :
-                    (uint32_t)s_preview.dropped;
-                break;
-            }
+                !s_preview.composite_in_use[i] &&
+                (slot < 0 || s_preview.composite_sequence[i] <
+                    s_preview.composite_sequence[slot])) slot = (int)i;
+        }
+        if (slot >= 0) {
+            s_preview.composite_ready[slot] = false;
+            s_preview.composite_in_use[slot] = true;
+            ++s_preview.dropped;
+            s_preview.telemetry.frames_dropped =
+                s_preview.dropped > UINT32_MAX ? UINT32_MAX :
+                (uint32_t)s_preview.dropped;
         }
     }
     taskEXIT_CRITICAL(&s_preview.lock);
@@ -771,6 +768,8 @@ void c5vrx_usb_preview_ingest_timed(
             s_preview.consumer_active) {
             s_preview.composite_count[slot] = samples;
             s_preview.composite_timing[slot] = *timing;
+            s_preview.composite_sequence[slot] =
+                ++s_preview.composite_next_sequence;
             s_preview.composite_ready[slot] = true;
         } else {
             ++s_preview.stale_session_drops;
