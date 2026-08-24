@@ -61,8 +61,13 @@ c5vrx_ring_track_result_t c5vrx_ring_tracker_observe(
     const uint32_t elapsed = counter - t->last_counter;
     if (elapsed > t->maximum_service_interval_cycles)
         t->maximum_service_interval_cycles = elapsed;
+    /* Round the rate bound upward and allow a tiny MMIO observation skew.
+     * The bound is used in both directions: a whole possible wrap makes the
+     * interval ambiguous, while a modulo delta above the bound means the
+     * pointer/rate observation itself is not credible. */
     const uint64_t possible_advance =
-        (uint64_t)elapsed * t->maximum_rate_hz / t->counter_hz;
+        ((uint64_t)elapsed * t->maximum_rate_hz + t->counter_hz - 1u) /
+        t->counter_hz + 8u;
     if (possible_advance >= t->capacity_words) {
         ++t->ambiguous_intervals;
         return C5VRX_RING_TRACK_INTERVAL_AMBIGUOUS;
@@ -70,6 +75,10 @@ c5vrx_ring_track_result_t c5vrx_ring_tracker_observe(
 
     const uint32_t mask = t->capacity_words - 1u;
     const uint32_t advance = (pointer - t->last_pointer) & mask;
+    if (advance > possible_advance) {
+        ++t->ambiguous_intervals;
+        return C5VRX_RING_TRACK_INTERVAL_AMBIGUOUS;
+    }
     if (pointer < t->last_pointer) ++t->wraps;
     t->producer_absolute += advance;
     t->last_pointer = pointer;
