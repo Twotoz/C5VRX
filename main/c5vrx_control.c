@@ -156,7 +156,11 @@ static esp_err_t stop_live_sources(c5vrx_stream_stats_t *pipeline_stats,
                                    c5vrx_live_ring_stats_t *ring_stats)
 {
     const esp_err_t err = c5vrx_live_pipeline_stop();
-    if (err != ESP_OK) return err;
+    /* A worker timeout means ownership is still live and teardown is unsafe.
+     * Other errors (notably watchdog restoration) occur after the workers and
+     * pipeline buffers are already stopped; preserve that error but still stop
+     * PARLIO and the RF source so LIVE STOP remains recoverable. */
+    if (err == ESP_ERR_TIMEOUT) return err;
     if (pipeline_stats) c5vrx_live_pipeline_get_stats(pipeline_stats);
     if (ring_stats && s_ring_live)
         c5vrx_live_ring_source_get_stats(&s_ring_source, ring_stats);
@@ -168,7 +172,7 @@ static esp_err_t stop_live_sources(c5vrx_stream_stats_t *pipeline_stats,
         c5vrx_finite_chain_source_destroy(&s_finite_source);
         s_finite_live = false;
     }
-    return ESP_OK;
+    return err;
 }
 
 static void print_ring_stats(const c5vrx_live_ring_stats_t *stats)
