@@ -59,6 +59,7 @@ static uint8_t legal_filler_sample(uint64_t sample)
     const uint32_t phase = (uint32_t)position - half_start;
     const uint32_t local = half % (ntsc ? 525u : 625u);
     const uint32_t equalizing_halves = ntsc ? 6u : 5u;
+    const uint32_t field_half_lines = ntsc ? 525u : 625u;
     const uint32_t eq_samples =
         (uint32_t)(((uint64_t)clock * 235u + 50000000u) / 100000000u);
     const uint32_t broad_samples =
@@ -374,7 +375,14 @@ void c5vrx_cvbs_live_out_update_timing(
      * that pulse after the leading equalising half-lines. Convert the live
      * stream tail into this synthetic frame coordinate. This offset is the
      * missing link between arbitrary RF-capture time and legal filler phase. */
-    const uint64_t broad_pulse_phase =
+    /* In the synthetic frame, the broad pulse of the half-line-shifted
+     * (tracker odd_field=true) field is the first occurrence. The other
+     * field begins 625 PAL / 525 NTSC half-lines later. Keep that parity:
+     * mapping both V-syncs to the first occurrence would splice a half-line
+     * into every alternate fallback transition. */
+    const uint64_t field_phase = timing->odd_field ? 0u :
+        (uint64_t)field_half_lines * line_samples / 2u;
+    const uint64_t broad_pulse_phase = field_phase +
         (uint64_t)equalizing_halves * line_samples / 2u;
     const uint64_t filler_end = broad_pulse_phase +
         (since_vsync * s_out.clock_hz + source_rate / 2u) / source_rate;
