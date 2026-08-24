@@ -68,6 +68,9 @@ int main(void)
     assert(tracker.horizontal_locked);
     assert(tracker.horizontal_events == 40u);
     assert(tracker.lock_acquisitions == 1u);
+    assert(tracker.standard == C5VRX_VIDEO_STANDARD_PAL);
+    assert(tracker.polarity == C5VRX_SYNC_POLARITY_NEGATIVE);
+    assert(tracker.field_id == 1u);
 
     /* Missing sync must revoke lock; stale lock must never qualify RF. */
     (void)feed(&tracker, 45u, 4u * 1280u, &event);
@@ -79,7 +82,7 @@ int main(void)
      * relying on a compile-time 1280-sample rollover. */
     broad_sync(&tracker, &event);
     saw_lock = false;
-    for (unsigned i = 0; i < 40u; ++i) {
+    for (unsigned i = 0; i < 80u; ++i) {
         line(&tracker, 1271u, i, &event);
         if (event.horizontal && event.locked) saw_lock = true;
     }
@@ -88,6 +91,12 @@ int main(void)
     assert(tracker.lock_acquisitions == 2u);
     assert(event.line_period_samples >= 1265u);
     assert(event.line_period_samples <= 1280u);
+    assert(tracker.standard == C5VRX_VIDEO_STANDARD_NTSC);
+    const uint64_t old_epoch = tracker.stream_epoch;
+    c5vrx_cvbs_sync_discontinuity(&tracker);
+    assert(tracker.stream_epoch == old_epoch + 1u);
+    assert(!tracker.horizontal_locked && !tracker.vertical_locked);
+    assert(tracker.standard == C5VRX_VIDEO_STANDARD_UNKNOWN);
     puts("cvbs_sync_test: PASS");
     return 0;
 }

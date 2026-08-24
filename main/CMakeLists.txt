@@ -21,6 +21,8 @@ idf_component_register(
         "c5vrx_ring_tracker.c"
         "c5vrx_cvbs_live_out.c"
         "c5vrx_cvbs_sync.c"
+        "c5vrx_cvbs_levels.c"
+        "c5vrx_av_clock.c"
         "c5vrx_usb_preview.c"
         "c5vrx_usb_transport.c"
         "c5vrx_bench.c"
@@ -40,6 +42,7 @@ idf_component_register(
 )
 
 target_bitscrambler_add_src("c5vrx_wbfm_4to1.bsasm")
+target_bitscrambler_add_src("c5vrx_wbfm_phase8_4to1.bsasm")
 
 # The vendor adctrig() capture path is used by the normal finite-capture
 # commands as well as the optional reconstructed producer.  Its fixed 64 KiB

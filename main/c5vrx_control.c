@@ -53,6 +53,7 @@ static bool s_wbfm_self_test_passed;
 static bool s_parlio_bench_passed;
 static bool s_mode0_soak_passed;
 static bool s_synthetic_pipeline_passed;
+static bool s_physical_burst_gate_passed;
 static uint8_t s_ring_block_bench_seen;
 static uint8_t s_ring_block_bench_passed;
 static size_t s_selected_ring_block_words;
@@ -61,8 +62,40 @@ static esp_err_t live_output_with_preview(const uint8_t *samples,
                                           size_t count,
                                           void *context)
 {
-    c5vrx_usb_preview_ingest(samples, count);
-    return c5vrx_cvbs_live_out_write(samples, count, context);
+    /* AV owns the deadline.  The USB tap is invoked only after PARLIO has
+     * accepted this block and only while an actively-draining host holds a
+     * short lease.  USB can therefore never delay or backpressure AV. */
+    c5vrx_cvbs_sync_tracker_t timing;
+    c5vrx_live_pipeline_get_timing(&timing);
+    /* Never put unlocked/noise waveform on the connector. The independent AV
+     * guardian keeps standards-correct black/sync running while timing
+     * reacquires, including after an explicit stream epoch change. */
+    const bool legal_live = timing.horizontal_locked && timing.vertical_locked &&
+        timing.standard != C5VRX_VIDEO_STANDARD_UNKNOWN;
+    esp_err_t av_err = ESP_OK;
+    if (legal_live) {
+        bool starting = !c5vrx_cvbs_live_out_running();
+        if (!starting && c5vrx_cvbs_live_out_take_realign_request()) {
+            /* A discontinuity made the live start differ from the actual
+             * queued filler tail. Keep the rejected block out of PARLIO,
+             * then converge deterministically by rebuilding the two-buffer
+             * prefix around this newest canonical block. */
+            av_err = c5vrx_cvbs_live_out_stop();
+            starting = av_err == ESP_OK;
+        }
+        if (starting)
+            av_err = av_err == ESP_OK ?
+                c5vrx_cvbs_live_out_start_aligned(samples, count, &timing) :
+                av_err;
+        if (av_err == ESP_OK && !starting) {
+            c5vrx_cvbs_live_out_update_timing(&timing);
+            av_err = c5vrx_cvbs_live_out_write(samples, count, context);
+        }
+    }
+    if (av_err == ESP_OK && c5vrx_usb_preview_consumer_active()) {
+        c5vrx_usb_preview_ingest_timed(samples, count, &timing);
+    }
+    return av_err;
 }
 
 static uint32_t live_maximum_plausible_rate(void)
@@ -76,6 +109,7 @@ static void invalidate_rf_capabilities(void)
 {
     memset(&s_capabilities, 0, sizeof(s_capabilities));
     s_mode0_soak_passed = false;
+    s_physical_burst_gate_passed = false;
     s_ring_block_bench_seen = 0u;
     s_ring_block_bench_passed = 0u;
     s_selected_ring_block_words = 0u;
@@ -104,7 +138,8 @@ static void select_measured_ring_block(void)
             s_capabilities.pipeline_service_headroom_valid = true;
             s_capabilities.bitscrambler_path_available =
                 s_wbfm_self_test_passed && s_parlio_bench_passed &&
-                s_synthetic_pipeline_passed;
+                s_synthetic_pipeline_passed &&
+                s_physical_burst_gate_passed;
             return;
         }
     }
@@ -116,6 +151,12 @@ static void select_measured_ring_block(void)
 #define C5VRX_CFG_LIVE_INVERT false
 #endif
 
+#ifdef CONFIG_C5VRX_WBFM_KERNEL_PHASE8
+#define C5VRX_CFG_WBFM_KERNEL C5VRX_WBFM_PHASE8_4TO1
+#else
+#define C5VRX_CFG_WBFM_KERNEL C5VRX_WBFM_PHASE6_4TO1
+#endif
+
 static esp_err_t start_ring_live(c5vrx_rf_dump_mode_t mode,
                                  size_t block_words)
 {
@@ -125,13 +166,17 @@ static esp_err_t start_ring_live(c5vrx_rf_dump_mode_t mode,
         block_words != 4096u)
         return ESP_ERR_INVALID_ARG;
 
-    esp_err_t err = c5vrx_live_ring_source_create(
+    /* Preallocate and create the dormant USB side worker before LIVE owns the
+     * realtime heap boundary. Opening/closing a consumer later is allocation
+     * free and cannot disturb RF/AV state. */
+    esp_err_t err = c5vrx_usb_preview_prepare();
+    if (err == ESP_OK) err = c5vrx_live_ring_source_create(
         &s_ring_source, mode, block_words, 512u,
         live_maximum_plausible_rate());
-    if (err == ESP_OK) err = c5vrx_cvbs_live_out_start(block_words / 4u);
     const c5vrx_live_pipeline_config_t config = {
         .source = &s_ring_source, .sink = live_output_with_preview,
         .maximum_input_words = block_words,
+        .wbfm_kernel = C5VRX_CFG_WBFM_KERNEL,
         .conditioner = {
             .bias_q8 = CONFIG_C5VRX_LIVE_CVBS_BIAS_Q8,
             .gain_q8 = CONFIG_C5VRX_LIVE_CVBS_GAIN_Q8,
@@ -220,8 +265,16 @@ static void print_cvbs_lock_status(const c5vrx_usb_preview_stats_t *stats)
         (uint32_t)((uint64_t)C5VRX_LIVE_CVBS_SAMPLE_RATE_HZ * 1000u /
                    stats->line_period_samples) : 0u;
     const bool locked = stats->horizontal_locked && stats->vertical_locked;
-    printf("C5VRX_CVBS_LOCK running=%u h_locked=%u v_locked=%u hsyncs=%u vsyncs=%u frames_completed=%u frames_sent=%u frames_dropped=%u rejected_pulses=%u lock_acquisitions=%u lock_losses=%u line_period_samples=%u line_rate_millihz=%u hsync_width=%u vsync_width=%u threshold=%u timing=%s classification=%s\n",
+    printf("C5VRX_CVBS_LOCK running=%u usb_consumer_active=%u usb_worker_active=%u usb_session_epoch=%u usb_transport_stalls=%u usb_stale_session_drops=%u usb_worker_time_us=%u burst_locked=%u burst_locks=%u h_locked=%u v_locked=%u hsyncs=%u vsyncs=%u frames_completed=%u frames_sent=%u frames_dropped=%u rejected_pulses=%u lock_acquisitions=%u lock_losses=%u line_period_samples=%u line_rate_millihz=%u hsync_width=%u vsync_width=%u threshold=%u timing=%s classification=%s\n",
            c5vrx_usb_preview_running() ? 1u : 0u,
+           stats->consumer_active ? 1u : 0u,
+           stats->worker_active ? 1u : 0u,
+           (unsigned)stats->session_epoch,
+           (unsigned)stats->transport_stalls,
+           (unsigned)stats->stale_session_drops,
+           (unsigned)stats->worker_time_us,
+           stats->burst_locked ? 1u : 0u,
+           (unsigned)stats->burst_locks,
            stats->horizontal_locked ? 1u : 0u,
            stats->vertical_locked ? 1u : 0u,
            (unsigned)stats->horizontal_syncs, (unsigned)stats->vertical_syncs,
@@ -249,7 +302,13 @@ static void run_cvbs_lock_probe(uint32_t duration_ms)
     c5vrx_usb_preview_stats_t before = {0}, after = {0};
     c5vrx_usb_preview_get_stats(&before);
     const int64_t start_us = esp_timer_get_time();
-    vTaskDelay(pdMS_TO_TICKS(duration_ms));
+    uint32_t remaining_ms = duration_ms;
+    while (remaining_ms) {
+        const uint32_t slice = remaining_ms > 250u ? 250u : remaining_ms;
+        c5vrx_usb_preview_keepalive();
+        vTaskDelay(pdMS_TO_TICKS(slice));
+        remaining_ms -= slice;
+    }
     const uint64_t elapsed_us = (uint64_t)(esp_timer_get_time() - start_us);
     c5vrx_usb_preview_get_stats(&after);
 
@@ -390,7 +449,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CAPTURE_PHASE8_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CAPTURE_PHASE8_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -498,13 +557,15 @@ static void handle_line(char *line)
         strcasecmp(line, "USB_PREVIEW_START") != 0 &&
         strcasecmp(line, "USB PREVIEW STOP") != 0 &&
         strcasecmp(line, "USB_PREVIEW_STOP") != 0 &&
+        strcasecmp(line, "USB PREVIEW KEEPALIVE") != 0 &&
+        strcasecmp(line, "USB_PREVIEW_KEEPALIVE") != 0 &&
         strcasecmp(line, "CVBS LOCK STATUS") != 0 &&
         strcasecmp(line, "CVBS_LOCK_STATUS") != 0 &&
         strncasecmp(line, "CVBS LOCK PROBE ", 16) != 0 &&
         strncasecmp(line, "CVBS_LOCK_PROBE_", 16) != 0 &&
         strcasecmp(line, "PIPELINE STATS") != 0 &&
         strcasecmp(line, "PIPELINE_STATS") != 0) {
-        printf("C5VRX_ERR receiver-busy owner=LIVE_PIPELINE allowed=STATUS,CAPABILITIES,LIVE_STOP,USB_PREVIEW,PIPELINE_STATS\n");
+        printf("C5VRX_ERR receiver-busy owner=LIVE_PIPELINE allowed=STATUS,CAPABILITIES,LIVE_STOP,USB_PREVIEW_START_STOP_KEEPALIVE,PIPELINE_STATS\n");
         fflush(stdout);
         return;
     }
@@ -512,7 +573,7 @@ static void handle_line(char *line)
         const char *reason = NULL;
         const c5vrx_consumer_strategy_t strategy =
             c5vrx_select_consumer(&s_capabilities, &reason);
-        printf("C5VRX_CAPABILITIES measured_source_rate=%u source_bandwidth_known=%u phase_continuity_valid=%u continuous_wrap_valid=%u writer_position_valid=%u adjacent_memory_valid=%u pipeline_service_headroom_valid=%u selected_ring_block_words=%u ring_block_bench_seen_mask=0x%02x ring_block_bench_pass_mask=0x%02x hardware_decimation_available=%u sparse_factor_allowed=%u bitscrambler_path_available=%u cpu_margin_percent=%d selected=%s fail_reason=%s\n",
+        printf("C5VRX_CAPABILITIES measured_source_rate=%u source_bandwidth_known=%u phase_continuity_valid=%u continuous_wrap_valid=%u writer_position_valid=%u adjacent_memory_valid=%u pipeline_service_headroom_valid=%u selected_ring_block_words=%u ring_block_bench_seen_mask=0x%02x ring_block_bench_pass_mask=0x%02x hardware_decimation_available=%u sparse_factor_allowed=%u physical_burst_gate_passed=%u bitscrambler_path_available=%u cpu_margin_percent=%d selected=%s fail_reason=%s\n",
                (unsigned)s_capabilities.measured_source_rate,
                s_capabilities.source_bandwidth_known ? 1u : 0u,
                s_capabilities.phase_continuity_valid ? 1u : 0u,
@@ -524,6 +585,7 @@ static void handle_line(char *line)
                s_ring_block_bench_seen, s_ring_block_bench_passed,
                s_capabilities.hardware_decimation_available ? 1u : 0u,
                s_capabilities.sparse_factor_allowed,
+               s_physical_burst_gate_passed ? 1u : 0u,
                s_capabilities.bitscrambler_path_available ? 1u : 0u,
                s_capabilities.cpu_margin_percent,
                c5vrx_consumer_strategy_name(strategy), reason ? reason : "NONE");
@@ -560,6 +622,16 @@ static void handle_line(char *line)
                (int)err,
                c5vrx_consumer_strategy_name(strategy),
                classification, reason ? reason : "NONE");
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "APPLY PHYSICAL BURST GATE CONFIRMED") == 0 ||
+        strcasecmp(line, "APPLY_PHYSICAL_BURST_GATE_CONFIRMED") == 0) {
+        /* This volatile attestation is entered only after the archived scope
+         * report passes PAL and NTSC burst amplitude/frequency/phase. A reboot,
+         * RF-capability invalidation, or failed kernel self-test revokes it. */
+        s_physical_burst_gate_passed = true;
+        select_measured_ring_block();
+        printf("C5VRX_PHYSICAL_BURST_GATE passed=1 persistence=UNTIL_REBOOT_OR_INVALIDATION classification=OPERATOR_CONFIRMED_ARCHIVED_MEASUREMENT_REQUIRED\n");
         fflush(stdout); return;
     }
     unsigned measured_bandwidth = 0, measured_factor = 0;
@@ -669,7 +741,7 @@ static void handle_line(char *line)
     if (strcasecmp(line, "USB PREVIEW START") == 0 ||
         strcasecmp(line, "USB_PREVIEW_START") == 0) {
         const esp_err_t err = c5vrx_usb_preview_start();
-        printf("C5VRX_USB_PREVIEW state=START width=%u height=%u encoding=GRAY8 code=%d\n",
+        printf("C5VRX_USB_PREVIEW state=START width=%u height=%u encoding=YUV411_PACKED field_native=1 code=%d\n",
                C5VRX_USB_PREVIEW_WIDTH, C5VRX_USB_PREVIEW_HEIGHT, (int)err);
         fflush(stdout);
         return;
@@ -679,6 +751,11 @@ static void handle_line(char *line)
         const esp_err_t err = c5vrx_usb_preview_stop();
         printf("C5VRX_USB_PREVIEW state=STOP code=%d\n", (int)err);
         fflush(stdout);
+        return;
+    }
+    if (strcasecmp(line, "USB PREVIEW KEEPALIVE") == 0 ||
+        strcasecmp(line, "USB_PREVIEW_KEEPALIVE") == 0) {
+        c5vrx_usb_preview_keepalive();
         return;
     }
     if (strcasecmp(line, "CVBS LOCK STATUS") == 0 ||
@@ -719,6 +796,19 @@ static void handle_line(char *line)
         const esp_err_t err = c5vrx_bench_parlio();
         if (err == ESP_OK) s_parlio_bench_passed = true;
         printf("C5VRX_BENCH_DONE target=PARLIO code=%d\n", (int)err);
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "BENCH PARLIO CLOCKS") == 0 ||
+        strcasecmp(line, "BENCH_PARLIO_CLOCKS") == 0) {
+        static const uint32_t clocks[] = {
+            16000000u, 20000000u, 24000000u, 26666667u, 30000000u};
+        esp_err_t err = ESP_OK;
+        for (unsigned i = 0; i < sizeof(clocks) / sizeof(clocks[0]); ++i) {
+            const esp_err_t candidate = c5vrx_bench_parlio_clock(clocks[i]);
+            if (err == ESP_OK && candidate != ESP_OK) err = candidate;
+        }
+        printf("C5VRX_BENCH_DONE target=PARLIO_CLOCK_MATRIX code=%d\n",
+               (int)err);
         fflush(stdout); return;
     }
     if (strcasecmp(line, "BENCH USB PREVIEW") == 0 ||
@@ -763,12 +853,55 @@ static void handle_line(char *line)
         }
         esp_err_t err = start_ring_live(
             (c5vrx_rf_dump_mode_t)ring_bench_mode, ring_bench_words);
+        const bool ring_started = err == ESP_OK;
+        c5vrx_cvbs_live_out_stats_t av_before = {0}, av_workload_after = {0},
+                                      av_after = {0};
+        bool qualification_started = false;
+        c5vrx_cvbs_sync_tracker_t acquired_timing = {0};
+        const TickType_t acquisition_start = xTaskGetTickCount();
+        while (err == ESP_OK) {
+            c5vrx_live_pipeline_get_timing(&acquired_timing);
+            if (acquired_timing.horizontal_locked &&
+                acquired_timing.vertical_locked &&
+                acquired_timing.standard != C5VRX_VIDEO_STANDARD_UNKNOWN)
+                break;
+            if (xTaskGetTickCount() - acquisition_start >=
+                pdMS_TO_TICKS(250u)) {
+                err = ESP_ERR_TIMEOUT;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(1u));
+        }
+        if (err == ESP_OK) {
+            /* Startup continuity filler is legal. Qualification begins only
+             * after the canonical authority has acquired H+V+standard. */
+            c5vrx_cvbs_live_out_get_stats(&av_before);
+            c5vrx_cvbs_live_out_qualification_begin(UINT32_MAX);
+            qualification_started = true;
+        }
         if (ring_bench_mode == 0u && ring_bench_ms == 1000u)
             s_capabilities.bitscrambler_path_available = false;
         if (err == ESP_OK) vTaskDelay(pdMS_TO_TICKS(ring_bench_ms));
         c5vrx_stream_stats_t pipeline = {0};
         c5vrx_live_ring_stats_t ring = {0};
-        if (err == ESP_OK) err = stop_live_sources(&pipeline, &ring);
+        if (qualification_started) {
+            c5vrx_cvbs_live_out_get_stats(&av_workload_after);
+            c5vrx_cvbs_live_out_qualification_end();
+        }
+        if (ring_started) {
+            const esp_err_t stop_err = stop_live_sources(&pipeline, &ring);
+            if (err == ESP_OK) err = stop_err;
+        }
+        c5vrx_cvbs_live_out_get_stats(&av_after);
+        const bool av_pass =
+            qualification_started &&
+            av_before.guardian_running &&
+            av_workload_after.mailbox_drops == av_before.mailbox_drops &&
+            av_workload_after.qualification_underruns ==
+                av_before.qualification_underruns &&
+            av_workload_after.phase_mismatch_drops ==
+                av_before.phase_mismatch_drops &&
+            av_after.guardian_failures == av_before.guardian_failures;
         const bool rate_pass = s_capabilities.measured_source_rate &&
             (uint64_t)pipeline.achieved_input_rate_hz * 100u >=
                 (uint64_t)s_capabilities.measured_source_rate * 90u;
@@ -777,7 +910,7 @@ static void handle_line(char *line)
             ring.wraps_observed > 0u &&
             ring.deadline_headroom_x1000 >= 2000u &&
             pipeline.dropped_rf_blocks == 0u &&
-            pipeline.output_underruns == 0u && rate_pass;
+            pipeline.output_underruns == 0u && av_pass && rate_pass;
         const uint64_t available_cycles =
             (uint64_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000u * ring_bench_ms;
         const unsigned copy_cpu_percent = available_cycles ?
@@ -798,7 +931,7 @@ static void handle_line(char *line)
             select_measured_ring_block();
         }
         print_ring_stats(&ring);
-        printf("C5VRX_BENCH_RING_PIPELINE mode=%u duration_ms=%u block_words=%u blocks=%llu input_rate=%u measured_source_rate=%u rate_pass=%u copy_bytes_per_second=%llu copy_cycles_total=%llu copy_cpu_percent=%u zero_copy_action=%s dropped=%llu output_underruns=%llu deadline_headroom_x1000=%u two_x_deadline_headroom_pass=%u synthetic_margin_pass=%u matrix_seen_mask=0x%02x matrix_pass_mask=0x%02x selected_block_words=%u classification=%s code=%d\n",
+        printf("C5VRX_BENCH_RING_PIPELINE mode=%u duration_ms=%u block_words=%u blocks=%llu input_rate=%u measured_source_rate=%u rate_pass=%u copy_bytes_per_second=%llu copy_cycles_total=%llu copy_cpu_percent=%u zero_copy_action=%s dropped=%llu output_underruns=%llu av_mailbox_drops=%llu av_qualification_underruns=%llu av_phase_mismatch_drops=%llu av_guardian_failures=%llu av_pass=%u deadline_headroom_x1000=%u two_x_deadline_headroom_pass=%u synthetic_margin_pass=%u matrix_seen_mask=0x%02x matrix_pass_mask=0x%02x selected_block_words=%u classification=%s code=%d\n",
                ring_bench_mode, ring_bench_ms, ring_bench_words,
                (unsigned long long)pipeline.blocks_processed,
                (unsigned)pipeline.achieved_input_rate_hz,
@@ -809,6 +942,11 @@ static void handle_line(char *line)
                copy_cpu_percent, zero_copy_action,
                (unsigned long long)pipeline.dropped_rf_blocks,
                (unsigned long long)pipeline.output_underruns,
+               (unsigned long long)(av_workload_after.mailbox_drops - av_before.mailbox_drops),
+               (unsigned long long)(av_workload_after.qualification_underruns - av_before.qualification_underruns),
+               (unsigned long long)(av_workload_after.phase_mismatch_drops - av_before.phase_mismatch_drops),
+               (unsigned long long)(av_after.guardian_failures - av_before.guardian_failures),
+               av_pass ? 1u : 0u,
                (unsigned)ring.deadline_headroom_x1000,
                ring.deadline_headroom_x1000 >= 2000u ? 1u : 0u,
                s_synthetic_pipeline_passed ? 1u : 0u,
@@ -971,11 +1109,13 @@ static void handle_line(char *line)
         if (c5vrx_live_pipeline_running() || c5vrx_cvbs_test_running()) {
             printf("C5VRX_ERR nearlive-already-running\n"); fflush(stdout); return;
         }
-        esp_err_t err = c5vrx_finite_chain_source_create(&s_finite_source, 16384u);
-        if (err == ESP_OK) err = c5vrx_cvbs_live_out_start(4096u);
+        esp_err_t err = c5vrx_usb_preview_prepare();
+        if (err == ESP_OK)
+            err = c5vrx_finite_chain_source_create(&s_finite_source, 16384u);
         const c5vrx_live_pipeline_config_t config = {
             .source = &s_finite_source, .sink = live_output_with_preview,
             .maximum_input_words = 16384u,
+            .wbfm_kernel = C5VRX_CFG_WBFM_KERNEL,
             .conditioner = {
                 .bias_q8 = CONFIG_C5VRX_LIVE_CVBS_BIAS_Q8,
                 .gain_q8 = CONFIG_C5VRX_LIVE_CVBS_GAIN_Q8,
@@ -1012,9 +1152,14 @@ static void handle_line(char *line)
         strcasecmp(line, "WBFM_HWTEST") == 0) {
         printf("C5VRX_WBFM_HWTEST_BEGIN\n");
         fflush(stdout);
-        const esp_err_t err = c5vrx_wbfm_hw_self_test();
-        if (err == ESP_OK) s_wbfm_self_test_passed = true;
-        printf("C5VRX_WBFM_HWTEST_DONE code=%d\n", (int)err);
+        const esp_err_t err =
+            c5vrx_wbfm_hw_self_test_kernel(C5VRX_CFG_WBFM_KERNEL);
+        s_wbfm_self_test_passed = err == ESP_OK;
+        if (err != ESP_OK) s_physical_burst_gate_passed = false;
+        select_measured_ring_block();
+        printf("C5VRX_WBFM_HWTEST_DONE kernel=phase%u code=%d\n",
+               C5VRX_CFG_WBFM_KERNEL == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u,
+               (int)err);
         fflush(stdout);
         return;
     }

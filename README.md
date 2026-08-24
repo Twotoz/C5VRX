@@ -696,16 +696,31 @@ SDKCONFIG_DEFAULTS="sdkconfig.defaults.xiao_receiver_console;sdkconfig.defaults.
 
 ---
 
-## What still has to be proven
+## Issue 5 continuous production path
+
+The continuous branch now includes phase6/phase8 hardware WBFM candidates,
+continuous sparse I/Q-DC correction, one canonical PAL/NTSC timing epoch,
+structure-derived CVBS levels, a legal-waveform PARLIO continuity guardian,
+native-rate production output plus qualification-only clock candidates, and an
+on-demand packed-YUV411 USB side reader. USB is preallocated before LIVE and
+does no recurring decode work without an actively draining host lease.
+
+The exact scope, 75 Ω, latency, colour, USB-abuse and 60-minute soak matrix is
+documented in
+[`research/issue-5-production-validation.md`](research/issue-5-production-validation.md).
+
+## What still has to be proven on hardware
 
 - Does the recovered dump capture the **live 5 GHz receive path** with an analog VTX?
 - What is the actual effective sample rate and receive bandwidth?
 - Does arbitrary frequency tuning move the real receiver center?
-- Can the finite dump producer be tapped continuously or chained with tiny gaps?
+- Does the already guarded circular producer remain gapless with the complete
+  WBFM/timing/AV load at the selected block and clock?
 - Does `WBFM HWTEST` give zero mismatches on actual C5 silicon and what sustained throughput is available?
 - What polarity/gain/filtering maps real WBFM output to calibrated CVBS voltage codes?
 - Does the streamed six-bit PARLIO resistor-DAC produce clean, correctly scaled PAL CVBS on physical hardware?
-- Can the joined RF → WBFM → CVBS path keep latency low enough for FPV?
+- Does the joined RF → WBFM → CVBS path meet the sub-millisecond added-latency
+  target, retain real PAL/NTSC colour, and outperform the comparison RX5808?
 
 Until those are measured, C5VRX remains a research project rather than a
 receiver you should fly with.

@@ -216,6 +216,21 @@ config C5VRX_LIVE_CVBS_INVERT
     bool "Invert live RF discriminator polarity"
     default n
 
+choice C5VRX_WBFM_KERNEL
+    prompt "Continuous hardware WBFM phase kernel"
+    default C5VRX_WBFM_KERNEL_PHASE8
+    help
+        Both candidates retain every fourth IQ sample and use the same
+        BitScrambler/GDMA dataplane. Phase8 preserves additional discriminator
+        precision before the final 6-bit CVBS mapping. Confirm headroom and
+        burst fidelity on hardware before marking the production gate passed.
+
+config C5VRX_WBFM_KERNEL_PHASE6
+    bool "phase6 reference"
+config C5VRX_WBFM_KERNEL_PHASE8
+    bool "phase8 high-fidelity candidate"
+endchoice
+
 config C5VRX_LIVE_CVBS_CLAMP_MIN
     int "Live RF conditioner minimum output code"
     range 0 63
