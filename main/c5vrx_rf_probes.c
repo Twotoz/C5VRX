@@ -166,16 +166,6 @@ esp_err_t c5vrx_producer_wrap_flag_probe(c5vrx_rf_dump_mode_t mode)
     err = c5vrx_rf_dump_start();
     if (err != ESP_OK) { (void)c5vrx_rf_dump_stop(); return err; }
 
-    /* Exact writer tracking cannot sleep across multiple potential wraps.
-     * The single-core idle task is normally watched, so temporarily remove
-     * only that idle task during the bounded tight-poll proof and restore it
-     * immediately afterward. The producer/control task itself is unchanged. */
-    TaskHandle_t idle_task = xTaskGetIdleTaskHandleForCore(xPortGetCoreID());
-    const bool idle_wdt_removed = idle_task &&
-        esp_task_wdt_status(idle_task) == ESP_OK &&
-        esp_task_wdt_delete(idle_task) == ESP_OK;
-    result->idle_watchdog_temporarily_unsubscribed = idle_wdt_removed;
-
     const uint32_t start_cycle = (uint32_t)esp_cpu_get_cycle_count();
     const int64_t start_us = esp_timer_get_time();
     uint32_t previous = status.pointer;
@@ -200,7 +190,6 @@ esp_err_t c5vrx_producer_wrap_flag_probe(c5vrx_rf_dump_mode_t mode)
     const bool flag_during = status.wrap_or_done;
     const bool enabled_during = status.enabled;
     const esp_err_t stop_err = c5vrx_rf_dump_stop();
-    if (idle_wdt_removed) (void)esp_task_wdt_add(idle_task);
     if (err == ESP_OK) err = stop_err;
 
     const char *classification = "NO_CORRELATION_OBSERVED";
@@ -261,6 +250,16 @@ esp_err_t c5vrx_producer_phase_continuity_probe(
     if (err != ESP_OK) return err;
     err = c5vrx_rf_dump_start();
     if (err != ESP_OK) { (void)c5vrx_rf_dump_stop(); return err; }
+
+    /* Exact writer tracking cannot sleep across multiple potential wraps.
+     * The single-core idle task is normally watched, so temporarily remove
+     * only that idle task during the bounded tight-poll proof and restore it
+     * immediately afterward. The producer/control task itself is unchanged. */
+    TaskHandle_t idle_task = xTaskGetIdleTaskHandleForCore(xPortGetCoreID());
+    const bool idle_wdt_removed = idle_task &&
+        esp_task_wdt_status(idle_task) == ESP_OK &&
+        esp_task_wdt_delete(idle_task) == ESP_OK;
+    result->idle_watchdog_temporarily_unsubscribed = idle_wdt_removed;
 
     c5vrx_rf_dump_status_t status = {0};
     (void)c5vrx_rf_dump_get_status(&status);
@@ -412,6 +411,7 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
         ++result->adjacent_canary_failures;
     const bool changed = dump_fingerprint() != content_before;
     const esp_err_t stop_err = c5vrx_rf_dump_stop();
+    if (idle_wdt_removed) (void)esp_task_wdt_add(idle_task);
     if (err == ESP_OK) err = stop_err;
     const size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     const intptr_t heap_delta = (intptr_t)heap_after - (intptr_t)heap_before;
