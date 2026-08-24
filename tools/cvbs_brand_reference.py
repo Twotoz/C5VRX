@@ -17,6 +17,15 @@ def text_pixel(text, x, y, ox, oy, scale):
     return py < 7 and ci < len(text) and col < 5 and bool(
         FONT.get(text[ci], (0,)*7)[py] & (1 << (4-col)))
 
+def snow_codes(count, seed=0xC5F0A17D):
+    values = []
+    state = seed
+    for _ in range(count):
+        lsb = state & 1
+        state = (state >> 1) ^ (0xD0000001 if lsb else 0)
+        values.append((state >> 16) & 0xFF)
+    return values
+
 def self_test():
     # The 12-second transition is exactly 300 complete 25 Hz frames. Content
     # changes only while the renderer wraps to half-line zero.
@@ -29,10 +38,25 @@ def self_test():
                             for y in range(288) for x in range(1040))
     assert splash_pixels > 0 and diagnostic_pixels > 0
     assert splash_pixels != diagnostic_pixels
+    snow = snow_codes(4096)
+    assert len(set(snow)) > 240
+    assert min(snow) < 8 and max(snow) > 247
+    assert snow[:1024] != snow[1024:2048]
+    # A request made within a frame remains pending until half-line zero.
+    active, requested = "LOGO", "SNOW"
+    for half_line in range(1, 1250):
+        if half_line == 0:
+            active = requested
+        assert active == "LOGO"
+    active = requested  # next frame boundary
+    assert active == "SNOW"
+    # Missing later samples never resets unlocked static back to the logo.
+    assert active == "SNOW"
     print("CVBS branded scanline renderer self-test PASS")
     print("  splash duration: 300 frames = 12.0 s")
     print("  content transition: frame boundary only")
     print("  framebuffer allocation: none")
+    print("  unlocked sample state: persistent moving snow")
 
 if __name__ == "__main__":
     self_test()

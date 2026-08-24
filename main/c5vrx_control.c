@@ -343,7 +343,7 @@ static void print_status(void)
         return;
     }
 
-    printf("C5VRX_STATUS firmware=%s version=%s idf=%s protocol=8 profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d phase8_capture=1 heap_internal_free=%u heap_internal_min=%u heap_internal_largest=%u heap_dma_free=%u heap_dma_largest=%u\n",
+    printf("C5VRX_STATUS firmware=%s version=%s idf=%s protocol=8 profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d av_display=%s phase8_capture=1 heap_internal_free=%u heap_internal_min=%u heap_internal_largest=%u heap_dma_free=%u heap_dma_largest=%u\n",
            app->project_name,
            app->version,
            esp_get_idf_version(),
@@ -360,6 +360,7 @@ static void print_status(void)
            (unsigned)wifi.active_primary_channel,
            s_state.direct_tune_enabled ? 1 : 0,
            c5vrx_cvbs_test_running() ? 1 : 0,
+           c5vrx_cvbs_display_name(c5vrx_cvbs_output_display()),
            (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
@@ -1161,7 +1162,7 @@ static void handle_line(char *line)
     if (strcasecmp(line, "CVBS TEST") == 0 || strcasecmp(line, "CVBS_TEST") == 0) {
         const esp_err_t err = c5vrx_cvbs_test_start();
         if (err == ESP_OK) {
-            printf("C5VRX_OK cvbs-test=1 standard=PAL625 fields_hz=50 frames_hz=25 sample_rate=20000000\n");
+            printf("C5VRX_OK cvbs-test=1 av_always_on=1 display=TEST standard=PAL625 fields_hz=50 frames_hz=25 sample_rate=20000000\n");
         } else {
             printf("C5VRX_ERR cvbs-test code=%d\n", (int)err);
         }
@@ -1172,7 +1173,7 @@ static void handle_line(char *line)
     if (strcasecmp(line, "CVBS STOP") == 0 || strcasecmp(line, "CVBS_STOP") == 0) {
         const esp_err_t err = c5vrx_cvbs_test_stop();
         if (err == ESP_OK) {
-            printf("C5VRX_OK cvbs-test=0\n");
+            printf("C5VRX_OK cvbs-test=0 av_always_on=1 display=LOGO\n");
         } else {
             printf("C5VRX_ERR cvbs-stop code=%d\n", (int)err);
         }
@@ -1269,6 +1270,12 @@ static void handle_line(char *line)
         printf("C5VRX_PHASE8_CAPTURE_BEGIN samples=%u\n", samples);
         fflush(stdout);
         const esp_err_t err = c5vrx_adc_dump_capture_phase8(samples);
+        if (err == ESP_OK) {
+            /* A varying RF block exists but bounded captures cannot establish
+             * gapless H/V lock. Snow is the honest unlocked state and remains
+             * selected across later sample gaps instead of flashing LOGO. */
+            (void)c5vrx_cvbs_output_set_display(C5VRX_CVBS_DISPLAY_SNOW);
+        }
         printf("C5VRX_PHASE8_CAPTURE_DONE code=%d\n", (int)err);
         fflush(stdout);
         return;
@@ -1283,6 +1290,8 @@ static void handle_line(char *line)
         printf("C5VRX_CAPTURE_BEGIN samples=%u\n", samples);
         fflush(stdout);
         const esp_err_t err = c5vrx_adc_dump_capture(samples, true);
+        if (err == ESP_OK)
+            (void)c5vrx_cvbs_output_set_display(C5VRX_CVBS_DISPLAY_SNOW);
         printf("C5VRX_CAPTURE_DONE code=%d\n", (int)err);
         fflush(stdout);
         return;
