@@ -880,7 +880,9 @@ class C5VRXApp(tk.Tk):
             except ValueError as exc:
                 self.sink.write(f"C5VRX_PREVIEW_DROP reason={exc}\n")
                 return
-            self.after(0, self._show_rgb_frame, rgb, width, height)
+            self.after(
+                0, self._show_yuv_rgb_frame, rgb, width, height,
+                bool(flags & 2))
         else:
             if stride < width:
                 self.sink.write("C5VRX_PREVIEW_DROP reason=STRIDE\n")
@@ -2375,7 +2377,8 @@ class C5VRXApp(tk.Tk):
         self.preview_status_var.set(f"Live USB preview: {width}×{height} GRAY8, CRC valid")
         return True
 
-    def _show_rgb_frame(self, payload: bytes, width: int, height: int) -> bool:
+    def _show_yuv_rgb_frame(self, payload: bytes, width: int, height: int,
+                            burst_locked: bool) -> bool:
         if len(payload) != width * height * 3:
             self.preview_status_var.set(
                 f"RGB render rejected: {len(payload)} bytes for {width}x{height}")
@@ -2393,7 +2396,8 @@ class C5VRXApp(tk.Tk):
             return False
         self._redraw_preview()
         self.preview_status_var.set(
-            f"Live USB preview: {width}×{height} YUV411 color, CRC valid")
+            f"Live USB preview: {width}×{height} YUV411, CRC valid, "
+            f"{'burst locked' if burst_locked else 'chroma unlocked'}")
         return True
 
     def _show_rgb_frame(self, payload: bytes, width: int, height: int) -> bool:
