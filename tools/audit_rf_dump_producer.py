@@ -40,7 +40,12 @@ def main() -> int:
         failures.append("mode0-software-trigger-pulse")
     if not re.search(r"REG32\(DUMP_CTRL\) &= ~CTRL_ENABLE_BIT", producer):
         failures.append("stop-disable")
-    if "SOC_RESERVE_MEMORY_REGION(0x40830000u, 0x40840000u" not in producer:
+    if not re.search(
+        r"SOC_RESERVE_MEMORY_REGION\(C5VRX_RF_DUMP_PRE_GUARD_ADDR,\s*"
+        r"C5VRX_RF_DUMP_POST_GUARD_ADDR\s*\+\s*"
+        r"C5VRX_RF_DUMP_POST_GUARD_BYTES,\s*c5vrx_rf_dump_ram\)",
+        producer,
+    ):
         failures.append("dump-ram-not-reserved")
     if "if (s_configured || s_running)" not in producer:
         failures.append("double-owner-not-rejected")
