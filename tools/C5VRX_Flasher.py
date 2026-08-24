@@ -49,7 +49,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-24-polarity-locked-hsync"
+APP_BUILD = "video-proof-25-bounded-usb-safe"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -245,6 +245,7 @@ class C5VRXApp(tk.Tk):
         self.serial_write_lock = threading.Lock()
         self.usb_write_retries = 0
         self.usb_write_failures = 0
+        self.usb_transport_stalled = False
         self.iq_words: list[int] = []
         self.iq_capture_active = False
         self.preview_frame: bytes | None = None
@@ -499,7 +500,7 @@ class C5VRXApp(tk.Tk):
         self.capture_16k_btn.pack(side="left")
         self.experimental_live_btn = ttk.Button(
             preview_controls,
-            text="Start USB live preview",
+            text="Start USB live preview (safe)",
             command=self.start_experimental_usb_preview,
         )
         self.experimental_live_btn.pack(side="left", padx=8)
@@ -628,6 +629,7 @@ class C5VRXApp(tk.Tk):
             candidate.rts = False
             candidate.open()
             self.ser = candidate
+            self.usb_transport_stalled = False
             self.serial_stop.clear()
             self.serial_thread = threading.Thread(target=self._serial_reader, daemon=True)
             self.serial_thread.start()
@@ -1104,6 +1106,8 @@ class C5VRXApp(tk.Tk):
 
     def _write_serial_bytes(self, payload: bytes, retries: int = 2) -> bool:
         """Serialize native-USB writes and tolerate bounded Windows stalls."""
+        if self.usb_transport_stalled:
+            return False
         last_error: Exception | None = None
         for attempt in range(retries + 1):
             ser = self.ser
@@ -1134,7 +1138,32 @@ class C5VRXApp(tk.Tk):
             "C5VRX_HOST_USB_WRITE_TIMEOUT "
             f"bytes={len(payload)} retries={retries} "
             f"total_failures={self.usb_write_failures}\n")
+        self.usb_transport_stalled = True
+        self.after(0, self._show_usb_transport_stall)
         return False
+
+    def _show_usb_transport_stall(self) -> None:
+        """Stop command producers after one wedged native-USB transfer."""
+        self.live_iq_active = False
+        self.experimental_live_pending = False
+        self.experimental_live_active = False
+        self.usb_preview_active = False
+        self.usb_preview_receiving = False
+        self.live_iq_transport_ready = False
+        self.live_iq_commands_outstanding = 0
+        self.live_iq_refill_pending = False
+        self.live_iq_watchdog_generation += 1
+        self.live_iq_processing_generation += 1
+        if hasattr(self, "experimental_live_btn"):
+            self.experimental_live_btn.configure(state="normal")
+            self.live_iq_start_btn.configure(state="normal")
+            self.live_iq_fast_start_btn.configure(state="normal")
+            self.live_iq_stop_btn.configure(state="disabled")
+            self.capture_btn.configure(state="normal")
+            self.capture_16k_btn.configure(state="normal")
+        self.preview_status_var.set(
+            "USB transport stopped after one write timeout; reconnect or "
+            "power-cycle the XIAO before retrying")
 
     def send_command(self, command: str) -> bool:
         normalized = command.strip()
@@ -1143,6 +1172,8 @@ class C5VRXApp(tk.Tk):
             self.after(
                 0, messagebox.showwarning,
                 APP_TITLE, "Connect to C5VRX first.")
+            return False
+        if self.usb_transport_stalled:
             return False
         self.session.record_command(normalized)
         self.sink.write(f"> {normalized}\n")
@@ -1171,22 +1202,16 @@ class C5VRXApp(tk.Tk):
         self.capture_iq()
 
     def start_experimental_usb_preview(self) -> None:
-        if not self.ser or not self.ser.is_open:
-            messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
-            return
-        if self.live_iq_active:
-            self.stop_live_iq_video("switching to experimental USB live")
-        self.experimental_live_pending = True
-        self.experimental_live_active = False
-        self.usb_preview_active = False
-        self.usb_preview_receiving = False
-        self.preview_status_var.set(
-            "Starting experimental RF ring; selecting a RAM-safe block size")
-        if not self.send_command("LIVE EXPERIMENTAL START 0"):
-            self.experimental_live_pending = False
-            self.preview_status_var.set("Could not send experimental live command")
+        # Continuous RF dump ownership removes CPU access to HP-SRAM on the
+        # C5. Real XIAO hardware proved that issuing the old experimental ring
+        # command wedges native USB. Use bounded LP-kernel Phase8 captures;
+        # every capture restores CPU SRAM ownership before USB transmission.
+        self._start_live_iq_video(fast=False)
 
     def stop_usb_preview(self) -> None:
+        if self.live_iq_active:
+            self.stop_live_iq_video("user")
+            return
         was_experimental = (
             self.experimental_live_pending or self.experimental_live_active)
         self.experimental_live_pending = False
@@ -1218,6 +1243,14 @@ class C5VRXApp(tk.Tk):
     def _start_live_iq_video(self, fast: bool) -> None:
         if not self.ser or not self.ser.is_open:
             messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
+            return
+        if self.usb_transport_stalled:
+            messagebox.showwarning(
+                APP_TITLE,
+                "The USB transport stalled. Reconnect or power-cycle the "
+                "XIAO before starting another preview.")
+            return
+        if self.live_iq_active:
             return
         self.live_iq_active = True
         self.usb_preview_active = True
@@ -1289,6 +1322,7 @@ class C5VRXApp(tk.Tk):
         self.live_iq_start_btn.configure(state="disabled")
         self.live_iq_fast_start_btn.configure(state="disabled")
         self.live_iq_stop_btn.configure(state="normal")
+        self.experimental_live_btn.configure(state="disabled")
         self.capture_btn.configure(state="disabled")
         self.capture_16k_btn.configure(state="disabled")
         processing_generation = self.live_iq_processing_generation
@@ -1308,16 +1342,25 @@ class C5VRXApp(tk.Tk):
         )
         self.preview_status_var.set(
             f"{APP_BUILD}: starting {'FAST pipelined' if fast else 'single-request'} "
-            "A1 IQ -> PAL/NTSC raster; VTX must be A1 (5865 MHz)")
+            "bounded Phase8 -> PAL/NTSC raster; VTX must be A1 (5865 MHz)")
         self.send_command("BW 40")
         self.after(100, lambda: self.send_command("SET A 1"))
-        self.after(220, lambda: self.send_command("USB PREVIEW START"))
-        self.after(470, self._usb_preview_keepalive)
+        self.after(220, self._start_bounded_capture_transport)
         watchdog_generation = self.live_iq_watchdog_generation
         self.after(500, self._live_iq_watchdog, watchdog_generation)
 
+    def _start_bounded_capture_transport(self) -> None:
+        if (not self.live_iq_active or self.usb_transport_stalled or
+                not self.ser or not self.ser.is_open):
+            return
+        # CAPTURE PHASE8 already uses the CRC-framed binary transport. It does
+        # not require the device-side YUV preview worker or its 64 KiB buffers.
+        self.live_iq_transport_ready = True
+        self.live_video_pending_status = (
+            "Bounded Phase8 transport ready; requesting fresh A1 capture")
+        self._refill_live_iq_pipeline()
+
     def stop_live_iq_video(self, reason: str = "user") -> None:
-        was_active = self.live_iq_active
         self.live_iq_active = False
         self.usb_preview_active = False
         self.usb_preview_receiving = False
@@ -1331,10 +1374,9 @@ class C5VRXApp(tk.Tk):
             self.live_iq_start_btn.configure(state="normal")
             self.live_iq_fast_start_btn.configure(state="normal")
             self.live_iq_stop_btn.configure(state="disabled")
+            self.experimental_live_btn.configure(state="normal")
             self.capture_btn.configure(state="normal")
             self.capture_16k_btn.configure(state="normal")
-        if was_active and self.ser and self.ser.is_open:
-            self.send_command("USB PREVIEW STOP")
         self.preview_status_var.set(f"IQ video stopped: {reason}")
 
     def _request_live_iq_capture(self) -> bool:

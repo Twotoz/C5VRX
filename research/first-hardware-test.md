@@ -104,9 +104,11 @@ cannot safely retune an arbitrary external generator, so changing the generator
 is the only manual step; capture and classification on the C5 are automated.
 
 Until the bandwidth sweep is complete, `CAPABILITIES` retains
-`source_bandwidth_known=0` and `LIVE START` fails closed. For a lab-only look at
-the implemented ring path, `LIVE EXPERIMENTAL START 0` is available and prints
-`EXPERIMENTAL_RING_SOURCE_UNPROVEN`; its output is not production evidence.
+`source_bandwidth_known=0` and `LIVE START` fails closed. XIAO hardware showed
+that `LIVE EXPERIMENTAL START 0` wedges native USB when the MAC dump engine
+takes HP-SRAM ownership while FreeRTOS remains active. The command now returns
+`reason=HP_SRAM_MAC_OWNERSHIP_WEDGES_FREERTOS_USB`. Use the Receiver Console's
+safe bounded Phase8 preview; do not retry the continuous ring path.
 
 After preserving the sweep data, explicitly import its result for the current
 boot with:

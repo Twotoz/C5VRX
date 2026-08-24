@@ -1,7 +1,9 @@
 # Issue 5 production validation
 
-Software in this branch implements the complete bounded dataplane, but hardware
-claims remain fail-closed. Never infer RF sample rate from finite USB transfer
+Software in this branch contains the candidate dataplane, but hardware claims
+remain fail-closed. XIAO testing proved the ordinary FreeRTOS ring execution is
+not viable while the MAC owns the dump HP-SRAM banks: native USB stops without
+a normal command response. Never infer RF sample rate from finite USB transfer
 time and never mark AV production-ready from a host-only test.
 
 ## Implemented dataplane
@@ -26,8 +28,8 @@ timeline, drops stale side blocks, and parks on lease expiry or transport stall.
    `BENCH PARLIO`. Keep phase8 only if it passes exact hardware output checks,
    the physical burst-quality test and the selected block retains at least 2×
    RF service-deadline headroom.
-2. Run the 1024/2048/4096 `BENCH RING PIPELINE` matrix and the 30-second mode-0
-   ring soak. Production `LIVE START` remains gated by these measurements.
+2. Do not run the continuous ring matrix on the XIAO. Replace the exclusive
+   HP-SRAM ownership design before any production `LIVE START` validation.
 3. Use `PIPELINE STATS` during every run. Required healthy values are zero RF
    overrun, zero ambiguity, zero AV mailbox drop after lock, queue occupancy
    near empty, and no unexplained epoch change.
@@ -40,7 +42,7 @@ timeline, drops stale side blocks, and parks on lease expiry or transport stall.
    below, send `APPLY PHYSICAL BURST GATE CONFIRMED`. This volatile gate is
    cleared by reboot, RF-capability invalidation, or a failed configured-kernel
    self-test. Until it is recorded, production `LIVE START` remains disabled;
-   use the explicitly experimental path for measurement work.
+   use bounded Phase8 captures for measurement work.
 
 ## Scope and 75-ohm gates
 
