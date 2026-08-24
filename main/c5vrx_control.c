@@ -824,7 +824,8 @@ static void handle_line(char *line)
         esp_err_t err = start_ring_live(
             (c5vrx_rf_dump_mode_t)ring_bench_mode, ring_bench_words);
         const bool ring_started = err == ESP_OK;
-        c5vrx_cvbs_live_out_stats_t av_before = {0}, av_after = {0};
+        c5vrx_cvbs_live_out_stats_t av_before = {0}, av_workload_after = {0},
+                                      av_after = {0};
         bool qualification_started = false;
         c5vrx_cvbs_sync_tracker_t acquired_timing = {0};
         const TickType_t acquisition_start = xTaskGetTickCount();
@@ -853,17 +854,20 @@ static void handle_line(char *line)
         if (err == ESP_OK) vTaskDelay(pdMS_TO_TICKS(ring_bench_ms));
         c5vrx_stream_stats_t pipeline = {0};
         c5vrx_live_ring_stats_t ring = {0};
+        if (qualification_started) {
+            c5vrx_cvbs_live_out_get_stats(&av_workload_after);
+            c5vrx_cvbs_live_out_qualification_end();
+        }
         if (ring_started) {
             const esp_err_t stop_err = stop_live_sources(&pipeline, &ring);
             if (err == ESP_OK) err = stop_err;
         }
         c5vrx_cvbs_live_out_get_stats(&av_after);
-        if (qualification_started) c5vrx_cvbs_live_out_qualification_end();
         const bool av_pass =
             qualification_started &&
             av_before.guardian_running &&
-            av_after.mailbox_drops == av_before.mailbox_drops &&
-            av_after.qualification_underruns ==
+            av_workload_after.mailbox_drops == av_before.mailbox_drops &&
+            av_workload_after.qualification_underruns ==
                 av_before.qualification_underruns &&
             av_after.guardian_failures == av_before.guardian_failures;
         const bool rate_pass = s_capabilities.measured_source_rate &&
@@ -906,8 +910,8 @@ static void handle_line(char *line)
                copy_cpu_percent, zero_copy_action,
                (unsigned long long)pipeline.dropped_rf_blocks,
                (unsigned long long)pipeline.output_underruns,
-               (unsigned long long)(av_after.mailbox_drops - av_before.mailbox_drops),
-               (unsigned long long)(av_after.qualification_underruns - av_before.qualification_underruns),
+               (unsigned long long)(av_workload_after.mailbox_drops - av_before.mailbox_drops),
+               (unsigned long long)(av_workload_after.qualification_underruns - av_before.qualification_underruns),
                (unsigned long long)(av_after.guardian_failures - av_before.guardian_failures),
                av_pass ? 1u : 0u,
                (unsigned)ring.deadline_headroom_x1000,
@@ -1116,9 +1120,12 @@ static void handle_line(char *line)
         strcasecmp(line, "WBFM_HWTEST") == 0) {
         printf("C5VRX_WBFM_HWTEST_BEGIN\n");
         fflush(stdout);
-        const esp_err_t err = c5vrx_wbfm_hw_self_test();
-        if (err == ESP_OK) s_wbfm_self_test_passed = true;
-        printf("C5VRX_WBFM_HWTEST_DONE code=%d\n", (int)err);
+        const esp_err_t err =
+            c5vrx_wbfm_hw_self_test_kernel(C5VRX_CFG_WBFM_KERNEL);
+        s_wbfm_self_test_passed = err == ESP_OK;
+        printf("C5VRX_WBFM_HWTEST_DONE kernel=phase%u code=%d\n",
+               C5VRX_CFG_WBFM_KERNEL == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u,
+               (int)err);
         fflush(stdout);
         return;
     }

@@ -68,6 +68,7 @@ esp_err_t c5vrx_wbfm_hw_probe_dump(size_t sample_count);
  * 10-bit I/Q in RAM and compare the hardware result with a CPU reference.
  */
 esp_err_t c5vrx_wbfm_hw_self_test(void);
+esp_err_t c5vrx_wbfm_hw_self_test_kernel(c5vrx_wbfm_kernel_t kernel);
 
 #ifdef __cplusplus
 }

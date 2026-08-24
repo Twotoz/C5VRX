@@ -68,6 +68,18 @@ static uint8_t coarse_phase6_from_iq(int16_t i, int16_t q)
     return coarse_phase6_from_iq_dc(i, q, 0, 0);
 }
 
+static uint8_t coarse_phase_from_iq_bits(int16_t i, int16_t q,
+                                         unsigned phase_bits)
+{
+    const unsigned i5 = (((uint16_t)i & 0x3ffu) >> 5) & 0x1fu;
+    const unsigned q5 = (((uint16_t)q & 0x3ffu) >> 5) & 0x1fu;
+    float phase = atan2f(coarse_signed_center(q5), coarse_signed_center(i5));
+    if (phase < 0.0f) phase += 2.0f * C5VRX_PI_F;
+    const unsigned modulus = 1u << phase_bits;
+    return (uint8_t)lrintf(
+        phase * ((float)modulus / (2.0f * C5VRX_PI_F)));
+}
+
 uint8_t c5vrx_wbfm_coarse_phase6(uint32_t packed_iq)
 {
     const c5vrx_iq10_sample_t sample = c5vrx_adc_decode_word(packed_iq);
@@ -321,6 +333,16 @@ esp_err_t c5vrx_wbfm_hw_probe_dump(size_t sample_count)
 
 esp_err_t c5vrx_wbfm_hw_self_test(void)
 {
+    return c5vrx_wbfm_hw_self_test_kernel(C5VRX_WBFM_PHASE6_4TO1);
+}
+
+esp_err_t c5vrx_wbfm_hw_self_test_kernel(c5vrx_wbfm_kernel_t kernel)
+{
+    if (kernel > C5VRX_WBFM_PHASE8_4TO1) return ESP_ERR_INVALID_ARG;
+    const unsigned phase_bits =
+        kernel == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u;
+    const unsigned modulus = 1u << phase_bits;
+    const unsigned bias = modulus / 2u;
     const size_t input_bytes = C5VRX_WBFM_TEST_INPUT_WORDS * sizeof(uint32_t);
     const size_t output_bytes = C5VRX_WBFM_TEST_OUTPUT_SAMPLES;
 
@@ -345,17 +367,19 @@ esp_err_t c5vrx_wbfm_hw_self_test(void)
         input[n] = pack_iq10(i, q);
         if ((n % C5VRX_WBFM_TEST_DECIMATION) == 0) {
             kept_phase[n / C5VRX_WBFM_TEST_DECIMATION] =
-                coarse_phase6_from_iq(i, q);
+                coarse_phase_from_iq_bits(i, q, phase_bits);
         }
     }
 
     size_t written = 0;
-    esp_err_t err = c5vrx_wbfm_hw_transform(
-        input,
-        C5VRX_WBFM_TEST_INPUT_WORDS,
-        output,
-        output_bytes,
-        &written);
+    c5vrx_wbfm_hw_context_t *context = NULL;
+    esp_err_t err = c5vrx_wbfm_hw_create_kernel(
+        C5VRX_WBFM_TEST_INPUT_WORDS, kernel, &context);
+    if (err == ESP_OK)
+        err = c5vrx_wbfm_hw_transform_context(
+            context, input, C5VRX_WBFM_TEST_INPUT_WORDS,
+            output, output_bytes, &written);
+    c5vrx_wbfm_hw_destroy(context);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "BitScrambler self-test transform failed: %s",
                  esp_err_to_name(err));
@@ -379,9 +403,8 @@ esp_err_t c5vrx_wbfm_hw_self_test(void)
     /* output[0] is the priming sample after counter reset. */
     for (unsigned k = 1; k < compare_n; ++k) {
         const uint8_t expected = (uint8_t)(
-            C5VRX_WBFM_PHASE_BIAS +
-            kept_phase[k] - kept_phase[k - 1]) & 0x3fu;
-        const uint8_t actual = output[k] & 0x3fu;
+            bias + kept_phase[k] - kept_phase[k - 1]) & (modulus - 1u);
+        const uint8_t actual = output[k];
         if (actual != expected) {
             if (mismatches < 8u) {
                 ESP_LOGE(TAG,
@@ -395,7 +418,8 @@ esp_err_t c5vrx_wbfm_hw_self_test(void)
     }
 
     ESP_LOGI(TAG,
-             "BitScrambler 4:1 WBFM proof: input=%u bytes output=%u bytes mismatches=%u (first byte ignored as priming)",
+             "BitScrambler phase%u 4:1 WBFM proof: input=%u bytes output=%u bytes mismatches=%u (first byte ignored as priming)",
+             phase_bits,
              (unsigned)input_bytes,
              (unsigned)written,
              mismatches);
