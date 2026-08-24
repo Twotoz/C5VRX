@@ -109,6 +109,42 @@ static c5vrx_live_ring_failure_t tracker_failure(
     return C5VRX_RING_FAILURE_READER_INSIDE_GUARD;
 }
 
+/* Keep observing while the reader waits for newly-written words. Returning to
+ * source_task would introduce its 1 ms backoff, which is longer than a full
+ * 16K-word wrap at the expected producer rates and would make the writer
+ * position fundamentally ambiguous. This wait is bounded by the acquire
+ * timeout and continuously refreshes the wrap tracker. */
+static bool observe_until_lag(ring_context_t *ctx, ring_slot_t *slot,
+                              uint64_t required_lag, uint32_t timeout_ms)
+{
+    const uint32_t start_cycle = (uint32_t)esp_cpu_get_cycle_count();
+    uint64_t budget = (uint64_t)timeout_ms * cpu_hz() / 1000u;
+    if (budget > UINT32_MAX) budget = UINT32_MAX;
+
+    while (c5vrx_ring_tracker_lag(&ctx->tracker) < required_lag) {
+        c5vrx_rf_dump_status_t status = {0};
+        if (c5vrx_rf_dump_get_status(&status) != ESP_OK || !status.enabled) {
+            ++ctx->stats.dropped_blocks;
+            fail_ring(ctx, slot, C5VRX_RING_FAILURE_PRODUCER_STOPPED, 0u);
+            return false;
+        }
+        const uint32_t cycle = (uint32_t)esp_cpu_get_cycle_count();
+        const c5vrx_ring_track_result_t tracked =
+            c5vrx_ring_tracker_observe(&ctx->tracker, status.pointer, cycle);
+        if (tracked != C5VRX_RING_TRACK_OK) {
+            fail_ring(ctx, slot, tracker_failure(tracked, false),
+                      c5vrx_ring_tracker_lag(&ctx->tracker));
+            return false;
+        }
+        if (c5vrx_ring_tracker_lag(&ctx->tracker) >= required_lag) return true;
+        if (!timeout_ms || (uint32_t)(cycle - start_cycle) >= (uint32_t)budget) {
+            atomic_store(&slot->in_use, false);
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool ring_acquire(c5vrx_rf_source_t *source,
                          c5vrx_rf_block_t *block,
                          uint32_t timeout_ms)
@@ -149,8 +185,19 @@ static bool ring_acquire(c5vrx_rf_source_t *source,
         return false;
     }
     if (!ctx->reader_valid) {
-        if (c5vrx_ring_tracker_place_consumer(
-                &ctx->tracker, RING_WORDS / 2u, 8u) != C5VRX_RING_TRACK_OK) {
+        /* The first observed writer position is the only defensible boundary
+         * between stale SRAM and words produced by this LIVE epoch. The
+         * tracker initializes its consumer exactly there. Wait for a fresh
+         * half-ring instead of backdating the reader into unknown memory. */
+        if (!observe_until_lag(ctx, slot, RING_WORDS / 2u, timeout_ms)) {
+            return false;
+        }
+        const uint32_t reader =
+            (uint32_t)(ctx->tracker.consumer_absolute & RING_MASK);
+        const uint32_t alignment_skip = (0u - reader) & 7u;
+        if (alignment_skip &&
+            c5vrx_ring_tracker_consume(&ctx->tracker, alignment_skip) !=
+                C5VRX_RING_TRACK_OK) {
             fail_ring(ctx, slot, C5VRX_RING_FAILURE_READER_INSIDE_GUARD, 0u);
             return false;
         }
@@ -173,10 +220,10 @@ static bool ring_acquire(c5vrx_rf_source_t *source,
     }
 
     /* A fast consumer reaching the writer is normal backpressure, not an
-     * overrun. Wait until this complete contiguous segment exists. */
+     * overrun. Keep sampling the writer while waiting; sleeping even 1 ms can
+     * hide multiple wraps at the expected input rate. */
     if (c5vrx_ring_tracker_lag(&ctx->tracker) < count) {
-        atomic_store(&slot->in_use, false);
-        return false;
+        if (!observe_until_lag(ctx, slot, count, timeout_ms)) return false;
     }
 
     const uint32_t first_cycle = (uint32_t)esp_cpu_get_cycle_count();
