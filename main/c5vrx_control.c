@@ -27,6 +27,7 @@
 #include "c5vrx_bench.h"
 #include "c5vrx_usb_transport.h"
 #include "esp_app_desc.h"
+#include "esp_heap_caps.h"
 #include "esp_idf_version.h"
 #include "esp_timer.h"
 
@@ -215,8 +216,12 @@ static esp_err_t start_experimental_ring_live(
     esp_err_t err = ESP_ERR_NO_MEM;
     for (unsigned i = 0; i < candidate_count; ++i) {
         err = start_ring_live(mode, candidates[i]);
-        printf("C5VRX_LIVE_EXPERIMENTAL_ALLOC mode=%u block_words=%u code=%d\n",
-               (unsigned)mode, (unsigned)candidates[i], (int)err);
+        printf("C5VRX_LIVE_EXPERIMENTAL_ALLOC mode=%u block_words=%u code=%d heap_internal_free=%u heap_internal_largest=%u heap_dma_largest=%u\n",
+               (unsigned)mode, (unsigned)candidates[i], (int)err,
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+               (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+               (unsigned)heap_caps_get_largest_free_block(
+                   MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
         fflush(stdout);
         if (err == ESP_OK) {
             if (selected_block_words) *selected_block_words = candidates[i];
@@ -406,7 +411,7 @@ static void print_status(void)
         return;
     }
 
-    printf("C5VRX_STATUS firmware=%s version=%s idf=%s protocol=8 profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d phase8_capture=1\n",
+    printf("C5VRX_STATUS firmware=%s version=%s idf=%s protocol=8 profile=%s band=%c channel=%u mhz=%u wifi=%u center=%u offset=%d exact=%d inside=%d bw=%u readback=%u direct=%d cvbs=%d phase8_capture=1 heap_internal_free=%u heap_internal_min=%u heap_internal_largest=%u heap_dma_free=%u heap_dma_largest=%u\n",
            app->project_name,
            app->version,
            esp_get_idf_version(),
@@ -422,7 +427,14 @@ static void print_status(void)
            s_state.ht40 ? 40u : 20u,
            (unsigned)wifi.active_primary_channel,
            s_state.direct_tune_enabled ? 1 : 0,
-           c5vrx_cvbs_test_running() ? 1 : 0);
+           c5vrx_cvbs_test_running() ? 1 : 0,
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_free_size(
+               MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_largest_free_block(
+               MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
     fflush(stdout);
 }
 

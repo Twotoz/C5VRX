@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "sdkconfig.h"
+#include "driver/gpio.h"
 #include "driver/parlio_tx.h"
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
@@ -358,7 +359,17 @@ static bool pins_valid(void)
     const unsigned required = configured_pins(pins);
 
     for (unsigned i = 0; i < required; ++i) {
-        if (pins[i] < 0) {
+        if (!GPIO_IS_VALID_OUTPUT_GPIO(pins[i])) {
+            return false;
+        }
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+        /* ESP32-C5 native USB is fixed to GPIO13 D- and GPIO14 D+. */
+        if (pins[i] == 13 || pins[i] == 14) {
+            return false;
+        }
+#endif
+        /* GPIO28 is the C5 boot strap and must stay high/floating at reset. */
+        if (pins[i] == 28) {
             return false;
         }
         for (unsigned j = i + 1; j < required; ++j) {
@@ -499,9 +510,8 @@ esp_err_t c5vrx_cvbs_test_start(void)
     }
     if (!pins_valid()) {
         ESP_LOGE(TAG,
-                 "CVBS PARLIO requires unique GPIOs D0..D%u for the selected %u-bit DAC",
-                 (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS - 1u,
-                 (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS);
+                 "CVBS PARLIO requires unique valid output GPIOs D0..D%u; GPIO13/14 (USB) and GPIO28 (BOOT) are reserved",
+                 (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS - 1u);
         return ESP_ERR_INVALID_ARG;
     }
 
