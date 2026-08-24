@@ -1080,8 +1080,17 @@ class C5VRXApp(tk.Tk):
                     "and physical board mapping match.",
                 )
         elif line.startswith("C5VRX_STATUS") and device_profile:
+            heap_text = ""
+            try:
+                free_kib = int(fields.get("heap_internal_free", "0")) // 1024
+                dma_kib = int(fields.get("heap_dma_largest", "0")) // 1024
+                if free_kib and dma_kib:
+                    heap_text = f" — heap {free_kib} KiB, largest DMA {dma_kib} KiB"
+            except ValueError:
+                pass
             self.connection_var.set(
-                f"Connected: {self.selected_port()} — profile verified: {device_profile}")
+                f"Connected: {self.selected_port()} — profile verified: "
+                f"{device_profile}{heap_text}")
         band = fields.get("band")
         ch = fields.get("channel")
         bw = fields.get("bw")

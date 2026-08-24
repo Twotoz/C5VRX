@@ -159,42 +159,42 @@ config C5VRX_CVBS_DAC_BITS
 
 config C5VRX_CVBS_D0_GPIO
     int "CVBS DAC bit 0 GPIO"
-    range -1 30
+    range -1 28
     default -1
     depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
 config C5VRX_CVBS_D1_GPIO
     int "CVBS DAC bit 1 GPIO"
-    range -1 30
+    range -1 28
     default -1
     depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
 config C5VRX_CVBS_D2_GPIO
     int "CVBS DAC bit 2 GPIO"
-    range -1 30
+    range -1 28
     default -1
     depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
 config C5VRX_CVBS_D3_GPIO
     int "CVBS DAC bit 3 GPIO"
-    range -1 30
+    range -1 28
     default -1
     depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
 config C5VRX_CVBS_D4_GPIO
     int "CVBS DAC bit 4 GPIO"
-    range -1 30
+    range -1 28
     default -1
     depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
 config C5VRX_CVBS_D5_GPIO
     int "CVBS DAC bit 5 GPIO"
-    range -1 30
+    range -1 28
     default -1
     depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
 config C5VRX_CVBS_D6_GPIO
     int "CVBS DAC bit 6 GPIO"
-    range -1 30
+    range -1 28
     default -1
     depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
 config C5VRX_CVBS_D7_GPIO
     int "CVBS DAC bit 7 GPIO"
-    range -1 30
+    range -1 28
     default -1
     depends on C5VRX_EXPERIMENTAL_CVBS_PARLIO
 

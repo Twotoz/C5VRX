@@ -33,6 +33,7 @@ idf_component_register(
         esp_wifi
         esp_event
         esp_netif
+        esp_driver_gpio
         esp_driver_parlio
         esp_driver_bitscrambler
         esp_driver_usb_serial_jtag

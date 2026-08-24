@@ -166,6 +166,11 @@ jobs:
             grep -q '^CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y$' /tmp/c5vrx-xiao-console-sdkconfig &&
             grep -q '^CONFIG_C5VRX_CVBS_D0_GPIO=23$' /tmp/c5vrx-xiao-console-sdkconfig &&
             grep -q '^CONFIG_C5VRX_CVBS_D5_GPIO=9$' /tmp/c5vrx-xiao-console-sdkconfig &&
+            python -m esp_idf_size --format json2 -o build/c5vrx-size.json build/C5VRX.map &&
+            python tools/check_esp32c5_limits.py
+            --size-json build/c5vrx-size.json
+            --binary build/C5VRX.bin
+            --bootloader build/bootloader/bootloader.bin &&
             mkdir -p xiao_console_firmware_bundle &&
             cp build/flasher_args.json xiao_console_firmware_bundle/ &&
             cp build/bootloader/bootloader.bin xiao_console_firmware_bundle/bootloader.bin &&
