@@ -177,6 +177,12 @@ static void source_task(void *arg)
         if (!c5vrx_rf_block_queue_push(&s_live.queue, &block)) {
             ++s_live.stats.dropped_rf_blocks;
             s_live.config.source->release(s_live.config.source, &block);
+        } else if (s_live.task) {
+            /* The AV/DSP consumer has higher priority and blocks on this
+             * notification. It therefore runs exactly when a block is ready,
+             * then blocks again so the writer observer can resume before an
+             * RF-ring wrap becomes ambiguous. */
+            xTaskNotifyGive(s_live.task);
         }
         s_live.stats.queue_occupancy = s_live.queue.occupancy;
         s_live.stats.queue_high_water_mark = s_live.queue.high_water_mark;
@@ -230,7 +236,7 @@ static void pipeline_task(void *arg)
     while (!s_live.stop) {
         c5vrx_rf_block_t block = {0};
         if (!c5vrx_rf_block_queue_pop(&s_live.queue, &block)) {
-            vTaskDelay(pdMS_TO_TICKS(1));
+            (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
             continue;
         }
         s_live.stats.queue_occupancy = s_live.queue.occupancy;
@@ -348,17 +354,22 @@ esp_err_t c5vrx_live_pipeline_start(const c5vrx_live_pipeline_config_t *config)
     }
     c5vrx_cvbs_conditioner_init(&s_live.conditioner, &config->conditioner);
     c5vrx_rf_block_queue_init(&s_live.queue);
-    if (xTaskCreate(source_task, "c5vrx_source", 3072, NULL, 18,
-                    &s_live.source_task) != pdPASS) {
+    /* Create the consumer first and give it deadline priority over the RF
+     * staging task. It immediately blocks until source_task publishes a block;
+     * after one block it blocks again, producing a deterministic single-core
+     * handoff instead of a permanently-runnable producer starving AV. */
+    if (xTaskCreate(pipeline_task, "c5vrx_live", 4096, NULL, 19,
+                    &s_live.task) != pdPASS) {
         free(s_live.wbfm); free(s_live.cvbs); free(s_live.sink_pending);
         c5vrx_wbfm_hw_destroy(s_live.wbfm_hw);
         memset(&s_live, 0, sizeof(s_live));
         return ESP_ERR_NO_MEM;
     }
-    if (xTaskCreate(pipeline_task, "c5vrx_live", 4096, NULL, 17,
-                    &s_live.task) != pdPASS) {
+    if (xTaskCreate(source_task, "c5vrx_source", 3072, NULL, 18,
+                    &s_live.source_task) != pdPASS) {
         s_live.stop = true;
-        while (s_live.source_task) vTaskDelay(pdMS_TO_TICKS(1));
+        xTaskNotifyGive(s_live.task);
+        while (s_live.task) vTaskDelay(pdMS_TO_TICKS(1));
         free(s_live.wbfm);
         free(s_live.cvbs);
         free(s_live.sink_pending);
@@ -374,6 +385,7 @@ esp_err_t c5vrx_live_pipeline_stop(void)
     if (!s_live.task && !s_live.source_task && !s_live.wbfm_hw)
         return ESP_ERR_INVALID_STATE;
     s_live.stop = true;
+    if (s_live.task) xTaskNotifyGive(s_live.task);
     for (unsigned i = 0; i < 1000u && (s_live.task || s_live.source_task); ++i) {
         vTaskDelay(pdMS_TO_TICKS(1));
     }
