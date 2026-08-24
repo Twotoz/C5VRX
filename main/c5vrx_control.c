@@ -99,13 +99,6 @@ static esp_err_t live_output_with_preview(const uint8_t *samples,
     return av_err;
 }
 
-static uint32_t live_maximum_plausible_rate(void)
-{
-    if (!s_capabilities.measured_source_rate) return 320000000u;
-    if (s_capabilities.measured_source_rate >= 290000000u) return 320000000u;
-    return (uint32_t)((uint64_t)s_capabilities.measured_source_rate * 110u / 100u);
-}
-
 static void invalidate_rf_capabilities(void)
 {
     memset(&s_capabilities, 0, sizeof(s_capabilities));
@@ -161,75 +154,14 @@ static void select_measured_ring_block(void)
 static esp_err_t start_ring_live(c5vrx_rf_dump_mode_t mode,
                                  size_t block_words)
 {
-    if (c5vrx_live_pipeline_running() || c5vrx_cvbs_test_running())
-        return ESP_ERR_INVALID_STATE;
-    if (block_words != 1024u && block_words != 2048u &&
-        block_words != 4096u)
-        return ESP_ERR_INVALID_ARG;
-
-    /* Preallocate and create the dormant USB side worker before LIVE owns the
-     * realtime heap boundary. Opening/closing a consumer later is allocation
-     * free and cannot disturb RF/AV state. */
-    esp_err_t err = c5vrx_usb_preview_prepare();
-    if (err == ESP_OK) err = c5vrx_live_ring_source_create(
-        &s_ring_source, mode, block_words, 512u,
-        live_maximum_plausible_rate());
-    const c5vrx_live_pipeline_config_t config = {
-        .source = &s_ring_source, .sink = live_output_with_preview,
-        .maximum_input_words = block_words,
-        .wbfm_kernel = C5VRX_CFG_WBFM_KERNEL,
-        .conditioner = {
-            .bias_q8 = CONFIG_C5VRX_LIVE_CVBS_BIAS_Q8,
-            .gain_q8 = CONFIG_C5VRX_LIVE_CVBS_GAIN_Q8,
-            .invert = C5VRX_CFG_LIVE_INVERT,
-            .sync_code = 0, .blank_code = 19, .black_code = 20,
-            .white_code = 63,
-            .clamp_min = CONFIG_C5VRX_LIVE_CVBS_CLAMP_MIN,
-            .clamp_max = CONFIG_C5VRX_LIVE_CVBS_CLAMP_MAX,
-            .filter_shift = CONFIG_C5VRX_LIVE_CVBS_FILTER_SHIFT,
-        },
-    };
-    if (err == ESP_OK) err = c5vrx_live_pipeline_start(&config);
-    s_ring_live = err == ESP_OK;
-    if (err != ESP_OK) {
-        (void)c5vrx_cvbs_live_out_stop();
-        (void)c5vrx_live_ring_source_destroy(&s_ring_source);
-    }
-    return err;
-}
-
-static esp_err_t start_experimental_ring_live(
-    c5vrx_rf_dump_mode_t mode, size_t *selected_block_words)
-{
-    /* Every ring slot must be internal DMA memory. The XIAO profile starts at
-     * 1024 words, releasing 60 KiB across the five-slot queue versus 4096.
-     * Starting small is important: failed oversized BitScrambler/DMA setup can
-     * leave the peripheral driver unable to complete a same-boot retry. Larger
-     * profiles retain the throughput-first order. */
-    static const size_t xiao_candidates[] = {1024u, 2048u, 4096u};
-    static const size_t default_candidates[] = {4096u, 2048u, 1024u};
-    const bool xiao = strcmp(CONFIG_C5VRX_BOARD_PROFILE, "xiao-esp32c5") == 0;
-    const size_t *candidates = xiao ? xiao_candidates : default_candidates;
-    const size_t candidate_count = sizeof(xiao_candidates) /
-                                   sizeof(xiao_candidates[0]);
-    if (selected_block_words) *selected_block_words = 0u;
-    esp_err_t err = ESP_ERR_NO_MEM;
-    for (unsigned i = 0; i < candidate_count; ++i) {
-        err = start_ring_live(mode, candidates[i]);
-        printf("C5VRX_LIVE_EXPERIMENTAL_ALLOC mode=%u block_words=%u code=%d heap_internal_free=%u heap_internal_largest=%u heap_dma_largest=%u\n",
-               (unsigned)mode, (unsigned)candidates[i], (int)err,
-               (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-               (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
-               (unsigned)heap_caps_get_largest_free_block(
-                   MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
-        fflush(stdout);
-        if (err == ESP_OK) {
-            if (selected_block_words) *selected_block_words = candidates[i];
-            break;
-        }
-        if (err != ESP_ERR_NO_MEM) break;
-    }
-    return err;
+    (void)mode;
+    (void)block_words;
+    /* The MAC dump peripheral temporarily owns the backing HP-SRAM banks.
+     * The LP capture kernel is safe because it runs entirely from LP RAM and
+     * restores CPU ownership before returning. A FreeRTOS ring worker cannot
+     * meet that invariant: real XIAO hardware loses native USB immediately.
+     * Keep every caller, including guarded LIVE and BENCH, fail-closed. */
+    return ESP_ERR_NOT_SUPPORTED;
 }
 
 static esp_err_t stop_live_sources(c5vrx_stream_stats_t *pipeline_stats,
@@ -709,11 +641,12 @@ static void handle_line(char *line)
     unsigned live_mode = 0;
     if (sscanf(line, "LIVE EXPERIMENTAL START %u", &live_mode) == 1 ||
         sscanf(line, "LIVE_EXPERIMENTAL_START_%u", &live_mode) == 1) {
-        size_t selected_block_words = 0u;
-        const esp_err_t err = start_experimental_ring_live(
-            (c5vrx_rf_dump_mode_t)live_mode, &selected_block_words);
-        printf("C5VRX_LIVE_EXPERIMENTAL_START mode=%u block_words=%u code=%d source=EXPERIMENTAL_RING_SOURCE_UNPROVEN anti_alias_safe=UNKNOWN phase_continuity=UNKNOWN\n",
-               live_mode, (unsigned)selected_block_words, (int)err);
+        /* Real ESP32-C5 hardware proved that continuous MAC dump ownership
+         * removes normal CPU/FreeRTOS access to the affected HP-SRAM banks.
+         * The bounded LP-RAM capture kernel restores ownership before it
+         * returns; this ordinary-task ring path cannot do that safely. */
+        printf("C5VRX_LIVE_EXPERIMENTAL_START mode=%u block_words=0 code=%d classification=FAIL_CLOSED reason=HP_SRAM_MAC_OWNERSHIP_WEDGES_FREERTOS_USB use=CAPTURE_PHASE8_BOUNDED\n",
+               live_mode, (int)ESP_ERR_NOT_SUPPORTED);
         fflush(stdout); return;
     }
     if (strcasecmp(line, "LIVE STOP") == 0 ||

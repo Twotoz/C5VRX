@@ -439,9 +439,14 @@ discontinuity, explicitly testing whether finite captures are useful as a
 temporary near-live source.
 
 `LIVE START` uses measured capabilities and fails closed while rate, phase,
-anti-alias bandwidth or processing margin is missing. `LIVE EXPERIMENTAL START`
-is the explicitly unproven laboratory route through the guarded ring reader,
-persistent BitScrambler, conditioner and PARLIO.
+anti-alias bandwidth or processing margin is missing. Real XIAO testing also
+proved that continuous MAC dump ownership makes normal HP-SRAM/FreeRTOS USB
+execution unsafe. `LIVE EXPERIMENTAL START` therefore fails closed instead of
+wedging native USB. The Receiver Console's safe preview repeatedly requests
+bounded `CAPTURE PHASE8` blocks; the LP-RAM kernel restores CPU SRAM ownership
+before every USB transfer. This bounded host preview does not make continuous
+AV output operational: that path needs a dataplane which can keep processing
+and refilling PARLIO without executing FreeRTOS code from MAC-owned HP-SRAM.
 
 Protocol 8 carries preview data in versioned binary packets with an eight-byte
 magic marker, packet type, sequence, lengths, timestamp, header CRC and payload
