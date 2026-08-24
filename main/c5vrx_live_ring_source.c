@@ -32,6 +32,8 @@ typedef struct {
     bool armed;
     bool discontinuity;
     bool fatal;
+    bool stop_attempted;
+    esp_err_t stop_result;
     uint32_t maximum_plausible_rate_hz;
     uint64_t sequence;
     c5vrx_ring_tracker_t tracker;
@@ -94,7 +96,10 @@ static void fail_ring(ring_context_t *ctx, ring_slot_t *slot,
     ctx->stats.fatal_reason = reason;
     ctx->fatal = true;
     sync_tracker_stats(ctx);
-    if (ctx->armed) (void)c5vrx_rf_dump_stop();
+    if (ctx->armed) {
+        ctx->stop_result = c5vrx_rf_dump_stop();
+        ctx->stop_attempted = true;
+    }
     ctx->armed = false;
 }
 
@@ -372,7 +377,7 @@ esp_err_t c5vrx_live_ring_source_destroy(c5vrx_rf_source_t *source)
     esp_err_t err = ESP_OK;
     ring_context_t *ctx = source->context;
     if (ctx) {
-        err = c5vrx_rf_dump_stop();
+        err = ctx->stop_attempted ? ctx->stop_result : c5vrx_rf_dump_stop();
         for (unsigned i = 0; i < RING_BUFFER_COUNT; ++i)
             free(ctx->slots[i].words);
         free(ctx);
