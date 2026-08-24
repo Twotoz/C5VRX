@@ -60,6 +60,7 @@ typedef struct {
     bool restore_ok;
     bool wifi_restored;
     bool idle_watchdog_temporarily_unsubscribed;
+    bool idle_watchdog_restored;
 } c5vrx_producer_soak_result_t;
 
 esp_err_t c5vrx_producer_soak(c5vrx_rf_dump_mode_t mode,
