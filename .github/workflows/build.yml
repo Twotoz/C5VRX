@@ -248,9 +248,10 @@ jobs:
         run: >-
           pyinstaller --noconfirm --clean --onefile --windowed
           --name C5VRX-XIAO-Receiver-Console
+          --paths tools
           --collect-all esptool
           --add-data "firmware;firmware"
-          tools/C5VRX_Flasher.py
+          tools/C5VRX_XIAO_Flasher.py
 
       - name: Upload XIAO Windows console
         uses: actions/upload-artifact@v4

@@ -238,27 +238,28 @@ class C5VRXXIAOApp(C5VRXApp):
         self.sink.write("\n=== FLASH COMPLETE ===\n")
         self.sink.write(
             "C5VRX_FLASH_IMAGE_VERIFIED reset=WATCHDOG "
-            "runtime=PROBING\n")
-        self.connection_var.set(
-            "Firmware image verified — waiting for C5VRX runtime handshake...")
+            "runtime=PHYSICAL_POWER_CYCLE_REQUIRED\n")
         self._runtime_seen = False
-        self._runtime_waiting = True
-        self._runtime_deadline = time.monotonic() + 30.0
-        self._schedule_runtime_reconnect(1200)
+        self._runtime_waiting = False
+        # Real XIAO ESP32-C5 hardware can retain a wedged native-USB runtime
+        # state after esptool's watchdog reset. Do not issue misleading PING
+        # probes before the board has been fully unpowered.
+        self._runtime_recovery_required("XIAO_C5_POST_FLASH_USB_STATE")
 
     def _runtime_recovery_required(self, reason: str) -> None:
         self._runtime_waiting = False
         self.disconnect_serial()
         self.sink.write(
             "C5VRX_POST_FLASH_ACTION required=PHYSICAL_USB_POWER_CYCLE "
-            "steps=UNPLUG_5S_REPLUG_THEN_CONNECT "
+            "steps=UNPLUG_30S_REPLUG_THEN_CONNECT "
             f"reason={reason}\n")
         self.connection_var.set(
-            "Runtime not verified — unplug USB for 5 seconds, replug, then Connect")
+            "Image verified — unplug USB for 30 seconds, replug, then Connect")
         messagebox.showwarning(
             "C5VRX Receiver Console",
-            "The firmware image was written, but the C5VRX runtime did not answer.\n\n"
-            "1. Unplug the XIAO USB cable for 5 seconds.\n"
+            "The firmware image was written and verified. A full power cycle is "
+            "required before using the XIAO runtime.\n\n"
+            "1. Unplug the XIAO USB cable for 30 seconds.\n"
             "2. Reconnect it without pressing BOOT or RESET.\n"
             "3. Press Connect.\n\n"
             "Do not start video proof until the terminal shows C5VRX_PONG or "
