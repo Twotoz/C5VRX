@@ -369,6 +369,7 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
     if (c5vrx_ring_tracker_init(&tracker, PROBE_RING_WORDS, 1u, cpu_hz(),
                                 (uint32_t)CADENCE_PLAUSIBLE_MAX_HZ) != 0) {
         (void)c5vrx_rf_dump_stop();
+        if (idle_wdt_removed) (void)esp_task_wdt_add(idle_task);
         return ESP_FAIL;
     }
     while (esp_timer_get_time() < deadline) {
@@ -411,8 +412,11 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
         ++result->adjacent_canary_failures;
     const bool changed = dump_fingerprint() != content_before;
     const esp_err_t stop_err = c5vrx_rf_dump_stop();
-    if (idle_wdt_removed) (void)esp_task_wdt_add(idle_task);
+    const esp_err_t idle_wdt_restore_err = idle_wdt_removed ?
+        esp_task_wdt_add(idle_task) : ESP_OK;
+    result->idle_watchdog_restored = idle_wdt_restore_err == ESP_OK;
     if (err == ESP_OK) err = stop_err;
+    if (err == ESP_OK) err = idle_wdt_restore_err;
     const size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     const intptr_t heap_delta = (intptr_t)heap_after - (intptr_t)heap_before;
     const bool wifi_after_valid =
@@ -436,10 +440,11 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
         result->ambiguous_intervals || result->pointer_out_of_range ||
         result->producer_stop_events || result->adjacent_canary_failures ||
         result->register_invariant_failures ||
-        heap_delta != 0 || !wifi_restored) {
+        heap_delta != 0 || !wifi_restored ||
+        !result->idle_watchdog_restored) {
         if (err == ESP_OK) err = ESP_FAIL;
     }
-    printf("C5VRX_PRODUCER_SOAK_STAGE mode=%u requested_ms=%u actual_us=%llu observations=%llu exact_wraps=%llu producer_absolute=%llu ambiguous_intervals=%llu pointer_out_of_range=%u producer_stop_events=%u adjacent_canary_failures=%u register_invariant_failures=%u maximum_observation_interval_cycles=%u content_changed=%u heap_before=%u heap_after=%u heap_delta=%ld wifi_expected=%u wifi_after_valid=%u wifi_channel_before=%u wifi_channel_after=%u wifi_restored=%u restore_ok=%u idle_wdt_temporarily_unsubscribed=%u classification=%s code=%d\n",
+    printf("C5VRX_PRODUCER_SOAK_STAGE mode=%u requested_ms=%u actual_us=%llu observations=%llu exact_wraps=%llu producer_absolute=%llu ambiguous_intervals=%llu pointer_out_of_range=%u producer_stop_events=%u adjacent_canary_failures=%u register_invariant_failures=%u maximum_observation_interval_cycles=%u content_changed=%u heap_before=%u heap_after=%u heap_delta=%ld wifi_expected=%u wifi_after_valid=%u wifi_channel_before=%u wifi_channel_after=%u wifi_restored=%u restore_ok=%u idle_wdt_temporarily_unsubscribed=%u idle_wdt_restored=%u classification=%s code=%d\n",
            (unsigned)mode, (unsigned)duration_ms,
            (unsigned long long)result->actual_duration_us,
            (unsigned long long)result->observations,
@@ -460,6 +465,7 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
            wifi_restored ? 1u : 0u,
            c5vrx_rf_dump_last_restore_ok() ? 1u : 0u,
            idle_wdt_removed ? 1u : 0u,
+           result->idle_watchdog_restored ? 1u : 0u,
            err == ESP_OK ? "MEASURED_CONTINUOUS_RING_PASS" : "FAILED",
            (int)err);
     fflush(stdout);
