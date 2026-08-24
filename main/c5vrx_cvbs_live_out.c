@@ -79,11 +79,24 @@ static uint32_t pulse_phase_q32(uint32_t duration_numerator,
                                 uint32_t line_rate_numerator,
                                 uint32_t line_rate_denominator)
 {
-    const __uint128_t numerator = (__uint128_t)duration_numerator * 2u *
-        line_rate_numerator << 32u;
     const uint64_t denominator =
         (uint64_t)duration_denominator * line_rate_denominator;
-    return (uint32_t)(numerator / denominator);
+    uint64_t remainder =
+        (uint64_t)duration_numerator * 2u * line_rate_numerator;
+    uint32_t quotient = 0u;
+    /* All supported pulse widths are shorter than a half-line, so remainder
+     * starts below denominator. Binary long division produces floor(A*2^32/B)
+     * exactly without a target-dependent 128-bit integer type. This runs only
+     * three times while starting AV, never in the sample loop. */
+    for (unsigned bit = 0u; bit < 32u; ++bit) {
+        remainder <<= 1u;
+        quotient <<= 1u;
+        if (remainder >= denominator) {
+            remainder -= denominator;
+            quotient |= 1u;
+        }
+    }
+    return quotient;
 }
 
 static bool filler_coordinate(const c5vrx_cvbs_sync_tracker_t *timing,
