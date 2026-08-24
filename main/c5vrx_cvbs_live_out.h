@@ -9,6 +9,7 @@
 
 typedef struct {
     uint64_t live_blocks;
+    uint64_t live_blocks_retired;
     uint64_t filler_blocks;
     uint64_t mailbox_drops;
     bool guardian_running;

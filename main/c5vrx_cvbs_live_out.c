@@ -19,12 +19,14 @@ typedef struct {
     parlio_tx_unit_handle_t tx;
     uint8_t *dma[2];
     uint8_t *mailbox[2];
+    bool dma_live[2];
     bool mailbox_ready[2];
     bool mailbox_in_use[2];
     unsigned mailbox_write;
     size_t samples;
     uint64_t filler_sample;
     uint64_t live_blocks;
+    uint64_t live_blocks_retired;
     uint64_t filler_blocks;
     uint64_t mailbox_drops;
     TaskHandle_t guardian;
@@ -129,7 +131,9 @@ static void guardian_task(void *arg)
         if (retired & STOP_NOTIFY) break;
         for (unsigned index = 0; index < 2u; ++index) {
             if (!(retired & (1u << index))) continue;
-            if (take_live_block(s_out.dma[index])) ++s_out.live_blocks;
+            if (s_out.dma_live[index]) ++s_out.live_blocks_retired;
+            s_out.dma_live[index] = take_live_block(s_out.dma[index]);
+            if (s_out.dma_live[index]) ++s_out.live_blocks;
             else { fill_legal_filler(s_out.dma[index]); ++s_out.filler_blocks; }
             if (queue_dma(index) != ESP_OK) s_out.running = false;
         }
@@ -152,11 +156,13 @@ esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
         output_clock_hz > 30000000u) return ESP_ERR_INVALID_ARG;
     s_out.samples = block_samples;
     s_out.clock_hz = output_clock_hz;
-    s_out.live_blocks = s_out.filler_blocks = s_out.mailbox_drops = 0u;
+    s_out.live_blocks = s_out.live_blocks_retired = 0u;
+    s_out.filler_blocks = s_out.mailbox_drops = 0u;
     s_out.filler_sample = 0u;
     s_out.mailbox_write = 0u;
     s_out.filler_standard = C5VRX_VIDEO_STANDARD_PAL;
     for (unsigned i = 0; i < 2u; ++i) {
+        s_out.dma_live[i] = false;
         s_out.dma[i] = heap_caps_malloc(
             block_samples, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
         s_out.mailbox[i] = heap_caps_malloc(block_samples, MALLOC_CAP_INTERNAL);
@@ -283,6 +289,7 @@ void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
     if (!stats) return;
     *stats = (c5vrx_cvbs_live_out_stats_t) {
         .live_blocks = s_out.live_blocks,
+        .live_blocks_retired = s_out.live_blocks_retired,
         .filler_blocks = s_out.filler_blocks,
         .mailbox_drops = s_out.mailbox_drops,
         .guardian_running = s_out.guardian != NULL,

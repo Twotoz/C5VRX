@@ -138,12 +138,14 @@ esp_err_t c5vrx_bench_parlio_clock(uint32_t clock_hz)
         err = c5vrx_cvbs_live_out_write_wait(samples, 4096u, 100u);
     const TickType_t wait_start = xTaskGetTickCount();
     c5vrx_cvbs_live_out_stats_t after = before;
-    while (err == ESP_OK && after.live_blocks - before.live_blocks < blocks &&
+    while (err == ESP_OK &&
+           after.live_blocks_retired - before.live_blocks_retired < blocks &&
            xTaskGetTickCount() - wait_start < pdMS_TO_TICKS(1000u)) {
         taskYIELD();
         c5vrx_cvbs_live_out_get_stats(&after);
     }
-    if (err == ESP_OK && after.live_blocks - before.live_blocks < blocks)
+    if (err == ESP_OK &&
+        after.live_blocks_retired - before.live_blocks_retired < blocks)
         err = ESP_ERR_TIMEOUT;
     if (err == ESP_OK &&
         (after.mailbox_drops != before.mailbox_drops ||
@@ -152,10 +154,11 @@ esp_err_t c5vrx_bench_parlio_clock(uint32_t clock_hz)
     const uint64_t us = (uint64_t)(esp_timer_get_time() - first_us);
     const esp_err_t stop_err = c5vrx_cvbs_live_out_stop();
     if (err == ESP_OK) err = stop_err;
-    printf("C5VRX_BENCH_PARLIO clock_hz=%u samples=%u duration_us=%llu samples_per_sec=%llu live_blocks=%llu filler_blocks=%llu mailbox_drops=%llu underrun=%u production_clock=%u classification=%s code=%d\n",
+    printf("C5VRX_BENCH_PARLIO clock_hz=%u samples=%u duration_us=%llu samples_per_sec=%llu live_blocks=%llu live_blocks_retired=%llu filler_blocks=%llu mailbox_drops=%llu underrun=%u production_clock=%u classification=%s code=%d\n",
            (unsigned)clock_hz, blocks * 4096u, (unsigned long long)us,
            (unsigned long long)(us ? (uint64_t)blocks * 4096u * 1000000u / us : 0u),
            (unsigned long long)(after.live_blocks - before.live_blocks),
+           (unsigned long long)(after.live_blocks_retired - before.live_blocks_retired),
            (unsigned long long)(after.filler_blocks - before.filler_blocks),
            (unsigned long long)(after.mailbox_drops - before.mailbox_drops),
            err == ESP_OK ? 0u : 1u,

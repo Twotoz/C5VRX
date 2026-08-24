@@ -547,46 +547,59 @@ static void decode_timed_block(
     const uint64_t block_start = timing->samples_seen >= samples ?
         timing->samples_seen - samples : 0u;
     const uint32_t period = timing->line_period_samples;
-    const uint16_t current_line = timing->field_line ?
+    uint16_t current_line = timing->field_line ?
         (uint16_t)(timing->field_line - 1u) : 0u;
-    if (current_line < FIRST_ACTIVE_FIELD_LINE ||
-        current_line >= FIRST_ACTIVE_FIELD_LINE + ACTIVE_FIELD_LINES ||
-        ((current_line - FIRST_ACTIVE_FIELD_LINE) & 1u)) {
-        s_preview.worker_active = false;
-        return;
+    uint64_t line_start = timing->last_hsync_start;
+    /* The canonical snapshot names the newest H-sync in this block. Walk its
+     * stable period backwards so samples preceding that sync remain attached
+     * to the prior canonical line instead of being discarded. A block spans
+     * only a few lines; field-boundary samples are vertical blanking. */
+    while (block_start < line_start && current_line > 0u) {
+        line_start = line_start >= period ? line_start - period : 0u;
+        --current_line;
     }
-    const uint16_t row =
-        (uint16_t)((current_line - FIRST_ACTIVE_FIELD_LINE) / 2u);
     const uint32_t active_start =
         period * NOMINAL_ACTIVE_START / NOMINAL_LINE_SAMPLES;
     const uint32_t active_samples =
         period * NOMINAL_ACTIVE_SAMPLES / NOMINAL_LINE_SAMPLES;
-
-    if (s_preview.current_row != row) {
-        s_preview.current_row = row;
-        s_preview.x = 0u;
-        s_preview.group_count = 0u;
-    }
-    const uint64_t line_key = (timing->field_id << 16u) | current_line;
-    if (s_preview.burst_line_key != line_key) {
-        s_preview.burst_line_key = line_key;
-        s_preview.burst_i = s_preview.burst_q = 0;
-        s_preview.burst_count = 0u;
-        s_preview.burst_locked = false;
-    }
     const uint32_t burst_start = period * 105u / NOMINAL_LINE_SAMPLES;
     const uint32_t burst_end = period * 170u / NOMINAL_LINE_SAMPLES;
     const uint32_t subcarrier_hz =
         timing->standard == C5VRX_VIDEO_STANDARD_NTSC ? 3579545u : 4433619u;
     const uint64_t nco_step = timing->sample_rate_hz ?
         ((uint64_t)subcarrier_hz << 32u) / timing->sample_rate_hz : 0u;
-    for (size_t n = 0; n < samples && s_preview.x < C5VRX_USB_PREVIEW_WIDTH;
-         ++n) {
+    for (size_t n = 0; n < samples; ++n) {
         const uint64_t absolute = block_start + n;
-        if (absolute < timing->last_hsync_start) continue;
-        const uint32_t phase =
-            (uint32_t)(absolute - timing->last_hsync_start);
-        if (phase >= period) continue;
+        if (absolute < line_start) continue;
+        while (absolute - line_start >= period) {
+            line_start += period;
+            ++current_line;
+        }
+        const uint32_t phase = (uint32_t)(absolute - line_start);
+        const bool selected_line =
+            current_line >= FIRST_ACTIVE_FIELD_LINE &&
+            current_line < FIRST_ACTIVE_FIELD_LINE + ACTIVE_FIELD_LINES &&
+            !((current_line - FIRST_ACTIVE_FIELD_LINE) & 1u);
+        if (!selected_line) {
+            s_preview.current_line = false;
+            continue;
+        }
+        const uint16_t row =
+            (uint16_t)((current_line - FIRST_ACTIVE_FIELD_LINE) / 2u);
+        if (s_preview.current_row != row) {
+            s_preview.current_row = row;
+            s_preview.x = 0u;
+            s_preview.group_count = 0u;
+            s_preview.u_group = s_preview.v_group = 0;
+        }
+        s_preview.current_line = s_preview.x < C5VRX_USB_PREVIEW_WIDTH;
+        const uint64_t line_key = (timing->field_id << 16u) | current_line;
+        if (s_preview.burst_line_key != line_key) {
+            s_preview.burst_line_key = line_key;
+            s_preview.burst_i = s_preview.burst_q = 0;
+            s_preview.burst_count = 0u;
+            s_preview.burst_locked = false;
+        }
         const int32_t composite_q8 = (int32_t)(cvbs[n] & 0x3fu) << 8u;
         s_preview.luma_q8 += (composite_q8 - s_preview.luma_q8) >> 1u;
         const int32_t chroma = composite_q8 - s_preview.luma_q8;
@@ -624,6 +637,7 @@ static void decode_timed_block(
             s_preview.chroma_u_q8 += (u - s_preview.chroma_u_q8) >> 3u;
             s_preview.chroma_v_q8 += (v - s_preview.chroma_v_q8) >> 3u;
         }
+        if (!s_preview.current_line) continue;
         const uint32_t target = active_start +
             s_preview.x * active_samples / C5VRX_USB_PREVIEW_WIDTH;
         if (phase >= target) {
@@ -646,12 +660,14 @@ static void decode_timed_block(
                 s_preview.group_count = 0u;
                 s_preview.u_group = s_preview.v_group = 0;
             }
+            if (s_preview.x == C5VRX_USB_PREVIEW_WIDTH) {
+                s_preview.current_line = false;
+                if (row == C5VRX_USB_PREVIEW_HEIGHT - 1u) {
+                    publish_frame();
+                    s_preview.x = 0u;
+                }
+            }
         }
-    }
-    if (s_preview.x == C5VRX_USB_PREVIEW_WIDTH &&
-        row == C5VRX_USB_PREVIEW_HEIGHT - 1u) {
-        publish_frame();
-        s_preview.x = 0u;
     }
 
     s_preview.worker_active = false;
@@ -683,7 +699,9 @@ void c5vrx_usb_preview_ingest_timed(
     if (!cvbs || !timing || !samples || samples > COMPOSITE_BLOCK_MAX ||
         !c5vrx_usb_preview_consumer_active()) return;
     int slot = -1;
+    uint32_t epoch = 0u;
     taskENTER_CRITICAL(&s_preview.lock);
+    epoch = s_preview.session_epoch;
     for (unsigned i = 0; i < 2u; ++i) {
         if (!s_preview.composite_ready[i] && !s_preview.composite_in_use[i]) {
             slot = (int)i;
@@ -724,9 +742,14 @@ void c5vrx_usb_preview_ingest_timed(
     if (slot >= 0) {
         memcpy(s_preview.composite[slot], cvbs, samples);
         taskENTER_CRITICAL(&s_preview.lock);
-        s_preview.composite_count[slot] = samples;
-        s_preview.composite_timing[slot] = *timing;
-        s_preview.composite_ready[slot] = true;
+        if (epoch == s_preview.session_epoch && s_preview.running &&
+            s_preview.consumer_active) {
+            s_preview.composite_count[slot] = samples;
+            s_preview.composite_timing[slot] = *timing;
+            s_preview.composite_ready[slot] = true;
+        } else {
+            ++s_preview.stale_session_drops;
+        }
         s_preview.composite_in_use[slot] = false;
         taskEXIT_CRITICAL(&s_preview.lock);
     } else {

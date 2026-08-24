@@ -1095,7 +1095,7 @@ class C5VRXApp(tk.Tk):
         self.send_command("USB PREVIEW STOP")
 
     def _usb_preview_keepalive(self) -> None:
-        if (not self.usb_preview_active or self.usb_preview_receiving or
+        if (not self.usb_preview_active or
                 not self.ser or not self.ser.is_open):
             return
         try:
