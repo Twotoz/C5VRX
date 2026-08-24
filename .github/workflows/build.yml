@@ -11,6 +11,14 @@ permissions:
   contents: read
 
 jobs:
+  host-tests:
+    name: Realtime primitives and host protocol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test
+      - run: python3 -m py_compile tools/*.py
+
   firmware-build:
     name: ESP32-C5 / ESP-IDF v6.0.2
     runs-on: ubuntu-latest

@@ -29,9 +29,12 @@ from typing import Any, Callable
 from c5vrx_usb_protocol import (
     FRAME_DESCRIPTOR,
     PACKET_GRAY8_FRAME,
+    PACKET_YUV411_FRAME,
     PIXEL_FORMAT_GRAY8,
+    PIXEL_FORMAT_YUV411,
     Packet,
     StreamDecoder,
+    yuv411_to_rgb,
 )
 
 
@@ -262,7 +265,7 @@ class SessionRecorder:
         self._write_json("iq/index.json", self.iq_captures)
 
     def record_packet(self, packet: Packet) -> None:
-        if packet.packet_type != PACKET_GRAY8_FRAME:
+        if packet.packet_type not in {PACKET_GRAY8_FRAME, PACKET_YUV411_FRAME}:
             return
         with self._lock:
             if len(self.preview_frames) >= self._preview_limit:
@@ -280,18 +283,30 @@ class SessionRecorder:
             pixels = packet.payload[FRAME_DESCRIPTOR.size:]
             if (
                 not width or not height or width > 640 or height > 480
-                or stride < width or pixel_format != PIXEL_FORMAT_GRAY8
+                or pixel_format not in {PIXEL_FORMAT_GRAY8, PIXEL_FORMAT_YUV411}
+                or (pixel_format == PIXEL_FORMAT_GRAY8 and stride < width)
+                or (pixel_format == PIXEL_FORMAT_YUV411 and stride < width * 3 // 2)
                 or len(pixels) != stride * height
             ):
                 self.record_error("PREVIEW_INVALID_FRAME", f"sequence={packet.sequence}")
                 return
-            if stride != width:
+            color = pixel_format == PIXEL_FORMAT_YUV411
+            if color:
+                try:
+                    pixels = yuv411_to_rgb(pixels, width, height, stride)
+                except ValueError as exc:
+                    self.record_error("PREVIEW_INVALID_YUV411", str(exc))
+                    return
+            elif stride != width:
                 pixels = b"".join(
                     pixels[row * stride:row * stride + width] for row in range(height)
                 )
-            filename = f"frame-{len(self.preview_frames) + 1:05d}-seq-{packet.sequence}.pgm"
+            suffix = "ppm" if color else "pgm"
+            filename = f"frame-{len(self.preview_frames) + 1:05d}-seq-{packet.sequence}.{suffix}"
             frame_path = self.preview_path / filename
-            frame_path.write_bytes(f"P5\n{width} {height}\n255\n".encode("ascii") + pixels)
+            magic = "P6" if color else "P5"
+            frame_path.write_bytes(
+                f"{magic}\n{width} {height}\n255\n".encode("ascii") + pixels)
             self.preview_frames.append({
                 "file": str(frame_path.relative_to(self.path)),
                 "sequence": packet.sequence,

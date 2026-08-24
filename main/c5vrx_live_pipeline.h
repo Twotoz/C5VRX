@@ -8,6 +8,8 @@
 #include "c5vrx_stream.h"
 #include "c5vrx_rf_dump_producer.h"
 #include "c5vrx_capabilities.h"
+#include "c5vrx_cvbs_sync.h"
+#include "c5vrx_wbfm_hw.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,6 +34,7 @@ typedef struct {
     c5vrx_cvbs_sink_fn sink;
     void *sink_context;
     c5vrx_cvbs_conditioner_config_t conditioner;
+    c5vrx_wbfm_kernel_t wbfm_kernel;
     size_t maximum_input_words;
 } c5vrx_live_pipeline_config_t;
 
@@ -39,6 +42,7 @@ esp_err_t c5vrx_live_pipeline_start(const c5vrx_live_pipeline_config_t *config);
 esp_err_t c5vrx_live_pipeline_stop(void);
 bool c5vrx_live_pipeline_running(void);
 void c5vrx_live_pipeline_get_stats(c5vrx_stream_stats_t *stats);
+void c5vrx_live_pipeline_get_timing(c5vrx_cvbs_sync_tracker_t *timing);
 void c5vrx_live_pipeline_log_stats(void);
 
 /* Explicitly experimental adapter over repeated finite vendor dump triggers. */

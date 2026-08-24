@@ -12,12 +12,23 @@ extern "C" {
 
 typedef struct c5vrx_wbfm_hw_context c5vrx_wbfm_hw_context_t;
 
+typedef enum {
+    C5VRX_WBFM_PHASE6_4TO1 = 0,
+    C5VRX_WBFM_PHASE8_4TO1 = 1,
+} c5vrx_wbfm_kernel_t;
+
 /** Exact 6-bit retained-sample phase quantizer used by the hardware LUT. */
 uint8_t c5vrx_wbfm_coarse_phase6(uint32_t packed_iq);
+uint8_t c5vrx_wbfm_hw_context_phase6(
+    const c5vrx_wbfm_hw_context_t *context, uint32_t packed_iq);
 
 /** Create one reusable BitScrambler/GDMA loopback transform. */
 esp_err_t c5vrx_wbfm_hw_create(size_t maximum_input_words,
                                c5vrx_wbfm_hw_context_t **context);
+esp_err_t c5vrx_wbfm_hw_create_kernel(
+    size_t maximum_input_words, c5vrx_wbfm_kernel_t kernel,
+    c5vrx_wbfm_hw_context_t **context);
+unsigned c5vrx_wbfm_hw_phase_bits(const c5vrx_wbfm_hw_context_t *context);
 
 void c5vrx_wbfm_hw_destroy(c5vrx_wbfm_hw_context_t *context);
 

@@ -25,7 +25,9 @@ PACKET_STREAM_END = 3
 PACKET_IQ_U32_BLOCK = 4
 PACKET_IQ_U32_CHUNK = 5
 PACKET_PHASE8_CHUNK = 6
+PACKET_YUV411_FRAME = 7
 PIXEL_FORMAT_GRAY8 = 1
+PIXEL_FORMAT_YUV411 = 2
 IQ_FLAG_NONE = 0
 
 
@@ -53,6 +55,33 @@ class Packet:
     sequence: int
     timestamp_us: int
     payload: bytes
+
+
+def yuv411_to_rgb(payload: bytes, width: int, height: int, stride: int) -> bytes:
+    """Decode packed U-Y0-Y1-V-Y2-Y3 groups into RGB24."""
+    if width <= 0 or height <= 0 or width % 4 or stride < width * 3 // 2:
+        raise ValueError("invalid YUV411 geometry")
+    if len(payload) != stride * height:
+        raise ValueError("invalid YUV411 payload size")
+    rgb = bytearray(width * height * 3)
+    out = 0
+    for row in range(height):
+        line = payload[row * stride:(row + 1) * stride]
+        for offset in range(0, width * 3 // 2, 6):
+            u, y0, y1, v, y2, y3 = line[offset:offset + 6]
+            d = u - 128
+            e = v - 128
+            for y in (y0, y1, y2, y3):
+                c = max(0, y - 16)
+                r = (298 * c + 409 * e + 128) >> 8
+                g = (298 * c - 100 * d - 208 * e + 128) >> 8
+                b = (298 * c + 516 * d + 128) >> 8
+                rgb[out:out + 3] = bytes((
+                    min(255, max(0, r)), min(255, max(0, g)),
+                    min(255, max(0, b)),
+                ))
+                out += 3
+    return bytes(rgb)
 
 
 def encode_packet(packet_type: int, sequence: int, timestamp_us: int,
@@ -245,6 +274,8 @@ def self_test() -> None:
     phase_payload = IQ_CHUNK_DESCRIPTOR.pack(10, 5, 0, 5, 3) + \
         bytes([0, 63, 127, 191, 255])
     phase_chunk = encode_packet(PACKET_PHASE8_CHUNK, 7, 2700, phase_payload)
+    yuv = bytes([128, 16, 64, 128, 128, 235])
+    assert len(yuv411_to_rgb(yuv, 4, 1, 6)) == 12
     damaged = bytearray(video)
     damaged[-1] ^= 0x80
     end = encode_packet(PACKET_STREAM_END, 8, 3000, b"")

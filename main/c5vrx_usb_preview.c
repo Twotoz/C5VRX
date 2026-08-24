@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "c5vrx_cvbs_sync.h"
 #include "c5vrx_usb_transport.h"
@@ -14,22 +15,32 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define FRAME_BYTES (C5VRX_USB_PREVIEW_WIDTH * C5VRX_USB_PREVIEW_HEIGHT)
+#define YUV411_STRIDE (C5VRX_USB_PREVIEW_WIDTH * 3u / 2u)
+#define FRAME_BYTES (YUV411_STRIDE * C5VRX_USB_PREVIEW_HEIGHT)
 #define USB_HEADER_BYTES 32u
 #define FRAME_DESCRIPTOR_BYTES 8u
 #define PACKET_STREAM_INFO 1u
 #define PACKET_GRAY8_FRAME 2u
+#define PACKET_YUV411_FRAME 7u
 #define PIXEL_FORMAT_GRAY8 1u
+#define PIXEL_FORMAT_YUV411 2u
 #define FIRST_ACTIVE_FIELD_LINE 20u
 #define ACTIVE_FIELD_LINES 240u
 #define NOMINAL_LINE_SAMPLES 1280u
 #define NOMINAL_ACTIVE_START 210u
 #define NOMINAL_ACTIVE_SAMPLES 1040u
+#define CONSUMER_LEASE_US 750000u
+#define COMPOSITE_BLOCK_MAX 4096u
 
 static const uint8_t s_usb_magic[8] = {0x00, 'C', '5', 'V', 'R', 'X', 0xa5, 0x5a};
 
 typedef struct {
     uint8_t *frame[2];
+    uint8_t *composite[2];
+    size_t composite_count[2];
+    c5vrx_cvbs_sync_tracker_t composite_timing[2];
+    bool composite_ready[2];
+    bool composite_in_use[2];
     unsigned fill_index;
     unsigned ready_index;
     unsigned x;
@@ -38,6 +49,28 @@ typedef struct {
     uint32_t line_period;
     uint32_t sequence;
     uint64_t dropped;
+    uint64_t consumer_deadline_us;
+    uint64_t worker_time_us;
+    uint32_t session_epoch;
+    uint64_t last_field_id;
+    uint32_t transport_stalls;
+    uint32_t stale_session_drops;
+    int32_t luma_q8;
+    int32_t chroma_u_q8;
+    int32_t chroma_v_q8;
+    int64_t burst_i;
+    int64_t burst_q;
+    uint32_t burst_count;
+    int32_t burst_ref_i;
+    int32_t burst_ref_q;
+    uint32_t burst_locks;
+    uint64_t burst_line_key;
+    bool burst_locked;
+    uint8_t y_group[4];
+    int32_t u_group;
+    int32_t v_group;
+    unsigned group_count;
+    int8_t sine[256];
     uint32_t frames_completed;
     uint32_t frames_sent;
     c5vrx_cvbs_sync_tracker_t sync;
@@ -46,16 +79,31 @@ typedef struct {
     bool sending[2];
     volatile bool ready;
     volatile bool running;
+    volatile bool consumer_active;
+    volatile bool worker_active;
+    volatile bool stream_info_pending;
+    bool prepared;
     TaskHandle_t task;
     portMUX_TYPE lock;
 } preview_state_t;
 
 static preview_state_t s_preview = {.lock = portMUX_INITIALIZER_UNLOCKED};
 
+static void decode_timed_block(
+    const uint8_t *cvbs, size_t samples,
+    const c5vrx_cvbs_sync_tracker_t *timing);
+
 static void put_le16(uint8_t *out, uint16_t value)
 {
     out[0] = (uint8_t)value;
     out[1] = (uint8_t)(value >> 8u);
+}
+
+static uint8_t clamp_u8(int value)
+{
+    if (value < 0) return 0u;
+    if (value > 255) return 255u;
+    return (uint8_t)value;
 }
 
 static void put_le32(uint8_t *out, uint32_t value)
@@ -87,7 +135,7 @@ static uint32_t crc32_parts(const uint8_t *first, size_t first_count,
     return ~crc;
 }
 
-static void write_packet(unsigned type,
+static esp_err_t write_packet(unsigned type,
                          const uint8_t *first, size_t first_count,
                          const uint8_t *second, size_t second_count)
 {
@@ -111,7 +159,26 @@ static void write_packet(unsigned type,
         {.data = second, .size = second_count},
         {.data = trailer, .size = sizeof(trailer)},
     };
-    (void)c5vrx_usb_writev(packet, sizeof(packet) / sizeof(packet[0]));
+    return c5vrx_usb_writev(packet, sizeof(packet) / sizeof(packet[0]));
+}
+
+static void park_consumer(bool transport_stall)
+{
+    s_preview.worker_active = false;
+    taskENTER_CRITICAL(&s_preview.lock);
+    if (transport_stall) ++s_preview.transport_stalls;
+    if (s_preview.consumer_active || s_preview.ready) {
+        ++s_preview.stale_session_drops;
+    }
+    s_preview.consumer_active = false;
+    s_preview.worker_active = false;
+    s_preview.ready = false;
+    s_preview.composite_ready[0] = s_preview.composite_ready[1] = false;
+    s_preview.current_line = false;
+    s_preview.x = 0u;
+    s_preview.group_count = 0u;
+    s_preview.burst_locked = false;
+    taskEXIT_CRITICAL(&s_preview.lock);
 }
 
 static void make_descriptor(uint8_t descriptor[FRAME_DESCRIPTOR_BYTES],
@@ -119,8 +186,8 @@ static void make_descriptor(uint8_t descriptor[FRAME_DESCRIPTOR_BYTES],
 {
     put_le16(descriptor, C5VRX_USB_PREVIEW_WIDTH);
     put_le16(descriptor + 2, C5VRX_USB_PREVIEW_HEIGHT);
-    put_le16(descriptor + 4, C5VRX_USB_PREVIEW_WIDTH);
-    descriptor[6] = PIXEL_FORMAT_GRAY8;
+    put_le16(descriptor + 4, YUV411_STRIDE);
+    descriptor[6] = PIXEL_FORMAT_YUV411;
     descriptor[7] = flags;
 }
 
@@ -128,12 +195,51 @@ static void preview_task(void *arg)
 {
     (void)arg;
     uint8_t descriptor[FRAME_DESCRIPTOR_BYTES];
-    make_descriptor(descriptor, 0u);
-    write_packet(PACKET_STREAM_INFO, descriptor, sizeof(descriptor), NULL, 0u);
-
-    while (s_preview.running) {
-        (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
-        if (!s_preview.running) break;
+    for (;;) {
+        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        if (!s_preview.running) continue;
+        if (s_preview.stream_info_pending) {
+            make_descriptor(descriptor, 0u);
+            s_preview.stream_info_pending = false;
+            if (write_packet(PACKET_STREAM_INFO, descriptor,
+                             sizeof(descriptor), NULL, 0u) != ESP_OK) {
+                park_consumer(true);
+                continue;
+            }
+            c5vrx_usb_preview_keepalive();
+        }
+        if (!c5vrx_usb_preview_consumer_active()) {
+            park_consumer(false);
+            continue;
+        }
+        unsigned composite_index = 0u;
+        bool have_composite = false;
+        taskENTER_CRITICAL(&s_preview.lock);
+        for (unsigned i = 0; i < 2u; ++i) {
+            if (!s_preview.composite_ready[i]) continue;
+            s_preview.composite_ready[i] = false;
+            s_preview.composite_in_use[i] = true;
+            composite_index = i;
+            have_composite = true;
+            break;
+        }
+        taskEXIT_CRITICAL(&s_preview.lock);
+        if (have_composite) {
+            const int64_t decode_begin = esp_timer_get_time();
+            decode_timed_block(
+                s_preview.composite[composite_index],
+                s_preview.composite_count[composite_index],
+                &s_preview.composite_timing[composite_index]);
+            taskENTER_CRITICAL(&s_preview.lock);
+            s_preview.worker_time_us +=
+                (uint64_t)(esp_timer_get_time() - decode_begin);
+            s_preview.composite_in_use[composite_index] = false;
+            taskEXIT_CRITICAL(&s_preview.lock);
+        }
+        if (!s_preview.running || !c5vrx_usb_preview_consumer_active()) {
+            park_consumer(false);
+            continue;
+        }
         unsigned index = 0;
         bool have_frame = false;
         taskENTER_CRITICAL(&s_preview.lock);
@@ -146,15 +252,23 @@ static void preview_task(void *arg)
         taskEXIT_CRITICAL(&s_preview.lock);
         if (!have_frame) continue;
 
-        make_descriptor(descriptor, 1u);
-        write_packet(PACKET_GRAY8_FRAME,
-                     descriptor, sizeof(descriptor),
-                     s_preview.frame[index], FRAME_BYTES);
+        make_descriptor(descriptor, (uint8_t)(1u |
+            (s_preview.burst_locked ? 2u : 0u)));
+        const int64_t work_begin = esp_timer_get_time();
+        const esp_err_t write_err = write_packet(PACKET_YUV411_FRAME,
+            descriptor, sizeof(descriptor), s_preview.frame[index], FRAME_BYTES);
         taskENTER_CRITICAL(&s_preview.lock);
-        ++s_preview.frames_sent;
+        s_preview.worker_time_us +=
+            (uint64_t)(esp_timer_get_time() - work_begin);
+        if (write_err == ESP_OK) ++s_preview.frames_sent;
         s_preview.telemetry.frames_sent = s_preview.frames_sent;
         s_preview.sending[index] = false;
         taskEXIT_CRITICAL(&s_preview.lock);
+        if (write_err != ESP_OK) park_consumer(true);
+        else {
+            c5vrx_usb_preview_keepalive();
+            s_preview.worker_active = false;
+        }
     }
 
     /*
@@ -162,8 +276,6 @@ static void preview_task(void *arg)
      * making the task block in the direct writer while stop() waits for it.
      * The ASCII STOP acknowledgement is the authoritative lifecycle marker.
      */
-    s_preview.task = NULL;
-    vTaskDelete(NULL);
 }
 
 static void publish_frame(void)
@@ -185,52 +297,99 @@ static void publish_frame(void)
     taskEXIT_CRITICAL(&s_preview.lock);
 }
 
-esp_err_t c5vrx_usb_preview_start(void)
+esp_err_t c5vrx_usb_preview_prepare(void)
 {
-    /* START is deliberately idempotent for reconnecting Windows hosts. */
-    if (s_preview.running) return ESP_OK;
-    if (s_preview.task) return ESP_ERR_INVALID_STATE;
-    memset(&s_preview, 0, offsetof(preview_state_t, lock));
-    c5vrx_cvbs_sync_init(&s_preview.sync);
-    s_preview.current_row = C5VRX_CVBS_SYNC_NO_LINE;
-    s_preview.line_period = NOMINAL_LINE_SAMPLES;
+    if (s_preview.prepared) return ESP_OK;
     for (unsigned i = 0; i < 2u; ++i) {
         s_preview.frame[i] = heap_caps_malloc(FRAME_BYTES, MALLOC_CAP_INTERNAL);
-        if (!s_preview.frame[i]) {
-            while (i) free(s_preview.frame[--i]);
+        s_preview.composite[i] = heap_caps_malloc(
+            COMPOSITE_BLOCK_MAX, MALLOC_CAP_INTERNAL);
+        if (!s_preview.frame[i] || !s_preview.composite[i]) {
+            for (unsigned n = 0; n <= i; ++n) {
+                free(s_preview.frame[n]);
+                free(s_preview.composite[n]);
+                s_preview.frame[n] = s_preview.composite[n] = NULL;
+            }
             return ESP_ERR_NO_MEM;
         }
         memset(s_preview.frame[i], 0, FRAME_BYTES);
     }
-    s_preview.running = true;
+    for (unsigned i = 0; i < 256u; ++i) {
+        s_preview.sine[i] = (int8_t)lrintf(
+            127.0f * sinf((float)i * 6.2831853071795864769f / 256.0f));
+    }
     if (xTaskCreate(preview_task, "c5vrx_preview", 3072, NULL, 4,
                     &s_preview.task) != pdPASS) {
-        s_preview.running = false;
         free(s_preview.frame[0]);
         free(s_preview.frame[1]);
+        free(s_preview.composite[0]);
+        free(s_preview.composite[1]);
         s_preview.frame[0] = s_preview.frame[1] = NULL;
+        s_preview.composite[0] = s_preview.composite[1] = NULL;
         return ESP_ERR_NO_MEM;
     }
+    s_preview.prepared = true;
+    return ESP_OK;
+}
+
+esp_err_t c5vrx_usb_preview_start(void)
+{
+    /* START is deliberately idempotent for reconnecting Windows hosts. */
+    if (s_preview.running && c5vrx_usb_preview_consumer_active()) {
+        c5vrx_usb_preview_keepalive();
+        return ESP_OK;
+    }
+    esp_err_t err = c5vrx_usb_preview_prepare();
+    if (err != ESP_OK) return err;
+    c5vrx_cvbs_sync_init(&s_preview.sync);
+    s_preview.current_row = C5VRX_CVBS_SYNC_NO_LINE;
+    s_preview.line_period = NOMINAL_LINE_SAMPLES;
+    s_preview.ready = false;
+    s_preview.composite_ready[0] = s_preview.composite_ready[1] = false;
+    s_preview.current_line = false;
+    s_preview.group_count = 0u;
+    s_preview.burst_locked = false;
+    s_preview.burst_line_key = UINT64_MAX;
+    s_preview.worker_active = false;
+    s_preview.stream_info_pending = true;
+    s_preview.running = true;
+    s_preview.consumer_active = true;
+    s_preview.consumer_deadline_us =
+        (uint64_t)esp_timer_get_time() + CONSUMER_LEASE_US;
+    ++s_preview.session_epoch;
+    xTaskNotifyGive(s_preview.task);
     return ESP_OK;
 }
 
 esp_err_t c5vrx_usb_preview_stop(void)
 {
     /* STOP is deliberately idempotent as well. */
-    if (!s_preview.running && !s_preview.task) return ESP_OK;
+    if (!s_preview.running) return ESP_OK;
     s_preview.running = false;
-    if (s_preview.task) xTaskNotifyGive(s_preview.task);
-    /* One scheduler tick per iteration; pdMS_TO_TICKS(1) can round to zero. */
-    for (unsigned i = 0; i < 50u && s_preview.task; ++i)
-        vTaskDelay(1);
-    if (s_preview.task) return ESP_ERR_TIMEOUT;
-    free(s_preview.frame[0]);
-    free(s_preview.frame[1]);
-    s_preview.frame[0] = s_preview.frame[1] = NULL;
+    park_consumer(false);
     return ESP_OK;
 }
 
 bool c5vrx_usb_preview_running(void) { return s_preview.running; }
+
+void c5vrx_usb_preview_keepalive(void)
+{
+    if (!s_preview.running) return;
+    taskENTER_CRITICAL(&s_preview.lock);
+    s_preview.consumer_deadline_us =
+        (uint64_t)esp_timer_get_time() + CONSUMER_LEASE_US;
+    s_preview.consumer_active = true;
+    taskEXIT_CRITICAL(&s_preview.lock);
+}
+
+bool c5vrx_usb_preview_consumer_active(void)
+{
+    if (!s_preview.running || !s_preview.consumer_active) return false;
+    if ((uint64_t)esp_timer_get_time() <= s_preview.consumer_deadline_us)
+        return true;
+    park_consumer(false);
+    return false;
+}
 
 void c5vrx_usb_preview_get_stats(c5vrx_usb_preview_stats_t *stats)
 {
@@ -260,6 +419,13 @@ static void update_telemetry(void)
         .sync_threshold = c5vrx_cvbs_sync_threshold(&s_preview.sync),
         .horizontal_locked = s_preview.sync.horizontal_locked,
         .vertical_locked = s_preview.sync.vertical_locked,
+        .consumer_active = s_preview.consumer_active,
+        .worker_active = s_preview.worker_active,
+        .session_epoch = s_preview.session_epoch,
+        .transport_stalls = s_preview.transport_stalls,
+        .stale_session_drops = s_preview.stale_session_drops,
+        .worker_time_us = s_preview.worker_time_us > UINT32_MAX ?
+            UINT32_MAX : (uint32_t)s_preview.worker_time_us,
     };
     taskENTER_CRITICAL(&s_preview.lock);
     s_preview.telemetry = next;
@@ -268,7 +434,10 @@ static void update_telemetry(void)
 
 void c5vrx_usb_preview_ingest(const uint8_t *cvbs, size_t samples)
 {
-    if (!s_preview.running || !cvbs) return;
+    /* Diagnostics-only compatibility path. Production LIVE calls
+     * ingest_timed() with the upstream canonical timing authority. */
+    if (!cvbs || !c5vrx_usb_preview_consumer_active()) return;
+    s_preview.worker_active = true;
     for (size_t n = 0; n < samples; ++n) {
         const uint8_t value = cvbs[n] & 0x3fu;
         c5vrx_cvbs_sync_event_t event;
@@ -322,4 +491,188 @@ void c5vrx_usb_preview_ingest(const uint8_t *cvbs, size_t samples)
         ++s_preview.line_phase;
     }
     update_telemetry();
+    s_preview.worker_active = false;
+}
+
+static void decode_timed_block(
+    const uint8_t *cvbs, size_t samples,
+    const c5vrx_cvbs_sync_tracker_t *timing)
+{
+    s_preview.worker_active = true;
+    if (!timing->horizontal_locked || !timing->vertical_locked ||
+        !timing->line_period_samples || !timing->last_hsync_start) {
+        s_preview.worker_active = false;
+        return;
+    }
+    if (timing->field_id != s_preview.last_field_id) {
+        s_preview.last_field_id = timing->field_id;
+        s_preview.current_row = C5VRX_CVBS_SYNC_NO_LINE;
+        s_preview.current_line = false;
+        s_preview.x = 0u;
+    }
+
+    const uint64_t block_start = timing->samples_seen >= samples ?
+        timing->samples_seen - samples : 0u;
+    const uint32_t period = timing->line_period_samples;
+    const uint16_t current_line = timing->field_line ?
+        (uint16_t)(timing->field_line - 1u) : 0u;
+    if (current_line < FIRST_ACTIVE_FIELD_LINE ||
+        current_line >= FIRST_ACTIVE_FIELD_LINE + ACTIVE_FIELD_LINES ||
+        ((current_line - FIRST_ACTIVE_FIELD_LINE) & 1u)) {
+        s_preview.worker_active = false;
+        return;
+    }
+    const uint16_t row =
+        (uint16_t)((current_line - FIRST_ACTIVE_FIELD_LINE) / 2u);
+    const uint32_t active_start =
+        period * NOMINAL_ACTIVE_START / NOMINAL_LINE_SAMPLES;
+    const uint32_t active_samples =
+        period * NOMINAL_ACTIVE_SAMPLES / NOMINAL_LINE_SAMPLES;
+
+    if (s_preview.current_row != row) {
+        s_preview.current_row = row;
+        s_preview.x = 0u;
+        s_preview.group_count = 0u;
+    }
+    const uint64_t line_key = (timing->field_id << 16u) | current_line;
+    if (s_preview.burst_line_key != line_key) {
+        s_preview.burst_line_key = line_key;
+        s_preview.burst_i = s_preview.burst_q = 0;
+        s_preview.burst_count = 0u;
+        s_preview.burst_locked = false;
+    }
+    const uint32_t burst_start = period * 105u / NOMINAL_LINE_SAMPLES;
+    const uint32_t burst_end = period * 170u / NOMINAL_LINE_SAMPLES;
+    const uint32_t subcarrier_hz =
+        timing->standard == C5VRX_VIDEO_STANDARD_NTSC ? 3579545u : 4433619u;
+    const uint64_t nco_step = timing->sample_rate_hz ?
+        ((uint64_t)subcarrier_hz << 32u) / timing->sample_rate_hz : 0u;
+    for (size_t n = 0; n < samples && s_preview.x < C5VRX_USB_PREVIEW_WIDTH;
+         ++n) {
+        const uint64_t absolute = block_start + n;
+        if (absolute < timing->last_hsync_start) continue;
+        const uint32_t phase =
+            (uint32_t)(absolute - timing->last_hsync_start);
+        if (phase >= period) continue;
+        const int32_t composite_q8 = (int32_t)(cvbs[n] & 0x3fu) << 8u;
+        s_preview.luma_q8 += (composite_q8 - s_preview.luma_q8) >> 1u;
+        const int32_t chroma = composite_q8 - s_preview.luma_q8;
+        const uint8_t nco = (uint8_t)((absolute * nco_step) >> 24u);
+        const int32_t cosine = s_preview.sine[(uint8_t)(nco + 64u)];
+        const int32_t sine = s_preview.sine[nco];
+        if (phase >= burst_start && phase < burst_end) {
+            s_preview.burst_i += (int64_t)chroma * cosine;
+            s_preview.burst_q += (int64_t)chroma * sine;
+            ++s_preview.burst_count;
+            continue;
+        }
+        if (!s_preview.burst_locked && phase >= burst_end &&
+            s_preview.burst_count >= 8u) {
+            s_preview.burst_ref_i =
+                (int32_t)(s_preview.burst_i / (int32_t)s_preview.burst_count);
+            s_preview.burst_ref_q =
+                (int32_t)(s_preview.burst_q / (int32_t)s_preview.burst_count);
+            const int32_t magnitude = abs(s_preview.burst_ref_i) +
+                abs(s_preview.burst_ref_q) / 2;
+            s_preview.burst_locked = magnitude > 256;
+            if (s_preview.burst_locked) ++s_preview.burst_locks;
+        }
+        if (s_preview.burst_locked && phase >= active_start) {
+            const int32_t norm = abs(s_preview.burst_ref_i) +
+                abs(s_preview.burst_ref_q) / 2;
+            int32_t u = (int32_t)(((int64_t)chroma *
+                (cosine * s_preview.burst_ref_i +
+                 sine * s_preview.burst_ref_q)) / (norm * 127ll));
+            int32_t v = (int32_t)(((int64_t)chroma *
+                (-cosine * s_preview.burst_ref_q +
+                  sine * s_preview.burst_ref_i)) / (norm * 127ll));
+            if (timing->standard == C5VRX_VIDEO_STANDARD_PAL &&
+                (current_line & 1u)) v = -v;
+            s_preview.chroma_u_q8 += (u - s_preview.chroma_u_q8) >> 3u;
+            s_preview.chroma_v_q8 += (v - s_preview.chroma_v_q8) >> 3u;
+        }
+        const uint32_t target = active_start +
+            s_preview.x * active_samples / C5VRX_USB_PREVIEW_WIDTH;
+        if (phase >= target) {
+            const int y = 16 + ((s_preview.luma_q8 >> 8u) - 19) * 219 / 44;
+            s_preview.y_group[s_preview.group_count] = clamp_u8(y);
+            s_preview.u_group += s_preview.chroma_u_q8;
+            s_preview.v_group += s_preview.chroma_v_q8;
+            ++s_preview.group_count;
+            ++s_preview.x;
+            if (s_preview.group_count == 4u) {
+                const size_t group = (s_preview.x - 4u) / 4u;
+                uint8_t *out = s_preview.frame[s_preview.fill_index] +
+                    row * YUV411_STRIDE + group * 6u;
+                out[0] = clamp_u8(128 + (s_preview.u_group / 1024) * 5);
+                out[1] = s_preview.y_group[0];
+                out[2] = s_preview.y_group[1];
+                out[3] = clamp_u8(128 + (s_preview.v_group / 1024) * 5);
+                out[4] = s_preview.y_group[2];
+                out[5] = s_preview.y_group[3];
+                s_preview.group_count = 0u;
+                s_preview.u_group = s_preview.v_group = 0;
+            }
+        }
+    }
+    if (s_preview.x == C5VRX_USB_PREVIEW_WIDTH &&
+        row == C5VRX_USB_PREVIEW_HEIGHT - 1u) {
+        publish_frame();
+        s_preview.x = 0u;
+    }
+
+    s_preview.worker_active = false;
+    taskENTER_CRITICAL(&s_preview.lock);
+    s_preview.telemetry.samples_ingested = timing->samples_seen > UINT32_MAX ?
+        UINT32_MAX : (uint32_t)timing->samples_seen;
+    s_preview.telemetry.horizontal_syncs = timing->horizontal_events;
+    s_preview.telemetry.vertical_syncs = timing->vertical_events;
+    s_preview.telemetry.rejected_sync_pulses = timing->rejected_pulses;
+    s_preview.telemetry.lock_acquisitions = timing->lock_acquisitions;
+    s_preview.telemetry.lock_losses = timing->lock_losses;
+    s_preview.telemetry.line_period_samples = timing->line_period_samples;
+    s_preview.telemetry.last_hsync_width = timing->last_hsync_width;
+    s_preview.telemetry.last_vsync_width = timing->last_vsync_width;
+    s_preview.telemetry.sync_threshold = c5vrx_cvbs_sync_threshold(timing);
+    s_preview.telemetry.horizontal_locked = timing->horizontal_locked;
+    s_preview.telemetry.vertical_locked = timing->vertical_locked;
+    s_preview.telemetry.consumer_active = s_preview.consumer_active;
+    s_preview.telemetry.worker_active = s_preview.worker_active;
+    s_preview.telemetry.burst_locks = s_preview.burst_locks;
+    s_preview.telemetry.burst_locked = s_preview.burst_locked;
+    taskEXIT_CRITICAL(&s_preview.lock);
+}
+
+void c5vrx_usb_preview_ingest_timed(
+    const uint8_t *cvbs, size_t samples,
+    const c5vrx_cvbs_sync_tracker_t *timing)
+{
+    if (!cvbs || !timing || !samples || samples > COMPOSITE_BLOCK_MAX ||
+        !c5vrx_usb_preview_consumer_active()) return;
+    int slot = -1;
+    taskENTER_CRITICAL(&s_preview.lock);
+    for (unsigned i = 0; i < 2u; ++i) {
+        if (!s_preview.composite_ready[i] && !s_preview.composite_in_use[i]) {
+            slot = (int)i;
+            s_preview.composite_in_use[i] = true;
+            break;
+        }
+    }
+    taskEXIT_CRITICAL(&s_preview.lock);
+    if (slot >= 0) {
+        memcpy(s_preview.composite[slot], cvbs, samples);
+        taskENTER_CRITICAL(&s_preview.lock);
+        s_preview.composite_count[slot] = samples;
+        s_preview.composite_timing[slot] = *timing;
+        s_preview.composite_ready[slot] = true;
+        s_preview.composite_in_use[slot] = false;
+        taskEXIT_CRITICAL(&s_preview.lock);
+    } else {
+        taskENTER_CRITICAL(&s_preview.lock);
+        ++s_preview.dropped;
+        s_preview.telemetry.frames_dropped = s_preview.dropped > UINT32_MAX ?
+            UINT32_MAX : (uint32_t)s_preview.dropped;
+        taskEXIT_CRITICAL(&s_preview.lock);
+    }
+    if (slot >= 0 && s_preview.task) xTaskNotifyGive(s_preview.task);
 }

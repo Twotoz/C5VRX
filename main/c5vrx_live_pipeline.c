@@ -7,12 +7,19 @@
 
 #include "c5vrx_adc_dump.h"
 #include "c5vrx_wbfm_hw.h"
+#include "c5vrx_cvbs_levels.h"
+#include "c5vrx_cvbs_live_out.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
+
+#ifndef CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ
+#define CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ 20000000
+#endif
 
 static const char *TAG = "c5vrx_live";
 #define FINITE_SOURCE_BUFFER_COUNT (C5VRX_RF_BLOCK_QUEUE_CAPACITY + 1u)
@@ -35,6 +42,8 @@ typedef struct {
     c5vrx_live_pipeline_config_t config;
     c5vrx_stream_stats_t stats;
     c5vrx_cvbs_conditioner_t conditioner;
+    c5vrx_cvbs_sync_tracker_t timing;
+    c5vrx_cvbs_levels_t levels;
     c5vrx_wbfm_hw_context_t *wbfm_hw;
     uint8_t *wbfm;
     uint8_t *cvbs;
@@ -284,7 +293,13 @@ static void pipeline_task(void *arg)
             continue;
         }
         s_live.stats.queue_occupancy = s_live.queue.occupancy;
-        if (block.discontinuity_before) ++s_live.stats.discontinuities;
+        if (block.discontinuity_before) {
+            ++s_live.stats.discontinuities;
+            c5vrx_cvbs_sync_discontinuity(&s_live.timing);
+            c5vrx_cvbs_levels_reset(&s_live.levels);
+            s_live.have_previous_wbfm = false;
+            s_live.have_previous_retained_phase = false;
+        }
         if (!block.words || block.word_count > s_live.config.maximum_input_words ||
             (block.word_count & 3u)) {
             ++s_live.stats.dropped_rf_blocks;
@@ -302,8 +317,14 @@ static void pipeline_task(void *arg)
         s_live.stats.wbfm_time_us += wbfm_duration;
         update_max_u64(&s_live.stats.wbfm_time_max_us, wbfm_duration);
         if (err == ESP_OK && written > 0u) {
+            if (c5vrx_wbfm_hw_phase_bits(s_live.wbfm_hw) == 8u) {
+                for (size_t i = 0; i < written; ++i) {
+                    s_live.wbfm[i] = (uint8_t)(
+                        ((unsigned)s_live.wbfm[i] + 2u) >> 2u) & 0x3fu;
+                }
+            }
             const uint8_t first_phase =
-                c5vrx_wbfm_coarse_phase6(block.words[0]);
+                c5vrx_wbfm_hw_context_phase6(s_live.wbfm_hw, block.words[0]);
             if (!block.discontinuity_before &&
                 s_live.have_previous_retained_phase) {
                 s_live.wbfm[0] = (uint8_t)(32u + first_phase -
@@ -311,8 +332,8 @@ static void pipeline_task(void *arg)
             } else {
                 s_live.wbfm[0] = 32u;
             }
-            s_live.previous_retained_phase = c5vrx_wbfm_coarse_phase6(
-                block.words[(written - 1u) * 4u]);
+            s_live.previous_retained_phase = c5vrx_wbfm_hw_context_phase6(
+                s_live.wbfm_hw, block.words[(written - 1u) * 4u]);
             s_live.have_previous_retained_phase = true;
         }
         s_live.config.source->release(s_live.config.source, &block);
@@ -341,6 +362,18 @@ static void pipeline_task(void *arg)
         const int64_t condition_begin = esp_timer_get_time();
         c5vrx_cvbs_condition(&s_live.conditioner, s_live.wbfm, s_live.cvbs,
                              written, &cmin, &cmax);
+        c5vrx_cvbs_levels_process(
+            &s_live.levels, &s_live.timing, s_live.cvbs, written);
+        /* Sync/timing needs edge accuracy, not every 20 MHz sample. A fixed
+         * four-sample stride preserves sub-microsecond H timing while cutting
+         * observer CPU by 75%; sample positions remain in source units. */
+        for (size_t i = 0; i < written; i += 4u) {
+            c5vrx_cvbs_sync_event_t timing_event;
+            const uint8_t stride = (uint8_t)(written - i < 4u ?
+                written - i : 4u);
+            (void)c5vrx_cvbs_sync_consume_stride(
+                &s_live.timing, s_live.cvbs[i], stride, &timing_event);
+        }
         const uint64_t conditioner_duration =
             (uint64_t)(esp_timer_get_time() - condition_begin);
         s_live.stats.conditioner_time_us += conditioner_duration;
@@ -388,8 +421,9 @@ esp_err_t c5vrx_live_pipeline_start(const c5vrx_live_pipeline_config_t *config)
                                    MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
     s_live.sink_pending = heap_caps_malloc(output_capacity,
                                            MALLOC_CAP_INTERNAL);
-    esp_err_t hardware_err = c5vrx_wbfm_hw_create(
-        config->maximum_input_words, &s_live.wbfm_hw);
+    esp_err_t hardware_err = c5vrx_wbfm_hw_create_kernel(
+        config->maximum_input_words, config->wbfm_kernel,
+        &s_live.wbfm_hw);
     if (!s_live.wbfm || !s_live.cvbs || !s_live.sink_pending ||
         hardware_err != ESP_OK) {
         free(s_live.wbfm);
@@ -400,6 +434,10 @@ esp_err_t c5vrx_live_pipeline_start(const c5vrx_live_pipeline_config_t *config)
         return hardware_err != ESP_OK ? hardware_err : ESP_ERR_NO_MEM;
     }
     c5vrx_cvbs_conditioner_init(&s_live.conditioner, &config->conditioner);
+    c5vrx_cvbs_sync_init(&s_live.timing);
+    c5vrx_cvbs_sync_set_sample_rate(
+        &s_live.timing, CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ);
+    c5vrx_cvbs_levels_init(&s_live.levels);
     c5vrx_rf_block_queue_init(&s_live.queue);
     esp_err_t watchdog_err = suspend_idle_watchdog_for_ring();
     if (watchdog_err != ESP_OK) {
@@ -472,11 +510,18 @@ void c5vrx_live_pipeline_get_stats(c5vrx_stream_stats_t *stats)
     if (stats) *stats = s_live.stats;
 }
 
+void c5vrx_live_pipeline_get_timing(c5vrx_cvbs_sync_tracker_t *timing)
+{
+    if (timing) *timing = s_live.timing;
+}
+
 void c5vrx_live_pipeline_log_stats(void)
 {
     c5vrx_stream_stats_t *s = &s_live.stats;
+    c5vrx_cvbs_live_out_stats_t av = {0};
+    c5vrx_cvbs_live_out_get_stats(&av);
     ESP_LOGI(TAG,
-             "blocks=%llu src_underrun=%llu out_underrun=%llu dropped=%llu discontinuities=%llu rate_iq=%u/s rate_cvbs=%u/s wbfm=%u..%u cvbs=%u..%u stage_us total/max source=%llu/%llu wbfm=%llu/%llu condition=%llu/%llu output=%llu/%llu boundary_jump avg/max=%llu/%u queue=%u high=%u",
+             "blocks=%llu src_underrun=%llu out_underrun=%llu dropped=%llu discontinuities=%llu rate_iq=%u/s rate_cvbs=%u/s wbfm=%u..%u cvbs=%u..%u stage_us total/max source=%llu/%llu wbfm=%llu/%llu condition=%llu/%llu output=%llu/%llu boundary_jump avg/max=%llu/%u queue=%u high=%u timing_epoch=%llu field=%llu standard=%u polarity=%u h_lock=%u v_lock=%u line_q8=%u av_live=%llu av_filler=%llu av_mailbox_drop=%llu av_guardian=%u",
              (unsigned long long)s->blocks_processed,
              (unsigned long long)s->source_underruns,
              (unsigned long long)s->output_underruns,
@@ -496,5 +541,16 @@ void c5vrx_live_pipeline_log_stats(void)
              (unsigned long long)(s->blocks_processed > 1u
                  ? s->boundary_jump_sum / (s->blocks_processed - 1u) : 0u),
              (unsigned)s->boundary_jump_max,
-             s->queue_occupancy, s->queue_high_water_mark);
+             s->queue_occupancy, s->queue_high_water_mark,
+             (unsigned long long)s_live.timing.stream_epoch,
+             (unsigned long long)s_live.timing.field_id,
+             (unsigned)s_live.timing.standard,
+             (unsigned)s_live.timing.polarity,
+             s_live.timing.horizontal_locked ? 1u : 0u,
+             s_live.timing.vertical_locked ? 1u : 0u,
+             (unsigned)s_live.timing.line_period_q8,
+             (unsigned long long)av.live_blocks,
+             (unsigned long long)av.filler_blocks,
+             (unsigned long long)av.mailbox_drops,
+             av.guardian_running ? 1u : 0u);
 }

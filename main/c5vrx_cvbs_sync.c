@@ -6,16 +6,31 @@
 #include <string.h>
 
 #define NOMINAL_LINE_SAMPLES 1280u
-#define MIN_LINE_SAMPLES 1100u
-#define MAX_LINE_SAMPLES 1450u
-#define MIN_HSYNC_SAMPLES 60u
-#define MAX_HSYNC_SAMPLES 160u
-#define MIN_BROAD_SYNC_SAMPLES 300u
-#define MAX_BROAD_SYNC_SAMPLES 800u
 #define HORIZONTAL_LOCK_EVENTS 3u
 #define MAX_FIELD_LINES 340u
 #define VERTICAL_CLUSTER_LINES 4u
 #define HORIZONTAL_TIMEOUT_LINES 3u
+#define DEFAULT_SAMPLE_RATE_HZ 20000000u
+#define STANDARD_LOCK_SCORE 8u
+
+static void classify_standard(c5vrx_cvbs_sync_tracker_t *tracker)
+{
+    if (!tracker->line_period_samples || !tracker->sample_rate_hz) return;
+    const uint32_t rate = tracker->sample_rate_hz / tracker->line_period_samples;
+    const bool pal = rate >= 15550u && rate <= 15700u;
+    const bool ntsc = rate >= 15680u && rate <= 15800u;
+    if (pal && !ntsc) {
+        if (tracker->pal_score < STANDARD_LOCK_SCORE) ++tracker->pal_score;
+        if (tracker->ntsc_score) --tracker->ntsc_score;
+    } else if (ntsc && !pal) {
+        if (tracker->ntsc_score < STANDARD_LOCK_SCORE) ++tracker->ntsc_score;
+        if (tracker->pal_score) --tracker->pal_score;
+    }
+    if (tracker->pal_score >= STANDARD_LOCK_SCORE)
+        tracker->standard = C5VRX_VIDEO_STANDARD_PAL;
+    else if (tracker->ntsc_score >= STANDARD_LOCK_SCORE)
+        tracker->standard = C5VRX_VIDEO_STANDARD_NTSC;
+}
 
 static void lose_horizontal_lock(c5vrx_cvbs_sync_tracker_t *tracker)
 {
@@ -29,9 +44,33 @@ void c5vrx_cvbs_sync_init(c5vrx_cvbs_sync_tracker_t *tracker)
     if (!tracker) return;
     memset(tracker, 0, sizeof(*tracker));
     tracker->line_period_samples = NOMINAL_LINE_SAMPLES;
+    tracker->line_period_q8 = NOMINAL_LINE_SAMPLES << 8u;
     tracker->sync_floor = 8u;
     tracker->signal_peak = 24u;
     tracker->field_line = C5VRX_CVBS_SYNC_NO_LINE;
+    tracker->sample_rate_hz = DEFAULT_SAMPLE_RATE_HZ;
+}
+
+void c5vrx_cvbs_sync_set_sample_rate(c5vrx_cvbs_sync_tracker_t *tracker,
+                                     uint32_t sample_rate_hz)
+{
+    if (!tracker || !sample_rate_hz) return;
+    tracker->sample_rate_hz = sample_rate_hz;
+    if (!tracker->horizontal_events) {
+        tracker->line_period_samples =
+            (sample_rate_hz + 7812u) / 15625u;
+        tracker->line_period_q8 = tracker->line_period_samples << 8u;
+    }
+}
+
+void c5vrx_cvbs_sync_discontinuity(c5vrx_cvbs_sync_tracker_t *tracker)
+{
+    if (!tracker) return;
+    const uint64_t epoch = tracker->stream_epoch + 1u;
+    const uint32_t rate = tracker->sample_rate_hz;
+    c5vrx_cvbs_sync_init(tracker);
+    tracker->stream_epoch = epoch;
+    tracker->sample_rate_hz = rate ? rate : DEFAULT_SAMPLE_RATE_HZ;
 }
 
 uint8_t c5vrx_cvbs_sync_threshold(const c5vrx_cvbs_sync_tracker_t *tracker)
@@ -67,7 +106,17 @@ static bool finish_pulse(c5vrx_cvbs_sync_tracker_t *tracker,
     tracker->pulse_samples = 0;
     tracker->high_run = 0;
 
-    if (width >= MIN_BROAD_SYNC_SAMPLES && width <= MAX_BROAD_SYNC_SAMPLES) {
+    const uint32_t rate = tracker->sample_rate_hz ?
+        tracker->sample_rate_hz : DEFAULT_SAMPLE_RATE_HZ;
+    const uint32_t min_hsync = rate * 30u / 10000000u;
+    const uint32_t max_hsync = rate * 65u / 10000000u;
+    const uint32_t min_broad = rate * 20u / 1000000u;
+    const uint32_t max_broad = rate * 35u / 1000000u;
+    const uint32_t nominal_line = rate / 15625u;
+    const uint32_t min_line = nominal_line * 85u / 100u;
+    const uint32_t max_line = nominal_line * 115u / 100u;
+
+    if (width >= min_broad && width <= max_broad) {
         /* Equalising/broad-sync sequences contain several pulses per field.
          * Count and emit the cluster once, not once per constituent pulse. */
         const bool same_cluster = tracker->vertical_events != 0u &&
@@ -75,6 +124,15 @@ static bool finish_pulse(c5vrx_cvbs_sync_tracker_t *tracker,
                 (uint64_t)VERTICAL_CLUSTER_LINES * tracker->line_period_samples;
         if (same_cluster) return false;
         ++tracker->vertical_events;
+        ++tracker->field_id;
+        if (tracker->last_hsync_start && tracker->line_period_samples) {
+            const uint32_t phase = (uint32_t)((pulse_start -
+                tracker->last_hsync_start) % tracker->line_period_samples);
+            tracker->odd_field = phase > tracker->line_period_samples / 4u &&
+                phase < tracker->line_period_samples * 3u / 4u;
+        } else {
+            tracker->odd_field = (tracker->field_id & 1u) != 0u;
+        }
         tracker->last_vsync_start = pulse_start;
         tracker->last_vsync_width = width;
         tracker->vertical_locked = true;
@@ -84,21 +142,33 @@ static bool finish_pulse(c5vrx_cvbs_sync_tracker_t *tracker,
         event->vertical = true;
         event->sync_start = pulse_start;
         event->field_line = 0u;
+        event->stream_epoch = tracker->stream_epoch;
+        event->field_id = tracker->field_id;
+        event->odd_field = tracker->odd_field;
+        event->standard = tracker->standard;
+        event->polarity = tracker->polarity;
         return true;
     }
-    if (width < MIN_HSYNC_SAMPLES || width > MAX_HSYNC_SAMPLES) {
+    if (width < min_hsync || width > max_hsync) {
         ++tracker->rejected_pulses;
         return false;
     }
     ++tracker->horizontal_events;
+    if (tracker->polarity_votes < 8u) ++tracker->polarity_votes;
+    if (tracker->polarity_votes >= 8u)
+        tracker->polarity = C5VRX_SYNC_POLARITY_NEGATIVE;
     tracker->last_hsync_width = width;
 
     if (tracker->last_hsync_start) {
         const uint64_t interval64 = pulse_start - tracker->last_hsync_start;
-        if (interval64 >= MIN_LINE_SAMPLES && interval64 <= MAX_LINE_SAMPLES) {
+        if (interval64 >= min_line && interval64 <= max_line) {
             const uint32_t interval = (uint32_t)interval64;
+            tracker->line_period_q8 =
+                (uint32_t)(((uint64_t)tracker->line_period_q8 * 7u +
+                            ((uint64_t)interval << 8u) + 4u) / 8u);
             tracker->line_period_samples =
-                (tracker->line_period_samples * 7u + interval + 4u) / 8u;
+                (tracker->line_period_q8 + 128u) >> 8u;
+            classify_standard(tracker);
             if (tracker->horizontal_lock_score < HORIZONTAL_LOCK_EVENTS)
                 ++tracker->horizontal_lock_score;
         } else if (tracker->horizontal_lock_score) {
@@ -121,6 +191,11 @@ static bool finish_pulse(c5vrx_cvbs_sync_tracker_t *tracker,
     event->field_line = tracker->vertical_locked ? tracker->field_line :
         C5VRX_CVBS_SYNC_NO_LINE;
     event->locked = tracker->vertical_locked && tracker->horizontal_locked;
+    event->stream_epoch = tracker->stream_epoch;
+    event->field_id = tracker->field_id;
+    event->odd_field = tracker->odd_field;
+    event->standard = tracker->standard;
+    event->polarity = tracker->polarity;
 
     if (tracker->vertical_locked) {
         ++tracker->field_line;
@@ -138,7 +213,14 @@ bool c5vrx_cvbs_sync_consume(c5vrx_cvbs_sync_tracker_t *tracker,
                              uint8_t sample,
                              c5vrx_cvbs_sync_event_t *event)
 {
-    if (!tracker || !event) return false;
+    return c5vrx_cvbs_sync_consume_stride(tracker, sample, 1u, event);
+}
+
+bool c5vrx_cvbs_sync_consume_stride(c5vrx_cvbs_sync_tracker_t *tracker,
+                                    uint8_t sample, uint8_t stride,
+                                    c5vrx_cvbs_sync_event_t *event)
+{
+    if (!tracker || !event || !stride) return false;
     memset(event, 0, sizeof(*event));
     event->field_line = C5VRX_CVBS_SYNC_NO_LINE;
     event->sample_index = tracker->samples_seen;
@@ -159,18 +241,19 @@ bool c5vrx_cvbs_sync_consume(c5vrx_cvbs_sync_tracker_t *tracker,
         if (sample <= threshold) {
             tracker->in_sync = true;
             tracker->pulse_start = tracker->samples_seen;
-            tracker->pulse_samples = 1u;
+            tracker->pulse_samples = stride;
             tracker->high_run = 0u;
         }
     } else {
-        ++tracker->pulse_samples;
+        tracker->pulse_samples += stride;
         if (sample > (uint8_t)(threshold + 2u)) {
-            if (++tracker->high_run >= 3u)
+            tracker->high_run = (uint8_t)(tracker->high_run + stride);
+            if (tracker->high_run >= 3u * stride)
                 emitted = finish_pulse(tracker, event);
         } else {
             tracker->high_run = 0u;
         }
     }
-    ++tracker->samples_seen;
+    tracker->samples_seen += stride;
     return emitted;
 }

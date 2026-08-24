@@ -13,6 +13,12 @@ test:
 		main/c5vrx_cvbs_sync.c tests/cvbs_sync_test.c -o /tmp/c5vrx-cvbs-sync-test
 	/tmp/c5vrx-cvbs-sync-test
 	$(CC) -std=c11 -Wall -Wextra -Werror -pedantic -Imain \
+		main/c5vrx_cvbs_levels.c tests/cvbs_levels_test.c -o /tmp/c5vrx-cvbs-levels-test
+	/tmp/c5vrx-cvbs-levels-test
+	$(CC) -std=c11 -Wall -Wextra -Werror -pedantic -Imain \
+		main/c5vrx_av_clock.c tests/av_clock_test.c -o /tmp/c5vrx-av-clock-test
+	/tmp/c5vrx-av-clock-test
+	$(CC) -std=c11 -Wall -Wextra -Werror -pedantic -Imain \
 		main/c5vrx_ring_tracker.c tests/ring_tracker_test.c -o /tmp/c5vrx-ring-tracker-test
 	/tmp/c5vrx-ring-tracker-test
 	python3 tools/c5vrx_usb_protocol.py --self-test

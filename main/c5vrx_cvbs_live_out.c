@@ -1,5 +1,4 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-
 #include "c5vrx_cvbs_live_out.h"
 
 #include <stdlib.h>
@@ -11,53 +10,78 @@
 #include "freertos/task.h"
 
 #if CONFIG_C5VRX_EXPERIMENTAL_CVBS_PARLIO
-static parlio_tx_unit_handle_t s_live_tx;
-static uint8_t *s_live_buffer[2];
-static size_t s_live_samples;
-static TaskHandle_t s_writer;
-static bool s_transmission_started;
-static unsigned s_osd_phase;
-static unsigned s_osd_low_run;
-static unsigned s_osd_lock_count;
-static unsigned s_osd_line;
+#define PAL_FRAME_HALF_LINES 1250u
+#define RETIRED_0 (1u << 0)
+#define RETIRED_1 (1u << 1)
+#define STOP_NOTIFY (1u << 31)
 
-/* Sample-domain watermark: no framebuffer. It is inserted only after three
- * plausible 20-MS/s line intervals have locked, so uncalibrated/no-sync input
- * passes through untouched. Glyphs are C and 5, 5x7, scaled 2x. */
-static void apply_sample_osd(uint8_t *samples, size_t count)
+typedef struct {
+    parlio_tx_unit_handle_t tx;
+    uint8_t *dma[2];
+    uint8_t *mailbox[2];
+    bool mailbox_ready[2];
+    bool mailbox_in_use[2];
+    unsigned mailbox_write;
+    size_t samples;
+    uint64_t filler_sample;
+    uint64_t live_blocks;
+    uint64_t filler_blocks;
+    uint64_t mailbox_drops;
+    TaskHandle_t guardian;
+    portMUX_TYPE lock;
+    bool running;
+    c5vrx_video_standard_t filler_standard;
+    uint32_t clock_hz;
+} live_out_state_t;
+
+static live_out_state_t s_out = {.lock = portMUX_INITIALIZER_UNLOCKED};
+
+static uint8_t legal_filler_sample(uint64_t sample)
 {
-    static const uint8_t glyph[2][7] = {
-        {14, 17, 16, 16, 16, 17, 14},
-        {31, 16, 30, 1, 1, 17, 14},
+    const bool ntsc = s_out.filler_standard == C5VRX_VIDEO_STANDARD_NTSC;
+    const uint32_t clock = s_out.clock_hz;
+    const uint32_t line_samples = ntsc ?
+        (uint32_t)(((uint64_t)clock * 1000u + 7867000u) / 15734000u) :
+        (uint32_t)(((uint64_t)clock * 64u + 500000u) / 1000000u);
+    const uint32_t frame_half_lines = ntsc ? 1050u : PAL_FRAME_HALF_LINES;
+    const uint64_t position = sample %
+        ((uint64_t)line_samples * frame_half_lines / 2u);
+    const uint32_t half =
+        (uint32_t)((position * 2u) / line_samples);
+    const uint32_t half_start = half * line_samples / 2u;
+    const uint32_t phase = (uint32_t)position - half_start;
+    const uint32_t local = half % (ntsc ? 525u : 625u);
+    const uint32_t equalizing_halves = ntsc ? 6u : 5u;
+    const uint32_t eq_samples =
+        (uint32_t)(((uint64_t)clock * 235u + 50000000u) / 100000000u);
+    const uint32_t broad_samples =
+        (uint32_t)(((uint64_t)clock * 273u + 5000000u) / 10000000u);
+    const uint32_t hsync_samples =
+        (uint32_t)(((uint64_t)clock * 47u + 5000000u) / 10000000u);
+    unsigned pulse = 0u;
+    if (local < equalizing_halves ||
+        (local >= 2u * equalizing_halves &&
+         local < 3u * equalizing_halves)) pulse = eq_samples;
+    else if (local >= equalizing_halves &&
+             local < 2u * equalizing_halves) pulse = broad_samples;
+    else if ((half & 1u) == 0u) pulse = hsync_samples;
+    return phase < pulse ? 0u : 19u;
+}
+
+static void fill_legal_filler(uint8_t *buffer)
+{
+    for (size_t i = 0; i < s_out.samples; ++i)
+        buffer[i] = legal_filler_sample(s_out.filler_sample++);
+}
+
+static esp_err_t queue_dma(unsigned index)
+{
+    const parlio_transmit_config_t cfg = {
+        .idle_value = 19u,
+        .flags = {.queue_nonblocking = 0, .loop_transmission = 0},
     };
-    for (size_t i = 0; i < count; ++i) {
-        if ((samples[i] & 0x3fu) <= 8u) {
-            ++s_osd_low_run;
-            if (s_osd_low_run == 40u) {
-                if (s_osd_phase >= 1100u && s_osd_phase <= 1450u) {
-                    if (s_osd_lock_count < 4u) ++s_osd_lock_count;
-                } else {
-                    s_osd_lock_count = 0;
-                }
-                s_osd_phase = 40u;
-                s_osd_line = (s_osd_line + 1u) % 625u;
-            }
-        } else {
-            s_osd_low_run = 0;
-        }
-        if (s_osd_lock_count >= 3u && s_osd_line >= 20u &&
-            s_osd_line < 34u && s_osd_phase >= 230u && s_osd_phase < 278u) {
-            const unsigned row = (s_osd_line - 20u) / 2u;
-            const unsigned px = (s_osd_phase - 230u) / 2u;
-            const unsigned which = px / 12u;
-            const unsigned column = px % 12u;
-            if (which < 2u && column < 10u &&
-                (glyph[which][row] & (1u << (4u - column / 2u)))) {
-                samples[i] = 63u;
-            }
-        }
-        ++s_osd_phase;
-    }
+    return parlio_tx_unit_transmit(
+        s_out.tx, s_out.dma[index], s_out.samples * 8u, &cfg);
 }
 
 static bool on_switched(parlio_tx_unit_handle_t unit,
@@ -65,37 +89,86 @@ static bool on_switched(parlio_tx_unit_handle_t unit,
                         void *context)
 {
     (void)unit; (void)context;
-    if (!event || !s_writer) return false;
-    uint32_t value = event->old_buffer_addr == s_live_buffer[0] ? 1u :
-                     event->old_buffer_addr == s_live_buffer[1] ? 2u : 0u;
+    if (!event || !s_out.guardian) return false;
+    const uint32_t value = event->old_buffer_addr == s_out.dma[0] ? RETIRED_0 :
+        event->old_buffer_addr == s_out.dma[1] ? RETIRED_1 : 0u;
     if (!value) return false;
     BaseType_t wake = pdFALSE;
-    xTaskNotifyFromISR(s_writer, value, eSetBits, &wake);
+    xTaskNotifyFromISR(s_out.guardian, value, eSetBits, &wake);
     return wake == pdTRUE;
 }
 
-static esp_err_t queue_buffer(uint8_t *buffer)
+static bool take_live_block(uint8_t *destination)
 {
-    const parlio_transmit_config_t config = {
-        .idle_value = 19u,
-        .flags = {.queue_nonblocking = 0, .loop_transmission = 1},
-    };
-    return parlio_tx_unit_transmit(s_live_tx, buffer, s_live_samples * 8u, &config);
+    int found = -1;
+    taskENTER_CRITICAL(&s_out.lock);
+    for (unsigned n = 0; n < 2u; ++n) {
+        const unsigned index = (s_out.mailbox_write + n) & 1u;
+        if (!s_out.mailbox_ready[index] || s_out.mailbox_in_use[index]) continue;
+        s_out.mailbox_ready[index] = false;
+        s_out.mailbox_in_use[index] = true;
+        found = (int)index;
+        break;
+    }
+    taskEXIT_CRITICAL(&s_out.lock);
+    if (found < 0) return false;
+    memcpy(destination, s_out.mailbox[found], s_out.samples);
+    taskENTER_CRITICAL(&s_out.lock);
+    s_out.mailbox_in_use[found] = false;
+    taskEXIT_CRITICAL(&s_out.lock);
+    return true;
+}
+
+static void guardian_task(void *arg)
+{
+    (void)arg;
+    while (s_out.running) {
+        uint32_t retired = 0u;
+        if (xTaskNotifyWait(0u, UINT32_MAX, &retired, portMAX_DELAY) != pdTRUE)
+            continue;
+        if (retired & STOP_NOTIFY) break;
+        for (unsigned index = 0; index < 2u; ++index) {
+            if (!(retired & (1u << index))) continue;
+            if (take_live_block(s_out.dma[index])) ++s_out.live_blocks;
+            else { fill_legal_filler(s_out.dma[index]); ++s_out.filler_blocks; }
+            if (queue_dma(index) != ESP_OK) s_out.running = false;
+        }
+    }
+    s_out.guardian = NULL;
+    vTaskDelete(NULL);
 }
 
 esp_err_t c5vrx_cvbs_live_out_start(size_t block_samples)
 {
-    if (s_live_tx || block_samples == 0u) return ESP_ERR_INVALID_STATE;
-    s_live_samples = block_samples;
-    for (unsigned i = 0; i < 2; ++i) {
-        s_live_buffer[i] = heap_caps_malloc(block_samples,
-                                            MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-        if (!s_live_buffer[i]) { c5vrx_cvbs_live_out_stop(); return ESP_ERR_NO_MEM; }
-        memset(s_live_buffer[i], 19, block_samples);
+    return c5vrx_cvbs_live_out_start_at_rate(
+        block_samples, CONFIG_C5VRX_LIVE_OUTPUT_CLOCK_HZ);
+}
+
+esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
+                                            uint32_t output_clock_hz)
+{
+    if (s_out.tx) return ESP_ERR_INVALID_STATE;
+    if (!block_samples || output_clock_hz < 16000000u ||
+        output_clock_hz > 30000000u) return ESP_ERR_INVALID_ARG;
+    s_out.samples = block_samples;
+    s_out.clock_hz = output_clock_hz;
+    s_out.live_blocks = s_out.filler_blocks = s_out.mailbox_drops = 0u;
+    s_out.filler_sample = 0u;
+    s_out.mailbox_write = 0u;
+    s_out.filler_standard = C5VRX_VIDEO_STANDARD_PAL;
+    for (unsigned i = 0; i < 2u; ++i) {
+        s_out.dma[i] = heap_caps_malloc(
+            block_samples, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+        s_out.mailbox[i] = heap_caps_malloc(block_samples, MALLOC_CAP_INTERNAL);
+        if (!s_out.dma[i] || !s_out.mailbox[i]) {
+            c5vrx_cvbs_live_out_stop();
+            return ESP_ERR_NO_MEM;
+        }
+        fill_legal_filler(s_out.dma[i]);
     }
     const parlio_tx_unit_config_t config = {
         .clk_src = PARLIO_CLK_SRC_DEFAULT, .clk_in_gpio_num = -1,
-        .output_clk_freq_hz = 20000000u, .data_width = 8,
+        .output_clk_freq_hz = output_clock_hz, .data_width = 8,
         .data_gpio_nums = {CONFIG_C5VRX_CVBS_D0_GPIO, CONFIG_C5VRX_CVBS_D1_GPIO,
             CONFIG_C5VRX_CVBS_D2_GPIO, CONFIG_C5VRX_CVBS_D3_GPIO,
             CONFIG_C5VRX_CVBS_D4_GPIO, CONFIG_C5VRX_CVBS_D5_GPIO,
@@ -105,10 +178,16 @@ esp_err_t c5vrx_cvbs_live_out_start(size_t block_samples)
         .dma_burst_size = 32, .shift_edge = PARLIO_SHIFT_EDGE_NEG,
         .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
     };
-    esp_err_t err = parlio_new_tx_unit(&config, &s_live_tx);
+    esp_err_t err = parlio_new_tx_unit(&config, &s_out.tx);
     const parlio_tx_event_callbacks_t callbacks = {.on_buffer_switched = on_switched};
-    if (err == ESP_OK) err = parlio_tx_unit_register_event_callbacks(s_live_tx, &callbacks, NULL);
-    if (err == ESP_OK) err = parlio_tx_unit_enable(s_live_tx);
+    if (err == ESP_OK)
+        err = parlio_tx_unit_register_event_callbacks(s_out.tx, &callbacks, NULL);
+    if (err == ESP_OK) err = parlio_tx_unit_enable(s_out.tx);
+    s_out.running = err == ESP_OK;
+    if (err == ESP_OK && xTaskCreate(guardian_task, "c5vrx_av_guard", 3072,
+            NULL, 20, &s_out.guardian) != pdPASS) err = ESP_ERR_NO_MEM;
+    if (err == ESP_OK) err = queue_dma(0u);
+    if (err == ESP_OK) err = queue_dma(1u);
     if (err != ESP_OK) c5vrx_cvbs_live_out_stop();
     return err;
 }
@@ -117,44 +196,86 @@ esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *samples, size_t count,
                                     void *context)
 {
     (void)context;
-    if (!s_live_tx || !samples || count != s_live_samples) return ESP_ERR_INVALID_ARG;
-    s_writer = xTaskGetCurrentTaskHandle();
-    if (!s_transmission_started) {
-        memcpy(s_live_buffer[0], samples, count);
-        memcpy(s_live_buffer[1], samples, count);
-        apply_sample_osd(s_live_buffer[0], count);
-        apply_sample_osd(s_live_buffer[1], count);
-        esp_err_t err = queue_buffer(s_live_buffer[0]);
-        if (err == ESP_OK) err = queue_buffer(s_live_buffer[1]);
-        if (err == ESP_OK) s_transmission_started = true;
-        return err;
+    if (!s_out.running || !samples || count != s_out.samples)
+        return ESP_ERR_INVALID_ARG;
+    int index = -1;
+    taskENTER_CRITICAL(&s_out.lock);
+    for (unsigned n = 0; n < 2u; ++n) {
+        const unsigned candidate = (s_out.mailbox_write + n) & 1u;
+        if (!s_out.mailbox_ready[candidate] &&
+            !s_out.mailbox_in_use[candidate]) {
+            index = (int)candidate;
+            s_out.mailbox_in_use[candidate] = true;
+            break;
+        }
     }
-    uint32_t retired = 0;
-    if (xTaskNotifyWait(0, UINT32_MAX, &retired, pdMS_TO_TICKS(20)) != pdTRUE)
-        return ESP_ERR_TIMEOUT;
-    if (retired == 3u) return ESP_ERR_TIMEOUT; /* Both retired: output starved. */
-    const unsigned index = retired == 1u ? 0u : retired == 2u ? 1u : 2u;
-    if (index > 1u) return ESP_FAIL;
-    memcpy(s_live_buffer[index], samples, count);
-    apply_sample_osd(s_live_buffer[index], count);
-    return queue_buffer(s_live_buffer[index]);
+    if (index < 0) ++s_out.mailbox_drops;
+    taskEXIT_CRITICAL(&s_out.lock);
+    if (index < 0) return ESP_OK;
+    memcpy(s_out.mailbox[index], samples, count);
+    taskENTER_CRITICAL(&s_out.lock);
+    s_out.mailbox_ready[index] = true;
+    s_out.mailbox_in_use[index] = false;
+    s_out.mailbox_write = (unsigned)index ^ 1u;
+    taskEXIT_CRITICAL(&s_out.lock);
+    return ESP_OK;
 }
 
 esp_err_t c5vrx_cvbs_live_out_stop(void)
 {
-    if (s_live_tx) {
-        (void)parlio_tx_unit_disable(s_live_tx);
-        (void)parlio_del_tx_unit(s_live_tx);
-        s_live_tx = NULL;
+    s_out.running = false;
+    if (s_out.guardian) xTaskNotify(s_out.guardian, STOP_NOTIFY, eSetBits);
+    for (unsigned n = 0; n < 100u && s_out.guardian; ++n) vTaskDelay(1);
+    if (s_out.guardian) return ESP_ERR_TIMEOUT;
+    if (s_out.tx) {
+        (void)parlio_tx_unit_disable(s_out.tx);
+        (void)parlio_del_tx_unit(s_out.tx);
+        s_out.tx = NULL;
     }
-    for (unsigned i = 0; i < 2; ++i) { free(s_live_buffer[i]); s_live_buffer[i] = NULL; }
-    s_writer = NULL; s_live_samples = 0; s_transmission_started = false;
-    s_osd_phase = s_osd_low_run = s_osd_lock_count = s_osd_line = 0;
+    for (unsigned i = 0; i < 2u; ++i) {
+        free(s_out.dma[i]); free(s_out.mailbox[i]);
+        s_out.dma[i] = s_out.mailbox[i] = NULL;
+    }
+    s_out.samples = 0u;
+    s_out.clock_hz = 0u;
+    s_out.filler_sample = 0u;
+    s_out.mailbox_ready[0] = s_out.mailbox_ready[1] = false;
+    s_out.mailbox_in_use[0] = s_out.mailbox_in_use[1] = false;
     return ESP_OK;
+}
+
+void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
+{
+    if (!stats) return;
+    *stats = (c5vrx_cvbs_live_out_stats_t) {
+        .live_blocks = s_out.live_blocks,
+        .filler_blocks = s_out.filler_blocks,
+        .mailbox_drops = s_out.mailbox_drops,
+        .guardian_running = s_out.guardian != NULL,
+    };
+}
+
+void c5vrx_cvbs_live_out_update_timing(
+    const c5vrx_cvbs_sync_tracker_t *timing)
+{
+    if (!timing || !timing->horizontal_locked ||
+        timing->standard == C5VRX_VIDEO_STANDARD_UNKNOWN) return;
+    taskENTER_CRITICAL(&s_out.lock);
+    s_out.filler_standard = timing->standard;
+    /* Keep legal fallback phase close to the canonical waveform. This value
+     * is only consumed if the mailbox becomes empty. */
+    s_out.filler_sample = timing->samples_seen;
+    taskEXIT_CRITICAL(&s_out.lock);
 }
 #else
 esp_err_t c5vrx_cvbs_live_out_start(size_t n) { (void)n; return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t n, uint32_t r)
+{ (void)n; (void)r; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *s, size_t n, void *c)
 { (void)s; (void)n; (void)c; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t c5vrx_cvbs_live_out_stop(void) { return ESP_OK; }
+void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
+{ if (stats) memset(stats, 0, sizeof(*stats)); }
+void c5vrx_cvbs_live_out_update_timing(
+    const c5vrx_cvbs_sync_tracker_t *timing) { (void)timing; }
 #endif

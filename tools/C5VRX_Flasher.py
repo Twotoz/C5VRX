@@ -32,17 +32,20 @@ from c5vrx_lab import SessionRecorder
 from c5vrx_usb_protocol import (
     FRAME_DESCRIPTOR,
     PACKET_GRAY8_FRAME,
+    PACKET_YUV411_FRAME,
     PACKET_IQ_U32_BLOCK,
     PACKET_IQ_U32_CHUNK,
     PACKET_PHASE8_CHUNK,
     PACKET_STREAM_END,
     PACKET_STREAM_INFO,
     PIXEL_FORMAT_GRAY8,
+    PIXEL_FORMAT_YUV411,
     Packet,
     StreamDecoder,
     decode_iq_block,
     decode_iq_chunk,
     decode_phase8_chunk,
+    yuv411_to_rgb,
 )
 
 APP_TITLE = "C5VRX Receiver Console"
@@ -247,6 +250,8 @@ class C5VRXApp(tk.Tk):
         self.preview_image: tk.PhotoImage | None = None
         self.preview_display_image: tk.PhotoImage | None = None
         self.preview_sequence: int | None = None
+        self.usb_preview_active = False
+        self.usb_preview_receiving = False
         self.live_iq_active = False
         self.live_iq_capture_done = False
         self.live_iq_packet_done = False
@@ -488,7 +493,7 @@ class C5VRXApp(tk.Tk):
             preview_controls, text="Capture 16K IQ", command=self.capture_iq_16k)
         self.capture_16k_btn.pack(side="left")
         ttk.Button(preview_controls, text="Start live preview", command=self.start_usb_preview).pack(side="left", padx=8)
-        ttk.Button(preview_controls, text="Stop live preview", command=lambda: self.send_command("USB PREVIEW STOP")).pack(side="left")
+        ttk.Button(preview_controls, text="Stop live preview", command=self.stop_usb_preview).pack(side="left")
         ttk.Button(
             preview_controls,
             text="Measure CVBS lock (5 s)",
@@ -839,7 +844,8 @@ class C5VRXApp(tk.Tk):
             self.after(0, self.preview_status_var.set,
                        f"USB preview stopped; device dropped {dropped} frame(s)")
             return
-        if packet.packet_type not in {PACKET_STREAM_INFO, PACKET_GRAY8_FRAME}:
+        if packet.packet_type not in {
+                PACKET_STREAM_INFO, PACKET_GRAY8_FRAME, PACKET_YUV411_FRAME}:
             self.sink.write(
                 f"C5VRX_PREVIEW_SKIP packet_type={packet.packet_type}\n")
             return
@@ -850,25 +856,41 @@ class C5VRXApp(tk.Tk):
         width, height, stride, pixel_format, flags = \
             FRAME_DESCRIPTOR.unpack_from(packet.payload)
         if (not width or not height or width > 640 or height > 480 or
-                stride < width or pixel_format != PIXEL_FORMAT_GRAY8):
+                pixel_format not in {PIXEL_FORMAT_GRAY8, PIXEL_FORMAT_YUV411} or
+                (pixel_format == PIXEL_FORMAT_GRAY8 and stride < width) or
+                (pixel_format == PIXEL_FORMAT_YUV411 and
+                 stride < width * 3 // 2)):
             self.sink.write("C5VRX_PREVIEW_DROP reason=UNSUPPORTED_FORMAT\n")
             return
         if packet.packet_type == PACKET_STREAM_INFO:
             self.preview_sequence = packet.sequence
             self.after(0, self.preview_status_var.set,
-                       f"USB preview v1: {width}×{height}, waiting for H/V lock")
+                       f"USB preview: {width}×{height} "
+                       f"{'YUV411 color' if pixel_format == PIXEL_FORMAT_YUV411 else 'GRAY8'}, waiting for lock")
             return
 
         pixels = packet.payload[FRAME_DESCRIPTOR.size:]
         if len(pixels) != stride * height:
             self.sink.write("C5VRX_PREVIEW_DROP reason=PAYLOAD_SIZE\n")
             return
-        if stride != width:
-            pixels = b"".join(
-                pixels[row * stride:row * stride + width]
-                for row in range(height)
-            )
-        self.after(0, self._show_gray_frame, pixels, width, height)
+        self.usb_preview_receiving = True
+        if pixel_format == PIXEL_FORMAT_YUV411:
+            try:
+                rgb = yuv411_to_rgb(pixels, width, height, stride)
+            except ValueError as exc:
+                self.sink.write(f"C5VRX_PREVIEW_DROP reason={exc}\n")
+                return
+            self.after(0, self._show_rgb_frame, rgb, width, height)
+        else:
+            if stride < width:
+                self.sink.write("C5VRX_PREVIEW_DROP reason=STRIDE\n")
+                return
+            if stride != width:
+                pixels = b"".join(
+                    pixels[row * stride:row * stride + width]
+                    for row in range(height)
+                )
+            self.after(0, self._show_gray_frame, pixels, width, height)
         if not (flags & 1):
             self.sink.write("C5VRX_PREVIEW_WARNING reason=SYNC_UNLOCKED\n")
 
@@ -1061,8 +1083,28 @@ class C5VRXApp(tk.Tk):
         self.capture_iq()
 
     def start_usb_preview(self) -> None:
+        self.usb_preview_active = True
+        self.usb_preview_receiving = False
         self.send_command("USB PREVIEW START")
+        self.after(250, self._usb_preview_keepalive)
         self.after(100, lambda: self.send_command("LIVE START"))
+
+    def stop_usb_preview(self) -> None:
+        self.usb_preview_active = False
+        self.usb_preview_receiving = False
+        self.send_command("USB PREVIEW STOP")
+
+    def _usb_preview_keepalive(self) -> None:
+        if (not self.usb_preview_active or self.usb_preview_receiving or
+                not self.ser or not self.ser.is_open):
+            return
+        try:
+            self.ser.write(b"USB PREVIEW KEEPALIVE\n")
+            self.ser.flush()
+        except Exception:
+            self.disconnect_serial()
+            return
+        self.after(250, self._usb_preview_keepalive)
 
     def start_live_iq_video(self) -> None:
         self._start_live_iq_video(fast=False)
@@ -1075,6 +1117,8 @@ class C5VRXApp(tk.Tk):
             messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
             return
         self.live_iq_active = True
+        self.usb_preview_active = True
+        self.usb_preview_receiving = False
         self.live_iq_fast_mode = fast
         # Fast Phase8 keeps four command credits in the firmware input queue.
         # This matches sustained manual Capture 16K clicking while remaining
@@ -1166,12 +1210,15 @@ class C5VRXApp(tk.Tk):
         self.send_command("BW 40")
         self.after(100, lambda: self.send_command("SET A 1"))
         self.after(220, lambda: self.send_command("USB PREVIEW START"))
+        self.after(470, self._usb_preview_keepalive)
         watchdog_generation = self.live_iq_watchdog_generation
         self.after(500, self._live_iq_watchdog, watchdog_generation)
 
     def stop_live_iq_video(self, reason: str = "user") -> None:
         was_active = self.live_iq_active
         self.live_iq_active = False
+        self.usb_preview_active = False
+        self.usb_preview_receiving = False
         self.live_iq_watchdog_generation += 1
         self.live_iq_processing_generation += 1
         self.live_iq_transport_ready = False
@@ -2326,6 +2373,27 @@ class C5VRXApp(tk.Tk):
             return False
         self._redraw_preview()
         self.preview_status_var.set(f"Live USB preview: {width}×{height} GRAY8, CRC valid")
+        return True
+
+    def _show_rgb_frame(self, payload: bytes, width: int, height: int) -> bool:
+        if len(payload) != width * height * 3:
+            self.preview_status_var.set(
+                f"RGB render rejected: {len(payload)} bytes for {width}x{height}")
+            return False
+        self.preview_frame = payload
+        self.preview_width = width
+        self.preview_height = height
+        try:
+            ppm = f"P6\n{width} {height}\n255\n".encode("ascii") + payload
+            self.preview_image = tk.PhotoImage(data=ppm, format="PPM")
+        except tk.TclError:
+            self.preview_image = None
+            self.preview_display_image = None
+            self.preview_status_var.set("Valid YUV411 frame, but rendering failed")
+            return False
+        self._redraw_preview()
+        self.preview_status_var.set(
+            f"Live USB preview: {width}×{height} YUV411 color, CRC valid")
         return True
 
     def _show_rgb_frame(self, payload: bytes, width: int, height: int) -> bool:

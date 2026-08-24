@@ -18,6 +18,8 @@
 static const char *TAG = "c5vrx_wbfm_hw";
 
 BITSCRAMBLER_PROGRAM(c5vrx_wbfm_4to1_program, "c5vrx_wbfm_4to1");
+BITSCRAMBLER_PROGRAM(c5vrx_wbfm_phase8_4to1_program,
+                    "c5vrx_wbfm_phase8_4to1");
 
 #define C5VRX_WBFM_TEST_OUTPUT_SAMPLES 256u
 #define C5VRX_WBFM_TEST_DECIMATION     4u
@@ -28,7 +30,13 @@ BITSCRAMBLER_PROGRAM(c5vrx_wbfm_4to1_program, "c5vrx_wbfm_4to1");
 
 struct c5vrx_wbfm_hw_context {
     bitscrambler_handle_t bs;
+    uint16_t *lut;
     size_t maximum_input_words;
+    int32_t i_dc_q16;
+    int32_t q_dc_q16;
+    int8_t applied_i_dc5;
+    int8_t applied_q_dc5;
+    c5vrx_wbfm_kernel_t kernel;
 };
 
 static uint32_t pack_iq10(int16_t i, int16_t q)
@@ -42,15 +50,22 @@ static float coarse_signed_center(unsigned code5)
     return (float)signed5 * 32.0f + 15.5f;
 }
 
-static uint8_t coarse_phase6_from_iq(int16_t i, int16_t q)
+static uint8_t coarse_phase6_from_iq_dc(int16_t i, int16_t q,
+                                        int dc_i, int dc_q)
 {
     const unsigned i5 = (((uint16_t)i & 0x3ffu) >> 5) & 0x1fu;
     const unsigned q5 = (((uint16_t)q & 0x3ffu) >> 5) & 0x1fu;
-    float phase = atan2f(coarse_signed_center(q5), coarse_signed_center(i5));
+    float phase = atan2f(coarse_signed_center(q5) - (float)dc_q,
+                         coarse_signed_center(i5) - (float)dc_i);
     if (phase < 0.0f) {
         phase += 2.0f * C5VRX_PI_F;
     }
     return (uint8_t)lrintf(phase * (64.0f / (2.0f * C5VRX_PI_F))) & 0x3fu;
+}
+
+static uint8_t coarse_phase6_from_iq(int16_t i, int16_t q)
+{
+    return coarse_phase6_from_iq_dc(i, q, 0, 0);
 }
 
 uint8_t c5vrx_wbfm_coarse_phase6(uint32_t packed_iq)
@@ -59,42 +74,95 @@ uint8_t c5vrx_wbfm_coarse_phase6(uint32_t packed_iq)
     return coarse_phase6_from_iq(sample.i, sample.q);
 }
 
-static void build_phase_lut(uint16_t lut[C5VRX_WBFM_LUT_WORDS])
+static void build_phase_lut(uint16_t lut[C5VRX_WBFM_LUT_WORDS],
+                            int dc_i, int dc_q, unsigned phase_bits)
 {
     for (unsigned i5 = 0; i5 < 32u; ++i5) {
         for (unsigned q5 = 0; q5 < 32u; ++q5) {
-            float phase = atan2f(coarse_signed_center(q5), coarse_signed_center(i5));
+            float phase = atan2f(coarse_signed_center(q5) - (float)dc_q,
+                                 coarse_signed_center(i5) - (float)dc_i);
             if (phase < 0.0f) {
                 phase += 2.0f * C5VRX_PI_F;
             }
-            const uint8_t p =
-                (uint8_t)lrintf(phase * (64.0f / (2.0f * C5VRX_PI_F))) & 0x3fu;
+            const unsigned modulus = 1u << phase_bits;
+            const uint8_t p = (uint8_t)lrintf(
+                phase * ((float)modulus / (2.0f * C5VRX_PI_F)));
             const uint8_t bias_minus =
-                (uint8_t)(C5VRX_WBFM_PHASE_BIAS - p) & 0x3fu;
+                (uint8_t)((modulus / 2u) - p);
             lut[(i5 << 5) | q5] =
                 (uint16_t)p | ((uint16_t)bias_minus << 8);
         }
     }
 }
 
+uint8_t c5vrx_wbfm_hw_context_phase6(
+    const c5vrx_wbfm_hw_context_t *context, uint32_t packed_iq)
+{
+    if (!context) return c5vrx_wbfm_coarse_phase6(packed_iq);
+    const c5vrx_iq10_sample_t sample = c5vrx_adc_decode_word(packed_iq);
+    return coarse_phase6_from_iq_dc(
+        sample.i, sample.q,
+        (int)context->applied_i_dc5 * 32,
+        (int)context->applied_q_dc5 * 32);
+}
+
+static esp_err_t update_dc_lut(c5vrx_wbfm_hw_context_t *ctx,
+                               const uint32_t *packed_iq,
+                               size_t input_words)
+{
+    /* 1/64 sparse observations keep this control loop cheap. The 2^12 IIR
+     * time constant spans many blocks and cannot follow FM modulation. */
+    for (size_t i = 0; i < input_words; i += 64u) {
+        const c5vrx_iq10_sample_t sample = c5vrx_adc_decode_word(packed_iq[i]);
+        ctx->i_dc_q16 += (((int32_t)sample.i << 16) - ctx->i_dc_q16) >> 12;
+        ctx->q_dc_q16 += (((int32_t)sample.q << 16) - ctx->q_dc_q16) >> 12;
+    }
+    int i5 = ctx->i_dc_q16 / (32 << 16);
+    int q5 = ctx->q_dc_q16 / (32 << 16);
+    if (i5 < -16) i5 = -16;
+    if (i5 > 15) i5 = 15;
+    if (q5 < -16) q5 = -16;
+    if (q5 > 15) q5 = 15;
+    if (i5 == ctx->applied_i_dc5 && q5 == ctx->applied_q_dc5) return ESP_OK;
+    build_phase_lut(ctx->lut, i5 * 32, q5 * 32,
+                    ctx->kernel == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u);
+    const esp_err_t err = bitscrambler_load_lut(
+        ctx->bs, ctx->lut, C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t));
+    if (err == ESP_OK) {
+        ctx->applied_i_dc5 = (int8_t)i5;
+        ctx->applied_q_dc5 = (int8_t)q5;
+    }
+    return err;
+}
+
 esp_err_t c5vrx_wbfm_hw_create(size_t maximum_input_words,
                                c5vrx_wbfm_hw_context_t **context)
 {
+    return c5vrx_wbfm_hw_create_kernel(
+        maximum_input_words, C5VRX_WBFM_PHASE6_4TO1, context);
+}
+
+esp_err_t c5vrx_wbfm_hw_create_kernel(
+    size_t maximum_input_words, c5vrx_wbfm_kernel_t kernel,
+    c5vrx_wbfm_hw_context_t **context)
+{
     if (!context || maximum_input_words < 8u ||
-        (maximum_input_words & 3u)) {
+        (maximum_input_words & 3u) || kernel > C5VRX_WBFM_PHASE8_4TO1) {
         return ESP_ERR_INVALID_ARG;
     }
     *context = NULL;
     c5vrx_wbfm_hw_context_t *ctx = calloc(1, sizeof(*ctx));
     if (!ctx) return ESP_ERR_NO_MEM;
 
-    uint16_t *lut = heap_caps_malloc(C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t),
-                                     MALLOC_CAP_INTERNAL);
-    if (!lut) {
+    ctx->lut = heap_caps_malloc(C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t),
+                                MALLOC_CAP_INTERNAL);
+    if (!ctx->lut) {
         free(ctx);
         return ESP_ERR_NO_MEM;
     }
-    build_phase_lut(lut);
+    ctx->kernel = kernel;
+    build_phase_lut(ctx->lut, 0, 0,
+                    kernel == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u);
 
     const size_t max_transfer = maximum_input_words * sizeof(uint32_t);
     esp_err_t err = bitscrambler_loopback_create(
@@ -102,15 +170,17 @@ esp_err_t c5vrx_wbfm_hw_create(size_t maximum_input_words,
         SOC_BITSCRAMBLER_ATTACH_I2S0,
         max_transfer);
     if (err == ESP_OK) {
-        err = bitscrambler_load_program(ctx->bs, c5vrx_wbfm_4to1_program);
+        err = bitscrambler_load_program(ctx->bs,
+            kernel == C5VRX_WBFM_PHASE8_4TO1 ?
+                c5vrx_wbfm_phase8_4to1_program : c5vrx_wbfm_4to1_program);
     }
     if (err == ESP_OK) {
-        err = bitscrambler_load_lut(ctx->bs, lut,
+        err = bitscrambler_load_lut(ctx->bs, ctx->lut,
                                     C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t));
     }
-    free(lut);
     if (err != ESP_OK) {
         if (ctx->bs) bitscrambler_free(ctx->bs);
+        free(ctx->lut);
         free(ctx);
         return err;
     }
@@ -119,10 +189,16 @@ esp_err_t c5vrx_wbfm_hw_create(size_t maximum_input_words,
     return ESP_OK;
 }
 
+unsigned c5vrx_wbfm_hw_phase_bits(const c5vrx_wbfm_hw_context_t *context)
+{
+    return context && context->kernel == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u;
+}
+
 void c5vrx_wbfm_hw_destroy(c5vrx_wbfm_hw_context_t *context)
 {
     if (!context) return;
     if (context->bs) bitscrambler_free(context->bs);
+    free(context->lut);
     free(context);
 }
 
@@ -142,8 +218,11 @@ esp_err_t c5vrx_wbfm_hw_transform_context(
     const size_t expected_output = input_words / C5VRX_WBFM_TEST_DECIMATION;
     if (output_capacity < expected_output) return ESP_ERR_INVALID_SIZE;
 
+    esp_err_t err = update_dc_lut(context, packed_iq, input_words);
+    if (err != ESP_OK) return err;
+
     size_t written = 0;
-    esp_err_t err = bitscrambler_loopback_run(
+    err = bitscrambler_loopback_run(
         context->bs, (void *)packed_iq, input_words * sizeof(uint32_t),
         phase_delta, output_capacity, &written);
 
