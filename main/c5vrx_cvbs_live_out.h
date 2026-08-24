@@ -27,6 +27,7 @@ esp_err_t c5vrx_cvbs_live_out_start_aligned(
     const uint8_t *first_live_samples, size_t block_samples,
     const c5vrx_cvbs_sync_tracker_t *first_live_timing);
 bool c5vrx_cvbs_live_out_running(void);
+bool c5vrx_cvbs_live_out_take_realign_request(void);
 esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *samples, size_t count,
                                     void *context);
 /* Qualification-only blocking submit. The realtime dataplane must use the

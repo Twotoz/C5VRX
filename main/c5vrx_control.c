@@ -73,10 +73,19 @@ static esp_err_t live_output_with_preview(const uint8_t *samples,
         timing.standard != C5VRX_VIDEO_STANDARD_UNKNOWN;
     esp_err_t av_err = ESP_OK;
     if (legal_live) {
-        const bool starting = !c5vrx_cvbs_live_out_running();
+        bool starting = !c5vrx_cvbs_live_out_running();
+        if (!starting && c5vrx_cvbs_live_out_take_realign_request()) {
+            /* A discontinuity made the live start differ from the actual
+             * queued filler tail. Keep the rejected block out of PARLIO,
+             * then converge deterministically by rebuilding the two-buffer
+             * prefix around this newest canonical block. */
+            av_err = c5vrx_cvbs_live_out_stop();
+            starting = av_err == ESP_OK;
+        }
         if (starting)
-            av_err = c5vrx_cvbs_live_out_start_aligned(
-                samples, count, &timing);
+            av_err = av_err == ESP_OK ?
+                c5vrx_cvbs_live_out_start_aligned(samples, count, &timing) :
+                av_err;
         if (av_err == ESP_OK && !starting) {
             c5vrx_cvbs_live_out_update_timing(&timing);
             av_err = c5vrx_cvbs_live_out_write(samples, count, context);

@@ -42,6 +42,7 @@ typedef struct {
     TaskHandle_t guardian;
     portMUX_TYPE lock;
     bool running;
+    bool realign_required;
     c5vrx_video_standard_t filler_standard;
     uint32_t clock_hz;
 } live_out_state_t;
@@ -180,6 +181,7 @@ static bool take_live_block(uint8_t *destination, uint64_t *filler_end_sample)
              * filler remains continuous meanwhile. */
             s_out.mailbox_ready[index] = false;
             ++s_out.phase_mismatch_drops;
+            s_out.realign_required = true;
             continue;
         }
         s_out.mailbox_ready[index] = false;
@@ -276,6 +278,16 @@ bool c5vrx_cvbs_live_out_running(void)
     return s_out.running && s_out.tx != NULL;
 }
 
+bool c5vrx_cvbs_live_out_take_realign_request(void)
+{
+    bool required;
+    taskENTER_CRITICAL(&s_out.lock);
+    required = s_out.realign_required;
+    s_out.realign_required = false;
+    taskEXIT_CRITICAL(&s_out.lock);
+    return required;
+}
+
 esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
                                             uint32_t output_clock_hz)
 {
@@ -290,8 +302,8 @@ esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
     s_out.filler_blocks = s_out.mailbox_drops = 0u;
     s_out.qualification_underruns = 0u;
     s_out.guardian_failures = 0u;
-    s_out.phase_mismatch_drops = 0u;
     s_out.qualification_unsubmitted = 0u;
+    s_out.realign_required = false;
     s_out.filler_sample = aligned.valid ? aligned.initial_filler_sample : 0u;
     s_out.pending_live_filler_start_sample = aligned.valid ?
         aligned.first_live_start_sample : 0u;
@@ -506,6 +518,7 @@ esp_err_t c5vrx_cvbs_live_out_start_aligned(
     const uint8_t *s, size_t n, const c5vrx_cvbs_sync_tracker_t *t)
 { (void)s; (void)n; (void)t; return ESP_ERR_NOT_SUPPORTED; }
 bool c5vrx_cvbs_live_out_running(void) { return false; }
+bool c5vrx_cvbs_live_out_take_realign_request(void) { return false; }
 esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *s, size_t n, void *c)
 { (void)s; (void)n; (void)c; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t c5vrx_cvbs_live_out_write_wait(const uint8_t *s, size_t n, uint32_t t)
