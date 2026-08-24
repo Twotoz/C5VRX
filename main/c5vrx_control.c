@@ -10,6 +10,7 @@
 #include <strings.h>
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "driver/usb_serial_jtag.h"
 
@@ -59,11 +60,38 @@ static uint8_t s_ring_block_bench_seen;
 static uint8_t s_ring_block_bench_passed;
 static size_t s_selected_ring_block_words;
 static portMUX_TYPE s_direct_av_probe_mux = portMUX_INITIALIZER_UNLOCKED;
+static StaticTask_t s_direct_av_probe_task_buffer;
+static TaskHandle_t s_direct_av_probe_task;
+static StaticSemaphore_t s_direct_av_probe_done_buffer;
+static SemaphoreHandle_t s_direct_av_probe_done;
+static volatile uint32_t s_direct_av_probe_duration_cycles;
+static volatile uint32_t s_direct_av_probe_lead_words;
+static volatile uint32_t s_direct_av_probe_final_control;
 
 #define C5VRX_DIRECT_AV_PROBE_MS       100u
 #define C5VRX_DIRECT_AV_LEAD_WORDS     8192u
 #define C5VRX_DIRECT_AV_MIN_RATE_HZ    70000000u
 #define C5VRX_DIRECT_AV_MAX_RATE_HZ    90000000u
+
+static void direct_av_probe_task(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        const uint32_t duration_cycles =
+            s_direct_av_probe_duration_cycles;
+        const uint32_t lead_words = s_direct_av_probe_lead_words;
+
+        /* This task's stack is the dedicated LP-RAM buffer registered with
+         * FreeRTOS. A context switch therefore programs the C5 hardware stack
+         * guard with LP bounds before the MAC takes ownership of HP SRAM. */
+        portENTER_CRITICAL(&s_direct_av_probe_mux);
+        s_direct_av_probe_final_control =
+            c5vrx_lp_direct_av_probe_mode0(duration_cycles, lead_words);
+        portEXIT_CRITICAL(&s_direct_av_probe_mux);
+        (void)xSemaphoreGive(s_direct_av_probe_done);
+    }
+}
 
 static esp_err_t live_output_with_preview(const uint8_t *samples,
                                           size_t count,
@@ -563,12 +591,14 @@ static void run_direct_av_probe(void)
     }
     printf("C5VRX_DIRECT_AV_PROBE_BEGIN duration_ms=%u lead_words=%u "
            "rf_to_av=RING_GDMA_BITSCRAMBLER_PARLIO usb_payload=NONE "
-           "phase_gain=3 warning=AV_SWITCHES_TO_VTX_FOR_100MS\n",
+           "phase_gain=3 probe_stack=FREERTOS_REGISTERED_LP_4096 "
+           "warning=AV_SWITCHES_TO_VTX_FOR_100MS\n",
            C5VRX_DIRECT_AV_PROBE_MS, C5VRX_DIRECT_AV_LEAD_WORDS);
     fflush(stdout);
 
     esp_err_t prepare_err = ESP_ERR_NOT_SUPPORTED;
     esp_err_t configure_err = ESP_ERR_INVALID_STATE;
+    esp_err_t execute_err = ESP_ERR_INVALID_STATE;
     esp_err_t stop_err = ESP_ERR_INVALID_STATE;
     esp_err_t finish_err = ESP_ERR_INVALID_STATE;
     uint32_t final_control = 0u;
@@ -590,14 +620,25 @@ static void run_direct_av_probe(void)
         const uint32_t duration_cycles =
             (uint32_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000u *
             C5VRX_DIRECT_AV_PROBE_MS;
-        /* Once MAC owns the RF ring, no normal interrupt or FreeRTOS code may
-         * touch the affected HP-SRAM banks. The complete writer/consumer
-         * overlap therefore runs on the dedicated LP stack with interrupts
-         * masked and remains below the configured interrupt-watchdog window. */
-        portENTER_CRITICAL(&s_direct_av_probe_mux);
-        final_control = c5vrx_lp_direct_av_probe_mode0(
-            duration_cycles, C5VRX_DIRECT_AV_LEAD_WORDS);
-        portEXIT_CRITICAL(&s_direct_av_probe_mux);
+        /* A real context switch to the statically-created LP-stack task is
+         * required. Calling the LP kernel from this USB task and changing SP
+         * by hand leaves the C5 hardware stack guard programmed with the USB
+         * task's HP-RAM bounds and deterministically panics. */
+        if (s_direct_av_probe_task && s_direct_av_probe_done) {
+            while (xSemaphoreTake(s_direct_av_probe_done, 0) == pdTRUE) {}
+            s_direct_av_probe_duration_cycles = duration_cycles;
+            s_direct_av_probe_lead_words = C5VRX_DIRECT_AV_LEAD_WORDS;
+            s_direct_av_probe_final_control = 0u;
+            xTaskNotifyGive(s_direct_av_probe_task);
+            if (xSemaphoreTake(
+                    s_direct_av_probe_done,
+                    pdMS_TO_TICKS(C5VRX_DIRECT_AV_PROBE_MS + 100u)) == pdTRUE) {
+                final_control = s_direct_av_probe_final_control;
+                execute_err = ESP_OK;
+            } else {
+                execute_err = ESP_ERR_TIMEOUT;
+            }
+        }
         stop_err = c5vrx_rf_dump_stop();
     }
     if (prepared) {
@@ -606,6 +647,8 @@ static void run_direct_av_probe(void)
 
     c5vrx_direct_av_probe_stats_t stats = {0};
     c5vrx_direct_av_probe_get_stats(&stats);
+    const uint32_t lp_stack_min_free_bytes = s_direct_av_probe_task ?
+        (uint32_t)uxTaskGetStackHighWaterMark(s_direct_av_probe_task) : 0u;
     const uint32_t source_rate_hz =
         stats.writer_advance_words * (1000u / C5VRX_DIRECT_AV_PROBE_MS);
     const bool wraps_continuously = stats.lead_acquired &&
@@ -616,21 +659,25 @@ static void run_direct_av_probe(void)
         source_rate_hz <= C5VRX_DIRECT_AV_MAX_RATE_HZ;
     const bool cleanup_ok = stop_err == ESP_OK && finish_err == ESP_OK &&
         c5vrx_rf_dump_last_restore_ok();
-    const bool passed = configured && wraps_continuously &&
+    const bool passed = configured && execute_err == ESP_OK &&
+        wraps_continuously &&
         rate_compatible && cleanup_ok;
 
     printf("C5VRX_DIRECT_AV_PROBE_DONE code=%d prepare=%d configure=%d "
-           "stop=%d finish=%d lead=%u writer_advance_words=%u "
+           "execute=%d stop=%d finish=%d lead=%u writer_advance_words=%u "
            "pointer_changes=%u wraps=%u last_pointer=%u "
            "source_rate_hz=%u rate_target_hz=80000000 final_control=%08x "
-           "restore_ok=%u canaries_ok=%u classification=%s\n",
+           "lp_stack_min_free_bytes=%u restore_ok=%u canaries_ok=%u "
+           "classification=%s\n",
            passed ? 0 : (int)ESP_FAIL,
-           (int)prepare_err, (int)configure_err, (int)stop_err,
+           (int)prepare_err, (int)configure_err, (int)execute_err,
+           (int)stop_err,
            (int)finish_err, (unsigned)stats.lead_acquired,
            (unsigned)stats.writer_advance_words,
            (unsigned)stats.pointer_changes, (unsigned)stats.pointer_wraps,
            (unsigned)stats.last_pointer, (unsigned)source_rate_hz,
            (unsigned)final_control,
+           (unsigned)lp_stack_min_free_bytes,
            c5vrx_rf_dump_last_restore_ok() ? 1u : 0u,
            c5vrx_rf_dump_last_canaries_ok() ? 1u : 0u,
            passed ? "GAPLESS_RATE_CANDIDATE_AV_LOCK_PHYSICAL_TEST_REQUIRED" :
@@ -1574,6 +1621,41 @@ esp_err_t c5vrx_control_start(c5vrx_band_t band,
         .started = true,
     };
 
+    const uintptr_t lp_stack_start =
+        (uintptr_t)c5vrx_lp_direct_task_stack;
+    const uintptr_t lp_stack_top =
+        (uintptr_t)c5vrx_lp_direct_task_stack_top;
+    if (lp_stack_top - lp_stack_start !=
+            C5VRX_LP_DIRECT_TASK_STACK_BYTES ||
+        (lp_stack_start & (portBYTE_ALIGNMENT - 1u)) != 0u) {
+        s_state.started = false;
+        return ESP_ERR_INVALID_SIZE;
+    }
+    s_direct_av_probe_done = xSemaphoreCreateBinaryStatic(
+        &s_direct_av_probe_done_buffer);
+    if (!s_direct_av_probe_done) {
+        s_state.started = false;
+        return ESP_ERR_NO_MEM;
+    }
+    s_direct_av_probe_task = xTaskCreateStatic(
+        direct_av_probe_task,
+        "c5vrx_avprobe",
+        C5VRX_LP_DIRECT_TASK_STACK_BYTES,
+        NULL,
+        21,
+        (StackType_t *)c5vrx_lp_direct_task_stack,
+        &s_direct_av_probe_task_buffer);
+    if (!s_direct_av_probe_task) {
+        s_direct_av_probe_done = NULL;
+        s_state.started = false;
+        return ESP_ERR_NO_MEM;
+    }
+    printf("C5VRX_DIRECT_AV_TASK_READY stack_start=%08x stack_top=%08x "
+           "stack_bytes=%u priority=21 guard=FREERTOS_CONTEXT_SWITCHED\n",
+           (unsigned)lp_stack_start, (unsigned)lp_stack_top,
+           (unsigned)C5VRX_LP_DIRECT_TASK_STACK_BYTES);
+    fflush(stdout);
+
     /* The finite RF dump calls vendor code and logging from this task.  Keep
      * explicit headroom so a diagnostic burst cannot reach the stack guard. */
     /* Normally blocked in the USB driver. When a command or a timed benchmark
@@ -1581,6 +1663,9 @@ esp_err_t c5vrx_control_start(c5vrx_band_t band,
      * the single-core C5 without forcing millisecond sleeps into writer
      * observation. */
     if (xTaskCreate(console_task, "c5vrx_usbctl", 6144, NULL, 20, NULL) != pdPASS) {
+        vTaskDelete(s_direct_av_probe_task);
+        s_direct_av_probe_task = NULL;
+        s_direct_av_probe_done = NULL;
         s_state.started = false;
         return ESP_ERR_NO_MEM;
     }

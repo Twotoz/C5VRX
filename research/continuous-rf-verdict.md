@@ -119,6 +119,17 @@ xref, the recovered 13-way trigger table, the exact eight hardware encodings
 behind the misleading `sample_80m` argument, and a configure/start/observe/stop
 split derived from vendor basic blocks.
 
+If the safe direct probe runs but the selected mode-0 tap does not contain
+recoverable analog video, the C5-native investigation is not exhausted. The
+next options are to characterize the other recovered FE/source muxes, rebuild
+the vendor dump start/pointer/ownership sequence as a project-owned continuous
+IQ driver, trace or hook the internal PHY buffer path below public packet CSI,
+and move producer control to the LP core. Filtering, differential phase,
+decimation and DAC mapping can remain a DMA/BitScrambler chain. Public CSI by
+itself is packet-triggered and cannot replace the continuous waveform. An
+external analog receiver is not the project direction and is not required by
+the current evidence.
+
 ## Ring experiment after producer modes
 
 `RING_PROBE` starts **one** vendor `adctrig()` call in RX-error pre-trigger

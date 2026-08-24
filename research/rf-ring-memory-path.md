@@ -89,3 +89,28 @@ restarted before USB reports the result. This proves neither bus arbitration
 nor AV lock statically; `AV DIRECT PROBE` exists specifically to measure those
 remaining physical properties without risking another unbounded USB/FreeRTOS
 wedge.
+
+### Physical crash finding and repair
+
+The first physical run reached the direct handoff but then reported a C5
+hardware stack-protection panic with `MEPC=0x5000023a`, an LP-RAM `SP`, and the
+HP-RAM bounds of task `c5vrx_usbctl`. The cause was architectural rather than an
+RF result: the assembly trampoline changed `sp`, but hardware stack bounds are
+updated by ESP-IDF on a FreeRTOS context switch, not by an ordinary function
+call. The repair creates a static priority-21 probe task with its own aligned
+4096-byte LP-RAM stack. FreeRTOS now records those bounds before the task enters
+the ownership interval; the LP kernel only allocates a normal 48-byte frame on
+that already-valid stack.
+
+The same run exposed a separate PAL teardown bug. At the XIAO profile's 100 Hz
+tick rate, `pdMS_TO_TICKS(1)` is zero. A priority-20 USB task therefore never
+blocked while waiting for the priority-18 PAL refill task and eventually
+force-deleted it with an active looping transaction. Teardown now notifies the
+PAL task, blocks for real ticks, refuses unsafe deletion on timeout, and only
+then uses the documented `parlio_tx_unit_disable()` operation to terminate the
+infinite DMA transaction.
+
+Neither crash is evidence for or against usable VTX samples: both occurred
+before the bounded RF observation completed. The repaired result adds an
+`execute` code and `lp_stack_min_free_bytes` so the next physical run can
+separate orchestration health from RF continuity and decoder lock.

@@ -413,6 +413,13 @@ writer rate and wraps over USB. The Receiver Console exposes the same action as
 **DIRECT RF -> AV PROBE (A1, 100 ms)**. A passing machine record is still only a
 rate/continuity candidate until the connected AV decoder visibly locks.
 
+The direct kernel runs on a dedicated 4096-byte LP-RAM stack registered as a
+real static FreeRTOS task. This is required on the C5: manually moving `sp`
+inside the USB control task leaves the hardware stack guard programmed with the
+old HP-RAM bounds. The probe reports `lp_stack_min_free_bytes` after every run.
+PAL teardown also waits one actual 100 Hz scheduler tick at a time and never
+force-deletes a task that can still reference active PARLIO DMA buffers.
+
 ### Test-readiness status
 
 - **IMPLEMENTED / NOT PHYSICALLY TESTED:** modular RF block ABI, direct circular

@@ -683,25 +683,30 @@ static void stream_task(void *arg)
     vTaskDelete(NULL);
 }
 
-static void stop_stream_task(void)
+static esp_err_t stop_stream_task(void)
 {
     TaskHandle_t task = s_stream.task;
     if (!task) {
-        return;
+        return ESP_OK;
     }
 
     s_stream.stop_requested = true;
     (void)xTaskNotify(task, C5VRX_CVBS_STOP_NOTIFY, eSetBits);
 
-    for (unsigned i = 0; i < 100 && s_stream.task; ++i) {
-        vTaskDelay(pdMS_TO_TICKS(1));
+    /* FreeRTOS runs at 100 Hz on the XIAO profile. pdMS_TO_TICKS(1) rounds
+     * down to zero, so the priority-20 USB task previously stayed runnable
+     * and starved this priority-18 PAL task for all 100 iterations. Block for
+     * a real tick so the notified task can retire cleanly. */
+    for (unsigned i = 0; i < 20 && s_stream.task; ++i) {
+        vTaskDelay(1);
     }
 
     if (s_stream.task) {
-        ESP_LOGW(TAG, "PAL stream task did not exit cleanly; deleting it");
-        vTaskDelete(s_stream.task);
-        s_stream.task = NULL;
+        ESP_LOGE(TAG,
+                 "PAL stream task did not exit after 200 ms; active DMA resources retained");
+        return ESP_ERR_TIMEOUT;
     }
+    return ESP_OK;
 }
 
 static esp_err_t start_output(c5vrx_cvbs_display_t initial_display)
@@ -819,7 +824,8 @@ static esp_err_t start_output(c5vrx_cvbs_display_t initial_display)
         ESP_LOGE(TAG,
                  "parlio callback registration failed: %s",
                  esp_err_to_name(err));
-        stop_stream_task();
+        const esp_err_t stop_err = stop_stream_task();
+        if (stop_err != ESP_OK) return stop_err;
         parlio_del_tx_unit(s_tx);
         s_tx = NULL;
         free(s_chunk[0]);
@@ -831,7 +837,8 @@ static esp_err_t start_output(c5vrx_cvbs_display_t initial_display)
     err = parlio_tx_unit_enable(s_tx);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "parlio_tx_unit_enable failed: %s", esp_err_to_name(err));
-        stop_stream_task();
+        const esp_err_t stop_err = stop_stream_task();
+        if (stop_err != ESP_OK) return stop_err;
         parlio_del_tx_unit(s_tx);
         s_tx = NULL;
         free(s_chunk[0]);
@@ -848,8 +855,9 @@ static esp_err_t start_output(c5vrx_cvbs_display_t initial_display)
         ESP_LOGE(TAG,
                  "initial PAL stream queue failed: %s",
                  esp_err_to_name(err));
+        const esp_err_t stop_err = stop_stream_task();
         (void)parlio_tx_unit_disable(s_tx);
-        stop_stream_task();
+        if (stop_err != ESP_OK) return stop_err;
         parlio_del_tx_unit(s_tx);
         s_tx = NULL;
         free(s_chunk[0]);
@@ -905,13 +913,17 @@ const char *c5vrx_cvbs_display_name(c5vrx_cvbs_display_t display)
 
 static esp_err_t destroy_rendered_output(void)
 {
-    esp_err_t err = ESP_OK;
+    /* Ask the refill task to exit while its looping DMA transaction is still
+     * valid. Once it has acknowledged, the documented PARLIO disable call
+     * terminates the infinite transaction immediately and makes deletion
+     * safe. Never force-delete a task that may still reference DMA buffers. */
+    esp_err_t err = stop_stream_task();
+    if (err != ESP_OK) return err;
     if (s_tx) {
         const esp_err_t disable_err = parlio_tx_unit_disable(s_tx);
         if (disable_err != ESP_OK && disable_err != ESP_ERR_INVALID_STATE)
             err = disable_err;
     }
-    stop_stream_task();
     if (s_tx) {
         const esp_err_t del_err = parlio_del_tx_unit(s_tx);
         if (err == ESP_OK) err = del_err;

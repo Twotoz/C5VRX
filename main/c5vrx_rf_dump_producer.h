@@ -65,9 +65,15 @@ typedef struct {
     uint32_t last_pointer;
 } c5vrx_direct_av_probe_stats_t;
 
+#define C5VRX_LP_DIRECT_TASK_STACK_BYTES 4096u
+extern uint8_t c5vrx_lp_direct_task_stack[];
+extern uint8_t c5vrx_lp_direct_task_stack_top[];
+
 /**
  * Run the already-configured mode-0 producer from LP RAM while a pre-armed
- * direct PARLIO transaction consumes the ring. Both duration and lead are
+ * direct PARLIO transaction consumes the ring. The caller must itself be a
+ * FreeRTOS task with an LP-RAM stack, so the hardware stack guard tracks the
+ * real bounds across the ownership interval. Both duration and lead are
  * bounded; CPU SRAM ownership and the PARLIO clock are restored before return.
  */
 uint32_t c5vrx_lp_direct_av_probe_mode0(uint32_t duration_cycles,

@@ -193,10 +193,7 @@ c5vrx_lp_capture_mode0:
     .global c5vrx_lp_direct_av_probe_mode0
     .type   c5vrx_lp_direct_av_probe_mode0, @function
 c5vrx_lp_direct_av_probe_mode0:
-    mv      t0, sp
-    la      sp, c5vrx_lp_capture_stack_top
     addi    sp, sp, -48
-    sw      t0, 16(sp)
     sw      ra, 20(sp)
     sw      a0, 24(sp)               /* bounded run cycles */
     sw      a1, 28(sp)               /* requested lead words */
@@ -343,8 +340,7 @@ c5vrx_lp_direct_av_probe_mode0:
 
     mv      a0, t1
     lw      ra, 20(sp)
-    lw      t0, 16(sp)
-    mv      sp, t0
+    addi    sp, sp, 48
     ret
     .size c5vrx_lp_direct_av_probe_mode0, .-c5vrx_lp_direct_av_probe_mode0
 
@@ -372,3 +368,13 @@ c5vrx_lp_direct_last_pointer:
 c5vrx_lp_capture_stack:
     .space  2048
 c5vrx_lp_capture_stack_top:
+
+    /* The direct probe runs as a real FreeRTOS task whose complete stack is
+     * in LP RAM.  Keeping this separate from the finite-capture trampoline is
+     * essential: a blocked task retains its saved context in its own stack. */
+    .balign 16
+    .global c5vrx_lp_direct_task_stack
+c5vrx_lp_direct_task_stack:
+    .space  4096
+    .global c5vrx_lp_direct_task_stack_top
+c5vrx_lp_direct_task_stack_top:
