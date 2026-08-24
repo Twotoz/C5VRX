@@ -823,20 +823,44 @@ static void handle_line(char *line)
         }
         esp_err_t err = start_ring_live(
             (c5vrx_rf_dump_mode_t)ring_bench_mode, ring_bench_words);
+        const bool ring_started = err == ESP_OK;
         c5vrx_cvbs_live_out_stats_t av_before = {0}, av_after = {0};
+        bool qualification_started = false;
+        c5vrx_cvbs_sync_tracker_t acquired_timing = {0};
+        const TickType_t acquisition_start = xTaskGetTickCount();
+        while (err == ESP_OK) {
+            c5vrx_live_pipeline_get_timing(&acquired_timing);
+            if (acquired_timing.horizontal_locked &&
+                acquired_timing.vertical_locked &&
+                acquired_timing.standard != C5VRX_VIDEO_STANDARD_UNKNOWN)
+                break;
+            if (xTaskGetTickCount() - acquisition_start >=
+                pdMS_TO_TICKS(250u)) {
+                err = ESP_ERR_TIMEOUT;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(1u));
+        }
         if (err == ESP_OK) {
+            /* Startup continuity filler is legal. Qualification begins only
+             * after the canonical authority has acquired H+V+standard. */
             c5vrx_cvbs_live_out_get_stats(&av_before);
             c5vrx_cvbs_live_out_qualification_begin(UINT32_MAX);
+            qualification_started = true;
         }
         if (ring_bench_mode == 0u && ring_bench_ms == 1000u)
             s_capabilities.bitscrambler_path_available = false;
         if (err == ESP_OK) vTaskDelay(pdMS_TO_TICKS(ring_bench_ms));
         c5vrx_stream_stats_t pipeline = {0};
         c5vrx_live_ring_stats_t ring = {0};
-        if (err == ESP_OK) err = stop_live_sources(&pipeline, &ring);
+        if (ring_started) {
+            const esp_err_t stop_err = stop_live_sources(&pipeline, &ring);
+            if (err == ESP_OK) err = stop_err;
+        }
         c5vrx_cvbs_live_out_get_stats(&av_after);
-        c5vrx_cvbs_live_out_qualification_end();
+        if (qualification_started) c5vrx_cvbs_live_out_qualification_end();
         const bool av_pass =
+            qualification_started &&
             av_before.guardian_running &&
             av_after.mailbox_drops == av_before.mailbox_drops &&
             av_after.qualification_underruns ==
