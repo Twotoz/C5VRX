@@ -66,6 +66,8 @@ typedef struct {
 esp_err_t c5vrx_producer_soak(c5vrx_rf_dump_mode_t mode,
                               uint32_t maximum_duration_ms,
                               c5vrx_producer_soak_result_t *result);
+/* Retry a watchdog subscription retained after a failed soak teardown. */
+esp_err_t c5vrx_producer_soak_restore_watchdog(void);
 
 typedef struct {
     double observed_offset_hz;
