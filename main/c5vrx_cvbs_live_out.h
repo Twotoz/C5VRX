@@ -12,6 +12,7 @@ typedef struct {
     uint64_t live_blocks_retired;
     uint64_t filler_blocks;
     uint64_t mailbox_drops;
+    uint64_t qualification_underruns;
     bool guardian_running;
 } c5vrx_cvbs_live_out_stats_t;
 
@@ -26,6 +27,8 @@ esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *samples, size_t count,
  * nonblocking write above so AV can never backpressure RF processing. */
 esp_err_t c5vrx_cvbs_live_out_write_wait(const uint8_t *samples, size_t count,
                                          uint32_t timeout_ms);
+void c5vrx_cvbs_live_out_qualification_begin(uint32_t blocks);
+void c5vrx_cvbs_live_out_qualification_end(void);
 esp_err_t c5vrx_cvbs_live_out_stop(void);
 void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats);
 void c5vrx_cvbs_live_out_update_timing(

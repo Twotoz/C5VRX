@@ -29,6 +29,8 @@ typedef struct {
     uint64_t live_blocks_retired;
     uint64_t filler_blocks;
     uint64_t mailbox_drops;
+    uint64_t qualification_underruns;
+    uint32_t qualification_unsubmitted;
     TaskHandle_t guardian;
     portMUX_TYPE lock;
     bool running;
@@ -134,7 +136,14 @@ static void guardian_task(void *arg)
             if (s_out.dma_live[index]) ++s_out.live_blocks_retired;
             s_out.dma_live[index] = take_live_block(s_out.dma[index]);
             if (s_out.dma_live[index]) ++s_out.live_blocks;
-            else { fill_legal_filler(s_out.dma[index]); ++s_out.filler_blocks; }
+            else {
+                fill_legal_filler(s_out.dma[index]);
+                ++s_out.filler_blocks;
+                taskENTER_CRITICAL(&s_out.lock);
+                if (s_out.qualification_unsubmitted)
+                    ++s_out.qualification_underruns;
+                taskEXIT_CRITICAL(&s_out.lock);
+            }
             if (queue_dma(index) != ESP_OK) s_out.running = false;
         }
     }
@@ -158,6 +167,8 @@ esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
     s_out.clock_hz = output_clock_hz;
     s_out.live_blocks = s_out.live_blocks_retired = 0u;
     s_out.filler_blocks = s_out.mailbox_drops = 0u;
+    s_out.qualification_underruns = 0u;
+    s_out.qualification_unsubmitted = 0u;
     s_out.filler_sample = 0u;
     s_out.mailbox_write = 0u;
     s_out.filler_standard = C5VRX_VIDEO_STANDARD_PAL;
@@ -253,12 +264,28 @@ esp_err_t c5vrx_cvbs_live_out_write_wait(const uint8_t *samples, size_t count,
             s_out.mailbox_ready[index] = true;
             s_out.mailbox_in_use[index] = false;
             s_out.mailbox_write = (unsigned)index ^ 1u;
+            if (s_out.qualification_unsubmitted)
+                --s_out.qualification_unsubmitted;
             taskEXIT_CRITICAL(&s_out.lock);
             return ESP_OK;
         }
         if ((xTaskGetTickCount() - start) >= timeout) return ESP_ERR_TIMEOUT;
         taskYIELD();
     }
+}
+
+void c5vrx_cvbs_live_out_qualification_begin(uint32_t blocks)
+{
+    taskENTER_CRITICAL(&s_out.lock);
+    s_out.qualification_unsubmitted = blocks;
+    taskEXIT_CRITICAL(&s_out.lock);
+}
+
+void c5vrx_cvbs_live_out_qualification_end(void)
+{
+    taskENTER_CRITICAL(&s_out.lock);
+    s_out.qualification_unsubmitted = 0u;
+    taskEXIT_CRITICAL(&s_out.lock);
 }
 
 esp_err_t c5vrx_cvbs_live_out_stop(void)
@@ -292,6 +319,7 @@ void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
         .live_blocks_retired = s_out.live_blocks_retired,
         .filler_blocks = s_out.filler_blocks,
         .mailbox_drops = s_out.mailbox_drops,
+        .qualification_underruns = s_out.qualification_underruns,
         .guardian_running = s_out.guardian != NULL,
     };
 }
@@ -316,6 +344,8 @@ esp_err_t c5vrx_cvbs_live_out_write(const uint8_t *s, size_t n, void *c)
 { (void)s; (void)n; (void)c; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t c5vrx_cvbs_live_out_write_wait(const uint8_t *s, size_t n, uint32_t t)
 { (void)s; (void)n; (void)t; return ESP_ERR_NOT_SUPPORTED; }
+void c5vrx_cvbs_live_out_qualification_begin(uint32_t n) { (void)n; }
+void c5vrx_cvbs_live_out_qualification_end(void) {}
 esp_err_t c5vrx_cvbs_live_out_stop(void) { return ESP_OK; }
 void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
 { if (stats) memset(stats, 0, sizeof(*stats)); }
