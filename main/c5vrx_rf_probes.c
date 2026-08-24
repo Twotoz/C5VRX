@@ -251,16 +251,6 @@ esp_err_t c5vrx_producer_phase_continuity_probe(
     err = c5vrx_rf_dump_start();
     if (err != ESP_OK) { (void)c5vrx_rf_dump_stop(); return err; }
 
-    /* Exact writer tracking cannot sleep across multiple potential wraps.
-     * The single-core idle task is normally watched, so temporarily remove
-     * only that idle task during the bounded tight-poll proof and restore it
-     * immediately afterward. The producer/control task itself is unchanged. */
-    TaskHandle_t idle_task = xTaskGetIdleTaskHandleForCore(xPortGetCoreID());
-    const bool idle_wdt_removed = idle_task &&
-        esp_task_wdt_status(idle_task) == ESP_OK &&
-        esp_task_wdt_delete(idle_task) == ESP_OK;
-    result->idle_watchdog_temporarily_unsubscribed = idle_wdt_removed;
-
     c5vrx_rf_dump_status_t status = {0};
     (void)c5vrx_rf_dump_get_status(&status);
     uint32_t previous = status.pointer;
@@ -361,6 +351,16 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
     (void)c5vrx_rf_dump_read_registers(&configured);
     err = c5vrx_rf_dump_start();
     if (err != ESP_OK) { (void)c5vrx_rf_dump_stop(); return err; }
+
+    /* Exact writer tracking cannot sleep across multiple potential wraps.
+     * The single-core idle task is normally watched, so temporarily remove
+     * only that idle task during the bounded tight-poll proof and restore it
+     * immediately afterward. The producer/control task itself is unchanged. */
+    TaskHandle_t idle_task = xTaskGetIdleTaskHandleForCore(xPortGetCoreID());
+    const bool idle_wdt_removed = idle_task &&
+        esp_task_wdt_status(idle_task) == ESP_OK &&
+        esp_task_wdt_delete(idle_task) == ESP_OK;
+    result->idle_watchdog_temporarily_unsubscribed = idle_wdt_removed;
 
     const int64_t start = esp_timer_get_time();
     const int64_t deadline = start + (int64_t)duration_ms * 1000;
