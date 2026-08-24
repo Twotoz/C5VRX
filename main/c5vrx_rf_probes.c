@@ -28,6 +28,19 @@
 
 static volatile const uint32_t *const s_dump =
     (volatile const uint32_t *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR;
+static TaskHandle_t s_soak_idle_task;
+static bool s_soak_idle_wdt_removed;
+
+esp_err_t c5vrx_producer_soak_restore_watchdog(void)
+{
+    if (!s_soak_idle_wdt_removed) return ESP_OK;
+    const esp_err_t err = esp_task_wdt_add(s_soak_idle_task);
+    if (err == ESP_OK) {
+        s_soak_idle_wdt_removed = false;
+        s_soak_idle_task = NULL;
+    }
+    return err;
+}
 
 static bool mode_valid(c5vrx_rf_dump_mode_t mode)
 {
@@ -340,12 +353,14 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
                             c5vrx_producer_soak_result_t *result)
 {
     memset(result, 0, sizeof(*result));
+    esp_err_t err = c5vrx_producer_soak_restore_watchdog();
+    if (err != ESP_OK) return err;
     const size_t heap_before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     const uint32_t content_before = dump_fingerprint();
     c5vrx_wifi5_status_t wifi_before = {0};
     c5vrx_wifi5_status_t wifi_after = {0};
     const bool wifi_expected = c5vrx_wifi5_get_status(&wifi_before) == ESP_OK;
-    esp_err_t err = c5vrx_rf_dump_configure(PROBE_RING_WORDS, mode);
+    err = c5vrx_rf_dump_configure(PROBE_RING_WORDS, mode);
     if (err != ESP_OK) return err;
     c5vrx_rf_dump_registers_t configured = {0};
     (void)c5vrx_rf_dump_read_registers(&configured);
@@ -360,6 +375,10 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
     const bool idle_wdt_removed = idle_task &&
         esp_task_wdt_status(idle_task) == ESP_OK &&
         esp_task_wdt_delete(idle_task) == ESP_OK;
+    if (idle_wdt_removed) {
+        s_soak_idle_task = idle_task;
+        s_soak_idle_wdt_removed = true;
+    }
     result->idle_watchdog_temporarily_unsubscribed = idle_wdt_removed;
 
     const int64_t start = esp_timer_get_time();
@@ -369,7 +388,7 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
     if (c5vrx_ring_tracker_init(&tracker, PROBE_RING_WORDS, 1u, cpu_hz(),
                                 (uint32_t)CADENCE_PLAUSIBLE_MAX_HZ) != 0) {
         (void)c5vrx_rf_dump_stop();
-        if (idle_wdt_removed) (void)esp_task_wdt_add(idle_task);
+        (void)c5vrx_producer_soak_restore_watchdog();
         return ESP_FAIL;
     }
     while (esp_timer_get_time() < deadline) {
@@ -412,8 +431,8 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
         ++result->adjacent_canary_failures;
     const bool changed = dump_fingerprint() != content_before;
     const esp_err_t stop_err = c5vrx_rf_dump_stop();
-    const esp_err_t idle_wdt_restore_err = idle_wdt_removed ?
-        esp_task_wdt_add(idle_task) : ESP_OK;
+    const esp_err_t idle_wdt_restore_err =
+        c5vrx_producer_soak_restore_watchdog();
     result->idle_watchdog_restored = idle_wdt_restore_err == ESP_OK;
     if (err == ESP_OK) err = stop_err;
     if (err == ESP_OK) err = idle_wdt_restore_err;
