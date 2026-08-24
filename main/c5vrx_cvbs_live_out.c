@@ -40,6 +40,7 @@ typedef struct {
     bool timing_anchor_valid;
     uint64_t live_blocks;
     uint64_t live_blocks_retired;
+    uint64_t live_retirements_completed;
     uint64_t filler_blocks;
     uint64_t mailbox_drops;
     uint64_t qualification_underruns;
@@ -210,7 +211,8 @@ static void guardian_task(void *arg)
         if (retired & STOP_NOTIFY) break;
         for (unsigned index = 0; index < 2u; ++index) {
             if (!(retired & (1u << index))) continue;
-            if (s_out.dma_live[index]) ++s_out.live_blocks_retired;
+            const bool retired_live = s_out.dma_live[index];
+            if (retired_live) ++s_out.live_blocks_retired;
             uint64_t live_filler_end = 0u;
             s_out.dma_live[index] =
                 take_live_block(s_out.dma[index], &live_filler_end);
@@ -238,6 +240,10 @@ static void guardian_task(void *arg)
                 ++s_out.guardian_failures;
                 s_out.running = false;
             }
+            /* Publish completion only after the replacement queue result and
+             * its failure telemetry are visible. Qualification waiting on
+             * this counter cannot race the post-retirement requeue. */
+            if (retired_live) ++s_out.live_retirements_completed;
         }
     }
     s_out.guardian = NULL;
@@ -311,6 +317,7 @@ esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t block_samples,
     s_out.samples = block_samples;
     s_out.clock_hz = output_clock_hz;
     s_out.live_blocks = s_out.live_blocks_retired = 0u;
+    s_out.live_retirements_completed = 0u;
     s_out.filler_blocks = s_out.mailbox_drops = 0u;
     s_out.qualification_underruns = 0u;
     s_out.guardian_failures = 0u;
@@ -510,6 +517,7 @@ void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
     *stats = (c5vrx_cvbs_live_out_stats_t) {
         .live_blocks = s_out.live_blocks,
         .live_blocks_retired = s_out.live_blocks_retired,
+        .live_retirements_completed = s_out.live_retirements_completed,
         .filler_blocks = s_out.filler_blocks,
         .mailbox_drops = s_out.mailbox_drops,
         .qualification_underruns = s_out.qualification_underruns,

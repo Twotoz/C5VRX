@@ -10,6 +10,7 @@
 typedef struct {
     uint64_t live_blocks;
     uint64_t live_blocks_retired;
+    uint64_t live_retirements_completed;
     uint64_t filler_blocks;
     uint64_t mailbox_drops;
     uint64_t qualification_underruns;
