@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "c5vrx_adc_dump.h"
+#include "c5vrx_ring_tracker.h"
 #include "esp_cpu.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -27,15 +28,15 @@ typedef struct {
 typedef struct {
     size_t maximum_words;
     size_t guard_words;
-    uint16_t reader;
-    uint16_t last_writer;
-    uint32_t available_words;
     bool reader_valid;
+    bool armed;
     bool discontinuity;
     bool fatal;
+    bool stop_attempted;
+    esp_err_t stop_result;
     uint32_t maximum_plausible_rate_hz;
-    uint32_t last_observation_cycle;
     uint64_t sequence;
+    c5vrx_ring_tracker_t tracker;
     ring_slot_t slots[RING_BUFFER_COUNT];
     c5vrx_live_ring_stats_t stats;
 } ring_context_t;
@@ -65,17 +66,88 @@ static ring_slot_t *claim_slot(ring_context_t *ctx, uint32_t timeout_ms)
     return NULL;
 }
 
-static void resync_reader(ring_context_t *ctx, uint16_t writer)
+static void sync_tracker_stats(ring_context_t *ctx)
 {
-    /* Half a ring maximizes bounded copy time in either direction. Alignment
-     * preserves the current 4:1 transform contract. */
-    ctx->reader = (uint16_t)((writer + RING_WORDS / 2u) & RING_MASK);
-    ctx->reader &= (uint16_t)~7u;
-    ctx->reader_valid = true;
-    ctx->last_writer = writer;
-    ctx->available_words = (writer - ctx->reader) & RING_MASK;
-    ctx->discontinuity = true;
-    ++ctx->stats.discontinuities;
+    ctx->stats.producer_absolute = ctx->tracker.producer_absolute;
+    ctx->stats.consumer_absolute = ctx->tracker.consumer_absolute;
+    ctx->stats.lag_words = c5vrx_ring_tracker_lag(&ctx->tracker);
+    ctx->stats.maximum_lag_words = ctx->tracker.maximum_lag_words;
+    ctx->stats.wraps_observed = ctx->tracker.wraps;
+    ctx->stats.maximum_service_interval_cycles =
+        ctx->tracker.maximum_service_interval_cycles;
+    ctx->stats.minimum_service_deadline_cycles =
+        ctx->tracker.minimum_deadline_cycles == UINT32_MAX ? 0u :
+        ctx->tracker.minimum_deadline_cycles;
+    if (ctx->stats.maximum_service_interval_cycles) {
+        ctx->stats.deadline_headroom_x1000 = (uint32_t)(
+            (uint64_t)ctx->stats.minimum_service_deadline_cycles * 1000u /
+            ctx->stats.maximum_service_interval_cycles);
+    }
+}
+
+static void fail_ring(ring_context_t *ctx, ring_slot_t *slot,
+                      c5vrx_live_ring_failure_t reason, uint64_t missed)
+{
+    if (slot) atomic_store(&slot->in_use, false);
+    ctx->stats.missed_words += missed;
+    ++ctx->stats.overruns;
+    ++ctx->stats.fatal_stops;
+    ++ctx->stats.stream_epoch;
+    ctx->stats.fatal_reason = reason;
+    ctx->fatal = true;
+    sync_tracker_stats(ctx);
+    if (ctx->armed) {
+        ctx->stop_result = c5vrx_rf_dump_stop();
+        ctx->stop_attempted = true;
+    }
+    ctx->armed = false;
+}
+
+static c5vrx_live_ring_failure_t tracker_failure(
+    c5vrx_ring_track_result_t result, bool during_copy)
+{
+    if (result == C5VRX_RING_TRACK_POINTER_OUT_OF_RANGE)
+        return C5VRX_RING_FAILURE_POINTER_OUT_OF_RANGE;
+    if (result == C5VRX_RING_TRACK_INTERVAL_AMBIGUOUS)
+        return during_copy ? C5VRX_RING_FAILURE_COPY_AMBIGUOUS :
+                             C5VRX_RING_FAILURE_SERVICE_INTERVAL_AMBIGUOUS;
+    return C5VRX_RING_FAILURE_READER_INSIDE_GUARD;
+}
+
+/* Keep observing while the reader waits for newly-written words. Returning to
+ * source_task would introduce its 1 ms backoff, which is longer than a full
+ * 16K-word wrap at the expected producer rates and would make the writer
+ * position fundamentally ambiguous. This wait is bounded by the acquire
+ * timeout and continuously refreshes the wrap tracker. */
+static bool observe_until_lag(ring_context_t *ctx, ring_slot_t *slot,
+                              uint64_t required_lag, uint32_t timeout_ms)
+{
+    const uint32_t start_cycle = (uint32_t)esp_cpu_get_cycle_count();
+    uint64_t budget = (uint64_t)timeout_ms * cpu_hz() / 1000u;
+    if (budget > UINT32_MAX) budget = UINT32_MAX;
+
+    while (c5vrx_ring_tracker_lag(&ctx->tracker) < required_lag) {
+        c5vrx_rf_dump_status_t status = {0};
+        if (c5vrx_rf_dump_get_status(&status) != ESP_OK || !status.enabled) {
+            ++ctx->stats.dropped_blocks;
+            fail_ring(ctx, slot, C5VRX_RING_FAILURE_PRODUCER_STOPPED, 0u);
+            return false;
+        }
+        const uint32_t cycle = (uint32_t)esp_cpu_get_cycle_count();
+        const c5vrx_ring_track_result_t tracked =
+            c5vrx_ring_tracker_observe(&ctx->tracker, status.pointer, cycle);
+        if (tracked != C5VRX_RING_TRACK_OK) {
+            fail_ring(ctx, slot, tracker_failure(tracked, false),
+                      c5vrx_ring_tracker_lag(&ctx->tracker));
+            return false;
+        }
+        if (c5vrx_ring_tracker_lag(&ctx->tracker) >= required_lag) return true;
+        if (!timeout_ms || (uint32_t)(cycle - start_cycle) >= (uint32_t)budget) {
+            atomic_store(&slot->in_use, false);
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool ring_acquire(c5vrx_rf_source_t *source,
@@ -90,76 +162,77 @@ static bool ring_acquire(c5vrx_rf_source_t *source,
         return false;
     }
 
+    if (!ctx->armed) {
+        if (c5vrx_rf_dump_start() != ESP_OK) {
+            fail_ring(ctx, slot, C5VRX_RING_FAILURE_PRODUCER_STOPPED, 0u);
+            return false;
+        }
+        ctx->armed = true;
+    }
+    if (!c5vrx_rf_dump_canaries_intact()) {
+        fail_ring(ctx, slot, C5VRX_RING_FAILURE_ADJACENT_MEMORY_CORRUPTED, 0u);
+        return false;
+    }
+
     c5vrx_rf_dump_status_t before = {0};
     if (c5vrx_rf_dump_get_status(&before) != ESP_OK || !before.enabled) {
-        atomic_store(&slot->in_use, false);
         ++ctx->stats.dropped_blocks;
-        ctx->fatal = true;
-        ++ctx->stats.fatal_stops;
-        ctx->stats.fatal_reason = C5VRX_RING_FAILURE_PRODUCER_STOPPED;
-        (void)c5vrx_rf_dump_stop();
+        fail_ring(ctx, slot, C5VRX_RING_FAILURE_PRODUCER_STOPPED, 0u);
         return false;
     }
     const uint32_t observation_cycle = (uint32_t)esp_cpu_get_cycle_count();
-    if (ctx->reader_valid && ctx->last_observation_cycle) {
-        const uint32_t interval_cycles =
-            observation_cycle - ctx->last_observation_cycle;
-        const uint64_t possible_interval_advance =
-            (uint64_t)interval_cycles * ctx->maximum_plausible_rate_hz /
-            cpu_hz();
-        if (possible_interval_advance >= RING_WORDS) {
-            ctx->stats.missed_words += possible_interval_advance;
-            ++ctx->stats.overruns;
-            ++ctx->stats.fatal_stops;
-            ctx->stats.fatal_reason =
-                C5VRX_RING_FAILURE_SERVICE_INTERVAL_AMBIGUOUS;
-            ctx->fatal = true;
-            atomic_store(&slot->in_use, false);
-            (void)c5vrx_rf_dump_stop();
-            return false;
-        }
-        const uint32_t produced =
-            (before.pointer - ctx->last_writer) & RING_MASK;
-        if (before.pointer < ctx->last_writer)
-            ++ctx->stats.wraps_observed;
-        ctx->available_words += produced;
-        if (ctx->available_words >= RING_WORDS - ctx->guard_words) {
-            ctx->stats.missed_words += ctx->available_words;
-            ++ctx->stats.overruns;
-            ++ctx->stats.fatal_stops;
-            ctx->stats.fatal_reason = C5VRX_RING_FAILURE_READER_INSIDE_GUARD;
-            ctx->fatal = true;
-            atomic_store(&slot->in_use, false);
-            (void)c5vrx_rf_dump_stop();
-            return false;
-        }
+    const c5vrx_ring_track_result_t before_track =
+        c5vrx_ring_tracker_observe(&ctx->tracker, before.pointer,
+                                   observation_cycle);
+    if (before_track != C5VRX_RING_TRACK_OK) {
+        fail_ring(ctx, slot, tracker_failure(before_track, false),
+                  c5vrx_ring_tracker_lag(&ctx->tracker));
+        return false;
     }
-    ctx->last_observation_cycle = observation_cycle;
-    ctx->last_writer = before.pointer;
-    if (!ctx->reader_valid) resync_reader(ctx, before.pointer);
+    if (!ctx->reader_valid) {
+        /* The first observed writer position is the only defensible boundary
+         * between stale SRAM and words produced by this LIVE epoch. The
+         * tracker initializes its consumer exactly there. Wait for a fresh
+         * half-ring instead of backdating the reader into unknown memory. */
+        if (!observe_until_lag(ctx, slot, RING_WORDS / 2u, timeout_ms)) {
+            return false;
+        }
+        const uint32_t reader =
+            (uint32_t)(ctx->tracker.consumer_absolute & RING_MASK);
+        const uint32_t alignment_skip = (0u - reader) & 7u;
+        if (alignment_skip &&
+            c5vrx_ring_tracker_consume(&ctx->tracker, alignment_skip) !=
+                C5VRX_RING_TRACK_OK) {
+            fail_ring(ctx, slot, C5VRX_RING_FAILURE_READER_INSIDE_GUARD, 0u);
+            return false;
+        }
+        ctx->reader_valid = true;
+        ctx->discontinuity = true;
+        ++ctx->stats.discontinuities;
+        ++ctx->stats.stream_epoch;
+    }
+    sync_tracker_stats(ctx);
 
     size_t count = ctx->maximum_words;
-    const size_t contiguous = RING_WORDS - ctx->reader;
+    const uint16_t reader =
+        (uint16_t)(ctx->tracker.consumer_absolute & RING_MASK);
+    const size_t contiguous = RING_WORDS - reader;
     if (count > contiguous) count = contiguous;
     count &= ~(size_t)3u;
     if (count < 8u) {
-        ctx->reader = 0;
-        count = ctx->maximum_words;
-        if (count > RING_WORDS) count = RING_WORDS;
-        count &= ~(size_t)3u;
-        ctx->discontinuity = true;
-        ++ctx->stats.discontinuities;
-    }
-
-    /* A fast consumer reaching the writer is normal backpressure, not an
-     * overrun. Wait until this complete contiguous segment exists. */
-    if (ctx->available_words < count) {
-        atomic_store(&slot->in_use, false);
+        fail_ring(ctx, slot, C5VRX_RING_FAILURE_READER_INSIDE_GUARD, 0u);
         return false;
     }
 
+    /* A fast consumer reaching the writer is normal backpressure, not an
+     * overrun. Keep sampling the writer while waiting; sleeping even 1 ms can
+     * hide multiple wraps at the expected input rate. */
+    if (c5vrx_ring_tracker_lag(&ctx->tracker) < count) {
+        if (!observe_until_lag(ctx, slot, count, timeout_ms)) return false;
+    }
+
     const uint32_t first_cycle = (uint32_t)esp_cpu_get_cycle_count();
-    for (size_t i = 0; i < count; ++i) slot->words[i] = s_ring[ctx->reader + i];
+    for (size_t i = 0; i < count; ++i) slot->words[i] = s_ring[reader + i];
     __asm__ __volatile__("fence r, rw" ::: "memory");
     const uint32_t last_cycle = (uint32_t)esp_cpu_get_cycle_count();
     const uint32_t copy_cycles = last_cycle - first_cycle;
@@ -169,41 +242,30 @@ static bool ring_acquire(c5vrx_rf_source_t *source,
 
     c5vrx_rf_dump_status_t after = {0};
     if (c5vrx_rf_dump_get_status(&after) != ESP_OK || !after.enabled) {
-        atomic_store(&slot->in_use, false);
         ++ctx->stats.dropped_blocks;
-        ctx->fatal = true;
-        ++ctx->stats.fatal_stops;
-        ctx->stats.fatal_reason = C5VRX_RING_FAILURE_PRODUCER_STOPPED;
-        (void)c5vrx_rf_dump_stop();
+        fail_ring(ctx, slot, C5VRX_RING_FAILURE_PRODUCER_STOPPED, 0u);
         return false;
     }
-    const uint64_t possible_advance =
-        (uint64_t)copy_cycles * ctx->maximum_plausible_rate_hz / cpu_hz();
-    const uint32_t observed_advance =
-        (after.pointer - before.pointer) & RING_MASK;
-    if (possible_advance >= RING_WORDS ||
-        ctx->available_words + observed_advance >=
-            RING_WORDS - ctx->guard_words) {
-        atomic_store(&slot->in_use, false);
-        ctx->stats.missed_words += count;
-        ++ctx->stats.overruns;
+    if (!c5vrx_rf_dump_canaries_intact()) {
         ++ctx->stats.dropped_blocks;
-        ++ctx->stats.fatal_stops;
-        ctx->stats.fatal_reason = C5VRX_RING_FAILURE_COPY_AMBIGUOUS;
-        ctx->fatal = true;
-        (void)c5vrx_rf_dump_stop();
+        fail_ring(ctx, slot, C5VRX_RING_FAILURE_ADJACENT_MEMORY_CORRUPTED,
+                  count);
         return false;
     }
-
-    if (after.pointer < before.pointer) ++ctx->stats.wraps_observed;
-    ctx->available_words += observed_advance;
-    ctx->last_writer = after.pointer;
-    ctx->last_observation_cycle = last_cycle;
-
-    const uint16_t start = ctx->reader;
-    ctx->reader = (uint16_t)((ctx->reader + count) & RING_MASK);
-    ctx->available_words -= count;
-    ctx->stats.reader_pointer = ctx->reader;
+    const c5vrx_ring_track_result_t after_track =
+        c5vrx_ring_tracker_observe(&ctx->tracker, after.pointer, last_cycle);
+    if (after_track != C5VRX_RING_TRACK_OK) {
+        ++ctx->stats.dropped_blocks;
+        fail_ring(ctx, slot, tracker_failure(after_track, true), count);
+        return false;
+    }
+    if (c5vrx_ring_tracker_consume(&ctx->tracker, count) !=
+        C5VRX_RING_TRACK_OK) {
+        fail_ring(ctx, slot, C5VRX_RING_FAILURE_READER_INSIDE_GUARD, count);
+        return false;
+    }
+    ctx->stats.reader_pointer =
+        (uint16_t)(ctx->tracker.consumer_absolute & RING_MASK);
     ctx->stats.writer_pointer = after.pointer;
     ++ctx->stats.blocks;
     ctx->stats.words += count;
@@ -215,7 +277,7 @@ static bool ring_acquire(c5vrx_rf_source_t *source,
         .discontinuity_before = ctx->discontinuity,
         .owner = slot,
     };
-    (void)start;
+    sync_tracker_stats(ctx);
     ctx->discontinuity = false;
     return true;
 }
@@ -248,6 +310,12 @@ esp_err_t c5vrx_live_ring_source_create(c5vrx_rf_source_t *source,
     ctx->guard_words = guard_words;
     ctx->maximum_plausible_rate_hz = maximum_plausible_rate_hz;
     ctx->stats.guard_words = (uint16_t)guard_words;
+    if (c5vrx_ring_tracker_init(&ctx->tracker, RING_WORDS,
+                                (uint32_t)guard_words, cpu_hz(),
+                                maximum_plausible_rate_hz) != 0) {
+        free(ctx);
+        return ESP_ERR_INVALID_ARG;
+    }
     for (unsigned i = 0; i < RING_BUFFER_COUNT; ++i) {
         ctx->slots[i].words = heap_caps_malloc(
             maximum_words_per_block * sizeof(uint32_t),
@@ -260,23 +328,7 @@ esp_err_t c5vrx_live_ring_source_create(c5vrx_rf_source_t *source,
         atomic_init(&ctx->slots[i].in_use, false);
     }
     esp_err_t err = c5vrx_rf_dump_configure(RING_WORDS, mode);
-    const bool configured = err == ESP_OK;
-    if (configured) err = c5vrx_rf_dump_start();
-    if (err == ESP_OK) {
-        c5vrx_rf_dump_status_t status = {0};
-        (void)c5vrx_rf_dump_get_status(&status);
-        uint16_t previous = status.pointer;
-        bool wrapped = false;
-        const int64_t deadline = esp_timer_get_time() + 10000;
-        while (esp_timer_get_time() < deadline && !wrapped) {
-            (void)c5vrx_rf_dump_get_status(&status);
-            wrapped = status.pointer < previous;
-            previous = status.pointer;
-        }
-        if (!wrapped) err = ESP_ERR_TIMEOUT;
-    }
     if (err != ESP_OK) {
-        if (configured) (void)c5vrx_rf_dump_stop();
         for (unsigned i = 0; i < RING_BUFFER_COUNT; ++i)
             free(ctx->slots[i].words);
         free(ctx);
@@ -311,19 +363,25 @@ const char *c5vrx_live_ring_failure_name(c5vrx_live_ring_failure_t failure)
         case C5VRX_RING_FAILURE_READER_INSIDE_GUARD:
             return "READER_INSIDE_GUARD";
         case C5VRX_RING_FAILURE_COPY_AMBIGUOUS: return "COPY_AMBIGUOUS";
+        case C5VRX_RING_FAILURE_POINTER_OUT_OF_RANGE:
+            return "POINTER_OUT_OF_RANGE";
+        case C5VRX_RING_FAILURE_ADJACENT_MEMORY_CORRUPTED:
+            return "ADJACENT_MEMORY_CORRUPTED";
         default: return "NONE";
     }
 }
 
-void c5vrx_live_ring_source_destroy(c5vrx_rf_source_t *source)
+esp_err_t c5vrx_live_ring_source_destroy(c5vrx_rf_source_t *source)
 {
-    if (!source) return;
+    if (!source) return ESP_ERR_INVALID_ARG;
+    esp_err_t err = ESP_OK;
     ring_context_t *ctx = source->context;
     if (ctx) {
-        (void)c5vrx_rf_dump_stop();
+        err = ctx->stop_attempted ? ctx->stop_result : c5vrx_rf_dump_stop();
         for (unsigned i = 0; i < RING_BUFFER_COUNT; ++i)
             free(ctx->slots[i].words);
         free(ctx);
     }
     memset(source, 0, sizeof(*source));
+    return err;
 }

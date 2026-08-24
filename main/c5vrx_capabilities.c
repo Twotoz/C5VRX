@@ -36,6 +36,22 @@ c5vrx_consumer_strategy_t c5vrx_select_consumer(
         if (fail_reason) *fail_reason = "ANTI_ALIAS_BANDWIDTH_UNKNOWN";
         return C5VRX_CONSUMER_NONE;
     }
+    if (!capabilities->continuous_wrap_valid) {
+        if (fail_reason) *fail_reason = "CONTINUOUS_WRAP_UNPROVEN";
+        return C5VRX_CONSUMER_NONE;
+    }
+    if (!capabilities->writer_position_valid) {
+        if (fail_reason) *fail_reason = "WRITER_POSITION_UNPROVEN";
+        return C5VRX_CONSUMER_NONE;
+    }
+    if (!capabilities->adjacent_memory_valid) {
+        if (fail_reason) *fail_reason = "ADJACENT_MEMORY_SAFETY_UNPROVEN";
+        return C5VRX_CONSUMER_NONE;
+    }
+    if (!capabilities->pipeline_service_headroom_valid) {
+        if (fail_reason) *fail_reason = "SERVICE_DEADLINE_HEADROOM_UNPROVEN";
+        return C5VRX_CONSUMER_NONE;
+    }
     if (capabilities->hardware_decimation_available)
         return C5VRX_CONSUMER_LOWER_RATE_HARDWARE_TAP;
     /* The implemented BitScrambler program is exactly /4. A successful

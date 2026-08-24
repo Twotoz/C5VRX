@@ -18,6 +18,7 @@ idf_component_register(
         "c5vrx_live_pipeline.c"
         "c5vrx_capabilities.c"
         "c5vrx_live_ring_source.c"
+        "c5vrx_ring_tracker.c"
         "c5vrx_cvbs_live_out.c"
         "c5vrx_cvbs_sync.c"
         "c5vrx_usb_preview.c"

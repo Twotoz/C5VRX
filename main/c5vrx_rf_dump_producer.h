@@ -9,6 +9,10 @@
 
 #define C5VRX_RF_DUMP_LIB_SHA256 "0f9680b41612762d854accf2334412e3e01b206a3ec290bbbb232842fdaec7ba"
 #define C5VRX_RF_DUMP_IDF_VERSION "v6.0.2"
+#define C5VRX_RF_DUMP_PRE_GUARD_ADDR  0x4082ffc0u
+#define C5VRX_RF_DUMP_PRE_GUARD_BYTES 64u
+#define C5VRX_RF_DUMP_POST_GUARD_ADDR 0x40840000u
+#define C5VRX_RF_DUMP_POST_GUARD_BYTES 64u
 
 typedef enum {
     C5VRX_RF_DUMP_MODE_ORDINARY_RX = 0,
@@ -45,6 +49,8 @@ typedef struct {
 
 bool c5vrx_rf_dump_producer_available(void);
 bool c5vrx_rf_dump_memory_reserved(void);
+bool c5vrx_rf_dump_canaries_intact(void);
+bool c5vrx_rf_dump_last_canaries_ok(void);
 esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
                                   c5vrx_rf_dump_mode_t mode);
 esp_err_t c5vrx_rf_dump_start(void);

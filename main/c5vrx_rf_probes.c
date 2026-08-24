@@ -11,9 +11,11 @@
 #include "sdkconfig.h"
 #include "c5vrx_adc_dump.h"
 #include "c5vrx_wifi5.h"
+#include "c5vrx_ring_tracker.h"
 #include "esp_cpu.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
+#include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -26,6 +28,19 @@
 
 static volatile const uint32_t *const s_dump =
     (volatile const uint32_t *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR;
+static TaskHandle_t s_soak_idle_task;
+static bool s_soak_idle_wdt_removed;
+
+esp_err_t c5vrx_producer_soak_restore_watchdog(void)
+{
+    if (!s_soak_idle_wdt_removed) return ESP_OK;
+    const esp_err_t err = esp_task_wdt_add(s_soak_idle_task);
+    if (err == ESP_OK) {
+        s_soak_idle_wdt_removed = false;
+        s_soak_idle_task = NULL;
+    }
+    return err;
+}
 
 static bool mode_valid(c5vrx_rf_dump_mode_t mode)
 {
@@ -334,47 +349,93 @@ static bool duration_allowed(uint32_t duration_ms)
     return false;
 }
 
-static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms)
+static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms,
+                            c5vrx_producer_soak_result_t *result)
 {
+    memset(result, 0, sizeof(*result));
+    esp_err_t err = c5vrx_producer_soak_restore_watchdog();
+    if (err != ESP_OK) return err;
     const size_t heap_before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     const uint32_t content_before = dump_fingerprint();
     c5vrx_wifi5_status_t wifi_before = {0};
     c5vrx_wifi5_status_t wifi_after = {0};
     const bool wifi_expected = c5vrx_wifi5_get_status(&wifi_before) == ESP_OK;
-    esp_err_t err = c5vrx_rf_dump_configure(PROBE_RING_WORDS, mode);
+    err = c5vrx_rf_dump_configure(PROBE_RING_WORDS, mode);
     if (err != ESP_OK) return err;
     c5vrx_rf_dump_registers_t configured = {0};
     (void)c5vrx_rf_dump_read_registers(&configured);
     err = c5vrx_rf_dump_start();
     if (err != ESP_OK) { (void)c5vrx_rf_dump_stop(); return err; }
 
+    /* Exact writer tracking cannot sleep across multiple potential wraps.
+     * The single-core idle task is normally watched, so temporarily remove
+     * only that idle task during the bounded tight-poll proof and restore it
+     * immediately afterward. The producer/control task itself is unchanged. */
+    TaskHandle_t idle_task = xTaskGetIdleTaskHandleForCore(xPortGetCoreID());
+    const bool idle_wdt_removed = idle_task &&
+        esp_task_wdt_status(idle_task) == ESP_OK &&
+        esp_task_wdt_delete(idle_task) == ESP_OK;
+    if (idle_wdt_removed) {
+        s_soak_idle_task = idle_task;
+        s_soak_idle_wdt_removed = true;
+    }
+    result->idle_watchdog_temporarily_unsubscribed = idle_wdt_removed;
+
     const int64_t start = esp_timer_get_time();
     const int64_t deadline = start + (int64_t)duration_ms * 1000;
     c5vrx_rf_dump_status_t status = {0};
-    uint16_t previous = 0;
-    bool have_previous = false;
-    uint32_t pointer_changes = 0;
-    uint32_t invariant_failures = 0;
-    uint32_t observations = 0;
+    c5vrx_ring_tracker_t tracker;
+    if (c5vrx_ring_tracker_init(&tracker, PROBE_RING_WORDS, 1u, cpu_hz(),
+                                (uint32_t)CADENCE_PLAUSIBLE_MAX_HZ) != 0) {
+        (void)c5vrx_rf_dump_stop();
+        (void)c5vrx_producer_soak_restore_watchdog();
+        return ESP_FAIL;
+    }
     while (esp_timer_get_time() < deadline) {
         (void)c5vrx_rf_dump_get_status(&status);
-        ++observations;
-        if (!status.enabled || status.pointer >= PROBE_RING_WORDS)
-            ++invariant_failures;
-        if (have_previous && status.pointer != previous) ++pointer_changes;
-        previous = status.pointer;
-        have_previous = true;
-        if (duration_ms >= 10u) vTaskDelay(pdMS_TO_TICKS(1));
+        const uint32_t cycle = (uint32_t)esp_cpu_get_cycle_count();
+        if (!status.enabled) {
+            ++result->producer_stop_events;
+            err = ESP_FAIL;
+            break;
+        }
+        const c5vrx_ring_track_result_t tracked =
+            c5vrx_ring_tracker_observe(&tracker, status.pointer, cycle);
+        if (tracked == C5VRX_RING_TRACK_POINTER_OUT_OF_RANGE) {
+            ++result->pointer_out_of_range;
+            err = ESP_FAIL;
+            break;
+        }
+        if (tracked == C5VRX_RING_TRACK_INTERVAL_AMBIGUOUS) {
+            err = ESP_FAIL;
+            break;
+        }
+        /* This proof observer is not a data consumer. Keep its synthetic
+         * consumer at the writer so guard-distance policy does not obscure
+         * the independent pointer/wrap proof. */
+        tracker.consumer_absolute = tracker.producer_absolute;
+        if ((tracker.observations & 1023u) == 0u &&
+            !c5vrx_rf_dump_canaries_intact()) {
+            ++result->adjacent_canary_failures;
+            err = ESP_FAIL;
+            break;
+        }
     }
     c5vrx_rf_dump_registers_t during = {0};
     (void)c5vrx_rf_dump_read_registers(&during);
     if (during.dump_format != configured.dump_format ||
         during.source_mux != configured.source_mux ||
         during.fe_path != configured.fe_path || during.fe_aux != configured.fe_aux)
-        ++invariant_failures;
+        ++result->register_invariant_failures;
+    if (!c5vrx_rf_dump_canaries_intact())
+        ++result->adjacent_canary_failures;
     const bool changed = dump_fingerprint() != content_before;
     const esp_err_t stop_err = c5vrx_rf_dump_stop();
+    const esp_err_t idle_wdt_restore_err =
+        c5vrx_producer_soak_restore_watchdog();
+    result->idle_watchdog_restored = idle_wdt_restore_err == ESP_OK;
     if (err == ESP_OK) err = stop_err;
+    if (err == ESP_OK) err = idle_wdt_restore_err;
     const size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     const intptr_t heap_delta = (intptr_t)heap_after - (intptr_t)heap_before;
     const bool wifi_after_valid =
@@ -384,16 +445,37 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms)
          wifi_after.active_primary_channel == wifi_before.active_primary_channel &&
          wifi_after.ht40 == wifi_before.ht40 &&
          wifi_after.promiscuous_enabled == wifi_before.promiscuous_enabled);
-    if (!changed || !pointer_changes || !c5vrx_rf_dump_last_restore_ok() ||
-        heap_delta != 0 || !wifi_restored) {
+    result->observations = tracker.observations;
+    result->exact_wraps = tracker.wraps;
+    result->producer_absolute = tracker.producer_absolute;
+    result->ambiguous_intervals = tracker.ambiguous_intervals;
+    result->maximum_observation_interval_cycles =
+        tracker.maximum_service_interval_cycles;
+    result->actual_duration_us = (uint64_t)(esp_timer_get_time() - start);
+    result->content_changed = changed;
+    result->restore_ok = c5vrx_rf_dump_last_restore_ok();
+    result->wifi_restored = wifi_restored;
+    if (!changed || !tracker.wraps || !result->restore_ok ||
+        result->ambiguous_intervals || result->pointer_out_of_range ||
+        result->producer_stop_events || result->adjacent_canary_failures ||
+        result->register_invariant_failures ||
+        heap_delta != 0 || !wifi_restored ||
+        !result->idle_watchdog_restored) {
         if (err == ESP_OK) err = ESP_FAIL;
     }
-    printf("C5VRX_PRODUCER_SOAK_STAGE mode=%u requested_ms=%u actual_us=%llu observations=%u pointer_changes=%u content_changed=%u invariant_failures=%u heap_before=%u heap_after=%u heap_delta=%ld wifi_expected=%u wifi_after_valid=%u wifi_channel_before=%u wifi_channel_after=%u wifi_restored=%u restore_ok=%u classification=%s code=%d\n",
+    printf("C5VRX_PRODUCER_SOAK_STAGE mode=%u requested_ms=%u actual_us=%llu observations=%llu exact_wraps=%llu producer_absolute=%llu ambiguous_intervals=%llu pointer_out_of_range=%u producer_stop_events=%u adjacent_canary_failures=%u register_invariant_failures=%u maximum_observation_interval_cycles=%u content_changed=%u heap_before=%u heap_after=%u heap_delta=%ld wifi_expected=%u wifi_after_valid=%u wifi_channel_before=%u wifi_channel_after=%u wifi_restored=%u restore_ok=%u idle_wdt_temporarily_unsubscribed=%u idle_wdt_restored=%u classification=%s code=%d\n",
            (unsigned)mode, (unsigned)duration_ms,
-           (unsigned long long)(esp_timer_get_time() - start),
-           (unsigned)observations, (unsigned)pointer_changes,
+           (unsigned long long)result->actual_duration_us,
+           (unsigned long long)result->observations,
+           (unsigned long long)result->exact_wraps,
+           (unsigned long long)result->producer_absolute,
+           (unsigned long long)result->ambiguous_intervals,
+           (unsigned)result->pointer_out_of_range,
+           (unsigned)result->producer_stop_events,
+           (unsigned)result->adjacent_canary_failures,
+           (unsigned)result->register_invariant_failures,
+           (unsigned)result->maximum_observation_interval_cycles,
            changed ? 1u : 0u,
-           (unsigned)invariant_failures,
            (unsigned)heap_before, (unsigned)heap_after,
            (long)heap_delta, wifi_expected ? 1u : 0u,
            wifi_after_valid ? 1u : 0u,
@@ -401,21 +483,26 @@ static esp_err_t soak_stage(c5vrx_rf_dump_mode_t mode, uint32_t duration_ms)
            wifi_after_valid ? (unsigned)wifi_after.active_primary_channel : 0u,
            wifi_restored ? 1u : 0u,
            c5vrx_rf_dump_last_restore_ok() ? 1u : 0u,
-           err == ESP_OK && invariant_failures == 0u ? "MEASURED_STAGE_PASS" :
-                                                       "FAILED",
+           idle_wdt_removed ? 1u : 0u,
+           result->idle_watchdog_restored ? 1u : 0u,
+           err == ESP_OK ? "MEASURED_CONTINUOUS_RING_PASS" : "FAILED",
            (int)err);
     fflush(stdout);
-    return invariant_failures && err == ESP_OK ? ESP_FAIL : err;
+    return err;
 }
 
 esp_err_t c5vrx_producer_soak(c5vrx_rf_dump_mode_t mode,
-                              uint32_t maximum_duration_ms)
+                              uint32_t maximum_duration_ms,
+                              c5vrx_producer_soak_result_t *result)
 {
     static const uint32_t stages[] = {1u, 10u, 100u, 1000u, 5000u, 30000u};
-    if (!mode_valid(mode) || !duration_allowed(maximum_duration_ms))
+    if (!result || !mode_valid(mode) || !duration_allowed(maximum_duration_ms))
         return ESP_ERR_INVALID_ARG;
+    memset(result, 0, sizeof(*result));
     for (unsigned i = 0; i < sizeof(stages) / sizeof(stages[0]); ++i) {
-        const esp_err_t err = soak_stage(mode, stages[i]);
+        c5vrx_producer_soak_result_t stage = {0};
+        const esp_err_t err = soak_stage(mode, stages[i], &stage);
+        *result = stage;
         if (err != ESP_OK) return err;
         if (stages[i] == maximum_duration_ms) return ESP_OK;
     }

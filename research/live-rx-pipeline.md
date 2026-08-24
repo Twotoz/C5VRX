@@ -51,7 +51,8 @@ band-limited. The physical RF rate is still unknown; 80 complex MS/s is a
 design case, not a claimed measurement.
 
 Direct ring-to-BitScrambler DMA is statically addressable but deliberately not
-implemented yet. `BENCH RING PIPELINE 0 1000` now reports actual copy bytes/s,
+implemented yet. The required `BENCH RING PIPELINE 0 1000 1024`, `... 2048`
+and `... 4096` matrix reports actual copy bytes/s,
 total copy cycles and CPU percentage. It emits one of:
 
 ```text

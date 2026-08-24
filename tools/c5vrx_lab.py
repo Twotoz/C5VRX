@@ -778,7 +778,12 @@ def auto_test(connection: LabConnection, args: argparse.Namespace) -> dict[str, 
     command("BENCH PARLIO", "C5VRX_BENCH_DONE", 15.0)
     command("BENCH PIPELINE", "C5VRX_BENCH_DONE", 20.0)
     command("BENCH USB PREVIEW", "C5VRX_BENCH_DONE", 15.0)
-    command("BENCH RING PIPELINE 0 1000", "C5VRX_BENCH_RING_PIPELINE", 20.0)
+    for block_words in (1024, 2048, 4096):
+        command(
+            f"BENCH RING PIPELINE 0 1000 {block_words}",
+            "C5VRX_BENCH_RING_PIPELINE",
+            20.0,
+        )
     connection.recorder.next_iq_label("auto-test")
     command(f"CAPTURE {args.capture_words}", "C5VRX_CAPTURE_DONE", timeout)
     command(f"WBFM CAPTURE {args.capture_words}", "C5VRX_WBFM_CAPTURE_DONE", timeout)
@@ -804,9 +809,29 @@ def auto_test(connection: LabConnection, args: argparse.Namespace) -> dict[str, 
     phase = find_record(connection.records, "C5VRX_PHASE_CONTINUITY", mode=0)
     if not phase or phase["fields"].get("classification") != "MEASURED_CONTINUOUS":
         failures.append("mode-0 phase continuity is not MEASURED_CONTINUOUS")
-    ring = find_record(connection.records, "C5VRX_BENCH_RING_PIPELINE", mode=0, duration_ms=1000)
-    if not ring or ring["fields"].get("classification") != "MEASURED_ON_HARDWARE":
-        failures.append("bounded real-ring pipeline benchmark did not pass")
+    soak = find_record(connection.records, "C5VRX_PRODUCER_SOAK_DONE", mode=0, requested_ms=30000)
+    if not soak or any(soak["fields"].get(field) != 1 for field in (
+        "continuous_wrap_valid", "writer_position_valid", "adjacent_memory_valid"
+    )):
+        failures.append("30-second continuous ring/writer/canary proof did not pass")
+    rings = [
+        find_record(
+            connection.records,
+            "C5VRX_BENCH_RING_PIPELINE",
+            mode=0,
+            duration_ms=1000,
+            block_words=block_words,
+        )
+        for block_words in (1024, 2048, 4096)
+    ]
+    if any(not ring for ring in rings):
+        failures.append("1K/2K/4K real-ring benchmark matrix is incomplete")
+    elif not any(
+        ring["fields"].get("classification") == "MEASURED_ON_HARDWARE" and
+        ring["fields"].get("two_x_deadline_headroom_pass") == 1
+        for ring in rings if ring
+    ):
+        failures.append("no ring block size proved >=2x service-deadline headroom")
     saved_capture = next(
         (item for item in reversed(connection.recorder.iq_captures) if item["label"] == "auto-test"),
         None,

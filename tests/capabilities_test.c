@@ -13,6 +13,10 @@ int main(void)
     c.measured_source_rate = 80000000u;
     c.phase_continuity_valid = true;
     c.source_bandwidth_known = true;
+    c.continuous_wrap_valid = true;
+    c.writer_position_valid = true;
+    c.adjacent_memory_valid = true;
+    c.pipeline_service_headroom_valid = true;
     c.cpu_margin_percent = 30;
     c.sparse_factor_allowed = 4;
     assert(c5vrx_select_consumer(&c, &reason) == C5VRX_CONSUMER_SPARSE_CPU);

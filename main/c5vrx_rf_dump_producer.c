@@ -34,6 +34,8 @@ static bool s_configured;
 static bool s_running;
 static c5vrx_rf_dump_mode_t s_mode;
 static bool s_last_restore_ok = true;
+static bool s_last_canaries_ok = true;
+static bool s_canaries_armed;
 static struct {
     uint32_t dump_ctrl, dump_ptr_mode, dump_format;
     uint32_t fe_path, fe_aux, fe_enable, source_ctrl, source_mux;
@@ -44,7 +46,10 @@ static struct {
  * this fixed 64 KiB HP-SRAM window. Reserve it before heap initialization so
  * ordinary allocations can never become silent RF-writer victims. A link-time
  * assertion separately rejects static .bss overlap. */
-SOC_RESERVE_MEMORY_REGION(0x40830000u, 0x40840000u, c5vrx_rf_dump_ram);
+SOC_RESERVE_MEMORY_REGION(C5VRX_RF_DUMP_PRE_GUARD_ADDR,
+                          C5VRX_RF_DUMP_POST_GUARD_ADDR +
+                              C5VRX_RF_DUMP_POST_GUARD_BYTES,
+                          c5vrx_rf_dump_ram);
 
 /* SOC_RESERVE_MEMORY_REGION() only marks its input section as compiler-used.
  * Application components are linked from archives, so --gc-sections can still
@@ -55,7 +60,9 @@ static bool reservation_record_matches(void)
 {
     const volatile soc_reserved_region_t *const region =
         &reserved_region_c5vrx_rf_dump_ram;
-    return region->start == 0x40830000u && region->end == 0x40840000u;
+    return region->start == C5VRX_RF_DUMP_PRE_GUARD_ADDR &&
+           region->end == C5VRX_RF_DUMP_POST_GUARD_ADDR +
+                          C5VRX_RF_DUMP_POST_GUARD_BYTES;
 }
 
 extern char _bss_end;
@@ -76,13 +83,58 @@ bool c5vrx_rf_dump_memory_reserved(void)
      * honored the reservation.  Reject captures if either endpoint belongs to
      * a registered heap, preventing RF DMA from corrupting FreeRTOS state. */
     return reservation_record_matches() &&
-           (uintptr_t)&_bss_end <= 0x40830000u &&
+           (uintptr_t)&_bss_end <= C5VRX_RF_DUMP_PRE_GUARD_ADDR &&
+           esp_ptr_internal((const void *)(uintptr_t)C5VRX_RF_DUMP_PRE_GUARD_ADDR) &&
            esp_ptr_dma_capable((const void *)(uintptr_t)0x40830000u) &&
            esp_ptr_internal((const void *)(uintptr_t)0x40830000u) &&
            esp_ptr_internal((const void *)(uintptr_t)0x4083ffffu) &&
+           esp_ptr_internal((const void *)(uintptr_t)
+                            (C5VRX_RF_DUMP_POST_GUARD_ADDR +
+                             C5VRX_RF_DUMP_POST_GUARD_BYTES - 1u)) &&
+           !heap_caps_check_integrity_addr(C5VRX_RF_DUMP_PRE_GUARD_ADDR, false) &&
            !heap_caps_check_integrity_addr(0x40830000u, false) &&
-           !heap_caps_check_integrity_addr(0x4083ffffu, false);
+           !heap_caps_check_integrity_addr(0x4083ffffu, false) &&
+           !heap_caps_check_integrity_addr(
+               C5VRX_RF_DUMP_POST_GUARD_ADDR +
+               C5VRX_RF_DUMP_POST_GUARD_BYTES - 1u, false);
 }
+
+static uint32_t canary_value(unsigned index, bool post)
+{
+    return (post ? 0xa5c50000u : 0x5a3a0000u) ^
+           (0x9e3779b9u * (index + 1u));
+}
+
+static void seed_canaries(void)
+{
+    volatile uint32_t *const pre =
+        (volatile uint32_t *)(uintptr_t)C5VRX_RF_DUMP_PRE_GUARD_ADDR;
+    volatile uint32_t *const post =
+        (volatile uint32_t *)(uintptr_t)C5VRX_RF_DUMP_POST_GUARD_ADDR;
+    for (unsigned i = 0; i < C5VRX_RF_DUMP_PRE_GUARD_BYTES / 4u; ++i)
+        pre[i] = canary_value(i, false);
+    for (unsigned i = 0; i < C5VRX_RF_DUMP_POST_GUARD_BYTES / 4u; ++i)
+        post[i] = canary_value(i, true);
+    __asm__ __volatile__("fence iorw, iorw" ::: "memory");
+    s_canaries_armed = true;
+    s_last_canaries_ok = true;
+}
+
+bool c5vrx_rf_dump_canaries_intact(void)
+{
+    if (!s_canaries_armed) return false;
+    volatile const uint32_t *const pre =
+        (volatile const uint32_t *)(uintptr_t)C5VRX_RF_DUMP_PRE_GUARD_ADDR;
+    volatile const uint32_t *const post =
+        (volatile const uint32_t *)(uintptr_t)C5VRX_RF_DUMP_POST_GUARD_ADDR;
+    for (unsigned i = 0; i < C5VRX_RF_DUMP_PRE_GUARD_BYTES / 4u; ++i)
+        if (pre[i] != canary_value(i, false)) return false;
+    for (unsigned i = 0; i < C5VRX_RF_DUMP_POST_GUARD_BYTES / 4u; ++i)
+        if (post[i] != canary_value(i, true)) return false;
+    return true;
+}
+
+bool c5vrx_rf_dump_last_canaries_ok(void) { return s_last_canaries_ok; }
 
 static c5vrx_rf_dump_registers_t read_registers(void)
 {
@@ -154,6 +206,7 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
     s_saved.hp_sram_usage = REG32(HP_SRAM_USAGE);
     s_saved.modem_clock = REG32(MODEM_CLOCK);
     s_last_restore_ok = false;
+    seed_canaries();
 
     /* Exact set_dump_mode(0): all three supported trigger modes use the
      * ordinary receive source; nonzero set_dump_mode arguments are identical. */
@@ -242,6 +295,8 @@ esp_err_t c5vrx_rf_dump_stop(void)
     if (!c5vrx_rf_dump_producer_available()) return ESP_ERR_NOT_SUPPORTED;
     if (!s_configured) return ESP_ERR_INVALID_STATE;
     REG32(DUMP_CTRL) &= ~CTRL_ENABLE_BIT;
+    __asm__ __volatile__("fence iorw, iorw" ::: "memory");
+    s_last_canaries_ok = c5vrx_rf_dump_canaries_intact();
     REG32(HP_SRAM_USAGE) &= 0xfffff0ffu;
     REG32(HP_SRAM_USAGE) &= 0xfffeffffu;
     phy_pbus_clear_reg();
@@ -271,5 +326,7 @@ esp_err_t c5vrx_rf_dump_stop(void)
         restored.modem_clock == s_saved.modem_clock;
     s_running = false;
     s_configured = false;
-    return s_last_restore_ok ? ESP_OK : ESP_ERR_INVALID_STATE;
+    s_canaries_armed = false;
+    return s_last_restore_ok && s_last_canaries_ok ? ESP_OK :
+                                                    ESP_ERR_INVALID_STATE;
 }

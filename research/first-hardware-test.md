@@ -49,11 +49,16 @@ BENCH BITSCRAMBLER
 BENCH PARLIO
 BENCH PIPELINE
 BENCH USB PREVIEW
-BENCH RING PIPELINE 0 1000
+BENCH RING PIPELINE 0 1000 1024
+BENCH RING PIPELINE 0 1000 2048
+BENCH RING PIPELINE 0 1000 4096
 USB PREVIEW STOP
 CAPABILITIES
 STATUS
 ```
+
+See `research/issue5-stage1-ring-proof.md` for the monotonic pointer,
+adjacent-memory canary, deadline-headroom and dedicated-radio acceptance rules.
 
 When an unambiguous mode-0 cadence arrives, the console automatically appends
 `FINE TUNE VERIFY <center> <center+2> <measured_rate>` so tone offsets are

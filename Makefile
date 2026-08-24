@@ -12,6 +12,9 @@ test:
 	$(CC) -std=c11 -Wall -Wextra -Werror -pedantic -Imain \
 		main/c5vrx_cvbs_sync.c tests/cvbs_sync_test.c -o /tmp/c5vrx-cvbs-sync-test
 	/tmp/c5vrx-cvbs-sync-test
+	$(CC) -std=c11 -Wall -Wextra -Werror -pedantic -Imain \
+		main/c5vrx_ring_tracker.c tests/ring_tracker_test.c -o /tmp/c5vrx-ring-tracker-test
+	/tmp/c5vrx-ring-tracker-test
 	python3 tools/c5vrx_usb_protocol.py --self-test
 	python3 tools/c5vrx_lab.py self-test
 	python3 tools/validate_firmware_profiles.py

@@ -9,6 +9,10 @@ typedef struct {
     uint32_t measured_source_rate;
     bool source_bandwidth_known;
     bool phase_continuity_valid;
+    bool continuous_wrap_valid;
+    bool writer_position_valid;
+    bool adjacent_memory_valid;
+    bool pipeline_service_headroom_valid;
     bool hardware_decimation_available;
     bool bitscrambler_path_available;
     uint8_t sparse_factor_allowed;
