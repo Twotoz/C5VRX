@@ -30,6 +30,8 @@ auto = require(
     "APM_TEE_HP_PERIPH_PCR_REG",
     "run_lp_parked",
     "usb=PAUSED_UNTIL_SIGNAL_LOSS",
+    "RF_SCAN_TIMEOUT_US 20000u",
+    "session=HELD",
 )
 lp = require(
     "main/lp_core/c5vrx_lp_av.c",
@@ -44,6 +46,7 @@ lp = require(
     "c5vrx_stage",
     "HP_SRAM_USAGE",
     "ACTIVITY_TIMEOUT_US",
+    "LEAD_TIMEOUT_US  20000u",
 )
 control = require(
     "main/c5vrx_control.c",

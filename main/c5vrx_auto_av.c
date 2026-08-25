@@ -41,6 +41,7 @@
 #define MIN_OUTPUT_HZ       4000000u
 #define MAX_OUTPUT_HZ       20000000u
 #define FALLBACK_RETRY_MS   350u
+#define RF_SCAN_TIMEOUT_US 20000u
 
 static const char *TAG = "c5vrx_auto_av";
 static portMUX_TYPE s_status_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -195,15 +196,19 @@ static bool bounded_window(uint32_t *source_rate_hz)
 
 static void restore_fallback(bool direct_prepared)
 {
-    /* LP disabled the writer and restored SRAM ownership before returning. */
-    const esp_err_t stop_err = c5vrx_rf_dump_stop();
+    /* LP disabled the writer and restored SRAM ownership before returning.
+     * Keep the configured RF/FE/PBUS session intact across an absent-signal
+     * scan.  The public stop path clears PHY PBUS state and made every scan
+     * after the first VTX-off result blind until a full Wi-Fi retune. */
     const esp_err_t av_err = direct_prepared ?
         c5vrx_cvbs_direct_rf_finish() : ESP_OK;
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_FALLBACK channel=A1 stop=%d av=%d restore=%u canaries=%u",
-             (int)stop_err, (int)av_err,
-             c5vrx_rf_dump_last_restore_ok() ? 1u : 0u,
-             c5vrx_rf_dump_last_canaries_ok() ? 1u : 0u);
+             "C5VRX_AUTO_AV_FALLBACK channel=A1 session=HELD av=%d lp_restore=%u canaries=%u",
+             (int)av_err,
+             (ulp_c5vrx_state == LP_STATE_DONE ||
+              ulp_c5vrx_state == LP_STATE_NO_ACTIVITY ||
+              ulp_c5vrx_state == LP_STATE_REARM_ERROR) ? 1u : 0u,
+             c5vrx_rf_dump_canaries_intact() ? 1u : 0u);
     set_status(C5VRX_AUTO_AV_PAL_FALLBACK, false, 0u, 0u);
 }
 
@@ -212,18 +217,23 @@ static void auto_av_task(void *arg)
     (void)arg;
     set_status(C5VRX_AUTO_AV_PAL_FALLBACK, false, 0u, 0u);
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_READY mode=FIXED_A1 mhz=5865 usb_required=0 buttons_required=0 fallback=PAL");
+             "C5VRX_AUTO_AV_READY mode=FIXED_A1 mhz=5865 usb_required=0 buttons_required=0 fallback=PAL scan_timeout_us=%u retry_ms=%u",
+             RF_SCAN_TIMEOUT_US, FALLBACK_RETRY_MS);
+
+    /* Configure once and preserve this exact front-end session. Repeated
+     * bounded windows only lend/restore SRAM and toggle the dump writer. */
+    esp_err_t err = c5vrx_rf_dump_configure(
+        C5VRX_ADC_DUMP_MAX_SAMPLES, C5VRX_RF_DUMP_MODE_ORDINARY_RX);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "A1 persistent RF configure failed: %s",
+                 esp_err_to_name(err));
+        set_status(C5VRX_AUTO_AV_FAULT, false, 0u, 0u);
+        vTaskDelete(NULL);
+        return;
+    }
 
     for (;;) {
         set_status(C5VRX_AUTO_AV_SCANNING_A1, false, 0u, 0u);
-        esp_err_t err = c5vrx_rf_dump_configure(
-            C5VRX_ADC_DUMP_MAX_SAMPLES, C5VRX_RF_DUMP_MODE_ORDINARY_RX);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "A1 scan configure failed: %s", esp_err_to_name(err));
-            set_status(C5VRX_AUTO_AV_FAULT, false, 0u, 0u);
-            vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
-            continue;
-        }
         uint32_t rates[CALIBRATION_WINDOWS] = {0};
         bool detected = true;
         for (unsigned i = 0; i < CALIBRATION_WINDOWS; ++i) {
