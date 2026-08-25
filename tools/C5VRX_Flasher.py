@@ -49,7 +49,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "video-proof-35-median-rate-hold"
+APP_BUILD = "goggle-a1-36-lp-continuous"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -529,15 +529,15 @@ class C5VRXApp(tk.Tk):
         direct_av_controls.pack(fill="x", pady=(8, 0))
         self.direct_av_probe_btn = ttk.Button(
             direct_av_controls,
-            text="DIRECT RF -> AV PROBE (A1, 100 ms)",
+            text="A1 AUTO AV STATUS",
             command=self.start_direct_av_probe,
         )
         self.direct_av_probe_btn.pack(side="left")
         ttk.Label(
             direct_av_controls,
             text=(
-                "Temporarily routes LP-rearmed RF blocks through hardware WBFM "
-                "straight to AV; USB only receives the result afterwards."
+                "A1 reception and analog AV output run autonomously and indefinitely; "
+                "USB only reads telemetry and is never in the video path."
             ),
             wraplength=610,
         ).pack(side="left", padx=10)
@@ -855,6 +855,18 @@ class C5VRXApp(tk.Tk):
     def _parse_device_line(self, line: str) -> None:
         if line.startswith("C5VRX_AV_STATUS"):
             self.after(0, self._apply_av_status_line, line)
+        if line.startswith("C5VRX_AUTO_AV_STATUS"):
+            fields = self._fields(line)
+            state = fields.get("state", "UNKNOWN")
+            rate = fields.get("source_rate_hz", "0")
+            blocks = fields.get("blocks", "0")
+            failures = fields.get("rearm_failures", "0")
+            drift = fields.get("estimated_drift_ppm", "0")
+            self.after(
+                0, self.preview_status_var.set,
+                f"A1 autonomous AV: {state}, IQ={rate} samples/s, "
+                f"blocks={blocks}, failures={failures}, drift={drift} ppm")
+            return
         if line.startswith("C5VRX_DIRECT_AV_PROBE_BEGIN"):
             self.after(
                 0, self.preview_status_var.set,
@@ -1413,21 +1425,9 @@ class C5VRXApp(tk.Tk):
         if not self.ser or not self.ser.is_open:
             messagebox.showwarning(APP_TITLE, "Connect to C5VRX first.")
             return
-        if self.live_iq_active:
-            self.stop_live_iq_video("switching to direct RF -> AV probe")
-        self.usb_preview_active = False
-        self.usb_preview_receiving = False
-        self.band_var.set("A")
-        self.channel_var.set("1")
-        self.bw_var.set("40")
-        self.update_channel_label()
         self.preview_status_var.set(
-            f"{APP_BUILD}: arming A1 direct RF -> AV probe; watch the AV display")
-        self.direct_av_probe_btn.configure(state="disabled")
-        self.send_command("USB PREVIEW STOP")
-        self.after(100, lambda: self.send_command("BW 40"))
-        self.after(220, lambda: self.send_command("SET A 1"))
-        self.after(450, lambda: self.send_command("AV DIRECT PROBE"))
+            f"{APP_BUILD}: reading the autonomous A1 analog-output pipeline")
+        self.send_command("AUTO AV STATUS")
 
     def start_experimental_usb_preview(self) -> None:
         # Continuous RF dump ownership removes CPU access to HP-SRAM on the

@@ -130,8 +130,9 @@ static uint32_t s_snow_lfsr = 0xc5f0a17du;
 static uint16_t s_snow_offset;
 static portMUX_TYPE s_stats_mux = portMUX_INITIALIZER_UNLOCKED;
 static volatile uint32_t s_isr_switches[2];
+static volatile uint64_t s_isr_first_retired_us[2];
 static volatile uint32_t s_isr_unexpected;
-static uint32_t s_handled_switches[2];
+static volatile uint32_t s_handled_switches[2];
 static uint32_t s_serviced_buffers;
 static uint32_t s_missed_switches;
 static uint32_t s_queue_errors;
@@ -589,7 +590,14 @@ static bool IRAM_ATTR on_buffer_switched(
         return false;
     }
 
+    const uint64_t retired_us = esp_timer_get_time();
     portENTER_CRITICAL_ISR(&s_stats_mux);
+    /* Keep the oldest unserviced retirement timestamp. If the task missed
+     * more than one callback, replacing this with the newest timestamp would
+     * hide exactly the scheduler latency the AV deadline is meant to catch. */
+    if (s_isr_switches[index] == s_handled_switches[index]) {
+        s_isr_first_retired_us[index] = retired_us;
+    }
     ++s_isr_switches[index];
     portEXIT_CRITICAL_ISR(&s_stats_mux);
 
@@ -628,14 +636,17 @@ static void stream_task(void *arg)
             }
 
             uint32_t seen = 0;
+            uint64_t retired_us = 0;
             portENTER_CRITICAL(&s_stats_mux);
             seen = s_isr_switches[index];
+            retired_us = s_isr_first_retired_us[index];
             const uint32_t delta = seen - s_handled_switches[index];
             s_handled_switches[index] = seen;
             if (delta > 1u) s_missed_switches += delta - 1u;
             portEXIT_CRITICAL(&s_stats_mux);
 
             const uint64_t service_started_us = esp_timer_get_time();
+            if (!retired_us) retired_us = service_started_us;
 
             build_next_chunk(s_chunk[index]);
 
@@ -658,8 +669,10 @@ static void stream_task(void *arg)
             }
 
             const uint64_t service_finished_us = esp_timer_get_time();
+            /* Deadline includes notification/scheduler wake-up latency, not
+             * merely the time spent rendering after the task finally ran. */
             const uint32_t service_us = (uint32_t)(
-                service_finished_us - service_started_us);
+                service_finished_us - retired_us);
             const uint32_t stack_min = (uint32_t)
                 uxTaskGetStackHighWaterMark(NULL);
             portENTER_CRITICAL(&s_stats_mux);
@@ -742,6 +755,7 @@ static esp_err_t start_output(c5vrx_cvbs_display_t initial_display)
     const uint64_t start_us = esp_timer_get_time();
     portENTER_CRITICAL(&s_stats_mux);
     s_isr_switches[0] = s_isr_switches[1] = 0;
+    s_isr_first_retired_us[0] = s_isr_first_retired_us[1] = 0;
     s_isr_unexpected = 0;
     s_handled_switches[0] = s_handled_switches[1] = 0;
     s_serviced_buffers = 0;

@@ -15,6 +15,7 @@
 #include "driver/usb_serial_jtag.h"
 
 #include "c5vrx_adc_dump.h"
+#include "c5vrx_auto_av.h"
 #include "c5vrx_cvbs_out.h"
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_wbfm_hw.h"
@@ -59,6 +60,7 @@ static bool s_physical_burst_gate_passed;
 static uint8_t s_ring_block_bench_seen;
 static uint8_t s_ring_block_bench_passed;
 static size_t s_selected_ring_block_words;
+#if 0 /* Superseded by the resident LP-core A1 appliance. */
 static portMUX_TYPE s_direct_av_probe_mux = portMUX_INITIALIZER_UNLOCKED;
 static StaticTask_t s_direct_av_probe_task_buffer;
 static TaskHandle_t s_direct_av_probe_task;
@@ -145,6 +147,7 @@ static esp_err_t execute_direct_kernel(uint32_t duration_ms,
         *final_control = s_direct_av_probe_final_control;
     return ESP_OK;
 }
+#endif
 
 static esp_err_t live_output_with_preview(const uint8_t *samples,
                                           size_t count,
@@ -633,7 +636,8 @@ static esp_err_t run_deep_probe(void)
     return result;
 }
 
-static void run_direct_av_probe(void)
+#if 0 /* Historical bounded probe; autonomous A1 now owns this hardware. */
+static void run_direct_av_probe_legacy(void)
 {
     if (c5vrx_live_pipeline_running() || s_ring_live || s_finite_live) {
         printf("C5VRX_DIRECT_AV_PROBE_DONE code=%d classification=REJECTED "
@@ -944,6 +948,57 @@ static void run_direct_av_probe(void)
                     "FAILED_NO_CONTINUOUS_IQ_CLAIM");
     fflush(stdout);
 }
+#endif
+
+static void print_auto_av_status(void)
+{
+    c5vrx_auto_av_status_t status = {0};
+    c5vrx_cvbs_output_stats_t av = {0};
+    c5vrx_auto_av_get_status(&status);
+    c5vrx_cvbs_output_get_stats(&av);
+    printf("C5VRX_AUTO_AV_STATUS state=%s channel=A1 mhz=5865 "
+           "vtx_present=%u continuous=%u owner=LP_CORE usb_required=0 "
+           "source_rate_hz=%u continuous_source_rate_hz=%u "
+           "output_rate_hz=%u blocks=%u rearms=%u rearm_failures=%u "
+           "gap_cycles_total=%u gap_cycles_max=%u last_gap_cycles=%u "
+           "continuity_uptime_ms=%llu state_transitions=%u "
+           "lp_state=%u writer_pointer=%u lead=%u "
+           "block_period_last_cycles=%u block_period_min_cycles=%u "
+           "block_period_max_cycles=%u phase_error_cycles=%d "
+           "phase_window_blocks=%u estimated_drift_ppm=%d "
+           "pacing_correction_ppm=0 controller=MONITOR_SHARED_CLOCK "
+           "av_health=%s av_missed=%u heap_internal_free=%u "
+           "heap_dma_largest=%u usb_realtime_interference=0 fallback=PAL\n",
+           c5vrx_auto_av_state_name(status.state),
+           status.rf_activity ? 1u : 0u,
+           status.state == C5VRX_AUTO_AV_DIRECT_A1 ? 1u : 0u,
+           (unsigned)status.source_rate_hz,
+           (unsigned)status.continuous_source_rate_hz,
+           (unsigned)status.output_rate_hz,
+           (unsigned)status.bursts_completed,
+           (unsigned)status.rearms_succeeded,
+           (unsigned)status.rearm_failures,
+           (unsigned)status.gap_cycles_total,
+           (unsigned)status.gap_cycles_max,
+           (unsigned)status.last_gap_cycles,
+           (unsigned long long)status.continuity_uptime_ms,
+           (unsigned)status.state_transitions,
+           (unsigned)status.lp_state,
+           (unsigned)status.writer_pointer,
+           (unsigned)status.lead_acquired,
+           (unsigned)status.block_period_last,
+           (unsigned)status.block_period_min,
+           (unsigned)status.block_period_max,
+           (int)status.phase_error_cycles,
+           (unsigned)status.phase_window_blocks,
+           (int)status.estimated_drift_ppm,
+           c5vrx_av_health_name(av.health),
+           (unsigned)av.missed_switches,
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_largest_free_block(
+               MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+    fflush(stdout);
+}
 
 static void handle_line(char *line)
 {
@@ -977,11 +1032,35 @@ static void handle_line(char *line)
     }
     if (strcasecmp(line, "STATUS") == 0) {
         print_status();
+        print_auto_av_status();
         return;
     }
     if (strcasecmp(line, "AV STATUS") == 0 ||
         strcasecmp(line, "AV_STATUS") == 0) {
         print_av_status();
+        return;
+    }
+    if (strcasecmp(line, "AUTO AV STATUS") == 0 ||
+        strcasecmp(line, "AUTO_AV_STATUS") == 0 ||
+        strcasecmp(line, "PIPELINE STATUS") == 0 ||
+        strcasecmp(line, "PIPELINE_STATUS") == 0 ||
+        strcasecmp(line, "AV DIRECT PROBE") == 0 ||
+        strcasecmp(line, "AV_DIRECT_PROBE") == 0) {
+        print_auto_av_status();
+        return;
+    }
+    if (strcasecmp(line, "USB PREVIEW STOP") == 0 ||
+        strcasecmp(line, "USB_PREVIEW_STOP") == 0) {
+        const esp_err_t err = c5vrx_usb_preview_stop();
+        printf("C5VRX_USB_PREVIEW state=STOP code=%d realtime_path_blocked_us=0\n",
+               (int)err);
+        fflush(stdout);
+        return;
+    }
+    if (c5vrx_auto_av_owns_rf()) {
+        printf("C5VRX_ERR receiver-busy owner=AUTO_A1_AV "
+               "realtime_path_blocked_us=0 allowed=PING,HELP,STATUS,AV_STATUS,AUTO_AV_STATUS,USB_PREVIEW_STOP\n");
+        fflush(stdout);
         return;
     }
     if (strcasecmp(line, "AV TUNE STATUS") == 0 ||
@@ -993,11 +1072,6 @@ static void handle_line(char *line)
         strcasecmp(line, "AV_TUNE_RESET") == 0) {
         c5vrx_cvbs_output_reset_timing();
         print_av_tune_status(ESP_OK);
-        return;
-    }
-    if (strcasecmp(line, "AV DIRECT PROBE") == 0 ||
-        strcasecmp(line, "AV_DIRECT_PROBE") == 0) {
-        run_direct_av_probe();
         return;
     }
     unsigned tune_hsync = 0, tune_equalizing = 0, tune_broad = 0;
@@ -1807,13 +1881,16 @@ static void handle_line(char *line)
             fflush(stdout);
             return;
         }
-        printf("C5VRX_PHASE8_CAPTURE_BEGIN samples=%u alias=CAPTURE\n", samples);
+        /* Preserve the legacy raw-IQ command contract used by lab/bench
+         * tooling. Binary Phase8 is deliberately explicit above. */
+        printf("C5VRX_CAPTURE_BEGIN samples=%u transport=ASCII alias=CAPTURE\n",
+               samples);
         fflush(stdout);
-        const esp_err_t err = c5vrx_adc_dump_capture_phase8(samples);
+        const esp_err_t err = c5vrx_adc_dump_capture(samples, true);
         if (err == ESP_OK) {
             (void)c5vrx_cvbs_output_set_display(C5VRX_CVBS_DISPLAY_SNOW);
         }
-        printf("C5VRX_PHASE8_CAPTURE_DONE code=%d alias=CAPTURE\n", (int)err);
+        printf("C5VRX_CAPTURE_DONE code=%d alias=CAPTURE\n", (int)err);
         fflush(stdout);
         return;
     }
@@ -1881,41 +1958,6 @@ esp_err_t c5vrx_control_start(c5vrx_band_t band,
         .started = true,
     };
 
-    const uintptr_t lp_stack_start =
-        (uintptr_t)c5vrx_lp_direct_task_stack;
-    const uintptr_t lp_stack_top =
-        (uintptr_t)c5vrx_lp_direct_task_stack_top;
-    if (lp_stack_top - lp_stack_start !=
-            C5VRX_LP_DIRECT_TASK_STACK_BYTES ||
-        (lp_stack_start & (portBYTE_ALIGNMENT - 1u)) != 0u) {
-        s_state.started = false;
-        return ESP_ERR_INVALID_SIZE;
-    }
-    s_direct_av_probe_done = xSemaphoreCreateBinaryStatic(
-        &s_direct_av_probe_done_buffer);
-    if (!s_direct_av_probe_done) {
-        s_state.started = false;
-        return ESP_ERR_NO_MEM;
-    }
-    s_direct_av_probe_task = xTaskCreateStatic(
-        direct_av_probe_task,
-        "c5vrx_avprobe",
-        C5VRX_LP_DIRECT_TASK_STACK_BYTES,
-        NULL,
-        21,
-        (StackType_t *)c5vrx_lp_direct_task_stack,
-        &s_direct_av_probe_task_buffer);
-    if (!s_direct_av_probe_task) {
-        s_direct_av_probe_done = NULL;
-        s_state.started = false;
-        return ESP_ERR_NO_MEM;
-    }
-    printf("C5VRX_DIRECT_AV_TASK_READY stack_start=%08x stack_top=%08x "
-           "stack_bytes=%u priority=21 guard=FREERTOS_CONTEXT_SWITCHED\n",
-           (unsigned)lp_stack_start, (unsigned)lp_stack_top,
-           (unsigned)C5VRX_LP_DIRECT_TASK_STACK_BYTES);
-    fflush(stdout);
-
     /* The finite RF dump calls vendor code and logging from this task.  Keep
      * explicit headroom so a diagnostic burst cannot reach the stack guard. */
     /* Normally blocked in the USB driver. When a command or a timed benchmark
@@ -1923,9 +1965,6 @@ esp_err_t c5vrx_control_start(c5vrx_band_t band,
      * the single-core C5 without forcing millisecond sleeps into writer
      * observation. */
     if (xTaskCreate(console_task, "c5vrx_usbctl", 6144, NULL, 20, NULL) != pdPASS) {
-        vTaskDelete(s_direct_av_probe_task);
-        s_direct_av_probe_task = NULL;
-        s_direct_av_probe_done = NULL;
         s_state.started = false;
         return ESP_ERR_NO_MEM;
     }

@@ -71,9 +71,6 @@ typedef struct {
     uint32_t last_gap_cycles;
 } c5vrx_direct_av_probe_stats_t;
 
-#define C5VRX_LP_DIRECT_TASK_STACK_BYTES 4096u
-extern uint8_t c5vrx_lp_direct_task_stack[];
-extern uint8_t c5vrx_lp_direct_task_stack_top[];
 
 /**
  * Run the already-configured mode-0 producer from LP RAM while a pre-armed

@@ -17,6 +17,14 @@ CONFIG_C5VRX_TARGET_BAND_A=y
 CONFIG_C5VRX_TARGET_CHANNEL=1
 CONFIG_C5VRX_RX_HT40=y
 
+# The fixed-A1 goggle appliance runs its one-shot RF rearm loop indefinitely
+# on the real ESP32-C5 LP core.  It starts after Wi-Fi tuning and needs neither
+# native USB nor a console command.
+CONFIG_ULP_COPROC_ENABLED=y
+CONFIG_ULP_COPROC_TYPE_LP_CORE=y
+CONFIG_ULP_COPROC_RESERVE_MEM=4096
+CONFIG_RTC_FAST_CLK_SRC_XTAL=y
+
 # Native USB-C uses ESP32-C5 GPIO13 D- and GPIO14 D+.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_ESP_PHY_ENABLE_CERT_TEST=y

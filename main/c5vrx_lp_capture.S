@@ -520,13 +520,3 @@ c5vrx_lp_direct_last_gap_cycles:
 c5vrx_lp_capture_stack:
     .space  2048
 c5vrx_lp_capture_stack_top:
-
-    /* The direct probe runs as a real FreeRTOS task whose complete stack is
-     * in LP RAM.  Keeping this separate from the finite-capture trampoline is
-     * essential: a blocked task retains its saved context in its own stack. */
-    .balign 16
-    .global c5vrx_lp_direct_task_stack
-c5vrx_lp_direct_task_stack:
-    .space  4096
-    .global c5vrx_lp_direct_task_stack_top
-c5vrx_lp_direct_task_stack_top:

@@ -406,31 +406,29 @@ health without using USB: one short pulse per second means healthy logo/test
 output, two pulses means healthy unlocked snow, three pulses means a recorded
 deadline warning, and a fast blink means the AV task/DMA stream is unhealthy.
 
-`AV DIRECT PROBE` is the bounded gapless-path experiment. It replaces the logo
-for 100 ms with `RF ring -> circular GDMA -> inline BitScrambler WBFM 4:1 ->
-20 MS/s PARLIO -> six-bit DAC`, then restores the logo and reports the measured
-writer rate and wraps over USB. The Receiver Console exposes the same action as
-**DIRECT RF -> AV PROBE (A1, 100 ms)**. A passing machine record is still only a
-rate/continuity candidate until the connected AV decoder visibly locks.
+The XIAO receiver now boots as a fixed-A1 analog appliance. With no VTX writer
+activity it continuously emits the standards-correct PAL fallback. When A1 RF
+activity passes three independent cadence windows, the HP core mounts
+`RF dump -> looping GDMA -> inline BitScrambler WBFM 4:1 -> PARLIO -> six-bit
+DAC`, and the real LP core rearms every 16384-word RF one-shot indefinitely.
+There is no 100-ms runtime slice and USB is neither required nor present in the
+video path. `AV DIRECT PROBE` remains an alias for read-only autonomous status.
 
-Physical A1 tests have measured 31.537950 MS/s and 37.093700 MS/s from the
-same board. The direct probe therefore no longer rejects a producer using a
-guessed 30--36 MS/s window. It retries an empty 20-ms calibration up to three
-times, then measures three valid windows in the same producer session and holds
-their median. It accepts any cadence whose rearm/canary evidence is intact and
-whose measured 4:1 output lies inside the actual 4--20 MHz direct-AV clock
-contract. The min/max/spread record shows whether later adaptive control is
-actually necessary instead of injecting clock jitter speculatively.
-Every calibration record includes `rf_activity=0|1`; this distinguishes the
-observed VTX-off zero-writer state from VTX-on RF activity without claiming
-that activity alone is decoded PAL video.
+The three short startup windows measure only presence and producer cadence;
+they are not the video transport. During direct output the LP core continuously
+reports completed blocks, successful rearms, failures, rearm gap, block-period
+range and producer/consumer phase drift against its precise 48-MHz XTAL clock.
+PARLIO uses the nearest supported integer PLL divider. The firmware monitors
+the resulting drift instead of injecting speculative divider changes into the
+video timebase. `AUTO AV STATUS` exposes this telemetry. A VTX-off writer loss
+returns to PAL and the fixed A1 detector retries automatically.
 
-The direct kernel runs on a dedicated 4096-byte LP-RAM stack registered as a
-real static FreeRTOS task. This is required on the C5: manually moving `sp`
-inside the USB control task leaves the hardware stack guard programmed with the
-old HP-RAM bounds. The probe reports `lp_stack_min_free_bytes` after every run.
-PAL teardown also waits one actual 100 Hz scheduler tick at a time and never
-force-deletes a task that can still reference active PARLIO DMA buffers.
+The resident LP-core binary and its command/status area use the configured
+4096-byte ULP reservation. USB commands which could retune or borrow the RF
+buffer are rejected while autonomous A1 owns the receiver; status queries and
+`USB PREVIEW STOP` remain safe. This design is intended for indefinite module
+operation, but minute/hour stability and visible PAL/NTSC lock remain physical
+soak-test gates rather than claims made by a successful firmware build.
 
 ### Test-readiness status
 
@@ -469,7 +467,7 @@ The USB protocol exposes bounded producer, DSP and streaming diagnostics:
 CAPTURE 16384
 CAPTURE PHASE8 16384
 CAPTURE RAW 16384
-AV DIRECT PROBE
+AUTO AV STATUS
 PRODUCER CADENCE PROBE ALL
 WRAP FLAG PROBE 0
 PHASE CONTINUITY PROBE 0
