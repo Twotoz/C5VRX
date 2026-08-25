@@ -86,6 +86,16 @@ config C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER
         DEEP PROBE. It reproduces only vendor-observed automatic-gain modes
         0, 11 and 12. It never forces the overwritten historical rate field.
 
+config C5VRX_AUTO_A1_AV
+    bool "Boot as a fixed-A1 autonomous analog receiver"
+    default n
+    depends on C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER && C5VRX_EXPERIMENTAL_CVBS_PARLIO
+    help
+        Load the ESP32-C5 LP-core service which rearms the RF one-shot
+        indefinitely and automatically routes detected A1 activity through
+        hardware WBFM to the analog CVBS connector. This is intentionally
+        profile-specific because it reserves LP memory and owns the RF path.
+
 config C5VRX_ADC_DUMP_SAMPLES
     int "ADC/IQ samples per finite capture"
     range 256 16384

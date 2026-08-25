@@ -241,6 +241,7 @@ void app_main(void)
 
     if (wifi_ready) {
         maybe_run_adc_dump(&plan);
+#if CONFIG_C5VRX_AUTO_A1_AV
         const esp_err_t auto_av_err = c5vrx_auto_av_start();
         if (auto_av_err == ESP_OK) {
             ESP_LOGI(TAG,
@@ -250,14 +251,20 @@ void app_main(void)
                      "C5VRX_BOOT stage=AUTO_AV_A1_FAILED code=%d name=%s; PAL fallback remains active",
                      (int)auto_av_err, esp_err_to_name(auto_av_err));
         }
+#endif
     } else {
         ESP_LOGW(TAG, "Skipping RF dump startup because the Wi-Fi RX backend is not ready");
     }
 
     ESP_LOGI(TAG, "USB control ready: select bands/channels, trigger IQ captures and control the CVBS proof output");
     if (wifi_ready) {
+#if CONFIG_C5VRX_AUTO_A1_AV
         ESP_LOGI(TAG,
                  "Fixed A1 appliance active: LP-core RF capture and WBFM-to-CVBS switch automatically when A1 writer activity is present.");
+#else
+        ESP_LOGW(TAG,
+                 "Promiscuous Wi-Fi RX proves the 5 GHz RF path is active; this profile does not enable autonomous analog reception.");
+#endif
     } else {
         ESP_LOGW(TAG,
                  "RF backend startup failed, but USB control remains available for diagnosis and recovery.");

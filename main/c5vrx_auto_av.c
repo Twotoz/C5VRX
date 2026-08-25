@@ -5,6 +5,10 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include "sdkconfig.h"
+
+#if CONFIG_C5VRX_AUTO_A1_AV
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -289,3 +293,28 @@ esp_err_t c5vrx_auto_av_start(void)
     s_started = true;
     return ESP_OK;
 }
+
+#else
+
+esp_err_t c5vrx_auto_av_start(void)
+{
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+void c5vrx_auto_av_get_status(c5vrx_auto_av_status_t *status)
+{
+    if (status) memset(status, 0, sizeof(*status));
+}
+
+const char *c5vrx_auto_av_state_name(c5vrx_auto_av_state_t state)
+{
+    (void)state;
+    return "OFF";
+}
+
+bool c5vrx_auto_av_owns_rf(void)
+{
+    return false;
+}
+
+#endif

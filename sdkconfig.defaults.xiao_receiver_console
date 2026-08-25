@@ -16,6 +16,7 @@ CONFIG_C5VRX_RF_BACKEND_WIFI5=y
 CONFIG_C5VRX_TARGET_BAND_A=y
 CONFIG_C5VRX_TARGET_CHANNEL=1
 CONFIG_C5VRX_RX_HT40=y
+CONFIG_C5VRX_AUTO_A1_AV=y
 
 # The fixed-A1 goggle appliance runs its one-shot RF rearm loop indefinitely
 # on the real ESP32-C5 LP core.  It starts after Wi-Fi tuning and needs neither
