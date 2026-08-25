@@ -282,10 +282,22 @@ esp_err_t c5vrx_auto_av_start(void)
         (size_t)(c5vrx_lp_av_bin_end - c5vrx_lp_av_bin_start));
     if (err != ESP_OK) return err;
 
-    /* The C5 LP core is an APM master.  Its default security domain cannot
-     * access the three HP peripheral windows used by the autonomous writer,
-     * and a denied load/store enters the default LP abort path.  Grant only
-     * the required register blocks before releasing the LP core:
+    const ulp_lp_core_cfg_t cfg = {
+        .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU,
+    };
+    err = ulp_lp_core_run((ulp_lp_core_cfg_t *)&cfg);
+    if (err != ESP_OK) return err;
+
+    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(100u);
+    while (ulp_c5vrx_state != LP_STATE_READY &&
+           xTaskGetTickCount() < deadline) {
+        vTaskDelay(1);
+    }
+    if (ulp_c5vrx_state != LP_STATE_READY) return ESP_ERR_TIMEOUT;
+
+    /* The C5 LP core is an APM master.  ulp_lp_core_run() resets that master,
+     * so permissions must be installed after LP_STATE_READY, matching the
+     * ordering in Espressif's LP-CPU-to-HP-peripheral APM test.  Grant only:
      *   MODEM     0x600a9004/08  RF writer control and pointer
      *   SYSTEM    0x60095004     HP-SRAM bank ownership
      *   PCR       0x600960b4     PARLIO peripheral clock gate
@@ -299,20 +311,7 @@ esp_err_t c5vrx_auto_av_start(void)
     apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP, lp_hp_peripherals,
                                 APM_SEC_MODE_TEE, APM_PERM_R | APM_PERM_W);
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_LP_ACCESS mode=TEE peripherals=MODEM,SYSTEM_REG,PCR permissions=RW");
-
-    const ulp_lp_core_cfg_t cfg = {
-        .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU,
-    };
-    err = ulp_lp_core_run((ulp_lp_core_cfg_t *)&cfg);
-    if (err != ESP_OK) return err;
-
-    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(100u);
-    while (ulp_c5vrx_state != LP_STATE_READY &&
-           xTaskGetTickCount() < deadline) {
-        vTaskDelay(1);
-    }
-    if (ulp_c5vrx_state != LP_STATE_READY) return ESP_ERR_TIMEOUT;
+             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=TEE peripherals=MODEM,SYSTEM_REG,PCR permissions=RW");
 
     if (xTaskCreate(auto_av_task, "c5vrx_auto_a1", 4096, NULL, 19, NULL) !=
         pdPASS) return ESP_ERR_NO_MEM;
