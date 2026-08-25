@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "riscv/rvruntime-frames.h"
 #include "ulp_lp_core_cpu_freq_shared.h"
 
 #define REG32(address) (*(volatile uint32_t *)(uintptr_t)(address))
@@ -70,6 +71,26 @@ volatile uint32_t c5vrx_block_period_min;
 volatile uint32_t c5vrx_block_period_max;
 volatile int32_t c5vrx_phase_error_cycles;
 volatile uint32_t c5vrx_phase_window_blocks;
+volatile uint32_t c5vrx_fault_cause;
+volatile uint32_t c5vrx_fault_address;
+volatile uint32_t c5vrx_fault_pc;
+
+/* Keep an LP access fault local to the LP core.  The stock weak handler calls
+ * ulp_lp_core_abort(), which makes a register-permission mistake look like a
+ * whole-chip disconnect.  Shared fault telemetry lets the HP task retain PAL,
+ * restore the RF session and report the exact failing address over USB. */
+void __attribute__((noreturn)) ulp_lp_core_panic_handler(RvExcFrame *frame,
+                                                         int exccause)
+{
+    c5vrx_fault_cause = (uint32_t)exccause;
+    c5vrx_fault_address = (uint32_t)frame->mtval;
+    c5vrx_fault_pc = (uint32_t)frame->mepc;
+    c5vrx_command = COMMAND_NONE;
+    c5vrx_state = STATE_REARM_ERROR;
+    for (;;) {
+        __asm__ __volatile__("nop");
+    }
+}
 
 static inline uint32_t cycle_count(void)
 {
@@ -306,6 +327,9 @@ stop:
 
 int main(void)
 {
+    c5vrx_fault_cause = 0u;
+    c5vrx_fault_address = 0u;
+    c5vrx_fault_pc = 0u;
     clear_stats();
     c5vrx_command = COMMAND_NONE;
     c5vrx_state = STATE_READY;

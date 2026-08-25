@@ -13,6 +13,9 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_bit_defs.h"
+#include "hal/apm_hal.h"
+#include "soc/apm_defs.h"
 #include "ulp_lp_core.h"
 
 #include "c5vrx_lp_av.h"
@@ -76,6 +79,9 @@ static void set_status(c5vrx_auto_av_state_t state, bool rf_activity,
     s_status.block_period_max = ulp_c5vrx_block_period_max;
     s_status.phase_error_cycles = ulp_c5vrx_phase_error_cycles;
     s_status.phase_window_blocks = ulp_c5vrx_phase_window_blocks;
+    s_status.lp_fault_cause = ulp_c5vrx_fault_cause;
+    s_status.lp_fault_address = ulp_c5vrx_fault_address;
+    s_status.lp_fault_pc = ulp_c5vrx_fault_pc;
     const int64_t expected = (int64_t)ulp_c5vrx_expected_block_cycles *
         ulp_c5vrx_phase_window_blocks;
     s_status.estimated_drift_ppm = expected ?
@@ -275,6 +281,26 @@ esp_err_t c5vrx_auto_av_start(void)
         c5vrx_lp_av_bin_start,
         (size_t)(c5vrx_lp_av_bin_end - c5vrx_lp_av_bin_start));
     if (err != ESP_OK) return err;
+
+    /* The C5 LP core is an APM master.  Its default security domain cannot
+     * access the three HP peripheral windows used by the autonomous writer,
+     * and a denied load/store enters the default LP abort path.  Grant only
+     * the required register blocks before releasing the LP core:
+     *   MODEM     0x600a9004/08  RF writer control and pointer
+     *   SYSTEM    0x60095004     HP-SRAM bank ownership
+     *   PCR       0x600960b4     PARLIO peripheral clock gate
+     * PARLIO data itself is consumed by its HP DMA and is not touched by LP.
+     */
+    const uint64_t lp_hp_peripherals =
+        BIT64(APM_TEE_HP_PERIPH_MODEM) |
+        BIT64(APM_TEE_HP_PERIPH_SYSTEM_REG) |
+        BIT64(APM_TEE_HP_PERIPH_PCR_REG);
+    apm_hal_set_master_sec_mode(BIT(APM_MASTER_LPCORE), APM_SEC_MODE_TEE);
+    apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP, lp_hp_peripherals,
+                                APM_SEC_MODE_TEE, APM_PERM_R | APM_PERM_W);
+    ESP_LOGI(TAG,
+             "C5VRX_AUTO_AV_LP_ACCESS mode=TEE peripherals=MODEM,SYSTEM_REG,PCR permissions=RW");
+
     const ulp_lp_core_cfg_t cfg = {
         .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_HP_CPU,
     };

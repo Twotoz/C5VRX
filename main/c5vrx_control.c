@@ -965,7 +965,8 @@ static void print_auto_av_status(void)
            "lp_state=%u writer_pointer=%u lead=%u "
            "block_period_last_cycles=%u block_period_min_cycles=%u "
            "block_period_max_cycles=%u phase_error_cycles=%d "
-           "phase_window_blocks=%u estimated_drift_ppm=%d "
+           "phase_window_blocks=%u lp_fault_cause=%u "
+           "lp_fault_address=%08x lp_fault_pc=%08x estimated_drift_ppm=%d "
            "pacing_correction_ppm=0 controller=MONITOR_SHARED_CLOCK "
            "av_health=%s av_missed=%u heap_internal_free=%u "
            "heap_dma_largest=%u usb_realtime_interference=0 fallback=PAL\n",
@@ -991,6 +992,9 @@ static void print_auto_av_status(void)
            (unsigned)status.block_period_max,
            (int)status.phase_error_cycles,
            (unsigned)status.phase_window_blocks,
+           (unsigned)status.lp_fault_cause,
+           (unsigned)status.lp_fault_address,
+           (unsigned)status.lp_fault_pc,
            (int)status.estimated_drift_ppm,
            c5vrx_av_health_name(av.health),
            (unsigned)av.missed_switches,

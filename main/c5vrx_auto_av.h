@@ -35,6 +35,9 @@ typedef struct {
     uint32_t block_period_max;
     int32_t phase_error_cycles;
     uint32_t phase_window_blocks;
+    uint32_t lp_fault_cause;
+    uint32_t lp_fault_address;
+    uint32_t lp_fault_pc;
     int32_t estimated_drift_ppm;
     uint64_t continuity_uptime_ms;
     uint32_t state_transitions;

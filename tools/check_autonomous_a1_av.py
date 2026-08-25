@@ -24,6 +24,10 @@ auto = require(
     "c5vrx_cvbs_direct_rf_prepare",
     "c5vrx_cvbs_direct_rf_finish",
     "previous_runs",
+    "apm_hal_set_master_sec_mode",
+    "APM_TEE_HP_PERIPH_MODEM",
+    "APM_TEE_HP_PERIPH_SYSTEM_REG",
+    "APM_TEE_HP_PERIPH_PCR_REG",
 )
 lp = require(
     "main/lp_core/c5vrx_lp_av.c",
@@ -33,6 +37,8 @@ lp = require(
     "c5vrx_expected_block_cycles",
     "c5vrx_phase_error_cycles",
     "c5vrx_gap_cycles_max",
+    "ulp_lp_core_panic_handler",
+    "c5vrx_fault_address",
 )
 control = require(
     "main/c5vrx_control.c",
@@ -41,6 +47,7 @@ control = require(
     "C5VRX_AUTO_AV_STATUS",
     "continuity_uptime_ms",
     "usb_realtime_interference=0",
+    "lp_fault_address=%08x",
     'sscanf(line, "CAPTURE %u"',
 )
 main = require(
