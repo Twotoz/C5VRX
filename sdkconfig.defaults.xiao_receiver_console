@@ -26,6 +26,12 @@ CONFIG_ULP_COPROC_TYPE_LP_CORE=y
 CONFIG_ULP_COPROC_RESERVE_MEM=4096
 CONFIG_RTC_FAST_CLK_SRC_XTAL=y
 
+# Direct A1 mode deliberately parks the HP core with interrupts masked while
+# the LP core owns the RF dump SRAM banks. The LP activity timeout restores
+# ownership before HP resumes, so the generic HP interrupt watchdog must not
+# treat a valid continuous video session as a stuck interrupt handler.
+# CONFIG_ESP_INT_WDT is not set
+
 # Native USB-C uses ESP32-C5 GPIO13 D- and GPIO14 D+.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_ESP_PHY_ENABLE_CERT_TEST=y

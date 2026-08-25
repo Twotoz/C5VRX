@@ -11,6 +11,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_bit_defs.h"
@@ -43,6 +44,7 @@
 
 static const char *TAG = "c5vrx_auto_av";
 static portMUX_TYPE s_status_mux = portMUX_INITIALIZER_UNLOCKED;
+static portMUX_TYPE s_rf_park_mux = portMUX_INITIALIZER_UNLOCKED;
 static c5vrx_auto_av_status_t s_status;
 static bool s_started;
 static int64_t s_direct_since_us;
@@ -130,27 +132,53 @@ static uint32_t median3(const uint32_t values[3])
     return b;
 }
 
-static bool wait_lp_finished(uint32_t previous_runs, uint32_t timeout_ms)
+static inline uint32_t IRAM_ATTR hp_cycle_count(void)
 {
-    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
-    while (xTaskGetTickCount() < deadline) {
+    uint32_t value;
+    __asm__ __volatile__("csrr %0, mcycle" : "=r"(value));
+    return value;
+}
+
+/* HP SRAM is lent to the RF writer while an LP command is active.  No HP
+ * interrupt, scheduler or USB path may run inside that interval.  The LP core
+ * restores ownership before publishing a terminal state, then HP may safely
+ * leave this IRAM-only parked loop. */
+static bool IRAM_ATTR run_lp_parked(uint32_t command, uint32_t timeout_us)
+{
+    const uint32_t previous_runs = ulp_c5vrx_runs;
+    const uint32_t started_at = hp_cycle_count();
+    const uint32_t timeout_cycles = timeout_us *
+        (uint32_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+    bool saw_running = false;
+    bool finished = false;
+
+    portENTER_CRITICAL(&s_rf_park_mux);
+    ulp_c5vrx_command = command;
+    for (;;) {
         const uint32_t state = ulp_c5vrx_state;
-        if (ulp_c5vrx_runs != previous_runs &&
-            (state == LP_STATE_DONE || state == LP_STATE_NO_ACTIVITY ||
-             state == LP_STATE_REARM_ERROR)) return true;
-        vTaskDelay(1);
+        if (ulp_c5vrx_runs != previous_runs) {
+            if (state == LP_STATE_RUNNING) saw_running = true;
+            if (state == LP_STATE_DONE || state == LP_STATE_NO_ACTIVITY ||
+                state == LP_STATE_REARM_ERROR) {
+                finished = true;
+                break;
+            }
+        }
+        if (timeout_cycles != 0u &&
+            (uint32_t)(hp_cycle_count() - started_at) >= timeout_cycles) {
+            break;
+        }
     }
-    return false;
+    portEXIT_CRITICAL(&s_rf_park_mux);
+    return finished && (command != LP_COMMAND_CONTINUOUS || saw_running);
 }
 
 static bool bounded_window(uint32_t *source_rate_hz)
 {
-    const uint32_t previous_runs = ulp_c5vrx_runs;
     ulp_c5vrx_duration_us = CALIBRATION_MS * 1000u;
     ulp_c5vrx_lead_words = LEAD_WORDS;
     ulp_c5vrx_enable_parlio = 0u;
-    ulp_c5vrx_command = LP_COMMAND_BOUNDED;
-    if (!wait_lp_finished(previous_runs, CALIBRATION_MS + 80u)) return false;
+    if (!run_lp_parked(LP_COMMAND_BOUNDED, 0u)) return false;
 
     const uint32_t words = ulp_c5vrx_writer_advance;
     const uint32_t rate = words * (1000u / CALIBRATION_MS);
@@ -167,7 +195,7 @@ static bool bounded_window(uint32_t *source_rate_hz)
 
 static void restore_fallback(bool direct_prepared)
 {
-    /* LP has disabled the writer; HP now restores SRAM ownership. */
+    /* LP disabled the writer and restored SRAM ownership before returning. */
     const esp_err_t stop_err = c5vrx_rf_dump_stop();
     const esp_err_t av_err = direct_prepared ?
         c5vrx_cvbs_direct_rf_finish() : ESP_OK;
@@ -196,16 +224,6 @@ static void auto_av_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
             continue;
         }
-        /* Perform the SRAM-bank handoff from the already proven HP path.
-         * The LP core owns only the latency-sensitive one-shot rearm loop. */
-        err = c5vrx_rf_dump_start();
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "A1 scan start failed: %s", esp_err_to_name(err));
-            restore_fallback(false);
-            vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
-            continue;
-        }
-
         uint32_t rates[CALIBRATION_WINDOWS] = {0};
         bool detected = true;
         for (unsigned i = 0; i < CALIBRATION_WINDOWS; ++i) {
@@ -243,37 +261,20 @@ static void auto_av_task(void *arg)
         ulp_c5vrx_expected_block_cycles = (uint32_t)(
             ((uint64_t)4096u * 48000000u + actual_output_rate_hz / 2u) /
             actual_output_rate_hz);
-        ulp_c5vrx_command = LP_COMMAND_CONTINUOUS;
-        const TickType_t arm_deadline =
-            xTaskGetTickCount() + pdMS_TO_TICKS(100u);
-        while (ulp_c5vrx_state != LP_STATE_RUNNING &&
-               ulp_c5vrx_state != LP_STATE_NO_ACTIVITY &&
-               ulp_c5vrx_state != LP_STATE_REARM_ERROR &&
-               xTaskGetTickCount() < arm_deadline) {
-            vTaskDelay(1);
-        }
+        set_status(C5VRX_AUTO_AV_DIRECT_A1, true,
+                   source_rate_hz, actual_output_rate_hz);
+        ESP_LOGI(TAG,
+                 "C5VRX_AUTO_AV_HP_PARK state=ENTER channel=A1 mhz=5865 usb=PAUSED_UNTIL_SIGNAL_LOSS owner=LP_CORE duration=UNBOUNDED");
+        const bool ran_direct = run_lp_parked(LP_COMMAND_CONTINUOUS, 0u);
 
-        if (ulp_c5vrx_state != LP_STATE_RUNNING) {
+        if (!ran_direct) {
             restore_fallback(true);
             vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
             continue;
         }
 
-        set_status(C5VRX_AUTO_AV_DIRECT_A1, true,
-                   source_rate_hz, actual_output_rate_hz);
-        ESP_LOGI(TAG,
-                 "C5VRX_AUTO_AV_DIRECT state=ON channel=A1 mhz=5865 source_rate_hz=%" PRIu32 " output_rate_hz=%" PRIu32 " owner=LP_CORE duration=UNBOUNDED",
-                 source_rate_hz, actual_output_rate_hz);
-
-        while (ulp_c5vrx_state == LP_STATE_RUNNING ||
-               ulp_c5vrx_state == LP_STATE_ARMING) {
-            set_status(C5VRX_AUTO_AV_DIRECT_A1, true,
-                       source_rate_hz, actual_output_rate_hz);
-            vTaskDelay(pdMS_TO_TICKS(100));
-        }
-
         ESP_LOGW(TAG,
-                 "C5VRX_AUTO_AV_DIRECT state=LOST lp_state=%" PRIu32 " bursts=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32,
+                 "C5VRX_AUTO_AV_HP_PARK state=EXIT reason=SIGNAL_LOST lp_state=%" PRIu32 " bursts=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32,
                  ulp_c5vrx_state, ulp_c5vrx_bursts_completed,
                  ulp_c5vrx_rearms_succeeded, ulp_c5vrx_rearm_failures);
         restore_fallback(true);
@@ -285,13 +286,6 @@ esp_err_t c5vrx_auto_av_start(void)
 {
     if (s_started) return ESP_ERR_INVALID_STATE;
     if (!c5vrx_rf_dump_memory_reserved()) return ESP_ERR_NOT_SUPPORTED;
-
-    const uint32_t previous_lp_stage = ulp_c5vrx_stage;
-    if (previous_lp_stage != 0u) {
-        ESP_LOGW(TAG,
-                 "C5VRX_AUTO_AV_PREVIOUS_LP_STAGE stage=%" PRIu32 " meaning=RESET_DURING_LP_OPERATION",
-                 previous_lp_stage);
-    }
 
     esp_err_t err = ulp_lp_core_load_binary(
         c5vrx_lp_av_bin_start,
@@ -315,18 +309,19 @@ esp_err_t c5vrx_auto_av_start(void)
      * so permissions must be installed after LP_STATE_READY, matching the
      * ordering in Espressif's LP-CPU-to-HP-peripheral APM test.  Grant only:
      *   MODEM     0x600a9004/08  RF writer control and pointer
+     *   SYSTEM    0x60095004     HP-SRAM bank ownership
      *   PCR       0x600960b4     PARLIO peripheral clock gate
-     * HP-SRAM ownership stays in the proven HP-side start/stop path.
      * PARLIO data itself is consumed by its HP DMA and is not touched by LP.
      */
     const uint64_t lp_hp_peripherals =
         BIT64(APM_TEE_HP_PERIPH_MODEM) |
+        BIT64(APM_TEE_HP_PERIPH_SYSTEM_REG) |
         BIT64(APM_TEE_HP_PERIPH_PCR_REG);
     apm_hal_set_master_sec_mode(BIT(APM_MASTER_LPCORE), APM_SEC_MODE_TEE);
     apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP, lp_hp_peripherals,
                                 APM_SEC_MODE_TEE, APM_PERM_R | APM_PERM_W);
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=TEE peripherals=MODEM,PCR permissions=RW sram_handoff=HP_CORE");
+             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=TEE peripherals=MODEM,SYSTEM_REG,PCR permissions=RW sram_handoff=LP_CORE hp_policy=PARKED");
 
     if (xTaskCreate(auto_av_task, "c5vrx_auto_a1", 4096, NULL, 19, NULL) !=
         pdPASS) return ESP_ERR_NO_MEM;
