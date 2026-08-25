@@ -167,7 +167,7 @@ static bool bounded_window(uint32_t *source_rate_hz)
 
 static void restore_fallback(bool direct_prepared)
 {
-    /* LP has disabled both engines and restored HP-SRAM ownership first. */
+    /* LP has disabled the writer; HP now restores SRAM ownership. */
     const esp_err_t stop_err = c5vrx_rf_dump_stop();
     const esp_err_t av_err = direct_prepared ?
         c5vrx_cvbs_direct_rf_finish() : ESP_OK;
@@ -193,6 +193,15 @@ static void auto_av_task(void *arg)
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "A1 scan configure failed: %s", esp_err_to_name(err));
             set_status(C5VRX_AUTO_AV_FAULT, false, 0u, 0u);
+            vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
+            continue;
+        }
+        /* Perform the SRAM-bank handoff from the already proven HP path.
+         * The LP core owns only the latency-sensitive one-shot rearm loop. */
+        err = c5vrx_rf_dump_start();
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "A1 scan start failed: %s", esp_err_to_name(err));
+            restore_fallback(false);
             vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
             continue;
         }
@@ -277,6 +286,13 @@ esp_err_t c5vrx_auto_av_start(void)
     if (s_started) return ESP_ERR_INVALID_STATE;
     if (!c5vrx_rf_dump_memory_reserved()) return ESP_ERR_NOT_SUPPORTED;
 
+    const uint32_t previous_lp_stage = ulp_c5vrx_stage;
+    if (previous_lp_stage != 0u) {
+        ESP_LOGW(TAG,
+                 "C5VRX_AUTO_AV_PREVIOUS_LP_STAGE stage=%" PRIu32 " meaning=RESET_DURING_LP_OPERATION",
+                 previous_lp_stage);
+    }
+
     esp_err_t err = ulp_lp_core_load_binary(
         c5vrx_lp_av_bin_start,
         (size_t)(c5vrx_lp_av_bin_end - c5vrx_lp_av_bin_start));
@@ -299,19 +315,18 @@ esp_err_t c5vrx_auto_av_start(void)
      * so permissions must be installed after LP_STATE_READY, matching the
      * ordering in Espressif's LP-CPU-to-HP-peripheral APM test.  Grant only:
      *   MODEM     0x600a9004/08  RF writer control and pointer
-     *   SYSTEM    0x60095004     HP-SRAM bank ownership
      *   PCR       0x600960b4     PARLIO peripheral clock gate
+     * HP-SRAM ownership stays in the proven HP-side start/stop path.
      * PARLIO data itself is consumed by its HP DMA and is not touched by LP.
      */
     const uint64_t lp_hp_peripherals =
         BIT64(APM_TEE_HP_PERIPH_MODEM) |
-        BIT64(APM_TEE_HP_PERIPH_SYSTEM_REG) |
         BIT64(APM_TEE_HP_PERIPH_PCR_REG);
     apm_hal_set_master_sec_mode(BIT(APM_MASTER_LPCORE), APM_SEC_MODE_TEE);
     apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP, lp_hp_peripherals,
                                 APM_SEC_MODE_TEE, APM_PERM_R | APM_PERM_W);
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=TEE peripherals=MODEM,SYSTEM_REG,PCR permissions=RW");
+             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=TEE peripherals=MODEM,PCR permissions=RW sram_handoff=HP_CORE");
 
     if (xTaskCreate(auto_av_task, "c5vrx_auto_a1", 4096, NULL, 19, NULL) !=
         pdPASS) return ESP_ERR_NO_MEM;

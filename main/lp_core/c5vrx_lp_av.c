@@ -19,7 +19,6 @@
 
 #define DUMP_CTRL       0x600a9004u
 #define DUMP_PTR_MODE   0x600a9008u
-#define HP_SRAM_USAGE   0x60095004u
 #define PARLIO_TX_CLOCK 0x600960b4u
 
 #define CTRL_ENABLE     0x80000000u
@@ -74,6 +73,7 @@ volatile uint32_t c5vrx_phase_window_blocks;
 volatile uint32_t c5vrx_fault_cause;
 volatile uint32_t c5vrx_fault_address;
 volatile uint32_t c5vrx_fault_pc;
+volatile uint32_t c5vrx_stage;
 
 /* Keep an LP access fault local to the LP core.  The stock weak handler calls
  * ulp_lp_core_abort(), which makes a register-permission mistake look like a
@@ -85,6 +85,7 @@ void __attribute__((noreturn)) ulp_lp_core_panic_handler(RvExcFrame *frame,
     c5vrx_fault_cause = (uint32_t)exccause;
     c5vrx_fault_address = (uint32_t)frame->mtval;
     c5vrx_fault_pc = (uint32_t)frame->mepc;
+    c5vrx_stage = 0xe0000000u | ((uint32_t)exccause & 0xffu);
     c5vrx_command = COMMAND_NONE;
     c5vrx_state = STATE_REARM_ERROR;
     for (;;) {
@@ -172,7 +173,6 @@ static void run_writer(uint32_t command)
     const bool enable_parlio = c5vrx_enable_parlio != 0u;
     const uint32_t duration_cycles = cycles_for_us(c5vrx_duration_us);
     const uint32_t requested_lead = c5vrx_lead_words;
-    const uint32_t saved_ownership = REG32(HP_SRAM_USAGE);
     uint32_t previous;
     uint32_t advance = 0u;
     uint32_t changes = 0u;
@@ -189,15 +189,15 @@ static void run_writer(uint32_t command)
     uint32_t phase_blocks = 0u;
 
     clear_stats();
+    c5vrx_stage = 10u; /* command accepted; LP-only memory still active */
     c5vrx_state = STATE_ARMING;
     c5vrx_runs++;
 
-    /* Grant the vendor-observed two-bank/64-KiB dump window to the MAC. */
-    REG32(HP_SRAM_USAGE) =
-        (saved_ownership & 0xfffef0ffu) | 0x00010200u;
-    io_fence();
+    /* The HP core already handed the reserved dump bank to the MAC. */
+    c5vrx_stage = 11u; /* about to touch MODEM writer control */
     trigger_writer();
 
+    c5vrx_stage = 12u; /* MODEM trigger succeeded */
     previous = pointer();
     const uint32_t lead_start = cycle_count();
     while (advance < requested_lead) {
@@ -217,6 +217,7 @@ static void run_writer(uint32_t command)
     }
 
     c5vrx_lead_acquired = 1u;
+    c5vrx_stage = 13u; /* producer lead acquired */
     /* The lead acquisition is startup priming, not part of the timed cadence
      * window. Match the proven HP kernel and measure only after this point. */
     advance = 0u;
@@ -224,9 +225,11 @@ static void run_writer(uint32_t command)
     restarts = 0u;
     previous = pointer();
     if (enable_parlio) {
+        c5vrx_stage = 14u; /* about to touch PCR clock gate */
         REG32(PARLIO_TX_CLOCK) |= PARLIO_CLK_EN;
         io_fence();
     }
+    c5vrx_stage = 15u; /* all HP peripheral accesses succeeded */
     c5vrx_state = STATE_RUNNING;
 
     const uint32_t run_start = cycle_count();
@@ -311,18 +314,18 @@ static void run_writer(uint32_t command)
     }
 
 stop:
+    c5vrx_stage = 20u;
     if (enable_parlio) {
         REG32(PARLIO_TX_CLOCK) &= ~PARLIO_CLK_EN;
     }
     c5vrx_final_control = REG32(DUMP_CTRL);
     REG32(DUMP_CTRL) &= ~CTRL_ENABLE;
     io_fence();
-    REG32(HP_SRAM_USAGE) = saved_ownership;
-    io_fence();
     publish(advance, changes, restarts, previous, completed, rearms, failures,
             gap_total, gap_max, last_gap);
     c5vrx_command = COMMAND_NONE;
     c5vrx_state = terminal_state;
+    c5vrx_stage = 0u;
 }
 
 int main(void)
@@ -330,6 +333,7 @@ int main(void)
     c5vrx_fault_cause = 0u;
     c5vrx_fault_address = 0u;
     c5vrx_fault_pc = 0u;
+    c5vrx_stage = 0u;
     clear_stats();
     c5vrx_command = COMMAND_NONE;
     c5vrx_state = STATE_READY;

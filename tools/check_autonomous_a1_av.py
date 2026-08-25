@@ -26,8 +26,8 @@ auto = require(
     "previous_runs",
     "apm_hal_set_master_sec_mode",
     "APM_TEE_HP_PERIPH_MODEM",
-    "APM_TEE_HP_PERIPH_SYSTEM_REG",
     "APM_TEE_HP_PERIPH_PCR_REG",
+    "c5vrx_rf_dump_start()",
 )
 lp = require(
     "main/lp_core/c5vrx_lp_av.c",
@@ -39,6 +39,7 @@ lp = require(
     "c5vrx_gap_cycles_max",
     "ulp_lp_core_panic_handler",
     "c5vrx_fault_address",
+    "c5vrx_stage",
 )
 control = require(
     "main/c5vrx_control.c",
