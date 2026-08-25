@@ -70,12 +70,38 @@ static volatile uint32_t s_direct_av_probe_enable_parlio;
 static volatile uint32_t s_direct_av_probe_final_control;
 
 #define C5VRX_DIRECT_AV_CALIBRATION_MS 20u
+#define C5VRX_DIRECT_AV_CALIBRATION_ATTEMPTS 3u
+#define C5VRX_DIRECT_AV_CALIBRATION_RETRY_MS 10u
+#define C5VRX_DIRECT_AV_CALIBRATION_WINDOWS 3u
 #define C5VRX_DIRECT_AV_PROBE_MS       100u
 #define C5VRX_DIRECT_AV_LEAD_WORDS     8192u
-#define C5VRX_DIRECT_AV_MIN_RATE_HZ    30000000u
-#define C5VRX_DIRECT_AV_MAX_RATE_HZ    36000000u
+#define C5VRX_DIRECT_AV_MIN_OUTPUT_HZ  4000000u
+#define C5VRX_DIRECT_AV_MAX_OUTPUT_HZ  20000000u
 #define C5VRX_DIRECT_AV_MAX_GAP_CYCLES 2400u
 #define C5VRX_DIRECT_AV_MAX_GAP_PPM    10000u
+
+static bool direct_av_calibration_window_ok(
+    const c5vrx_direct_av_probe_stats_t *stats,
+    esp_err_t configure_err, esp_err_t execute_err,
+    uint32_t output_rate_hz, bool canaries_ok)
+{
+    return stats && configure_err == ESP_OK && execute_err == ESP_OK &&
+        stats->lead_acquired && stats->bursts_completed >= 8u &&
+        stats->rearms_succeeded >= 7u && stats->rearm_failures == 0u &&
+        output_rate_hz >= C5VRX_DIRECT_AV_MIN_OUTPUT_HZ &&
+        output_rate_hz <= C5VRX_DIRECT_AV_MAX_OUTPUT_HZ && canaries_ok;
+}
+
+static uint32_t median_rate3(const uint32_t rates[3])
+{
+    uint32_t a = rates[0];
+    uint32_t b = rates[1];
+    uint32_t c = rates[2];
+    if (a > b) { const uint32_t t = a; a = b; b = t; }
+    if (b > c) { const uint32_t t = b; b = c; c = t; }
+    if (a > b) { const uint32_t t = a; a = b; b = t; }
+    return b;
+}
 
 static void direct_av_probe_task(void *arg)
 {
@@ -621,62 +647,184 @@ static void run_direct_av_probe(void)
      * an API contract and the physical C5 disproved the old 80-MS/s design
      * assumption. During this short pass the standards-correct logo keeps its
      * own PARLIO transaction; the LP kernel never touches that clock. */
-    printf("C5VRX_DIRECT_AV_CALIBRATION_BEGIN duration_ms=%u "
-           "consumer=DISABLED av_display=UNCHANGED\n",
-           C5VRX_DIRECT_AV_CALIBRATION_MS);
-    fflush(stdout);
     esp_err_t calibration_configure_err = ESP_ERR_NOT_SUPPORTED;
     esp_err_t calibration_execute_err = ESP_ERR_INVALID_STATE;
-    if (c5vrx_rf_dump_memory_reserved()) {
-        calibration_configure_err = c5vrx_rf_dump_configure(
-            C5VRX_ADC_DUMP_MAX_SAMPLES,
-            C5VRX_RF_DUMP_MODE_ORDINARY_RX);
+    c5vrx_direct_av_probe_stats_t calibration = {0};
+    uint32_t calibrated_source_rate_hz = 0u;
+    uint32_t calibrated_output_rate_hz = 0u;
+    bool calibration_canaries_ok = false;
+    bool calibration_ok = false;
+    bool calibration_rf_activity = false;
+    bool calibration_rf_activity_seen = false;
+    bool calibration_session_held = false;
+    esp_err_t calibration_cleanup_err = ESP_ERR_INVALID_STATE;
+    unsigned calibration_attempt = 0u;
+
+    for (calibration_attempt = 1u;
+         calibration_attempt <= C5VRX_DIRECT_AV_CALIBRATION_ATTEMPTS;
+         ++calibration_attempt) {
+        printf("C5VRX_DIRECT_AV_CALIBRATION_BEGIN attempt=%u/%u "
+               "duration_ms=%u consumer=DISABLED av_display=UNCHANGED\n",
+               calibration_attempt,
+               C5VRX_DIRECT_AV_CALIBRATION_ATTEMPTS,
+               C5VRX_DIRECT_AV_CALIBRATION_MS);
+        fflush(stdout);
+
+        calibration_configure_err = ESP_ERR_NOT_SUPPORTED;
+        calibration_execute_err = ESP_ERR_INVALID_STATE;
+        calibration_cleanup_err = ESP_ERR_INVALID_STATE;
+        memset(&calibration, 0, sizeof(calibration));
+        if (c5vrx_rf_dump_memory_reserved()) {
+            calibration_configure_err = c5vrx_rf_dump_configure(
+                C5VRX_ADC_DUMP_MAX_SAMPLES,
+                C5VRX_RF_DUMP_MODE_ORDINARY_RX);
+        }
+        calibration_session_held = calibration_configure_err == ESP_OK;
+        if (calibration_session_held) {
+            calibration_execute_err = execute_direct_kernel(
+                C5VRX_DIRECT_AV_CALIBRATION_MS, false, NULL);
+        }
+        c5vrx_direct_av_probe_get_stats(&calibration);
+        calibrated_source_rate_hz = calibration.writer_advance_words *
+            (1000u / C5VRX_DIRECT_AV_CALIBRATION_MS);
+        calibrated_output_rate_hz =
+            (calibrated_source_rate_hz + 2u) / 4u;
+        calibration_canaries_ok = c5vrx_rf_dump_canaries_intact();
+        calibration_rf_activity = calibration.writer_advance_words > 0u ||
+            calibration.pointer_changes > 0u ||
+            calibration.bursts_completed > 0u;
+        calibration_rf_activity_seen |= calibration_rf_activity;
+
+        /* Do not impose a guessed RF-clock window. Physical A1 sessions have
+         * now measured both 31.54 and 37.09 MS/s. Cadence/rearm integrity and
+         * the real direct-AV clock contract are the safety boundaries. */
+        calibration_ok = direct_av_calibration_window_ok(
+            &calibration, calibration_configure_err,
+            calibration_execute_err, calibrated_output_rate_hz,
+            calibration_canaries_ok);
+
+        printf("C5VRX_DIRECT_AV_CALIBRATION_DONE attempt=%u/%u code=%d "
+               "configure=%d execute=%d session_held=%u rf_activity=%u "
+               "source_rate_hz=%u output_rate_hz=%u bursts_completed=%u "
+               "rearms_succeeded=%u rearm_failures=%u classification=%s\n",
+               calibration_attempt,
+               C5VRX_DIRECT_AV_CALIBRATION_ATTEMPTS,
+               calibration_ok ? 0 : (int)ESP_FAIL,
+               (int)calibration_configure_err,
+               (int)calibration_execute_err, calibration_ok ? 1u : 0u,
+               calibration_rf_activity ? 1u : 0u,
+               (unsigned)calibrated_source_rate_hz,
+               (unsigned)calibrated_output_rate_hz,
+               (unsigned)calibration.bursts_completed,
+               (unsigned)calibration.rearms_succeeded,
+               (unsigned)calibration.rearm_failures,
+               calibration_ok ? "RATE_CALIBRATED" :
+                   (calibration_rf_activity ? "UNSAFE_CADENCE_OR_OUTPUT_RATE" :
+                                              "NO_RF_WRITER_ACTIVITY"));
+        fflush(stdout);
+        if (calibration_ok) break;
+
+        if (calibration_session_held) {
+            calibration_cleanup_err = c5vrx_rf_dump_stop();
+            calibration_session_held = false;
+        }
+        if (calibration_attempt < C5VRX_DIRECT_AV_CALIBRATION_ATTEMPTS) {
+            vTaskDelay(pdMS_TO_TICKS(
+                C5VRX_DIRECT_AV_CALIBRATION_RETRY_MS));
+        }
     }
-    if (calibration_configure_err == ESP_OK) {
+
+    uint32_t calibration_rates[C5VRX_DIRECT_AV_CALIBRATION_WINDOWS] = {
+        calibrated_source_rate_hz, 0u, 0u};
+    unsigned calibration_windows = calibration_ok ? 1u : 0u;
+    while (calibration_ok &&
+           calibration_windows < C5VRX_DIRECT_AV_CALIBRATION_WINDOWS) {
+        memset(&calibration, 0, sizeof(calibration));
         calibration_execute_err = execute_direct_kernel(
             C5VRX_DIRECT_AV_CALIBRATION_MS, false, NULL);
+        c5vrx_direct_av_probe_get_stats(&calibration);
+        const uint32_t window_source_rate_hz =
+            calibration.writer_advance_words *
+            (1000u / C5VRX_DIRECT_AV_CALIBRATION_MS);
+        const uint32_t window_output_rate_hz =
+            (window_source_rate_hz + 2u) / 4u;
+        calibration_canaries_ok = c5vrx_rf_dump_canaries_intact();
+        calibration_rf_activity = calibration.writer_advance_words > 0u ||
+            calibration.pointer_changes > 0u ||
+            calibration.bursts_completed > 0u;
+        calibration_rf_activity_seen |= calibration_rf_activity;
+        const bool window_ok = direct_av_calibration_window_ok(
+            &calibration, calibration_configure_err,
+            calibration_execute_err, window_output_rate_hz,
+            calibration_canaries_ok);
+        printf("C5VRX_DIRECT_AV_RATE_WINDOW sample=%u/%u code=%d "
+               "session_held=1 rf_activity=%u source_rate_hz=%u "
+               "output_rate_hz=%u bursts_completed=%u "
+               "rearms_succeeded=%u rearm_failures=%u\n",
+               calibration_windows + 1u,
+               C5VRX_DIRECT_AV_CALIBRATION_WINDOWS,
+               window_ok ? 0 : (int)ESP_FAIL,
+               calibration_rf_activity ? 1u : 0u,
+               (unsigned)window_source_rate_hz,
+               (unsigned)window_output_rate_hz,
+               (unsigned)calibration.bursts_completed,
+               (unsigned)calibration.rearms_succeeded,
+               (unsigned)calibration.rearm_failures);
+        fflush(stdout);
+        if (!window_ok) {
+            calibration_ok = false;
+            break;
+        }
+        calibration_rates[calibration_windows++] = window_source_rate_hz;
     }
-    c5vrx_direct_av_probe_stats_t calibration = {0};
-    c5vrx_direct_av_probe_get_stats(&calibration);
-    const uint32_t calibrated_source_rate_hz =
-        calibration.writer_advance_words *
-        (1000u / C5VRX_DIRECT_AV_CALIBRATION_MS);
-    const uint32_t calibrated_output_rate_hz =
-        (calibrated_source_rate_hz + 2u) / 4u;
-    const bool calibration_canaries_ok =
-        c5vrx_rf_dump_canaries_intact();
-    const bool calibration_ok = calibration_configure_err == ESP_OK &&
-        calibration_execute_err == ESP_OK &&
-        calibration.lead_acquired &&
-        calibration.bursts_completed >= 8u &&
-        calibration.rearms_succeeded >= 7u &&
-        calibration.rearm_failures == 0u &&
-        calibrated_source_rate_hz >= C5VRX_DIRECT_AV_MIN_RATE_HZ &&
-        calibrated_source_rate_hz <= C5VRX_DIRECT_AV_MAX_RATE_HZ &&
-        calibrated_output_rate_hz >= 4000000u &&
-        calibrated_output_rate_hz <= 20000000u &&
-        calibration_canaries_ok;
-    printf("C5VRX_DIRECT_AV_CALIBRATION_DONE code=%d configure=%d "
-           "execute=%d session_held=%u source_rate_hz=%u output_rate_hz=%u "
-           "bursts_completed=%u rearms_succeeded=%u rearm_failures=%u "
-           "classification=%s\n",
-           calibration_ok ? 0 : (int)ESP_FAIL,
-           (int)calibration_configure_err,
-           (int)calibration_execute_err, calibration_ok ? 1u : 0u,
-           (unsigned)calibrated_source_rate_hz,
-           (unsigned)calibrated_output_rate_hz,
-           (unsigned)calibration.bursts_completed,
-           (unsigned)calibration.rearms_succeeded,
-           (unsigned)calibration.rearm_failures,
-           calibration_ok ? "RATE_CALIBRATED" : "RATE_CALIBRATION_FAILED");
-    fflush(stdout);
+
+    uint32_t calibration_rate_min_hz = 0u;
+    uint32_t calibration_rate_max_hz = 0u;
+    uint32_t calibration_spread_ppm = UINT32_MAX;
+    if (calibration_ok &&
+        calibration_windows == C5VRX_DIRECT_AV_CALIBRATION_WINDOWS) {
+        calibrated_source_rate_hz = median_rate3(calibration_rates);
+        calibrated_output_rate_hz =
+            (calibrated_source_rate_hz + 2u) / 4u;
+        calibration_rate_min_hz = calibration_rates[0];
+        calibration_rate_max_hz = calibration_rates[0];
+        for (unsigned i = 1u;
+             i < C5VRX_DIRECT_AV_CALIBRATION_WINDOWS; ++i) {
+            if (calibration_rates[i] < calibration_rate_min_hz)
+                calibration_rate_min_hz = calibration_rates[i];
+            if (calibration_rates[i] > calibration_rate_max_hz)
+                calibration_rate_max_hz = calibration_rates[i];
+        }
+        calibration_spread_ppm = calibrated_source_rate_hz ?
+            (uint32_t)(((uint64_t)(calibration_rate_max_hz -
+                                   calibration_rate_min_hz) * 1000000u) /
+                       calibrated_source_rate_hz) : UINT32_MAX;
+        printf("C5VRX_DIRECT_AV_RATE_HOLD samples=%u selected=MEDIAN "
+               "source_rate_hz=%u output_rate_hz=%u rate_min_hz=%u "
+               "rate_max_hz=%u spread_ppm=%u controller=FIXED_WITH_MONITOR\n",
+               calibration_windows,
+               (unsigned)calibrated_source_rate_hz,
+               (unsigned)calibrated_output_rate_hz,
+               (unsigned)calibration_rate_min_hz,
+               (unsigned)calibration_rate_max_hz,
+               (unsigned)calibration_spread_ppm);
+        fflush(stdout);
+    } else {
+        calibration_ok = false;
+    }
+
     if (!calibration_ok) {
-        const esp_err_t cleanup_err =
-            calibration_configure_err == ESP_OK ? c5vrx_rf_dump_stop() :
-                                                  ESP_ERR_INVALID_STATE;
+        if (calibration_session_held) {
+            calibration_cleanup_err = c5vrx_rf_dump_stop();
+            calibration_session_held = false;
+        }
         printf("C5VRX_DIRECT_AV_PROBE_DONE code=%d cleanup=%d "
-               "classification=REJECTED reason=RATE_CALIBRATION_FAILED\n",
-               (int)ESP_FAIL, (int)cleanup_err);
+               "rf_activity=%u classification=REJECTED reason=%s\n",
+               (int)ESP_FAIL, (int)calibration_cleanup_err,
+               calibration_rf_activity_seen ? 1u : 0u,
+               calibration_rf_activity_seen ?
+                   "UNSTABLE_CADENCE_OR_OUTPUT_RATE" :
+                   "NO_RF_ACTIVITY_PAL_FALLBACK_RETAINED");
         fflush(stdout);
         return;
     }
@@ -685,11 +833,12 @@ static void run_direct_av_probe(void)
            "rf_to_av=REARMED_BURSTS_BITSCRAMBLER_PARLIO usb_payload=NONE "
            "phase_gain=1 probe_stack=FREERTOS_REGISTERED_LP_4096 "
            "producer=BOUNDED_16384_WORD_REARMED_IN_LP_RAM "
-           "source_rate_hz=%u av_output_rate_hz=%u "
+           "source_rate_hz=%u av_output_rate_hz=%u rate_spread_ppm=%u "
            "warning=AV_SWITCHES_TO_VTX_FOR_100MS\n",
            C5VRX_DIRECT_AV_PROBE_MS, C5VRX_DIRECT_AV_LEAD_WORDS,
            (unsigned)calibrated_source_rate_hz,
-           (unsigned)calibrated_output_rate_hz);
+           (unsigned)calibrated_output_rate_hz,
+           (unsigned)calibration_spread_ppm);
     fflush(stdout);
 
     esp_err_t prepare_err = ESP_ERR_NOT_SUPPORTED;

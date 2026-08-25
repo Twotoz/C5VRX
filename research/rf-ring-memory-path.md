@@ -158,3 +158,10 @@ trigger, and the full vendor-style stop/restore executes exactly once after AV.
 PARLIO is also clock-paused before its looping transaction is queued so it
 cannot transiently report FIFO-empty before the RF writer owns a half-block
 lead.
+
+The next A1 comparison measured zero writer activity with the VTX off and
+37.093700 MS/s with 45/45 successful rearms with the VTX on. The latter was
+rejected only by the temporary 36-MS/s calibration ceiling. That guessed
+source-rate window has been removed: the probe retries empty startup and gates
+only on rearm/canary integrity plus the direct AV engine's real 4--20 MHz
+post-4:1 clock range. `rf_activity` is reported separately from video lock.

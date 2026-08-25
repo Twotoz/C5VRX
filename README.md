@@ -413,6 +413,18 @@ writer rate and wraps over USB. The Receiver Console exposes the same action as
 **DIRECT RF -> AV PROBE (A1, 100 ms)**. A passing machine record is still only a
 rate/continuity candidate until the connected AV decoder visibly locks.
 
+Physical A1 tests have measured 31.537950 MS/s and 37.093700 MS/s from the
+same board. The direct probe therefore no longer rejects a producer using a
+guessed 30--36 MS/s window. It retries an empty 20-ms calibration up to three
+times, then measures three valid windows in the same producer session and holds
+their median. It accepts any cadence whose rearm/canary evidence is intact and
+whose measured 4:1 output lies inside the actual 4--20 MHz direct-AV clock
+contract. The min/max/spread record shows whether later adaptive control is
+actually necessary instead of injecting clock jitter speculatively.
+Every calibration record includes `rf_activity=0|1`; this distinguishes the
+observed VTX-off zero-writer state from VTX-on RF activity without claiming
+that activity alone is decoded PAL video.
+
 The direct kernel runs on a dedicated 4096-byte LP-RAM stack registered as a
 real static FreeRTOS task. This is required on the C5: manually moving `sp`
 inside the USB control task leaves the hardware stack guard programmed with the

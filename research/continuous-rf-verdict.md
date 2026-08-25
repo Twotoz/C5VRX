@@ -102,7 +102,8 @@ video-deviation scale. No intermediate AV framebuffer is allocated.
 The `AV DIRECT PROBE` command runs this overlap for 100 ms, then reports writer
 advance, pointer changes, completed bursts, successful rearms, gap cycles,
 inferred source rate, guard canaries and full register restoration. Passing
-requires a 30--36 MS/s measured writer rate, at least four bursts, zero rearm
+requires a measured writer cadence that maps through the 4:1 discriminator to
+the direct AV engine's 4--20 MHz clock range, at least four bursts, zero rearm
 failures and bounded measured gaps; the result remains
 `STITCHED_CONTINUOUS_IQ_CANDIDATE_AV_LOCK_TEST_REQUIRED` until a real VTX and AV
 decoder lock to the output. Failure restores the standards-correct PAL logo and
@@ -135,6 +136,17 @@ with the VTX off. This is a producer-session lifecycle result, not a channel
 lock result. The corrected handoff keeps calibration and AV inside one
 configured RF session and performs the destructive FE/PBUS restore only once
 after the AV observation.
+
+A later fixed-A1 comparison made the RF-activity distinction explicit: VTX off
+produced zero writer activity, while VTX on produced 37.093700 MS/s with 45/45
+successful rearms and zero failures. The old guessed 36-MS/s ceiling rejected
+that otherwise valid cadence before AV could start. Calibration now retries an
+empty producer three times, reports `rf_activity=0|1`, and uses the downstream
+4--20 MHz output-clock contract instead of a narrow RF-rate guess. Three valid
+windows from the retained producer session select a median fixed rate and log
+their spread; adaptive control is deferred unless that evidence shows real
+in-session drift. This is a VTX-activity observation, not yet a machine claim
+of decoded PAL lock.
 
 Primary consumer-path sources:
 
