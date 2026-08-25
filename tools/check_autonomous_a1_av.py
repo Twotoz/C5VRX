@@ -56,6 +56,12 @@ require(
     "CONFIG_RTC_FAST_CLK_SRC_XTAL=y",
     "CONFIG_C5VRX_AUTO_A1_AV=y",
 )
+require(
+    "tools/C5VRX_Flasher.py",
+    'self.send_command("AUTO AV STATUS", quiet=True)',
+    'fields.get("continuity_uptime_ms", "0")',
+    'fields.get("rearm_failures", "0")',
+)
 
 if "C5VRX_DIRECT_AV_PROBE_MS" in auto:
     raise SystemExit("autonomous runtime must not contain the old 100-ms probe")

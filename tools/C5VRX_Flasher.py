@@ -862,10 +862,14 @@ class C5VRXApp(tk.Tk):
             blocks = fields.get("blocks", "0")
             failures = fields.get("rearm_failures", "0")
             drift = fields.get("estimated_drift_ppm", "0")
+            uptime = fields.get("continuity_uptime_ms", "0")
+            gap = fields.get("gap_max_ns", "0")
+            lead = fields.get("lead_words", "0")
             self.after(
                 0, self.preview_status_var.set,
                 f"A1 autonomous AV: {state}, IQ={rate} samples/s, "
-                f"blocks={blocks}, failures={failures}, drift={drift} ppm")
+                f"uptime={uptime} ms, blocks={blocks}, failures={failures}, "
+                f"lead={lead}, max-gap={gap} ns, drift={drift} ppm")
             return
         if line.startswith("C5VRX_DIRECT_AV_PROBE_BEGIN"):
             self.after(
@@ -1089,6 +1093,10 @@ class C5VRXApp(tk.Tk):
         if (not self.live_iq_active and not self.iq_capture_active and
                 not self.usb_transport_stalled):
             self.send_command("AV STATUS", quiet=True)
+            # Read-only appliance telemetry.  This never captures IQ over USB,
+            # retunes RF, or stops the LP-core writer; every response is also
+            # persisted in the session log for minute/hour soak analysis.
+            self.send_command("AUTO AV STATUS", quiet=True)
         elif self.live_iq_active:
             self.av_health_var.set(
                 "AV DMA: local GPIO27 heartbeat active; USB polling paused "
