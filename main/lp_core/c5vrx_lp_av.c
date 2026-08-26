@@ -74,6 +74,7 @@ volatile uint32_t c5vrx_expected_block_cycles;
 volatile uint32_t c5vrx_block_period_last;
 volatile uint32_t c5vrx_block_period_min;
 volatile uint32_t c5vrx_block_period_max;
+volatile uint32_t c5vrx_run_cycles;
 volatile int32_t c5vrx_phase_error_cycles;
 volatile uint32_t c5vrx_phase_window_blocks;
 volatile uint32_t c5vrx_fault_cause;
@@ -152,6 +153,7 @@ static void clear_stats(void)
     c5vrx_block_period_last = 0u;
     c5vrx_block_period_min = 0u;
     c5vrx_block_period_max = 0u;
+    c5vrx_run_cycles = 0u;
     c5vrx_phase_error_cycles = 0;
     c5vrx_phase_window_blocks = 0u;
     c5vrx_consumer_pointer = 0u;
@@ -264,6 +266,7 @@ static void run_writer(uint32_t command)
     uint32_t last_gap = 0u;
     uint32_t terminal_state = STATE_DONE;
     uint32_t last_completed_at = 0u;
+    uint32_t run_start = 0u;
     int32_t phase_error = 0;
     uint32_t phase_blocks = 0u;
     uint32_t last_activity_at = cycle_count();
@@ -287,11 +290,14 @@ static void run_writer(uint32_t command)
     const uint32_t lead_start = cycle_count();
     while (advance < requested_lead) {
         const uint32_t current = pointer();
-        const uint32_t delta = (current - previous) & POINTER_MASK;
-        if (delta != 0u) {
-            advance += delta;
+        /* A fresh one-shot cannot wrap before the requested half-buffer
+         * lead.  Occasionally the cross-domain pointer read presents an
+         * older value for one poll; treating that regression as a modulo
+         * wrap fabricates almost 16384 words.  Ignore it and keep the last
+         * monotonic observation. */
+        if (current > previous) {
+            advance += current - previous;
             changes++;
-            if (current < previous) restarts++;
             previous = current;
             last_activity_at = cycle_count();
         }
@@ -318,14 +324,15 @@ static void run_writer(uint32_t command)
     c5vrx_stage = 16u; /* all HP peripheral accesses succeeded */
     c5vrx_state = STATE_RUNNING;
 
-    const uint32_t run_start = cycle_count();
+    run_start = cycle_count();
     for (;;) {
         const uint32_t current = pointer();
-        const uint32_t delta = (current - previous) & POINTER_MASK;
-        if (delta != 0u) {
-            advance += delta;
+        /* Rearm resets are consumed explicitly below and replace previous
+         * with the first accepted pointer. Any other backward observation is
+         * stale/metastable and must not become a synthetic full-block delta. */
+        if (current > previous) {
+            advance += current - previous;
             changes++;
-            if (current < previous) restarts++;
             previous = current;
             last_activity_at = cycle_count();
         }
@@ -408,6 +415,7 @@ static void run_writer(uint32_t command)
 
 stop:
     c5vrx_stage = 20u;
+    if (run_start != 0u) c5vrx_run_cycles = cycle_count() - run_start;
     if (enable_parlio) {
         REG32(PARLIO_TX_CLOCK) &= ~PARLIO_CLK_EN;
     }

@@ -34,6 +34,8 @@ auto = require(
     "APM_SEC_MODE_REE0",
     "hp_gdma_permission=RW",
     "MAX_CALIBRATION_SPREAD_PPM",
+    "ulp_c5vrx_run_cycles",
+    "C5VRX_AUTO_AV_CALIBRATION",
     "c5vrx_cvbs_direct_rf_dma_info",
     "run_lp_parked",
     "usb=POLLED_HEARTBEAT",
@@ -63,6 +65,8 @@ lp = require(
     "c5vrx_consumer_pointer_changes",
     "c5vrx_consumer_wraps",
     "LEAD_TIMEOUT_US  20000u",
+    "c5vrx_run_cycles",
+    "if (current > previous)",
 )
 control = require(
     "main/c5vrx_control.c",
@@ -109,5 +113,7 @@ if "C5VRX_DIRECT_AV_PROBE_MS" in auto:
     raise SystemExit("autonomous runtime must not contain the old 100-ms probe")
 if "duration limit" not in lp or "no duration limit" not in lp:
     raise SystemExit("LP source must document its unbounded continuous contract")
+if "(current - previous) & POINTER_MASK" in lp:
+    raise SystemExit("LP writer must not count stale pointer regressions as full wraps")
 
 print("autonomous A1 AV contract: PASS")

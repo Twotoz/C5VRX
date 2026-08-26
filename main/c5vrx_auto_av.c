@@ -45,6 +45,7 @@
 #define MAX_OUTPUT_HZ       20000000u
 #define FALLBACK_RETRY_MS   350u
 #define RF_SCAN_TIMEOUT_US 20000u
+#define LP_CLOCK_HZ        48000000u
 
 static const char *TAG = "c5vrx_auto_av";
 static portMUX_TYPE s_status_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -232,7 +233,7 @@ static bool IRAM_ATTR run_lp_parked(uint32_t command, uint32_t timeout_us)
     return finished && (command != LP_COMMAND_CONTINUOUS || saw_running);
 }
 
-static bool bounded_window(uint32_t *source_rate_hz)
+static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
 {
     ulp_c5vrx_duration_us = CALIBRATION_MS * 1000u;
     ulp_c5vrx_lead_words = LEAD_WORDS;
@@ -240,7 +241,10 @@ static bool bounded_window(uint32_t *source_rate_hz)
     if (!run_lp_parked(LP_COMMAND_BOUNDED, 0u)) return false;
 
     const uint32_t words = ulp_c5vrx_writer_advance;
-    const uint32_t rate = words * (1000u / CALIBRATION_MS);
+    const uint32_t run_cycles = ulp_c5vrx_run_cycles;
+    const uint32_t rate = run_cycles ?
+        (uint32_t)(((uint64_t)words * LP_CLOCK_HZ + run_cycles / 2u) /
+                   run_cycles) : 0u;
     const uint32_t output_rate = (rate + 2u) / 4u;
     const bool ok = ulp_c5vrx_state == LP_STATE_DONE &&
         ulp_c5vrx_lead_acquired != 0u &&
@@ -248,6 +252,13 @@ static bool bounded_window(uint32_t *source_rate_hz)
         ulp_c5vrx_rearms_succeeded >= 7u &&
         ulp_c5vrx_rearm_failures == 0u &&
         output_rate >= MIN_OUTPUT_HZ && output_rate <= MAX_OUTPUT_HZ;
+    ESP_LOGI(TAG,
+             "C5VRX_AUTO_AV_CALIBRATION window=%u ok=%u words=%" PRIu32 " run_cycles=%" PRIu32 " rate_hz=%" PRIu32 " blocks=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32 " restarts=%" PRIu32 " period_last=%" PRIu32 " period_min=%" PRIu32 " period_max=%" PRIu32,
+             window, ok ? 1u : 0u, words, run_cycles, rate,
+             ulp_c5vrx_bursts_completed, ulp_c5vrx_rearms_succeeded,
+             ulp_c5vrx_rearm_failures, ulp_c5vrx_pointer_restarts,
+             ulp_c5vrx_block_period_last, ulp_c5vrx_block_period_min,
+             ulp_c5vrx_block_period_max);
     if (source_rate_hz) *source_rate_hz = rate;
     return ok;
 }
@@ -295,7 +306,7 @@ static void auto_av_task(void *arg)
         uint32_t rates[CALIBRATION_WINDOWS] = {0};
         bool detected = true;
         for (unsigned i = 0; i < CALIBRATION_WINDOWS; ++i) {
-            if (!bounded_window(&rates[i])) {
+            if (!bounded_window(i + 1u, &rates[i])) {
                 detected = false;
                 break;
             }
