@@ -963,11 +963,16 @@ static void print_auto_av_status(void)
            "gap_cycles_total=%u gap_cycles_max=%u last_gap_cycles=%u "
            "continuity_uptime_ms=%llu state_transitions=%u "
            "lp_state=%u writer_pointer=%u lead=%u "
+           "consumer_pointer=%u consumer_lead_words=%u "
+           "consumer_lead_min_words=%u consumer_lead_max_words=%u "
+           "consumer_observations=%u consumer_pointer_changes=%u "
+           "consumer_wraps=%u consumer_descriptor_errors=%u "
+           "consumer_uncertainty_words=1023 pacing_guard=MONITOR_ONLY "
            "block_period_last_cycles=%u block_period_min_cycles=%u "
            "block_period_max_cycles=%u phase_error_cycles=%d "
            "phase_window_blocks=%u lp_fault_cause=%u "
            "lp_fault_address=%08x lp_fault_pc=%08x estimated_drift_ppm=%d "
-           "pacing_correction_ppm=0 controller=MONITOR_SHARED_CLOCK "
+           "pacing_correction_ppm=0 controller=GDMA_LEAD_MONITOR_SHARED_CLOCK "
            "av_health=%s av_missed=%u heap_internal_free=%u "
            "heap_dma_largest=%u usb_realtime_interference=0 fallback=PAL\n",
            c5vrx_auto_av_state_name(status.state),
@@ -987,6 +992,14 @@ static void print_auto_av_status(void)
            (unsigned)status.lp_state,
            (unsigned)status.writer_pointer,
            (unsigned)status.lead_acquired,
+           (unsigned)status.consumer_pointer,
+           (unsigned)status.consumer_lead_words,
+           (unsigned)status.consumer_lead_min_words,
+           (unsigned)status.consumer_lead_max_words,
+           (unsigned)status.consumer_observations,
+           (unsigned)status.consumer_pointer_changes,
+           (unsigned)status.consumer_wraps,
+           (unsigned)status.consumer_descriptor_errors,
            (unsigned)status.block_period_last,
            (unsigned)status.block_period_min,
            (unsigned)status.block_period_max,

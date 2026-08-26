@@ -30,6 +30,14 @@ typedef struct {
     uint32_t lp_state;
     uint32_t writer_pointer;
     uint32_t lead_acquired;
+    uint32_t consumer_pointer;
+    uint32_t consumer_lead_words;
+    uint32_t consumer_lead_min_words;
+    uint32_t consumer_lead_max_words;
+    uint32_t consumer_observations;
+    uint32_t consumer_pointer_changes;
+    uint32_t consumer_wraps;
+    uint32_t consumer_descriptor_errors;
     uint32_t block_period_last;
     uint32_t block_period_min;
     uint32_t block_period_max;

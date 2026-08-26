@@ -19,6 +19,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "hal/parlio_ll.h"
+#include "soc/ahb_dma_reg.h"
 #include "soc/parl_io_struct.h"
 
 #include "c5vrx_adc_dump.h"
@@ -1206,6 +1207,34 @@ esp_err_t c5vrx_cvbs_direct_rf_finish(void)
     return err == ESP_OK ? restart_err : err;
 }
 
+esp_err_t c5vrx_cvbs_direct_rf_dma_info(uint32_t *channel,
+                                       uint32_t *descriptor_base)
+{
+    if (!channel || !descriptor_base || !s_direct_tx) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    static const uint32_t peri_regs[] = {
+        AHB_DMA_OUT_PERI_SEL_CH0_REG,
+        AHB_DMA_OUT_PERI_SEL_CH1_REG,
+        AHB_DMA_OUT_PERI_SEL_CH2_REG,
+    };
+    static const uint32_t link_regs[] = {
+        AHB_DMA_OUT_LINK_ADDR_CH0_REG,
+        AHB_DMA_OUT_LINK_ADDR_CH1_REG,
+        AHB_DMA_OUT_LINK_ADDR_CH2_REG,
+    };
+    for (uint32_t i = 0; i < 3u; ++i) {
+        const uint32_t periph = REG_READ(peri_regs[i]) & 0x3fu;
+        const uint32_t base = REG_READ(link_regs[i]);
+        if (periph == 9u && base != 0u) { /* public C5 PARL_IO trigger */
+            *channel = i;
+            *descriptor_base = base;
+            return ESP_OK;
+        }
+    }
+    return ESP_ERR_NOT_FOUND;
+}
+
 #else
 
 esp_err_t c5vrx_cvbs_test_start(void)
@@ -1250,6 +1279,13 @@ bool c5vrx_cvbs_test_running(void)
 
 esp_err_t c5vrx_cvbs_direct_rf_prepare(uint32_t output_clock_hz)
 { (void)output_clock_hz; return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t c5vrx_cvbs_direct_rf_dma_info(uint32_t *channel,
+                                       uint32_t *descriptor_base)
+{
+    (void)channel;
+    (void)descriptor_base;
+    return ESP_ERR_NOT_SUPPORTED;
+}
 esp_err_t c5vrx_cvbs_direct_rf_finish(void)
 { return ESP_ERR_NOT_SUPPORTED; }
 

@@ -39,6 +39,7 @@
 
 #define CALIBRATION_MS      20u
 #define CALIBRATION_WINDOWS 3u
+#define MAX_CALIBRATION_SPREAD_PPM 20000u
 #define LEAD_WORDS          8192u
 #define MIN_OUTPUT_HZ       4000000u
 #define MAX_OUTPUT_HZ       20000000u
@@ -81,6 +82,15 @@ static void set_status(c5vrx_auto_av_state_t state, bool rf_activity,
     s_status.lp_state = ulp_c5vrx_state;
     s_status.writer_pointer = ulp_c5vrx_last_pointer;
     s_status.lead_acquired = ulp_c5vrx_lead_acquired;
+    s_status.consumer_pointer = ulp_c5vrx_consumer_pointer;
+    s_status.consumer_lead_words = ulp_c5vrx_consumer_lead_words;
+    s_status.consumer_lead_min_words = ulp_c5vrx_consumer_lead_min_words;
+    s_status.consumer_lead_max_words = ulp_c5vrx_consumer_lead_max_words;
+    s_status.consumer_observations = ulp_c5vrx_consumer_observations;
+    s_status.consumer_pointer_changes = ulp_c5vrx_consumer_pointer_changes;
+    s_status.consumer_wraps = ulp_c5vrx_consumer_wraps;
+    s_status.consumer_descriptor_errors =
+        ulp_c5vrx_consumer_descriptor_errors;
     s_status.block_period_last = ulp_c5vrx_block_period_last;
     s_status.block_period_min = ulp_c5vrx_block_period_min;
     s_status.block_period_max = ulp_c5vrx_block_period_max;
@@ -282,6 +292,26 @@ static void auto_av_task(void *arg)
         }
 
         const uint32_t source_rate_hz = median3(rates);
+        uint32_t rate_min_hz = rates[0];
+        uint32_t rate_max_hz = rates[0];
+        for (unsigned i = 1u; i < CALIBRATION_WINDOWS; ++i) {
+            if (rates[i] < rate_min_hz) rate_min_hz = rates[i];
+            if (rates[i] > rate_max_hz) rate_max_hz = rates[i];
+        }
+        const uint32_t rate_spread_ppm = source_rate_hz ?
+            (uint32_t)(((uint64_t)(rate_max_hz - rate_min_hz) * 1000000u) /
+                       source_rate_hz) : UINT32_MAX;
+        if (rate_spread_ppm > MAX_CALIBRATION_SPREAD_PPM) {
+            ESP_LOGW(TAG,
+                     "A1 cadence rejected: samples=%u,%u,%u median=%u spread_ppm=%u limit_ppm=%u",
+                     (unsigned)rates[0], (unsigned)rates[1],
+                     (unsigned)rates[2], (unsigned)source_rate_hz,
+                     (unsigned)rate_spread_ppm,
+                     (unsigned)MAX_CALIBRATION_SPREAD_PPM);
+            restore_fallback(false);
+            vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
+            continue;
+        }
         const uint32_t output_rate_hz = (source_rate_hz + 2u) / 4u;
         err = c5vrx_cvbs_direct_rf_prepare(output_rate_hz);
         if (err != ESP_OK) {
@@ -291,9 +321,23 @@ static void auto_av_task(void *arg)
             continue;
         }
 
+        uint32_t gdma_channel = 0u;
+        uint32_t descriptor_base = 0u;
+        err = c5vrx_cvbs_direct_rf_dma_info(&gdma_channel,
+                                             &descriptor_base);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "A1 GDMA lead monitor unavailable: %s",
+                     esp_err_to_name(err));
+            restore_fallback(true);
+            vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
+            continue;
+        }
+
         ulp_c5vrx_duration_us = 0u;
         ulp_c5vrx_lead_words = LEAD_WORDS;
         ulp_c5vrx_enable_parlio = 1u;
+        ulp_c5vrx_gdma_channel = gdma_channel;
+        ulp_c5vrx_gdma_descriptor_base = descriptor_base;
         /* C5 PARLIO has an integer PLL divider. Mirror the driver's nearest
          * divider and monitor the resulting producer/consumer phase drift.
          * The LP clock is the precise 48-MHz XTAL for this calculation. */
@@ -368,15 +412,18 @@ esp_err_t c5vrx_auto_av_start(void)
      *   PCR       0x600960b4     PARLIO peripheral clock gate
      * PARLIO data itself is consumed by its HP DMA and is not touched by LP.
      */
-    const uint64_t lp_hp_peripherals =
+    const uint64_t lp_hp_rw_peripherals =
         BIT64(APM_TEE_HP_PERIPH_MODEM) |
-        BIT64(APM_TEE_HP_PERIPH_SYSTEM_REG) |
-        BIT64(APM_TEE_HP_PERIPH_PCR_REG);
+         BIT64(APM_TEE_HP_PERIPH_SYSTEM_REG) |
+         BIT64(APM_TEE_HP_PERIPH_PCR_REG);
     apm_hal_set_master_sec_mode(BIT(APM_MASTER_LPCORE), APM_SEC_MODE_TEE);
-    apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP, lp_hp_peripherals,
+    apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP, lp_hp_rw_peripherals,
                                 APM_SEC_MODE_TEE, APM_PERM_R | APM_PERM_W);
+    apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP,
+                                BIT64(APM_TEE_HP_PERIPH_GDMA),
+                                APM_SEC_MODE_TEE, APM_PERM_R);
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=TEE peripherals=MODEM,SYSTEM_REG,PCR permissions=RW sram_handoff=LP_CORE hp_policy=PARKED");
+             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=TEE peripherals=MODEM,SYSTEM_REG,PCR permissions=RW gdma_permission=R sram_handoff=LP_CORE hp_policy=PARKED");
 
     if (xTaskCreate(auto_av_task, "c5vrx_auto_a1", 4096, NULL, 19, NULL) !=
         pdPASS) return ESP_ERR_NO_MEM;

@@ -97,6 +97,14 @@ bool c5vrx_cvbs_test_running(void);
  * PARLIO clock only after the RF writer has acquired a safe lead.
  */
 esp_err_t c5vrx_cvbs_direct_rf_prepare(uint32_t output_clock_hz);
+
+/**
+ * Return the public AHB-GDMA channel and descriptor-ring base used by the
+ * prepared direct transaction.  The LP core uses these read-only values to
+ * measure the real consumer position; it never edits DMA descriptors.
+ */
+esp_err_t c5vrx_cvbs_direct_rf_dma_info(uint32_t *channel,
+                                       uint32_t *descriptor_base);
 esp_err_t c5vrx_cvbs_direct_rf_finish(void);
 
 #ifdef __cplusplus

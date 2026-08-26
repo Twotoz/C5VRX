@@ -28,6 +28,9 @@ auto = require(
     "APM_TEE_HP_PERIPH_MODEM",
     "APM_TEE_HP_PERIPH_SYSTEM_REG",
     "APM_TEE_HP_PERIPH_PCR_REG",
+    "APM_TEE_HP_PERIPH_GDMA",
+    "MAX_CALIBRATION_SPREAD_PPM",
+    "c5vrx_cvbs_direct_rf_dma_info",
     "run_lp_parked",
     "usb=POLLED_HEARTBEAT",
     "C5VRX_DIRECT_ALIVE owner=LP_CORE usb=POLLED",
@@ -51,6 +54,10 @@ lp = require(
     "c5vrx_stage",
     "HP_SRAM_USAGE",
     "ACTIVITY_TIMEOUT_US",
+    "observe_consumer",
+    "c5vrx_consumer_lead_min_words",
+    "c5vrx_consumer_pointer_changes",
+    "c5vrx_consumer_wraps",
     "LEAD_TIMEOUT_US  20000u",
 )
 control = require(
@@ -61,6 +68,8 @@ control = require(
     "continuity_uptime_ms",
     "usb_realtime_interference=0",
     "lp_fault_address=%08x",
+    "consumer_lead_words=%u",
+    "pacing_guard=MONITOR_ONLY",
     'sscanf(line, "CAPTURE %u"',
 )
 main = require(

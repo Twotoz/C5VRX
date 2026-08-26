@@ -21,6 +21,7 @@
 #define DUMP_PTR_MODE   0x600a9008u
 #define HP_SRAM_USAGE   0x60095004u
 #define PARLIO_TX_CLOCK 0x600960b4u
+#define AHB_DMA_BASE    0x60080000u
 
 #define CTRL_ENABLE     0x80000000u
 #define CTRL_SW_TRIGGER 0x00080000u
@@ -28,6 +29,9 @@
 #define PARLIO_CLK_EN   0x00040000u
 #define POINTER_MASK    0x00003fffu
 #define BURST_WORDS     16384u
+#define GDMA_DESC_BYTES 12u
+#define GDMA_DESC_WORDS 1023u
+#define GDMA_DESC_COUNT 17u
 
 #define COMMAND_NONE       0u
 #define COMMAND_BOUNDED    1u
@@ -77,6 +81,16 @@ volatile uint32_t c5vrx_fault_address;
 volatile uint32_t c5vrx_fault_pc;
 volatile uint32_t c5vrx_stage;
 volatile uint32_t c5vrx_saved_ownership;
+volatile uint32_t c5vrx_gdma_channel;
+volatile uint32_t c5vrx_gdma_descriptor_base;
+volatile uint32_t c5vrx_consumer_pointer;
+volatile uint32_t c5vrx_consumer_lead_words;
+volatile uint32_t c5vrx_consumer_lead_min_words;
+volatile uint32_t c5vrx_consumer_lead_max_words;
+volatile uint32_t c5vrx_consumer_observations;
+volatile uint32_t c5vrx_consumer_pointer_changes;
+volatile uint32_t c5vrx_consumer_wraps;
+volatile uint32_t c5vrx_consumer_descriptor_errors;
 
 /* Keep an LP access fault local to the LP core.  The stock weak handler calls
  * ulp_lp_core_abort(), which makes a register-permission mistake look like a
@@ -140,6 +154,14 @@ static void clear_stats(void)
     c5vrx_block_period_max = 0u;
     c5vrx_phase_error_cycles = 0;
     c5vrx_phase_window_blocks = 0u;
+    c5vrx_consumer_pointer = 0u;
+    c5vrx_consumer_lead_words = 0u;
+    c5vrx_consumer_lead_min_words = BURST_WORDS;
+    c5vrx_consumer_lead_max_words = 0u;
+    c5vrx_consumer_observations = 0u;
+    c5vrx_consumer_pointer_changes = 0u;
+    c5vrx_consumer_wraps = 0u;
+    c5vrx_consumer_descriptor_errors = 0u;
 }
 
 static inline uint32_t pointer(void)
@@ -157,6 +179,53 @@ static inline void trigger_writer(void)
     REG32(DUMP_CTRL) = control | CTRL_SW_TRIGGER;
     REG32(DUMP_CTRL) = control & ~CTRL_SW_TRIGGER;
     io_fence();
+}
+
+/* The public C5 AHB-GDMA register layout places each TX channel 0xc0 bytes
+ * apart and exposes the next fetched descriptor at channel+0xf0.  PARLIO's
+ * public loop builder uses contiguous 12-byte descriptors carrying at most
+ * 4092 bytes, so the descriptor index is a conservative 1023-word consumer
+ * position.  Its uncertainty is one descriptor and is reported, never hidden
+ * as sample-exact pacing. */
+static inline bool observe_consumer(uint32_t writer)
+{
+    const uint32_t channel = c5vrx_gdma_channel;
+    const uint32_t base = c5vrx_gdma_descriptor_base;
+    if (channel >= 3u || base == 0u) {
+        c5vrx_consumer_descriptor_errors++;
+        return false;
+    }
+    const uint32_t current = REG32(AHB_DMA_BASE + 0xf0u + channel * 0xc0u);
+    if (current < base) {
+        c5vrx_consumer_descriptor_errors++;
+        return false;
+    }
+    const uint32_t offset = current - base;
+    if ((offset % GDMA_DESC_BYTES) != 0u) {
+        c5vrx_consumer_descriptor_errors++;
+        return false;
+    }
+    const uint32_t index = offset / GDMA_DESC_BYTES;
+    if (index >= GDMA_DESC_COUNT) {
+        c5vrx_consumer_descriptor_errors++;
+        return false;
+    }
+    uint32_t reader = index * GDMA_DESC_WORDS;
+    if (reader >= BURST_WORDS) reader = BURST_WORDS - 1u;
+    const uint32_t lead = (writer - reader) & POINTER_MASK;
+    const uint32_t previous_reader = c5vrx_consumer_pointer;
+    if (c5vrx_consumer_observations != 0u && reader != previous_reader) {
+        c5vrx_consumer_pointer_changes++;
+        if (reader < previous_reader) c5vrx_consumer_wraps++;
+    }
+    c5vrx_consumer_pointer = reader;
+    c5vrx_consumer_lead_words = lead;
+    if (lead < c5vrx_consumer_lead_min_words)
+        c5vrx_consumer_lead_min_words = lead;
+    if (lead > c5vrx_consumer_lead_max_words)
+        c5vrx_consumer_lead_max_words = lead;
+    c5vrx_consumer_observations++;
+    return true;
 }
 
 static void publish(uint32_t advance, uint32_t changes, uint32_t restarts,
@@ -260,6 +329,7 @@ static void run_writer(uint32_t command)
             previous = current;
             last_activity_at = cycle_count();
         }
+        if (enable_parlio) (void)observe_consumer(current);
 
         uint32_t control = REG32(DUMP_CTRL);
         if ((control & CTRL_DONE) != 0u && current == POINTER_MASK) {
