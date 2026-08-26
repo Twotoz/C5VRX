@@ -83,8 +83,15 @@ require(
     "CONFIG_ULP_COPROC_ENABLED=y",
     "CONFIG_ULP_COPROC_TYPE_LP_CORE=y",
     "CONFIG_RTC_FAST_CLK_SRC_XTAL=y",
+    "CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER=y",
     "CONFIG_C5VRX_AUTO_A1_AV=y",
     "# CONFIG_ESP_INT_WDT is not set",
+)
+require(
+    "tools/Build_XIAO_A1_Receiver_Exe.ps1",
+    'Require-BuildConfig "CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER"',
+    'Require-BuildConfig "CONFIG_C5VRX_EXPERIMENTAL_CVBS_PARLIO"',
+    'Require-BuildConfig "CONFIG_C5VRX_AUTO_A1_AV"',
 )
 require(
     "tools/C5VRX_Flasher.py",

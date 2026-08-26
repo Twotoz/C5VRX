@@ -242,6 +242,8 @@ void app_main(void)
     if (wifi_ready) {
         maybe_run_adc_dump(&plan);
 #if CONFIG_C5VRX_AUTO_A1_AV
+        ESP_LOGI(TAG,
+                 "C5VRX_BUILD_CONTRACT auto_a1_av=1 rf_dump_producer=1 cvbs_parlio=1");
         const esp_err_t auto_av_err = c5vrx_auto_av_start();
         if (auto_av_err == ESP_OK) {
             ESP_LOGI(TAG,
@@ -262,6 +264,8 @@ void app_main(void)
         ESP_LOGI(TAG,
                  "Fixed A1 appliance active: LP-core RF capture and WBFM-to-CVBS switch automatically when A1 writer activity is present.");
 #else
+        ESP_LOGE(TAG,
+                 "C5VRX_BUILD_CONTRACT auto_a1_av=0 profile=DIAGNOSTIC_ONLY");
         ESP_LOGW(TAG,
                  "Promiscuous Wi-Fi RX proves the 5 GHz RF path is active; this profile does not enable autonomous analog reception.");
 #endif

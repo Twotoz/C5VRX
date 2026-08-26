@@ -10,12 +10,14 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_xiao_receiver_console.csv"
 CONFIG_C5VRX_BOARD_PROFILE="xiao-esp32c5"
 
-# Boot on A4 / 5805 MHz exact Wi-Fi center, then retune from the Receiver
-# Console. The guarded RF producer is enabled by sdkconfig.defaults.rf_deep_probe.
+# Boot on A1 / 5865 MHz exact Wi-Fi center. This complete receiver profile must
+# enable the guarded RF producer itself: AUTO_A1_AV depends on it and Kconfig
+# otherwise silently resolves the requested autonomous receiver option to off.
 CONFIG_C5VRX_RF_BACKEND_WIFI5=y
 CONFIG_C5VRX_TARGET_BAND_A=y
 CONFIG_C5VRX_TARGET_CHANNEL=1
 CONFIG_C5VRX_RX_HT40=y
+CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER=y
 CONFIG_C5VRX_AUTO_A1_AV=y
 
 # The fixed-A1 goggle appliance runs its one-shot RF rearm loop indefinitely
