@@ -33,7 +33,7 @@ auto = require(
     "APM_MASTER_HPCORE",
     "APM_SEC_MODE_REE0",
     "hp_gdma_permission=RW",
-    "MAX_CALIBRATION_SPREAD_PPM",
+    "MAX_CALIBRATION_SPREAD_PPM 50000u",
     "ulp_c5vrx_run_cycles",
     "C5VRX_AUTO_AV_CALIBRATION",
     "c5vrx_cvbs_direct_rf_dma_info",

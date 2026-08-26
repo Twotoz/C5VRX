@@ -39,7 +39,12 @@
 
 #define CALIBRATION_MS      20u
 #define CALIBRATION_WINDOWS 3u
-#define MAX_CALIBRATION_SPREAD_PPM 20000u
+/* Physical Test4 showed a clean activity discriminator (VTX-off windows had
+ * zero words/blocks) but a burst-gated producer: valid VTX-on triplets reached
+ * 2.85-4.80% spread despite zero rearm failures.  Three consecutive active
+ * windows remain mandatory; allow 5% so the first coherent triplet can enter
+ * the lead-buffered direct path without admitting an inactive window. */
+#define MAX_CALIBRATION_SPREAD_PPM 50000u
 #define LEAD_WORDS          8192u
 #define MIN_OUTPUT_HZ       4000000u
 #define MAX_OUTPUT_HZ       20000000u
