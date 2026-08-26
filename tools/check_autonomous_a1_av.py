@@ -104,10 +104,22 @@ require(
 )
 require(
     "tools/C5VRX_Flasher.py",
-    'self.send_command("AUTO AV STATUS", quiet=True)',
+    "C5VRX_HOST_USB_MODE mode=PASSIVE_RX",
+    "self.autonomous_a1_appliance = True",
+    "USB_COMMAND_DEFERRED_DIRECT",
     'fields.get("continuity_uptime_ms", "0")',
     'fields.get("rearm_failures", "0")',
 )
+
+flasher = (ROOT / "tools/C5VRX_Flasher.py").read_text(encoding="utf-8")
+poll_body = flasher.split("    def _poll_av_status", 1)[1].split(
+    "    def ", 1)[0]
+if "send_command(" in poll_body or "_write_serial_bytes(" in poll_body:
+    raise SystemExit("autonomous AV polling must remain passive/RX-only")
+connect_body = flasher.split("    def connect_serial", 1)[1].split(
+    "    def ", 1)[0]
+if "send_command(" in connect_body or "_write_serial_bytes(" in connect_body:
+    raise SystemExit("autonomous connect handshake must remain passive/RX-only")
 
 if "C5VRX_DIRECT_AV_PROBE_MS" in auto:
     raise SystemExit("autonomous runtime must not contain the old 100-ms probe")

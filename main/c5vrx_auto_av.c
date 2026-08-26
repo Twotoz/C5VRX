@@ -3,6 +3,7 @@
 #include "c5vrx_auto_av.h"
 
 #include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "sdkconfig.h"
@@ -383,6 +384,10 @@ static void auto_av_task(void *arg)
                    source_rate_hz, actual_output_rate_hz);
         ESP_LOGI(TAG,
                  "C5VRX_AUTO_AV_HP_PARK state=ENTER channel=A1 mhz=5865 usb=POLLED_HEARTBEAT owner=LP_CORE duration=UNBOUNDED heartbeat_ms=500");
+        /* Drain the normal logger before the IRAM-only heartbeat starts
+         * writing the same native-USB FIFO directly.  Without this boundary
+         * the first heartbeat can splice into the ENTER line on Windows. */
+        fflush(stdout);
         /* The scheduler is deliberately parked, so IDLE cannot feed its task
          * watchdog subscription. Remove only that subscription; LP activity
          * timeout remains the RF safety watchdog and restores ownership on

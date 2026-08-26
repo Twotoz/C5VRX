@@ -49,7 +49,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "goggle-a1-36-lp-continuous"
+APP_BUILD = "goggle-a1-37-passive-usb"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -236,6 +236,12 @@ class C5VRXApp(tk.Tk):
         self.profile_mismatch_warned = False
         self.av_poll_generation = 0
         self.direct_rf_active = False
+        # This console is packaged only with CONFIG_C5VRX_AUTO_A1_AV.  The
+        # firmware publishes AV status and a direct-mode heartbeat without a
+        # request, so the host must remain an RX-only observer unless the user
+        # explicitly presses a control.  An OUT transfer at the exact HP->LP
+        # ownership transition can invalidate Windows' native-USB handle.
+        self.autonomous_a1_appliance = True
         self.title(f"{APP_TITLE} — {self.firmware_profile['display_name']}")
         self.geometry("860x650")
         self.minsize(760, 580)
@@ -768,10 +774,9 @@ class C5VRXApp(tk.Tk):
             self.sink.write(f"\n=== CONNECTED: {port} ===\n")
             self.av_poll_generation += 1
             av_generation = self.av_poll_generation
-            self.after(250, lambda: self.send_command("PING"))
-            self.after(450, lambda: self.send_command("STATUS"))
-            self.after(
-                600, lambda: self.send_command("AV TUNE STATUS", quiet=True))
+            self.sink.write(
+                "C5VRX_HOST_USB_MODE mode=PASSIVE_RX "
+                "reason=AUTONOMOUS_A1_TRANSITION_SAFETY\n")
             self.after(750, lambda: self._poll_av_status(av_generation))
             return True
         except Exception as exc:
@@ -856,6 +861,10 @@ class C5VRXApp(tk.Tk):
         self.disconnect_serial()
 
     def _parse_device_line(self, line: str) -> None:
+        if ("C5VRX_BUILD_CONTRACT auto_a1_av=1" in line or
+                "C5VRX_AUTO_AV_READY mode=FIXED_A1" in line or
+                "C5VRX_BOOT stage=AUTO_AV_A1_READY" in line):
+            self.autonomous_a1_appliance = True
         if line.startswith("C5VRX_DIRECT_ALIVE"):
             self.direct_rf_active = True
             self.after(
@@ -1104,15 +1113,11 @@ class C5VRXApp(tk.Tk):
         ser = self.ser
         if not ser or not ser.is_open:
             return
-        if (not self.direct_rf_active and
-                not self.live_iq_active and not self.iq_capture_active and
-                not self.usb_transport_stalled):
-            self.send_command("AV STATUS", quiet=True)
-            # Read-only appliance telemetry.  This never captures IQ over USB,
-            # retunes RF, or stops the LP-core writer; every response is also
-            # persisted in the session log for minute/hour soak analysis.
-            self.send_command("AUTO AV STATUS", quiet=True)
-        elif self.direct_rf_active:
+        # Autonomous firmware publishes unsolicited AV/AUTO-AV status while
+        # scanning and a low-level heartbeat while direct mode owns HP SRAM.
+        # Keep this timer entirely RX-only: even a nominally read-only command
+        # is a USB OUT transfer and can race the HP->LP ownership transition.
+        if self.direct_rf_active:
             self.av_health_var.set(
                 "A1 direct AV locked; USB heartbeat only while LP-core owns RF")
             self.av_health_label.configure(fg="#167323")
@@ -1420,6 +1425,17 @@ class C5VRXApp(tk.Tk):
                 APP_TITLE, "Connect to C5VRX first.")
             return False
         if self.usb_transport_stalled:
+            return False
+        if self.direct_rf_active:
+            self.session.record_error(
+                "USB_COMMAND_DEFERRED_DIRECT", normalized)
+            self.sink.write(
+                "C5VRX_HOST_COMMAND_DEFERRED reason=LP_CORE_DIRECT_ACTIVE "
+                f"command={normalized.replace(' ', '_')}\n")
+            self.after(
+                0, self.preview_status_var.set,
+                "Command deferred while LP-core owns direct A1 capture; "
+                "switch the VTX off and retry")
             return False
         if not quiet:
             self.session.record_command(normalized)
