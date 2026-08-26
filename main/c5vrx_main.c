@@ -124,6 +124,9 @@ void app_main(void)
     /* Native USB control must be alive before NVS, Wi-Fi or vendor RF code. */
     ESP_ERROR_CHECK(c5vrx_usb_console_init());
 
+    /* Recover retained HP-TEE state before any PARLIO/GDMA allocation. */
+    c5vrx_auto_av_restore_hp_boot_access();
+
     const uint32_t prior_lp_stage = c5vrx_lp_capture_stage;
     c5vrx_lp_capture_stage = 0;
     if (prior_lp_stage >= 1u && prior_lp_stage <= 7u) {

@@ -29,6 +29,10 @@ auto = require(
     "APM_TEE_HP_PERIPH_SYSTEM_REG",
     "APM_TEE_HP_PERIPH_PCR_REG",
     "APM_TEE_HP_PERIPH_GDMA",
+    "c5vrx_auto_av_restore_hp_boot_access",
+    "APM_MASTER_HPCORE",
+    "APM_SEC_MODE_REE0",
+    "hp_gdma_permission=RW",
     "MAX_CALIBRATION_SPREAD_PPM",
     "c5vrx_cvbs_direct_rf_dma_info",
     "run_lp_parked",
@@ -75,6 +79,7 @@ control = require(
 main = require(
     "main/c5vrx_main.c",
     "c5vrx_auto_av_start()",
+    "c5vrx_auto_av_restore_hp_boot_access()",
     "usb_required=0",
     "controls_required=0",
 )

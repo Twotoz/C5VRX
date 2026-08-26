@@ -51,6 +51,21 @@ static portMUX_TYPE s_status_mux = portMUX_INITIALIZER_UNLOCKED;
 static portMUX_TYPE s_rf_park_mux = portMUX_INITIALIZER_UNLOCKED;
 static c5vrx_auto_av_status_t s_status;
 static bool s_started;
+
+void c5vrx_auto_av_restore_hp_boot_access(void)
+{
+    /* HP-TEE peripheral permissions survive an HP software reset.  A prior
+     * autonomous run may therefore leave GDMA read-only for TEE mode while
+     * the next boot is already constructing the PAL fallback.  Reassert the
+     * HP core's boot identity and GDMA R/W permission before any PARLIO driver
+     * allocation.  The LP core uses REE0 below, so this does not broaden its
+     * later read-only GDMA permission. */
+    apm_hal_set_master_sec_mode(BIT(APM_MASTER_HPCORE), APM_SEC_MODE_TEE);
+    apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP,
+                                BIT64(APM_TEE_HP_PERIPH_GDMA),
+                                APM_SEC_MODE_TEE,
+                                APM_PERM_R | APM_PERM_W);
+}
 static int64_t s_direct_since_us;
 static const DRAM_ATTR uint8_t s_direct_alive[] =
     "C5VRX_DIRECT_ALIVE owner=LP_CORE usb=POLLED\r\n";
@@ -416,14 +431,19 @@ esp_err_t c5vrx_auto_av_start(void)
         BIT64(APM_TEE_HP_PERIPH_MODEM) |
          BIT64(APM_TEE_HP_PERIPH_SYSTEM_REG) |
          BIT64(APM_TEE_HP_PERIPH_PCR_REG);
-    apm_hal_set_master_sec_mode(BIT(APM_MASTER_LPCORE), APM_SEC_MODE_TEE);
+    /* Keep HP in TEE (normal ESP-IDF machine-mode execution) and put LP in a
+     * distinct security domain.  Peripheral permissions are selected by
+     * security mode, not by master ID: assigning LP to TEE and making GDMA
+     * read-only also made the HP driver read-only and caused the reproducible
+     * store fault at 0x60080400 on the next PAL allocation. */
+    apm_hal_set_master_sec_mode(BIT(APM_MASTER_LPCORE), APM_SEC_MODE_REE0);
     apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP, lp_hp_rw_peripherals,
-                                APM_SEC_MODE_TEE, APM_PERM_R | APM_PERM_W);
+                                APM_SEC_MODE_REE0, APM_PERM_R | APM_PERM_W);
     apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP,
                                 BIT64(APM_TEE_HP_PERIPH_GDMA),
-                                APM_SEC_MODE_TEE, APM_PERM_R);
+                                APM_SEC_MODE_REE0, APM_PERM_R);
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=TEE peripherals=MODEM,SYSTEM_REG,PCR permissions=RW gdma_permission=R sram_handoff=LP_CORE hp_policy=PARKED");
+             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=REE0 peripherals=MODEM,SYSTEM_REG,PCR permissions=RW gdma_permission=R hp_mode=TEE hp_gdma_permission=RW sram_handoff=LP_CORE hp_policy=PARKED");
 
     if (xTaskCreate(auto_av_task, "c5vrx_auto_a1", 4096, NULL, 19, NULL) !=
         pdPASS) return ESP_ERR_NO_MEM;
@@ -432,6 +452,10 @@ esp_err_t c5vrx_auto_av_start(void)
 }
 
 #else
+
+void c5vrx_auto_av_restore_hp_boot_access(void)
+{
+}
 
 esp_err_t c5vrx_auto_av_start(void)
 {

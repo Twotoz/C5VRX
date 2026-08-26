@@ -52,6 +52,7 @@ typedef struct {
 } c5vrx_auto_av_status_t;
 
 esp_err_t c5vrx_auto_av_start(void);
+void c5vrx_auto_av_restore_hp_boot_access(void);
 void c5vrx_auto_av_get_status(c5vrx_auto_av_status_t *status);
 const char *c5vrx_auto_av_state_name(c5vrx_auto_av_state_t state);
 bool c5vrx_auto_av_owns_rf(void);
