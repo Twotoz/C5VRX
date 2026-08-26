@@ -1166,8 +1166,10 @@ esp_err_t c5vrx_cvbs_direct_rf_prepare(uint32_t output_clock_hz)
         parlio_ll_tx_enable_clock(&PARL_IO, false);
         parlio_ll_clear_interrupt_status(
             &PARL_IO, PARLIO_LL_EVENT_TX_FIFO_EMPTY);
-        parlio_ll_enable_interrupt(
-            &PARL_IO, PARLIO_LL_EVENT_TX_FIFO_EMPTY, true);
+        /* Keep FIFO-empty masked while the source clock is paused. The LP
+         * producer owns the atomic start boundary: after acquiring its lead
+         * it starts PARLIO, allows GDMA/BitScrambler to prefill, clears the
+         * expected startup-empty latch, and only then arms this diagnostic. */
         portEXIT_CRITICAL(&s_direct_start_mux);
     }
     if (err != ESP_OK) goto fail;

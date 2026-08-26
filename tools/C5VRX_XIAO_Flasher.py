@@ -36,6 +36,8 @@ class C5VRXXIAOApp(C5VRXApp):
         self._runtime_waiting = False
         self._runtime_deadline = 0.0
         self._runtime_reconnect_scheduled = False
+        self._passive_reconnect_active = False
+        self._passive_reconnect_scheduled = False
 
     def disconnect_serial(self) -> None:
         """Close runtime USB and wait until the reader no longer owns the port."""
@@ -248,6 +250,7 @@ class C5VRXXIAOApp(C5VRXApp):
 
     def _runtime_recovery_required(self, reason: str) -> None:
         self._runtime_waiting = False
+        self._passive_reconnect_active = False
         self.disconnect_serial()
         self.sink.write(
             "C5VRX_POST_FLASH_ACTION required=PHYSICAL_USB_POWER_CYCLE "
@@ -330,10 +333,49 @@ class C5VRXXIAOApp(C5VRXApp):
         self.after(800, self._runtime_probe)
 
     def _serial_lost(self) -> None:
+        runtime_was_ready = self._runtime_seen
         self.disconnect_serial()
         if self._runtime_waiting and not self._runtime_seen:
             self.connection_var.set("Runtime USB changed; waiting to reopen...")
             self._schedule_runtime_reconnect(500)
+        elif runtime_was_ready:
+            # Native USB can disappear while the HP core is deliberately
+            # parked. Reopen passively until the fallback runtime is back;
+            # never inject PING/STATUS into the autonomous transition.
+            self._passive_reconnect_active = True
+            self.connection_var.set(
+                "Runtime USB paused; passively waiting to reconnect...")
+            self._schedule_passive_reconnect(750)
+
+    def _schedule_passive_reconnect(self, delay_ms: int) -> None:
+        if (not self._passive_reconnect_active or
+                self._passive_reconnect_scheduled):
+            return
+        self._passive_reconnect_scheduled = True
+
+        def run() -> None:
+            self._passive_reconnect_scheduled = False
+            self._passive_runtime_reconnect()
+
+        self.after(delay_ms, run)
+
+    def _passive_runtime_reconnect(self) -> None:
+        if not self._passive_reconnect_active:
+            return
+        self.refresh_ports()
+        port = self.selected_port()
+        if not port or not self._port_openable(port):
+            self._schedule_passive_reconnect(750)
+            return
+        if self.connect_serial(show_errors=False):
+            self._passive_reconnect_active = False
+            self.sink.write(
+                "C5VRX_HOST_USB_RECOVERED mode=PASSIVE_RX commands_sent=0\n")
+            self.connection_var.set(
+                f"Connected: {port} - passive runtime recovered")
+            return
+        self._passive_reconnect_active = True
+        self._schedule_passive_reconnect(750)
 
     def _parse_device_line(self, line: str) -> None:
         if (line.startswith("C5VRX_READY") or line.startswith("C5VRX_PONG")
@@ -345,8 +387,6 @@ class C5VRXXIAOApp(C5VRXApp):
                 self.connection_var.set(
                     f"Connected: {self.selected_port()} — C5VRX runtime ready")
                 self.sink.write("C5VRX_RUNTIME_READY handshake=PASS\n")
-                if not line.startswith("C5VRX_STATUS"):
-                    self.after(100, lambda: self.send_command("STATUS"))
         super()._parse_device_line(line)
 
 

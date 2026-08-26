@@ -33,15 +33,13 @@ auto = require(
     "APM_MASTER_HPCORE",
     "APM_SEC_MODE_REE0",
     "hp_gdma_permission=RW",
-    "MAX_CALIBRATION_SPREAD_PPM 50000u",
+    "policy=THREE_ACTIVE_WINDOWS",
+    "const uint32_t output_rate_hz = rate_min_hz / 4u",
     "ulp_c5vrx_run_cycles",
     "C5VRX_AUTO_AV_CALIBRATION",
     "c5vrx_cvbs_direct_rf_dma_info",
     "run_lp_parked",
-    "usb=POLLED_HEARTBEAT",
-    "C5VRX_DIRECT_ALIVE owner=LP_CORE usb=POLLED",
-    "usb_serial_jtag_ll_read_rxfifo",
-    "usb_serial_jtag_ll_write_txfifo",
+    "usb=PAUSED_UNTIL_SIGNAL_LOSS",
     "esp_task_wdt_delete(idle_task)",
     "esp_task_wdt_add(idle_task)",
     "RF_SCAN_TIMEOUT_US 20000u",
@@ -67,6 +65,9 @@ lp = require(
     "LEAD_TIMEOUT_US  20000u",
     "c5vrx_run_cycles",
     "if (current > previous)",
+    "PARLIO_PREFILL_CYCLES 512u",
+    "REG32(PARLIO_INT_CLR) = PARLIO_TX_FIFO_EMPTY_INT",
+    "REG32(PARLIO_INT_ENA) |= PARLIO_TX_FIFO_EMPTY_INT",
 )
 control = require(
     "main/c5vrx_control.c",
@@ -105,10 +106,16 @@ require(
 require(
     "tools/C5VRX_Flasher.py",
     "C5VRX_HOST_USB_MODE mode=PASSIVE_RX",
+    "C5VRX_HOST_USB_PAUSED",
     "self.autonomous_a1_appliance = True",
     "USB_COMMAND_DEFERRED_DIRECT",
     'fields.get("continuity_uptime_ms", "0")',
     'fields.get("rearm_failures", "0")',
+)
+xiao = require(
+    "tools/C5VRX_XIAO_Flasher.py",
+    "C5VRX_HOST_USB_RECOVERED mode=PASSIVE_RX commands_sent=0",
+    "_schedule_passive_reconnect",
 )
 
 flasher = (ROOT / "tools/C5VRX_Flasher.py").read_text(encoding="utf-8")
@@ -120,6 +127,10 @@ connect_body = flasher.split("    def connect_serial", 1)[1].split(
     "    def ", 1)[0]
 if "send_command(" in connect_body or "_write_serial_bytes(" in connect_body:
     raise SystemExit("autonomous connect handshake must remain passive/RX-only")
+ready_body = xiao.split("    def _parse_device_line", 1)[1].split(
+    "    def ", 1)[0]
+if 'send_command("STATUS")' in ready_body:
+    raise SystemExit("XIAO runtime-ready path must not auto-send STATUS")
 
 if "C5VRX_DIRECT_AV_PROBE_MS" in auto:
     raise SystemExit("autonomous runtime must not contain the old 100-ms probe")

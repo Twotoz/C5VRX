@@ -3,7 +3,6 @@
 #include "c5vrx_auto_av.h"
 
 #include <inttypes.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "sdkconfig.h"
@@ -18,7 +17,6 @@
 #include "esp_timer.h"
 #include "esp_bit_defs.h"
 #include "hal/apm_hal.h"
-#include "hal/usb_serial_jtag_ll.h"
 #include "soc/apm_defs.h"
 #include "ulp_lp_core.h"
 
@@ -40,12 +38,10 @@
 
 #define CALIBRATION_MS      20u
 #define CALIBRATION_WINDOWS 3u
-/* Physical Test4 showed a clean activity discriminator (VTX-off windows had
- * zero words/blocks) but a burst-gated producer: valid VTX-on triplets reached
- * 2.85-4.80% spread despite zero rearm failures.  Three consecutive active
- * windows remain mandatory; allow 5% so the first coherent triplet can enter
- * the lead-buffered direct path without admitting an inactive window. */
-#define MAX_CALIBRATION_SPREAD_PPM 50000u
+/* Physical Test6 showed that VTX-off windows fail the per-window activity
+ * contract while valid VTX-on windows are intentionally burst-gated and can
+ * differ by far more than 5%. Three consecutive bounded windows remain the
+ * discriminator; their spread is telemetry, not a false-negative gate. */
 #define LEAD_WORDS          8192u
 #define MIN_OUTPUT_HZ       4000000u
 #define MAX_OUTPUT_HZ       20000000u
@@ -74,8 +70,6 @@ void c5vrx_auto_av_restore_hp_boot_access(void)
                                 APM_PERM_R | APM_PERM_W);
 }
 static int64_t s_direct_since_us;
-static const DRAM_ATTR uint8_t s_direct_alive[] =
-    "C5VRX_DIRECT_ALIVE owner=LP_CORE usb=POLLED\r\n";
 
 extern const uint8_t c5vrx_lp_av_bin_start[]
     asm("_binary_c5vrx_lp_av_bin_start");
@@ -176,31 +170,6 @@ static inline uint32_t IRAM_ATTR hp_cycle_count(void)
     return value;
 }
 
-/* Flash/cache and the normal USB driver cannot run while the RF writer owns
- * its fixed HP-SRAM window. Keep the native USB endpoint alive directly from
- * this IRAM loop: discard queued host commands so OUT never wedges, and emit
- * a short fixed heartbeat without formatting, allocation, interrupts or
- * cached data. This distinguishes a healthy continuous receiver from a reset
- * while leaving the LP core's RF/rearm timing untouched. */
-static inline void IRAM_ATTR service_direct_usb(uint32_t now,
-                                                uint32_t *last_heartbeat)
-{
-    uint8_t ignored;
-    while (usb_serial_jtag_ll_read_rxfifo(&ignored, 1u) == 1) {}
-
-    const uint32_t heartbeat_cycles =
-        500000u * (uint32_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
-    if ((uint32_t)(now - *last_heartbeat) < heartbeat_cycles) return;
-    if (!usb_serial_jtag_ll_txfifo_writable()) return;
-
-    const int sent = usb_serial_jtag_ll_write_txfifo(
-        s_direct_alive, sizeof(s_direct_alive) - 1u);
-    if (sent > 0) {
-        usb_serial_jtag_ll_txfifo_flush();
-        *last_heartbeat = now;
-    }
-}
-
 /* HP SRAM is lent to the RF writer while an LP command is active.  No HP
  * interrupt, scheduler or USB path may run inside that interval.  The LP core
  * restores ownership before publishing a terminal state, then HP may safely
@@ -209,7 +178,6 @@ static bool IRAM_ATTR run_lp_parked(uint32_t command, uint32_t timeout_us)
 {
     const uint32_t previous_runs = ulp_c5vrx_runs;
     const uint32_t started_at = hp_cycle_count();
-    uint32_t last_heartbeat = started_at;
     const uint32_t timeout_cycles = timeout_us *
         (uint32_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
     bool saw_running = false;
@@ -219,9 +187,6 @@ static bool IRAM_ATTR run_lp_parked(uint32_t command, uint32_t timeout_us)
     ulp_c5vrx_command = command;
     for (;;) {
         const uint32_t state = ulp_c5vrx_state;
-        if (command == LP_COMMAND_CONTINUOUS) {
-            service_direct_usb(hp_cycle_count(), &last_heartbeat);
-        }
         if (ulp_c5vrx_runs != previous_runs) {
             if (state == LP_STATE_RUNNING) saw_running = true;
             if (state == LP_STATE_DONE || state == LP_STATE_NO_ACTIVITY ||
@@ -333,18 +298,16 @@ static void auto_av_task(void *arg)
         const uint32_t rate_spread_ppm = source_rate_hz ?
             (uint32_t)(((uint64_t)(rate_max_hz - rate_min_hz) * 1000000u) /
                        source_rate_hz) : UINT32_MAX;
-        if (rate_spread_ppm > MAX_CALIBRATION_SPREAD_PPM) {
-            ESP_LOGW(TAG,
-                     "A1 cadence rejected: samples=%u,%u,%u median=%u spread_ppm=%u limit_ppm=%u",
-                     (unsigned)rates[0], (unsigned)rates[1],
-                     (unsigned)rates[2], (unsigned)source_rate_hz,
-                     (unsigned)rate_spread_ppm,
-                     (unsigned)MAX_CALIBRATION_SPREAD_PPM);
-            restore_fallback(false);
-            vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
-            continue;
-        }
-        const uint32_t output_rate_hz = (source_rate_hz + 2u) / 4u;
+        ESP_LOGI(TAG,
+                 "C5VRX_AUTO_AV_CADENCE accepted=1 samples=%u,%u,%u median=%u minimum=%u spread_ppm=%u policy=THREE_ACTIVE_WINDOWS",
+                 (unsigned)rates[0], (unsigned)rates[1],
+                 (unsigned)rates[2], (unsigned)source_rate_hz,
+                 (unsigned)rate_min_hz, (unsigned)rate_spread_ppm);
+        /* Never clock the four-to-one consumer faster than the slowest
+         * observed active window. This preserves the half-ring lead instead
+         * of selecting a median rate already faster than one producer
+         * window. */
+        const uint32_t output_rate_hz = rate_min_hz / 4u;
         err = c5vrx_cvbs_direct_rf_prepare(output_rate_hz);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "A1 direct AV prepare failed: %s", esp_err_to_name(err));
@@ -370,10 +333,11 @@ static void auto_av_task(void *arg)
         ulp_c5vrx_enable_parlio = 1u;
         ulp_c5vrx_gdma_channel = gdma_channel;
         ulp_c5vrx_gdma_descriptor_base = descriptor_base;
-        /* C5 PARLIO has an integer PLL divider. Mirror the driver's nearest
-         * divider and monitor the resulting producer/consumer phase drift.
-         * The LP clock is the precise 48-MHz XTAL for this calculation. */
-        uint32_t divider = (240000000u + output_rate_hz / 2u) /
+        /* C5 PARLIO has an integer PLL divider. Round the divider upward so
+         * the realized consumer clock never exceeds the slowest measured
+         * producer window. The LP clock is the precise 48-MHz XTAL used by
+         * the phase telemetry. */
+        uint32_t divider = (240000000u + output_rate_hz - 1u) /
             output_rate_hz;
         if (divider == 0u) divider = 1u;
         const uint32_t actual_output_rate_hz = 240000000u / divider;
@@ -383,11 +347,7 @@ static void auto_av_task(void *arg)
         set_status(C5VRX_AUTO_AV_DIRECT_A1, true,
                    source_rate_hz, actual_output_rate_hz);
         ESP_LOGI(TAG,
-                 "C5VRX_AUTO_AV_HP_PARK state=ENTER channel=A1 mhz=5865 usb=POLLED_HEARTBEAT owner=LP_CORE duration=UNBOUNDED heartbeat_ms=500");
-        /* Drain the normal logger before the IRAM-only heartbeat starts
-         * writing the same native-USB FIFO directly.  Without this boundary
-         * the first heartbeat can splice into the ENTER line on Windows. */
-        fflush(stdout);
+                 "C5VRX_AUTO_AV_HP_PARK state=ENTER channel=A1 mhz=5865 usb=PAUSED_UNTIL_SIGNAL_LOSS owner=LP_CORE duration=UNBOUNDED");
         /* The scheduler is deliberately parked, so IDLE cannot feed its task
          * watchdog subscription. Remove only that subscription; LP activity
          * timeout remains the RF safety watchdog and restores ownership on
@@ -446,12 +406,13 @@ esp_err_t c5vrx_auto_av_start(void)
      *   MODEM     0x600a9004/08  RF writer control and pointer
      *   SYSTEM    0x60095004     HP-SRAM bank ownership
      *   PCR       0x600960b4     PARLIO peripheral clock gate
-     * PARLIO data itself is consumed by its HP DMA and is not touched by LP.
+     *   PARL_IO   0x60015028/34  deferred FIFO-empty IRQ arm/clear
      */
     const uint64_t lp_hp_rw_peripherals =
         BIT64(APM_TEE_HP_PERIPH_MODEM) |
          BIT64(APM_TEE_HP_PERIPH_SYSTEM_REG) |
-         BIT64(APM_TEE_HP_PERIPH_PCR_REG);
+         BIT64(APM_TEE_HP_PERIPH_PCR_REG) |
+         BIT64(APM_TEE_HP_PERIPH_PARL_IO);
     /* Keep HP in TEE (normal ESP-IDF machine-mode execution) and put LP in a
      * distinct security domain.  Peripheral permissions are selected by
      * security mode, not by master ID: assigning LP to TEE and making GDMA
@@ -464,7 +425,7 @@ esp_err_t c5vrx_auto_av_start(void)
                                 BIT64(APM_TEE_HP_PERIPH_GDMA),
                                 APM_SEC_MODE_REE0, APM_PERM_R);
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=REE0 peripherals=MODEM,SYSTEM_REG,PCR permissions=RW gdma_permission=R hp_mode=TEE hp_gdma_permission=RW sram_handoff=LP_CORE hp_policy=PARKED");
+             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=REE0 peripherals=MODEM,SYSTEM_REG,PCR,PARL_IO permissions=RW gdma_permission=R hp_mode=TEE hp_gdma_permission=RW sram_handoff=LP_CORE hp_policy=PARKED");
 
     if (xTaskCreate(auto_av_task, "c5vrx_auto_a1", 4096, NULL, 19, NULL) !=
         pdPASS) return ESP_ERR_NO_MEM;

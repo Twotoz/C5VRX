@@ -49,7 +49,7 @@ from c5vrx_usb_protocol import (
 )
 
 APP_TITLE = "C5VRX Receiver Console"
-APP_BUILD = "goggle-a1-37-passive-usb"
+APP_BUILD = "goggle-a1-38-deferred-underrun-irq"
 C5_RX_MAX_MHZ = 5885
 VIDEO_LINE_RATES_HZ = {
     "PAL": 15_625.0,
@@ -854,7 +854,13 @@ class C5VRXApp(tk.Tk):
         except Exception as exc:
             if not self.serial_stop.is_set():
                 self.session.record_error("SERIAL_READER", str(exc))
-                self.sink.write(f"\nSerial reader stopped: {exc}\n")
+                if self.autonomous_a1_appliance:
+                    self.sink.write(
+                        "\nC5VRX_HOST_USB_PAUSED "
+                        "reason=HP_CORE_PARK_OR_NATIVE_USB_TRANSITION "
+                        f"recovery=AUTOMATIC_PASSIVE error={exc}\n")
+                else:
+                    self.sink.write(f"\nSerial reader stopped: {exc}\n")
                 self.after(0, self._serial_lost)
 
     def _serial_lost(self) -> None:

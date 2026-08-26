@@ -21,12 +21,16 @@
 #define DUMP_PTR_MODE   0x600a9008u
 #define HP_SRAM_USAGE   0x60095004u
 #define PARLIO_TX_CLOCK 0x600960b4u
+#define PARLIO_INT_ENA  0x60015028u
+#define PARLIO_INT_CLR  0x60015034u
 #define AHB_DMA_BASE    0x60080000u
 
 #define CTRL_ENABLE     0x80000000u
 #define CTRL_SW_TRIGGER 0x00080000u
 #define CTRL_DONE       0x00040000u
 #define PARLIO_CLK_EN   0x00040000u
+#define PARLIO_TX_FIFO_EMPTY_INT 0x00000001u
+#define PARLIO_PREFILL_CYCLES 512u
 #define POINTER_MASK    0x00003fffu
 #define BURST_WORDS     16384u
 #define GDMA_DESC_BYTES 12u
@@ -320,6 +324,18 @@ static void run_writer(uint32_t command)
         c5vrx_stage = 15u; /* about to touch PCR clock gate */
         REG32(PARLIO_TX_CLOCK) |= PARLIO_CLK_EN;
         io_fence();
+        /* Enabling the clock with an initially empty hardware FIFO latches a
+         * rempty event before GDMA/BitScrambler can deliver their first item.
+         * Keep the interrupt masked across that deterministic prefill, then
+         * clear only the startup latch and arm detection for real runtime
+         * starvation. 512 LP cycles is ~10.7 us, far below the 8192-word RF
+         * lead and long compared with the DMA/FIFO startup latency. */
+        const uint32_t prefill_started = cycle_count();
+        while ((uint32_t)(cycle_count() - prefill_started) <
+                PARLIO_PREFILL_CYCLES) {}
+        REG32(PARLIO_INT_CLR) = PARLIO_TX_FIFO_EMPTY_INT;
+        REG32(PARLIO_INT_ENA) |= PARLIO_TX_FIFO_EMPTY_INT;
+        io_fence();
     }
     c5vrx_stage = 16u; /* all HP peripheral accesses succeeded */
     c5vrx_state = STATE_RUNNING;
@@ -417,7 +433,10 @@ stop:
     c5vrx_stage = 20u;
     if (run_start != 0u) c5vrx_run_cycles = cycle_count() - run_start;
     if (enable_parlio) {
+        REG32(PARLIO_INT_ENA) &= ~PARLIO_TX_FIFO_EMPTY_INT;
         REG32(PARLIO_TX_CLOCK) &= ~PARLIO_CLK_EN;
+        REG32(PARLIO_INT_CLR) = PARLIO_TX_FIFO_EMPTY_INT;
+        io_fence();
     }
     c5vrx_final_control = REG32(DUMP_CTRL);
     REG32(DUMP_CTRL) &= ~CTRL_ENABLE;
