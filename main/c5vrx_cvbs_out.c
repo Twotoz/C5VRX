@@ -118,6 +118,7 @@ static uint8_t *s_chunk[2];
 static parlio_tx_unit_handle_t s_tx;
 static parlio_tx_unit_handle_t s_direct_tx;
 static bitscrambler_handle_t s_direct_bs;
+static portMUX_TYPE s_direct_start_mux = portMUX_INITIALIZER_UNLOCKED;
 static c5vrx_cvbs_stream_state_t s_stream;
 static uint16_t s_next_half_line;
 static uint32_t s_frame_counter;
@@ -1129,13 +1130,21 @@ esp_err_t c5vrx_cvbs_direct_rf_prepare(uint32_t output_clock_hz)
         .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
     };
     err = parlio_new_tx_unit(&cfg, &s_direct_tx);
-    if (err == ESP_OK) err = parlio_tx_unit_enable(s_direct_tx);
     if (err == ESP_OK) {
-        /* Pause the consumer before queueing its looping transaction.  Doing
-         * this only after transmit() left a short scheduling window in which
-         * an empty BitScrambler input could raise FIFO-empty before the LP
-         * producer had acquired its measured half-block lead. */
-        parlio_ll_tx_enable_clock(&PARL_IO, false);
+        /* unit_enable() enables both the source clock and FIFO-empty IRQ.
+         * Keep that unavoidable driver transition inside one critical
+         * section, then quiesce and acknowledge it before an ISR can mistake
+         * the deliberately empty pre-roll FIFO for a runtime underrun. */
+        portENTER_CRITICAL(&s_direct_start_mux);
+        err = parlio_tx_unit_enable(s_direct_tx);
+        if (err == ESP_OK) {
+            parlio_ll_enable_interrupt(
+                &PARL_IO, PARLIO_LL_EVENT_TX_FIFO_EMPTY, false);
+            parlio_ll_tx_enable_clock(&PARL_IO, false);
+            parlio_ll_clear_interrupt_status(
+                &PARL_IO, PARLIO_LL_EVENT_TX_FIFO_EMPTY);
+        }
+        portEXIT_CRITICAL(&s_direct_start_mux);
     }
     if (err == ESP_OK) {
         const parlio_transmit_config_t transmit = {
@@ -1143,11 +1152,22 @@ esp_err_t c5vrx_cvbs_direct_rf_prepare(uint32_t output_clock_hz)
             .bitscrambler_program = NULL,
             .flags.loop_transmission = true,
         };
+        /* transmit() starts the clock before returning. Keep FIFO-empty
+         * masked until the clock has been paused again. The LP core later
+         * enables the clock only after acquiring its half-ring producer lead;
+         * re-enable the IRQ here so a real runtime underrun remains visible. */
+        portENTER_CRITICAL(&s_direct_start_mux);
         err = parlio_tx_unit_transmit(
             s_direct_tx,
             (const void *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR,
             C5VRX_ADC_DUMP_MAX_SAMPLES * sizeof(uint32_t) * 8u,
             &transmit);
+        parlio_ll_tx_enable_clock(&PARL_IO, false);
+        parlio_ll_clear_interrupt_status(
+            &PARL_IO, PARLIO_LL_EVENT_TX_FIFO_EMPTY);
+        parlio_ll_enable_interrupt(
+            &PARL_IO, PARLIO_LL_EVENT_TX_FIFO_EMPTY, true);
+        portEXIT_CRITICAL(&s_direct_start_mux);
     }
     if (err != ESP_OK) goto fail;
 
