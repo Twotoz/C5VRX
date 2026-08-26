@@ -235,6 +235,7 @@ class C5VRXApp(tk.Tk):
         )
         self.profile_mismatch_warned = False
         self.av_poll_generation = 0
+        self.direct_rf_active = False
         self.title(f"{APP_TITLE} — {self.firmware_profile['display_name']}")
         self.geometry("860x650")
         self.minsize(760, 580)
@@ -732,6 +733,7 @@ class C5VRXApp(tk.Tk):
 
         self.disconnect_serial()
         self.profile_mismatch_warned = False
+        self.direct_rf_active = False
         # Capabilities belong to the newly connected firmware.  Do not carry
         # Phase8 support over when the user reconnects an older build.
         self.device_phase8_supported = False
@@ -787,6 +789,7 @@ class C5VRXApp(tk.Tk):
 
     def disconnect_serial(self) -> None:
         self.av_poll_generation += 1
+        self.direct_rf_active = False
         self.serial_stop.set()
         self.live_iq_active = False
         self.experimental_live_pending = False
@@ -853,6 +856,17 @@ class C5VRXApp(tk.Tk):
         self.disconnect_serial()
 
     def _parse_device_line(self, line: str) -> None:
+        if line.startswith("C5VRX_DIRECT_ALIVE"):
+            self.direct_rf_active = True
+            self.after(
+                0, self.preview_status_var.set,
+                "A1 direct AV locked: continuous LP-core IQ capture; "
+                "polled USB heartbeat alive")
+            return
+        if line.startswith("I (") and "C5VRX_AUTO_AV_HP_PARK state=ENTER" in line:
+            self.direct_rf_active = True
+        elif line.startswith("W (") and "C5VRX_AUTO_AV_HP_PARK state=EXIT" in line:
+            self.direct_rf_active = False
         if line.startswith("C5VRX_AV_STATUS"):
             self.after(0, self._apply_av_status_line, line)
         if line.startswith("C5VRX_AUTO_AV_STATUS"):
@@ -1090,13 +1104,18 @@ class C5VRXApp(tk.Tk):
         ser = self.ser
         if not ser or not ser.is_open:
             return
-        if (not self.live_iq_active and not self.iq_capture_active and
+        if (not self.direct_rf_active and
+                not self.live_iq_active and not self.iq_capture_active and
                 not self.usb_transport_stalled):
             self.send_command("AV STATUS", quiet=True)
             # Read-only appliance telemetry.  This never captures IQ over USB,
             # retunes RF, or stops the LP-core writer; every response is also
             # persisted in the session log for minute/hour soak analysis.
             self.send_command("AUTO AV STATUS", quiet=True)
+        elif self.direct_rf_active:
+            self.av_health_var.set(
+                "A1 direct AV locked; USB heartbeat only while LP-core owns RF")
+            self.av_health_label.configure(fg="#167323")
         elif self.live_iq_active:
             self.av_health_var.set(
                 "AV DMA: local GPIO27 heartbeat active; USB polling paused "

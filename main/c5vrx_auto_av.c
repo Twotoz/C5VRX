@@ -13,9 +13,11 @@
 #include "freertos/task.h"
 #include "esp_attr.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "esp_bit_defs.h"
 #include "hal/apm_hal.h"
+#include "hal/usb_serial_jtag_ll.h"
 #include "soc/apm_defs.h"
 #include "ulp_lp_core.h"
 
@@ -49,6 +51,8 @@ static portMUX_TYPE s_rf_park_mux = portMUX_INITIALIZER_UNLOCKED;
 static c5vrx_auto_av_status_t s_status;
 static bool s_started;
 static int64_t s_direct_since_us;
+static const DRAM_ATTR uint8_t s_direct_alive[] =
+    "C5VRX_DIRECT_ALIVE owner=LP_CORE usb=POLLED\r\n";
 
 extern const uint8_t c5vrx_lp_av_bin_start[]
     asm("_binary_c5vrx_lp_av_bin_start");
@@ -140,6 +144,31 @@ static inline uint32_t IRAM_ATTR hp_cycle_count(void)
     return value;
 }
 
+/* Flash/cache and the normal USB driver cannot run while the RF writer owns
+ * its fixed HP-SRAM window. Keep the native USB endpoint alive directly from
+ * this IRAM loop: discard queued host commands so OUT never wedges, and emit
+ * a short fixed heartbeat without formatting, allocation, interrupts or
+ * cached data. This distinguishes a healthy continuous receiver from a reset
+ * while leaving the LP core's RF/rearm timing untouched. */
+static inline void IRAM_ATTR service_direct_usb(uint32_t now,
+                                                uint32_t *last_heartbeat)
+{
+    uint8_t ignored;
+    while (usb_serial_jtag_ll_read_rxfifo(&ignored, 1u) == 1) {}
+
+    const uint32_t heartbeat_cycles =
+        500000u * (uint32_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+    if ((uint32_t)(now - *last_heartbeat) < heartbeat_cycles) return;
+    if (!usb_serial_jtag_ll_txfifo_writable()) return;
+
+    const int sent = usb_serial_jtag_ll_write_txfifo(
+        s_direct_alive, sizeof(s_direct_alive) - 1u);
+    if (sent > 0) {
+        usb_serial_jtag_ll_txfifo_flush();
+        *last_heartbeat = now;
+    }
+}
+
 /* HP SRAM is lent to the RF writer while an LP command is active.  No HP
  * interrupt, scheduler or USB path may run inside that interval.  The LP core
  * restores ownership before publishing a terminal state, then HP may safely
@@ -148,6 +177,7 @@ static bool IRAM_ATTR run_lp_parked(uint32_t command, uint32_t timeout_us)
 {
     const uint32_t previous_runs = ulp_c5vrx_runs;
     const uint32_t started_at = hp_cycle_count();
+    uint32_t last_heartbeat = started_at;
     const uint32_t timeout_cycles = timeout_us *
         (uint32_t)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
     bool saw_running = false;
@@ -157,6 +187,9 @@ static bool IRAM_ATTR run_lp_parked(uint32_t command, uint32_t timeout_us)
     ulp_c5vrx_command = command;
     for (;;) {
         const uint32_t state = ulp_c5vrx_state;
+        if (command == LP_COMMAND_CONTINUOUS) {
+            service_direct_usb(hp_cycle_count(), &last_heartbeat);
+        }
         if (ulp_c5vrx_runs != previous_runs) {
             if (state == LP_STATE_RUNNING) saw_running = true;
             if (state == LP_STATE_DONE || state == LP_STATE_NO_ACTIVITY ||
@@ -274,8 +307,19 @@ static void auto_av_task(void *arg)
         set_status(C5VRX_AUTO_AV_DIRECT_A1, true,
                    source_rate_hz, actual_output_rate_hz);
         ESP_LOGI(TAG,
-                 "C5VRX_AUTO_AV_HP_PARK state=ENTER channel=A1 mhz=5865 usb=PAUSED_UNTIL_SIGNAL_LOSS owner=LP_CORE duration=UNBOUNDED");
+                 "C5VRX_AUTO_AV_HP_PARK state=ENTER channel=A1 mhz=5865 usb=POLLED_HEARTBEAT owner=LP_CORE duration=UNBOUNDED heartbeat_ms=500");
+        /* The scheduler is deliberately parked, so IDLE cannot feed its task
+         * watchdog subscription. Remove only that subscription; LP activity
+         * timeout remains the RF safety watchdog and restores ownership on
+         * signal loss. Re-add IDLE immediately after normal HP operation
+         * resumes. */
+        TaskHandle_t idle_task = xTaskGetIdleTaskHandleForCore(0);
+        const esp_err_t idle_wdt_remove = idle_task ?
+            esp_task_wdt_delete(idle_task) : ESP_ERR_NOT_FOUND;
         const bool ran_direct = run_lp_parked(LP_COMMAND_CONTINUOUS, 0u);
+        const esp_err_t idle_wdt_restore =
+            idle_wdt_remove == ESP_OK ? esp_task_wdt_add(idle_task) :
+            idle_wdt_remove;
 
         if (!ran_direct) {
             restore_fallback(true);
@@ -284,9 +328,10 @@ static void auto_av_task(void *arg)
         }
 
         ESP_LOGW(TAG,
-                 "C5VRX_AUTO_AV_HP_PARK state=EXIT reason=SIGNAL_LOST lp_state=%" PRIu32 " bursts=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32,
+                 "C5VRX_AUTO_AV_HP_PARK state=EXIT reason=SIGNAL_LOST lp_state=%" PRIu32 " bursts=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32 " idle_wdt_remove=%d idle_wdt_restore=%d",
                  ulp_c5vrx_state, ulp_c5vrx_bursts_completed,
-                 ulp_c5vrx_rearms_succeeded, ulp_c5vrx_rearm_failures);
+                 ulp_c5vrx_rearms_succeeded, ulp_c5vrx_rearm_failures,
+                 (int)idle_wdt_remove, (int)idle_wdt_restore);
         restore_fallback(true);
         vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
     }

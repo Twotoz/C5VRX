@@ -29,7 +29,12 @@ auto = require(
     "APM_TEE_HP_PERIPH_SYSTEM_REG",
     "APM_TEE_HP_PERIPH_PCR_REG",
     "run_lp_parked",
-    "usb=PAUSED_UNTIL_SIGNAL_LOSS",
+    "usb=POLLED_HEARTBEAT",
+    "C5VRX_DIRECT_ALIVE owner=LP_CORE usb=POLLED",
+    "usb_serial_jtag_ll_read_rxfifo",
+    "usb_serial_jtag_ll_write_txfifo",
+    "esp_task_wdt_delete(idle_task)",
+    "esp_task_wdt_add(idle_task)",
     "RF_SCAN_TIMEOUT_US 20000u",
     "session=HELD",
 )
