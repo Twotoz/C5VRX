@@ -1,8 +1,40 @@
 # ESP32-C5 native RF/IQ ring probe
 
-Status: **IMPLEMENTED / PHYSICAL RESULT PENDING**. This probe is not integrated
-into the AV dataplane and is not called true continuous capture. The PR21
-LP-rearmed producer remains the fallback/reference implementation.
+Status: **POINTER RING PROVEN / IQ AND AV PHYSICAL RESULT PENDING**. The C5
+physically demonstrated a single-enable, zero-trigger, zero-rearm circular
+pointer lifecycle. This is not yet called true continuous IQ capture: the
+first RAM-generation check did not prove that fixed locations were refreshed.
+The PR21 LP-rearmed producer remains the fallback/reference implementation.
+
+## First physical result: 80 M pointer steps/s
+
+Repeated 500 ms runs on ESP32-C5 revision 1.0 produced approximately
+40,000,000 absolute pointer steps and 2,441 strict high-to-low wraps:
+
+```text
+observations=202871 pointer_changes=202871 wraps=2441
+min_ptr=0 max_ptr=16383 absolute_writer_samples=39999930
+enable_assertions=1 enable_low=0 mode_low=0
+software_rearms=0 software_triggers=0 terminal_done=0
+writer_stopped_after_done=0 start_ctrl=80024000 final_ctrl=80024000
+```
+
+That is 79,999,860 pointer positions per second, within rounding of 80 MHz.
+It proves that bit 17 changes the C5 from the finite `DONE` lifecycle into a
+self-wrapping address-generator lifecycle. It is materially different from
+PR18/PR21, whose effective rate included every 16,384-word terminal/rearm gap.
+
+It does **not** yet prove 80 million fresh IQ words per second. The original
+`content_changes` metric compared different addresses and was therefore not a
+generation test. More importantly, the one fixed address sampled on each wrap
+reported zero changes. The result can still be either a live writer that is
+not visible through the LP SRAM view or an address generator traversing stale
+RAM. The classification correctly remained `NATIVE_RING_REJECTED`.
+
+The probe now hashes a fixed set of locations once per observed generation and
+reports `fixed_epoch_observations`, `fixed_epoch_changes`,
+`pointer_ring_pass`, and `memory_ring_pass` separately. Only the latter may
+establish continuously refreshed memory.
 
 ## Hypothesis and evidence boundary
 
@@ -142,10 +174,43 @@ negative result. Register snapshots and all counters remain in the output so a
 negative result is useful rather than being silently converted to the PR21
 path.
 
+## Experimental AV acceptance route
+
+The dedicated native-ring test profile now contains a deliberately guarded
+hardware-consumer experiment. After three seconds of PAL boot diagnostics it
+connects:
+
+```text
+bit-17 64 KiB pointer-ring hypothesis
+  -> circular AHB-GDMA read
+  -> 4:1 BitScrambler WBFM
+  -> 20 MS/s PARLIO
+  -> resistor DAC / analog output
+```
+
+The 20 MS/s output clock follows from the physically observed 80 M pointer
+steps/s and the existing four-input-word BitScrambler program. The RF enable is
+asserted once; the native path contains no software trigger and no rearm. The
+LP core acquires an 8,192-word lead, starts PARLIO, observes the GDMA consumer,
+and owns failure shutdown. The HP core remains parked because the RF engine
+owns the SRAM window, so USB is boot diagnostics only after the handoff.
+
+This route is an acceptance experiment, not a declaration that continuous IQ
+already works. Its startup line therefore reports `pointer_rate_hz=80000000`
+and `iq_freshness=PHYSICAL_AV_PENDING`. Usable RF-dependent analog video, fixed
+generation changes, and boundary phase continuity are still required before a
+production `c5vrx_iq_stream` backend replaces PR21's stitched fallback.
+
+REGDMA is intentionally not used. On ESP32-C5 it is the power-management
+register backup/restore mechanism (including modem/PHY retention), not a bulk
+80 MS/s SRAM transport. The relevant dataplane engine is the existing circular
+AHB-GDMA consumer.
+
 ## Integration gate
 
-There is deliberately no native-ring `c5vrx_iq_stream` backend or AV switch in
-this experimental PR yet. If physical hardware emits `NATIVE_RING_PROVEN`, the
+There is deliberately no production native-ring `c5vrx_iq_stream` backend yet.
+The AV switch is restricted to the dedicated experimental acceptance profile.
+If physical hardware emits `NATIVE_RING_PROVEN`, the
 next change may place it behind a producer-neutral `c5vrx_iq_stream` interface
 and feed the existing circular GDMA → BitScrambler WBFM → PARLIO path. If it is
 rejected, PR21’s stitched 16,384-word LP-rearm architecture remains active and
@@ -158,4 +223,3 @@ wrapper with the historical fifth argument set to zero. Because C5 ignores
 that argument, and because the test did not explicitly assert bit 17 while
 withholding the software trigger, it tested the finite/post-trigger lifecycle.
 Its negative result does not rule out this bit-17 pre-trigger hypothesis.
-

@@ -40,6 +40,9 @@ typedef struct {
     uint32_t content_observations;
     uint32_t content_changes;
     uint32_t wrap_content_changes;
+    uint32_t fixed_epoch_observations;
+    uint32_t fixed_epoch_changes;
+    uint32_t fixed_epoch_signature;
     uint32_t iq_power_mean;
     uint32_t content_signature;
     uint32_t phase_boundary_observations;
@@ -50,7 +53,10 @@ typedef struct {
     uint32_t fault_reason;
     bool engine_enabled_throughout;
     bool writer_stopped_after_done;
+    bool pointer_ring_pass;
+    bool memory_ring_pass;
     bool structural_pass;
+    bool sequence_valid;
     bool rf_distinguishable;
     bool phase_continuous;
     c5vrx_native_ring_classification_t classification;
@@ -58,6 +64,8 @@ typedef struct {
 
 esp_err_t c5vrx_native_ring_init(void);
 bool c5vrx_native_ring_available(void);
+esp_err_t c5vrx_native_ring_av_start(void);
+bool c5vrx_native_ring_av_running(void);
 esp_err_t c5vrx_native_ring_probe(c5vrx_native_ring_condition_t condition,
                                   uint32_t duration_ms,
                                   c5vrx_native_ring_stats_t *stats);

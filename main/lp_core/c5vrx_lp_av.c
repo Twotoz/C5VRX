@@ -119,6 +119,9 @@ volatile uint32_t c5vrx_native_ambiguous_backwards;
 volatile uint32_t c5vrx_native_content_observations;
 volatile uint32_t c5vrx_native_content_changes;
 volatile uint32_t c5vrx_native_wrap_content_changes;
+volatile uint32_t c5vrx_native_fixed_epoch_observations;
+volatile uint32_t c5vrx_native_fixed_epoch_changes;
+volatile uint32_t c5vrx_native_fixed_epoch_signature;
 volatile uint32_t c5vrx_native_iq_power_sum_low;
 volatile uint32_t c5vrx_native_iq_power_sum_high;
 volatile uint32_t c5vrx_native_content_signature;
@@ -205,6 +208,7 @@ static void clear_stats(void)
 }
 
 static inline uint32_t pointer(void);
+static inline bool observe_consumer(uint32_t writer);
 
 #if CONFIG_C5VRX_EXPERIMENTAL_NATIVE_RING_PROBE
 static void clear_native_stats(void)
@@ -227,6 +231,9 @@ static void clear_native_stats(void)
     c5vrx_native_content_observations = 0u;
     c5vrx_native_content_changes = 0u;
     c5vrx_native_wrap_content_changes = 0u;
+    c5vrx_native_fixed_epoch_observations = 0u;
+    c5vrx_native_fixed_epoch_changes = 0u;
+    c5vrx_native_fixed_epoch_signature = 2166136261u;
     c5vrx_native_iq_power_sum_low = 0u;
     c5vrx_native_iq_power_sum_high = 0u;
     c5vrx_native_content_signature = 2166136261u;
@@ -307,22 +314,40 @@ static void observe_phase_boundary(void)
         c5vrx_native_phase_residual_abs_max = (uint32_t)residual;
 }
 
+/* Hash fixed locations that are safely behind the writer when a high-to-low
+ * pointer transition is observed. Comparing a changing address with a prior
+ * observation only proves that different RAM locations contain different
+ * values; comparing this same fixed set once per physical revolution proves
+ * (or disproves) that the ring contents are actually being refreshed. */
+static uint32_t fixed_epoch_signature(void)
+{
+    volatile const uint32_t *const ram =
+        (volatile const uint32_t *)(uintptr_t)0x40830000u;
+    uint32_t signature = 2166136261u;
+    for (uint32_t index = 4096u; index < BURST_WORDS; index += 1024u)
+        signature = (signature ^ ram[index]) * 16777619u;
+    return signature;
+}
+
 /* Guarded hardware-circular hypothesis. There are deliberately no calls to
  * trigger_writer() and no writes of CTRL_SW_TRIGGER after entry. ENABLE is
  * asserted once and the observer only reads control, pointer and sparse RAM. */
 static void run_native_ring(void)
 {
+    const bool enable_parlio = c5vrx_enable_parlio != 0u;
+    const bool unbounded = c5vrx_duration_us == 0u;
     const uint32_t duration_cycles = cycles_for_us(c5vrx_duration_us);
     volatile const uint32_t *const ram =
         (volatile const uint32_t *)(uintptr_t)0x40830000u;
     uint32_t prior_word = 0u;
-    uint32_t prior_wrap_word = 0u;
+    uint32_t prior_epoch_signature = 0u;
     bool have_word = false;
-    bool have_wrap_word = false;
+    bool have_epoch_signature = false;
     bool done_seen = false;
     uint32_t last_change_at;
 
     clear_native_stats();
+    clear_stats();
     c5vrx_stage = 30u;
     c5vrx_state = STATE_ARMING;
     c5vrx_runs++;
@@ -342,9 +367,47 @@ static void run_native_ring(void)
     c5vrx_native_max_pointer = previous;
     const uint32_t started = cycle_count();
     last_change_at = started;
+
+    if (enable_parlio) {
+        uint32_t startup_advance = 0u;
+        const uint32_t lead_started = cycle_count();
+        while (startup_advance < c5vrx_lead_words) {
+            const uint32_t current = pointer();
+            if (current != previous) {
+                if (current > previous) {
+                    startup_advance += current - previous;
+                } else if (previous >= 0x3000u && current <= 0x0fffu) {
+                    startup_advance += (BURST_WORDS - previous) + current;
+                }
+                previous = current;
+                last_change_at = cycle_count();
+            }
+            control = REG32(DUMP_CTRL);
+            if ((control & (CTRL_ENABLE | CTRL_RING_MODE)) !=
+                    (CTRL_ENABLE | CTRL_RING_MODE) ||
+                (control & CTRL_DONE) != 0u ||
+                (uint32_t)(cycle_count() - lead_started) >=
+                    cycles_for_us(LEAD_TIMEOUT_US)) {
+                c5vrx_native_fault_reason = 11u;
+                goto stop_native;
+            }
+        }
+        c5vrx_lead_acquired = 1u;
+        c5vrx_stage = 32u;
+        REG32(PARLIO_TX_CLOCK) |= PARLIO_CLK_EN;
+        io_fence();
+        const uint32_t prefill_started = cycle_count();
+        while ((uint32_t)(cycle_count() - prefill_started) <
+                PARLIO_PREFILL_CYCLES) {}
+        REG32(PARLIO_INT_CLR) = PARLIO_TX_FIFO_EMPTY_INT;
+        REG32(PARLIO_INT_ENA) |= PARLIO_TX_FIFO_EMPTY_INT;
+        io_fence();
+        c5vrx_stage = 33u;
+    }
     c5vrx_state = STATE_RUNNING;
 
-    while ((uint32_t)(cycle_count() - started) < duration_cycles) {
+    while (unbounded ||
+           (uint32_t)(cycle_count() - started) < duration_cycles) {
         control = REG32(DUMP_CTRL);
         const uint32_t current = pointer();
         c5vrx_native_observations++;
@@ -379,17 +442,24 @@ static void run_native_ring(void)
                         }
                     }
                     observe_phase_boundary();
-                    const uint32_t wrap_word = ram[8192u];
-                    if (have_wrap_word && wrap_word != prior_wrap_word)
+                    const uint32_t epoch_signature = fixed_epoch_signature();
+                    c5vrx_native_fixed_epoch_observations++;
+                    if (have_epoch_signature &&
+                        epoch_signature != prior_epoch_signature) {
+                        c5vrx_native_fixed_epoch_changes++;
                         c5vrx_native_wrap_content_changes++;
-                    prior_wrap_word = wrap_word;
-                    have_wrap_word = true;
+                    }
+                    prior_epoch_signature = epoch_signature;
+                    c5vrx_native_fixed_epoch_signature = epoch_signature;
+                    have_epoch_signature = true;
                 } else {
                     c5vrx_native_ambiguous_backwards++;
                 }
             }
             previous = current;
         }
+        c5vrx_last_pointer = current;
+        if (enable_parlio) (void)observe_consumer(current);
 
         /* Sparse content sampling avoids a CPU-copy ring. It is telemetry
          * only: one safe lagged word per 64 pointer observations. */
@@ -413,9 +483,22 @@ static void run_native_ring(void)
             c5vrx_native_writer_stopped_after_done = 1u;
             break;
         }
+        if (unbounded && c5vrx_command == COMMAND_STOP) break;
+        if (unbounded &&
+            (uint32_t)(cycle_count() - last_change_at) >=
+                cycles_for_us(ACTIVITY_TIMEOUT_US)) {
+            c5vrx_native_fault_reason = 12u;
+            break;
+        }
     }
 
 stop_native:
+    if (enable_parlio) {
+        REG32(PARLIO_INT_ENA) &= ~PARLIO_TX_FIFO_EMPTY_INT;
+        REG32(PARLIO_TX_CLOCK) &= ~PARLIO_CLK_EN;
+        REG32(PARLIO_INT_CLR) = PARLIO_TX_FIFO_EMPTY_INT;
+        io_fence();
+    }
     c5vrx_native_last_pointer = previous;
     c5vrx_native_final_control = REG32(DUMP_CTRL);
     if (c5vrx_native_fault_reason != 0u) {}
@@ -431,6 +514,9 @@ stop_native:
         c5vrx_native_fault_reason = 7u;
     else if (c5vrx_native_writer_stopped_after_done != 0u)
         c5vrx_native_fault_reason = 8u;
+    else if (c5vrx_native_fixed_epoch_observations >= 4u &&
+             c5vrx_native_fixed_epoch_changes < 2u)
+        c5vrx_native_fault_reason = 10u;
 
     REG32(DUMP_CTRL) &= ~CTRL_ENABLE;
     io_fence();

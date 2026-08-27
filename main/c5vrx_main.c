@@ -251,7 +251,20 @@ void app_main(void)
         const esp_err_t native_ring_err = c5vrx_native_ring_init();
         if (native_ring_err == ESP_OK) {
             ESP_LOGI(TAG,
-                     "C5VRX_BOOT stage=NATIVE_RING_PROBE_READY channel=A1 mhz=5865 integration=DISABLED proof=PHYSICAL_REQUIRED");
+                     "C5VRX_BOOT stage=NATIVE_RING_PROBE_READY channel=A1 mhz=5865 integration=%s proof=PHYSICAL_REQUIRED",
+                     CONFIG_C5VRX_NATIVE_A1_AV ? "EXPERIMENTAL_NATIVE_AV" :
+                                                 "DISABLED");
+#if CONFIG_C5VRX_NATIVE_A1_AV
+            const esp_err_t native_av_err = c5vrx_native_ring_av_start();
+            if (native_av_err == ESP_OK) {
+                ESP_LOGW(TAG,
+                         "C5VRX_BOOT stage=NATIVE_A1_AV_ARMED delay_ms=3000 pointer_rate_hz=80000000 output_hz=20000000 iq_freshness=PHYSICAL_AV_PENDING fallback=PAL_UNTIL_ARM");
+            } else {
+                ESP_LOGE(TAG,
+                         "C5VRX_BOOT stage=NATIVE_A1_AV_FAILED code=%d name=%s; PAL fallback remains active",
+                         (int)native_av_err, esp_err_to_name(native_av_err));
+            }
+#endif
         } else {
             ESP_LOGE(TAG,
                      "C5VRX_BOOT stage=NATIVE_RING_PROBE_FAILED code=%d name=%s; PAL fallback remains active",
@@ -281,8 +294,13 @@ void app_main(void)
         ESP_LOGI(TAG,
                  "Fixed A1 appliance active: LP-core RF capture and WBFM-to-CVBS switch automatically when A1 writer activity is present.");
 #elif CONFIG_C5VRX_EXPERIMENTAL_NATIVE_RING_PROBE
+#if CONFIG_C5VRX_NATIVE_A1_AV
+        ESP_LOGW(TAG,
+                 "Experimental native A1 appliance armed: after boot delay the 80 Mstep/s ring hypothesis feeds 4:1 WBFM and 20 MS/s PARLIO without rearms; fresh IQ/AV remains a physical test.");
+#else
         ESP_LOGW(TAG,
                  "Native-ring acceptance build active: AV integration remains disabled until OFF/ON/TONE physical proof passes.");
+#endif
 #else
         ESP_LOGE(TAG,
                  "C5VRX_BUILD_CONTRACT auto_a1_av=0 profile=DIAGNOSTIC_ONLY");

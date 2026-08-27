@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "profile_id": "xiao-esp32c5-native-ring-probe",
-  "display_name": "XIAO ESP32-C5 Native RF Ring Probe",
-  "av_pin_summary": "Probe only; PAL fallback on D4/D5/D6/D7/D8/D9",
+  "display_name": "XIAO ESP32-C5 Native RF Ring + AV Probe",
+  "av_pin_summary": "PAL boot fallback, then experimental native A1 AV on D4/D5/D6/D7/D8/D9",
   "flash_size_mb": 8
 }

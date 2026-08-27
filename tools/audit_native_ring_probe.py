@@ -82,6 +82,10 @@ def main() -> int:
     require(lp, "COMMAND_NATIVE_RING", failures)
     require(lp, "c5vrx_native_software_triggers = 0u", failures)
     require(lp, "c5vrx_native_software_rearms = 0u", failures)
+    require(lp, "const bool enable_parlio = c5vrx_enable_parlio != 0u", failures)
+    require(native, "pointer_rate_hz=80000000 output_hz=20000000", failures)
+    require(native, "software_triggers=0 software_rearms=0", failures)
+    require(native, "iq_freshness=PHYSICAL_AV_PENDING", failures)
     require(control, "classification=%s", failures)
     for field in (
         "physical_writer_pointer", "absolute_writer_samples",

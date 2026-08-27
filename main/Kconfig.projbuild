@@ -97,6 +97,19 @@ config C5VRX_EXPERIMENTAL_NATIVE_RING_PROBE
         trigger, never rearms, stops after a bounded interval and restores the
         existing RF/PAL state. This option does not enable native-ring AV.
 
+config C5VRX_NATIVE_A1_AV
+    bool "Boot into experimental native-ring A1 analog output"
+    default n
+    depends on C5VRX_EXPERIMENTAL_NATIVE_RING_PROBE && C5VRX_EXPERIMENTAL_CVBS_PARLIO
+    help
+        HIGH-RISK HARDWARE ACCEPTANCE MODE. After a short boot-diagnostic
+        delay, replace PAL fallback with the single-enable bit-17 pointer-ring
+        hypothesis feeding circular GDMA, 4:1 BitScrambler WBFM and 20 MS/s
+        PARLIO. The HP core remains parked while MAC owns dump SRAM; USB is
+        boot diagnostics only. No software trigger or 16384-word rearm exists
+        in this path. Fresh RF-dependent IQ and usable AV still require a
+        physical acceptance run.
+
 config C5VRX_AUTO_A1_AV
     bool "Boot as a fixed-A1 autonomous analog receiver"
     default n
