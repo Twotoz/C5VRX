@@ -474,6 +474,21 @@ class C5VRXApp(tk.Tk):
         ttk.Button(
             cap_row, text="AV health",
             command=lambda: self.send_command("AV STATUS")).pack(side="left")
+        ttk.Button(
+            cap_row, text="REGDMA status",
+            command=lambda: self.send_command("REGDMA IQ STATUS")).pack(
+                side="left", padx=8)
+
+        regdma_row = ttk.Frame(capture_box)
+        regdma_row.pack(fill="x", pady=(8, 0))
+        ttk.Button(
+            regdma_row, text="Enable REGDMA experiment",
+            command=lambda: self.send_command("REGDMA IQ ENABLE")).pack(
+                side="left")
+        ttk.Button(
+            regdma_row, text="Return to LP rearm",
+            command=lambda: self.send_command("REGDMA IQ DISABLE")).pack(
+                side="left", padx=8)
 
         ttk.Label(
             capture_box,

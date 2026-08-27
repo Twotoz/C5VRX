@@ -30,6 +30,17 @@ static esp_etm_task_t s_start_task = {
 static uint32_t s_starts;
 static uint32_t s_setup_failures;
 static bool s_feedback_enabled;
+static volatile bool s_requested;
+
+void c5vrx_regdma_iq_probe_set_requested(bool requested)
+{
+    s_requested = requested;
+}
+
+bool c5vrx_regdma_iq_probe_requested(void)
+{
+    return s_requested;
+}
 
 static esp_err_t construct_chain(void)
 {
@@ -119,6 +130,7 @@ esp_err_t c5vrx_regdma_iq_probe_get_status(
     status->done_mask = C5_DUMP_DONE_MASK;
     status->start_mask = C5_DUMP_START_MASK;
     status->chain_constructed = s_chain != NULL;
+    status->requested = s_requested;
     status->etm_feedback_enabled = s_feedback_enabled;
     status->starts = s_starts;
     status->setup_failures = s_setup_failures;

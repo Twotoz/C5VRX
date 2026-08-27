@@ -34,6 +34,8 @@ high/low. `REGDMA_EVT_DONE3` is routed through ETM to `REGDMA_TASK_START3`, so
 the finite chain returns to WAIT without a circular link or per-boundary CPU
 code. The LP supervisor still owns SRAM safety, activity timeout and pointer
 generation telemetry. Setup failure selects the unchanged LP autorearm path.
+LP autorearm is also the boot default: REGDMA is selected only by the explicit
+`REGDMA IQ ENABLE` diagnostic command and can be deselected without reflashing.
 
 This is deliberately labelled `REGDMA_ETM_EXPERIMENTAL`. It is not promoted to
 `HW_AUTOREARM` until hardware shows repeated real generations, zero PAU flow

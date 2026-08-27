@@ -1075,9 +1075,10 @@ static void handle_line(char *line)
         strcasecmp(line, "REGDMA_IQ_STATUS") == 0) {
         c5vrx_regdma_iq_probe_status_t probe;
         const esp_err_t err = c5vrx_regdma_iq_probe_get_status(&probe);
-        printf("C5VRX_REGDMA_IQ soc_supported=%u wait_node=%u write_node=%u etm_start=%u chain=%u etm_feedback=%u active=%u starts=%u setup_failures=%u flow_errors=%u restart_sequence_proven=%u target_ctrl=%08x done_mask=%08x start_mask=%08x classification=%s code=%d\n",
+        printf("C5VRX_REGDMA_IQ soc_supported=%u wait_node=%u write_node=%u etm_start=%u requested=%u chain=%u etm_feedback=%u active=%u starts=%u setup_failures=%u flow_errors=%u restart_sequence_proven=%u target_ctrl=%08x done_mask=%08x start_mask=%08x classification=%s code=%d\n",
                probe.soc_supported, probe.wait_node_supported,
                probe.write_node_supported, probe.etm_start_supported,
+               probe.requested,
                probe.chain_constructed, probe.etm_feedback_enabled,
                probe.active, (unsigned)probe.starts,
                (unsigned)probe.setup_failures, (unsigned)probe.flow_errors,
@@ -1088,6 +1089,18 @@ static void handle_line(char *line)
                    (probe.chain_constructed ? "REGDMA_ETM_EXPERIMENTAL" :
                     "FAIL_CLOSED_PHYSICAL_SEQUENCE_REQUIRED"),
                (int)err);
+        return;
+    }
+    if (strcasecmp(line, "REGDMA IQ ENABLE") == 0 ||
+        strcasecmp(line, "REGDMA_IQ_ENABLE") == 0) {
+        c5vrx_regdma_iq_probe_set_requested(true);
+        printf("C5VRX_REGDMA_IQ_REQUEST requested=1 applies=NEXT_RF_WINDOW classification=EXPERIMENTAL\n");
+        return;
+    }
+    if (strcasecmp(line, "REGDMA IQ DISABLE") == 0 ||
+        strcasecmp(line, "REGDMA_IQ_DISABLE") == 0) {
+        c5vrx_regdma_iq_probe_set_requested(false);
+        printf("C5VRX_REGDMA_IQ_REQUEST requested=0 applies=NEXT_RF_WINDOW classification=LP_AUTOREARM_DEFAULT\n");
         return;
     }
     if (strcasecmp(line, "AV STATUS") == 0 ||
