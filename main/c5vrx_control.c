@@ -17,6 +17,7 @@
 #include "c5vrx_adc_dump.h"
 #include "c5vrx_auto_av.h"
 #include "c5vrx_cvbs_out.h"
+#include "c5vrx_native_ring.h"
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_wbfm_hw.h"
 #include "c5vrx_live_pipeline.h"
@@ -570,7 +571,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,AV_STATUS,AV_DIRECT_PROBE,AV_TUNE_STATUS,AV_TUNE_RESET,AV_TUNE_<hsync>_<equalizing>_<broad_sync>_<pre_eq>_<broad_half>_<post_eq>,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>_SAFE_PHASE8,CAPTURE_PHASE8_<256-16384>,CAPTURE_RAW_<256-16384>_EXPLICIT_ASCII,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,AV_STATUS,AV_DIRECT_PROBE,NATIVE_RING_STATUS,NATIVE_RING_PROBE_<OFF|ON|TONE>_<10-2000_ms>,AV_TUNE_STATUS,AV_TUNE_RESET,AV_TUNE_<hsync>_<equalizing>_<broad_sync>_<pre_eq>_<broad_half>_<post_eq>,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>_SAFE_PHASE8,CAPTURE_PHASE8_<256-16384>,CAPTURE_RAW_<256-16384>_EXPLICIT_ASCII,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -1017,6 +1018,51 @@ static void print_auto_av_status(void)
     fflush(stdout);
 }
 
+static void print_native_ring_result(
+    c5vrx_native_ring_condition_t condition,
+    const c5vrx_native_ring_stats_t *stats,
+    esp_err_t err)
+{
+    printf("C5VRX_NATIVE_RING enabled=%u duration_ms=%u condition=%s observations=%u pointer_changes=%u wraps=%u min_ptr=%u max_ptr=%u physical_writer_pointer=%u absolute_writer_samples=%llu enable_assertions=%u enable_low=%u mode_low=%u software_rearms=%u software_triggers=%u trigger_high_observations=%u terminal_done=%u progress_after_done=%u ambiguous_backwards=%u content_observations=%u content_changes=%u wrap_content_changes=%u iq_power_mean=%u content_signature=%08x phase_boundary_observations=%u phase_boundary_residual_abs_mean=%u phase_boundary_residual_abs_max=%u writer_stopped_after_done=%u rf_distinguishable=%u phase_continuous=%u start_ctrl=%08x final_ctrl=%08x fault_reason=%u structural_pass=%u code=%d classification=%s\n",
+           stats->engine_enabled_throughout ? 1u : 0u,
+           (unsigned)stats->duration_ms,
+           c5vrx_native_ring_condition_name(condition),
+           (unsigned)stats->observations,
+           (unsigned)stats->pointer_changes,
+           (unsigned)stats->hardware_wrap_count,
+           (unsigned)stats->minimum_pointer,
+           (unsigned)stats->maximum_pointer,
+           (unsigned)stats->physical_writer_pointer,
+           (unsigned long long)stats->absolute_writer_samples,
+           (unsigned)stats->enable_assertions,
+           (unsigned)stats->enable_low_observations,
+           (unsigned)stats->mode_low_observations,
+           (unsigned)stats->software_rearms,
+           (unsigned)stats->software_trigger_pulses,
+           (unsigned)stats->trigger_high_observations,
+           (unsigned)stats->terminal_done_observations,
+           (unsigned)stats->progress_after_done,
+           (unsigned)stats->ambiguous_backward_observations,
+           (unsigned)stats->content_observations,
+           (unsigned)stats->content_changes,
+           (unsigned)stats->wrap_content_changes,
+           (unsigned)stats->iq_power_mean,
+           (unsigned)stats->content_signature,
+           (unsigned)stats->phase_boundary_observations,
+           (unsigned)stats->phase_boundary_residual_abs_mean,
+           (unsigned)stats->phase_boundary_residual_abs_max,
+           stats->writer_stopped_after_done ? 1u : 0u,
+           stats->rf_distinguishable ? 1u : 0u,
+           stats->phase_continuous ? 1u : 0u,
+           (unsigned)stats->start_control,
+           (unsigned)stats->final_control,
+           (unsigned)stats->fault_reason,
+           stats->structural_pass ? 1u : 0u,
+           (int)err,
+           c5vrx_native_ring_classification_name(stats->classification));
+    fflush(stdout);
+}
+
 static void handle_line(char *line)
 {
     const esp_err_t soak_watchdog_err =
@@ -1045,6 +1091,18 @@ static void handle_line(char *line)
     }
     if (strcasecmp(line, "HELP") == 0) {
         print_help();
+        return;
+    }
+    if (strcasecmp(line, "NATIVE RING STATUS") == 0 ||
+        strcasecmp(line, "NATIVE_RING_STATUS") == 0) {
+        c5vrx_native_ring_condition_t condition;
+        c5vrx_native_ring_stats_t stats;
+        if (!c5vrx_native_ring_get_last(&condition, &stats)) {
+            printf("C5VRX_NATIVE_RING error=NO_STORED_RESULT\n");
+            fflush(stdout);
+            return;
+        }
+        print_native_ring_result(condition, &stats, ESP_OK);
         return;
     }
     if (strcasecmp(line, "STATUS") == 0) {
@@ -1827,6 +1885,41 @@ static void handle_line(char *line)
                (unsigned)stats.repeated_block_hashes,
                (unsigned long long)stats.boundary_jump_power_sum);
         fflush(stdout);
+        return;
+    }
+
+    char native_condition[8] = {0};
+    unsigned native_duration_ms = 0u;
+    if (sscanf(line, "NATIVE RING PROBE %7s %u",
+               native_condition, &native_duration_ms) == 2 ||
+        sscanf(line, "NATIVE_RING_PROBE_%7[^_]_%u",
+               native_condition, &native_duration_ms) == 2) {
+        c5vrx_native_ring_condition_t condition;
+        if (strcasecmp(native_condition, "OFF") == 0) {
+            condition = C5VRX_NATIVE_RING_CONDITION_VTX_OFF;
+        } else if (strcasecmp(native_condition, "ON") == 0) {
+            condition = C5VRX_NATIVE_RING_CONDITION_VTX_ON;
+        } else if (strcasecmp(native_condition, "TONE") == 0) {
+            condition = C5VRX_NATIVE_RING_CONDITION_COHERENT_TONE;
+        } else {
+            printf("C5VRX_NATIVE_RING error=INVALID_CONDITION allowed=OFF,ON,TONE\n");
+            fflush(stdout);
+            return;
+        }
+        if (native_duration_ms < 10u || native_duration_ms > 2000u) {
+            printf("C5VRX_NATIVE_RING error=INVALID_DURATION allowed_ms=10-2000\n");
+            fflush(stdout);
+            return;
+        }
+
+        c5vrx_native_ring_stats_t stats = {0};
+        printf("C5VRX_NATIVE_RING_BEGIN condition=%s duration_ms=%u mode=BIT17_FAMILY_HYPOTHESIS dump_trig_arg=IGNORED_C5_V6_0_2 integration=DISABLED\n",
+               c5vrx_native_ring_condition_name(condition),
+               native_duration_ms);
+        fflush(stdout);
+        const esp_err_t err = c5vrx_native_ring_probe(
+            condition, native_duration_ms, &stats);
+        print_native_ring_result(condition, &stats, err);
         return;
     }
 

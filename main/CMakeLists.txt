@@ -10,6 +10,7 @@ idf_component_register(
         "c5vrx_adc_dump.c"
         "c5vrx_lp_capture.S"
         "c5vrx_rf_dump_producer.c"
+        "c5vrx_native_ring.c"
         "c5vrx_rf_probes.c"
         "c5vrx_channels.c"
         "c5vrx_control.c"
@@ -50,10 +51,10 @@ idf_component_register(
 # A real ESP32-C5 LP-core owns the RF one-shot rearm loop while the HP core
 # remains available for the watchdog, USB diagnostics and PAL fallback.  The
 # LP program is loaded once and then waits for commands in shared LP SRAM.
-if(CONFIG_C5VRX_AUTO_A1_AV)
+if(CONFIG_C5VRX_AUTO_A1_AV OR CONFIG_C5VRX_EXPERIMENTAL_NATIVE_RING_PROBE)
     set(ulp_app_name c5vrx_lp_av)
     set(ulp_sources "lp_core/c5vrx_lp_av.c")
-    set(ulp_exp_dep_srcs "c5vrx_auto_av.c")
+    set(ulp_exp_dep_srcs "c5vrx_auto_av.c" "c5vrx_native_ring.c")
     ulp_embed_binary(${ulp_app_name} "${ulp_sources}" "${ulp_exp_dep_srcs}")
 endif()
 

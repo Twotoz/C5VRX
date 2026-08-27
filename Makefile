@@ -31,3 +31,4 @@ test:
 	python3 tools/check_tk_after_callbacks.py
 	python3 tools/validate_firmware_profiles.py
 	@if [ -n "$(IDF_PATH)" ]; then python3 tools/audit_rf_dump_producer.py --idf "$(IDF_PATH)"; else echo "SKIP producer audit: IDF_PATH unset"; fi
+	@if [ -n "$(IDF_PATH)" ]; then python3 tools/audit_native_ring_probe.py --idf "$(IDF_PATH)"; else echo "SKIP native-ring audit: IDF_PATH unset"; fi

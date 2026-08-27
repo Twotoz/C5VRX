@@ -1,10 +1,14 @@
 # ESP32-C5 continuous RF stream investigation
 
 Status: **an LP-RAM-rearmed continuous-stream candidate is implemented but not
-yet physically proven**. Physical XIAO evidence shows that the C5 internal
-RF/FE dump writer stops after exactly 16,384 words; it is not a self-wrapping
-ring. The recovered producer register sequence can nevertheless feed a documented circular
-GDMA/BitScrambler/PARLIO consumer without CPU or USB sample transport.
+yet physically proven**. Physical XIAO evidence shows that the tested
+post-trigger mode stops after exactly 16,384 words. That result does not prove
+the C5 controller lacks a pre-trigger self-wrapping mode: the old test left
+control bit 17 clear and C5 v6.0.2 ignores the historic `dump_trig` argument.
+The guarded bit-17 experiment is documented in
+[`native-rf-ring-probe.md`](native-rf-ring-probe.md). Until it passes physical
+OFF/ON/tone acceptance, the recovered producer feeds the documented circular
+GDMA/BitScrambler/PARLIO consumer only through PR21's stitched LP rearms.
 
 This is a negative engineering result, not proof that the silicon is incapable.
 It defines one focused physical experiment which can falsify or advance the
@@ -175,9 +179,17 @@ the current evidence.
 
 ## Ring experiment after producer modes
 
-`RING_PROBE` starts **one** vendor `adctrig()` call in RX-error pre-trigger
-mode, then observes the recovered write-pointer register and safely lagged dump
-RAM while that single hardware arm is active. It never loops `adctrig`.
+The former `RING_PROBE` starts **one** vendor `adctrig()` call using the RX-error
+trigger, but it passes historical `dump_trig=0` and does not explicitly test
+C5 control bit 17. Calling it a pre-trigger test was too broad: C5 v6.0.2
+overwrites/ignores that fifth argument. It therefore covers the finite tested
+lifecycle, not the new dump-first/self-wrap hypothesis.
+
+The replacement `NATIVE RING PROBE` configures the ordinary 5 GHz IQ source,
+sets only the vendor-observed C5 bit 17, asserts enable once and withholds all
+software trigger/rearm pulses. Its LP observer must see repeated physical
+high-to-low pointer wraps and changing RF-dependent contents before any native
+ring claim. See [`native-rf-ring-probe.md`](native-rf-ring-probe.md).
 
 Run it first with no transmitter, then with an A4/5805 MHz source. Preserve the
 full USB log. A ring-reader experiment is justified only if all are observed:

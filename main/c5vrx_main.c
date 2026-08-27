@@ -18,6 +18,7 @@
 #include "c5vrx_channels.h"
 #include "c5vrx_control.h"
 #include "c5vrx_cvbs_out.h"
+#include "c5vrx_native_ring.h"
 #include "c5vrx_status_led.h"
 #include "c5vrx_phy_hacks.h"
 #include "c5vrx_rf.h"
@@ -244,6 +245,19 @@ void app_main(void)
 
     if (wifi_ready) {
         maybe_run_adc_dump(&plan);
+#if CONFIG_C5VRX_EXPERIMENTAL_NATIVE_RING_PROBE
+        ESP_LOGI(TAG,
+                 "C5VRX_BUILD_CONTRACT native_ring_probe=1 auto_a1_av=0 fallback=PAL");
+        const esp_err_t native_ring_err = c5vrx_native_ring_init();
+        if (native_ring_err == ESP_OK) {
+            ESP_LOGI(TAG,
+                     "C5VRX_BOOT stage=NATIVE_RING_PROBE_READY channel=A1 mhz=5865 integration=DISABLED proof=PHYSICAL_REQUIRED");
+        } else {
+            ESP_LOGE(TAG,
+                     "C5VRX_BOOT stage=NATIVE_RING_PROBE_FAILED code=%d name=%s; PAL fallback remains active",
+                     (int)native_ring_err, esp_err_to_name(native_ring_err));
+        }
+#endif
 #if CONFIG_C5VRX_AUTO_A1_AV
         ESP_LOGI(TAG,
                  "C5VRX_BUILD_CONTRACT auto_a1_av=1 rf_dump_producer=1 cvbs_parlio=1");
@@ -266,6 +280,9 @@ void app_main(void)
 #if CONFIG_C5VRX_AUTO_A1_AV
         ESP_LOGI(TAG,
                  "Fixed A1 appliance active: LP-core RF capture and WBFM-to-CVBS switch automatically when A1 writer activity is present.");
+#elif CONFIG_C5VRX_EXPERIMENTAL_NATIVE_RING_PROBE
+        ESP_LOGW(TAG,
+                 "Native-ring acceptance build active: AV integration remains disabled until OFF/ON/TONE physical proof passes.");
 #else
         ESP_LOGE(TAG,
                  "C5VRX_BUILD_CONTRACT auto_a1_av=0 profile=DIAGNOSTIC_ONLY");

@@ -17,6 +17,10 @@
 typedef enum {
     C5VRX_RF_DUMP_MODE_ORDINARY_RX = 0,
     C5VRX_RF_DUMP_MODE_11 = 11,
+    /* Experimental ordinary-RX configuration with only the vendor-observed
+     * control bit 17 asserted. This is a family-derived hypothesis, not a
+     * recovered C5 adctrig argument mapping. */
+    C5VRX_RF_DUMP_MODE_NATIVE_RING = 0x100,
     /* Present in the vendor API, but deliberately unsupported by the split
      * producer: its setup also calls ble_rx_start(0, 0). */
     C5VRX_RF_DUMP_MODE_12 = 12,

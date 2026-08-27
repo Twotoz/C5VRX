@@ -493,6 +493,32 @@ class C5VRXApp(tk.Tk):
             wraplength=610,
         ).pack(side="left", padx=12)
 
+        if self.expected_profile == "xiao-esp32c5-native-ring-probe":
+            native_box = ttk.LabelFrame(
+                tab, text="Native hardware-ring acceptance", padding=10)
+            native_box.pack(fill="x", pady=(12, 0))
+            for label, condition in (
+                    ("1. VTX OFF", "OFF"),
+                    ("2. VTX ON", "ON"),
+                    ("3. COHERENT TONE", "TONE")):
+                ttk.Button(
+                    native_box,
+                    text=label,
+                    command=lambda value=condition: self.send_command(
+                        f"NATIVE RING PROBE {value} 500"),
+                ).pack(side="left", padx=(0, 8))
+            ttk.Button(
+                native_box,
+                text="LAST RESULT",
+                command=lambda: self.send_command("NATIVE RING STATUS"),
+            ).pack(side="left", padx=(0, 8))
+            ttk.Label(
+                native_box,
+                text=("Run in order without resetting. Only the third result "
+                      "may report NATIVE_RING_PROVEN."),
+                wraplength=390,
+            ).pack(side="left", padx=4)
+
     def _build_preview_tab(self, tab: ttk.Frame) -> None:
         ttk.Label(tab, text="USB-C signal preview", font=("Segoe UI", 14, "bold")).pack(anchor="w")
         ttk.Label(
@@ -899,6 +925,18 @@ class C5VRXApp(tk.Tk):
                 f"A1 autonomous AV: {state}, IQ={rate} samples/s, "
                 f"uptime={uptime} ms, blocks={blocks}, failures={failures}, "
                 f"lead={lead}, max-gap={gap} ns, drift={drift} ppm")
+            return
+        if line.startswith("C5VRX_NATIVE_RING "):
+            fields = self._fields(line)
+            classification = fields.get("classification", "UNKNOWN")
+            wraps = fields.get("wraps", "0")
+            rearms = fields.get("software_rearms", "?")
+            triggers = fields.get("software_triggers", "?")
+            phase = fields.get("phase_boundary_residual_abs_mean", "?")
+            self.after(
+                0, self.preview_status_var.set,
+                f"Native ring: {classification}; wraps={wraps}, "
+                f"rearms={rearms}, triggers={triggers}, phase residual={phase}")
             return
         if line.startswith("C5VRX_DIRECT_AV_PROBE_BEGIN"):
             self.after(

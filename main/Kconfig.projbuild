@@ -86,10 +86,21 @@ config C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER
         DEEP PROBE. It reproduces only vendor-observed automatic-gain modes
         0, 11 and 12. It never forces the overwritten historical rate field.
 
+config C5VRX_EXPERIMENTAL_NATIVE_RING_PROBE
+    bool "Enable guarded native RF dump ring probe"
+    default n
+    depends on C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER
+    help
+        HIGH-RISK HARDWARE DIAGNOSTIC. Adds an explicit LP-core observer for
+        the ESP32-C5 RF dump controller's historical bit-17 pre-trigger ring
+        hypothesis. The probe asserts ENABLE once, never pulses the software
+        trigger, never rearms, stops after a bounded interval and restores the
+        existing RF/PAL state. This option does not enable native-ring AV.
+
 config C5VRX_AUTO_A1_AV
     bool "Boot as a fixed-A1 autonomous analog receiver"
     default n
-    depends on C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER && C5VRX_EXPERIMENTAL_CVBS_PARLIO
+    depends on C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER && C5VRX_EXPERIMENTAL_CVBS_PARLIO && !C5VRX_EXPERIMENTAL_NATIVE_RING_PROBE
     help
         Load the ESP32-C5 LP-core service which rearms the RF one-shot
         indefinitely and automatically routes detected A1 activity through

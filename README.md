@@ -430,6 +430,15 @@ buffer are rejected while autonomous A1 owns the receiver; status queries and
 operation, but minute/hour stability and visible PAL/NTSC lock remain physical
 soak-test gates rather than claims made by a successful firmware build.
 
+A separate acceptance image now probes the unresolved native hardware-ring
+hypothesis. It is intentionally not part of the autonomous AV path: C5 v6.0.2
+ignores the historic `dump_trig` argument, so the probe directly applies only
+the vendor-observed control bit 17, enables once, and records high-rate LP
+pointer/content/phase telemetry without a software trigger or rearm. Build with
+`sdkconfig.defaults.xiao_native_ring_probe` and follow
+[`research/native-rf-ring-probe.md`](research/native-rf-ring-probe.md). A build
+success is not evidence of native continuity.
+
 ### Test-readiness status
 
 - **IMPLEMENTED / NOT PHYSICALLY TESTED:** modular RF block ABI, direct circular
@@ -471,6 +480,9 @@ AUTO AV STATUS
 PRODUCER CADENCE PROBE ALL
 WRAP FLAG PROBE 0
 PHASE CONTINUITY PROBE 0
+NATIVE RING PROBE OFF 500
+NATIVE RING PROBE ON 500
+NATIVE RING PROBE TONE 500
 PRODUCER SOAK 0 30000
 FINE TUNE VERIFY 5805 5807 <measured_rate_hz>
 TONE RESPONSE PROBE 0 <signed_offset_hz> <measured_rate_hz>

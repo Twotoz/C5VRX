@@ -188,7 +188,8 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
      * ble_rx_start(0, 0) after arming it. Reconstructing only its MMIO writes
      * would be incomplete, so fail closed rather than invent BLE setup. */
     if (mode != C5VRX_RF_DUMP_MODE_ORDINARY_RX &&
-        mode != C5VRX_RF_DUMP_MODE_11)
+        mode != C5VRX_RF_DUMP_MODE_11 &&
+        mode != C5VRX_RF_DUMP_MODE_NATIVE_RING)
         return ESP_ERR_NOT_SUPPORTED;
 
     /* Snapshot only values actually touched below. Refuse to take ownership of
@@ -222,7 +223,8 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
                        ((uint32_t)sample_count & CTRL_LENGTH_MASK);
     REG32(DUMP_CTRL) &= ~CTRL_MODE_BIT;
 
-    if (mode == C5VRX_RF_DUMP_MODE_ORDINARY_RX) {
+    if (mode == C5VRX_RF_DUMP_MODE_ORDINARY_RX ||
+        mode == C5VRX_RF_DUMP_MODE_NATIVE_RING) {
         set_format_fields(0x006c0000u, 0x0001a000u, 0x00000640u, 0x18u);
     } else if (mode == C5VRX_RF_DUMP_MODE_11) {
         set_format_fields(0x005c0000u, 0x00016000u, 0x00000540u, 0x14u);
@@ -237,10 +239,14 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
      * the dump engine the selected HP-SRAM banks. The direct AV probe performs
      * the handoff, start and restoration entirely from LP RAM. */
     REG32(DUMP_CTRL) &= ~0x00300000u;
-    REG32(DUMP_CTRL) &= ~CTRL_MODE_BIT;
+    if (mode == C5VRX_RF_DUMP_MODE_NATIVE_RING)
+        REG32(DUMP_CTRL) |= CTRL_MODE_BIT;
+    else
+        REG32(DUMP_CTRL) &= ~CTRL_MODE_BIT;
 
     REG32(FE_PATH) &= ~1u;
-    if (mode == C5VRX_RF_DUMP_MODE_ORDINARY_RX) {
+    if (mode == C5VRX_RF_DUMP_MODE_ORDINARY_RX ||
+        mode == C5VRX_RF_DUMP_MODE_NATIVE_RING) {
         /* Exact mode-0 branch: unlike modes 1..12 it ORs, rather than clears,
          * the overlapping selector. This is why arbitrary rate forcing is not
          * part of this reconstruction. */

@@ -52,7 +52,12 @@ def main() -> int:
     if not re.search(r"li\s+a5,12.{0,400}R_RISCV_CALL\s+ble_rx_start", dis,
                      re.DOTALL):
         failures.append("vendor-mode12-ble-rx-start")
-    if "mode != C5VRX_RF_DUMP_MODE_11)" not in producer or \
+    allowed_modes = (
+        "mode != C5VRX_RF_DUMP_MODE_ORDINARY_RX &&\n"
+        "        mode != C5VRX_RF_DUMP_MODE_11 &&\n"
+        "        mode != C5VRX_RF_DUMP_MODE_NATIVE_RING)"
+    )
+    if allowed_modes not in producer or \
             "mode == C5VRX_RF_DUMP_MODE_12" in producer:
         failures.append("mode12-split-producer-not-fail-closed")
     print("RF dump producer audit", "PASS" if not failures else "FAIL",

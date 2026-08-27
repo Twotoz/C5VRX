@@ -36,16 +36,19 @@ adctrig(smp_num_aft_trig, trig_mode, trig_case, sample_80m,
         dump_trig, rx_gain_mode, rx_gain, rx_gain0, gain0_wait)
 ```
 
-The machine code consumes the same nine arguments (`a0..a7`, then one stack
-word).  The historic trigger enumeration is software=0, BB=1, CCA=2,
-RX-start=3, RX-end=4, TX-start=5, TX-end=6 and RX-error=7.
+The machine code retains the same nine argument slots (`a0..a7`, then one stack
+word), but it does **not** consume them with the historic meanings. In
+particular, incoming `a4` (historic `dump_trig`) is not saved or read: offset
+`0x26` overwrites it with `a3 >> 1`. The historic trigger enumeration remains
+useful family evidence for argument two, but `dump_trig=1` is not a working C5
+API for selecting pre-trigger mode.
 
 ## Register fields established by code
 
 | Question | C5 machine-code result | Confidence |
 | --- | --- | --- |
 | Capture enable | `0x600a9004[31]`; set to start, cleared on teardown | Proven |
-| Circular/wrap enable | No separately written circular-enable bit was found. The engine exposes wrap status and uses fixed ring RAM; circular behavior still requires a live test. | Negative static result |
+| Pre-trigger/ring hypothesis | Trigger-mode branch 6 writes `0x600a9004[17]`. The historic fifth argument does not control it on C5. Exact C5 self-wrap semantics require the guarded no-trigger live test. | Bit write proven; ring semantics unproven |
 | Historical rate write (`sample_80m`) | `0x600a9008[23:21] = (argument >> 1) & 7`, then overwritten by the later mode write to `[24:17]` before enable | Proven transient write; physical rate meaning rejected |
 | Sample format selector | Trigger/mode setup writes `0x600a9008[24:17]`; `set_dump_mode` separately selects FE/BB data at `0x600a08cc` and `0x600a70b8`. Exact format names per selector remain unproven. | Field proven, semantics partial |
 | Buffer length | `0x600a9004[16:0] = smp_num_aft_trig + 1` | Proven |
@@ -168,6 +171,12 @@ C5 machine code consumes it as the three-bit field above. That mismatch is the
 main reason rates must be measured rather than assigned from the old name.
 
 ## Next experiment before making RING PROBE primary
+
+The earlier broad negative conclusion applied only to bit-17-clear
+post-trigger operation. Use the dedicated
+[`native-rf-ring-probe.md`](native-rf-ring-probe.md) procedure to test the one
+C5-specific bit-17 hypothesis with zero software triggers/rearms. Do not infer
+native continuity from the old `RING_PROBE`.
 
 Run `RF DEEP PROBE` with the VTX off and again with A4/5805 MHz on. It executes
 unchanged vendor arms for all eight historical arguments, compares modes 0/11
