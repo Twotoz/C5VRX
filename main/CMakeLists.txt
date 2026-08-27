@@ -10,6 +10,8 @@ idf_component_register(
         "c5vrx_adc_dump.c"
         "c5vrx_lp_capture.S"
         "c5vrx_rf_dump_producer.c"
+        "c5vrx_iq_stream.c"
+        "c5vrx_regdma_iq_probe.c"
         "c5vrx_rf_probes.c"
         "c5vrx_channels.c"
         "c5vrx_control.c"

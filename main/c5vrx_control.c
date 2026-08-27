@@ -24,6 +24,8 @@
 #include "sdkconfig.h"
 #include "c5vrx_wifi5.h"
 #include "c5vrx_rf_dump_producer.h"
+#include "c5vrx_iq_stream.h"
+#include "c5vrx_regdma_iq_probe.h"
 #include "c5vrx_rf_probes.h"
 #include "c5vrx_usb_preview.h"
 #include "c5vrx_bench.h"
@@ -570,7 +572,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,AV_STATUS,AV_DIRECT_PROBE,AV_TUNE_STATUS,AV_TUNE_RESET,AV_TUNE_<hsync>_<equalizing>_<broad_sync>_<pre_eq>_<broad_half>_<post_eq>,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>_SAFE_PHASE8,CAPTURE_PHASE8_<256-16384>,CAPTURE_RAW_<256-16384>_EXPLICIT_ASCII,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP commands=PING,STATUS,IQ_STREAM_STATUS,REGDMA_IQ_STATUS,AV_STATUS,AV_DIRECT_PROBE,AV_TUNE_STATUS,AV_TUNE_RESET,AV_TUNE_<hsync>_<equalizing>_<broad_sync>_<pre_eq>_<broad_half>_<post_eq>,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>_SAFE_PHASE8,CAPTURE_PHASE8_<256-16384>,CAPTURE_RAW_<256-16384>_EXPLICIT_ASCII,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
     fflush(stdout);
 }
 
@@ -1050,6 +1052,38 @@ static void handle_line(char *line)
     if (strcasecmp(line, "STATUS") == 0) {
         print_status();
         print_auto_av_status();
+        return;
+    }
+    if (strcasecmp(line, "IQ STREAM STATUS") == 0 ||
+        strcasecmp(line, "IQ_STREAM_STATUS") == 0) {
+        c5vrx_iq_stream_state_t iq;
+        const esp_err_t err = c5vrx_iq_stream_get_state(&iq);
+        printf("C5VRX_IQ_STREAM backend=%s running=%u write_sample=%llu read_sample=%llu physical_write=%u physical_read=%u lead_samples=%u hardware_wraps=%llu software_rearms=%u rearm_failures=%u boundary_gap_cycles_max=%u hardware_circular=%u phase_continuous=%u rf_detected=%u classification=%s code=%d\n",
+               c5vrx_iq_stream_backend_name(iq.backend), iq.running,
+               iq.write_sample, iq.read_sample, (unsigned)iq.physical_write,
+               (unsigned)iq.physical_read, (unsigned)iq.lead_samples,
+               iq.hardware_wraps, (unsigned)iq.software_rearms,
+               (unsigned)iq.rearm_failures,
+               (unsigned)iq.boundary_gap_cycles_max, iq.hardware_circular,
+               iq.phase_continuous, iq.rf_detected,
+               iq.backend == C5VRX_IQ_BACKEND_LP_AUTOREARM ?
+                   "LP_AUTOREARM" : "PHYSICAL_ACCEPTANCE_REQUIRED",
+               (int)err);
+        return;
+    }
+    if (strcasecmp(line, "REGDMA IQ STATUS") == 0 ||
+        strcasecmp(line, "REGDMA_IQ_STATUS") == 0) {
+        c5vrx_regdma_iq_probe_status_t probe;
+        const esp_err_t err = c5vrx_regdma_iq_probe_get_status(&probe);
+        printf("C5VRX_REGDMA_IQ soc_supported=%u wait_node=%u write_node=%u etm_start=%u active=%u restart_sequence_proven=%u target_ctrl=%08x done_mask=%08x start_mask=%08x classification=%s code=%d\n",
+               probe.soc_supported, probe.wait_node_supported,
+               probe.write_node_supported, probe.etm_start_supported,
+               probe.active, probe.restart_sequence_proven,
+               (unsigned)probe.target_control_register,
+               (unsigned)probe.done_mask, (unsigned)probe.start_mask,
+               probe.restart_sequence_proven ?
+                   "HW_PROBE_ELIGIBLE" : "FAIL_CLOSED_PHYSICAL_SEQUENCE_REQUIRED",
+               (int)err);
         return;
     }
     if (strcasecmp(line, "AV STATUS") == 0 ||
