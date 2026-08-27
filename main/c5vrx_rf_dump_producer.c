@@ -27,6 +27,9 @@
 #define CTRL_SW_TRIGGER_BIT 0x00080000u
 #define CTRL_ENABLE_BIT  0x80000000u
 #define MODE_SELECT_MASK 0x01fe0000u
+#define NATIVE_SAMPLE_FIELD_MASK 0x00e00000u
+#define NATIVE_TRIGGER_FIELD_MASK 0x001e0000u
+#define NATIVE_TX_END_SELECTOR 0x00080000u
 
 extern void phy_pbus_clear_reg(void);
 
@@ -214,9 +217,11 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
     REG32(SOURCE_CTRL) &= 0xff87ffffu;
     REG32(SOURCE_MUX) = (REG32(SOURCE_MUX) & 0xfffffff8u) | 1u;
 
-    /* Exact automatic-gain subset of C5 v6.0.2 adctrig. The historical
-     * sample_80m write is intentionally absent: vendor control flow overwrites
-     * those same bits before enable, so forcing them would be a new value. */
+    /* Exact automatic-gain subset of C5 v6.0.2 adctrig. Modes 0 and 11
+     * overwrite the earlier sample field, so it remains absent there. The
+     * native experiment follows the complete vendor mode-6 branch instead:
+     * sample argument 1 clears [23:21], while its trigger selector RMW clears
+     * only [20:17] and selects TX-end. */
     REG32(MODEM_CLOCK) = UINT32_MAX;
     REG32(FE_ENABLE) |= 4u;
     REG32(DUMP_CTRL) = (REG32(DUMP_CTRL) & ~CTRL_LENGTH_MASK) |
@@ -239,18 +244,28 @@ esp_err_t c5vrx_rf_dump_configure(size_t sample_count,
      * the dump engine the selected HP-SRAM banks. The direct AV probe performs
      * the handoff, start and restoration entirely from LP RAM. */
     REG32(DUMP_CTRL) &= ~0x00300000u;
-    if (mode == C5VRX_RF_DUMP_MODE_NATIVE_RING)
+    if (mode == C5VRX_RF_DUMP_MODE_NATIVE_RING) {
         REG32(DUMP_CTRL) |= CTRL_MODE_BIT;
-    else
+        REG32(DUMP_PTR_MODE) &= ~NATIVE_SAMPLE_FIELD_MASK;
+    } else {
         REG32(DUMP_CTRL) &= ~CTRL_MODE_BIT;
+    }
 
     REG32(FE_PATH) &= ~1u;
-    if (mode == C5VRX_RF_DUMP_MODE_ORDINARY_RX ||
-        mode == C5VRX_RF_DUMP_MODE_NATIVE_RING) {
+    if (mode == C5VRX_RF_DUMP_MODE_ORDINARY_RX) {
         /* Exact mode-0 branch: unlike modes 1..12 it ORs, rather than clears,
          * the overlapping selector. This is why arbitrary rate forcing is not
          * part of this reconstruction. */
         REG32(DUMP_PTR_MODE) |= 0x01e00000u;
+    } else if (mode == C5VRX_RF_DUMP_MODE_NATIVE_RING) {
+        /* Exact C5 v6.0.2 adctrig trigger-mode 6 RMW: bit17 in DUMP_CTRL is
+         * paired with selector 0x00080000 after clearing only [20:17]. Family
+         * tooling names mode 6 TX-end. In an RX-only appliance this is the
+         * vendor-supported candidate for a pre-trigger writer that has no
+         * naturally occurring terminal event. */
+        REG32(DUMP_PTR_MODE) =
+            (REG32(DUMP_PTR_MODE) & ~NATIVE_TRIGGER_FIELD_MASK) |
+            NATIVE_TX_END_SELECTOR;
     } else {
         REG32(DUMP_PTR_MODE) =
             (REG32(DUMP_PTR_MODE) & ~MODE_SELECT_MASK) |

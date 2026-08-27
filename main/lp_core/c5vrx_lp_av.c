@@ -122,6 +122,8 @@ volatile uint32_t c5vrx_native_wrap_content_changes;
 volatile uint32_t c5vrx_native_fixed_epoch_observations;
 volatile uint32_t c5vrx_native_fixed_epoch_changes;
 volatile uint32_t c5vrx_native_fixed_epoch_signature;
+volatile uint32_t c5vrx_native_start_pointer_mode;
+volatile uint32_t c5vrx_native_final_pointer_mode;
 volatile uint32_t c5vrx_native_iq_power_sum_low;
 volatile uint32_t c5vrx_native_iq_power_sum_high;
 volatile uint32_t c5vrx_native_content_signature;
@@ -234,6 +236,8 @@ static void clear_native_stats(void)
     c5vrx_native_fixed_epoch_observations = 0u;
     c5vrx_native_fixed_epoch_changes = 0u;
     c5vrx_native_fixed_epoch_signature = 2166136261u;
+    c5vrx_native_start_pointer_mode = 0u;
+    c5vrx_native_final_pointer_mode = 0u;
     c5vrx_native_iq_power_sum_low = 0u;
     c5vrx_native_iq_power_sum_high = 0u;
     c5vrx_native_content_signature = 2166136261u;
@@ -362,6 +366,7 @@ static void run_native_ring(void)
     io_fence();
     c5vrx_native_enable_assertions = 1u;
     c5vrx_native_start_control = REG32(DUMP_CTRL);
+    c5vrx_native_start_pointer_mode = REG32(DUMP_PTR_MODE);
     uint32_t previous = pointer();
     c5vrx_native_min_pointer = previous;
     c5vrx_native_max_pointer = previous;
@@ -501,6 +506,7 @@ stop_native:
     }
     c5vrx_native_last_pointer = previous;
     c5vrx_native_final_control = REG32(DUMP_CTRL);
+    c5vrx_native_final_pointer_mode = REG32(DUMP_PTR_MODE);
     if (c5vrx_native_fault_reason != 0u) {}
     else if (c5vrx_native_enable_low != 0u) c5vrx_native_fault_reason = 1u;
     else if (c5vrx_native_mode_low != 0u) c5vrx_native_fault_reason = 2u;

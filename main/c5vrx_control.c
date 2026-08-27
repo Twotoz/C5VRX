@@ -1023,7 +1023,7 @@ static void print_native_ring_result(
     const c5vrx_native_ring_stats_t *stats,
     esp_err_t err)
 {
-    printf("C5VRX_NATIVE_RING enabled=%u duration_ms=%u condition=%s observations=%u pointer_changes=%u wraps=%u min_ptr=%u max_ptr=%u physical_writer_pointer=%u absolute_writer_samples=%llu enable_assertions=%u enable_low=%u mode_low=%u software_rearms=%u software_triggers=%u trigger_high_observations=%u terminal_done=%u progress_after_done=%u ambiguous_backwards=%u content_observations=%u variable_address_differences=%u fixed_epoch_observations=%u fixed_epoch_changes=%u fixed_epoch_signature=%08x iq_power_mean=%u content_signature=%08x phase_boundary_observations=%u phase_boundary_residual_abs_mean=%u phase_boundary_residual_abs_max=%u writer_stopped_after_done=%u pointer_ring_pass=%u memory_ring_pass=%u sequence_valid=%u rf_distinguishable=%u phase_continuous=%u start_ctrl=%08x final_ctrl=%08x fault_reason=%u structural_pass=%u code=%d classification=%s\n",
+    printf("C5VRX_NATIVE_RING enabled=%u duration_ms=%u condition=%s observations=%u pointer_changes=%u wraps=%u min_ptr=%u max_ptr=%u physical_writer_pointer=%u absolute_writer_samples=%llu enable_assertions=%u enable_low=%u mode_low=%u software_rearms=%u software_triggers=%u trigger_high_observations=%u terminal_done=%u progress_after_done=%u ambiguous_backwards=%u content_observations=%u variable_address_differences=%u fixed_epoch_observations=%u fixed_epoch_changes=%u fixed_epoch_signature=%08x iq_power_mean=%u content_signature=%08x phase_boundary_observations=%u phase_boundary_residual_abs_mean=%u phase_boundary_residual_abs_max=%u writer_stopped_after_done=%u pointer_ring_pass=%u memory_ring_pass=%u sequence_valid=%u rf_distinguishable=%u phase_continuous=%u start_ctrl=%08x final_ctrl=%08x start_pointer_mode=%08x final_pointer_mode=%08x fault_reason=%u structural_pass=%u code=%d classification=%s\n",
            stats->engine_enabled_throughout ? 1u : 0u,
            (unsigned)stats->duration_ms,
            c5vrx_native_ring_condition_name(condition),
@@ -1061,6 +1061,8 @@ static void print_native_ring_result(
            stats->phase_continuous ? 1u : 0u,
            (unsigned)stats->start_control,
            (unsigned)stats->final_control,
+           (unsigned)stats->start_pointer_mode,
+           (unsigned)stats->final_pointer_mode,
            (unsigned)stats->fault_reason,
            stats->structural_pass ? 1u : 0u,
            (int)err,
@@ -1918,7 +1920,7 @@ static void handle_line(char *line)
         }
 
         c5vrx_native_ring_stats_t stats = {0};
-        printf("C5VRX_NATIVE_RING_BEGIN condition=%s duration_ms=%u mode=BIT17_FAMILY_HYPOTHESIS dump_trig_arg=IGNORED_C5_V6_0_2 integration=DISABLED\n",
+        printf("C5VRX_NATIVE_RING_BEGIN condition=%s duration_ms=%u mode=C5_VENDOR_TRIG6_PRETRIGGER selector=00080000 sample_field=0 dump_trig_arg=IGNORED_C5_V6_0_2 integration=DISABLED\n",
                c5vrx_native_ring_condition_name(condition),
                native_duration_ms);
         fflush(stdout);

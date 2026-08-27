@@ -79,6 +79,12 @@ def main() -> int:
 
     require(producer, "C5VRX_RF_DUMP_MODE_NATIVE_RING", failures)
     require(producer, "REG32(DUMP_CTRL) |= CTRL_MODE_BIT", failures)
+    require(producer, "#define NATIVE_SAMPLE_FIELD_MASK 0x00e00000u", failures)
+    require(producer, "#define NATIVE_TRIGGER_FIELD_MASK 0x001e0000u", failures)
+    require(producer, "#define NATIVE_TX_END_SELECTOR 0x00080000u", failures)
+    require(producer, "REG32(DUMP_PTR_MODE) &= ~NATIVE_SAMPLE_FIELD_MASK", failures)
+    require(producer, "~NATIVE_TRIGGER_FIELD_MASK) |", failures)
+    require(producer, "NATIVE_TX_END_SELECTOR", failures)
     require(lp, "COMMAND_NATIVE_RING", failures)
     require(lp, "c5vrx_native_software_triggers = 0u", failures)
     require(lp, "c5vrx_native_software_rearms = 0u", failures)
@@ -91,6 +97,7 @@ def main() -> int:
         "physical_writer_pointer", "absolute_writer_samples",
         "hardware_wrap_count", "software_trigger_pulses", "software_rearms",
         "phase_boundary_residual_abs_mean", "content_changes", "fault_reason",
+        "start_pointer_mode", "final_pointer_mode",
     ):
         require(header, field, failures)
 

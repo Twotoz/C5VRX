@@ -50,6 +50,8 @@ typedef struct {
     uint32_t phase_boundary_residual_abs_max;
     uint32_t start_control;
     uint32_t final_control;
+    uint32_t start_pointer_mode;
+    uint32_t final_pointer_mode;
     uint32_t fault_reason;
     bool engine_enabled_throughout;
     bool writer_stopped_after_done;

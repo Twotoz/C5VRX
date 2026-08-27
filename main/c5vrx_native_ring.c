@@ -33,6 +33,8 @@
 #define NATIVE_MAX_DURATION_MS 2000u
 #define CTRL_ENABLE_BIT         0x80000000u
 #define CTRL_MODE_BIT           0x00020000u
+#define NATIVE_POINTER_MODE_MASK 0x00fe0000u
+#define NATIVE_POINTER_MODE_EXPECTED 0x00080000u
 #define NATIVE_AV_OUTPUT_HZ     20000000u
 #define NATIVE_AV_LEAD_WORDS    8192u
 #define NATIVE_AV_START_DELAY_MS 3000u
@@ -133,9 +135,20 @@ static void native_av_task(void *arg)
     ESP_LOGE(TAG,
              "C5VRX_NATIVE_AV state=EXIT lp_state=%" PRIu32
              " pointer=%" PRIu32 " wraps=%" PRIu32
-             " fixed_epoch_changes=%" PRIu32 " fault_reason=%" PRIu32,
+             " fixed_epoch_changes=%" PRIu32
+             " terminal_done=%" PRIu32 " final_ctrl=%08" PRIx32
+             " final_pointer_mode=%08" PRIx32
+             " consumer_changes=%" PRIu32 " consumer_wraps=%" PRIu32
+             " consumer_descriptor_errors=%" PRIu32
+             " fault_reason=%" PRIu32,
              ulp_c5vrx_state, ulp_c5vrx_native_last_pointer,
              ulp_c5vrx_native_wraps, ulp_c5vrx_native_fixed_epoch_changes,
+             ulp_c5vrx_native_done_observations,
+             ulp_c5vrx_native_final_control,
+             ulp_c5vrx_native_final_pointer_mode,
+             ulp_c5vrx_consumer_pointer_changes,
+             ulp_c5vrx_consumer_wraps,
+             ulp_c5vrx_consumer_descriptor_errors,
              ulp_c5vrx_native_fault_reason);
 
 finish_av:
@@ -164,6 +177,10 @@ static bool pointer_ring_pass(const c5vrx_native_ring_stats_t *s)
             (CTRL_ENABLE_BIT | CTRL_MODE_BIT) &&
         (s->final_control & (CTRL_ENABLE_BIT | CTRL_MODE_BIT)) ==
             (CTRL_ENABLE_BIT | CTRL_MODE_BIT) &&
+        (s->start_pointer_mode & NATIVE_POINTER_MODE_MASK) ==
+            NATIVE_POINTER_MODE_EXPECTED &&
+        (s->final_pointer_mode & NATIVE_POINTER_MODE_MASK) ==
+            NATIVE_POINTER_MODE_EXPECTED &&
         !s->writer_stopped_after_done &&
         (s->fault_reason == 0u || s->fault_reason == 10u);
 }
@@ -291,6 +308,8 @@ esp_err_t c5vrx_native_ring_probe(c5vrx_native_ring_condition_t condition,
         ulp_c5vrx_native_phase_residual_abs_max;
     stats->start_control = ulp_c5vrx_native_start_control;
     stats->final_control = ulp_c5vrx_native_final_control;
+    stats->start_pointer_mode = ulp_c5vrx_native_start_pointer_mode;
+    stats->final_pointer_mode = ulp_c5vrx_native_final_pointer_mode;
     stats->fault_reason = ulp_c5vrx_native_fault_reason;
     stats->engine_enabled_throughout =
         stats->enable_assertions == 1u &&

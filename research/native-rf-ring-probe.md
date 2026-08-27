@@ -1,6 +1,6 @@
 # ESP32-C5 native RF/IQ ring probe
 
-Status: **POINTER RING PROVEN / IQ AND AV PHYSICAL RESULT PENDING**. The C5
+Status: **POINTER RING PROVEN / EXACT VENDOR MODE-6 FIX PENDING PHYSICAL TEST**. The C5
 physically demonstrated a single-enable, zero-trigger, zero-rearm circular
 pointer lifecycle. This is not yet called true continuous IQ capture: the
 first RAM-generation check did not prove that fixed locations were refreshed.
@@ -31,7 +31,21 @@ reported zero changes. The result can still be either a live writer that is
 not visible through the LP SRAM view or an address generator traversing stale
 RAM. The classification correctly remained `NATIVE_RING_REJECTED`.
 
-The probe now hashes a fixed set of locations once per observed generation and
+The first implementation combined bit 17 with the mode-0 selector
+`0x01e00000`. The unbounded AV run proved that hybrid was not permanent: it
+asserted terminal status and stopped after 3,069 wraps (about 0.63 seconds),
+then safely restored PAL. It also retained the same fixed-memory signature.
+
+Reinspection of the pinned C5 machine code found the missing half of the
+vendor operation. The only C5 branch that asserts bit 17 is trigger mode 6;
+that branch also clears `0x600a9008[20:17]` with the exact complement mask
+`0xffe1ffff` and selects `0x00080000`. Its preceding historical sample
+argument of one clears `[23:21]`. Family tooling calls trigger mode 6 TX-end.
+The corrected RX-only experiment now reproduces that complete C5 branch, so a
+TX-end event should not occur accidentally. This remains a hypothesis until
+the new unbounded physical run survives and shows refreshed memory.
+
+The probe hashes a fixed set of locations once per observed generation and
 reports `fixed_epoch_observations`, `fixed_epoch_changes`,
 `pointer_ring_pass`, and `memory_ring_pass` separately. Only the latter may
 establish continuously refreshed memory.
