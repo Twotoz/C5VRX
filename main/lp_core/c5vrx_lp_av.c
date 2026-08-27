@@ -5,8 +5,8 @@
  *
  * The proven C5 RF dump mode is a 16384-word one-shot. This program runs from
  * LP SRAM, outside the HP-SRAM window lent to the MAC, and rearms that mode at
- * every terminal pointer. That stitched continuous command has no duration
- * limit. A separate build-gated command observes the bit-17 hardware-ring
+ * every terminal pointer. That stitched command has no duration limit. A
+ * separate build-gated command observes the bit-17 hardware-ring
  * hypothesis without trigger pulses or rearms and has a strict duration limit.
  */
 
