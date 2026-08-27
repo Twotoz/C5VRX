@@ -61,6 +61,7 @@ volatile uint32_t c5vrx_state;
 volatile uint32_t c5vrx_duration_us;
 volatile uint32_t c5vrx_lead_words;
 volatile uint32_t c5vrx_enable_parlio;
+volatile uint32_t c5vrx_hardware_rearm;
 volatile uint32_t c5vrx_writer_advance;
 volatile uint32_t c5vrx_pointer_changes;
 volatile uint32_t c5vrx_pointer_restarts;
@@ -256,6 +257,7 @@ static void run_writer(uint32_t command)
 {
     const bool continuous = command == COMMAND_CONTINUOUS;
     const bool enable_parlio = c5vrx_enable_parlio != 0u;
+    const bool hardware_rearm = c5vrx_hardware_rearm != 0u;
     const uint32_t duration_cycles = cycles_for_us(c5vrx_duration_us);
     const uint32_t requested_lead = c5vrx_lead_words;
     uint32_t previous;
@@ -343,6 +345,34 @@ static void run_writer(uint32_t command)
     run_start = cycle_count();
     for (;;) {
         const uint32_t current = pointer();
+        /* Hardware rearm can complete before LP observes the short DONE
+         * level.  A real high-to-low pointer generation transition is the
+         * authoritative completion signal in that mode. */
+        if (hardware_rearm && current < previous &&
+            previous > (POINTER_MASK * 3u / 4u) &&
+            current < (POINTER_MASK / 4u)) {
+            const uint32_t completed_at = cycle_count();
+            advance += (POINTER_MASK - previous) + 1u + current;
+            changes++;
+            completed++;
+            rearms++;
+            restarts++;
+            if (last_completed_at != 0u) {
+                const uint32_t period = completed_at - last_completed_at;
+                c5vrx_block_period_last = period;
+                if (c5vrx_block_period_min == 0u ||
+                    period < c5vrx_block_period_min)
+                    c5vrx_block_period_min = period;
+                if (period > c5vrx_block_period_max)
+                    c5vrx_block_period_max = period;
+            }
+            last_completed_at = completed_at;
+            previous = current;
+            last_activity_at = completed_at;
+            publish(advance, changes, restarts, previous, completed,
+                    rearms, failures, gap_total, gap_max, last_gap);
+            continue;
+        }
         /* Rearm resets are consumed explicitly below and replace previous
          * with the first accepted pointer. Any other backward observation is
          * stale/metastable and must not become a synthetic full-block delta. */
@@ -355,7 +385,8 @@ static void run_writer(uint32_t command)
         if (enable_parlio) (void)observe_consumer(current);
 
         uint32_t control = REG32(DUMP_CTRL);
-        if ((control & CTRL_DONE) != 0u && current == POINTER_MASK) {
+        if (!hardware_rearm && (control & CTRL_DONE) != 0u &&
+            current == POINTER_MASK) {
             completed++;
             const uint32_t completed_at = cycle_count();
             if (last_completed_at != 0u) {

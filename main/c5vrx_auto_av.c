@@ -24,6 +24,7 @@
 #include "c5vrx_adc_dump.h"
 #include "c5vrx_cvbs_out.h"
 #include "c5vrx_rf_dump_producer.h"
+#include "c5vrx_regdma_iq_probe.h"
 
 #define LP_COMMAND_NONE       0u
 #define LP_COMMAND_BOUNDED    1u
@@ -209,6 +210,8 @@ static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
     ulp_c5vrx_duration_us = CALIBRATION_MS * 1000u;
     ulp_c5vrx_lead_words = LEAD_WORDS;
     ulp_c5vrx_enable_parlio = 0u;
+    const bool hardware_rearm = c5vrx_regdma_iq_probe_arm() == ESP_OK;
+    ulp_c5vrx_hardware_rearm = hardware_rearm ? 1u : 0u;
     if (!run_lp_parked(LP_COMMAND_BOUNDED, 0u)) return false;
 
     const uint32_t words = ulp_c5vrx_writer_advance;
@@ -224,8 +227,10 @@ static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
         ulp_c5vrx_rearm_failures == 0u &&
         output_rate >= MIN_OUTPUT_HZ && output_rate <= MAX_OUTPUT_HZ;
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_CALIBRATION window=%u ok=%u words=%" PRIu32 " run_cycles=%" PRIu32 " rate_hz=%" PRIu32 " blocks=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32 " restarts=%" PRIu32 " period_last=%" PRIu32 " period_min=%" PRIu32 " period_max=%" PRIu32,
-             window, ok ? 1u : 0u, words, run_cycles, rate,
+             "C5VRX_AUTO_AV_CALIBRATION window=%u ok=%u backend=%s words=%" PRIu32 " run_cycles=%" PRIu32 " rate_hz=%" PRIu32 " blocks=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32 " restarts=%" PRIu32 " period_last=%" PRIu32 " period_min=%" PRIu32 " period_max=%" PRIu32,
+             window, ok ? 1u : 0u,
+             hardware_rearm ? "REGDMA_ETM" : "LP_AUTOREARM",
+             words, run_cycles, rate,
              ulp_c5vrx_bursts_completed, ulp_c5vrx_rearms_succeeded,
              ulp_c5vrx_rearm_failures, ulp_c5vrx_pointer_restarts,
              ulp_c5vrx_block_period_last, ulp_c5vrx_block_period_min,
@@ -331,6 +336,8 @@ static void auto_av_task(void *arg)
         ulp_c5vrx_duration_us = 0u;
         ulp_c5vrx_lead_words = LEAD_WORDS;
         ulp_c5vrx_enable_parlio = 1u;
+        const bool hardware_rearm = c5vrx_regdma_iq_probe_arm() == ESP_OK;
+        ulp_c5vrx_hardware_rearm = hardware_rearm ? 1u : 0u;
         ulp_c5vrx_gdma_channel = gdma_channel;
         ulp_c5vrx_gdma_descriptor_base = descriptor_base;
         /* C5 PARLIO has an integer PLL divider. Round the divider upward so
@@ -347,7 +354,8 @@ static void auto_av_task(void *arg)
         set_status(C5VRX_AUTO_AV_DIRECT_A1, true,
                    source_rate_hz, actual_output_rate_hz);
         ESP_LOGI(TAG,
-                 "C5VRX_AUTO_AV_HP_PARK state=ENTER channel=A1 mhz=5865 usb=PAUSED_UNTIL_SIGNAL_LOSS owner=LP_CORE duration=UNBOUNDED");
+                 "C5VRX_AUTO_AV_HP_PARK state=ENTER channel=A1 mhz=5865 backend=%s usb=PAUSED_UNTIL_SIGNAL_LOSS owner=LP_CORE duration=UNBOUNDED",
+                 hardware_rearm ? "REGDMA_ETM" : "LP_AUTOREARM");
         /* The scheduler is deliberately parked, so IDLE cannot feed its task
          * watchdog subscription. Remove only that subscription; LP activity
          * timeout remains the RF safety watchdog and restores ownership on

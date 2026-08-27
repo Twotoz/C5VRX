@@ -46,6 +46,7 @@ idf_component_register(
         esp_app_format
         heap
         esp_hal_security
+        esp_hal_pmu
         ulp
 )
 

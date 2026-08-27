@@ -1075,14 +1075,18 @@ static void handle_line(char *line)
         strcasecmp(line, "REGDMA_IQ_STATUS") == 0) {
         c5vrx_regdma_iq_probe_status_t probe;
         const esp_err_t err = c5vrx_regdma_iq_probe_get_status(&probe);
-        printf("C5VRX_REGDMA_IQ soc_supported=%u wait_node=%u write_node=%u etm_start=%u active=%u restart_sequence_proven=%u target_ctrl=%08x done_mask=%08x start_mask=%08x classification=%s code=%d\n",
+        printf("C5VRX_REGDMA_IQ soc_supported=%u wait_node=%u write_node=%u etm_start=%u chain=%u etm_feedback=%u active=%u starts=%u setup_failures=%u flow_errors=%u restart_sequence_proven=%u target_ctrl=%08x done_mask=%08x start_mask=%08x classification=%s code=%d\n",
                probe.soc_supported, probe.wait_node_supported,
                probe.write_node_supported, probe.etm_start_supported,
-               probe.active, probe.restart_sequence_proven,
+               probe.chain_constructed, probe.etm_feedback_enabled,
+               probe.active, (unsigned)probe.starts,
+               (unsigned)probe.setup_failures, (unsigned)probe.flow_errors,
+               probe.restart_sequence_proven,
                (unsigned)probe.target_control_register,
                (unsigned)probe.done_mask, (unsigned)probe.start_mask,
-               probe.restart_sequence_proven ?
-                   "HW_PROBE_ELIGIBLE" : "FAIL_CLOSED_PHYSICAL_SEQUENCE_REQUIRED",
+               probe.restart_sequence_proven ? "HW_AUTOREARM_PROVEN" :
+                   (probe.chain_constructed ? "REGDMA_ETM_EXPERIMENTAL" :
+                    "FAIL_CLOSED_PHYSICAL_SEQUENCE_REQUIRED"),
                (int)err);
         return;
     }
