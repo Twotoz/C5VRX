@@ -14,7 +14,6 @@
 #include "esp_attr.h"
 #include "esp_bit_defs.h"
 #include "esp_log.h"
-#include "esp_task_wdt.h"
 #include "hal/apm_hal.h"
 #include "soc/apm_defs.h"
 #include "ulp_lp_core.h"
@@ -113,13 +112,10 @@ static void native_av_task(void *arg)
     ulp_c5vrx_gdma_descriptor_base = descriptor_base;
     ulp_c5vrx_expected_block_cycles = 0u;
     ESP_LOGW(TAG,
-             "C5VRX_NATIVE_AV state=ENTER channel=A1 mhz=5865 pointer_rate_hz=80000000 output_hz=20000000 ring_words=16384 enable_assertions=1 software_triggers=0 software_rearms=0 iq_freshness=PHYSICAL_AV_PENDING hp=PERMANENTLY_PARKED usb=BOOT_DIAGNOSTICS_ONLY");
+             "C5VRX_NATIVE_AV state=ENTER channel=A1 mhz=5865 pointer_rate_hz=80000000 output_hz=20000000 ring_words=16384 enable_assertions=1 software_triggers=0 software_rearms=0 iq_freshness=PHYSICAL_AV_PENDING hp=AVAILABLE usb=PASSIVE_RX_DIAGNOSTICS");
 
-    TaskHandle_t idle_task = xTaskGetIdleTaskHandleForCore(0);
-    const esp_err_t idle_wdt_remove = idle_task ?
-        esp_task_wdt_delete(idle_task) : ESP_ERR_NOT_FOUND;
     const uint32_t previous_runs = ulp_c5vrx_runs;
-    portENTER_CRITICAL(&s_probe_mux);
+    TickType_t last_status_tick = xTaskGetTickCount();
     ulp_c5vrx_command = LP_COMMAND_NATIVE_RING;
     for (;;) {
         const uint32_t state = ulp_c5vrx_state;
@@ -128,10 +124,35 @@ static void native_av_task(void *arg)
         if (ulp_c5vrx_runs != previous_runs &&
             (state == LP_STATE_DONE || state == LP_STATE_REARM_ERROR ||
              state == LP_STATE_NO_ACTIVITY)) break;
+        const TickType_t now = xTaskGetTickCount();
+        if (s_av_running &&
+            (TickType_t)(now - last_status_tick) >= pdMS_TO_TICKS(1000u)) {
+            last_status_tick = now;
+            ESP_LOGI(TAG,
+                     "C5VRX_NATIVE_AV_STATUS lp_state=%" PRIu32
+                     " pointer=%" PRIu32 " wraps=%" PRIu32
+                     " fixed_epoch_changes=%" PRIu32
+                     " terminal_done=%" PRIu32
+                     " consumer_changes=%" PRIu32
+                     " consumer_wraps=%" PRIu32
+                     " consumer_descriptor_errors=%" PRIu32
+                     " fault_reason=%" PRIu32
+                     " hp_alive=1 usb=PASSIVE_RX_DIAGNOSTICS",
+                     state, ulp_c5vrx_last_pointer,
+                     ulp_c5vrx_native_wraps,
+                     ulp_c5vrx_native_fixed_epoch_changes,
+                     ulp_c5vrx_native_done_observations,
+                     ulp_c5vrx_consumer_pointer_changes,
+                     ulp_c5vrx_consumer_wraps,
+                     ulp_c5vrx_consumer_descriptor_errors,
+                     ulp_c5vrx_native_fault_reason);
+        }
+        /* LP owns all sample-rate work. Yield at least one RTOS tick so the
+         * HP core, native USB and Wi-Fi control tasks remain serviceable;
+         * none of them are part of the realtime IQ -> PARLIO datapath. */
+        vTaskDelay(1);
     }
-    portEXIT_CRITICAL(&s_probe_mux);
     s_av_running = false;
-    if (idle_wdt_remove == ESP_OK) (void)esp_task_wdt_add(idle_task);
     ESP_LOGE(TAG,
              "C5VRX_NATIVE_AV state=EXIT lp_state=%" PRIu32
              " pointer=%" PRIu32 " wraps=%" PRIu32

@@ -206,8 +206,15 @@ The 20 MS/s output clock follows from the physically observed 80 M pointer
 steps/s and the existing four-input-word BitScrambler program. The RF enable is
 asserted once; the native path contains no software trigger and no rearm. The
 LP core acquires an 8,192-word lead, starts PARLIO, observes the GDMA consumer,
-and owns failure shutdown. The HP core remains parked because the RF engine
-owns the SRAM window, so USB is boot diagnostics only after the handoff.
+and owns failure shutdown. The realtime path does not require HP participation:
+the native AV supervisor yields at least one FreeRTOS tick while LP/hardware run
+the stream. This keeps the HP core and native USB scheduler serviceable. The
+packaged autonomous-AV console is nevertheless RX-only during capture so a USB
+OUT command cannot race RF/SRAM ownership; bounded OFF/ON/TONE commands belong
+to the separate acceptance build. Once per second the HP supervisor emits
+read-only `C5VRX_NATIVE_AV_STATUS` telemetry with writer/wrap/DONE, consumer and
+fault counters. This heartbeat diagnoses control-plane health without carrying
+IQ or video over USB.
 
 This route is an acceptance experiment, not a declaration that continuous IQ
 already works. Its startup line therefore reports `pointer_rate_hz=80000000`

@@ -92,6 +92,9 @@ def main() -> int:
     require(native, "pointer_rate_hz=80000000 output_hz=20000000", failures)
     require(native, "software_triggers=0 software_rearms=0", failures)
     require(native, "iq_freshness=PHYSICAL_AV_PENDING", failures)
+    require(native, "hp=AVAILABLE usb=PASSIVE_RX_DIAGNOSTICS", failures)
+    require(native, "C5VRX_NATIVE_AV_STATUS", failures)
+    require(native, "hp_alive=1 usb=PASSIVE_RX_DIAGNOSTICS", failures)
     require(control, "classification=%s", failures)
     for field in (
         "physical_writer_pointer", "absolute_writer_samples",
@@ -114,6 +117,11 @@ def main() -> int:
         failures.append("foreign-chip-toadcdump-register")
     if "NATIVE_RING_PROVEN" not in native or "INCONCLUSIVE" not in native:
         failures.append("acceptance-classifications")
+    native_av_body = native.split("static void native_av_task(void *arg)", 1)[-1]
+    native_av_body = native_av_body.split("\n#endif", 1)[0]
+    if "portENTER_CRITICAL" in native_av_body:
+        failures.append("native-av-hot-parks-hp-core")
+    require(native_av_body, "vTaskDelay(1);", failures)
 
     print(
         "native ring probe audit",

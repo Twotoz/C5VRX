@@ -235,12 +235,13 @@ class C5VRXApp(tk.Tk):
         )
         self.profile_mismatch_warned = False
         self.av_poll_generation = 0
-        self.direct_rf_active = False
-        # This console is packaged only with CONFIG_C5VRX_AUTO_A1_AV.  The
-        # firmware publishes AV status and a direct-mode heartbeat without a
-        # request, so the host must remain an RX-only observer unless the user
-        # explicitly presses a control.  An OUT transfer at the exact HP->LP
-        # ownership transition can invalidate Windows' native-USB handle.
+        self.native_av_autostart = bool(
+            self.firmware_profile.get("native_av_autostart", False))
+        self.direct_rf_active = self.native_av_autostart
+        # Autonomous profiles publish AV status without a request, so the host
+        # remains an RX-only observer while direct RF is armed/running. An OUT
+        # transfer at the exact HP->LP ownership transition can invalidate the
+        # Windows native-USB handle.
         self.autonomous_a1_appliance = True
         self.title(f"{APP_TITLE} — {self.firmware_profile['display_name']}")
         self.geometry("860x650")
@@ -497,27 +498,37 @@ class C5VRXApp(tk.Tk):
             native_box = ttk.LabelFrame(
                 tab, text="Native hardware-ring acceptance", padding=10)
             native_box.pack(fill="x", pady=(12, 0))
-            for label, condition in (
-                    ("1. VTX OFF", "OFF"),
-                    ("2. VTX ON", "ON"),
-                    ("3. COHERENT TONE", "TONE")):
+            if self.native_av_autostart:
+                ttk.Label(
+                    native_box,
+                    text=("Autonomous A1 AV starts automatically. This EXE is "
+                          "passive/RX-only during native capture; bounded ring "
+                          "probe commands belong to the separate acceptance "
+                          "build."),
+                    wraplength=720,
+                ).pack(side="left", padx=4)
+            else:
+                for label, condition in (
+                        ("1. VTX OFF", "OFF"),
+                        ("2. VTX ON", "ON"),
+                        ("3. COHERENT TONE", "TONE")):
+                    ttk.Button(
+                        native_box,
+                        text=label,
+                        command=lambda value=condition: self.send_command(
+                            f"NATIVE RING PROBE {value} 500"),
+                    ).pack(side="left", padx=(0, 8))
                 ttk.Button(
                     native_box,
-                    text=label,
-                    command=lambda value=condition: self.send_command(
-                        f"NATIVE RING PROBE {value} 500"),
+                    text="LAST RESULT",
+                    command=lambda: self.send_command("NATIVE RING STATUS"),
                 ).pack(side="left", padx=(0, 8))
-            ttk.Button(
-                native_box,
-                text="LAST RESULT",
-                command=lambda: self.send_command("NATIVE RING STATUS"),
-            ).pack(side="left", padx=(0, 8))
-            ttk.Label(
-                native_box,
-                text=("Run in order without resetting. Only the third result "
-                      "may report NATIVE_RING_PROVEN."),
-                wraplength=390,
-            ).pack(side="left", padx=4)
+                ttk.Label(
+                    native_box,
+                    text=("Run in order without resetting. Only the third "
+                          "result may report NATIVE_RING_PROVEN."),
+                    wraplength=390,
+                ).pack(side="left", padx=4)
 
     def _build_preview_tab(self, tab: ttk.Frame) -> None:
         ttk.Label(tab, text="USB-C signal preview", font=("Segoe UI", 14, "bold")).pack(anchor="w")
@@ -765,7 +776,7 @@ class C5VRXApp(tk.Tk):
 
         self.disconnect_serial()
         self.profile_mismatch_warned = False
-        self.direct_rf_active = False
+        self.direct_rf_active = self.native_av_autostart
         # Capabilities belong to the newly connected firmware.  Do not carry
         # Phase8 support over when the user reconnects an older build.
         self.device_phase8_supported = False
@@ -897,6 +908,18 @@ class C5VRXApp(tk.Tk):
                 "C5VRX_AUTO_AV_READY mode=FIXED_A1" in line or
                 "C5VRX_BOOT stage=AUTO_AV_A1_READY" in line):
             self.autonomous_a1_appliance = True
+        if "C5VRX_BOOT stage=NATIVE_A1_AV_ARMED" in line:
+            self.direct_rf_active = True
+            self.after(
+                0, self.preview_status_var.set,
+                "Native A1 AV armed; USB controls are guarded during handoff")
+        if "C5VRX_NATIVE_AV state=ENTER" in line:
+            self.direct_rf_active = True
+            self.after(
+                0, self.preview_status_var.set,
+                "Native A1 AV active; HP remains available, console is RX-only")
+        elif "C5VRX_NATIVE_AV state=EXIT" in line:
+            self.direct_rf_active = False
         if line.startswith("C5VRX_DIRECT_ALIVE"):
             self.direct_rf_active = True
             self.after(
@@ -1476,10 +1499,13 @@ class C5VRXApp(tk.Tk):
             self.sink.write(
                 "C5VRX_HOST_COMMAND_DEFERRED reason=LP_CORE_DIRECT_ACTIVE "
                 f"command={normalized.replace(' ', '_')}\n")
-            self.after(
-                0, self.preview_status_var.set,
+            message = (
+                "Command blocked: autonomous native A1 AV is RX-only; use "
+                "the separate acceptance build for bounded probes"
+                if self.native_av_autostart else
                 "Command deferred while LP-core owns direct A1 capture; "
                 "switch the VTX off and retry")
+            self.after(0, self.preview_status_var.set, message)
             return False
         if not quiet:
             self.session.record_command(normalized)
