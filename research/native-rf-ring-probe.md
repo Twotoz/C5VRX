@@ -1,10 +1,27 @@
 # ESP32-C5 native RF/IQ ring probe
 
-Status: **POINTER RING PROVEN / EXACT VENDOR MODE-6 FIX PENDING PHYSICAL TEST**. The C5
-physically demonstrated a single-enable, zero-trigger, zero-rearm circular
-pointer lifecycle. This is not yet called true continuous IQ capture: the
-first RAM-generation check did not prove that fixed locations were refreshed.
-The PR21 LP-rearmed producer remains the fallback/reference implementation.
+Status: **NATIVE AV INTEGRATION REJECTED / POINTER-ONLY EFFECT OBSERVED**. The
+C5 physically demonstrated a single-enable, zero-trigger, zero-rearm circular
+pointer lifecycle, but never demonstrated refreshed fixed-address IQ memory or
+phase continuity. With exact vendor trigger-mode 6 and native AV enabled, the
+RF-SRAM handoff again made the native USB/HP runtime unavailable before any
+periodic firmware heartbeat could be returned. The packaged profile therefore
+disables native AV and PR21's LP-rearmed producer remains the fallback.
+
+## Final physical verdict
+
+The exact-mode-6 autonomous run reached `NATIVE_A1_AV_ARMED`, then Windows
+reported `ClearCommError` at the RF-SRAM handoff. A passive reopen could obtain
+a COM handle, but the firmware emitted neither the promised once-per-second
+`C5VRX_NATIVE_AV_STATUS` heartbeat nor an EXIT record. There was no reboot
+banner, so this is best described as an unusable HP/native-USB ownership loss,
+not evidence of a normal reset.
+
+Combined with the earlier repeated `fixed_epoch_changes=0`,
+`memory_ring_pass=0` and `phase_continuous=0` results, this fails the critical
+acceptance criterion. Pointer movement at approximately 80 Msteps/s is not
+evidence of 80 MS/s fresh IQ. The project must not call this path continuous,
+must not autostart it, and must not use it for receiver AV.
 
 ## First physical result: 80 M pointer steps/s
 
@@ -188,11 +205,10 @@ negative result. Register snapshots and all counters remain in the output so a
 negative result is useful rather than being silently converted to the PR21
 path.
 
-## Experimental AV acceptance route
+## Rejected AV experiment
 
-The dedicated native-ring test profile now contains a deliberately guarded
-hardware-consumer experiment. After three seconds of PAL boot diagnostics it
-connects:
+The following hardware-consumer experiment was implemented and physically
+rejected; it is no longer enabled by the dedicated native-ring profile:
 
 ```text
 bit-17 64 KiB pointer-ring hypothesis
@@ -216,11 +232,10 @@ read-only `C5VRX_NATIVE_AV_STATUS` telemetry with writer/wrap/DONE, consumer and
 fault counters. This heartbeat diagnoses control-plane health without carrying
 IQ or video over USB.
 
-This route is an acceptance experiment, not a declaration that continuous IQ
-already works. Its startup line therefore reports `pointer_rate_hz=80000000`
-and `iq_freshness=PHYSICAL_AV_PENDING`. Usable RF-dependent analog video, fixed
-generation changes, and boundary phase continuity are still required before a
-production `c5vrx_iq_stream` backend replaces PR21's stitched fallback.
+This route did not produce the required fixed-generation, phase-continuity or
+stable runtime evidence. It remains source-only negative-result material and
+cannot become a production `c5vrx_iq_stream` backend. The packaging script now
+explicitly rejects builds with `CONFIG_C5VRX_NATIVE_A1_AV` enabled.
 
 REGDMA is intentionally not used. On ESP32-C5 it is the power-management
 register backup/restore mechanism (including modem/PHY retention), not a bulk
@@ -229,13 +244,10 @@ AHB-GDMA consumer.
 
 ## Integration gate
 
-There is deliberately no production native-ring `c5vrx_iq_stream` backend yet.
-The AV switch is restricted to the dedicated experimental acceptance profile.
-If physical hardware emits `NATIVE_RING_PROVEN`, the
-next change may place it behind a producer-neutral `c5vrx_iq_stream` interface
-and feed the existing circular GDMA → BitScrambler WBFM → PARLIO path. If it is
-rejected, PR21’s stitched 16,384-word LP-rearm architecture remains active and
-must continue to be described as stitched, not native hardware-circular IQ.
+There is no production native-ring `c5vrx_iq_stream` backend. The native AV
+switch is disabled and rejected by the packaging contract. PR21's stitched
+16,384-word LP-rearm architecture remains active and must continue to be
+described as stitched, not native hardware-circular IQ.
 
 ## Correction to the old probe
 

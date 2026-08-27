@@ -1,5 +1,5 @@
 param(
-    [string]$BuildDirectory = "build_native_av",
+    [string]$BuildDirectory = "build_native_ring",
     [string]$DistDirectory = "dist",
     [string]$WorkDirectory = "build-pyinstaller-native-ring"
 )
@@ -29,7 +29,7 @@ function Reject-BuildConfig([string]$Name) {
 Require-BuildConfig "CONFIG_C5VRX_EXPERIMENTAL_RF_DUMP_PRODUCER"
 Require-BuildConfig "CONFIG_C5VRX_EXPERIMENTAL_NATIVE_RING_PROBE"
 Require-BuildConfig "CONFIG_C5VRX_EXPERIMENTAL_CVBS_PARLIO"
-Require-BuildConfig "CONFIG_C5VRX_NATIVE_A1_AV"
+Reject-BuildConfig "CONFIG_C5VRX_NATIVE_A1_AV"
 Reject-BuildConfig "CONFIG_C5VRX_AUTO_A1_AV"
 
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
