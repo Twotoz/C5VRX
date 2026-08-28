@@ -44,11 +44,14 @@
  * differ by far more than 5%. Three consecutive bounded windows remain the
  * discriminator; their spread is telemetry, not a false-negative gate. */
 #define LEAD_WORDS          8192u
-#define MIN_OUTPUT_HZ       4000000u
-#define MAX_OUTPUT_HZ       20000000u
 #define FALLBACK_RETRY_MS   350u
 #define RF_SCAN_TIMEOUT_US 20000u
 #define LP_CLOCK_HZ        48000000u
+#define RF_IQ_SAMPLE_HZ    80000000u
+#define WBFM_DECIMATION    4u
+#define DIRECT_CVBS_HZ     (RF_IQ_SAMPLE_HZ / WBFM_DECIMATION)
+#define MIN_BLOCK_RATE_HZ  60000000u
+#define MAX_BLOCK_RATE_HZ  90000000u
 
 static const char *TAG = "c5vrx_auto_av";
 static portMUX_TYPE s_status_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -217,16 +220,24 @@ static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
 
     const uint32_t words = ulp_c5vrx_writer_advance;
     const uint32_t run_cycles = ulp_c5vrx_run_cycles;
-    const uint32_t rate = run_cycles ?
+    const uint32_t window_average_rate = run_cycles ?
         (uint32_t)(((uint64_t)words * LP_CLOCK_HZ + run_cycles / 2u) /
                    run_cycles) : 0u;
-    const uint32_t output_rate = (rate + 2u) / 4u;
+    /* VTX modulation is burst-gated, so words/run_cycles is an activity
+     * metric rather than the IQ sample clock. The shortest completed-block
+     * period removes long RF-idle gaps and measures the active 80-MS/s writer
+     * cadence (including only the small rearm boundary cost). */
+    const uint32_t block_period = ulp_c5vrx_block_period_min;
+    const uint32_t block_rate = block_period ?
+        (uint32_t)(((uint64_t)16384u * LP_CLOCK_HZ + block_period / 2u) /
+                   block_period) : 0u;
     const bool ok = ulp_c5vrx_state == LP_STATE_DONE &&
         ulp_c5vrx_lead_acquired != 0u &&
         ulp_c5vrx_bursts_completed >= 8u &&
         ulp_c5vrx_rearms_succeeded >= 7u &&
         ulp_c5vrx_rearm_failures == 0u &&
-        output_rate >= MIN_OUTPUT_HZ && output_rate <= MAX_OUTPUT_HZ;
+        block_rate >= MIN_BLOCK_RATE_HZ &&
+        block_rate <= MAX_BLOCK_RATE_HZ;
     if (hardware_rearm) {
         c5vrx_regdma_iq_probe_note_result(ulp_c5vrx_rearms_succeeded,
                                           ulp_c5vrx_rearm_failures);
@@ -237,15 +248,16 @@ static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
             ulp_c5vrx_regdma_timed_out != 0u);
     }
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_CALIBRATION window=%u ok=%u backend=%s words=%" PRIu32 " run_cycles=%" PRIu32 " rate_hz=%" PRIu32 " blocks=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32 " restarts=%" PRIu32 " period_last=%" PRIu32 " period_min=%" PRIu32 " period_max=%" PRIu32,
+             "C5VRX_AUTO_AV_CALIBRATION window=%u ok=%u backend=%s words=%" PRIu32 " run_cycles=%" PRIu32 " activity_rate_hz=%" PRIu32 " block_rate_hz=%" PRIu32 " rf_sample_clock_hz=%u blocks=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32 " restarts=%" PRIu32 " period_last=%" PRIu32 " period_min=%" PRIu32 " period_max=%" PRIu32,
              window, ok ? 1u : 0u,
              hardware_rearm ? "LP_TRIGGERED_REGDMA" : "LP_AUTOREARM",
-             words, run_cycles, rate,
+             words, run_cycles, window_average_rate, block_rate,
+             (unsigned)RF_IQ_SAMPLE_HZ,
              ulp_c5vrx_bursts_completed, ulp_c5vrx_rearms_succeeded,
              ulp_c5vrx_rearm_failures, ulp_c5vrx_pointer_restarts,
              ulp_c5vrx_block_period_last, ulp_c5vrx_block_period_min,
              ulp_c5vrx_block_period_max);
-    if (source_rate_hz) *source_rate_hz = rate;
+    if (source_rate_hz) *source_rate_hz = block_rate;
     return ok;
 }
 
@@ -318,11 +330,11 @@ static void auto_av_task(void *arg)
                  (unsigned)rates[0], (unsigned)rates[1],
                  (unsigned)rates[2], (unsigned)source_rate_hz,
                  (unsigned)rate_min_hz, (unsigned)rate_spread_ppm);
-        /* Never clock the four-to-one consumer faster than the slowest
-         * observed active window. This preserves the half-ring lead instead
-         * of selecting a median rate already faster than one producer
-         * window. */
-        const uint32_t output_rate_hz = rate_min_hz / 4u;
+        /* The sparse discriminator emits one CVBS sample for four IQ samples.
+         * Long VTX-idle gaps change block availability, not the time represented
+         * by adjacent IQ samples. Preserve the recovered 80-MS/s RF timebase;
+         * deriving this clock from words/wall-time slowed PAL by up to 3x. */
+        const uint32_t output_rate_hz = DIRECT_CVBS_HZ;
         err = c5vrx_cvbs_direct_rf_prepare(output_rate_hz);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "A1 direct AV prepare failed: %s", esp_err_to_name(err));

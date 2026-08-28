@@ -57,6 +57,14 @@ rearm. Timeout diagnostics are latched even when PAU raw/error registers stay
 zero, allowing an unstarted link to remain distinguishable from a target-write
 or pointer-departure failure.
 
+The entry-link/LP-SRAM fix is now physically proven on ESP32-C5 revision 1.0.
+Three bounded REGDMA windows completed 33, 42 and 60 blocks/rearms with zero
+failures, followed by a direct run that reported 22,496 rearms with zero
+failures. VTX removal exited HP park and restored PAL, so RF presence and loss
+remain observable with the hardware backend. This proves repeated physical
+REGDMA restart execution; it does not by itself prove phase-continuous IQ at
+each 16K boundary.
+
 This is deliberately labelled `REGDMA_ETM_EXPERIMENTAL`. It is not promoted to
 `HW_AUTOREARM` until hardware shows repeated real generations, zero PAU flow
 errors, RF-dependent contents and measured boundary/phase behavior.
@@ -77,8 +85,22 @@ The eventual accepted backends are deliberately named:
 
 ## Issue 24 staging
 
-The existing BitScrambler -> PARLIO circular DMA path and PAL fallback remain
-unchanged. Subsequent hardware work should consume only `c5vrx_iq_stream`, add
-line-scale elasticity rather than a framebuffer, and benchmark each offload.
-No experimental producer may replace PAL fallback or park the HP core until RF
-content, boundary phase, USB control and fault recovery all pass on hardware.
+The sparse WBFM BitScrambler kernel consumes four 80-MS/s IQ samples for each
+CVBS byte. Its signed 10-bit I/Q unpacking and phase discriminator pass the
+synthetic host validators, but that is a mathematical conversion check rather
+than proof of a correctly scaled physical composite waveform.
+
+VTX RF output is burst-gated. Consequently `words / window_wall_time` is an
+activity metric (the physical run varied from about 27 to 49 MS/s), not the
+sample clock represented by adjacent IQ words. The shortest completed 16K
+block periods measure the active writer near the expected 80 MS/s. Direct AV
+therefore preserves the RF sample timebase and clocks PARLIO at exactly
+80/4 = 20 MHz. The former wall-time-derived clock reached only 6.67 MHz and
+could not produce correctly timed PAL.
+
+The existing BitScrambler -> PARLIO circular DMA path and PAL fallback remain.
+Physical monitor/scope validation must still establish sync polarity, voltage
+levels, RF-dependent picture content and boundary behavior before the direct
+route can be described as good CVBS. Subsequent pacing work should consume only
+`c5vrx_iq_stream`, use line-scale elasticity rather than a framebuffer, and
+benchmark each offload.
