@@ -46,6 +46,17 @@ the failing PAU registers remain latched in `REGDMA IQ STATUS`.
 LP autorearm is also the boot default: REGDMA is selected only by the explicit
 `REGDMA IQ ENABLE` diagnostic command and can be deselected without reflashing.
 
+The next physical run exposed a C5-specific ESP-IDF trap: C5 has a single
+always-on entry address and does not define `SOC_PM_PAU_REGDMA_LINK_MULTI_ADDR`,
+so `pau_regdma_set_extra_link_addr()` compiles to a no-op. The observed zero
+current-link/address telemetry was therefore a real unprogrammed root, not an
+RF timing failure. The chain now uses `pau_regdma_set_entry_link_addr()` and
+its four finite WRITE descriptors live in LP SRAM. Heap descriptors are not
+valid here because HP SRAM is switched to MAC-dump ownership before every
+rearm. Timeout diagnostics are latched even when PAU raw/error registers stay
+zero, allowing an unstarted link to remain distinguishable from a target-write
+or pointer-departure failure.
+
 This is deliberately labelled `REGDMA_ETM_EXPERIMENTAL`. It is not promoted to
 `HW_AUTOREARM` until hardware shows repeated real generations, zero PAU flow
 errors, RF-dependent contents and measured boundary/phase behavior.

@@ -1075,11 +1075,12 @@ static void handle_line(char *line)
         strcasecmp(line, "REGDMA_IQ_STATUS") == 0) {
         c5vrx_regdma_iq_probe_status_t probe;
         const esp_err_t err = c5vrx_regdma_iq_probe_get_status(&probe);
-        printf("C5VRX_REGDMA_IQ soc_supported=%u wait_node=%u write_node=%u etm_start=%u requested=%u chain=%u etm_feedback=%u active=%u prepares=%u setup_failures=%u physical_rearms=%u runtime_failures=%u flow_error_code=%u int_raw=%08x current_link=%08x peri_addr=%08x mem_addr=%08x restart_sequence_proven=%u target_ctrl=%08x done_mask=%08x start_mask=%08x architecture=LP_DONE_TO_PAU_WRITE_CHAIN classification=%s code=%d\n",
+        printf("C5VRX_REGDMA_IQ soc_supported=%u wait_node=%u write_node=%u etm_start=%u requested=%u chain=%u lp_sram_chain=1 diag_valid=%u timed_out=%u etm_feedback=%u active=%u prepares=%u setup_failures=%u physical_rearms=%u runtime_failures=%u flow_error_code=%u int_raw=%08x current_link=%08x peri_addr=%08x mem_addr=%08x link_root=%08x restart_sequence_proven=%u target_ctrl=%08x done_mask=%08x start_mask=%08x architecture=C5_AON_ENTRY_LP_SRAM_CHAIN classification=%s code=%d\n",
                probe.soc_supported, probe.wait_node_supported,
                probe.write_node_supported, probe.etm_start_supported,
                probe.requested,
-               probe.chain_constructed, probe.etm_feedback_enabled,
+               probe.chain_constructed, probe.diagnostics_valid,
+               probe.timed_out, probe.etm_feedback_enabled,
                probe.active, (unsigned)probe.starts,
                (unsigned)probe.setup_failures,
                (unsigned)probe.physical_rearms,
@@ -1088,6 +1089,7 @@ static void handle_line(char *line)
                (unsigned)probe.interrupt_raw, (unsigned)probe.current_link,
                (unsigned)probe.peripheral_address,
                (unsigned)probe.memory_address,
+               (unsigned)probe.link_root,
                probe.restart_sequence_proven,
                (unsigned)probe.target_control_register,
                (unsigned)probe.done_mask, (unsigned)probe.start_mask,

@@ -15,6 +15,8 @@ typedef struct {
     bool requested;
     bool restart_sequence_proven;
     bool chain_constructed;
+    bool diagnostics_valid;
+    bool timed_out;
     bool etm_feedback_enabled;
     uint32_t starts;
     uint32_t setup_failures;
@@ -25,6 +27,7 @@ typedef struct {
     uint32_t current_link;
     uint32_t peripheral_address;
     uint32_t memory_address;
+    uint32_t link_root;
     uint32_t target_control_register;
     uint32_t done_mask;
     uint32_t start_mask;
@@ -37,13 +40,14 @@ esp_err_t c5vrx_regdma_iq_probe_get_status(
 
 /* Prepare one bounded hardware experiment. LP observes the proven RF DONE
  * boundary and gives PAU one start; REGDMA performs the four modem writes. */
-esp_err_t c5vrx_regdma_iq_probe_arm(void);
+esp_err_t c5vrx_regdma_iq_probe_arm(uint32_t lp_link_root);
 void c5vrx_regdma_iq_probe_note_result(uint32_t rearms,
                                        uint32_t failures);
 void c5vrx_regdma_iq_probe_note_diagnostics(uint32_t conf,
                                             uint32_t interrupt_raw,
                                             uint32_t current_link,
                                             uint32_t peripheral_address,
-                                            uint32_t memory_address);
+                                            uint32_t memory_address,
+                                            bool timed_out);
 void c5vrx_regdma_iq_probe_set_requested(bool requested);
 bool c5vrx_regdma_iq_probe_requested(void);

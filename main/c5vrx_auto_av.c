@@ -211,7 +211,7 @@ static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
     ulp_c5vrx_lead_words = LEAD_WORDS;
     ulp_c5vrx_enable_parlio = 0u;
     const bool hardware_rearm = c5vrx_regdma_iq_probe_requested() &&
-        c5vrx_regdma_iq_probe_arm() == ESP_OK;
+        c5vrx_regdma_iq_probe_arm(ulp_c5vrx_regdma_link_root) == ESP_OK;
     ulp_c5vrx_hardware_rearm = hardware_rearm ? 1u : 0u;
     if (!run_lp_parked(LP_COMMAND_BOUNDED, 0u)) return false;
 
@@ -233,7 +233,8 @@ static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
         c5vrx_regdma_iq_probe_note_diagnostics(
             ulp_c5vrx_regdma_conf, ulp_c5vrx_regdma_int_raw,
             ulp_c5vrx_regdma_current_link, ulp_c5vrx_regdma_peri_addr,
-            ulp_c5vrx_regdma_mem_addr);
+            ulp_c5vrx_regdma_mem_addr,
+            ulp_c5vrx_regdma_timed_out != 0u);
     }
     ESP_LOGI(TAG,
              "C5VRX_AUTO_AV_CALIBRATION window=%u ok=%u backend=%s words=%" PRIu32 " run_cycles=%" PRIu32 " rate_hz=%" PRIu32 " blocks=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32 " restarts=%" PRIu32 " period_last=%" PRIu32 " period_min=%" PRIu32 " period_max=%" PRIu32,
@@ -346,7 +347,7 @@ static void auto_av_task(void *arg)
         ulp_c5vrx_lead_words = LEAD_WORDS;
         ulp_c5vrx_enable_parlio = 1u;
         const bool hardware_rearm = c5vrx_regdma_iq_probe_requested() &&
-            c5vrx_regdma_iq_probe_arm() == ESP_OK;
+            c5vrx_regdma_iq_probe_arm(ulp_c5vrx_regdma_link_root) == ESP_OK;
         ulp_c5vrx_hardware_rearm = hardware_rearm ? 1u : 0u;
         ulp_c5vrx_gdma_channel = gdma_channel;
         ulp_c5vrx_gdma_descriptor_base = descriptor_base;
@@ -381,7 +382,8 @@ static void auto_av_task(void *arg)
             c5vrx_regdma_iq_probe_note_diagnostics(
                 ulp_c5vrx_regdma_conf, ulp_c5vrx_regdma_int_raw,
                 ulp_c5vrx_regdma_current_link, ulp_c5vrx_regdma_peri_addr,
-                ulp_c5vrx_regdma_mem_addr);
+                ulp_c5vrx_regdma_mem_addr,
+                ulp_c5vrx_regdma_timed_out != 0u);
         }
         const esp_err_t idle_wdt_restore =
             idle_wdt_remove == ESP_OK ? esp_task_wdt_add(idle_task) :

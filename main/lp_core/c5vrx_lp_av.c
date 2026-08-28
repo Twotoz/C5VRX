@@ -40,7 +40,7 @@
 #define PAU_LINK3       0x00000060u
 #define PAU_DONE_RAW    0x00000001u
 #define PAU_ERROR_RAW   0x00000002u
-#define PAU_TIMEOUT_CYCLES 2048u
+#define PAU_TIMEOUT_CYCLES 8192u
 #define PARLIO_CLK_EN   0x00040000u
 #define PARLIO_TX_FIFO_EMPTY_INT 0x00000001u
 #define PARLIO_PREFILL_CYCLES 512u
@@ -115,6 +115,44 @@ volatile uint32_t c5vrx_regdma_int_raw;
 volatile uint32_t c5vrx_regdma_current_link;
 volatile uint32_t c5vrx_regdma_peri_addr;
 volatile uint32_t c5vrx_regdma_mem_addr;
+volatile uint32_t c5vrx_regdma_timed_out;
+volatile uint32_t c5vrx_regdma_link_root;
+
+/* REGDMA must fetch its nodes after HP SRAM has been switched from CPU use to
+ * MAC-dump use. Keep the finite four-write restore chain in LP SRAM beside
+ * this program. A WRITE node is seven words: two software-stat words, the
+ * hardware head, then next/register/value/mask. Hardware entry addresses
+ * point at the head (word 2), not at the software-stat prefix. */
+#define REGDMA_WRITE_HEAD       0x40020000u
+#define REGDMA_WRITE_HEAD_EOF   0xc0020000u
+volatile uint32_t c5vrx_regdma_nodes[4][7];
+
+static inline void io_fence(void);
+
+static void prepare_regdma_chain(void)
+{
+    for (uint32_t i = 0u; i < 4u; ++i) {
+        for (uint32_t j = 0u; j < 7u; ++j) {
+            c5vrx_regdma_nodes[i][j] = 0u;
+        }
+        c5vrx_regdma_nodes[i][2] = i == 3u ?
+            REGDMA_WRITE_HEAD_EOF : REGDMA_WRITE_HEAD;
+        c5vrx_regdma_nodes[i][3] = i == 3u ? 0u :
+            (uint32_t)(uintptr_t)&c5vrx_regdma_nodes[i + 1u][2];
+        c5vrx_regdma_nodes[i][4] = DUMP_CTRL;
+    }
+    c5vrx_regdma_nodes[0][5] = 0u;
+    c5vrx_regdma_nodes[0][6] = CTRL_ENABLE;
+    c5vrx_regdma_nodes[1][5] = CTRL_ENABLE;
+    c5vrx_regdma_nodes[1][6] = CTRL_ENABLE;
+    c5vrx_regdma_nodes[2][5] = CTRL_SW_TRIGGER;
+    c5vrx_regdma_nodes[2][6] = CTRL_SW_TRIGGER;
+    c5vrx_regdma_nodes[3][5] = 0u;
+    c5vrx_regdma_nodes[3][6] = CTRL_SW_TRIGGER;
+    c5vrx_regdma_link_root =
+        (uint32_t)(uintptr_t)&c5vrx_regdma_nodes[0][2];
+    io_fence();
+}
 
 /* Keep an LP access fault local to the LP core.  The stock weak handler calls
  * ulp_lp_core_abort(), which makes a register-permission mistake look like a
@@ -192,6 +230,7 @@ static void clear_stats(void)
     c5vrx_regdma_current_link = 0u;
     c5vrx_regdma_peri_addr = 0u;
     c5vrx_regdma_mem_addr = 0u;
+    c5vrx_regdma_timed_out = 0u;
 }
 
 static inline uint32_t pointer(void)
@@ -239,6 +278,8 @@ static bool trigger_regdma_rearm(void)
     c5vrx_regdma_current_link = REG32(PAU_CURRENT_LINK);
     c5vrx_regdma_peri_addr = REG32(PAU_PERI_ADDR);
     c5vrx_regdma_mem_addr = REG32(PAU_MEM_ADDR);
+    c5vrx_regdma_timed_out =
+        (raw & (PAU_DONE_RAW | PAU_ERROR_RAW)) == 0u ? 1u : 0u;
 
     REG32(PAU_REGDMA_CONF) = conf & ~PAU_LINK_SEL_M;
     if ((raw & PAU_ERROR_RAW) == 0u) {
@@ -527,6 +568,7 @@ int main(void)
     c5vrx_fault_pc = 0u;
     c5vrx_saved_ownership = 0u;
     c5vrx_stage = 0u;
+    prepare_regdma_chain();
     clear_stats();
     c5vrx_command = COMMAND_NONE;
     c5vrx_state = STATE_READY;
