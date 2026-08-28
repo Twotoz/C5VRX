@@ -19,6 +19,12 @@ typedef struct {
     uint32_t starts;
     uint32_t setup_failures;
     uint32_t flow_errors;
+    uint32_t physical_rearms;
+    uint32_t runtime_failures;
+    uint32_t interrupt_raw;
+    uint32_t current_link;
+    uint32_t peripheral_address;
+    uint32_t memory_address;
     uint32_t target_control_register;
     uint32_t done_mask;
     uint32_t start_mask;
@@ -29,9 +35,10 @@ typedef struct {
 esp_err_t c5vrx_regdma_iq_probe_get_status(
     c5vrx_regdma_iq_probe_status_t *status);
 
-/* Arm one bounded hardware experiment.  The chain contains only the exact
- * four writes already proven by PR21 and is retriggered by the documented
- * REGDMA DONE3 -> START3 ETM route. */
+/* Prepare one bounded hardware experiment. LP observes the proven RF DONE
+ * boundary and gives PAU one start; REGDMA performs the four modem writes. */
 esp_err_t c5vrx_regdma_iq_probe_arm(void);
+void c5vrx_regdma_iq_probe_note_result(uint32_t rearms,
+                                       uint32_t failures);
 void c5vrx_regdma_iq_probe_set_requested(bool requested);
 bool c5vrx_regdma_iq_probe_requested(void);

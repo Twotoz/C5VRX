@@ -227,10 +227,14 @@ static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
         ulp_c5vrx_rearms_succeeded >= 7u &&
         ulp_c5vrx_rearm_failures == 0u &&
         output_rate >= MIN_OUTPUT_HZ && output_rate <= MAX_OUTPUT_HZ;
+    if (hardware_rearm) {
+        c5vrx_regdma_iq_probe_note_result(ulp_c5vrx_rearms_succeeded,
+                                          ulp_c5vrx_rearm_failures);
+    }
     ESP_LOGI(TAG,
              "C5VRX_AUTO_AV_CALIBRATION window=%u ok=%u backend=%s words=%" PRIu32 " run_cycles=%" PRIu32 " rate_hz=%" PRIu32 " blocks=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32 " restarts=%" PRIu32 " period_last=%" PRIu32 " period_min=%" PRIu32 " period_max=%" PRIu32,
              window, ok ? 1u : 0u,
-             hardware_rearm ? "REGDMA_ETM" : "LP_AUTOREARM",
+             hardware_rearm ? "LP_TRIGGERED_REGDMA" : "LP_AUTOREARM",
              words, run_cycles, rate,
              ulp_c5vrx_bursts_completed, ulp_c5vrx_rearms_succeeded,
              ulp_c5vrx_rearm_failures, ulp_c5vrx_pointer_restarts,
@@ -357,7 +361,7 @@ static void auto_av_task(void *arg)
                    source_rate_hz, actual_output_rate_hz);
         ESP_LOGI(TAG,
                  "C5VRX_AUTO_AV_HP_PARK state=ENTER channel=A1 mhz=5865 backend=%s usb=PAUSED_UNTIL_SIGNAL_LOSS owner=LP_CORE duration=UNBOUNDED",
-                 hardware_rearm ? "REGDMA_ETM" : "LP_AUTOREARM");
+                 hardware_rearm ? "LP_TRIGGERED_REGDMA" : "LP_AUTOREARM");
         /* The scheduler is deliberately parked, so IDLE cannot feed its task
          * watchdog subscription. Remove only that subscription; LP activity
          * timeout remains the RF safety watchdog and restores ownership on
@@ -367,6 +371,10 @@ static void auto_av_task(void *arg)
         const esp_err_t idle_wdt_remove = idle_task ?
             esp_task_wdt_delete(idle_task) : ESP_ERR_NOT_FOUND;
         const bool ran_direct = run_lp_parked(LP_COMMAND_CONTINUOUS, 0u);
+        if (hardware_rearm) {
+            c5vrx_regdma_iq_probe_note_result(ulp_c5vrx_rearms_succeeded,
+                                              ulp_c5vrx_rearm_failures);
+        }
         const esp_err_t idle_wdt_restore =
             idle_wdt_remove == ESP_OK ? esp_task_wdt_add(idle_task) :
             idle_wdt_remove;
@@ -414,12 +422,14 @@ esp_err_t c5vrx_auto_av_start(void)
      * so permissions must be installed after LP_STATE_READY, matching the
      * ordering in Espressif's LP-CPU-to-HP-peripheral APM test.  Grant only:
      *   MODEM     0x600a9004/08  RF writer control and pointer
+     *   REGDMA    0x60093000..24 PAU link-3 start/completion
      *   SYSTEM    0x60095004     HP-SRAM bank ownership
      *   PCR       0x600960b4     PARLIO peripheral clock gate
      *   PARL_IO   0x60015028/34  deferred FIFO-empty IRQ arm/clear
      */
     const uint64_t lp_hp_rw_peripherals =
         BIT64(APM_TEE_HP_PERIPH_MODEM) |
+        BIT64(APM_TEE_HP_PERIPH_REGDMA) |
          BIT64(APM_TEE_HP_PERIPH_SYSTEM_REG) |
          BIT64(APM_TEE_HP_PERIPH_PCR_REG) |
          BIT64(APM_TEE_HP_PERIPH_PARL_IO);

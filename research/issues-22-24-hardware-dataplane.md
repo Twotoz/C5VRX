@@ -2,7 +2,7 @@
 
 This branch starts at the exact PR21 head. PR21's LP-core, 16,384-word rearm
 backend remains the proven fallback RF producer. This branch adds an
-experimental REGDMA+ETM rearm backend ahead of it; the rejected native-ring
+experimental LP-triggered REGDMA rearm backend ahead of it; the rejected native-ring
 experiment is not copied into this branch.
 
 ## REGDMA evidence and gate
@@ -26,14 +26,17 @@ There is currently no C5 evidence for a separate DONE-clear write, so step 2
 must remain unavailable rather than guessing write-one-to-clear semantics.
 `REGDMA_IQ_STATUS` reports both capability and live PAU flow-error telemetry.
 
-## Experimental REGDMA + ETM rearm chain
+## Experimental LP-triggered REGDMA rearm chain
 
-The guarded implementation now constructs one finite PAU chain from the exact
-PR21 restart sequence: WAIT for DONE, masked ENABLE low/high, then masked START
-high/low. `REGDMA_EVT_DONE3` is routed through ETM to `REGDMA_TASK_START3`, so
-the finite chain returns to WAIT without a circular link or per-boundary CPU
-code. The LP supervisor still owns SRAM safety, activity timeout and pointer
-generation telemetry. Setup failure selects the unchanged LP autorearm path.
+The first physical attempt used PAU WAIT plus `REGDMA_EVT_DONE3` feedback. It
+failed with PAU `flow_err=6` and only partial first-generation writes. That
+event describes PAU-chain completion, not an RF-writer DONE source, and the
+initial WAIT can expire before RF DONE. The revised experiment removes both
+WAIT and ETM feedback. LP observes the already-proven RF
+`DONE && PTR==16383` boundary and emits one PAU link-3 start. REGDMA then
+performs masked ENABLE low/high and START high/low. LP verifies pointer
+departure and falls closed on PAU error or timeout. This offloads the four
+timing-critical modem writes without inventing an RF-DONE ETM source.
 LP autorearm is also the boot default: REGDMA is selected only by the explicit
 `REGDMA IQ ENABLE` diagnostic command and can be deselected without reflashing.
 

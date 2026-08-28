@@ -19,6 +19,9 @@
 
 #define DUMP_CTRL       0x600a9004u
 #define DUMP_PTR_MODE   0x600a9008u
+#define PAU_REGDMA_CONF 0x60093000u
+#define PAU_INT_RAW     0x6009301cu
+#define PAU_INT_CLR     0x60093020u
 #define HP_SRAM_USAGE   0x60095004u
 #define PARLIO_TX_CLOCK 0x600960b4u
 #define PARLIO_INT_ENA  0x60015028u
@@ -28,6 +31,13 @@
 #define CTRL_ENABLE     0x80000000u
 #define CTRL_SW_TRIGGER 0x00080000u
 #define CTRL_DONE       0x00040000u
+#define PAU_START       0x00000008u
+#define PAU_TO_MEM      0x00000010u
+#define PAU_LINK_SEL_M  0x000001e0u
+#define PAU_LINK3       0x00000060u
+#define PAU_DONE_RAW    0x00000001u
+#define PAU_ERROR_RAW   0x00000002u
+#define PAU_TIMEOUT_CYCLES 2048u
 #define PARLIO_CLK_EN   0x00040000u
 #define PARLIO_TX_FIFO_EMPTY_INT 0x00000001u
 #define PARLIO_PREFILL_CYCLES 512u
@@ -188,6 +198,36 @@ static inline void trigger_writer(void)
     io_fence();
 }
 
+/* Link 3 is prepared by HP before SRAM ownership is lent to RF. RF DONE is
+ * not a documented PAU ETM source, so LP starts the finite link only after
+ * the proven DONE+terminal-pointer condition. REGDMA performs the four
+ * timing-sensitive modem writes and LP merely checks completion. */
+static bool trigger_regdma_rearm(void)
+{
+    REG32(PAU_INT_CLR) = PAU_DONE_RAW | PAU_ERROR_RAW;
+    uint32_t conf = REG32(PAU_REGDMA_CONF);
+    conf &= ~(PAU_START | PAU_TO_MEM | PAU_LINK_SEL_M);
+    conf |= PAU_LINK3;
+    REG32(PAU_REGDMA_CONF) = conf;
+    io_fence();
+    REG32(PAU_REGDMA_CONF) = conf | PAU_START;
+    io_fence();
+
+    const uint32_t started = cycle_count();
+    uint32_t raw;
+    do {
+        raw = REG32(PAU_INT_RAW);
+        if ((raw & PAU_ERROR_RAW) != 0u) break;
+    } while ((raw & PAU_DONE_RAW) == 0u &&
+             (uint32_t)(cycle_count() - started) < PAU_TIMEOUT_CYCLES);
+
+    REG32(PAU_REGDMA_CONF) = conf & ~PAU_LINK_SEL_M;
+    REG32(PAU_INT_CLR) = PAU_DONE_RAW | PAU_ERROR_RAW;
+    io_fence();
+    return (raw & PAU_DONE_RAW) != 0u &&
+        (raw & PAU_ERROR_RAW) == 0u;
+}
+
 /* The public C5 AHB-GDMA register layout places each TX channel 0xc0 bytes
  * apart and exposes the next fetched descriptor at channel+0xf0.  PARLIO's
  * public loop builder uses contiguous 12-byte descriptors carrying at most
@@ -345,34 +385,6 @@ static void run_writer(uint32_t command)
     run_start = cycle_count();
     for (;;) {
         const uint32_t current = pointer();
-        /* Hardware rearm can complete before LP observes the short DONE
-         * level.  A real high-to-low pointer generation transition is the
-         * authoritative completion signal in that mode. */
-        if (hardware_rearm && current < previous &&
-            previous > (POINTER_MASK * 3u / 4u) &&
-            current < (POINTER_MASK / 4u)) {
-            const uint32_t completed_at = cycle_count();
-            advance += (POINTER_MASK - previous) + 1u + current;
-            changes++;
-            completed++;
-            rearms++;
-            restarts++;
-            if (last_completed_at != 0u) {
-                const uint32_t period = completed_at - last_completed_at;
-                c5vrx_block_period_last = period;
-                if (c5vrx_block_period_min == 0u ||
-                    period < c5vrx_block_period_min)
-                    c5vrx_block_period_min = period;
-                if (period > c5vrx_block_period_max)
-                    c5vrx_block_period_max = period;
-            }
-            last_completed_at = completed_at;
-            previous = current;
-            last_activity_at = completed_at;
-            publish(advance, changes, restarts, previous, completed,
-                    rearms, failures, gap_total, gap_max, last_gap);
-            continue;
-        }
         /* Rearm resets are consumed explicitly below and replace previous
          * with the first accepted pointer. Any other backward observation is
          * stale/metastable and must not become a synthetic full-block delta. */
@@ -385,7 +397,7 @@ static void run_writer(uint32_t command)
         if (enable_parlio) (void)observe_consumer(current);
 
         uint32_t control = REG32(DUMP_CTRL);
-        if (!hardware_rearm && (control & CTRL_DONE) != 0u &&
+        if ((control & CTRL_DONE) != 0u &&
             current == POINTER_MASK) {
             completed++;
             const uint32_t completed_at = cycle_count();
@@ -415,7 +427,13 @@ static void run_writer(uint32_t command)
                 }
             }
             last_completed_at = completed_at;
-            trigger_writer();
+            const bool rearm_started = hardware_rearm ?
+                trigger_regdma_rearm() : (trigger_writer(), true);
+            if (!rearm_started) {
+                failures++;
+                terminal_state = STATE_REARM_ERROR;
+                goto stop;
+            }
 
             /* Departure from 16383 proves the edge-sensitive rearm worked. */
             for (;;) {
