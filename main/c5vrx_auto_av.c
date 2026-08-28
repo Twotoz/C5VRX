@@ -213,9 +213,14 @@ static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
     ulp_c5vrx_duration_us = CALIBRATION_MS * 1000u;
     ulp_c5vrx_lead_words = LEAD_WORDS;
     ulp_c5vrx_enable_parlio = 0u;
-    const bool hardware_rearm = c5vrx_regdma_iq_probe_requested() &&
-        c5vrx_regdma_iq_probe_arm(ulp_c5vrx_regdma_link_root) == ESP_OK;
-    ulp_c5vrx_hardware_rearm = hardware_rearm ? 1u : 0u;
+    const esp_err_t arm_err =
+        c5vrx_regdma_iq_probe_arm(ulp_c5vrx_regdma_link_root);
+    if (arm_err != ESP_OK) {
+        ESP_LOGE(TAG, "REGDMA-only calibration arm failed: %s",
+                 esp_err_to_name(arm_err));
+        return false;
+    }
+    ulp_c5vrx_hardware_rearm = 1u;
     if (!run_lp_parked(LP_COMMAND_BOUNDED, 0u)) return false;
 
     const uint32_t words = ulp_c5vrx_writer_advance;
@@ -238,19 +243,17 @@ static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
         ulp_c5vrx_rearm_failures == 0u &&
         block_rate >= MIN_BLOCK_RATE_HZ &&
         block_rate <= MAX_BLOCK_RATE_HZ;
-    if (hardware_rearm) {
-        c5vrx_regdma_iq_probe_note_result(ulp_c5vrx_rearms_succeeded,
-                                          ulp_c5vrx_rearm_failures);
-        c5vrx_regdma_iq_probe_note_diagnostics(
-            ulp_c5vrx_regdma_conf, ulp_c5vrx_regdma_int_raw,
-            ulp_c5vrx_regdma_current_link, ulp_c5vrx_regdma_peri_addr,
-            ulp_c5vrx_regdma_mem_addr,
-            ulp_c5vrx_regdma_timed_out != 0u);
-    }
+    c5vrx_regdma_iq_probe_note_result(ulp_c5vrx_rearms_succeeded,
+                                      ulp_c5vrx_rearm_failures);
+    c5vrx_regdma_iq_probe_note_diagnostics(
+        ulp_c5vrx_regdma_conf, ulp_c5vrx_regdma_int_raw,
+        ulp_c5vrx_regdma_current_link, ulp_c5vrx_regdma_peri_addr,
+        ulp_c5vrx_regdma_mem_addr,
+        ulp_c5vrx_regdma_timed_out != 0u);
     ESP_LOGI(TAG,
              "C5VRX_AUTO_AV_CALIBRATION window=%u ok=%u backend=%s words=%" PRIu32 " run_cycles=%" PRIu32 " activity_rate_hz=%" PRIu32 " block_rate_hz=%" PRIu32 " rf_sample_clock_hz=%u blocks=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32 " restarts=%" PRIu32 " period_last=%" PRIu32 " period_min=%" PRIu32 " period_max=%" PRIu32,
              window, ok ? 1u : 0u,
-             hardware_rearm ? "LP_TRIGGERED_REGDMA" : "LP_AUTOREARM",
+             "LP_TRIGGERED_REGDMA",
              words, run_cycles, window_average_rate, block_rate,
              (unsigned)RF_IQ_SAMPLE_HZ,
              ulp_c5vrx_bursts_completed, ulp_c5vrx_rearms_succeeded,
@@ -358,9 +361,15 @@ static void auto_av_task(void *arg)
         ulp_c5vrx_duration_us = 0u;
         ulp_c5vrx_lead_words = LEAD_WORDS;
         ulp_c5vrx_enable_parlio = 1u;
-        const bool hardware_rearm = c5vrx_regdma_iq_probe_requested() &&
-            c5vrx_regdma_iq_probe_arm(ulp_c5vrx_regdma_link_root) == ESP_OK;
-        ulp_c5vrx_hardware_rearm = hardware_rearm ? 1u : 0u;
+        err = c5vrx_regdma_iq_probe_arm(ulp_c5vrx_regdma_link_root);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "REGDMA-only direct arm failed: %s",
+                     esp_err_to_name(err));
+            restore_fallback(true);
+            vTaskDelay(pdMS_TO_TICKS(FALLBACK_RETRY_MS));
+            continue;
+        }
+        ulp_c5vrx_hardware_rearm = 1u;
         ulp_c5vrx_gdma_channel = gdma_channel;
         ulp_c5vrx_gdma_descriptor_base = descriptor_base;
         /* C5 PARLIO has an integer PLL divider. Round the divider upward so
@@ -378,7 +387,7 @@ static void auto_av_task(void *arg)
                    source_rate_hz, actual_output_rate_hz);
         ESP_LOGI(TAG,
                  "C5VRX_AUTO_AV_HP_PARK state=ENTER channel=A1 mhz=5865 backend=%s usb=PAUSED_UNTIL_SIGNAL_LOSS owner=LP_CORE duration=UNBOUNDED",
-                 hardware_rearm ? "LP_TRIGGERED_REGDMA" : "LP_AUTOREARM");
+                 "LP_TRIGGERED_REGDMA");
         /* The scheduler is deliberately parked, so IDLE cannot feed its task
          * watchdog subscription. Remove only that subscription; LP activity
          * timeout remains the RF safety watchdog and restores ownership on
@@ -388,15 +397,13 @@ static void auto_av_task(void *arg)
         const esp_err_t idle_wdt_remove = idle_task ?
             esp_task_wdt_delete(idle_task) : ESP_ERR_NOT_FOUND;
         const bool ran_direct = run_lp_parked(LP_COMMAND_CONTINUOUS, 0u);
-        if (hardware_rearm) {
-            c5vrx_regdma_iq_probe_note_result(ulp_c5vrx_rearms_succeeded,
-                                              ulp_c5vrx_rearm_failures);
-            c5vrx_regdma_iq_probe_note_diagnostics(
-                ulp_c5vrx_regdma_conf, ulp_c5vrx_regdma_int_raw,
-                ulp_c5vrx_regdma_current_link, ulp_c5vrx_regdma_peri_addr,
-                ulp_c5vrx_regdma_mem_addr,
-                ulp_c5vrx_regdma_timed_out != 0u);
-        }
+        c5vrx_regdma_iq_probe_note_result(ulp_c5vrx_rearms_succeeded,
+                                          ulp_c5vrx_rearm_failures);
+        c5vrx_regdma_iq_probe_note_diagnostics(
+            ulp_c5vrx_regdma_conf, ulp_c5vrx_regdma_int_raw,
+            ulp_c5vrx_regdma_current_link, ulp_c5vrx_regdma_peri_addr,
+            ulp_c5vrx_regdma_mem_addr,
+            ulp_c5vrx_regdma_timed_out != 0u);
         const esp_err_t idle_wdt_restore =
             idle_wdt_remove == ESP_OK ? esp_task_wdt_add(idle_task) :
             idle_wdt_remove;

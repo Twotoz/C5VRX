@@ -43,8 +43,10 @@ then covers the audited MODEM target as well as LP's PAU control access.
 Any PAU completion error or pointer-restart failure automatically clears the
 experimental request, so the next scan uses the proven LP autorearm backend;
 the failing PAU registers remain latched in `REGDMA IQ STATUS`.
-LP autorearm is also the boot default: REGDMA is selected only by the explicit
-`REGDMA IQ ENABLE` diagnostic command and can be deselected without reflashing.
+Following physical proof, REGDMA is the only RF rearm policy used by the fixed
+A1 appliance. It is armed for every bounded and continuous window at boot;
+there is no LP-autorearm fallback or runtime disable. A REGDMA setup/runtime
+fault fails closed to PAL and the next RF scan retries REGDMA.
 
 The next physical run exposed a C5-specific ESP-IDF trap: C5 has a single
 always-on entry address and does not define `SOC_PM_PAU_REGDMA_LINK_MULTI_ADDR`,

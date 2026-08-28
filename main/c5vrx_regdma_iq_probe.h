@@ -49,5 +49,3 @@ void c5vrx_regdma_iq_probe_note_diagnostics(uint32_t conf,
                                             uint32_t peripheral_address,
                                             uint32_t memory_address,
                                             bool timed_out);
-void c5vrx_regdma_iq_probe_set_requested(bool requested);
-bool c5vrx_regdma_iq_probe_requested(void);

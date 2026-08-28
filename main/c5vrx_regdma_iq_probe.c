@@ -24,25 +24,10 @@ static uint32_t s_last_memory_address;
 static uint32_t s_last_flow_error;
 static bool s_diagnostics_valid;
 static bool s_timed_out;
-static volatile bool s_requested;
-
-void c5vrx_regdma_iq_probe_set_requested(bool requested)
-{
-    s_requested = requested;
-}
-
-bool c5vrx_regdma_iq_probe_requested(void)
-{
-    return s_requested;
-}
-
 void c5vrx_regdma_iq_probe_note_result(uint32_t rearms, uint32_t failures)
 {
     s_physical_rearms += rearms;
     s_runtime_failures += failures;
-    if (failures != 0u) {
-        s_requested = false;
-    }
 }
 
 void c5vrx_regdma_iq_probe_note_diagnostics(
@@ -104,7 +89,7 @@ esp_err_t c5vrx_regdma_iq_probe_get_status(
     status->chain_constructed = s_link_root != 0u;
     status->diagnostics_valid = s_diagnostics_valid;
     status->timed_out = s_timed_out;
-    status->requested = s_requested;
+    status->requested = true;
     status->etm_feedback_enabled = false;
     status->starts = s_starts;
     status->setup_failures = s_setup_failures;
@@ -127,7 +112,7 @@ esp_err_t c5vrx_regdma_iq_probe_get_status(
     status->link_root = s_link_root;
     status->restart_sequence_proven = s_physical_rearms >= 7u &&
         s_runtime_failures == 0u && status->flow_errors == 0u;
-    status->active = s_requested && s_link_root != 0u &&
+    status->active = s_link_root != 0u &&
         status->flow_errors == 0u && s_runtime_failures == 0u;
     return ESP_OK;
 }

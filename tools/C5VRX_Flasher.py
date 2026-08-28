@@ -481,14 +481,10 @@ class C5VRXApp(tk.Tk):
 
         regdma_row = ttk.Frame(capture_box)
         regdma_row.pack(fill="x", pady=(8, 0))
-        ttk.Button(
-            regdma_row, text="Enable REGDMA experiment",
-            command=lambda: self.send_command("REGDMA IQ ENABLE")).pack(
-                side="left")
-        ttk.Button(
-            regdma_row, text="Return to LP rearm",
-            command=lambda: self.send_command("REGDMA IQ DISABLE")).pack(
-                side="left", padx=8)
+        ttk.Label(
+            regdma_row,
+            text="RF producer: REGDMA hardware rearm (always on; PAL on fault)",
+        ).pack(side="left")
 
         ttk.Label(
             capture_box,

@@ -1101,14 +1101,12 @@ static void handle_line(char *line)
     }
     if (strcasecmp(line, "REGDMA IQ ENABLE") == 0 ||
         strcasecmp(line, "REGDMA_IQ_ENABLE") == 0) {
-        c5vrx_regdma_iq_probe_set_requested(true);
-        printf("C5VRX_REGDMA_IQ_REQUEST requested=1 applies=NEXT_RF_WINDOW classification=EXPERIMENTAL\n");
+        printf("C5VRX_REGDMA_IQ_REQUEST requested=1 applies=ALWAYS classification=REGDMA_ONLY\n");
         return;
     }
     if (strcasecmp(line, "REGDMA IQ DISABLE") == 0 ||
         strcasecmp(line, "REGDMA_IQ_DISABLE") == 0) {
-        c5vrx_regdma_iq_probe_set_requested(false);
-        printf("C5VRX_REGDMA_IQ_REQUEST requested=0 applies=NEXT_RF_WINDOW classification=LP_AUTOREARM_DEFAULT\n");
+        printf("C5VRX_ERR regdma-disable-unavailable policy=REGDMA_ONLY fallback=PAL\n");
         return;
     }
     if (strcasecmp(line, "AV STATUS") == 0 ||
