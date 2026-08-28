@@ -37,6 +37,12 @@ WAIT and ETM feedback. LP observes the already-proven RF
 performs masked ENABLE low/high and START high/low. LP verifies pointer
 departure and falls closed on PAU error or timeout. This offloads the four
 timing-critical modem writes without inventing an RF-DONE ETM source.
+Because REGDMA is an independent APM bus master on C5, both LP_CORE and
+REGDMA are explicitly assigned to REE0; the narrow REE0 peripheral grant
+then covers the audited MODEM target as well as LP's PAU control access.
+Any PAU completion error or pointer-restart failure automatically clears the
+experimental request, so the next scan uses the proven LP autorearm backend;
+the failing PAU registers remain latched in `REGDMA IQ STATUS`.
 LP autorearm is also the boot default: REGDMA is selected only by the explicit
 `REGDMA IQ ENABLE` diagnostic command and can be deselected without reflashing.
 

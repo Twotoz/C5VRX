@@ -230,6 +230,10 @@ static bool bounded_window(unsigned window, uint32_t *source_rate_hz)
     if (hardware_rearm) {
         c5vrx_regdma_iq_probe_note_result(ulp_c5vrx_rearms_succeeded,
                                           ulp_c5vrx_rearm_failures);
+        c5vrx_regdma_iq_probe_note_diagnostics(
+            ulp_c5vrx_regdma_conf, ulp_c5vrx_regdma_int_raw,
+            ulp_c5vrx_regdma_current_link, ulp_c5vrx_regdma_peri_addr,
+            ulp_c5vrx_regdma_mem_addr);
     }
     ESP_LOGI(TAG,
              "C5VRX_AUTO_AV_CALIBRATION window=%u ok=%u backend=%s words=%" PRIu32 " run_cycles=%" PRIu32 " rate_hz=%" PRIu32 " blocks=%" PRIu32 " rearms=%" PRIu32 " failures=%" PRIu32 " restarts=%" PRIu32 " period_last=%" PRIu32 " period_min=%" PRIu32 " period_max=%" PRIu32,
@@ -374,6 +378,10 @@ static void auto_av_task(void *arg)
         if (hardware_rearm) {
             c5vrx_regdma_iq_probe_note_result(ulp_c5vrx_rearms_succeeded,
                                               ulp_c5vrx_rearm_failures);
+            c5vrx_regdma_iq_probe_note_diagnostics(
+                ulp_c5vrx_regdma_conf, ulp_c5vrx_regdma_int_raw,
+                ulp_c5vrx_regdma_current_link, ulp_c5vrx_regdma_peri_addr,
+                ulp_c5vrx_regdma_mem_addr);
         }
         const esp_err_t idle_wdt_restore =
             idle_wdt_remove == ESP_OK ? esp_task_wdt_add(idle_task) :
@@ -438,14 +446,16 @@ esp_err_t c5vrx_auto_av_start(void)
      * security mode, not by master ID: assigning LP to TEE and making GDMA
      * read-only also made the HP driver read-only and caused the reproducible
      * store fault at 0x60080400 on the next PAL allocation. */
-    apm_hal_set_master_sec_mode(BIT(APM_MASTER_LPCORE), APM_SEC_MODE_REE0);
+    apm_hal_set_master_sec_mode(BIT(APM_MASTER_LPCORE) |
+                                BIT(APM_MASTER_REGDMA),
+                                APM_SEC_MODE_REE0);
     apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP, lp_hp_rw_peripherals,
                                 APM_SEC_MODE_REE0, APM_PERM_R | APM_PERM_W);
     apm_hal_tee_set_peri_access(APM_TEE_CTRL_HP,
                                 BIT64(APM_TEE_HP_PERIPH_GDMA),
                                 APM_SEC_MODE_REE0, APM_PERM_R);
     ESP_LOGI(TAG,
-             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET mode=REE0 peripherals=MODEM,SYSTEM_REG,PCR,PARL_IO permissions=RW gdma_permission=R hp_mode=TEE hp_gdma_permission=RW sram_handoff=LP_CORE hp_policy=PARKED");
+             "C5VRX_AUTO_AV_LP_ACCESS ordering=AFTER_LP_RESET masters=LP_CORE,REGDMA mode=REE0 peripherals=MODEM,REGDMA,SYSTEM_REG,PCR,PARL_IO permissions=RW gdma_permission=R hp_mode=TEE hp_gdma_permission=RW sram_handoff=LP_CORE hp_policy=PARKED");
 
     if (xTaskCreate(auto_av_task, "c5vrx_auto_a1", 4096, NULL, 19, NULL) !=
         pdPASS) return ESP_ERR_NO_MEM;

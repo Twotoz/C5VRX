@@ -40,5 +40,10 @@ esp_err_t c5vrx_regdma_iq_probe_get_status(
 esp_err_t c5vrx_regdma_iq_probe_arm(void);
 void c5vrx_regdma_iq_probe_note_result(uint32_t rearms,
                                        uint32_t failures);
+void c5vrx_regdma_iq_probe_note_diagnostics(uint32_t conf,
+                                            uint32_t interrupt_raw,
+                                            uint32_t current_link,
+                                            uint32_t peripheral_address,
+                                            uint32_t memory_address);
 void c5vrx_regdma_iq_probe_set_requested(bool requested);
 bool c5vrx_regdma_iq_probe_requested(void);

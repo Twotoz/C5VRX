@@ -19,6 +19,11 @@ static uint32_t s_starts;
 static uint32_t s_setup_failures;
 static uint32_t s_physical_rearms;
 static uint32_t s_runtime_failures;
+static uint32_t s_last_interrupt_raw;
+static uint32_t s_last_current_link;
+static uint32_t s_last_peripheral_address;
+static uint32_t s_last_memory_address;
+static uint32_t s_last_flow_error;
 static volatile bool s_requested;
 
 void c5vrx_regdma_iq_probe_set_requested(bool requested)
@@ -35,6 +40,20 @@ void c5vrx_regdma_iq_probe_note_result(uint32_t rearms, uint32_t failures)
 {
     s_physical_rearms += rearms;
     s_runtime_failures += failures;
+    if (failures != 0u) {
+        s_requested = false;
+    }
+}
+
+void c5vrx_regdma_iq_probe_note_diagnostics(
+    uint32_t conf, uint32_t interrupt_raw, uint32_t current_link,
+    uint32_t peripheral_address, uint32_t memory_address)
+{
+    s_last_flow_error = conf & 0x7u;
+    s_last_interrupt_raw = interrupt_raw;
+    s_last_current_link = current_link;
+    s_last_peripheral_address = peripheral_address;
+    s_last_memory_address = memory_address;
 }
 
 static esp_err_t construct_chain(void)
@@ -114,6 +133,13 @@ esp_err_t c5vrx_regdma_iq_probe_get_status(
     status->peripheral_address = pau_ll_get_regdma_backup_addr(&PAU);
     status->memory_address = pau_ll_get_regdma_memory_addr(&PAU);
 #endif
+    if (s_last_interrupt_raw != 0u || s_last_flow_error != 0u) {
+        status->flow_errors = s_last_flow_error;
+        status->interrupt_raw = s_last_interrupt_raw;
+        status->current_link = s_last_current_link;
+        status->peripheral_address = s_last_peripheral_address;
+        status->memory_address = s_last_memory_address;
+    }
     status->restart_sequence_proven = s_physical_rearms >= 7u &&
         s_runtime_failures == 0u && status->flow_errors == 0u;
     status->active = s_requested && s_chain != NULL &&

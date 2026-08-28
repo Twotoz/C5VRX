@@ -22,6 +22,9 @@
 #define PAU_REGDMA_CONF 0x60093000u
 #define PAU_INT_RAW     0x6009301cu
 #define PAU_INT_CLR     0x60093020u
+#define PAU_CURRENT_LINK 0x6009300cu
+#define PAU_PERI_ADDR    0x60093010u
+#define PAU_MEM_ADDR     0x60093014u
 #define HP_SRAM_USAGE   0x60095004u
 #define PARLIO_TX_CLOCK 0x600960b4u
 #define PARLIO_INT_ENA  0x60015028u
@@ -107,6 +110,11 @@ volatile uint32_t c5vrx_consumer_observations;
 volatile uint32_t c5vrx_consumer_pointer_changes;
 volatile uint32_t c5vrx_consumer_wraps;
 volatile uint32_t c5vrx_consumer_descriptor_errors;
+volatile uint32_t c5vrx_regdma_conf;
+volatile uint32_t c5vrx_regdma_int_raw;
+volatile uint32_t c5vrx_regdma_current_link;
+volatile uint32_t c5vrx_regdma_peri_addr;
+volatile uint32_t c5vrx_regdma_mem_addr;
 
 /* Keep an LP access fault local to the LP core.  The stock weak handler calls
  * ulp_lp_core_abort(), which makes a register-permission mistake look like a
@@ -179,6 +187,11 @@ static void clear_stats(void)
     c5vrx_consumer_pointer_changes = 0u;
     c5vrx_consumer_wraps = 0u;
     c5vrx_consumer_descriptor_errors = 0u;
+    c5vrx_regdma_conf = 0u;
+    c5vrx_regdma_int_raw = 0u;
+    c5vrx_regdma_current_link = 0u;
+    c5vrx_regdma_peri_addr = 0u;
+    c5vrx_regdma_mem_addr = 0u;
 }
 
 static inline uint32_t pointer(void)
@@ -221,8 +234,16 @@ static bool trigger_regdma_rearm(void)
     } while ((raw & PAU_DONE_RAW) == 0u &&
              (uint32_t)(cycle_count() - started) < PAU_TIMEOUT_CYCLES);
 
+    c5vrx_regdma_conf = REG32(PAU_REGDMA_CONF);
+    c5vrx_regdma_int_raw = raw;
+    c5vrx_regdma_current_link = REG32(PAU_CURRENT_LINK);
+    c5vrx_regdma_peri_addr = REG32(PAU_PERI_ADDR);
+    c5vrx_regdma_mem_addr = REG32(PAU_MEM_ADDR);
+
     REG32(PAU_REGDMA_CONF) = conf & ~PAU_LINK_SEL_M;
-    REG32(PAU_INT_CLR) = PAU_DONE_RAW | PAU_ERROR_RAW;
+    if ((raw & PAU_ERROR_RAW) == 0u) {
+        REG32(PAU_INT_CLR) = PAU_DONE_RAW;
+    }
     io_fence();
     return (raw & PAU_DONE_RAW) != 0u &&
         (raw & PAU_ERROR_RAW) == 0u;
