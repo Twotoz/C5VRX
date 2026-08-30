@@ -13,6 +13,27 @@
   </p>
 </div>
 
+## Next XIAO + FatShark hardware test
+
+The Receiver Console now presents the test in physical order:
+
+```text
+FLASH
+-> DAC TEST
+-> ANALYZE IQ VIDEO
+-> LIVE RAW AV
+```
+
+`LIVE RAW AV` uses the proven mode-0 `Q10/I10` layout, an 80 MHz represented
+sample time, a retained-phase 4:1 BitScrambler discriminator, and fixed 20 MHz
+PARLIO output on XIAO D4..D9. Acquisition derives I/Q DC, FM polarity, sync,
+blank, burst, and a clamped DAC transfer from the received composite waveform.
+Finite capture gaps are held locally; they never alter global video speed.
+The physical pass is a recognizable moving camera picture in the FatShark.
+Until that test passes, this firmware is explicitly **awaiting XIAO + FatShark
+live AV result**, not “production ready.” See
+[`research/production-raw-rf-cvbs.md`](research/production-raw-rf-cvbs.md).
+
 ---
 
 ## The decision: analog first, analog out

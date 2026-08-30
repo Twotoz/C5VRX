@@ -41,3 +41,4 @@ esp_err_t c5vrx_cvbs_live_out_stop(void);
 void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats);
 void c5vrx_cvbs_live_out_update_timing(
     const c5vrx_cvbs_sync_tracker_t *timing);
+void c5vrx_cvbs_live_out_set_boundary_hold(bool enabled, uint8_t code);

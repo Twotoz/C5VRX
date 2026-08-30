@@ -16,6 +16,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "c5vrx_dac.h"
 
 /*
  * Analog-first output proof.
@@ -103,10 +104,12 @@ static volatile c5vrx_cvbs_display_t s_requested_display =
     C5VRX_CVBS_DISPLAY_LOGO;
 static volatile c5vrx_cvbs_display_t s_active_display =
     C5VRX_CVBS_DISPLAY_LOGO;
+static volatile int s_requested_static_code = -1;
 static uint32_t s_snow_lfsr = 0xc5f0a17du;
 
 static uint8_t cvbs_code_from_mv(unsigned mv);
 static uint8_t grayscale_code(unsigned active_x);
+static esp_err_t start_output(c5vrx_cvbs_display_t initial_display);
 
 /* Compact 5x7 uppercase font, indexed as ASCII 32..90. Only branding glyphs
  * are populated; missing glyphs render as spacing. This remains scanline-only. */
@@ -199,12 +202,7 @@ static uint8_t snow_code(void)
 
 static uint8_t cvbs_code_from_mv(unsigned mv)
 {
-    const unsigned bits = CONFIG_C5VRX_CVBS_DAC_BITS;
-    const unsigned max_code = (1u << bits) - 1u;
-    if (mv >= 1000u) {
-        return (uint8_t)max_code;
-    }
-    return (uint8_t)((mv * max_code + 500u) / 1000u);
+    return c5vrx_dac_nearest_code_mv(mv);
 }
 
 static uint8_t cvbs_code_from_mv_signed(double mv)
@@ -341,7 +339,9 @@ static void overlay_active_half(uint8_t *half, uint16_t frame_half_line)
     for (unsigned p = start; p < end; ++p) {
         const unsigned x = first_half ? p - C5VRX_CVBS_ACTIVE_START
                                       : (C5VRX_CVBS_HALF_LINE_SAMPLES - C5VRX_CVBS_ACTIVE_START) + p;
-        if (s_active_display == C5VRX_CVBS_DISPLAY_SNOW)
+        if (s_active_display == C5VRX_CVBS_DISPLAY_BLACK)
+            half[p] = cvbs_code_from_mv(300u);
+        else if (s_active_display == C5VRX_CVBS_DISPLAY_SNOW)
             half[p] = snow_code();
         else if (s_active_display == C5VRX_CVBS_DISPLAY_TEST)
             half[p] = diagnostic_code(x, y);
@@ -352,6 +352,11 @@ static void overlay_active_half(uint8_t *half, uint16_t frame_half_line)
 
 static void build_next_chunk(uint8_t *dst)
 {
+    const int static_code = s_requested_static_code;
+    if (static_code >= 0) {
+        memset(dst, static_code & 0x3f, C5VRX_CVBS_CHUNK_SAMPLES);
+        return;
+    }
     for (unsigned i = 0; i < C5VRX_CVBS_CHUNK_HALF_LINES; ++i) {
         /* Apply state only where a complete PAL frame begins. A request made
          * while a chunk is being built can never split logo/snow/test content
@@ -416,6 +421,18 @@ static bool pins_valid(void)
         }
     }
     return true;
+}
+
+static esp_err_t configure_dac_drive(void)
+{
+    int pins[8];
+    const unsigned required = configured_pins(pins);
+    for (unsigned i = 0; i < required; ++i) {
+        const esp_err_t err = gpio_set_drive_capability(
+            (gpio_num_t)pins[i], GPIO_DRIVE_CAP_3);
+        if (err != ESP_OK) return err;
+    }
+    return ESP_OK;
 }
 
 static esp_err_t queue_loop_buffer(uint8_t *buffer)
@@ -552,6 +569,8 @@ static esp_err_t start_output(c5vrx_cvbs_display_t initial_display)
                  (unsigned)CONFIG_C5VRX_CVBS_DAC_BITS - 1u);
         return ESP_ERR_INVALID_ARG;
     }
+    const esp_err_t drive_err = configure_dac_drive();
+    if (drive_err != ESP_OK) return drive_err;
 
     for (unsigned i = 0; i < 2; ++i) {
         s_chunk[i] = heap_caps_malloc(C5VRX_CVBS_CHUNK_SAMPLES,
@@ -704,7 +723,46 @@ esp_err_t c5vrx_cvbs_output_set_display(c5vrx_cvbs_display_t display)
 {
     if (display > C5VRX_CVBS_DISPLAY_TEST) return ESP_ERR_INVALID_ARG;
     if (!s_running) return ESP_ERR_INVALID_STATE;
+    s_requested_static_code = -1;
     s_requested_display = display;
+    return ESP_OK;
+}
+
+esp_err_t c5vrx_cvbs_output_suspend(void)
+{
+    if (!s_running) return ESP_OK;
+    stop_stream_task();
+    esp_err_t err = ESP_OK;
+    if (s_tx) {
+        err = parlio_tx_unit_disable(s_tx);
+        const esp_err_t delete_err = parlio_del_tx_unit(s_tx);
+        if (err == ESP_OK) err = delete_err;
+        s_tx = NULL;
+    }
+    free(s_chunk[0]);
+    free(s_chunk[1]);
+    s_chunk[0] = s_chunk[1] = NULL;
+    s_running = false;
+    return err;
+}
+
+esp_err_t c5vrx_cvbs_output_resume(void)
+{
+    return start_output(C5VRX_CVBS_DISPLAY_LOGO);
+}
+
+esp_err_t c5vrx_cvbs_output_set_dac_code(uint8_t code)
+{
+    if (!s_running) return ESP_ERR_INVALID_STATE;
+    if (code >= C5VRX_DAC_CODES) return ESP_ERR_INVALID_ARG;
+    s_requested_static_code = code;
+    return ESP_OK;
+}
+
+esp_err_t c5vrx_cvbs_output_clear_dac_code(void)
+{
+    if (!s_running) return ESP_ERR_INVALID_STATE;
+    s_requested_static_code = -1;
     return ESP_OK;
 }
 
@@ -717,6 +775,7 @@ const char *c5vrx_cvbs_display_name(c5vrx_cvbs_display_t display)
 {
     switch (display) {
         case C5VRX_CVBS_DISPLAY_LOGO: return "LOGO";
+        case C5VRX_CVBS_DISPLAY_BLACK: return "BLACK";
         case C5VRX_CVBS_DISPLAY_SNOW: return "SNOW";
         case C5VRX_CVBS_DISPLAY_TEST: return "TEST";
         default: return "UNKNOWN";
@@ -767,5 +826,12 @@ bool c5vrx_cvbs_test_running(void)
 {
     return false;
 }
+
+esp_err_t c5vrx_cvbs_output_set_dac_code(uint8_t code)
+{ (void)code; return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t c5vrx_cvbs_output_clear_dac_code(void)
+{ return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t c5vrx_cvbs_output_suspend(void) { return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t c5vrx_cvbs_output_resume(void) { return ESP_ERR_NOT_SUPPORTED; }
 
 #endif

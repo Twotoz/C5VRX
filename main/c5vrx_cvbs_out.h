@@ -3,6 +3,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -11,6 +12,7 @@ extern "C" {
 
 typedef enum {
     C5VRX_CVBS_DISPLAY_LOGO = 0,
+    C5VRX_CVBS_DISPLAY_BLACK,
     C5VRX_CVBS_DISPLAY_SNOW,
     C5VRX_CVBS_DISPLAY_TEST,
 } c5vrx_cvbs_display_t;
@@ -20,6 +22,18 @@ esp_err_t c5vrx_cvbs_output_start(void);
 
 /** Request a tear-free display-state change at the next PAL frame boundary. */
 esp_err_t c5vrx_cvbs_output_set_display(c5vrx_cvbs_display_t display);
+
+/** Drive one static six-bit code for a bounded electrical/scope test. */
+esp_err_t c5vrx_cvbs_output_set_dac_code(uint8_t code);
+
+/** Return from a static electrical test to standards-shaped PAL output. */
+esp_err_t c5vrx_cvbs_output_clear_dac_code(void);
+
+/** Temporarily release PARLIO for the received-waveform output. */
+esp_err_t c5vrx_cvbs_output_suspend(void);
+
+/** Restore the standards-shaped fallback after received-waveform output. */
+esp_err_t c5vrx_cvbs_output_resume(void);
 
 /** Current on-wire state and its stable protocol/log name. */
 c5vrx_cvbs_display_t c5vrx_cvbs_output_display(void);

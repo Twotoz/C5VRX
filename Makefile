@@ -21,6 +21,10 @@ test:
 	$(CC) -std=c11 -Wall -Wextra -Werror -pedantic -Imain \
 		main/c5vrx_ring_tracker.c tests/ring_tracker_test.c -o /tmp/c5vrx-ring-tracker-test
 	/tmp/c5vrx-ring-tracker-test
+	$(CC) -std=c11 -Wall -Wextra -Werror -pedantic -Imain \
+		main/c5vrx_dac.c tests/dac_test.c -o /tmp/c5vrx-dac-test
+	/tmp/c5vrx-dac-test
+	python3 tools/golden_raw_av_test.py
 	python3 tools/c5vrx_usb_protocol.py --self-test
 	python3 tools/c5vrx_lab.py self-test
 	python3 tools/check_safe_usb_preview.py

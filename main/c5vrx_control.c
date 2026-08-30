@@ -26,6 +26,8 @@
 #include "c5vrx_usb_preview.h"
 #include "c5vrx_bench.h"
 #include "c5vrx_usb_transport.h"
+#include "c5vrx_raw_av.h"
+#include "c5vrx_dac.h"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_idf_version.h"
@@ -424,7 +426,7 @@ static esp_err_t apply_channel(c5vrx_band_t band, uint8_t channel)
 
 static void print_help(void)
 {
-    printf("C5VRX_HELP commands=PING,STATUS,CAPABILITIES,TONE_RESPONSE_PROBE_<0|11>_<signed_offset_hz>_<measured_rate_hz>,APPLY_MEASURED_BANDWIDTH_<occupied_hz>_<factor>_CONFIRMED,APPLY_PHYSICAL_BURST_GATE_CONFIRMED,LIVE_START,LIVE_EXPERIMENTAL_START_<0|11>,LIVE_STOP,SET_<band>_<1-8>,BW_<20|40>,CAPTURE_<256-16384>,CAPTURE_PHASE8_<256-16384>,CHAIN_<2-1024>_<1-16384>,PRODUCER_CADENCE_PROBE_<0|11|ALL>,WRAP_FLAG_PROBE_<0|11>,PHASE_CONTINUITY_PROBE_<0|11>,FINE_TUNE_VERIFY_<center_mhz>_<tone_mhz>_<measured_rate_hz>,PRODUCER_SOAK_<0|11>_<1|10|100|1000|5000|30000_ms>,BENCH_SPARSE_<2|4|8>,BENCH_BITSCRAMBLER,BENCH_PARLIO,BENCH_USB_PREVIEW,BENCH_PIPELINE,BENCH_RING_PIPELINE_<0|11>_<10|100|1000_ms>,USB_PREVIEW_START,USB_PREVIEW_STOP,CVBS_LOCK_STATUS,CVBS_LOCK_PROBE_<1000|5000_ms>,RATE_PROBE_ALL_LEGACY,PHASE_PROBE_<0-7>_LEGACY,DUMP_MODE_PROBE,RF_DEEP_PROBE,RING_PROBE,WBFM_HWTEST,WBFM_CAPTURE_<8-16384_multiple4>,NEARLIVE_START,NEARLIVE_STOP,PIPELINE_STATS,CVBS_TEST,CVBS_STOP\n");
+    printf("C5VRX_HELP primary=FLASH_IN_CONSOLE,DAC_TEST,DAC_CODE_<0|18|31|32|62|63>,PAL_BLACK,PAL_BARS_RAMP,PAL_BURST_TEST,ANALYZE_IQ_VIDEO,NATIVE_CONTINUOUS_PROBE,PREARM_PROBE,LIVE_RAW_AV,STOP_FALLBACK,STATUS diagnostic=CAPTURE_PHASE8_16384\n");
     fflush(stdout);
 }
 
@@ -522,7 +524,92 @@ static void handle_line(char *line)
     }
     if (strcasecmp(line, "STATUS") == 0) {
         print_status();
+        c5vrx_raw_av_print_status();
         return;
+    }
+    if (strcasecmp(line, "ANALYZE IQ VIDEO") == 0 ||
+        strcasecmp(line, "ANALYZE_IQ_VIDEO") == 0) {
+        const esp_err_t err = c5vrx_raw_av_analyze();
+        printf("C5VRX_ANALYZE_IQ_VIDEO_DONE code=%d\n", (int)err);
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "LIVE RAW AV") == 0 ||
+        strcasecmp(line, "LIVE_RAW_AV") == 0) {
+        const esp_err_t err = c5vrx_raw_av_start();
+        printf("C5VRX_LIVE_RAW_AV code=%d backend=FINITE_VENDOR_BLOCK default=SAFE_LOCAL_HOLD physical_gate=AWAITING_XIAO_FATSHARK\n",
+               (int)err);
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "STOP / FALLBACK") == 0 ||
+        strcasecmp(line, "STOP_FALLBACK") == 0) {
+        const esp_err_t err = c5vrx_raw_av_running() ?
+            c5vrx_raw_av_stop() :
+            c5vrx_cvbs_output_set_display(C5VRX_CVBS_DISPLAY_LOGO);
+        printf("C5VRX_STOP_FALLBACK code=%d state=NO_RF display=PAL_LOGO\n",
+               (int)err);
+        fflush(stdout); return;
+    }
+    unsigned dac_code = 0u;
+    if (sscanf(line, "DAC CODE %u", &dac_code) == 1 ||
+        sscanf(line, "DAC_CODE_%u", &dac_code) == 1) {
+        const bool allowed = dac_code == 0u || dac_code == 18u ||
+            dac_code == 31u || dac_code == 32u || dac_code == 62u ||
+            dac_code == 63u;
+        const esp_err_t err = allowed ?
+            c5vrx_cvbs_output_set_dac_code((uint8_t)dac_code) :
+            ESP_ERR_INVALID_ARG;
+        printf("C5VRX_DAC_CODE code=%u expected_loaded_mv=%u.%03u allowed=%u result=%d network=8K2,3K9,2K0,1K0,470R,240R;200R_SHUNT;75R_LOAD\n",
+               dac_code, (unsigned)(allowed ? c5vrx_dac_voltage_uv[dac_code] / 1000u : 0u),
+               (unsigned)(allowed ? c5vrx_dac_voltage_uv[dac_code] % 1000u : 0u),
+               allowed, (int)err);
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "DAC TEST") == 0 ||
+        strcasecmp(line, "DAC_TEST") == 0) {
+        (void)c5vrx_cvbs_output_set_display(C5VRX_CVBS_DISPLAY_TEST);
+        printf("C5VRX_DAC_TEST codes=0:0.000mV,18:296.817mV,31:498.750mV,32:518.750mV,62:1002.317mV,63:1017.500mV next=SELECT_DAC_CODE_OR_PAL_TEST code=0\n");
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "PAL BLACK") == 0 ||
+        strcasecmp(line, "PAL_BLACK") == 0) {
+        const esp_err_t err = c5vrx_cvbs_output_set_display(
+            C5VRX_CVBS_DISPLAY_BLACK);
+        printf("C5VRX_PAL_BLACK code=%d sync=%u blank=%u\n", (int)err,
+               C5VRX_DAC_SYNC_CODE, C5VRX_DAC_BLANK_CODE);
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "PAL BARS / RAMP") == 0 ||
+        strcasecmp(line, "PAL_BARS_RAMP") == 0 ||
+        strcasecmp(line, "PAL BURST TEST") == 0 ||
+        strcasecmp(line, "PAL_BURST_TEST") == 0) {
+        const esp_err_t err = c5vrx_cvbs_output_set_display(
+            C5VRX_CVBS_DISPLAY_TEST);
+        printf("C5VRX_PAL_TEST code=%d mode=BARS_RAMP_BURST cvbs_hz=20000000\n",
+               (int)err);
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "NATIVE CONTINUOUS PROBE") == 0 ||
+        strcasecmp(line, "NATIVE_CONTINUOUS_PROBE") == 0) {
+        c5vrx_adc_ring_probe_stats_t stats = {0};
+        const esp_err_t err = c5vrx_adc_dump_ring_probe(&stats);
+        printf("C5VRX_NATIVE_CONTINUOUS_PROBE code=%d observations=%u pointer_changes=%u content_changes=%u completion=%u classification=%s requirement=FRESH_SRAM_RF_DEPENDENT_PHASE_CONTINUOUS\n",
+               (int)err, (unsigned)stats.observations,
+               (unsigned)stats.pointer_changes,
+               (unsigned)stats.content_changes, stats.completion_bit_seen,
+               err == ESP_OK && stats.pointer_changes && stats.content_changes &&
+               !stats.completion_bit_seen ? "CANDIDATE_NOT_PROMOTED" :
+                                            "NOT_PROVEN");
+        fflush(stdout); return;
+    }
+    if (strcasecmp(line, "PREARM PROBE") == 0 ||
+        strcasecmp(line, "PREARM_PROBE") == 0) {
+        printf("C5VRX_PREARM_PROBE code=%d classification=FAIL_CLOSED reason=START_PREASSERT_ABI_NOT_STATICALLY_PROVEN variants=A_START_PULSE,B_START_HELD,C_PREASSERT_ENABLE_EDGE default_backend=FINITE_VENDOR_BLOCK\n",
+               (int)ESP_ERR_NOT_SUPPORTED);
+        fflush(stdout); return;
+    }
+    if (c5vrx_raw_av_running()) {
+        printf("C5VRX_ERR receiver-busy owner=RAW_AV allowed=STATUS,STOP_FALLBACK\n");
+        fflush(stdout); return;
     }
     if (c5vrx_live_pipeline_running() &&
         strcasecmp(line, "CAPABILITIES") != 0 &&
