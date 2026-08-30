@@ -29,6 +29,8 @@ esp_err_t c5vrx_wbfm_hw_create_kernel(
     size_t maximum_input_words, c5vrx_wbfm_kernel_t kernel,
     c5vrx_wbfm_hw_context_t **context);
 unsigned c5vrx_wbfm_hw_phase_bits(const c5vrx_wbfm_hw_context_t *context);
+esp_err_t c5vrx_wbfm_hw_set_dc(c5vrx_wbfm_hw_context_t *context,
+                               int32_t i_dc, int32_t q_dc);
 
 void c5vrx_wbfm_hw_destroy(c5vrx_wbfm_hw_context_t *context);
 

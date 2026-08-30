@@ -437,6 +437,52 @@ class C5VRXApp(tk.Tk):
         self.channel_info_var = tk.StringVar()
         ttk.Label(channel_box, textvariable=self.channel_info_var).pack(anchor="w", pady=(8, 0))
 
+        av_box = ttk.LabelFrame(tab, text="Raw RF → FatShark AV", padding=10)
+        av_box.pack(fill="x", pady=(12, 0))
+        av_row = ttk.Frame(av_box)
+        av_row.pack(fill="x")
+        ttk.Button(av_row, text="DAC TEST",
+                   command=lambda: self.send_command("DAC TEST")).pack(side="left")
+        ttk.Button(av_row, text="ANALYZE IQ VIDEO",
+                   command=lambda: self.send_command("ANALYZE IQ VIDEO")).pack(side="left", padx=6)
+        ttk.Button(av_row, text="NATIVE CONTINUOUS PROBE",
+                   command=lambda: self.send_command("NATIVE CONTINUOUS PROBE")).pack(side="left", padx=6)
+        ttk.Button(av_row, text="PREARM PROBE",
+                   command=lambda: self.send_command("PREARM PROBE")).pack(side="left", padx=6)
+        ttk.Button(av_row, text="LIVE RAW AV",
+                   command=lambda: self.send_command("LIVE RAW AV")).pack(side="left", padx=6)
+        ttk.Button(av_row, text="STOP / FALLBACK",
+                   command=lambda: self.send_command("STOP / FALLBACK")).pack(side="right")
+
+        dac_row = ttk.Frame(av_box)
+        dac_row.pack(fill="x", pady=(8, 0))
+        ttk.Label(dac_row, text="Static DAC:").pack(side="left")
+        for code, millivolts in ((0, "0.000"), (18, "296.817"),
+                                 (31, "498.750"), (32, "518.750"),
+                                 (62, "1002.317"), (63, "1017.500")):
+            ttk.Button(
+                dac_row, text=f"{code} ({millivolts} mV)",
+                command=lambda selected=code: self.send_command(
+                    f"DAC CODE {selected}"),
+            ).pack(side="left", padx=(5, 0))
+
+        pal_row = ttk.Frame(av_box)
+        pal_row.pack(fill="x", pady=(8, 0))
+        ttk.Button(pal_row, text="PAL BLACK",
+                   command=lambda: self.send_command("PAL BLACK")).pack(side="left")
+        ttk.Button(pal_row, text="PAL BARS / RAMP",
+                   command=lambda: self.send_command("PAL BARS / RAMP")).pack(side="left", padx=6)
+        ttk.Button(pal_row, text="PAL BURST TEST",
+                   command=lambda: self.send_command("PAL BURST TEST")).pack(side="left", padx=6)
+        ttk.Button(pal_row, text="STATUS",
+                   command=lambda: self.send_command("STATUS")).pack(side="right")
+        ttk.Label(
+            av_box,
+            text=("Hardware order: FLASH → DAC TEST → ANALYZE IQ VIDEO → "
+                  "LIVE RAW AV. LIVE is raw received composite; USB raster remains a bounded oracle."),
+            wraplength=760,
+        ).pack(anchor="w", pady=(8, 0))
+
         capture_box = ttk.LabelFrame(tab, text="RF / IQ research", padding=10)
         capture_box.pack(fill="x", pady=(12, 0))
 

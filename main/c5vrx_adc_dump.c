@@ -494,6 +494,32 @@ esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words)
     return capture_internal(sample_count, print_raw_words, true);
 }
 
+esp_err_t c5vrx_adc_dump_capture_copy(uint32_t *destination,
+                                      size_t sample_count,
+                                      c5vrx_adc_capture_meta_t *meta)
+{
+    if (!destination || sample_count == 0u ||
+        sample_count > C5VRX_ADC_DUMP_MAX_SAMPLES)
+        return ESP_ERR_INVALID_ARG;
+    if (!c5vrx_rf_dump_memory_reserved()) return ESP_ERR_INVALID_STATE;
+
+    const capture_result_t capture = trigger_dump(sample_count);
+    if (meta) {
+        *meta = (c5vrx_adc_capture_meta_t) {
+            .completed_us = capture.completed_us,
+            .elapsed_us = capture.elapsed_us > 0 ?
+                (uint32_t)capture.elapsed_us : 0u,
+            .changed_words = (uint32_t)capture.changed_words,
+            .transition_words = (uint32_t)capture.transition_words,
+        };
+    }
+    if (!capture.complete) return ESP_ERR_TIMEOUT;
+    volatile const uint32_t *const source =
+        (volatile const uint32_t *)(uintptr_t)C5VRX_ADC_DUMP_BASE_ADDR;
+    for (size_t i = 0; i < sample_count; ++i) destination[i] = source[i];
+    return ESP_OK;
+}
+
 esp_err_t c5vrx_adc_dump_capture_phase8(size_t sample_count)
 {
     if (sample_count < 256u || sample_count > C5VRX_ADC_DUMP_MAX_SAMPLES)

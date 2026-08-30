@@ -60,6 +60,13 @@ typedef struct {
     bool rate_field_survived_configuration;
 } c5vrx_adc_rate_probe_result_t;
 
+typedef struct {
+    uint64_t completed_us;
+    uint32_t elapsed_us;
+    uint32_t changed_words;
+    uint32_t transition_words;
+} c5vrx_adc_capture_meta_t;
+
 /** Decode the lower 20 bits of one C5 RF-test dump word as signed 10-bit I/Q. */
 c5vrx_iq10_sample_t c5vrx_adc_decode_word(uint32_t raw);
 
@@ -72,6 +79,11 @@ c5vrx_iq10_sample_t c5vrx_adc_decode_word(uint32_t raw);
  * the packed 10-bit dump mode.
  */
 esp_err_t c5vrx_adc_dump_capture(size_t sample_count, bool print_raw_words);
+
+/** Bounded, USB-silent mode-0 capture copied out after RF releases SRAM. */
+esp_err_t c5vrx_adc_dump_capture_copy(uint32_t *destination,
+                                      size_t sample_count,
+                                      c5vrx_adc_capture_meta_t *meta);
 
 /**
  * Capture finite IQ, remove block DC, quantize complex angle to unsigned

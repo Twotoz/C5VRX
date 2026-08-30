@@ -3,6 +3,7 @@
 #include "c5vrx_wbfm_hw.h"
 
 #include <math.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -37,6 +38,7 @@ struct c5vrx_wbfm_hw_context {
     int8_t applied_i_dc5;
     int8_t applied_q_dc5;
     c5vrx_wbfm_kernel_t kernel;
+    bool dc_frozen;
 };
 
 static uint32_t pack_iq10(int16_t i, int16_t q)
@@ -122,6 +124,7 @@ static esp_err_t update_dc_lut(c5vrx_wbfm_hw_context_t *ctx,
                                const uint32_t *packed_iq,
                                size_t input_words)
 {
+    if (ctx->dc_frozen) return ESP_OK;
     /* 1/64 sparse observations keep this control loop cheap. The 2^12 IIR
      * time constant spans many blocks and cannot follow FM modulation. */
     for (size_t i = 0; i < input_words; i += 64u) {
@@ -143,6 +146,26 @@ static esp_err_t update_dc_lut(c5vrx_wbfm_hw_context_t *ctx,
     if (err == ESP_OK) {
         ctx->applied_i_dc5 = (int8_t)i5;
         ctx->applied_q_dc5 = (int8_t)q5;
+    }
+    return err;
+}
+
+esp_err_t c5vrx_wbfm_hw_set_dc(c5vrx_wbfm_hw_context_t *ctx,
+                               int32_t i_dc, int32_t q_dc)
+{
+    if (!ctx) return ESP_ERR_INVALID_ARG;
+    if (i_dc < -512 || i_dc > 511 || q_dc < -512 || q_dc > 511)
+        return ESP_ERR_INVALID_ARG;
+    build_phase_lut(ctx->lut, (int)i_dc, (int)q_dc,
+                    ctx->kernel == C5VRX_WBFM_PHASE8_4TO1 ? 8u : 6u);
+    const esp_err_t err = bitscrambler_load_lut(
+        ctx->bs, ctx->lut, C5VRX_WBFM_LUT_WORDS * sizeof(uint16_t));
+    if (err == ESP_OK) {
+        ctx->applied_i_dc5 = (int8_t)(i_dc / 32);
+        ctx->applied_q_dc5 = (int8_t)(q_dc / 32);
+        ctx->i_dc_q16 = i_dc << 16;
+        ctx->q_dc_q16 = q_dc << 16;
+        ctx->dc_frozen = true;
     }
     return err;
 }

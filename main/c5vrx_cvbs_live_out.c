@@ -54,6 +54,8 @@ typedef struct {
     portMUX_TYPE lock;
     bool running;
     bool realign_required;
+    bool boundary_hold;
+    uint8_t boundary_hold_code;
     c5vrx_video_standard_t filler_standard;
     uint32_t clock_hz;
 } live_out_state_t;
@@ -157,6 +159,10 @@ static uint8_t legal_filler_sample(uint64_t sample)
 
 static void fill_legal_filler(uint8_t *buffer)
 {
+    if (s_out.boundary_hold) {
+        memset(buffer, s_out.boundary_hold_code & 0x3fu, s_out.samples);
+        return;
+    }
     for (size_t i = 0; i < s_out.samples; ++i)
     {
         buffer[i] = legal_filler_sample(s_out.filler_sample);
@@ -608,6 +614,14 @@ void c5vrx_cvbs_live_out_update_timing(
     s_out.pending_live_phase_valid = true;
     taskEXIT_CRITICAL(&s_out.lock);
 }
+
+void c5vrx_cvbs_live_out_set_boundary_hold(bool enabled, uint8_t code)
+{
+    taskENTER_CRITICAL(&s_out.lock);
+    s_out.boundary_hold = enabled;
+    s_out.boundary_hold_code = code & 0x3fu;
+    taskEXIT_CRITICAL(&s_out.lock);
+}
 #else
 esp_err_t c5vrx_cvbs_live_out_start(size_t n) { (void)n; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t c5vrx_cvbs_live_out_start_at_rate(size_t n, uint32_t r)
@@ -628,4 +642,6 @@ void c5vrx_cvbs_live_out_get_stats(c5vrx_cvbs_live_out_stats_t *stats)
 { if (stats) memset(stats, 0, sizeof(*stats)); }
 void c5vrx_cvbs_live_out_update_timing(
     const c5vrx_cvbs_sync_tracker_t *timing) { (void)timing; }
+void c5vrx_cvbs_live_out_set_boundary_hold(bool enabled, uint8_t code)
+{ (void)enabled; (void)code; }
 #endif
