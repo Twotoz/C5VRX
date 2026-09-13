@@ -63,3 +63,26 @@ No live RPT40 or static/image-quality qualification has been obtained.
 User requested live CVBS firmware next: build the explicit Golden profile,
 not the incomplete RPT40 candidate. Existing calibration was read and retained:
 pedestal 20, gain 2, polarity 0, reference clock 20 MHz.
+
+## Live visual feedback and baseline clarification (2026-09-13)
+
+The fresh `build-golden-phase5` live build was subsequently flashed with
+verified hashes (defaults + flash40 + golden-phase5 overlays). It is NOT a
+live RPT40 implementation and contains no new confidence suppression.
+
+User observed small teeth at the right side of the picture, occasionally a
+larger tooth accompanied by light static. Initial better/worse judgment was
+uncertain. User then reported that the **OG Golden Phase5** seemed better:
+they did not recall that larger tooth on the OG version. They explicitly
+clarified that this comparison means OG Golden Phase5, NOT RPT40.
+
+Treat the fresh build as a possible regression relative to OG Golden Phase5,
+not as an established reproduction of its hardware-proven picture quality.
+The exact OG artifact/commit/configuration for this comparison has not yet
+been pinned down here; recover it before claiming a controlled baseline A/B.
+Do not infer equivalence solely from the new profile's Golden name.
+
+This is subjective visual feedback, not a measured MAE or hard-error rate.
+Coincident static and large teeth do not establish RF, DAC-code or timing
+causation. Golden/RPT40 non-regression gates remain open. No additional
+firmware changes or flash were made in response to this clarification.
