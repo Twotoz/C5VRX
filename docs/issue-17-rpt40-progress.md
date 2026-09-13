@@ -1,0 +1,44 @@
+# Issue 17: RPT40 checkpoint
+
+Branch: `codex/issue-17-rpt40`, based on current main `c34139f`.
+
+Baseline is Golden Phase5, not PR18 True40. The explicit
+`sdkconfig.golden-phase5.defaults` overlay preserves positive RX edge and
+disables alternative demodulators. Full Q4/I4 mapping, Golden LUT gain and
+pedestal, and two-sample (50 ns at 40 MS/s) discrimination are retained.
+
+## Implemented, not yet hardware-qualified
+
+- Full 256-entry raw IQ to Phase5 plus magnitude-confidence RX kernel.
+- Interleaved even/odd 50 ns TX kernel producing one byte per input byte.
+  This is cadence-only: hardware confidence suppression is NOT implemented.
+- Host reference for confidence-based hold/recovery, always advancing phase
+  history. Its thresholds are proposals, not validated quality improvements.
+- RF-off RX feasibility firmware: bypass/mapped trials at 20 and 40 MS/s,
+  deterministic 8192-byte patterns, diagnostic payloads and FIFO evidence.
+- Four passing host tests covering exact mapping, actual assembly simulation,
+  Golden parity equivalence, continuity and candidate recovery behavior.
+- ESP-IDF v6.0.1 oracle build passes.
+
+## Remaining hard gates / next actions
+
+1. Add host decoder for RPT0 diagnostic records (128-byte header, raw and
+   captured 8192-byte payloads; four records at diagcap + index * 0x5000).
+   Validate hashes and every byte after cyclic alignment. Completion is not
+   evidence of correct data or physical cadence.
+2. Flash and run the RF-off oracle; establish RX mapping at 40 MS/s on C5.
+3. Implement and verify hardware confidence suppression without reducing IQ
+   resolution, replacing 50 ns discrimination, or resetting state at DMA wraps.
+4. Integrate live streaming and measure actual DAC output/cadence/continuity.
+5. Independent capture validation and hardware Golden/RPT40 A/B: >=16-code
+   errors toward zero, >=32-code errors zero, static and picture no worse.
+   Define the error reference explicitly; parity identity is not quality proof.
+
+No new firmware has been flashed at this checkpoint. Keep VTX off for the
+oracle; request a short, explicit VTX-on window only for live RF A/B.
+Do not mark Issue 17 complete or claim a quality pass from these host tests.
+
+Build: use `sdkconfig.defaults;sdkconfig.flash40.defaults;sdkconfig.rpt40-oracle.defaults`
+with build-local SDKCONFIG in `build-rpt40-oracle`.
+
+Tests: `python -m unittest discover -s tools -p test_rpt40.py`.

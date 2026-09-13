@@ -4,6 +4,9 @@ choice C5VRX2_MODE
     prompt "Boot mode"
     default C5VRX2_MODE_LIVE
 
+    config C5VRX2_MODE_RPT40_ORACLE
+        bool "Issue 17 RPT40 RX full-byte/throughput feasibility oracle (RF off)"
+
     config C5VRX2_MODE_LIVE
         bool "Live MODEM_DIAG IQ to recovered CVBS"
 
