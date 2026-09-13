@@ -13,6 +13,9 @@
 #include "startup_trace.h"
 #include "wbfm_q4.h"
 #include "tx_80m_oracle.h"
+#if CONFIG_C5VRX2_MODE_RPT40_ORACLE
+esp_err_t c5vrx2_rpt40_oracle_run(void);
+#endif
 #if CONFIG_C5VRX2_MODE_LINEAR80_ORACLE
 esp_err_t c5vrx2_linear80_oracle_run(void);
 #endif
@@ -119,6 +122,16 @@ void app_main(void)
     c5vrx2_trace_begin();
 #endif
     c5vrx2_trace_stage(2u, ESP_OK);
+#if CONFIG_C5VRX2_MODE_RPT40_ORACLE
+    err=c5vrx2_rpt40_oracle_run();
+    ESP_LOGW(TAG,"RPT40 RX tests complete: %s; host byte validation still required",esp_err_to_name(err));
+    for (;;) {
+        gpio_set_level(XIAO_USER_LED,0);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        gpio_set_level(XIAO_USER_LED,1);
+        vTaskDelay(pdMS_TO_TICKS(1900));
+    }
+#endif
 #if CONFIG_C5VRX2_LIVE_SNAPSHOT_ONCE
     c5vrx2_trace_stage_detail(4u, ESP_OK, retained_rf_marker, 0u, 0u);
     if (retained_rf_marker >= 401u && retained_rf_marker <= 499u) {
