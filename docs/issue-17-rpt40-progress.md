@@ -42,3 +42,24 @@ Build: use `sdkconfig.defaults;sdkconfig.flash40.defaults;sdkconfig.rpt40-oracle
 with build-local SDKCONFIG in `build-rpt40-oracle`.
 
 Tests: `python -m unittest discover -s tools -p test_rpt40.py`.
+
+## First physical RX oracle run (2026-09-13)
+
+Oracle flashed with verified hashes; user cold-booted and returned C5 to
+download mode. Read 0x14000 bytes at 0x112000 into local ignored
+`rpt40-oracle-capture.bin`. Decoder: `tools/analyze_rpt40_oracle.py`.
+All four raw/output payload hashes validate.
+
+| Requested rate | RX mapping | RX result | Cyclic byte mismatches / 8192 |
+| --- | --- | --- | --- |
+| 20 MS/s | bypass | success | 0 |
+| 20 MS/s | Phase5 + confidence | timeout (263) | 20 |
+| 40 MS/s | bypass | success | 0 |
+| 40 MS/s | Phase5 + confidence | timeout (263) | 20 |
+
+Mapped trials fail the completion/full-payload gate at both rates. The cause
+is not established; do not conclude a throughput limit from this result.
+No live RPT40 or static/image-quality qualification has been obtained.
+User requested live CVBS firmware next: build the explicit Golden profile,
+not the incomplete RPT40 candidate. Existing calibration was read and retained:
+pedestal 20, gain 2, polarity 0, reference clock 20 MHz.
