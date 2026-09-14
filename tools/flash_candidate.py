@@ -61,14 +61,20 @@ def flash(target_key):
         "0x8000", str(ptable),
         "0x10000", str(app)
     ]
-    res = subprocess.run(cmd)
-    if res.returncode == 0:
-        print(f"\n*** FLASH [{target_key.upper()}] SUCCEEDED! ***")
-        print("Tap physical Reset (R) button on XIAO to start.")
-        return True
-    else:
-        print(f"\nFlash failed on {port} with code {res.returncode}")
-        return False
+
+    for attempt in range(1, 15):
+        res = subprocess.run(cmd)
+        if res.returncode == 0:
+            print(f"\n*** FLASH [{target_key.upper()}] SUCCEEDED! ***")
+            print("Tap physical Reset (R) button on XIAO to start.")
+            return True
+        print(f"\nAttempt {attempt} failed, retrying in 2s (Hold B, tap R on XIAO)...")
+        time.sleep(2)
+        port = find_esp_port()
+        cmd[4] = port
+
+    print(f"\nFlash failed on {port} after retries.")
+    return False
 
 if __name__ == "__main__":
     target = sys.argv[1] if len(sys.argv) > 1 else "golden_notel"

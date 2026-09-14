@@ -167,3 +167,21 @@ If the combination of GDMA circular link wrap, `cfg eof_on upstream`, `cfg trail
 2. **Candidate C (`golden_8k`)**: Golden 8 KiB ring $\to$ boundary periodicity halves to **~3.22 lines**. If kartels double in frequency, DMA boundary is the direct cause.
 3. **Candidate E (`golden_32k`)**: Golden 32 KiB ring $\to$ boundary periodicity doubles to **~12.89 lines**.
 4. **Candidate F (`interleaved40`)**: Two-Stage 40$\to$40 Interleaved Phase5 @ 40 MS/s DAC cadence with continuous 25 ns updates and 50 ns discriminator baseline on both streams.
+
+---
+
+## 7. Live Test Observations & Findings
+
+### Test 1: `golden_notel` (Golden Phase5 16 KiB Ring, Telemetry & Logging OFF)
+* **Result**: Beeld is visueel identiek aan de originele golden build; niet slechter, niet beter.
+* **Conclusie**: 
+  - FreeRTOS CPU-activiteit (USB/UART logging en background stats polling) veroorzaakte **geen** noemenswaardige buscontention op het interne SRAM.
+  - De periodieke kartels en layer-twitches worden dus **niet** gedreven door scheduler-jitter of UART-contention.
+  - De video-pipeline is nu 100% zuiver en klaar voor de GDMA ring-buffer boundary tests.
+
+### Test 2: `golden_8k` (Golden Phase5 8 KiB Ring, Telemetry OFF)
+* **Status**: Geflasht naar ESP32-C5 (COM10).
+* **Hypothese**: 
+  - 8 KiB @ 40 MB/s = $204{,}8\text{ \mu s} \approx \mathbf{3{,}22\text{ NTSC lijnen}}$.
+  - Als de DMA descriptor-wrap / BitScrambler upstream EOF overgang een discontinuïteit veroorzaakt, moet de frequentie van de kartels / twitches **verdubbelen** (lijnen twee keer zo dicht op elkaar).
+
