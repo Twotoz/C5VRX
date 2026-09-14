@@ -59,3 +59,5 @@ const void *c5vrx2_phase5_premapper_40m_program_get(void);
 const void *c5vrx2_wbfm_interleaved40_50ns_program_get(void);
 const void *c5vrx2_wbfm_interleaved40_direct11_program_get(void);
 const void *c5vrx2_wbfm_candidate_h_program_get(void);
+const void *c5vrx2_wbfm_q4_phase5_ped25_program(void);
+const void *c5vrx2_wbfm_q4_phase5_even_program(void);

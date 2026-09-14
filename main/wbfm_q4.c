@@ -27,6 +27,8 @@ BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_iq5_2to1_program,
                     "c5vrx2_wbfm_q4_iq5_2to1");
 BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_phase5_2to1_program,
                     "c5vrx2_wbfm_q4_phase5_2to1");
+BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_phase5_ped25_2to1_program,
+                    "c5vrx2_wbfm_q4_phase5_ped25_2to1");
 BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_phase5_100ns_2to1_program,
                     "c5vrx2_wbfm_q4_phase5_100ns_2to1");
 BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_phase5_150ns_2to1_program,
@@ -45,6 +47,8 @@ BITSCRAMBLER_PROGRAM(c5vrx2_phase5_premapper_40m_program, "c5vrx2_phase5_premapp
 BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_interleaved40_50ns_program, "c5vrx2_wbfm_interleaved40_50ns");
 BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_interleaved40_direct11_program, "c5vrx2_wbfm_interleaved40_direct11");
 BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_candidate_h_program, "c5vrx2_wbfm_candidate_h");
+BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_phase5_even_2to1_program,
+                    "c5vrx2_wbfm_q4_phase5_even_2to1");
 
 const void *c5vrx2_wbfm_linear80_program(void)
 {
@@ -580,6 +584,16 @@ const void *c5vrx2_wbfm_q4_iq5_program(void)
 const void *c5vrx2_wbfm_q4_phase5_program(void)
 {
     return c5vrx2_wbfm_q4_phase5_2to1_program;
+}
+
+const void *c5vrx2_wbfm_q4_phase5_ped25_program(void)
+{
+    return c5vrx2_wbfm_q4_phase5_ped25_2to1_program;
+}
+
+const void *c5vrx2_wbfm_q4_phase5_even_program(void)
+{
+    return c5vrx2_wbfm_q4_phase5_even_2to1_program;
 }
 
 const void *c5vrx2_wbfm_q4_phase5_100ns_program(void)

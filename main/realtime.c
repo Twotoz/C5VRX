@@ -29,7 +29,7 @@
 #define MODEM_IQ_RATE_HZ 40000000u
 #if CONFIG_C5VRX2_PARLIO4_80M_LIVE || CONFIG_C5VRX2_LINEAR80
 #define CVBS_RATE_HZ     80000000u
-#elif CONFIG_C5VRX2_WBFM_CANDIDATE_H || CONFIG_C5VRX2_WBFM_CANDIDATE_G || CONFIG_C5VRX2_WBFM_INTERLEAVED_40M || CONFIG_C5VRX2_WBFM_PHASE5_QUALITY || CONFIG_C5VRX2_WBFM_TRUE40 || CONFIG_C5VRX2_WBFM_PHASE5_100NS || CONFIG_C5VRX2_WBFM_PHASE5_150NS || CONFIG_C5VRX2_WBFM_PHASE5_SYNCLOCK
+#elif CONFIG_C5VRX2_WBFM_CANDIDATE_H || CONFIG_C5VRX2_WBFM_CANDIDATE_G || CONFIG_C5VRX2_WBFM_INTERLEAVED_40M || CONFIG_C5VRX2_WBFM_PHASE5_QUALITY || CONFIG_C5VRX2_WBFM_PHASE5_PED25 || CONFIG_C5VRX2_WBFM_TRUE40 || CONFIG_C5VRX2_WBFM_PHASE5_100NS || CONFIG_C5VRX2_WBFM_PHASE5_150NS || CONFIG_C5VRX2_WBFM_PHASE5_SYNCLOCK
 #define CVBS_RATE_HZ     40000000u
 
 #else
@@ -331,6 +331,10 @@ static esp_err_t start_tx_ring(void)
             c5vrx2_wbfm_linear80_program(),
 #elif CONFIG_C5VRX2_WBFM_PHASE5_QUALITY
             c5vrx2_wbfm_q4_phase5_program(),
+#elif CONFIG_C5VRX2_WBFM_PHASE5_EVEN
+            c5vrx2_wbfm_q4_phase5_even_program(),
+#elif CONFIG_C5VRX2_WBFM_PHASE5_PED25
+            c5vrx2_wbfm_q4_phase5_ped25_program(),
 #elif CONFIG_C5VRX2_WBFM_TRAJECTORY
             c5vrx2_wbfm_q4_trajectory_program(),
 #else
@@ -502,12 +506,24 @@ esp_err_t c5vrx2_realtime_start(void)
              "RAW SNAPSHOT ACTIVE: MODEM_DIAG Q4/I4 -> PARLIO RX 40M -> "
              "GDMA/flash; WBFM and DAC bypassed");
 #else
-    ESP_LOGW(TAG,
-             "LIVE ACTIVE: configured IQ=40000000 DAC=%u Hz; RF estimator=%u "
-             "pedestal=%u gain=%u polarity=%u",
-             (unsigned)CVBS_RATE_HZ, (unsigned)continuous_iq_sample_rate_hz(),
-             cal->pedestal_code, cal->discriminator_gain,
-             (unsigned)cal->polarity);
+    ESP_LOGW(TAG, "\n=======================================================");
+    ESP_LOGW(TAG, " PIPELINE STAMP: [GOLDEN-TRANSPORT-V2]");
+    ESP_LOGW(TAG, " RX:            40 MS/s POS edge, stock cyclic GDMA");
+    ESP_LOGW(TAG, " Ring:          %u bytes (HP SRAM)", (unsigned)sizeof(s_raw_ring));
+#if CONFIG_C5VRX2_WBFM_PHASE5_EVEN
+    ESP_LOGW(TAG, " Demod:         Phase5 (EVEN parity: s0, s2, s4...)");
+#else
+    ESP_LOGW(TAG, " Demod:         Phase5 (ODD parity: s1, s3, s5...)");
+#endif
+    ESP_LOGW(TAG, " Calibration:   Pedestal=%u, Gain=%u", cal->pedestal_code, cal->discriminator_gain);
+    ESP_LOGW(TAG, " TX:            40 MS/s [D,D] 6-bit resistor DAC");
+    ESP_LOGW(TAG, " BitScrambler:  EOF downstream, trailing 0, persistent state");
+#if CONFIG_C5VRX2_DISABLE_TELEMETRY
+    ESP_LOGW(TAG, " Telemetry:     OFF (hot path clean)");
+#else
+    ESP_LOGW(TAG, " Telemetry:     ON");
+#endif
+    ESP_LOGW(TAG, "=======================================================\n");
 #endif
 #if CONFIG_C5VRX2_DISABLE_TELEMETRY
     /* Mute all logging after startup so CPU and USB bus stay 100% idle */

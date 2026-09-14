@@ -189,11 +189,24 @@ config C5VRX2_WBFM_CANDIDATE_G
         discriminators at true 40 MS/s DAC cadence with persistent state in O8..O12 and O13..O17.
 
 config C5VRX2_WBFM_PHASE5_QUALITY
-    bool "Golden Phase5 (50 ns linear 0.75, 40 MS/s DAC hold)"
+    bool "Golden Phase5 (50 ns linear 0.75, 40 MS/s DAC hold, Pedestal 20)"
     help
         Use an embedded dual-purpose LUT that maps the complete Q4/I4 byte to
         uniform five-bit phase before FM differencing. A one-time prime is
         followed by a two-bundle steady-state pipeline.
+
+config C5VRX2_WBFM_PHASE5_PED25
+    bool "Golden Phase5 Pedestal 25 (clipping-free chroma ademruimte, 40 MS/s DAC hold)"
+    help
+        Identical to Golden Phase5 baseline, but with LUT pedestal elevated from 20 to 25.
+        Eliminates color burst and negative chroma peak clipping at DAC code 0, suppressing
+        rainbow bars in dark-scene and high-saturation chroma areas.
+
+config C5VRX2_WBFM_PHASE5_EVEN
+    bool "Phase 5 polar core (EVEN parity: s0, s2, s4..., 20 MS/s info, 40 MS/s DAC)"
+    help
+        Golden-Even parity candidate for Track 1 A/B testing. Reads bits 0..7
+        instead of bits 8..15; all other instructions and LUT entries are 100% identical.
 
 config C5VRX2_WBFM_INTERLEAVED_40M
     bool "Two-Stage 40 MS/s Interleaved Phase5 (50 ns linear 0.75, 40 MS/s continuous)"

@@ -7,8 +7,11 @@ import serial.tools.list_ports
 ROOT = Path("C:/Users/leonb/Twotoz/C5VRX-issue11-output")
 
 BUILDS = {
+    "golden_v2":    ("Golden-Transport-V2 Baseline (Odd parity s1/s3/s5, 32K, POS, downstream EOF, trailing 0, no tel)", ROOT / "build-golden-32k-notel"),
+    "golden_even":  ("Golden-Even A/B Candidate (Even parity s0/s2/s4, 32K, POS, downstream EOF, trailing 0, no tel)", ROOT / "build-golden-even-notel"),
     "golden_128k":  ("Seamless Golden 128K (POS edge, trailing=0, eof=downstream, no tel)", ROOT / "build-golden-128k-notel"),
-    "golden_32k":   ("Seamless Golden 32K (trailing=0, eof=downstream, no tel)", ROOT / "build-golden-32k-notel"),
+    "golden_32k":   ("Golden-Transport-V2 (Odd parity, trailing=0, eof=downstream, no tel)", ROOT / "build-golden-32k-notel"),
+    "golden_ped25": ("Golden 32K Pedestal 25 (clipping-free chroma)", ROOT / "build-golden-ped25-notel"),
     "golden_notel": ("Seamless Golden 16K (trailing=0, eof=downstream, no tel)", ROOT / "build-golden-notel"),
     "golden_8k":    ("Golden 8K (Clean / No Telemetry)", ROOT / "build-golden-8k-notel"),
     "candidate_h":  ("Candidate H: Learned Phase-State Machine (7+4, 40 MS/s continuous)", ROOT / "build-candidate-h-notel"),

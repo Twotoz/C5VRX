@@ -40,6 +40,7 @@ Modern C5VRX
 | Issue #17 True 40 MS/s cadence, adjacent25 failure modes, and interleaved demodulation | [issue-17-true40-cadence-and-interleaved-phase5.md](issue-17-true40-cadence-and-interleaved-phase5.md) |
 | Issue #21 Interleaved 40 MS/s Phase5 architecture and silicon pipeline proof | [issue-21-interleaved-40m-phase5.md](issue-21-interleaved-40m-phase5.md) |
 | Issue #22 DMA boundary hole elimination, RX EOF regression analysis, and interleaved findings | [issue-22-dma-boundary-and-interleaved-findings.md](issue-22-dma-boundary-and-interleaved-findings.md) |
+| Golden-Transport-V2 architecture, Pedestal 25 autopsy, and Parity A/B findings | [golden-v2-architecture-and-parity-findings.md](golden-v2-architecture-and-parity-findings.md) |
 | Wiring and remaining physical tests | [hardware-test.md](hardware-test.md) |
 | Accepted historical donor primitives | [proven-donors.md](proven-donors.md) |
 | Licensing and contributor evidence | [licensing.md](licensing.md) |
