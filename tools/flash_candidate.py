@@ -7,6 +7,7 @@ import serial.tools.list_ports
 ROOT = Path("C:/Users/leonb/Twotoz/C5VRX-issue11-output")
 
 BUILDS = {
+    "golden_128k":  ("Seamless Golden 128K (POS edge, trailing=0, eof=downstream, no tel)", ROOT / "build-golden-128k-notel"),
     "golden_32k":   ("Seamless Golden 32K (trailing=0, eof=downstream, no tel)", ROOT / "build-golden-32k-notel"),
     "golden_notel": ("Seamless Golden 16K (trailing=0, eof=downstream, no tel)", ROOT / "build-golden-notel"),
     "golden_8k":    ("Golden 8K (Clean / No Telemetry)", ROOT / "build-golden-8k-notel"),

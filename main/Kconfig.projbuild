@@ -158,6 +158,12 @@ choice C5VRX2_RING_SIZE
     config C5VRX2_RING_32K
         bool "32 KiB (8 blocks, boundary every ~12.89 NTSC lines)"
 
+    config C5VRX2_RING_64K
+        bool "64 KiB (16 blocks, boundary every ~25.78 NTSC lines)"
+
+    config C5VRX2_RING_128K
+        bool "128 KiB (32 blocks, boundary every ~51.56 NTSC lines)"
+
 endchoice
 
 choice C5VRX2_WBFM_CORE
