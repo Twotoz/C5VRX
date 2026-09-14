@@ -144,16 +144,21 @@ config C5VRX2_DISABLE_TELEMETRY
         Prevents background telemetry_task from creating USB-Serial-JTAG
         interrupts and contending for internal SRAM/bus bandwidth during live reception.
 
-config C5VRX2_RING_BLOCKS
-    int "Number of 4096-byte blocks in DMA ring"
+choice C5VRX2_RING_SIZE
+    prompt "Circular DMA Ring Size"
     depends on C5VRX2_MODE_LIVE
-    range 2 16
-    default 4
-    help
-        Size of the circular DMA ring in 4 KiB units.
-        2 = 8 KiB (boundary every ~3.22 NTSC lines)
-        4 = 16 KiB (boundary every ~6.44 NTSC lines)
-        8 = 32 KiB (boundary every ~12.89 NTSC lines)
+    default C5VRX2_RING_16K
+
+    config C5VRX2_RING_8K
+        bool "8 KiB (2 blocks, boundary every ~3.22 NTSC lines)"
+
+    config C5VRX2_RING_16K
+        bool "16 KiB (4 blocks, boundary every ~6.44 NTSC lines)"
+
+    config C5VRX2_RING_32K
+        bool "32 KiB (8 blocks, boundary every ~12.89 NTSC lines)"
+
+endchoice
 
 choice C5VRX2_WBFM_CORE
     prompt "WBFM Demodulator Core"

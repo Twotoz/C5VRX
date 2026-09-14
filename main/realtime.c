@@ -37,10 +37,14 @@
 #endif
 
 #define RAW_BLOCK_BYTES      4096u
-#ifdef CONFIG_C5VRX2_RING_BLOCKS
+#if CONFIG_C5VRX2_RING_8K
+#define RAW_RING_BLOCKS      2u
+#elif CONFIG_C5VRX2_RING_32K
+#define RAW_RING_BLOCKS      8u
+#elif defined(CONFIG_C5VRX2_RING_BLOCKS)
 #define RAW_RING_BLOCKS      ((uint32_t)CONFIG_C5VRX2_RING_BLOCKS)
 #else
-#define RAW_RING_BLOCKS         4u
+#define RAW_RING_BLOCKS      4u
 #endif
 #define RAW_RING_BYTES (RAW_BLOCK_BYTES * RAW_RING_BLOCKS)
 
