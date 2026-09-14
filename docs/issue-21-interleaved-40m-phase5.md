@@ -202,19 +202,73 @@ If the combination of GDMA circular link wrap, `cfg eof_on upstream`, `cfg trail
   - Doordat de boundary veel minder vaak passeert, is de stabiliteit spectaculair toegenomen en glitcht het scherm significant minder vaak.
   - De incidentele zwarte balk aan de bovenkant ontstaat exact wanneer de descriptor-wrap samenvalt met de verticale blanking interval (VBI) of H-sync drempel.
 
+## 8. Root Cause: De Anatomie van de Ring Boundary Bug
+
+Door diepgaande inspectie van de ESP-IDF 6.0.1 low-level drivers (`bitscrambler.c`, `bitscrambler_ll.h`, `bitscrambler_struct.h`, `parlio_tx.c`) is het exacte hardware-mechanisme blootgelegd:
+
+### 1. `cfg trailing_bytes 9` Discard 72 Bits (9 Bytes) per Wrap
+* In `main/c5vrx2_wbfm_q4_phase5_2to1.bsasm` staat:
+  ```asm
+  cfg trailing_bytes 9
+  ```
+* In `bitscrambler.c` vertaalt IDF dit direct naar hardware-register:
+  ```c
+  bitscrambler_ll_set_tailing_bits(bs->hw, bs->cfg.dir, hdr.trailing_bits); // 9 * 8 = 72 bits
+  ```
+* In hardware betekent `trailing_bits`: **aantal bits dat na EOF moet worden genegeerd (weggegooid)**.
+* In een begrensde (finite) eenmalige transmissie van een enkel audiobestand diende dit om pijplijnresten af te kappen.
+* Maar in een **continue cyclische GDMA-ring**:
+  $$\text{Weggegooide RF-samples per wrap} = \mathbf{9\text{ bytes}} = 9 \times 25\text{ ns} = \mathbf{225\text{ ns!}}$$
+* **225 ns gat per ringboundary!**
+  * Ter vergelijking: 1 NTSC kleursubcarrier cyclus (3.579545 MHz) is 279.36 ns.
+  * Een gat van 225 ns is bijna een volledige kleurcyclus (290° fasediscontinuïteit) en een brute timing-schok in het horizontale lijnsignaal.
+  * Dit verklaart 100% waarom de analoge videobril zijn H-sync PLL verloor en de lijnen horizontaal niet uitgelijnd waren ("kartels" en "layers").
+
+### 2. `cfg eof_on upstream` Triggert PC Reset & Wiped Fase
+* In `c5vrx2_wbfm_q4_phase5_2to1.bsasm` staat `cfg eof_on upstream`.
+* Wanneer de GDMA descriptor ring over zijn laatste descriptor loopt (`eof = 1`), triggert de BitScrambler zijn EOF-event.
+* De BitScrambler hardware reset zijn instructiepointer naar instructie 0 (`address_phase`):
+  ```asm
+  address_phase:
+      set 26..30 L,  # <-- OVERWRITES PHASE WITH 0 (WIPES PREVIOUS RF PHASE!)
+      read 16        # <-- READS 16 BITS FROM DMA BUT DOES NOT WRITE TO DAC!
+  ```
+* Gevolg:
+  1. De opgebouwde fasehoek $\phi_{last}$ wordt botweg gereset naar 0.
+  2. Eén DAC write-cyclus (50 ns) valt volledig uit de PARLIO TX FIFO.
+  3. De steady-state loop `address_delta` $\leftrightarrow$ `emit` wordt 1 cycle onderbroken (75 ns i.p.v. 50 ns).
+
+### 3. De Bewezen Oplossing in de Legacy Architectuur
+In `legacy/c5vrx1/main/c5vrx_wbfm_direct6_4to1.bsasm` stond al de sleutel:
+```asm
+# O6..O10 persist a five-bit previous-IQ state across output groups and across the cyclic GDMA
+# descriptor boundary. Successive samples alternate Q3/I2 and Q2/I3 compact states;
+
+cfg prefetch true
+cfg eof_on downstream
+cfg trailing_bytes 0
+```
+In `parlio_tx.c` regels 514-519 zien we dat PARLIO TX in `loop_transmission` zelf **nooit** EOF genereert:
+```c
+// Thus, we can skip the exact match, prevents EOF
+parlio_ll_tx_set_eof_condition(hal->regs, PARLIO_LL_TX_EOF_COND_DATA_LEN);
+parlio_ll_tx_set_trans_bit_len(hal->regs, 0x01);
+```
+Wanneer `cfg eof_on downstream` is ingesteld, ziet de BitScrambler dus **nooit** een EOF en blijft hij continu in zijn naadloze lus draaien!
+
 ---
 
-## 8. Root Cause & Oplossingsrichting
+## 9. Het Naadloze Fix-Plan (Seamless Golden)
 
-Nu onomstotelijk is bewezen dat de GDMA circular ringboundary wrap de oorzaak is van de layers en het verticaal glitchen:
-1. **BitScrambler Upstream EOF Gedrag**:
-   - In `c5vrx2_wbfm_q4_phase5_2to1.bsasm` staat `cfg eof_on upstream`.
-   - Wanneer de GDMA descriptor chain over zijn `eof` grens loopt, kan de BitScrambler zijn instructiepointer resetten naar `address_phase` (instructie 0).
-   - `address_phase` zet `O26..O30` op 0 (`set 26..30 L`) en doet een losse `read 16` zonder DAC `write`, waardoor er 1 sample uitvalt (25-50 ns timing slip).
-2. **Buffergrootte**:
-   - ESP32-C5 heeft 416 KiB intern SRAM. Met 64 KiB ring ($1638{,}4\text{ \mu s} \approx 25{,}78\text{ lijnen}$) daalt de frequentie verder naar $610\text{ Hz}$.
-3. **Naadloze Boundary**:
-   - Elimineren van de reset op circular EOF of afstemmen van de trailing bytes / descriptor flags zodat er nul samples verloren gaan.
+1. **`c5vrx2_wbfm_q4_phase5_2to1.bsasm` aanpassen**:
+   * `cfg eof_on downstream`
+   * `cfg trailing_bytes 0`
+   * In `address_phase`: `set 26..30 O26..O30` (behoud vorige toestand, mocht hij ooit triggeren).
+2. **Testen op Golden (16 KiB en 32 KiB)**:
+   * Verifieer dat alle kartels, layers en zwarte balk glitches verdwijnen op de stabiele baseline.
+3. **Daarna Candidate F (`interleaved40`) herbouwen**:
+   * Zodra het cyclische transport 100% naadloos is, passen we dezelfde seamless regels (`trailing_bytes 0`, `eof_on downstream`) en de juiste 40 MHz TX-klok toe op Candidate F.
+
 
 
 
