@@ -48,6 +48,9 @@ choice C5VRX2_MODE
 
     config C5VRX2_MODE_LINEAR80_ORACLE
         bool "Bounded Phase5 interpolator byte/FIFO/throughput oracle (RF off)"
+
+    config C5VRX2_MODE_PARLIO4_80M_ORACLE
+        bool "PARLIO 4-bit @ 80 MHz transport & grouped DAC oracle (RF off)"
 endchoice
 
 config C5VRX2_AV_STATIC_CODE

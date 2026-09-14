@@ -17,6 +17,7 @@ idf_component_register(
         "issue11_capture.c"
         "tx_80m_oracle.c"
         "linear80_oracle.c"
+        "parlio4_80m_oracle.c"
     INCLUDE_DIRS "."
     # diagnostics.c intentionally inspects the C5 PARLIO unit/GDMA handle for
     # byte-exact hardware oracles; this repository is pinned to IDF v6.0.1.

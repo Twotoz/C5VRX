@@ -13,6 +13,7 @@
 #include "startup_trace.h"
 #include "wbfm_q4.h"
 #include "tx_80m_oracle.h"
+#include "parlio4_80m_oracle.h"
 #if CONFIG_C5VRX2_MODE_LINEAR80_ORACLE
 esp_err_t c5vrx2_linear80_oracle_run(void);
 #endif
@@ -95,6 +96,12 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(1500));
     const esp_err_t err = c5vrx2_tx_80m_oracle_run();
     if (err != ESP_OK) ESP_LOGE(TAG, "80M oracle failed: %s", esp_err_to_name(err));
+    return;
+#elif CONFIG_C5VRX2_MODE_PARLIO4_80M_ORACLE
+    ESP_LOGW(TAG, "C5VRX-2: PARLIO 4-bit 80 MHz hardware oracle boot");
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    const esp_err_t err = c5vrx2_parlio4_80m_oracle_run();
+    if (err != ESP_OK) ESP_LOGE(TAG, "PARLIO 4-bit 80M oracle failed: %s", esp_err_to_name(err));
     return;
 #else
     ESP_LOGW(TAG, "C5VRX-2: direct TX-BitScrambler WBFM receiver boot");
