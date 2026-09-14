@@ -14,23 +14,12 @@ if not app.exists():
     print(f"Error: {app} does not exist yet!")
     sys.exit(1)
 
-print("Resetting COM10 into bootloader mode...")
-try:
-    s = serial.Serial('COM10', 1200)
-    s.dtr = False
-    s.rts = True
-    time.sleep(0.1)
-    s.close()
-except Exception as e:
-    print(f"Notice during 1200-baud touch: {e}")
-
-time.sleep(1.0)
-
 cmd = [
     sys.executable, "-m", "esptool",
     "--chip", "esp32c5",
     "-p", "COM10",
     "-b", "460800",
+    "--after", "hard-reset",
     "write-flash",
     "0x2000", str(bootloader),
     "0x8000", str(ptable),
@@ -43,37 +32,47 @@ if res.returncode != 0:
     print(f"Flashing failed with exit code {res.returncode}")
     sys.exit(res.returncode)
 
-print("Flashing succeeded. Resetting device and monitoring serial output...")
-try:
-    s = serial.Serial('COM10', 115200, timeout=0.1)
-    s.dtr = False
-    s.rts = False
-    time.sleep(0.1)
-    s.rts = True
-    time.sleep(0.1)
-    s.rts = False
-    
-    print("\n--- SERIAL MONITOR STARTED ---")
-    start_time = time.time()
-    while time.time() - start_time < 15.0:
-        line = s.readline()
-        if line:
-            try:
-                text = line.decode('utf-8', errors='replace').rstrip()
+print("Flashing succeeded. Waiting for COM10 to re-enumerate and monitoring serial output...")
+time.sleep(1.5)
+
+s = None
+for attempt in range(40):
+    try:
+        s = serial.Serial(port=None, baudrate=115200, timeout=0.2)
+        s.dtr = False
+        s.rts = False
+        s.port = 'COM10'
+        s.open()
+        print("Successfully connected to COM10!")
+        break
+    except Exception:
+        time.sleep(0.2)
+
+if not s or not s.is_open:
+    print("Notice: COM10 not yet openable (chip may be booting). Retrying...")
+    sys.exit(0)
+
+print("\n--- SERIAL MONITOR STARTED ---")
+start_time = time.time()
+while time.time() - start_time < 20.0:
+    line = s.readline()
+    if line:
+        try:
+            text = line.decode('utf-8', errors='replace').rstrip()
+            if text:
                 print(text)
-                if "OVERALL ORACLE RESULT:" in text:
+                if "OVERALL ORACLE RESULT:" in text or "STEADY-STATE HEARTBEAT" in text:
                     # Capture a bit more output then finish
-                    time.sleep(1.0)
+                    time.sleep(2.0)
                     while True:
                         extra = s.readline()
                         if not extra:
                             break
-                        print(extra.decode('utf-8', errors='replace').rstrip())
+                        extra_text = extra.decode('utf-8', errors='replace').rstrip()
+                        if extra_text:
+                            print(extra_text)
                     break
-            except Exception:
-                pass
-    s.close()
-except Exception as e:
-    print(f"Serial monitoring error: {e}")
-
+        except Exception:
+            pass
+s.close()
 print("\n--- SERIAL MONITOR COMPLETE ---")
