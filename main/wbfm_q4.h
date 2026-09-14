@@ -51,3 +51,7 @@ esp_err_t c5vrx2_wbfm_q4_configure_true40(bitscrambler_handle_t handle);
 const void *c5vrx2_wbfm_q4_true40_program(void);
 
 const void *c5vrx2_wbfm_q4_phase5_100ns_program(void);
+const void *c5vrx2_wbfm_q4_phase5_150ns_program(void);
+const void *c5vrx2_wbfm_q4_parlio4_80m_program(void);
+const void *c5vrx2_wbfm_q4_phase5_150ns_parlio4_80m_program(void);
+

@@ -152,6 +152,24 @@ config C5VRX2_WBFM_PHASE5_100NS
         alternating history registers. Halves high-frequency FM noise and static
         while maintaining 20 MS/s output and 40 MS/s DAC cadence.
 
+config C5VRX2_WBFM_PHASE5_150NS
+    bool "Use 150 ns discriminator on uniform five-bit polar WBFM core"
+    depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_TX_WBFM_TEST
+    default n
+    help
+        Triples the discriminator span from 50 ns to 150 ns across three
+        rotating history registers (O, A, B). Maximizes high-frequency FM noise
+        suppression and line-edge stabilization while preserving NTSC/PAL chroma.
+
+config C5VRX2_PARLIO4_80M_LIVE
+    bool "Use 4-bit PARLIO @ 80 MHz grouped DAC transport for live video"
+    depends on C5VRX2_MODE_LIVE
+    default n
+    help
+        Runs PARLIO TX with data_width = 4 at 80 MHz (80 MS/s DAC cadence,
+        12.5 ns sample hold) with DMA rate bounded at 40 MB/s. Routes 4-bit
+        output to the 6 DAC resistors via the GPIO matrix grouped fanout.
+
 config C5VRX2_PARLIO_RX_NEG_EDGE
     bool "Sample MODEM_DIAG on the opposite PARLIO RX clock edge"
     depends on C5VRX2_MODE_LIVE
@@ -163,3 +181,4 @@ config C5VRX2_PARLIO_RX_NEG_EDGE
         40 MS/s receive rate or the 20 MS/s DAC rate.
 
 endmenu
+

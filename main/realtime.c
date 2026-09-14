@@ -26,13 +26,14 @@
 #include "wbfm_q4.h"
 
 #define MODEM_IQ_RATE_HZ 40000000u
-#if CONFIG_C5VRX2_LINEAR80
+#if CONFIG_C5VRX2_PARLIO4_80M_LIVE || CONFIG_C5VRX2_LINEAR80
 #define CVBS_RATE_HZ     80000000u
-#elif CONFIG_C5VRX2_WBFM_PHASE5_QUALITY || CONFIG_C5VRX2_WBFM_TRUE40 || CONFIG_C5VRX2_WBFM_PHASE5_100NS
+#elif CONFIG_C5VRX2_WBFM_PHASE5_QUALITY || CONFIG_C5VRX2_WBFM_TRUE40 || CONFIG_C5VRX2_WBFM_PHASE5_100NS || CONFIG_C5VRX2_WBFM_PHASE5_150NS
 #define CVBS_RATE_HZ     40000000u
 #else
 #define CVBS_RATE_HZ     20000000u
 #endif
+
 #define RAW_BLOCK_BYTES      4096u
 #define RAW_RING_BLOCKS         4u
 #define RAW_RING_BYTES (RAW_BLOCK_BYTES * RAW_RING_BLOCKS)
@@ -176,6 +177,42 @@ static esp_err_t prepare_rx(void)
 
 static esp_err_t prepare_tx(void)
 {
+#if CONFIG_C5VRX2_PARLIO4_80M_LIVE
+    const gpio_num_t dac_pins[6] = {
+        GPIO_NUM_23, GPIO_NUM_24, GPIO_NUM_11,
+        GPIO_NUM_12, GPIO_NUM_8, GPIO_NUM_9
+    };
+    for (int i = 0; i < 6; ++i) {
+        gpio_set_direction(dac_pins[i], GPIO_MODE_INPUT_OUTPUT);
+        gpio_set_drive_capability(dac_pins[i], GPIO_DRIVE_CAP_3);
+    }
+    const parlio_tx_unit_config_t cfg = {
+        .clk_src = PARLIO_CLK_SRC_DEFAULT,
+        .clk_in_gpio_num = -1,
+        .input_clk_src_freq_hz = 0u,
+        .output_clk_freq_hz = CVBS_RATE_HZ,
+        .data_width = 4u,
+        .data_gpio_nums = {11, 12, 8, 9, -1, -1, -1, -1},
+        .clk_out_gpio_num = -1,
+        .valid_gpio_num = -1,
+        .valid_start_delay = 0,
+        .valid_stop_delay = 0,
+        .trans_queue_depth = 1u,
+        .max_transfer_size = sizeof(s_raw_ring),
+        .dma_burst_size = 32u,
+        .shift_edge = PARLIO_SHIFT_EDGE_NEG,
+        .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
+    };
+    esp_err_t err = parlio_new_tx_unit(&cfg, &s_tx);
+    if (trace_step(20u, err) != ESP_OK) return err;
+    err = parlio_tx_unit_decorate_bitscrambler(s_tx);
+    if (trace_step(21u, err) != ESP_OK) return err;
+    /* Connect fanout signals: bit 2 -> GPIO 23, bit 3 -> GPIO 24 */
+    esp_rom_gpio_connect_out_signal(GPIO_NUM_23, PARL_TX_DATA2_IDX, false, false);
+    esp_rom_gpio_connect_out_signal(GPIO_NUM_24, PARL_TX_DATA3_IDX, false, false);
+    err = parlio_tx_unit_enable(s_tx);
+    return trace_step(22u, err);
+#else
     const parlio_tx_unit_config_t cfg = {
         .clk_src = PARLIO_CLK_SRC_DEFAULT,
         .clk_in_gpio_num = -1,
@@ -199,6 +236,7 @@ static esp_err_t prepare_tx(void)
     if (trace_step(21u, err) != ESP_OK) return err;
     err = parlio_tx_unit_enable(s_tx);
     return trace_step(22u, err);
+#endif
 }
 
 static esp_err_t start_rx_ring(void)
@@ -221,9 +259,20 @@ static esp_err_t start_tx_ring(void)
 {
     const c5vrx2_calibration_t *cal = c5vrx2_calibration_get();
     const parlio_transmit_config_t cfg = {
+#if CONFIG_C5VRX2_PARLIO4_80M_LIVE
+        .idle_value = 5, /* Grouped DAC code 5 = level 21 (nominal pedestal) */
+        .bitscrambler_program =
+#if CONFIG_C5VRX2_WBFM_PHASE5_150NS
+            c5vrx2_wbfm_q4_phase5_150ns_parlio4_80m_program(),
+#else
+            c5vrx2_wbfm_q4_parlio4_80m_program(),
+#endif
+#else
         .idle_value = cal->pedestal_code,
         .bitscrambler_program =
-#if CONFIG_C5VRX2_WBFM_PHASE5_100NS
+#if CONFIG_C5VRX2_WBFM_PHASE5_150NS
+            c5vrx2_wbfm_q4_phase5_150ns_program(),
+#elif CONFIG_C5VRX2_WBFM_PHASE5_100NS
             c5vrx2_wbfm_q4_phase5_100ns_program(),
 #elif CONFIG_C5VRX2_WBFM_TRUE40
             c5vrx2_wbfm_q4_true40_program(),
@@ -235,6 +284,7 @@ static esp_err_t start_tx_ring(void)
             c5vrx2_wbfm_q4_trajectory_program(),
 #else
             c5vrx2_wbfm_q4_iq5_program(),
+#endif
 #endif
         .flags.loop_transmission = true,
     };

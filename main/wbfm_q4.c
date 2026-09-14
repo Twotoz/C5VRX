@@ -29,7 +29,14 @@ BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_phase5_2to1_program,
                     "c5vrx2_wbfm_q4_phase5_2to1");
 BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_phase5_100ns_2to1_program,
                     "c5vrx2_wbfm_q4_phase5_100ns_2to1");
+BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_phase5_150ns_2to1_program,
+                    "c5vrx2_wbfm_q4_phase5_150ns_2to1");
+BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_parlio4_80m_2to1_program,
+                    "c5vrx2_wbfm_q4_parlio4_80m_2to1");
+BITSCRAMBLER_PROGRAM(c5vrx2_wbfm_q4_phase5_150ns_parlio4_80m_2to1_program,
+                    "c5vrx2_wbfm_q4_phase5_150ns_parlio4_80m_2to1");
 BITSCRAMBLER_PROGRAM(c5vrx2_q4_delta_program, "c5vrx2_q4_delta");
+
 BITSCRAMBLER_PROGRAM(c5vrx2_linear80_program, "c5vrx2_phase5_linear80");
 
 const void *c5vrx2_wbfm_linear80_program(void)
@@ -552,6 +559,22 @@ const void *c5vrx2_wbfm_q4_phase5_100ns_program(void)
 {
     return c5vrx2_wbfm_q4_phase5_100ns_2to1_program;
 }
+
+const void *c5vrx2_wbfm_q4_phase5_150ns_program(void)
+{
+    return c5vrx2_wbfm_q4_phase5_150ns_2to1_program;
+}
+
+const void *c5vrx2_wbfm_q4_parlio4_80m_program(void)
+{
+    return c5vrx2_wbfm_q4_parlio4_80m_2to1_program;
+}
+
+const void *c5vrx2_wbfm_q4_phase5_150ns_parlio4_80m_program(void)
+{
+    return c5vrx2_wbfm_q4_phase5_150ns_parlio4_80m_2to1_program;
+}
+
 
 #if CONFIG_C5VRX2_WBFM_SELFTEST_ONCE
 #define SELFTEST_INPUT_BYTES 1024u
