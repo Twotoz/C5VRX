@@ -124,7 +124,61 @@ Timing step: 25 ns -> 32.2° chroma subcarrier step (halved!)
 
 ### Initial Live Hardware Smoke Test
 * **Firmware**: `build-interleaved40-notel` (commit `be4e3a9`).
-* **Observation**: Full screen static/snow, but when the camera was panned to the right, the static features visibly tracked to the right.
+* **Live Observation**: Full screen static/snow, but when the camera was panned to the right, the static features visibly tracked to the right.
 * **Interpretation**:
-  - The RF receiver, MODEM_DIAG bus, PARLIO RX, Stage 1 premapper, Stage 2 discriminator, and PARLIO TX DAC are functionally alive and active.
-  - The analog TV / goggles display cannot lock horizontal or vertical sync, indicating that sync tips (DAC code $\approx 0$) or the sync pulse structure are either inverted or not reaching the slicing threshold.
+  - The RF receiver, MODEM_DIAG bus, PARLIO RX, Stage 1 premapper, Stage 2 discriminator, and PARLIO TX DAC are functionally alive and active (video energy is transferring through the entire pipeline).
+  - However, the analog TV / goggles display cannot lock horizontal (HSYNC) or vertical (VSYNC) sync, leaving the raster free-running as static snow.
+
+---
+
+## 7. Deep-Dive: Why Candidate F Lost Sync Lock (RX-BitScrambler Bottleneck)
+
+### The Cadence & Flow Control Problem
+Connecting a BitScrambler to PARLIO RX (`SOC_BITSCRAMBLER_ATTACH_PARL_IO`, `BITSCRAMBLER_DIR_FROM_PERIPH_TO_DMA`) violates an established physical rule documented in `docs/continuous-iq-findings.md` (Section "Direct TX-BitScrambler WBFM proof"):
+> *"The RX-attached BitScrambler could not sustain the required input cadence, so the realtime topology now stores raw Q4/I4 with PARLIO RX and decorates the PARLIO TX transaction instead."*
+
+This is formally enforced in `tools/validate_continuous_pipeline.py`:
+```python
+assert "s_rx_bs" not in realtime
+```
+
+### Physical Mechanism in Hardware
+1. **Unbuffered Push vs. Pull**:
+   - In TX, GDMA pulls from SRAM with backpressure; if the BitScrambler needs cycles, the TX FIFO provides flow control to the DAC.
+   - In RX, MODEM_DIAG pushes raw 8-bit samples at exactly 40.000 MB/s (one byte every 25.0 ns) with zero hardware flow control.
+2. **Missing ESP-IDF Driver Decoration**:
+   - ESP-IDF provides `parlio_tx_unit_decorate_bitscrambler()` which configures the TX DMA channel registers and handshake.
+   - There is no equivalent `parlio_rx_unit_decorate_bitscrambler()`. Manual `bitscrambler_new()` on RX runs asynchronously without tight GDMA synchronization.
+3. **Sample Drops Destroy Time-Domain Sync**:
+   - NTSC horizontal sync requires uninterrupted, nanosecond-precise timing: a $4.7\ \mu\text{s}$ low pulse (DAC code $\approx 0$) every $63.555\ \mu\text{s}$.
+   - If the RX BitScrambler drops even a few bytes due to internal pipeline latency or FIFO underrun/overflow, the continuous timebase fractures.
+   - Demodulated video luminance/chrominance still passes through (hence static patterns pan with the camera), but the analog sync slicer PLL cannot lock to the shattered timebase.
+
+---
+
+## 8. Empirical Build Comparison Matrix
+
+The following table synthesizes the physical results across all live builds tested on September 14, 2026:
+
+| Build Profile | Ring Size | Boundary Configuration | Sampling & Telemetry | Live Hardware Visual Result | Engineering Conclusion |
+|---|---|---|---|---|---|
+| **Golden 8K (Original)** | 8 KiB | `trailing_bytes 9`, `eof_on upstream` | POS edge, Tel ON | Frequent kartels, visible static, bad layer alignment. | 225 ns discard every wrap creates massive phase shock. |
+| **Seamless RX 8K** | 8 KiB | `rx_eof_gen_sel = 1`, `suc_eof = 0` | POS edge, Tel OFF | Kartels smaller, but dirty color static and glitches appeared. | Register hack corrupts soft RX; floating enable line causes jitter. |
+| **Seamless RX 32K** | 32 KiB | `rx_eof_gen_sel = 1`, `suc_eof = 0` | POS edge, Tel OFF | Kartels equally large, severe color static and glitches. | **Definitive negative proof**: In-flight descriptor mutation damages sample integrity. |
+| **Golden 32K (Clean Baseline)** | 32 KiB | `trailing_bytes 0`, `eof_on downstream` | POS edge, Tel OFF | **Best locked image to date**. Extreem kleine kartels, sharpest focus, stable HSYNC/VSYNC. Rare black bar bug remaining. Repeating red/green overlays in dark scenes. | **Gold standard baseline**. Elimination of 225 ns gap fixed the primary tearing mechanism. |
+| **Candidate F (Interleaved 40M)** | 32 KiB | Two-stage: RX BitScrambler (Premapper) + TX BitScrambler | POS edge, Tel OFF | Full-screen static; static patterns pan smoothly with camera movement, but NO horizontal/vertical sync lock. | Demodulation dataplane verified, but RX-attached BitScrambler cannot sustain 40 MB/s push, breaking sync timebase. |
+
+---
+
+## 9. Architectural Rules & Path Forward
+
+1. **RX Dataplane Inviolability**:
+   - PARLIO RX must capture raw 8-bit MODEM_DIAG directly into HP SRAM using standard ESP-IDF infinite cyclic GDMA.
+   - Never attach BitScrambler to RX (`s_rx_bs` forbidden).
+   - Never tamper with `PARL_IO.rx_genrl_cfg.rx_eof_gen_sel` or clear descriptor `suc_eof` at runtime.
+2. **Buffer Sizing Limit**:
+   - 32 KiB is the proven sweet spot (128 KiB is physically blocked by hardware MAC dump SRAM mapping).
+3. **Demodulation Architecture**:
+   - Any multi-rate or interleaved demodulation must execute **exclusively in the TX BitScrambler** decorator, where GDMA pull and BitScrambler pipelining are hardware-synchronized.
+   - For rock-solid flying and testing, `golden_32k` (`build-golden-32k-notel` with commit `c06519d`) is the proven production firmware.
+

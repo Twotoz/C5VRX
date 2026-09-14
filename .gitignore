@@ -4,6 +4,7 @@ managed_components/
 sdkconfig
 sdkconfig.old
 *.bin
+*.bsbin
 *.elf
 *.map
 __pycache__/
