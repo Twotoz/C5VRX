@@ -77,4 +77,4 @@ target_bitscrambler_add_src("c5vrx2_wbfm_q4_phase5_synclock_2to1.bsasm")
 target_bitscrambler_add_src("c5vrx2_phase5_premapper_40m.bsasm")
 target_bitscrambler_add_src("c5vrx2_wbfm_interleaved40_50ns.bsasm")
 target_bitscrambler_add_src("c5vrx2_wbfm_interleaved40_direct11.bsasm")
-
+target_bitscrambler_add_src("c5vrx2_wbfm_candidate_h.bsasm")

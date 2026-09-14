@@ -171,6 +171,15 @@ choice C5VRX2_WBFM_CORE
     depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_TX_WBFM_TEST
     default C5VRX2_WBFM_PHASE5_QUALITY
 
+config C5VRX2_WBFM_CANDIDATE_H
+    bool "Candidate H: Learned Phase-State Machine (7 Current + 4 Phase History, 40 MS/s continuous)"
+    help
+        Learned Phase-State Machine BitScrambler architecture.
+        11-bit direct LUT (2048x8): 7-bit current IQ feature + 4-bit self-healing phase history.
+        Eliminates Cartesian truncation ambiguities with 16 uniform polar phase sectors.
+        Unadorned ESP-IDF infinite cyclic GDMA RX on 32 KiB raw Q4/I4 ring.
+        Single-stage TX BitScrambler running at true 40 MS/s DAC cadence with self-resetting phase state.
+
 config C5VRX2_WBFM_CANDIDATE_G
     bool "Candidate G: Direct Interleaved Span50 (11-bit direct LUT, 40 MS/s continuous)"
     help
