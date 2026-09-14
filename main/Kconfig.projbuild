@@ -155,29 +155,27 @@ config C5VRX2_RING_BLOCKS
         4 = 16 KiB (boundary every ~6.44 NTSC lines)
         8 = 32 KiB (boundary every ~12.89 NTSC lines)
 
+choice C5VRX2_WBFM_CORE
+    prompt "WBFM Demodulator Core"
+    depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_TX_WBFM_TEST
+    default C5VRX2_WBFM_PHASE5_QUALITY
+
+config C5VRX2_WBFM_PHASE5_QUALITY
+    bool "Golden Phase5 (50 ns linear 0.75, 40 MS/s DAC hold)"
+    help
+        Use an embedded dual-purpose LUT that maps the complete Q4/I4 byte to
+        uniform five-bit phase before FM differencing. A one-time prime is
+        followed by a two-bundle steady-state pipeline.
+
 config C5VRX2_WBFM_INTERLEAVED_40M
-    bool "Two-Stage 40 MS/s Interleaved Phase5 WBFM pipeline"
-    depends on C5VRX2_MODE_LIVE
-    default n
+    bool "Two-Stage 40 MS/s Interleaved Phase5 (50 ns linear 0.75, 40 MS/s continuous)"
     help
         Stage 1: PARLIO RX + attached RX BitScrambler premapper (40 MB/s).
         Stage 2: PARLIO TX + attached TX BitScrambler interleaved 50 ns discriminator (40 MS/s).
         Zero flat sample hold, 25 ns continuous DAC update rate, 100% measured RF data.
 
-config C5VRX2_WBFM_PHASE5_QUALITY
-    bool "Use uniform five-bit polar WBFM core"
-    depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_TX_WBFM_TEST
-    default y
-    help
-        Use an embedded dual-purpose LUT that maps the complete Q4/I4 byte to
-        uniform five-bit phase before FM differencing. A one-time prime is
-        followed by a two-bundle steady-state pipeline. Disable this to use
-        the physically proven Q3/I2 Cartesian fallback.
-
 config C5VRX2_WBFM_PHASE5_100NS
     bool "Use 100 ns discriminator on uniform five-bit polar WBFM core"
-    depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_TX_WBFM_TEST
-    default n
     help
         Doubles the discriminator span from 50 ns to 100 ns across odd/even
         alternating history registers. Halves high-frequency FM noise and static
@@ -185,21 +183,25 @@ config C5VRX2_WBFM_PHASE5_100NS
 
 config C5VRX2_WBFM_PHASE5_150NS
     bool "Use 150 ns discriminator on uniform five-bit polar WBFM core"
-    depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_TX_WBFM_TEST
-    default n
     help
         Triples the discriminator span from 50 ns to 150 ns across three
         rotating history registers (O, A, B). Maximizes high-frequency FM noise
         suppression and line-edge stabilization while preserving NTSC/PAL chroma.
 
 config C5VRX2_WBFM_PHASE5_SYNCLOCK
-    bool "Use Sync-Lock Resonance S-Curve on Golden Phase5 core"
-    depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_TX_WBFM_TEST
-    default n
+    bool "Experimental Sync-Lock Resonance S-Curve (Deprecated)"
     help
-        Uses a resonance discriminator transfer function that limits sync tip
-        to true -2.1 MHz deviation, prevents active video and noise from dipping
-        below sync threshold (code 10), and eliminates vertical frame roll.
+        Experimental non-linear curve.
+
+config C5VRX2_WBFM_TRUE40
+    bool "True40 Cartesian Core"
+
+config C5VRX2_WBFM_TRAJECTORY
+    bool "Trajectory Core"
+
+config C5VRX2_WBFM_IQ5_LEGACY
+    bool "Legacy Q3/I2 fallback"
+endchoice
 
 config C5VRX2_PARLIO4_80M_LIVE
 

@@ -11,6 +11,7 @@ BUILDS = {
     "golden_8k":    ("Golden 8K (Clean / No Telemetry)", ROOT / "build-golden-8k-notel"),
     "golden_32k":   ("Golden 32K (Clean / No Telemetry)", ROOT / "build-golden-32k-notel"),
     "interleaved40":("40->40 Interleaved Phase5 @ 40 MS/s", ROOT / "build-interleaved40-notel"),
+    "phase5_oracle":("Phase5 @ 40M RX Premapper Oracle", ROOT / "build-phase5-40m-oracle"),
 }
 
 def find_esp_port():
