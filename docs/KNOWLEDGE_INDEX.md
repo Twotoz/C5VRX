@@ -38,6 +38,8 @@ Modern C5VRX
 | Diagnostic LED firmware, empirical findings, 9-line raster beat, and 40 MS/s DAC | [diagnostic-led-firmware.md](diagnostic-led-firmware.md) |
 | True 40 MS/s DAC reconstruction and 80 MS/s decoupled rate expansion roadmap | [issue-11-cvbs-analysis.md](issue-11-cvbs-analysis.md) |
 | Issue #17 True 40 MS/s cadence, adjacent25 failure modes, and interleaved demodulation | [issue-17-true40-cadence-and-interleaved-phase5.md](issue-17-true40-cadence-and-interleaved-phase5.md) |
+| Issue #21 Interleaved 40 MS/s Phase5 architecture and silicon pipeline proof | [issue-21-interleaved-40m-phase5.md](issue-21-interleaved-40m-phase5.md) |
+| Issue #22 DMA boundary hole elimination, RX EOF regression analysis, and interleaved findings | [issue-22-dma-boundary-and-interleaved-findings.md](issue-22-dma-boundary-and-interleaved-findings.md) |
 | Wiring and remaining physical tests | [hardware-test.md](hardware-test.md) |
 | Accepted historical donor primitives | [proven-donors.md](proven-donors.md) |
 | Licensing and contributor evidence | [licensing.md](licensing.md) |
