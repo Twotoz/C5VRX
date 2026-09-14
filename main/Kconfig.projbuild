@@ -171,6 +171,14 @@ choice C5VRX2_WBFM_CORE
     depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_TX_WBFM_TEST
     default C5VRX2_WBFM_PHASE5_QUALITY
 
+config C5VRX2_WBFM_CANDIDATE_G
+    bool "Candidate G: Direct Interleaved Span50 (11-bit direct LUT, 40 MS/s continuous)"
+    help
+        Direct 2048x8 BitScrambler DAC LUT trained against full-Q4 Golden Phase5 ground truth.
+        Unadorned ESP-IDF infinite cyclic GDMA RX on 32 KiB raw Q4/I4 ring.
+        Single-stage TX BitScrambler decorator executing alternating even/odd 50 ns span
+        discriminators at true 40 MS/s DAC cadence with persistent state in O8..O12 and O13..O17.
+
 config C5VRX2_WBFM_PHASE5_QUALITY
     bool "Golden Phase5 (50 ns linear 0.75, 40 MS/s DAC hold)"
     help

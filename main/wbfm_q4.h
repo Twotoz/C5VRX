@@ -57,3 +57,4 @@ const void *c5vrx2_wbfm_q4_parlio4_80m_program(void);
 const void *c5vrx2_wbfm_q4_phase5_150ns_parlio4_80m_program(void);
 const void *c5vrx2_phase5_premapper_40m_program_get(void);
 const void *c5vrx2_wbfm_interleaved40_50ns_program_get(void);
+const void *c5vrx2_wbfm_interleaved40_direct11_program_get(void);

@@ -11,6 +11,7 @@ BUILDS = {
     "golden_32k":   ("Seamless Golden 32K (trailing=0, eof=downstream, no tel)", ROOT / "build-golden-32k-notel"),
     "golden_notel": ("Seamless Golden 16K (trailing=0, eof=downstream, no tel)", ROOT / "build-golden-notel"),
     "golden_8k":    ("Golden 8K (Clean / No Telemetry)", ROOT / "build-golden-8k-notel"),
+    "candidate_g":  ("Candidate G: Direct Interleaved Span50 (11-bit direct LUT, 40 MS/s)", ROOT / "build-candidate-g-notel"),
     "interleaved40":("40->40 Interleaved Phase5 @ 40 MS/s", ROOT / "build-interleaved40-notel"),
     "phase5_oracle":("Phase5 @ 40M RX Premapper Oracle", ROOT / "build-phase5-40m-oracle"),
 }
