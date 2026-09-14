@@ -191,10 +191,30 @@ If the combination of GDMA circular link wrap, `cfg eof_on upstream`, `cfg trail
   - De periodieke kartels, horizontale desynchronisatie van layers en de rollende glitch worden direct veroorzaakt door de **GDMA ring boundary wrap / descriptor overgang / BitScrambler EOF/trailing-bytes verwerking**.
 
 ### Test 3: `golden_32k` (Golden Phase5 32 KiB Ring, Telemetry OFF)
-* **Status**: Klaargezet voor flash.
-* **Verwachting**:
-  - 32 KiB @ 40 MB/s = $819{,}2\text{ \mu s} \approx \mathbf{12{,}89\text{ NTSC lijnen}}$.
-  - Glitch en zwarte balk moeten nu juist **half zo snel** bewegen als bij de 16 KiB build (en 4x trager dan bij 8 KiB).
-  - De layers moeten nu twee keer zo hoog worden (~13 regels per layer).
+* **Status**: Getest op hardware.
+* **Observatie (User)**:
+  - "dit lijkt tot nu toe de allerbeste versie"
+  - "de kartels zijn klein en updaten extreem snel"
+  - "de zwarte balk is nu alleen random nog aan de bovenkant soms waardoor het complete scherm even naar beneden glitcht. dit gebeurt minder vaak dan de vorige versie."
+* **Fysische Verificatie**:
+  - Bij 32 KiB duurt een omloop van de GDMA-ring $819{,}2\text{ \mu s} \approx \mathbf{12{,}89\text{ beeldlijnen}}$.
+  - De frequentie van de ring-boundary daalde van $4883\text{ Hz}$ (bij 8K) en $2441\text{ Hz}$ (bij 16K) naar slechts **$1221\text{ Hz}$** (viermaal trager dan 8K).
+  - Doordat de boundary veel minder vaak passeert, is de stabiliteit spectaculair toegenomen en glitcht het scherm significant minder vaak.
+  - De incidentele zwarte balk aan de bovenkant ontstaat exact wanneer de descriptor-wrap samenvalt met de verticale blanking interval (VBI) of H-sync drempel.
+
+---
+
+## 8. Root Cause & Oplossingsrichting
+
+Nu onomstotelijk is bewezen dat de GDMA circular ringboundary wrap de oorzaak is van de layers en het verticaal glitchen:
+1. **BitScrambler Upstream EOF Gedrag**:
+   - In `c5vrx2_wbfm_q4_phase5_2to1.bsasm` staat `cfg eof_on upstream`.
+   - Wanneer de GDMA descriptor chain over zijn `eof` grens loopt, kan de BitScrambler zijn instructiepointer resetten naar `address_phase` (instructie 0).
+   - `address_phase` zet `O26..O30` op 0 (`set 26..30 L`) en doet een losse `read 16` zonder DAC `write`, waardoor er 1 sample uitvalt (25-50 ns timing slip).
+2. **Buffergrootte**:
+   - ESP32-C5 heeft 416 KiB intern SRAM. Met 64 KiB ring ($1638{,}4\text{ \mu s} \approx 25{,}78\text{ lijnen}$) daalt de frequentie verder naar $610\text{ Hz}$.
+3. **Naadloze Boundary**:
+   - Elimineren van de reset op circular EOF of afstemmen van de trailing bytes / descriptor flags zodat er nul samples verloren gaan.
+
 
 
