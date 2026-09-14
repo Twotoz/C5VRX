@@ -63,7 +63,7 @@ def flash(target_key):
         "0x10000", str(app)
     ]
 
-    for attempt in range(1, 15):
+    for attempt in range(1, 60):
         res = subprocess.run(cmd)
         if res.returncode == 0:
             print(f"\n*** FLASH [{target_key.upper()}] SUCCEEDED! ***")

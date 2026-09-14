@@ -17,10 +17,7 @@
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "hal/dma_types.h"
-#include "soc/ahb_dma_struct.h"
 #include "soc/gpio_sig_map.h"
-#include "soc/parl_io_struct.h"
 #include "soc/soc_caps.h"
 
 #include "calibration.h"
@@ -190,9 +187,8 @@ static esp_err_t prepare_rx(void)
         /* IDF requires a non-zero soft-delimiter length even for an
          * infinite (partial_rx_en) transaction. In infinite mode this only
          * marks recurring receive boundaries; the cyclic GDMA link keeps
-         * running and is not rearmed by software. Note: IDF limits eof_data_len
-         * to PARLIO_LL_RX_MAX_BYTES_PER_FRAME (65535), so cap at 32 KiB. */
-        .eof_data_len = sizeof(s_raw_ring) > 32768u ? 32768u : sizeof(s_raw_ring),
+         * running and is not rearmed by software. */
+        .eof_data_len = sizeof(s_raw_ring),
         .timeout_ticks = 0u,
     };
     err = parlio_new_rx_soft_delimiter(&delimiter_cfg, &s_rx_delimiter);
@@ -297,40 +293,8 @@ static esp_err_t start_rx_ring(void)
             .indirect_mount = false,
         },
     };
-    err = parlio_rx_unit_receive(s_rx, s_raw_ring, sizeof(s_raw_ring),
-                                 &cfg);
-    if (err != ESP_OK) return err;
-
-    /* Seamless Cyclic RX Fix:
-     * 1. Switch PARLIO RX EOF generation to EN_INACTIVE. In software-sampling mode,
-     *    no external enable pin exists, so PARLIO hardware never generates an EOF
-     *    signal and never pauses or resets its bitcounter.
-     * 2. Clear suc_eof on all descriptors in the cyclic GDMA chain so GDMA never
-     *    writes back EOF or stops.
-     * 3. Mask the GDMA IN_SUC_EOF interrupt so CPU0 is never interrupted. */
-    PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1u;
-
-    for (uint32_t ch = 0u; ch < 3u; ++ch) {
-        if (AHB_DMA.channel[ch].in.in_peri_sel.peri_in_sel_chn == 9u) {
-            AHB_DMA.in_intr[ch].ena.in_suc_eof_chn_int_ena = 0u;
-            AHB_DMA.in_intr[ch].clr.in_suc_eof_chn_int_clr = 1u;
-
-            dma_descriptor_t *head = (dma_descriptor_t *)(uintptr_t)AHB_DMA.in_link_addr[ch].inlink_addr_chn;
-            dma_descriptor_t *d = head;
-            uint32_t count = 0u;
-            while (d && count < 64u) {
-                d->dw0.suc_eof = 0u;
-                count++;
-                if (d->next == head || d->next == NULL) break;
-                d = d->next;
-            }
-            ESP_LOGI(TAG, "Configured seamless cyclic RX on AHB_DMA ch %u (%u descriptors, suc_eof cleared, EOF IRQ disabled)",
-                     (unsigned)ch, (unsigned)count);
-            break;
-        }
-    }
-
-    return ESP_OK;
+    return parlio_rx_unit_receive(s_rx, s_raw_ring, sizeof(s_raw_ring),
+                                  &cfg);
 }
 
 static esp_err_t start_tx_ring(void)
