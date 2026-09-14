@@ -71,7 +71,7 @@ def flash(target_key):
         print(f"\nAttempt {attempt} failed, retrying in 2s (Hold B, tap R on XIAO)...")
         time.sleep(2)
         port = find_esp_port()
-        cmd[4] = port
+        cmd[6] = port
 
     print(f"\nFlash failed on {port} after retries.")
     return False
