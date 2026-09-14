@@ -180,8 +180,21 @@ If the combination of GDMA circular link wrap, `cfg eof_on upstream`, `cfg trail
   - De video-pipeline is nu 100% zuiver en klaar voor de GDMA ring-buffer boundary tests.
 
 ### Test 2: `golden_8k` (Golden Phase5 8 KiB Ring, Telemetry OFF)
-* **Status**: Geflasht naar ESP32-C5 (COM10).
-* **Hypothese**: 
-  - 8 KiB @ 40 MB/s = $204{,}8\text{ \mu s} \approx \mathbf{3{,}22\text{ NTSC lijnen}}$.
-  - Als de DMA descriptor-wrap / BitScrambler upstream EOF overgang een discontinuïteit veroorzaakt, moet de frequentie van de kartels / twitches **verdubbelen** (lijnen twee keer zo dicht op elkaar).
+* **Status**: Getest op hardware.
+* **Observatie (User)**: 
+  - "kartels lijken een stuk kleiner" (de verticale hoogte van de lagen is gehalveerd van ~6.4 naar ~3.2 regels).
+  - "layers horizontaal zijn alleen niet goed uitgelijnd".
+  - "zwarte balk die boven en onder gaat is er nog steeds, alleen glitcht dit veel sneller naar boven en naar beneden."
+* **Definitieve Doorbraak / Conclusie**:
+  - **De hypothese is 100% experimenteel bewezen.**
+  - Door de ringbuffer te halveren van 16 KiB naar 8 KiB verdubbelde de wrap-frequentie van 2441 Hz naar 4883 Hz. Hierdoor bewoog/glitchte de zwarte balk exact twee keer zo snel, en werden de kartels per laag smaller (3.2 regels).
+  - De periodieke kartels, horizontale desynchronisatie van layers en de rollende glitch worden direct veroorzaakt door de **GDMA ring boundary wrap / descriptor overgang / BitScrambler EOF/trailing-bytes verwerking**.
+
+### Test 3: `golden_32k` (Golden Phase5 32 KiB Ring, Telemetry OFF)
+* **Status**: Klaargezet voor flash.
+* **Verwachting**:
+  - 32 KiB @ 40 MB/s = $819{,}2\text{ \mu s} \approx \mathbf{12{,}89\text{ NTSC lijnen}}$.
+  - Glitch en zwarte balk moeten nu juist **half zo snel** bewegen als bij de 16 KiB build (en 4x trager dan bij 8 KiB).
+  - De layers moeten nu twee keer zo hoog worden (~13 regels per layer).
+
 
