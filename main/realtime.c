@@ -22,20 +22,26 @@
 
 #include "calibration.h"
 #include "continuous_iq.h"
+#include "rx_clock.h"
 #include "startup_trace.h"
 #include "wbfm_q4.h"
 
 #define MODEM_IQ_RATE_HZ 40000000u
 #if CONFIG_C5VRX2_PARLIO4_80M_LIVE || CONFIG_C5VRX2_LINEAR80
 #define CVBS_RATE_HZ     80000000u
-#elif CONFIG_C5VRX2_WBFM_PHASE5_QUALITY || CONFIG_C5VRX2_WBFM_TRUE40 || CONFIG_C5VRX2_WBFM_PHASE5_100NS || CONFIG_C5VRX2_WBFM_PHASE5_150NS
+#elif CONFIG_C5VRX2_WBFM_INTERLEAVED_40M || CONFIG_C5VRX2_WBFM_PHASE5_QUALITY || CONFIG_C5VRX2_WBFM_TRUE40 || CONFIG_C5VRX2_WBFM_PHASE5_100NS || CONFIG_C5VRX2_WBFM_PHASE5_150NS || CONFIG_C5VRX2_WBFM_PHASE5_SYNCLOCK
 #define CVBS_RATE_HZ     40000000u
+
 #else
 #define CVBS_RATE_HZ     20000000u
 #endif
 
 #define RAW_BLOCK_BYTES      4096u
+#ifdef CONFIG_C5VRX2_RING_BLOCKS
+#define RAW_RING_BLOCKS      ((uint32_t)CONFIG_C5VRX2_RING_BLOCKS)
+#else
 #define RAW_RING_BLOCKS         4u
+#endif
 #define RAW_RING_BYTES (RAW_BLOCK_BYTES * RAW_RING_BLOCKS)
 
 #define DUMP_CTRL       0x600a9004u
@@ -132,10 +138,17 @@ static esp_err_t prepare_rx(void)
         .max_recv_size = sizeof(s_raw_ring),
         .dma_burst_size = 32u,
         .data_width = 8u,
-        .clk_src = PARLIO_CLK_SRC_DEFAULT,
-        .ext_clk_freq_hz = 0u,
+        .clk_src =
+#if CONFIG_C5VRX2_PARLIO_RX_CLOCK_PLL_F40 || CONFIG_C5VRX2_PARLIO_RX_CLOCK_MODEM_DEBUG40
+            PARLIO_CLK_SRC_EXTERNAL,
+#else
+            PARLIO_CLK_SRC_DEFAULT,
+#endif
+        .ext_clk_freq_hz = c5vrx2_rx_clock_is_external() ?
+                           C5VRX2_RX_CLOCK_HZ : 0u,
         .exp_clk_freq_hz = MODEM_IQ_RATE_HZ,
-        .clk_in_gpio_num = -1,
+        .clk_in_gpio_num = c5vrx2_rx_clock_is_external() ?
+                           C5VRX2_RX_CLOCK_GPIO : -1,
         .clk_out_gpio_num = -1,
         .valid_gpio_num = -1,
         .data_gpio_nums = {
@@ -171,6 +184,22 @@ static esp_err_t prepare_rx(void)
     /* The receive side always stores raw Q4/I4. WBFM runs only on the TX
      * BitScrambler, which avoids the physically measured RX-BS throughput
      * limit and keeps the captured source available for diagnostics. */
+#if CONFIG_C5VRX2_WBFM_INTERLEAVED_40M
+    static bitscrambler_handle_t s_rx_bs = NULL;
+    const bitscrambler_config_t bs_cfg = {
+        .dir = BITSCRAMBLER_DIR_RX,
+        .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
+    };
+    err = bitscrambler_new(&bs_cfg, &s_rx_bs);
+    if (err == ESP_OK) err = bitscrambler_enable(s_rx_bs);
+    if (err == ESP_OK) err = bitscrambler_load_program(s_rx_bs, c5vrx2_phase5_premapper_40m_program_get());
+    if (err == ESP_OK) err = bitscrambler_reset(s_rx_bs);
+    if (err == ESP_OK) err = bitscrambler_start(s_rx_bs);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Stage 1 RX BitScrambler initialization failed: %s", esp_err_to_name(err));
+        return err;
+    }
+#endif
     err = parlio_rx_unit_enable(s_rx, false);
     return trace_step(18u, err);
 }
@@ -270,8 +299,13 @@ static esp_err_t start_tx_ring(void)
 #else
         .idle_value = cal->pedestal_code,
         .bitscrambler_program =
-#if CONFIG_C5VRX2_WBFM_PHASE5_150NS
+#if CONFIG_C5VRX2_WBFM_INTERLEAVED_40M
+            c5vrx2_wbfm_interleaved40_50ns_program_get(),
+#elif CONFIG_C5VRX2_WBFM_PHASE5_SYNCLOCK
+            c5vrx2_wbfm_q4_phase5_synclock_program(),
+#elif CONFIG_C5VRX2_WBFM_PHASE5_150NS
             c5vrx2_wbfm_q4_phase5_150ns_program(),
+
 #elif CONFIG_C5VRX2_WBFM_PHASE5_100NS
             c5vrx2_wbfm_q4_phase5_100ns_program(),
 #elif CONFIG_C5VRX2_WBFM_TRUE40
@@ -292,6 +326,7 @@ static esp_err_t start_tx_ring(void)
                                    sizeof(s_raw_ring) * 8u, &cfg);
 }
 
+#if !CONFIG_C5VRX2_DISABLE_TELEMETRY
 static void telemetry_task(void *argument)
 {
     (void)argument;
@@ -314,6 +349,7 @@ static void telemetry_task(void *argument)
                  (control & CTRL_DONE) != 0u, (unsigned)stalls);
     }
 }
+#endif
 
 #if CONFIG_C5VRX2_LIVE_SNAPSHOT_ONCE
 static void live_snapshot_task(void *argument)
@@ -401,6 +437,8 @@ esp_err_t c5vrx2_realtime_start(void)
 
     esp_err_t err = route_modem_iq();
     if (trace_step(10u, err) != ESP_OK) return err;
+    err = c5vrx2_rx_clock_start();
+    if (trace_step(9u, err) != ESP_OK) return err;
     if ((err = prepare_rx()) != ESP_OK) return err;
 #if !CONFIG_C5VRX2_LIVE_SNAPSHOT_RAW_Q4
     if ((err = prepare_tx()) != ESP_OK) return err;
@@ -428,12 +466,13 @@ esp_err_t c5vrx2_realtime_start(void)
     if ((err = start_tx_ring()) != ESP_OK) return err;
     #endif
 
-#if !CONFIG_C5VRX2_LIVE_SNAPSHOT_RAW_Q4
+#if !CONFIG_C5VRX2_LIVE_SNAPSHOT_RAW_Q4 && !CONFIG_C5VRX2_DISABLE_TELEMETRY
     BaseType_t created = xTaskCreate(telemetry_task, "iq_av_stat", 4096,
                                      NULL, 1u, NULL);
     if (created != pdPASS) return ESP_ERR_NO_MEM;
 #else
     BaseType_t created;
+    (void)created;
 #endif
 #if CONFIG_C5VRX2_LIVE_SNAPSHOT_ONCE
     created = xTaskCreate(live_snapshot_task, "raw_snap", 4096,
@@ -452,6 +491,10 @@ esp_err_t c5vrx2_realtime_start(void)
              (unsigned)CVBS_RATE_HZ, (unsigned)continuous_iq_sample_rate_hz(),
              cal->pedestal_code, cal->discriminator_gain,
              (unsigned)cal->polarity);
+#endif
+#if CONFIG_C5VRX2_DISABLE_TELEMETRY
+    /* Mute all logging after startup so CPU and USB bus stay 100% idle */
+    esp_log_level_set("*", ESP_LOG_NONE);
 #endif
     return ESP_OK;
 }

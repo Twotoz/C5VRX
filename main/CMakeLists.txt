@@ -18,6 +18,8 @@ idf_component_register(
         "tx_80m_oracle.c"
         "linear80_oracle.c"
         "parlio4_80m_oracle.c"
+        "rx_clock.c"
+        "phase5_40m_oracle.c"
     INCLUDE_DIRS "."
     # diagnostics.c intentionally inspects the C5 PARLIO unit/GDMA handle for
     # byte-exact hardware oracles; this repository is pinned to IDF v6.0.1.
@@ -37,6 +39,7 @@ idf_component_register(
         esp_mm
         esp_pm
         esp_timer
+        esp_hw_support
         heap
 )
 
@@ -70,3 +73,7 @@ target_bitscrambler_add_src("c5vrx2_wbfm_q4_phase5_100ns_2to1.bsasm")
 target_bitscrambler_add_src("c5vrx2_wbfm_q4_phase5_150ns_2to1.bsasm")
 target_bitscrambler_add_src("c5vrx2_wbfm_q4_parlio4_80m_2to1.bsasm")
 target_bitscrambler_add_src("c5vrx2_wbfm_q4_phase5_150ns_parlio4_80m_2to1.bsasm")
+target_bitscrambler_add_src("c5vrx2_wbfm_q4_phase5_synclock_2to1.bsasm")
+target_bitscrambler_add_src("c5vrx2_phase5_premapper_40m.bsasm")
+target_bitscrambler_add_src("c5vrx2_wbfm_interleaved40_50ns.bsasm")
+

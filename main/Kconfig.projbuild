@@ -51,6 +51,9 @@ choice C5VRX2_MODE
 
     config C5VRX2_MODE_PARLIO4_80M_ORACLE
         bool "PARLIO 4-bit @ 80 MHz transport & grouped DAC oracle (RF off)"
+
+    config C5VRX2_MODE_PHASE5_40M_ORACLE
+        bool "Phase5 @ 40M RX-BitScrambler premapper oracle (Stage 1 throughput proof)"
 endchoice
 
 config C5VRX2_AV_STATIC_CODE
@@ -133,6 +136,34 @@ config C5VRX2_TX_ORACLE_HIGH_NIBBLE
         runs. TX pin order, rate and embedded program remain identical.
         Diagnostic record version 10 is low bank, 11 is high bank.
 
+config C5VRX2_DISABLE_TELEMETRY
+    bool "Completely disable telemetry task and mute logging after startup"
+    depends on C5VRX2_MODE_LIVE
+    default n
+    help
+        Prevents background telemetry_task from creating USB-Serial-JTAG
+        interrupts and contending for internal SRAM/bus bandwidth during live reception.
+
+config C5VRX2_RING_BLOCKS
+    int "Number of 4096-byte blocks in DMA ring"
+    depends on C5VRX2_MODE_LIVE
+    range 2 16
+    default 4
+    help
+        Size of the circular DMA ring in 4 KiB units.
+        2 = 8 KiB (boundary every ~3.22 NTSC lines)
+        4 = 16 KiB (boundary every ~6.44 NTSC lines)
+        8 = 32 KiB (boundary every ~12.89 NTSC lines)
+
+config C5VRX2_WBFM_INTERLEAVED_40M
+    bool "Two-Stage 40 MS/s Interleaved Phase5 WBFM pipeline"
+    depends on C5VRX2_MODE_LIVE
+    default n
+    help
+        Stage 1: PARLIO RX + attached RX BitScrambler premapper (40 MB/s).
+        Stage 2: PARLIO TX + attached TX BitScrambler interleaved 50 ns discriminator (40 MS/s).
+        Zero flat sample hold, 25 ns continuous DAC update rate, 100% measured RF data.
+
 config C5VRX2_WBFM_PHASE5_QUALITY
     bool "Use uniform five-bit polar WBFM core"
     depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_TX_WBFM_TEST
@@ -161,7 +192,17 @@ config C5VRX2_WBFM_PHASE5_150NS
         rotating history registers (O, A, B). Maximizes high-frequency FM noise
         suppression and line-edge stabilization while preserving NTSC/PAL chroma.
 
+config C5VRX2_WBFM_PHASE5_SYNCLOCK
+    bool "Use Sync-Lock Resonance S-Curve on Golden Phase5 core"
+    depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_TX_WBFM_TEST
+    default n
+    help
+        Uses a resonance discriminator transfer function that limits sync tip
+        to true -2.1 MHz deviation, prevents active video and noise from dipping
+        below sync threshold (code 10), and eliminates vertical frame roll.
+
 config C5VRX2_PARLIO4_80M_LIVE
+
     bool "Use 4-bit PARLIO @ 80 MHz grouped DAC transport for live video"
     depends on C5VRX2_MODE_LIVE
     default n
@@ -179,6 +220,39 @@ config C5VRX2_PARLIO_RX_NEG_EDGE
         labels have changed semantics on some C5 revisions, so POS/NEG are
         treated only as two physical candidates. This does not change the
         40 MS/s receive rate or the 20 MS/s DAC rate.
+
+choice C5VRX2_PARLIO_RX_CLOCK
+    prompt "PARLIO RX acquisition clock"
+    depends on C5VRX2_MODE_LIVE || C5VRX2_MODE_MODEM_PARLIO || C5VRX2_MODE_MODEM_WBFM
+    default C5VRX2_PARLIO_RX_CLOCK_INTERNAL
+
+config C5VRX2_PARLIO_RX_CLOCK_INTERNAL
+    bool "Internal PLL_F240M-derived 40 MHz (A/B baseline)"
+
+config C5VRX2_PARLIO_RX_CLOCK_PLL_F40
+    bool "External PLL_F40M on GPIO2 (phase-related candidate)"
+    help
+        Route the documented PLL_F40M clock-output source to GPIO2 and feed
+        it back into PARLIO CLK_IN. This is not called source-synchronous
+        until the raw-IQ hardware A/B passes.
+
+config C5VRX2_PARLIO_RX_CLOCK_MODEM_DEBUG40
+    bool "External MODEM DEBUG_CLK40 on GPIO2 (experimental source-sync)"
+    help
+        Enable MODEM_SYSCON FPGA_DEBUG_CLK40/CLKSWITCH and route a selected
+        MODEM_DIAG lane to GPIO2 -> PARLIO CLK_IN. ESP32-C5 headers prove the
+        control bit exists but do not document which DIAG lane carries it.
+        Use only the issue-12 hardware matrix until lane and edge are proven.
+endchoice
+
+config C5VRX2_MODEM_DEBUG40_DIAG_SIGNAL
+    int "MODEM_DIAG lane carrying DEBUG_CLK40"
+    depends on C5VRX2_PARLIO_RX_CLOCK_MODEM_DEBUG40
+    range 0 31
+    default 21
+    help
+        DIAG21 is a test hypothesis, not a production fact. Record the lane
+        and verify a continuous 40 MHz waveform with a scope or logic analyzer.
 
 endmenu
 

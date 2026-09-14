@@ -137,3 +137,33 @@ Verification of ESP-IDF 6.0.1 and ESP32-C5 hardware register headers (`bitscramb
    - Uses non-overlapping registers: `0..7` (DAC write), `8..12` (`prev_even`), `16..25` (LUT address), `26..30` (`prev_odd`).
    - Compiled and assembled with `/opt/esp/idf/tools/bsasm.py`: **Exactly 2 bundles for 2 distinct samples = 1 bundle/sample = 25 ns = 40 MS/s**.
    - LUT size: exactly $32 \times 32 = 1024$ entries, matching hardware LUT capacity perfectly.
+
+---
+
+## 5. Critical Silicon Law: BitScrambler Register Retention Across Bundles
+
+A vital hardware trait was discovered during bit-level cycle modeling (`bs_model.py`):
+- In BitScrambler hardware, **unassigned register bits do NOT retain their previous value**. The 32-bit output register is completely re-evaluated every instruction bundle.
+- In alternating even/odd loops, omitting an explicit register transfer causes that register to reset to zero on the next cycle:
+  - `step_even` MUST include `set 26..30 O26..O30` to preserve the odd phase history!
+  - `step_odd` MUST include `set 8..12 O8..O12` to preserve the even phase history!
+- When properly retained, cycle simulation proves:
+  - Constant phase input $\to$ bit-exact pedestal (DAC code 20) across all 40 MS/s samples.
+  - Phase step of $+1$ on both streams $\to$ exact Golden Phase5 centroid response ($26, 26, 27, 27, 26, 26 \dots$).
+  - 3.58 MHz NTSC chroma subcarrier is smoothly tracked on both interleaved streams with 0 discontinuity.
+
+---
+
+## 6. DMA Ring-Boundary Cadence and Artifact Hypothesis
+
+The periodicity of visual layer-twitch and periodic kartels was mathematically mapped to the GDMA buffer boundary:
+$$\text{Ring time} = \frac{16\,384\text{ bytes}}{40\,000\,000\text{ bytes/s}} = 409{,}6\text{ \mu s}$$
+$$\text{Boundary rate} = \frac{409{,}6\text{ \mu s}}{63{,}56\text{ \mu s/lijn (NTSC)}} \approx \mathbf{6{,}44\text{ lines}}$$
+
+If the combination of GDMA circular link wrap, `cfg eof_on upstream`, `cfg trailing_bytes`, and BitScrambler state retention skips or duplicates even a single sample at the buffer boundary, the phase difference $\phi[n] - \phi[n-2]$ becomes corrupted across the boundary, creating a periodic horizontal tear or twitch precisely every ~6.44 lines.
+
+### Test Matrix for Verification:
+1. **Candidate B (`golden_notel`)**: Golden 16 KiB ring, telemetry & logging 100% disabled to eliminate CPU/USB bus contention on SRAM.
+2. **Candidate C (`golden_8k`)**: Golden 8 KiB ring $\to$ boundary periodicity halves to **~3.22 lines**. If kartels double in frequency, DMA boundary is the direct cause.
+3. **Candidate E (`golden_32k`)**: Golden 32 KiB ring $\to$ boundary periodicity doubles to **~12.89 lines**.
+4. **Candidate F (`interleaved40`)**: Two-Stage 40$\to$40 Interleaved Phase5 @ 40 MS/s DAC cadence with continuous 25 ns updates and 50 ns discriminator baseline on both streams.

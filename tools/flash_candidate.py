@@ -1,0 +1,75 @@
+import subprocess
+import sys
+import time
+from pathlib import Path
+import serial.tools.list_ports
+
+ROOT = Path("C:/Users/leonb/Twotoz/C5VRX-issue11-output")
+
+BUILDS = {
+    "golden_notel": ("Golden 16K (Clean / No Telemetry)", ROOT / "build-golden-notel"),
+    "golden_8k":    ("Golden 8K (Clean / No Telemetry)", ROOT / "build-golden-8k-notel"),
+    "golden_32k":   ("Golden 32K (Clean / No Telemetry)", ROOT / "build-golden-32k-notel"),
+    "interleaved40":("40->40 Interleaved Phase5 @ 40 MS/s", ROOT / "build-interleaved40-notel"),
+}
+
+def find_esp_port():
+    ports = serial.tools.list_ports.comports()
+    for p in ports:
+        if "303A" in (p.hwid or "").upper() or "ESPRESSIF" in (p.description or "").upper() or "USB JTAG" in (p.description or "").upper() or "USB-SERIAL" in (p.description or "").upper():
+            return p.device
+    for p in ports:
+        if not (p.hwid or "").startswith("BTHENUM"):
+            return p.device
+    return "COM10"
+
+def flash(target_key):
+    if target_key not in BUILDS:
+        print(f"Unknown target '{target_key}'! Choices: {list(BUILDS.keys())}")
+        sys.exit(1)
+    
+    label, build_dir = BUILDS[target_key]
+    bootloader = build_dir / "bootloader/bootloader.bin"
+    ptable = build_dir / "partition_table/partition-table.bin"
+    app = build_dir / "c5vrx2_realtime_iq.bin"
+
+    if not app.exists():
+        print(f"Error: {app} does not exist!")
+        sys.exit(1)
+
+    print(f"\n=======================================================")
+    print(f" FLASHING CANDIDATE: [{target_key.upper()}]")
+    print(f" Description: {label}")
+    print(f" App Binary:  {app}")
+    print(f"=======================================================")
+    print("Waiting for ESP32-C5 (Hold B, tap R if in download mode)...")
+
+    port = find_esp_port()
+    cmd = [
+        sys.executable, "-m", "esptool",
+        "--chip", "esp32c5",
+        "-p", port,
+        "-b", "460800",
+        "--before", "default-reset",
+        "--after", "hard-reset",
+        "write-flash",
+        "--flash-mode", "dio",
+        "--flash-size", "8MB",
+        "--flash-freq", "40m",
+        "0x2000", str(bootloader),
+        "0x8000", str(ptable),
+        "0x10000", str(app)
+    ]
+    res = subprocess.run(cmd)
+    if res.returncode == 0:
+        print(f"\n*** FLASH [{target_key.upper()}] SUCCEEDED! ***")
+        print("Tap physical Reset (R) button on XIAO to start.")
+        return True
+    else:
+        print(f"\nFlash failed on {port} with code {res.returncode}")
+        return False
+
+if __name__ == "__main__":
+    target = sys.argv[1] if len(sys.argv) > 1 else "golden_notel"
+    success = flash(target)
+    sys.exit(0 if success else 1)
