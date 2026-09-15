@@ -211,6 +211,8 @@ static void build_lut(uint16_t lut[LUT_ITEMS])
     }
 }
 
+
+
 static void build_lut3(uint16_t lut[LUT_ITEMS])
 {
     const c5vrx2_calibration_t *cal = c5vrx2_calibration_get();
@@ -308,6 +310,23 @@ esp_err_t c5vrx2_wbfm_q4_configure(bitscrambler_handle_t handle)
     uint16_t *lut = heap_caps_malloc(LUT_BYTES, MALLOC_CAP_INTERNAL);
     if (!lut) return ESP_ERR_NO_MEM;
     build_lut(lut);
+    esp_err_t err = bitscrambler_load_program(
+        handle, c5vrx2_wbfm_q4_2to1_program);
+    if (err == ESP_OK) err = bitscrambler_load_lut(handle, lut, LUT_BYTES);
+    free(lut);
+    return err;
+}
+
+esp_err_t c5vrx2_wbfm_q4_configure_phase5_adj(bitscrambler_handle_t handle)
+{
+    /* Phase5 Adjacent FM: same q4_2to1 BitScrambler program (reads both bytes,
+     * adjacent delta via ADDCTIAL, pair-sum, bank 1 DAC mapping), but the LUT
+     * uses Phase5 centroid-quantized phase8 values instead of raw atan2 phase8.
+     * This is the A/B counterpart to Golden Phase5 (endpoint demod). */
+    if (!handle) return ESP_ERR_INVALID_ARG;
+    uint16_t *lut = heap_caps_malloc(LUT_BYTES, MALLOC_CAP_INTERNAL);
+    if (!lut) return ESP_ERR_NO_MEM;
+    build_phase5_adj_lut(lut);
     esp_err_t err = bitscrambler_load_program(
         handle, c5vrx2_wbfm_q4_2to1_program);
     if (err == ESP_OK) err = bitscrambler_load_lut(handle, lut, LUT_BYTES);

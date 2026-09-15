@@ -510,7 +510,9 @@ esp_err_t c5vrx2_realtime_start(void)
     ESP_LOGW(TAG, " PIPELINE STAMP: [GOLDEN-TRANSPORT-V2]");
     ESP_LOGW(TAG, " RX:            40 MS/s POS edge, stock cyclic GDMA");
     ESP_LOGW(TAG, " Ring:          %u bytes (HP SRAM)", (unsigned)sizeof(s_raw_ring));
-#if CONFIG_C5VRX2_WBFM_PHASE5_EVEN
+#if CONFIG_C5VRX2_WBFM_TRAJECTORY
+    ESP_LOGW(TAG, " Demod:         Trajectory LUT (middle-sample branch hint)");
+#elif CONFIG_C5VRX2_WBFM_PHASE5_EVEN
     ESP_LOGW(TAG, " Demod:         Phase5 (EVEN parity: s0, s2, s4...)");
 #else
     ESP_LOGW(TAG, " Demod:         Phase5 (ODD parity: s1, s3, s5...)");
