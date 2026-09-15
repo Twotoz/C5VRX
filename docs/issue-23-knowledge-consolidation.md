@@ -7,7 +7,7 @@ Date: 2026-09-15
 
 ---
 
-## 1. Proven Negative: RX-BitScrambler Cannot Replace TX-BitScrambler
+## 1. Hardware Result: RX-BitScrambler Ingress Route Rejected for Production
 
 ### Hypothesis tested (Candidate F / commit `be4e3a9`)
 
@@ -21,22 +21,18 @@ MODEM_DIAG Q4/I4 @40M
 
 ### Result: Hardware failure — sync never locked
 
-**Observed**: Full-screen static; static panned correctly with camera → RF path alive.  
-**Root cause**: RX pushes data at exactly 40.000 MB/s with zero flow control. The
-ESP-IDF provides `parlio_tx_unit_decorate_bitscrambler()` for TX, but **no equivalent
-`parlio_rx_unit_decorate_bitscrambler()` exists**. Manual `bitscrambler_new()` on RX
-runs without tight GDMA synchronisation, causing sample drops that fracture the
-NTSC timebase.
+**Observed**: Full-screen static; static patterns tracked camera panning (RF energy passing through), but zero HSYNC/VSYNC lock.  
+**Physical mechanism**: MODEM_DIAG pushes raw 8-bit samples at exactly 40.000 MB/s with zero flow control. In contrast to TX where GDMA pulls from SRAM with backpressure through the TX FIFO, an RX-attached BitScrambler must absorb every incoming byte synchronously. In live hardware tests, the RX-attached BitScrambler could not sustain this continuous input cadence, dropping bytes and shattering the nanosecond-precise NTSC sync timebase. (The lack of an official ESP-IDF `parlio_rx_unit_decorate_bitscrambler()` helper further confirms that RX decoration is not a standard, synchronized path in IDF).
 
 **Source**: `docs/continuous-iq-findings.md` §"Direct TX-BitScrambler WBFM proof":
 > *"The RX-attached BitScrambler could not sustain the required input cadence,
 > so the realtime topology now stores raw Q4/I4 with PARLIO RX and decorates
 > the PARLIO TX transaction instead."*
 
-**Architectural rule (hardware-proven)**:
+**Architectural conclusion**:
 
 > **PARLIO RX must write raw Q4/I4 directly to SRAM via stock ESP-IDF cyclic GDMA.
-> Never attach a BitScrambler to the RX path.**
+> Do not pursue RX-BitScrambler ingress as the production route without new hardware evidence.**
 
 This rule is enforced in `tools/validate_continuous_pipeline.py`:
 ```python
@@ -156,38 +152,83 @@ that affects all samples, not a hardware asymmetry.
 
 ---
 
-## 5. The Correct Fix: Trajectory LUT (Issue #9)
+## 5. Trajectory LUT: Mathematical Autopsy and the Confidence-Aware Architecture
 
-### Why it works where pair-sum fails
+### What the Trajectory LUT Address Actually Does
 
-The 3-instruction trajectory pipeline uses a pre-trained LUT indexed by:
+The 3-instruction trajectory pipeline uses an address constructed from:
 ```text
-LUT[phase4(prev), middle_QI_signs, phase4(curr)]
+address = phase4(prev) | (middle_QI_signs << 4) | (phase4(curr) << 6)
+```
+This indexes a 1024-entry LUT. It groups the input triples by endpoint phase4 bins and uses the middle sample's quadrant/sign bits as a classification feature.
+
+### The Mathematical Flaw in `tools/train_trajectory_lut.py`
+
+In the current repository, `train_trajectory_lut.py` computes:
+```python
+endpoint = wrap_r(PHI[c] - PHI[p])
+adjacent = wrap_r(PHI[m] - PHI[p]) + wrap_r(PHI[c] - PHI[m])
+branch = np.rint((adjacent - endpoint) / (2 * np.pi)).astype(int)
+target = scale(np.rint(wrap_r(adjacent) * 256 / (2 * np.pi)).astype(int))
+fallback = scale(np.rint(endpoint * 256 / (2 * np.pi)).astype(int))
 ```
 
-The LUT value is the direct 6-bit DAC output — it encodes the correct branch
-*by training on real captures*, not by runtime arithmetic. The middle sample's
-sign bits (2 bits) provide the trajectory hint that 8-bit accumulator arithmetic
-destroys.
+Notice line 26:
+```python
+target = scale(np.rint(wrap_r(adjacent) * 256 / (2 * np.pi)).astype(int))
+```
 
-**Key property**: The LUT maps `{prev_phase4, middle_hint, curr_phase4}` → `dac_code`
-without any intermediate wrapping. The branch disambiguation happens at training
-time (offline), not at runtime.
+By applying `wrap_r(adjacent)`, the training target **re-wraps the adjacent sum back into $[-\pi, +\pi)$**.
+Because:
+$$\text{wrap}_r(\text{wrap}_r(\phi_m - \phi_p) + \text{wrap}_r(\phi_c - \phi_m)) \equiv \text{wrap}_r(\phi_c - \phi_p) = \text{endpoint}$$
 
-### Offline quality (uniform geometry prior)
+**Exhaustive verification across all 16,777,216 possible Q4/I4 triples:**
+- `target` vs `fallback` differ in only **1,984 out of 16,777,216 cases** (**0.0118%**).
+- In **99.9882% of cases, `target` is mathematically identical to `fallback` (the endpoint)**.
 
-- Phase5 MAE: 15.96, hard errors ≥16 codes: 25.03%
-- Trajectory MAE: 12.53, hard errors: 21.80% (**12.9% relative reduction**)
+Therefore, the claim that the checked-in trajectory LUT recovers winding is practically false for this trainer. The LUT trained almost entirely against the endpoint principal branch.
+The measured offline 12.9% MAE improvement was achieved by quantization, grouping, and address distribution averaging, **not** by true branch/winding disambiguation.
 
-> **Important**: The current LUT uses a uniform geometry prior trained without
-> real captures. Quality improves significantly when trained on actual VTX captures
-> using `tools/train_trajectory_lut.py --train scene-a.bin`.
+This directly explains the live hardware test result of `trajectory_notel`:
+- Sync issues persist
+- Difficulty maintaining color burst lock
+- Side kartels and static still present
 
-### Transport bug fix in this PR
+### Why Blind Unwrapped Adjacent is ALSO Fatal
 
-The trajectory bsasm previously had `cfg eof_on upstream / trailing_bytes 9` —
-the same bug that caused kartels in the baseline builds. **Fixed in this PR**:
-`cfg eof_on downstream / trailing_bytes 0`.
+One might naively conclude that removing `wrap_r` and using purely unwrapped adjacent deltas:
+$$\Delta = \text{wrap}_r(\phi_m - \phi_p) + \text{wrap}_r(\phi_c - \phi_m)$$
+would solve the problem. **It does not.**
+
+Frozen capture analysis (`vtx_real_capture_v3.bin`) demonstrates:
+- All intervals winding disagreement: **8.351%**
+- Strong-IQ intervals ($\text{amplitude}^2 \ge 64$): **0.285%**
+
+Over **96% of all apparent winding disagreements occur at weak IQ / near-origin samples**. At near-origin vectors, the phase angle is dominated by RF noise and quantization jitter. A small noise vector crossing the origin generates an artificial $\pm 2\pi$ phase orbit (noise click).
+
+If a demodulator blindly accepts unwrapped adjacent deltas, it treats every noise click as a full $\pm 2\pi$ discriminator excursion. This injects rail-to-rail impulses into the CVBS stream, explaining why Candidates G/H and True40 suffered from massive active-video static and desync.
+
+### The Correct Demodulator Architecture: Confidence-Aware Branch Correction
+
+The demodulator must balance endpoint stability against genuine winding:
+
+```text
+                    middle trajectory
+                           │
+                           ▼
+Golden endpoint ──► branch decision ◄── IQ confidence
+                           │
+                           ▼
+                        CVBS
+```
+
+1. **Golden Endpoint is the Default**: At strong IQ, endpoint and adjacent agree >99.7% of the time. Endpoint avoids noise-click amplification.
+2. **Middle Trajectory as Branch Disambiguator**: The middle sample should only override the principal branch when the observed trajectory exhibits high confidence and physical consistency.
+3. **IQ Confidence Awareness**: Near-origin samples must not trigger branch unwrapping. Phase clicks must be suppressed, not amplified.
+
+### Transport Bug Fix in `main/c5vrx2_wbfm_q4_trajectory_2to1.bsasm`
+
+Independent of the DSP LUT training, the trajectory assembly previously had `cfg eof_on upstream / trailing_bytes 9` (the 225 ns wrap discard bug). That transport bug is fixed in this PR to `cfg eof_on downstream / trailing_bytes 0`.
 
 ---
 
@@ -255,15 +296,18 @@ docker run --rm -v "${PWD}:/workspace" -w /workspace espressif/idf:v6.0.2 `
 - Sync lock stability
 - Dark-scene color behavior
 
-### Phase 2: Train Trajectory LUT on Real Captures
+### Phase 2: Fix Trainer and Train Confidence-Aware Trajectory LUT on Real Captures
 
+Before training a new LUT, `tools/train_trajectory_lut.py` must be upgraded:
+1. **Remove `wrap_r(adjacent)` in target calculation**: Do not fold the adjacent trajectory sum back into the endpoint principal branch.
+2. **Implement Confidence Gating**: Evaluate IQ magnitude ($\text{amplitude}^2 = Q^2 + I^2$). Only allow the middle sample trajectory to override the endpoint branch when IQ magnitude is above threshold ($\ge 64$).
+3. **Train on Real Captures**:
 ```bash
 python tools/train_trajectory_lut.py \
   --train measurements/issue-11-cvbs/vtx_real_capture_v3.bin \
   --write
 ```
-
-Then rebuild trajectory candidate and re-measure.
+4. Rebuild and test on hardware.
 
 ### Phase 3: DAC Linearity Characterization
 
@@ -293,7 +337,7 @@ MODEM_DIAG Q4/I4 @40M
 **Decision**: Do not implement. Hardware-proven negative (see §1).
 
 The simplification goal is valid, but the path to achieve it requires either:
-1. A future ESP-IDF version with `parlio_rx_unit_decorate_bitscrambler()`, or
+1. A future ESP-IDF version with a hardware-synchronized RX BitScrambler decorator, or
 2. A CPU-side M2M processing loop (not proven sustainable at 40 MB/s), or
 3. An ETM/DMA-triggered pipeline not yet explored.
 
@@ -302,21 +346,20 @@ approach. Focus should be on improving DSP quality within the TX-BS constraints.
 
 ---
 
-## 10. Winding-Correct Adjacent FM: Mathematical Requirements
+## 10. Winding-Correct Adjacent FM: Mathematical & Physical Requirements
 
 A true adjacent FM implementation that avoids winding loss **must**:
 
-1. Compute `d0 = signed_wrap(phase[n+1] - phase[n])` as a signed value
-2. Compute `d1 = signed_wrap(phase[n+2] - phase[n+1])` as a signed value
-3. Sum `d0 + d1` in **at least 9 bits** without intermediate wrapping
-4. Apply gain/pedestal/clamp to the unwrapped sum
-5. Output the result
+1. Compute $d_0 = \text{signed\_wrap}(\phi_{n+1} - \phi_n)$ as a signed value.
+2. Compute $d_1 = \text{signed\_wrap}(\phi_{n+2} - \phi_{n+1})$ as a signed value.
+3. Compute trajectory sum $d_0 + d_1$ in **at least 9 bits** without intermediate wrapping.
+4. **Gate by IQ confidence**: If IQ magnitude is weak (near origin), default to the principal endpoint delta $\text{wrap}(\phi_{n+2} - \phi_n)$ to avoid amplifying noise clicks.
+5. Apply gain/pedestal/clamp to the final result.
 
-This cannot be done within the 8-bit ADDCTIAL accumulator.
+This cannot be done within the BitScrambler's 8-bit ADDCTIAL accumulator at runtime.
 
-**The only viable 2-bundle approach** is the trajectory LUT: pre-compute the correct
-answer offline using the middle sample as a branch hint, embed it in the LUT, and
-address it at runtime with 3-byte indexing.
+**The only viable 2-bundle approach** is the confidence-aware trajectory LUT:
+Pre-compute the optimal branch decision offline using the middle sample and IQ confidence, embed it into the 1024-entry LUT, and address it at runtime via 3-byte indexing.
 
 **Not viable without new hardware proof**:
 - M2M (unproven sustained throughput at 40 MB/s)
