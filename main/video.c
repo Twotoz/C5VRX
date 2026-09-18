@@ -35,6 +35,15 @@
 #include "demod_quality.h"
 #include "hal/parlio_ll.h"
 #include "hal/usb_serial_jtag_ll.h"
+#include "link.h"
+#include "sdkconfig.h"
+#include "esp_system.h"
+#include "soc/lp_aon_reg.h"
+#include "soc/soc.h"
+
+/* The link dumps hex blocks on the console; background status lines must
+ * not land inside them. */
+#define AGC_PRINTF(...) do { if (!link_dump_active()) printf(__VA_ARGS__); } while (0)
 
 #include <stdint.h>
 #include <string.h>
@@ -189,8 +198,20 @@ static inline void sync_dma_m2c(const void *addr, size_t size)
 
 /* Timing and descriptors are immutable while running; only text pixels change.
  * This raster is never linked to the RF ring. */
+#if CONFIG_C5VRX_LINK_MODE
+/* Link mode drives no PARLIO TX, so the menu never starts (video_set_menu_mode()
+ * returns at once) and its raster plus descriptor chain would waste the 166 KiB
+ * of DRAM the frame grabber needs. Only a stub is allocated: the menu code below
+ * still compiles, with MENU_NODE_CAPACITY keeping its one bounds check honest. */
+static DMA_ATTR __attribute__((aligned(64))) uint8_t s_menu_raster_stub[sizeof(menu_raster_t) < 64u ? sizeof(menu_raster_t) : 64u];
+static DMA_ATTR __attribute__((aligned(64))) dma_descriptor_t s_menu_nodes[1];
+#define s_menu_raster (*(menu_raster_t *)s_menu_raster_stub)
+#define MENU_NODE_CAPACITY 1u
+#else
 static DMA_ATTR __attribute__((aligned(64))) menu_raster_t s_menu_raster;
 static DMA_ATTR __attribute__((aligned(64))) dma_descriptor_t s_menu_nodes[MENU_MAX_NODES];
+#define MENU_NODE_CAPACITY MENU_MAX_NODES
+#endif
 /* AGC sampling and channel scan are serialized in analog_agc_task, so they
  * share one descriptor-sized CPU snapshot instead of reserving 8 KiB. */
 static uint8_t s_control_sample_buf[CONTROL_SAMPLE_BYTES];
@@ -253,7 +274,7 @@ static const char *TAG = "c5vrx3_video";
 
 /* DMA-aligned ring buffer in HP SRAM.
  * RX GDMA writes at 40 MB/s; TX GDMA reads at 40 MB/s.
- * TX starts one block (4096 bytes = 102.4 µs) behind RX; they share
+ * TX starts one block (4096 bytes = 102.4 Âµs) behind RX; they share
  * PLL_F240M/6, so separation cannot drift during normal operation. */
 static DMA_ATTR __attribute__((aligned(64))) uint8_t s_raw_ring[RAW_RING_BYTES];
 
@@ -528,6 +549,62 @@ static uint8_t *get_completed_rx_sample_window(size_t bytes)
     return s_raw_ring;
 }
 
+const uint8_t *video_rx_ring(void)
+{
+    return s_raw_ring;
+}
+
+bool video_rx_write_offset(uint32_t *offset)
+{
+    if (s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 2) return false;
+    uint32_t cur = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
+    int idx = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, cur);
+    if (idx < 0 || !s_rx_dscr_nodes[idx].buffer) return false;
+    *offset = (uint32_t)(s_rx_dscr_nodes[idx].buffer - s_raw_ring);
+    return true;
+}
+
+uint32_t video_rx_max_descriptor(void)
+{
+    uint32_t m = 0u;
+    for (int i = 0; i < s_rx_dscr_count; ++i)
+        if (s_rx_dscr_nodes[i].length > m) m = s_rx_dscr_nodes[i].length;
+    return m ? m : 4092u;
+}
+
+size_t video_copy_recent_rx(uint8_t *dst, size_t max_bytes)
+{
+    if (s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 2) return 0u;
+
+    /* Wait for the GDMA to step onto a new (full-size) descriptor: everything
+     * behind it is complete and the oldest block has ~102 us before the ring
+     * wraps onto it, while one 4092-byte copy takes ~25 us. */
+    uint32_t start_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
+    int64_t t0 = esp_timer_get_time();
+    int cur_idx = -1;
+    for (;;) {
+        uint32_t cur = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
+        if (cur != start_addr) {
+            cur_idx = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, cur);
+            if (cur_idx >= 0 && s_rx_dscr_nodes[cur_idx].length >= 1024u) break;
+            start_addr = cur;   /* landed on the 16-byte tail: wait for the next one */
+        }
+        if (esp_timer_get_time() - t0 > 2000) return 0u;   /* ring stalled */
+    }
+
+    /* Completed descriptors in chain (= time) order, oldest first. */
+    size_t copied = 0u;
+    for (int back = s_rx_dscr_count - 1; back >= 1; --back) {
+        int idx = (cur_idx - back + s_rx_dscr_count) % s_rx_dscr_count;
+        const ring_dscr_node_t *n = &s_rx_dscr_nodes[idx];
+        if (!n->buffer || n->length == 0u) continue;
+        if (copied + n->length > max_bytes) break;
+        sync_dma_m2c(n->buffer, n->length);
+        memcpy(dst + copied, n->buffer, n->length);
+        copied += n->length;
+    }
+    return copied;
+}
 
 /* Exact Phase5 state decode mirrored from the embedded fm.bsasm LUT.  The
  * detector is observation-only: the realtime BitScrambler remains the sole
@@ -1057,6 +1134,17 @@ static void apply_rx_gain_tracked(uint8_t gain)
     s_last_phy_write_kind = PHY_WRITE_GAIN;
     rf_set_rx_gain(true, gain);
     ++s_gain_transition_count;
+}
+
+uint8_t video_rx_gain(void)
+{
+    return s_current_gain;
+}
+
+void video_set_rx_gain(uint8_t gain)
+{
+    s_agc_mode = ANALOG_AGC_MANUAL;
+    apply_rx_gain_tracked(gain);
 }
 
 static int signal_strength_score(const control_metrics_t *m, uint8_t gain)
@@ -1950,7 +2038,7 @@ static void menu_ui_signal_bars(int x, int y, int quality)
 static bool menu_append_segment(void *ctx, const uint8_t *data, unsigned length)
 {
     (void)ctx;
-    if (s_menu_node_count >= MENU_MAX_NODES || length > 4092 ||
+    if (s_menu_node_count >= MENU_NODE_CAPACITY || length > 4092 ||
         ((uintptr_t)data & 3) || (length & 3)) return false;
     dma_descriptor_t *node = &s_menu_nodes[s_menu_node_count++];
     memset(node, 0, sizeof(*node));
@@ -2232,6 +2320,10 @@ static void start_menu_tx(void)
 
 static void video_set_menu_mode(bool active)
 {
+#if CONFIG_C5VRX_LINK_MODE
+    if (active) printf("[MENU] unavailable in link mode (no PARLIO TX)\n");
+    return;
+#endif
     if (active && !MENU_RUNTIME_ENABLED) return;
     if (s_menu_active == active) return;
 
@@ -2580,7 +2672,7 @@ static void analog_agc_task(void *arg)
             if (s_menu_timeout_ticks >= 240) {
                 settings_save();
                 video_set_menu_mode(false);
-                printf("[MENU] Inactivity timeout (12s) -> Live Video\n");
+                AGC_PRINTF("[MENU] Inactivity timeout (12s) -> Live Video\n");
             }
         }
 
@@ -2989,7 +3081,7 @@ control_tail: {
                            !demod_static_heavy(winding_permille)));
         if (is_locked && !was_locked && !s_lab_quiet) {
             const fpv_channel_t *ch = rf_get_current_channel();
-            printf("[CARRIER] Locked on %s (%u MHz) in %s (P=%d Q=%d%% G=%u)\n",
+            AGC_PRINTF("[CARRIER] Locked on %s (%u MHz) in %s (P=%d Q=%d%% G=%u)\n",
                    ch->name, ch->freq_mhz, rf_get_band_name(rf_get_current_band()),
                    p_median, q_phase, s_current_gain);
         }
@@ -2998,7 +3090,7 @@ control_tail: {
         if (PERIODIC_TELEMETRY) {
             if (++telemetry_ticks >= 20) {
                 telemetry_ticks = 0;
-                printf("[AGC] state=%d G=%u P=%d Q=%d%% clip=%d.%d%% wind=%d.%d%% syncQ=%d std=%s\n",
+                AGC_PRINTF("[AGC] state=%d G=%u P=%d Q=%d%% clip=%d.%d%% wind=%d.%d%% syncQ=%d std=%s\n",
                        s_agc_state, s_current_gain, p_median, q_phase,
                        clip_permille / 10, clip_permille % 10,
                        winding_permille / 10, winding_permille % 10,
@@ -3159,6 +3251,24 @@ static void console_diag_task(void *arg)
                     apply_frequency_offset_khz_tracked(0);
                     settings_save();
                     printf("[FINE TUNE] Offset reset to +0 kHz\n");
+                } else if (c == '!') {
+                    /* Reboot straight into the ROM download mode (USB), so the
+                     * host can flash with --before no-reset: no BOOT button. */
+                    printf("[BOOT] rebooting into ROM download mode\n");
+                    fflush(stdout);
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                    REG_SET_FIELD(LP_AON_SYS_CFG_REG, LP_AON_FORCE_DOWNLOAD_BOOT, 1);
+                    esp_restart();
+#if CONFIG_C5VRX_LINK_MODE
+                } else if (c == 'v') {
+                    link_dump();
+                } else if (c == 'g') {
+                    link_grab();
+                } else if (c == 'S') {
+                    link_stream_toggle();
+                } else if (c == 'P') {
+                    link_pack_toggle();
+#endif
                 } else if (c == 'e') {
                     PARL_IO.rx_clk_cfg.rx_clk_i_inv = !PARL_IO.rx_clk_cfg.rx_clk_i_inv;
                     printf("[EDGE] RX SAMPLE EDGE TOGGLED -> %s (rx_clk_i_inv=%d)\n",
@@ -3334,9 +3444,11 @@ esp_err_t video_start(void)
     esp_err_t err;
 
     if ((err = prepare_rx()) != ESP_OK) return err;
+#if !CONFIG_C5VRX_LINK_MODE
     if ((err = prepare_tx()) != ESP_OK) return err;
 
     start_flight_demodulator();
+#endif
 
     /* Start RX cyclic ring. GDMA begins writing at s_raw_ring[0]. */
     if ((err = start_rx()) != ESP_OK) return err;
@@ -3356,7 +3468,9 @@ esp_err_t video_start(void)
      * The integer-microsecond delay and driver latency need hardware validation. */
     esp_rom_delay_us(8192ULL * 1000000ULL / IQ_RATE_HZ);
 
+#if !CONFIG_C5VRX_LINK_MODE
     if ((err = start_tx()) != ESP_OK) return err;
+#endif
 
     /* Discover AHB_DMA channels assigned to PARL_IO (peripheral ID 9) */
     for (int i = 0; i < 3; i++) {
@@ -3388,8 +3502,22 @@ esp_err_t video_start(void)
     if (s_tx_dma_ch >= 0) AHB_DMA.out_intr[s_tx_dma_ch].clr.val = UINT32_MAX;
     BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
 
+#if CONFIG_C5VRX_LINK_MODE
+    /* The BitScrambler is free (no PARLIO TX): loopback demodulation of ring snapshots. */
+    if ((err = link_init()) != ESP_OK) return err;
+
+    /* Exact VTX frequency and the wide analog filter: hardware captures showed
+     * the narrow BW20 filter and a 2 MHz offset crush the demodulated range. */
+    if (rf_set_channel((size_t)CONFIG_C5VRX_LINK_CHANNEL) == ESP_OK) {
+        const fpv_channel_t *ch = rf_get_current_channel();
+        printf("[LINK] tuned to %s (%u MHz)\n", ch->name, ch->freq_mhz);
+    }
+    s_rf_bw_mode = RF_BW_MODE_BW40;
+    apply_rf_bandwidth(true);
+#endif
+
     /* Start interactive console for on-demand diagnostics (zero periodic CPU/bus traffic) */
-    xTaskCreate(console_diag_task, "console_diag", 3072, NULL, 1, NULL);
+    xTaskCreate(console_diag_task, "console_diag", 4096, NULL, 1, NULL);
 
     /* Start dedicated Analog Video AGC engine (P_median in [20, 30], fast attack) */
     xTaskCreate(analog_agc_task, "analog_agc", 8192, NULL, 3, NULL);
