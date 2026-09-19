@@ -197,6 +197,33 @@ Use the interactive hotkeys (`c` to cycle channels, `+`/`-` for manual gain, `b`
 
 ---
 
+## Desktop Build & Flash GUI
+
+For a Windows GUI that runs the exact Docker build, validates the result, detects serial ports, and flashes the selected ESP32-C5, double-click:
+
+```text
+tools\Launch C5VRX GUI.bat
+```
+
+The launcher installs the small Python GUI and flashing dependencies listed in `tools/requirements-gui.txt` the first time it runs, then opens the desktop application. It requires Docker Desktop to be running, but users do not need to enter a Docker, PowerShell, or ESP-IDF command themselves.
+
+Alternatively, after the dependencies are installed, start it from the repository root with:
+
+```powershell
+python tools/c5vrx_gui.py
+```
+
+The **Build + Validate** button uses `espressif/idf:v6.0.2`, the project-pinned ESP-IDF image. The **Flash selected port** button asks for confirmation before overwriting a connected board. The launcher runs the GUI with `pythonw.exe` (no terminal window) but automatically uses `python.exe` for `esptool`, so flash progress and errors remain visible in the GUI log.
+
+Build artifacts are intentionally written to the repository's `build/` folder, not kept inside the temporary Docker container. On success, the GUI reports the full path to `build/c5vrx3.bin` and provides an **Open build folder** button.
+
+The flash section has two explicit modes:
+
+- **Current validated build** writes the bootloader, partition table, and freshly built application using the project’s `tools/flash.py` workflow.
+- **Collaborator app `.bin`** supports drag-and-drop or file selection. It writes only the supplied C5VRX application image at `0x10000`, preserving the board’s existing bootloader and partition table. This is intended for an application `.bin` sent by a collaborator—not a merged flash image or firmware for a different board.
+
+---
+
 ## Repository Structure
 
 ```text
@@ -212,6 +239,9 @@ Use the interactive hotkeys (`c` to cycle channels, `+`/`-` for manual gain, `b`
 │   └── osd_font.h             # 8x8 font tables for OSD
 ├── tools/                     # Production validation & flashing utilities
 │   ├── validate_build.py      # Architectural constraint validator (31 checks)
+│   ├── c5vrx_gui.py           # Windows desktop Docker build + flash GUI
+│   ├── requirements-gui.txt   # GUI dependency list
+│   ├── Launch C5VRX GUI.bat   # Double-click GUI launcher
 │   ├── auto_flash.py          # Auto-detecting flashing watcher
 │   ├── flash.py               # One-click direct flasher
 │   ├── monitor.py             # Low-latency interactive serial console
