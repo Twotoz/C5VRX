@@ -7,6 +7,7 @@ idf_component_register(
         "link.c"
         "grab.c"
         "uart_link.c"
+        "link_tx.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
@@ -34,6 +35,7 @@ target_bitscrambler_add_src("fm.bsasm")
 target_bitscrambler_add_src("fm4.bsasm")
 target_bitscrambler_add_src("fm_loop.bsasm")
 
-# The frame grabber runs per-sample loops against the 40 MS/s ring; the
-# project default (-Og) is several times too slow for them.
-set_source_files_properties(grab.c PROPERTIES COMPILE_OPTIONS "-O2")
+# The frame grabber runs per-sample loops against the 40 MS/s ring and the
+# link sender encodes rows inside the grab loop; the project default (-Og) is
+# several times too slow for them.
+set_source_files_properties(grab.c link_tx.c PROPERTIES COMPILE_OPTIONS "-O2")

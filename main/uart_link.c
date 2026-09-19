@@ -1,45 +1,64 @@
 /**
- * uart_link.c - frames from the grabber to a display board over UART.
- * See uart_link.h for the packet format.
+ * uart_link.c - the UART side of the video link; see uart_link.h.
  */
 
 #include "uart_link.h"
 
-#include <string.h>
+#include <stdio.h>
 
 #include "driver/uart.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "sdkconfig.h"
 
-#include "rf.h"
+#include "link_proto.h"
 
 #if CONFIG_C5VRX_LINK_MODE
 
-#define LINK_UART      UART_NUM_1
-#define TX_BUFFER      49152        /* one 8-bit frame (38.6 KB) plus headroom */
-#define RX_BUFFER      1024
+#define LINK_UART  UART_NUM_1
+#define TX_BUFFER  16384        /* link_tx stages a whole frame; this only needs to keep the UART busy */
+#define RX_BUFFER  1024
 
-static uint8_t s_crc_table[256];
-static bool s_ready;
+static uart_link_cmd_cb_t s_on_command;
+static link_parser_t s_parser;
 
-static void crc_init(void)
+static size_t port_free(void *ctx)
 {
-    for (unsigned i = 0u; i < 256u; ++i) {
-        uint8_t c = (uint8_t)i;
-        for (int k = 0; k < 8; ++k) c = (uint8_t)((c & 0x80u) ? (c << 1) ^ 0x07u : (c << 1));
-        s_crc_table[i] = c;
+    (void)ctx;
+    size_t n = 0u;
+    uart_get_tx_buffer_free_size(LINK_UART, &n);
+    return n;
+}
+
+static void port_write(void *ctx, const uint8_t *data, size_t n)
+{
+    (void)ctx;
+    uart_write_bytes(LINK_UART, data, n);
+}
+
+static void on_packet(void *ctx, uint8_t type, uint8_t a, uint8_t b, const uint8_t *payload, int len)
+{
+    (void)ctx;
+    (void)payload;
+    (void)len;
+    if (type == LINK_T_CMD && s_on_command) s_on_command(a, b);
+}
+
+/* Commands from the display. */
+static void rx_task(void *arg)
+{
+    (void)arg;
+    uint8_t buf[64];
+    for (;;) {
+        int n = uart_read_bytes(LINK_UART, buf, sizeof(buf), pdMS_TO_TICKS(100));
+        if (n > 0) link_parser_feed(&s_parser, buf, n, on_packet, NULL);
     }
 }
 
-static uint8_t crc8(const uint8_t *p, size_t n)
+esp_err_t uart_link_init(uart_link_cmd_cb_t on_command)
 {
-    uint8_t c = 0u;
-    while (n--) c = s_crc_table[c ^ *p++];
-    return c;
-}
-
-esp_err_t uart_link_init(void)
-{
-    crc_init();
+    s_on_command = on_command;
+    link_parser_init(&s_parser);
     const uart_config_t cfg = {
         .baud_rate = CONFIG_C5VRX_LINK_UART_BAUD,
         .data_bits = UART_DATA_8_BITS,
@@ -56,79 +75,33 @@ esp_err_t uart_link_init(void)
     if (err != ESP_OK) return err;
     uint32_t baud = 0u;
     uart_get_baudrate(LINK_UART, &baud);
-    s_ready = true;
-    printf("[LINK] UART%d TX GPIO%d RX GPIO%d at %lu baud\n", (int)LINK_UART,
-           CONFIG_C5VRX_LINK_UART_TX_GPIO, CONFIG_C5VRX_LINK_UART_RX_GPIO, (unsigned long)baud);
+    if (xTaskCreate(rx_task, "link_rx", 3072, NULL, 4, NULL) != pdPASS) return ESP_ERR_NO_MEM;
+    const link_tx_port_t port = { port_free, port_write, NULL };
+    link_tx_init(&port, baud ? baud : (uint32_t)CONFIG_C5VRX_LINK_UART_BAUD);
+    printf("[LINK] UART%d TX GPIO%d RX GPIO%d at %lu baud (protocol %u)\n", (int)LINK_UART,
+           CONFIG_C5VRX_LINK_UART_TX_GPIO, CONFIG_C5VRX_LINK_UART_RX_GPIO, (unsigned long)baud,
+           (unsigned)LINK_VERSION);
     return ESP_OK;
 }
 
-static void send_packet(uint8_t type, uint8_t frame, uint8_t row, const uint8_t *payload, size_t len)
+void uart_link_rx_stats(uint32_t *packets, uint32_t *crc_errors)
 {
-    static uint8_t pkt[5u + GRAB_W + 1u];
-    pkt[0] = UART_LINK_MAGIC0;
-    pkt[1] = UART_LINK_MAGIC1;
-    pkt[2] = type;
-    pkt[3] = frame;
-    pkt[4] = row;
-    memcpy(pkt + 5, payload, len);
-    pkt[5 + len] = crc8(pkt + 2, 3u + len);
-    uart_write_bytes(LINK_UART, pkt, 6u + len);
-}
-
-static uint8_t error_code(const char *e)
-{
-    if (!e) return 0u;
-    if (strstr(e, "horizontal")) return 1u;
-    if (strstr(e, "vertical")) return 2u;
-    if (strstr(e, "lost")) return 3u;
-    if (strstr(e, "timeout")) return 4u;
-    return 5u;
-}
-
-void uart_link_send_frame(const uint8_t *img, int rows, const grab_info_t *info,
-                          uint8_t frame_id, bool pack4)
-{
-    if (!s_ready) return;
-    uint8_t in[UART_LINK_INFO_LEN] = { 0 };
-    uint16_t mhz = rf_get_frequency_mhz();
-    uint16_t ms = (uint16_t)(info->grab_ms > 65535 ? 65535 : info->grab_ms);
-    int ns = (int)(info->line_us * 1000.0f + 0.5f) - 60000;
-    uint16_t line = (uint16_t)(ns < 0 ? 0 : ns > 65535 ? 65535 : ns);
-    in[0] = 1u;
-    in[1] = (uint8_t)(rows > 255 ? 255 : rows);
-    in[2] = (uint8_t)((info->pal ? 1u : 0u) | (rows > 0 ? 2u : 0u) | (pack4 ? 4u : 0u));
-    in[3] = (uint8_t)(mhz & 0xffu);
-    in[4] = (uint8_t)(mhz >> 8);
-    in[5] = (uint8_t)(rf_get_rx_gain_reg() >> 24);
-    in[6] = error_code(info->error);
-    in[7] = (uint8_t)(info->fields > 255 ? 255 : info->fields);
-    in[8] = (uint8_t)(ms & 0xffu);
-    in[9] = (uint8_t)(ms >> 8);
-    in[10] = (uint8_t)(line & 0xffu);
-    in[11] = (uint8_t)(line >> 8);
-    send_packet(UART_LINK_T_INFO, frame_id, 0xffu, in, sizeof(in));
-    if (rows <= 0) return;
-
-    static uint8_t packed[GRAB_W / 2];
-    for (int y = 0; y < GRAB_H; ++y) {
-        const uint8_t *r = img + (size_t)y * GRAB_W;
-        if (pack4) {
-            for (int x = 0; x < GRAB_W / 2; ++x)
-                packed[x] = (uint8_t)((r[2 * x] >> 4) | (r[2 * x + 1] & 0xf0u));
-            send_packet(UART_LINK_T_ROW4, frame_id, (uint8_t)y, packed, sizeof(packed));
-        } else {
-            send_packet(UART_LINK_T_ROW8, frame_id, (uint8_t)y, r, GRAB_W);
-        }
-    }
+    *packets = s_parser.packets;
+    *crc_errors = s_parser.crc_errors;
 }
 
 #else
 
-esp_err_t uart_link_init(void) { return ESP_ERR_NOT_SUPPORTED; }
-void uart_link_send_frame(const uint8_t *img, int rows, const grab_info_t *info,
-                          uint8_t frame_id, bool pack4)
+esp_err_t uart_link_init(uart_link_cmd_cb_t on_command)
 {
-    (void)img; (void)rows; (void)info; (void)frame_id; (void)pack4;
+    (void)on_command;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+void uart_link_rx_stats(uint32_t *packets, uint32_t *crc_errors)
+{
+    *packets = 0u;
+    *crc_errors = 0u;
 }
 
 #endif

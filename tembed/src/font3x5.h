@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 /* Minimal 3x5 pixel font: 5 rows of 3 bits, top row first, bit 14 = top
- * left. Covers space, digits, upper-case letters and : . - / %. Lower-case
+ * left. Covers space, digits, upper-case letters and : . - / % + ?. Lower-case
  * letters are drawn as upper case; unknown characters as a filled box. */
 static inline uint16_t font3x5_rows(unsigned r0, unsigned r1, unsigned r2, unsigned r3, unsigned r4)
 {
@@ -60,6 +60,8 @@ static inline uint16_t font3x5_glyph(char ch)
     case '-': return G(0, 0, 111, 0, 0);
     case '/': return G(1, 1, 10, 100, 100);
     case '%': return G(101, 1, 10, 100, 101);
+    case '+': return G(0, 10, 111, 10, 0);
+    case '?': return G(111, 1, 11, 0, 10);
     default:  return G(111, 111, 111, 111, 111);
     }
 #undef G

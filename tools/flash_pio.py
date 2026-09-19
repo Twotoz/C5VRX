@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
-"""Flash a PlatformIO build of C5VRX to the XIAO ESP32-C5 without the BOOT button.
+"""Flash a PlatformIO build of C5VRX to the XIAO ESP32-C5, the proven way.
 
 usage: python tools/flash_pio.py [ENV] [PORT]      (default env xiao_c5_link, port auto)
 
-Order of attempts, each with DIO at 80 MHz (the XIAO's flash does not boot
-in QIO) and --after watchdog-reset (the application starts by itself):
+The XIAO's USB-Serial/JTAG auto-reset is unreliable with C5VRX firmware
+running, so this uses the ROM download mode entered by hand:
 
-1. The chip is already in the ROM bootloader (BOOT held at plug-in, or a
-   previous '!' key): write with --before no-reset.
-2. The application runs: send the console key '!', which makes a firmware
-   with that key reboot into ROM download mode, wait for the port to come
-   back and write with --before no-reset.
-3. esptool's own --before default-reset (USB-Serial/JTAG reset lines).
+1. If the chip is already in the ROM bootloader, it is written at once.
+2. Otherwise (the application is running) the script asks you to unplug the
+   XIAO, hold BOOT, plug it in and release BOOT; it waits for the port to go
+   away and come back, and writes then.
 
-If all three fail: unplug, hold BOOT, plug in, release, run again.
-Never asserts DTR/RTS when talking to the console.
+Always DIO at 80 MHz (the XIAO's flash does not boot in QIO), --before
+no-reset, --after watchdog-reset (the application starts by itself; no RESET
+press). Never asserts DTR/RTS.
 """
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-import serial
 import serial.tools.list_ports
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -39,64 +37,54 @@ for path in images.values():
         raise SystemExit(f"missing {path}; run: pio run -e {env}")
 
 
-def find_port(timeout_s=0.0):
+def current_port():
+    ports = [p for p in serial.tools.list_ports.comports()]
+    if port_arg:
+        return port_arg if port_arg in [p.device for p in ports] else None
+    for p in ports:
+        if "303A" in (p.hwid or "").upper():
+            return p.device
+    return None
+
+
+def wait_port(present, timeout_s):
+    """Wait until the port is there (present) or gone; (condition met, port)."""
     t_end = time.time() + timeout_s
-    while True:
-        if port_arg:
-            if port_arg in [p.device for p in serial.tools.list_ports.comports()]:
-                return port_arg
-        else:
-            for p in serial.tools.list_ports.comports():
-                if "303A" in (p.hwid or "").upper():
-                    return p.device
-        if time.time() >= t_end:
-            return None
-        time.sleep(0.2)
+    while time.time() < t_end:
+        port = current_port()
+        if (port is not None) == present:
+            return True, port
+        time.sleep(0.1)
+    return False, None
 
 
-def esptool(port, before):
+def write(port):
     cmd = [sys.executable, "-m", "esptool", "--chip", "esp32c5", "-p", port, "-b", "460800",
-           "--before", before, "--after", "watchdog-reset", "--connect-attempts", "2",
+           "--before", "no-reset", "--after", "watchdog-reset", "--connect-attempts", "3",
            "write-flash", "--flash-mode", "dio", "--flash-size", "8MB", "--flash-freq", "80m"]
     for offset, path in images.items():
         cmd += [offset, str(path)]
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     ok = res.returncode == 0 and "Hash of data verified" in res.stdout
     last = [l for l in res.stdout.splitlines() if l.strip()][-1:] or [""]
-    print(f"  esptool --before {before}: {'OK' if ok else 'failed: ' + last[0][:100]}")
+    print(f"  esptool: {'OK' if ok else 'failed: ' + last[0][:120]}")
     return ok
 
 
-def reboot_to_download(port):
-    try:
-        ser = serial.Serial()
-        ser.port = port
-        ser.baudrate = 115200
-        ser.dtr = False
-        ser.rts = False
-        ser.timeout = 0.2
-        ser.open()
-        ser.write(b"!")
-        ser.flush()
-        time.sleep(0.3)
-        ser.close()
-        return True
-    except serial.SerialException as exc:
-        print(f"  could not send '!': {exc}")
-        return False
-
-
-port = find_port(10.0)
-if port is None:
+found, port = wait_port(True, 10.0)
+if not found:
     raise SystemExit("no Espressif USB-Serial/JTAG port found")
 print(f"flashing {build} via {port}")
-if esptool(port, "no-reset"):
+if write(port):
     sys.exit(0)
-if reboot_to_download(port):
-    time.sleep(1.0)
-    port = find_port(10.0) or port
-    if esptool(port, "no-reset"):
-        sys.exit(0)
-if esptool(port, "default-reset"):
+print("the application is running: unplug the XIAO, hold BOOT, plug it in, release BOOT")
+gone, _ = wait_port(False, 120.0)
+if not gone:
+    raise SystemExit("the port never went away; run again after the replug")
+back, port = wait_port(True, 120.0)
+if not back:
+    raise SystemExit("the port did not come back")
+time.sleep(0.5)
+if write(port):
     sys.exit(0)
-raise SystemExit("all attempts failed: unplug, hold BOOT, plug in, release BOOT, run again")
+raise SystemExit("write failed in download mode too; check the cable and run again")

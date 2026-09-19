@@ -28,8 +28,35 @@ config C5VRX_LINK_STREAM
     default y
     help
         Grab frames continuously and send them to a display board (LilyGo
-        T-Embed) over UART, see main/uart_link.h. The console 'S' key
-        toggles streaming, 'P' toggles 4-bit rows (twice the frame rate).
+        T-Embed) over UART, protocol in main/link_proto.h. Console keys:
+        'S' streaming on/off, 'P' picture mode, 'N' channel scan, 'M'
+        horizontal smoothing.
+
+config C5VRX_LINK_DEBUG
+    bool "Link mode: debug output and dump tools"
+    depends on C5VRX_LINK_MODE
+    default n
+    help
+        Adds what is only needed at the desk: the [STREAM] statistics line
+        every second and [LOST] traces, the receiver's AGC status lines, and
+        the console dumps 'v' (raw I/Q plus BitScrambler loopback
+        demodulation, tools/link_dump.py) and 'g' (one frame,
+        tools/link_frame.py). Off in the final build: nothing is printed
+        while streaming, and the loopback BitScrambler and its 24 KB of DMA
+        buffers are not set up. PlatformIO environment xiao_c5_link_debug
+        turns it on.
+
+config C5VRX_LINK_PICTURE_MODE
+    int "Link mode: picture mode at boot (0 auto, 1 fine, 2 raw)"
+    depends on C5VRX_LINK_MODE
+    range 0 2
+    default 0
+    help
+        0 auto: rows coded near-losslessly, the tolerance chosen per frame so
+        that a frame fits the link in the time the grabber needs for it (up
+        to 25 fps PAL at 4 Mbaud). 1 fine: tolerance +/- 1 level, fewer fps.
+        2 raw: 8-bit rows, about 10 fps at 4 Mbaud. The display board can
+        switch modes at run time.
 
 config C5VRX_LINK_UART_TX_GPIO
     int "Link mode: UART TX GPIO"
@@ -44,12 +71,16 @@ config C5VRX_LINK_UART_RX_GPIO
     depends on C5VRX_LINK_MODE
     default 12
     help
-        12 is XIAO pad D7 (display board TX, T-Embed GPIO43). Unused until
-        the display board sends commands.
+        12 is XIAO pad D7 (display board TX, T-Embed GPIO43): commands from
+        the display (scan, channel steps, picture mode).
 
 config C5VRX_LINK_UART_BAUD
     int "Link mode: UART baud rate"
     depends on C5VRX_LINK_MODE
     default 4000000
+    help
+        4000000 is proven on the bench. 5000000 is the limit of both UARTs
+        (ESP32-C5 and ESP32-S3) and gives the auto picture mode 25 % more
+        bytes per frame; the display firmware follows either rate.
 
 endmenu

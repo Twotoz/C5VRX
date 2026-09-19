@@ -37,13 +37,14 @@
 #include "hal/usb_serial_jtag_ll.h"
 #include "link.h"
 #include "sdkconfig.h"
-#include "esp_system.h"
-#include "soc/lp_aon_reg.h"
-#include "soc/soc.h"
 
 /* The link dumps hex blocks on the console; background status lines must
- * not land inside them. */
+ * not land inside them. The final link build prints nothing while running. */
+#if CONFIG_C5VRX_LINK_MODE && !CONFIG_C5VRX_LINK_DEBUG
+#define AGC_PRINTF(...) do { } while (0)
+#else
 #define AGC_PRINTF(...) do { if (!link_dump_active()) printf(__VA_ARGS__); } while (0)
+#endif
 
 #include <stdint.h>
 #include <string.h>
@@ -3251,23 +3252,21 @@ static void console_diag_task(void *arg)
                     apply_frequency_offset_khz_tracked(0);
                     settings_save();
                     printf("[FINE TUNE] Offset reset to +0 kHz\n");
-                } else if (c == '!') {
-                    /* Reboot straight into the ROM download mode (USB), so the
-                     * host can flash with --before no-reset: no BOOT button. */
-                    printf("[BOOT] rebooting into ROM download mode\n");
-                    fflush(stdout);
-                    vTaskDelay(pdMS_TO_TICKS(50));
-                    REG_SET_FIELD(LP_AON_SYS_CFG_REG, LP_AON_FORCE_DOWNLOAD_BOOT, 1);
-                    esp_restart();
 #if CONFIG_C5VRX_LINK_MODE
+#if CONFIG_C5VRX_LINK_DEBUG
                 } else if (c == 'v') {
                     link_dump();
                 } else if (c == 'g') {
                     link_grab();
+#endif
                 } else if (c == 'S') {
                     link_stream_toggle();
                 } else if (c == 'P') {
-                    link_pack_toggle();
+                    link_mode_cycle();
+                } else if (c == 'N') {
+                    link_scan_toggle();
+                } else if (c == 'M') {
+                    link_smoothing_toggle();
 #endif
                 } else if (c == 'e') {
                     PARL_IO.rx_clk_cfg.rx_clk_i_inv = !PARL_IO.rx_clk_cfg.rx_clk_i_inv;

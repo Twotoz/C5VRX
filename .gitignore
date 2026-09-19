@@ -23,3 +23,5 @@ packages/
 sdkconfig.*
 !sdkconfig.defaults
 !sdkconfig.*.defaults
+# ... and the host-test stub header.
+!test/host/stubs/sdkconfig.h
