@@ -9,6 +9,21 @@ ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build"
 
 
+def console_python():
+    """Return python.exe when this script was started through pythonw.exe.
+
+    The desktop GUI is launched with pythonw.exe to avoid opening a terminal.
+    esptool is a console program, however, and must be run by python.exe so its
+    output remains visible to the GUI and serial errors are not swallowed.
+    """
+    executable = Path(sys.executable)
+    if executable.name.lower() == "pythonw.exe":
+        console_executable = executable.with_name("python.exe")
+        if console_executable.exists():
+            return str(console_executable)
+    return sys.executable
+
+
 def find_esp_port():
     ports = serial.tools.list_ports.comports()
     for p in ports:
@@ -41,7 +56,7 @@ def main():
     print(f"=======================================================")
 
     cmd = [
-        sys.executable, "-m", "esptool",
+        console_python(), "-m", "esptool",
         "--chip", "esp32c5",
         "-p", port,
         "-b", "460800",
