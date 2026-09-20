@@ -1,0 +1,3 @@
+# Link-mode overlay for sdkconfig.defaults (PlatformIO env xiao_c5_link):
+# no DAC output, BitScrambler loopback demodulation, host dumps on 'v'.
+CONFIG_C5VRX_LINK_MODE=y

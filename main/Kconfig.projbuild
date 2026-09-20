@@ -1,0 +1,86 @@
+menu "C5VRX"
+
+config C5VRX_LINK_MODE
+    bool "Link mode: no DAC output, BitScrambler in loopback for host dumps"
+    default n
+    help
+        Build the receiver without the PARLIO TX / resistor DAC path. The
+        single BitScrambler of the ESP32-C5 is then free for loopback runs
+        of the same Phase5 FM demodulator over snapshots of the raw I/Q
+        ring, and the console 'v' key dumps one snapshot plus its
+        demodulated CVBS as hex for tools/link_dump.py. This is the first
+        step of the T-Embed display link (frames over UART instead of an
+        analog output). The OSD menu is unavailable in this mode.
+
+config C5VRX_LINK_CHANNEL
+    int "Link mode: FPV channel at boot (band x 8 + channel - 1)"
+    depends on C5VRX_LINK_MODE
+    range 0 47
+    default 5
+    help
+        Index into the receiver's channel table: bands R, A, B, E, F, L in
+        that order, 8 channels each. 5 = R6 (5843 MHz), 8 = A1 (5865 MHz).
+        Link mode also forces the wide (BW40) analog filter.
+
+config C5VRX_LINK_STREAM
+    bool "Link mode: stream frames over UART from boot"
+    depends on C5VRX_LINK_MODE
+    default y
+    help
+        Grab frames continuously and send them to a display board (LilyGo
+        T-Embed) over UART, protocol in main/link_proto.h. Console keys:
+        'S' streaming on/off, 'P' picture mode, 'N' channel scan, 'M'
+        horizontal smoothing.
+
+config C5VRX_LINK_DEBUG
+    bool "Link mode: debug output and dump tools"
+    depends on C5VRX_LINK_MODE
+    default n
+    help
+        Adds what is only needed at the desk: the [STREAM] statistics line
+        every second and [LOST] traces, the receiver's AGC status lines, and
+        the console dumps 'v' (raw I/Q plus BitScrambler loopback
+        demodulation, tools/link_dump.py) and 'g' (one frame,
+        tools/link_frame.py). Off in the final build: nothing is printed
+        while streaming, and the loopback BitScrambler and its 24 KB of DMA
+        buffers are not set up. PlatformIO environment xiao_c5_link_debug
+        turns it on.
+
+config C5VRX_LINK_PICTURE_MODE
+    int "Link mode: picture mode at boot (0 auto, 1 fine, 2 raw)"
+    depends on C5VRX_LINK_MODE
+    range 0 2
+    default 0
+    help
+        0 auto: rows coded near-losslessly, the tolerance chosen per frame so
+        that a frame fits the link in the time the grabber needs for it (up
+        to 25 fps PAL at 4 Mbaud). 1 fine: tolerance +/- 1 level, fewer fps.
+        2 raw: 8-bit rows, about 10 fps at 4 Mbaud. The display board can
+        switch modes at run time.
+
+config C5VRX_LINK_UART_TX_GPIO
+    int "Link mode: UART TX GPIO"
+    depends on C5VRX_LINK_MODE
+    default 11
+    help
+        11 is XIAO pad D6. Connect it to the display board's RX (T-Embed
+        UART connector RXD, GPIO44).
+
+config C5VRX_LINK_UART_RX_GPIO
+    int "Link mode: UART RX GPIO"
+    depends on C5VRX_LINK_MODE
+    default 12
+    help
+        12 is XIAO pad D7 (display board TX, T-Embed GPIO43): commands from
+        the display (scan, channel steps, picture mode).
+
+config C5VRX_LINK_UART_BAUD
+    int "Link mode: UART baud rate"
+    depends on C5VRX_LINK_MODE
+    default 4000000
+    help
+        4000000 is proven on the bench. 5000000 is the limit of both UARTs
+        (ESP32-C5 and ESP32-S3) and gives the auto picture mode 25 % more
+        bytes per frame; the display firmware follows either rate.
+
+endmenu
