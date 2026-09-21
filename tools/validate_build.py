@@ -48,9 +48,17 @@ for bsasm_file in bsasm_files:
 c_files = list(MAIN.glob("*.c"))
 all_c = "\n".join(read(f) for f in c_files)
 c_names = [f.name for f in c_files]
+lab_c_names = {"true80_lab.c"}
+production_c_files = [f for f in c_files if f.name not in lab_c_names]
+production_c = "\n".join(read(f) for f in production_c_files)
+production_c_names = {f.name for f in production_c_files}
 
-check("production receiver and dedicated menu raster modules", set(c_names) == {"main.c", "rf.c", "video.c", "menu_raster.c"},
-      f"found: {c_names}")
+check("production receiver and dedicated menu raster modules",
+      production_c_names == {"main.c", "rf.c", "video.c", "menu_raster.c"},
+      f"found production: {sorted(production_c_names)}; all: {c_names}")
+check("TRUE80 oracle stays isolated in its explicit lab module",
+      set(c_names) == production_c_names | lab_c_names and
+      "true80_lab_boot_probe" in read(MAIN / "true80_lab.c"))
 check("main.c present", "main.c" in c_names)
 check("rf.c present", "rf.c" in c_names)
 check("video.c present", "video.c" in c_names)
@@ -481,11 +489,11 @@ check("visible lag marker present",
       "user_lag_mark_count" in all_c)
 
 # RX POS edge (not NEG)
-check("PARLIO_SAMPLE_EDGE_POS in video.c",
-      "PARLIO_SAMPLE_EDGE_POS" in all_c)
-check("no PARLIO_SAMPLE_EDGE_NEG for RX",
-      "PARLIO_SAMPLE_EDGE_NEG" not in all_c,
-      "RX must use POS edge; NEG is for TX shift edge only (PARLIO_SHIFT_EDGE_NEG)")
+check("PARLIO_SAMPLE_EDGE_POS in production video path",
+      "PARLIO_SAMPLE_EDGE_POS" in production_c)
+check("no PARLIO_SAMPLE_EDGE_NEG for production RX",
+      "PARLIO_SAMPLE_EDGE_NEG" not in production_c,
+      "production RX must use POS edge; bounded lab oracles may A/B sample edges")
 
 # TX NEG shift edge
 check("PARLIO_SHIFT_EDGE_NEG in video.c",
