@@ -4,6 +4,7 @@ idf_component_register(
         "rf.c"
         "video.c"
         "menu_raster.c"
+        "true80_lab.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_wifi
