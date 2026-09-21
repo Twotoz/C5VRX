@@ -2838,6 +2838,25 @@ static void handle_button_short_click(void)
     }
 }
 
+static void open_recovery_menu(void)
+{
+    /* Emergency BOOT recovery deliberately ignores the persisted Safe Flight
+     * menu-disable bit. It restores the simplest known-good live contract so a
+     * bad experimental output/demod/profile setting cannot strand the receiver
+     * on static with no on-screen way back. */
+    s_menu_boot_btn_enabled = true;
+    s_video_std_mode = VIDEO_STD_MODE_AUTO;
+    s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+    s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    apply_rx_profile(RX_PROFILE_BALANCED);
+    video_standard_detector_reset();
+    s_menu_cursor = 0;
+    s_menu_timeout_ticks = 0;
+    settings_save();
+    video_set_menu_mode(true);
+    printf("[RECOVERY] GOLDEN + 6BIT@40 + BALANCED restored; menu opened\n");
+}
+
 static void handle_button_long_click(void)
 {
     if (!s_menu_active) {
@@ -2947,6 +2966,7 @@ static void analog_agc_task(void *arg)
     bool btn_scan_fired = false;
     bool btn_profile_fired = false;
     bool btn_demod_fired = false;
+    bool btn_recovery_fired = false;
     bool was_locked = false;
     range_control_t range_controller;
     range_control_reset(&range_controller, s_current_gain);
@@ -2988,10 +3008,22 @@ static void analog_agc_task(void *arg)
             btn_scan_fired = false;
             btn_profile_fired = false;
             btn_demod_fired = false;
+            btn_recovery_fired = false;
         } else {
             int btn_level = gpio_get_level(BOOT_BTN_GPIO);
             if (btn_level == 0) {
                 btn_ticks++;
+
+                /* Three-second emergency recovery is intentionally evaluated
+                 * independently from the ordinary 0.6 s long-click. If the
+                 * persisted Safe Flight flag disabled BOOT menu entry, the
+                 * ordinary long-click may be rejected at tick 12, but holding
+                 * to tick 60 still restores a known-good video path. */
+                if (!s_menu_active && btn_ticks >= 60 && !btn_recovery_fired) {
+                    btn_recovery_fired = true;
+                    btn_long_fired = true;
+                    open_recovery_menu();
+                }
 
                 /* RF page gets two independent controls without adding menu
                  * geometry: 0.6-2.0 s changes BW on release; >=2.0 s changes
@@ -3047,6 +3079,7 @@ static void analog_agc_task(void *arg)
                 btn_scan_fired = false;
                 btn_profile_fired = false;
                 btn_demod_fired = false;
+                btn_recovery_fired = false;
             }
         }
 
