@@ -207,6 +207,18 @@ check("IQ fusion combines adjacent, lag-2, lag-4 and robust slope evidence",
       "lag4_disagreement_permille" in fusion_header and
       "fusion_robust_delta3" in fusion_header and
       "consensus_outlier_permille" in fusion_header)
+check("Range v3 adds distortion-aware context without changing V2 construction",
+      "FUSION_CONTEXT_WEAK_DISTORTED" in fusion_header and
+      "fusion_make_observation_v3" in fusion_header and
+      "near_rail_permille" in fusion_header and
+      "RX_PROFILE_RANGE_V3_EXP" in all_c and
+      'return "RANGE V3"' in all_c and
+      "Phase-model controller" in all_c)
+check("Range v3 lowers gain only behind phase/compression evidence",
+      "phase_distorted" in fusion_header and
+      "compression_evidence" in fusion_header and
+      "state > o->state) value += 180" in fusion_optimizer and
+      "FUSION_CONTEXT_WEAK_DISTORTED: return state <= 6u" in fusion_optimizer)
 check("fusion learner is contextual, bounded and high-gain biased at loss",
       "fusion_optimizer_tick" in fusion_optimizer and
       "FUSION_CONTEXT_WEAK" in fusion_optimizer and
@@ -235,11 +247,20 @@ check("Range v2 exposes centering and vendor-AGC characterization probes",
       "C5VRX_HW_AGC_ORACLE_BEGIN" in all_c and
       "lab_run_frequency_probe" in all_c and
       "lab_run_hw_agc_oracle" in all_c)
+check("Range v3 real-Q10 teacher and MODEM_DIAG mapping oracles are present",
+      (ROOT / "tools/train_trajectory_v3.py").exists() and
+      "iq32le" in read(ROOT / "tools/train_trajectory_v3.py") and
+      "nearest_branch" in read(ROOT / "tools/train_trajectory_v3.py") and
+      (ROOT / "tools/modem_diag_q10_oracle.py").exists() and
+      "score_mapping" in read(ROOT / "tools/modem_diag_q10_oracle.py") and
+      "does not assume" in read(ROOT / "tools/modem_diag_q10_oracle.py"))
 check("offline demod benchmark gates adjacent/PLL experiments",
       (ROOT / "tools/range_demod_bench.py").exists() and
       "phase5_endpoint_winding_disagree_permille" in read(ROOT / "tools/range_demod_bench.py") and
       "trajectory_v2_hard_ge16_permille" in read(ROOT / "tools/range_demod_bench.py") and
       "pll_lite_pair_codes" in read(ROOT / "tools/range_demod_bench.py") and
+      "branch_v3_pair_codes" in read(ROOT / "tools/range_demod_bench.py") and
+      "v3_branch_repairs_permille" in read(ROOT / "tools/range_demod_bench.py") and
       "pll_demod" in read(ROOT / "tools/range_demod_bench.py"))
 
 traj_asm = read(MAIN / "fm_traj.bsasm")
@@ -340,6 +361,7 @@ check("fusion profile is the experimental default and other RX profiles remain e
       "RX_PROFILE_HW_AGC_EXP" in all_c and
       "RX_PROFILE_FUSION_EXP" in all_c and
       "RX_PROFILE_RANGE_V2_EXP" in all_c and
+      "RX_PROFILE_RANGE_V3_EXP" in all_c and
       "s_rx_profile = RX_PROFILE_FUSION_EXP" in all_c and
       "s_rf_bw_mode = RF_BW_MODE_BW40" in all_c)
 check("Range v2 combines Fusion with acquisition-only BW/AFC and full overload headroom",

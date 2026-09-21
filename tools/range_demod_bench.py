@@ -310,6 +310,76 @@ def pll_lite_pair_codes(data: bytes, parity: int, low_power: int) -> List[int]:
 
 
 @dataclass
+class BranchV3Result:
+    codes: List[int]
+    repairs: int
+    ambiguous: int
+
+
+def branch_v3_pair_codes(
+    data: bytes,
+    parity: int,
+    low_power: int,
+    sample_rate: float,
+    max_deviation: float,
+) -> BranchV3Result:
+    """Physics-gated branch repair for RANGE V3 experiments.
+
+    Each adjacent delta is already wrapped to [-pi,+pi]. Their pair sum can
+    therefore differ from the direct 50 ns endpoint by exactly +/-2pi. That is
+    branch ambiguity, not automatically valid wide-FM motion.
+
+    V3 considers {sum-2pi, sum, sum+2pi}. It changes the raw adjacent branch
+    only when endpoint disagreement exists and either the envelope is weak or
+    the raw branch exceeds a configurable physical FM prior. A tiny predictor
+    learned only from strong/plausible samples breaks ties. This is offline
+    evidence only; no CPU pixel DSP is added to the live path.
+    """
+    phases = [phase_rad(b) for b in data]
+    powers = [power(b) for b in data]
+    max_pair = TAU * max_deviation / sample_rate * 2.0
+    predictor = 0.0
+    have_predictor = False
+    codes: List[int] = []
+    repairs = 0
+    ambiguous_count = 0
+
+    for end in range(parity + 2, len(data), 2):
+        p, m, c = end - 2, end - 1, end
+        d0 = wrap(phases[m] - phases[p])
+        d1 = wrap(phases[c] - phases[m])
+        raw_pair = d0 + d1
+        endpoint = wrap(phases[c] - phases[p])
+        ambiguous = abs(raw_pair - endpoint) > math.pi
+        low = min(powers[p], powers[m], powers[c]) < low_power
+        chosen = raw_pair
+
+        if ambiguous:
+            ambiguous_count += 1
+            expected = predictor * 2.0 if have_predictor else endpoint
+            candidates = (raw_pair - TAU, raw_pair, raw_pair + TAU)
+
+            def branch_cost(candidate: float) -> float:
+                physical_excess = max(0.0, abs(candidate) - max_pair)
+                return abs(candidate - expected) + physical_excess * 8.0
+
+            candidate = min(candidates, key=branch_cost)
+            if low or abs(raw_pair) > max_pair:
+                if abs(candidate - raw_pair) > math.pi:
+                    repairs += 1
+                chosen = candidate
+
+        if min(powers[p], powers[m], powers[c]) >= low_power and abs(chosen) <= max_pair:
+            slope = chosen * 0.5
+            predictor = slope if not have_predictor else 0.8 * predictor + 0.2 * slope
+            have_predictor = True
+
+        codes.append(map_pair_sum_rad(chosen))
+
+    return BranchV3Result(codes=codes, repairs=repairs, ambiguous=ambiguous_count)
+
+
+@dataclass
 class PllResult:
     phase_error_rms: float
     impulse_permille: float
@@ -372,6 +442,8 @@ def analyze(data: bytes, args: argparse.Namespace) -> dict:
     m = phase5_pair_metrics(data, parity, args.low_power)
     tm = trajectory_metrics(data, parity)
     pll_lite = pll_lite_pair_codes(data, parity, args.low_power)
+    branch_v3 = branch_v3_pair_codes(
+        data, parity, args.low_power, args.sample_rate, args.max_deviation)
     disc = discriminator(data)
     pll = pll_demod(data, args.sample_rate, args.loop_bw, args.max_deviation)
 
@@ -406,6 +478,9 @@ def analyze(data: bytes, args: argparse.Namespace) -> dict:
         "trajectory_v2_mean_confidence": tm.confidence_sum / max(1, tm.pairs),
         "trajectory_v2_conf_lt64_permille": pm(tm.confidence_lt64, tm.pairs),
         "pll_lite_output_abs_p99_dac": percentile_abs([v - 20 for v in pll_lite], 0.99),
+        "v3_branch_ambiguous_permille": pm(branch_v3.ambiguous, tm.pairs),
+        "v3_branch_repairs_permille": pm(branch_v3.repairs, tm.pairs),
+        "v3_branch_output_abs_p99_dac": percentile_abs([v - 20 for v in branch_v3.codes], 0.99),
         "full_q4_discriminator_abs_p95_rad": percentile_abs(disc, 0.95),
         "full_q4_discriminator_abs_p99_rad": percentile_abs(disc, 0.99),
         "pll_loop_bw_hz": args.loop_bw,
@@ -491,6 +566,11 @@ def synthetic_self_test() -> None:
         ii = max(-8, min(7, int(round(i)))) & 0xF
         weak_raw.append((ii << 4) | qi)
 
+    v3_weak = branch_v3_pair_codes(
+        weak_raw, 1, 8, fs, 6_000_000.0)
+    assert len(v3_weak.codes) > 10000
+    assert v3_weak.ambiguous >= v3_weak.repairs
+
     # The weak-signal LUT deliberately uses a clean-trajectory holdover prior
     # when Q4 collapses near origin. Therefore the synthetic regression must
     # compare against the known clean FM trajectory, not against the same
@@ -527,6 +607,7 @@ def synthetic_self_test() -> None:
         f"winding_pm={1000.0*m.winding_disagree/max(1,m.pairs):.2f} "
         f"weak_clean_ge16 golden={1000.0*golden_hard/pairs:.1f}pm "
         f"traj={1000.0*trajectory_hard/pairs:.1f}pm "
+        f"v3_branch_repair={1000.0*v3_weak.repairs/max(1,len(v3_weak.codes)):.1f}pm "
         f"mae golden={golden_abs/pairs:.2f} traj={trajectory_abs/pairs:.2f}"
     )
 
