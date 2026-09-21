@@ -236,3 +236,18 @@ Exact adjacent-FM waveform fusion remains gated by issue #23. Every 40 MS/s IQ
 sample must participate before 2:1 reduction, and a live implementation must
 prove sustained hardware throughput plus state continuity before replacing the
 current gapless BitScrambler path.
+
+## RANGE V3 experimental contract
+
+- `RANGE V3` is additive; do not silently change RANGE V2 behavior.
+- V3 keeps BW40 and AFC off while characterizing gain/quantization so filter or
+  retune transients cannot masquerade as a range win.
+- Near-rail Q4 occupancy is not by itself a reason to reduce gain. A
+  `WEAK_DISTORTED` decision must also have independent phase-distortion
+  evidence.
+- Loss/no-carrier still returns to G62. Lower gain is only a bounded local trial
+  while a carrier remains measurable.
+- Real Q10 captures are the teacher for future phase-branch models. Synthetic
+  self-tests are regression tests, not range evidence.
+- Do not assume the unproven MODEM_DIAG 0..19 full Q10 mapping. Use the
+  correlation oracle and hardware captures before changing the live bit slice.
