@@ -13,6 +13,10 @@ static fusion_observation_t make_obs(fusion_context_t wanted)
         return fusion_make_observation(10, 38, 0, 280, 120, 20, 40, 30, 20, shadow);
     case FUSION_CONTEXT_BLOCKER:
         return fusion_make_observation(34, 28, 0, 80, 260, 80, 40, 30, 20, shadow);
+    case FUSION_CONTEXT_WEAK_DISTORTED:
+        shadow.pll_lite_slip_permille = 160;
+        return fusion_make_observation_v3(
+            22, 55, 0, 320, 60, 180, 100, 40, 30, 30, shadow);
     case FUSION_CONTEXT_OVERLOAD:
         return fusion_make_observation(50, 65, 100, 20, 30, 10, 40, 30, 90, shadow);
     case FUSION_CONTEXT_CLEAN:
@@ -55,9 +59,12 @@ int main(void)
     fusion_observation_t clean = make_obs(FUSION_CONTEXT_CLEAN);
     fusion_observation_t weak = make_obs(FUSION_CONTEXT_WEAK);
     fusion_observation_t no_carrier = make_obs(FUSION_CONTEXT_NO_CARRIER);
+    fusion_observation_t distorted = make_obs(FUSION_CONTEXT_WEAK_DISTORTED);
     assert(clean.context == FUSION_CONTEXT_CLEAN);
     assert(weak.context == FUSION_CONTEXT_WEAK);
     assert(no_carrier.context == FUSION_CONTEXT_NO_CARRIER);
+    assert(distorted.context == FUSION_CONTEXT_WEAK_DISTORTED);
+    assert(distorted.near_rail_permille == 320);
     assert(clean.quality > weak.quality);
     assert(clean.catastrophic_risk < weak.catastrophic_risk);
 
@@ -85,6 +92,13 @@ int main(void)
 
     fusion_optimizer_reset(&opt, 54);
     for (unsigned i = 0; i < 200; ++i) assert(fusion_optimizer_tick(&opt, &clean, &tm) == 54);
+
+    fusion_optimizer_reset(&opt, 62);
+    fusion_optimizer_set_gain_floor(&opt, 2);
+    fusion_temporal_metrics_t stable = {.stability = 800};
+    assert(fusion_best_candidate(&opt, FUSION_CONTEXT_WEAK_DISTORTED, &stable) > opt.state);
+    assert(!fusion_state_allowed(&opt, FUSION_CONTEXT_WEAK, 4u));
+    assert(fusion_state_allowed(&opt, FUSION_CONTEXT_WEAK_DISTORTED, 4u));
 
     fusion_optimizer_reset(&opt, 62);
     fusion_observation_t overload = make_obs(FUSION_CONTEXT_OVERLOAD);

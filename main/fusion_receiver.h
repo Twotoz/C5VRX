@@ -13,6 +13,7 @@ typedef enum {
     FUSION_CONTEXT_CLEAN,
     FUSION_CONTEXT_BLOCKER,
     FUSION_CONTEXT_OVERLOAD,
+    FUSION_CONTEXT_WEAK_DISTORTED,
     FUSION_CONTEXT_COUNT,
 } fusion_context_t;
 
@@ -46,6 +47,7 @@ typedef struct {
 
 typedef struct {
     int p_median, q_phase, clip_permille, origin_permille;
+    int near_rail_permille; /* non-hard Q4 samples touching +/-6: pre-clip compression evidence */
     int winding_permille, strong_winding_permille;
     int iq_skew_permille, iq_cross_permille, sync_quality;
     fusion_shadow_metrics_t shadow;
@@ -195,6 +197,7 @@ static inline const char *fusion_context_name(fusion_context_t c)
     case FUSION_CONTEXT_CLEAN: return "CLEAN";
     case FUSION_CONTEXT_BLOCKER: return "BLOCKER";
     case FUSION_CONTEXT_OVERLOAD: return "OVERLOAD";
+    case FUSION_CONTEXT_WEAK_DISTORTED: return "WEAK_DISTORTED";
     default: return "UNKNOWN";
     }
 }
@@ -206,6 +209,35 @@ static inline fusion_context_t fusion_classify(const fusion_observation_t *o)
     if (o->p_median >= 28 && o->q_phase < 38 &&
         (o->winding_permille >= 180 || o->shadow.lag4_disagreement_permille >= 300))
         return FUSION_CONTEXT_BLOCKER;
+    if (o->q_phase < 48 || o->p_median < 14 || o->origin_permille >= 300)
+        return FUSION_CONTEXT_WEAK;
+    return FUSION_CONTEXT_CLEAN;
+}
+
+/* RANGE V3 classifier. High gain by itself is not a fault: only call a
+ * weak signal distorted when phase evidence agrees that the near-rail cloud is
+ * losing useful information. BLOCKER keeps priority so an adjacent carrier
+ * is not mislabeled as self-compression. */
+static inline fusion_context_t fusion_classify_v3(const fusion_observation_t *o)
+{
+    if (o->clip_permille >= 20 || o->p_median >= 44) return FUSION_CONTEXT_OVERLOAD;
+    if (o->q_phase < 18 && o->origin_permille >= 650) return FUSION_CONTEXT_NO_CARRIER;
+    if (o->p_median >= 28 && o->q_phase < 38 &&
+        (o->winding_permille >= 180 || o->shadow.lag4_disagreement_permille >= 300))
+        return FUSION_CONTEXT_BLOCKER;
+
+    bool phase_distorted =
+        o->strong_winding_permille >= 80 ||
+        o->shadow.pll_lite_slip_permille >= 80 ||
+        o->shadow.consensus_outlier_permille >= 180 ||
+        o->shadow.trajectory_uncertainty_permille >= 450;
+    bool compression_evidence =
+        o->near_rail_permille >= 120 &&
+        (o->winding_permille >= 100 || phase_distorted);
+
+    if (o->p_median >= 14 && o->q_phase < 72 && o->clip_permille < 40 &&
+        (phase_distorted || compression_evidence))
+        return FUSION_CONTEXT_WEAK_DISTORTED;
     if (o->q_phase < 48 || o->p_median < 14 || o->origin_permille >= 300)
         return FUSION_CONTEXT_WEAK;
     return FUSION_CONTEXT_CLEAN;
@@ -227,6 +259,7 @@ static inline int fusion_catastrophic_risk_score(const fusion_observation_t *o)
     risk += o->shadow.pll_lite_hold_permille / 3;
     risk += o->shadow.trajectory_uncertainty_permille / 2;
     risk += o->clip_permille * 4;
+    risk += o->near_rail_permille / 4;
     return fusion_clamp(risk, 0, 1000);
 }
 
@@ -237,6 +270,7 @@ static inline int fusion_quality_score(const fusion_observation_t *o)
     score += fusion_clamp(o->sync_quality, 0, 100) / 2;
     score -= o->origin_permille / 3;
     score -= o->clip_permille * 2;
+    score -= o->near_rail_permille / 6;
     score -= o->winding_permille / 2;
     score -= o->shadow.lag4_disagreement_permille / 4;
     score -= o->shadow.consensus_outlier_permille / 3;
@@ -259,6 +293,7 @@ static inline int fusion_confidence_score(const fusion_observation_t *o)
     confidence -= o->shadow.pll_lite_slip_permille / 2;
     confidence -= o->shadow.trajectory_uncertainty_permille / 4;
     confidence -= o->clip_permille * 2;
+    confidence -= o->near_rail_permille / 6;
     return fusion_clamp(confidence, 0, 1000);
 }
 
@@ -271,6 +306,7 @@ static inline fusion_observation_t fusion_make_observation(
     fusion_observation_t o = {
         .p_median = p_median, .q_phase = q_phase,
         .clip_permille = clip_permille, .origin_permille = origin_permille,
+        .near_rail_permille = 0,
         .winding_permille = winding_permille,
         .strong_winding_permille = strong_winding_permille,
         .iq_skew_permille = iq_skew_permille,
@@ -278,6 +314,26 @@ static inline fusion_observation_t fusion_make_observation(
         .sync_quality = sync_quality, .shadow = shadow,
     };
     o.context = fusion_classify(&o);
+    o.catastrophic_risk = fusion_catastrophic_risk_score(&o);
+    o.quality = fusion_quality_score(&o);
+    o.confidence = fusion_confidence_score(&o);
+    return o;
+}
+
+/* RANGE V3 entry point. V2 keeps the original constructor above, so adding
+ * near-rail/compression evidence cannot silently change its decisions. */
+static inline fusion_observation_t fusion_make_observation_v3(
+    int p_median, int q_phase, int clip_permille, int near_rail_permille,
+    int origin_permille, int winding_permille, int strong_winding_permille,
+    int iq_skew_permille, int iq_cross_permille, int sync_quality,
+    fusion_shadow_metrics_t shadow)
+{
+    fusion_observation_t o = fusion_make_observation(
+        p_median, q_phase, clip_permille, origin_permille,
+        winding_permille, strong_winding_permille,
+        iq_skew_permille, iq_cross_permille, sync_quality, shadow);
+    o.near_rail_permille = fusion_clamp(near_rail_permille, 0, 1000);
+    o.context = fusion_classify_v3(&o);
     o.catastrophic_risk = fusion_catastrophic_risk_score(&o);
     o.quality = fusion_quality_score(&o);
     o.confidence = fusion_confidence_score(&o);

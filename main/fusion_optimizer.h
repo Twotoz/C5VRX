@@ -118,6 +118,8 @@ static inline int fusion_prior(fusion_context_t ctx, unsigned state)
     switch (ctx) {
     case FUSION_CONTEXT_NO_CARRIER: return state == 0u ? 700 : 350 - (int)state * 20;
     case FUSION_CONTEXT_WEAK: return 650 - (int)state * 35;
+    case FUSION_CONTEXT_WEAK_DISTORTED:
+        return 500 + (int)(state <= 6u ? state : 6u) * 45;
     case FUSION_CONTEXT_BLOCKER: return 430 + (int)state * 20;
     case FUSION_CONTEXT_OVERLOAD: return 300 + (int)state * 35;
     case FUSION_CONTEXT_CLEAN: default: return 600;
@@ -129,6 +131,7 @@ static inline int fusion_risk_prior(fusion_context_t ctx)
     switch (ctx) {
     case FUSION_CONTEXT_NO_CARRIER: return 900;
     case FUSION_CONTEXT_WEAK: return 600;
+    case FUSION_CONTEXT_WEAK_DISTORTED: return 650;
     case FUSION_CONTEXT_BLOCKER: return 650;
     case FUSION_CONTEXT_OVERLOAD: return 850;
     case FUSION_CONTEXT_CLEAN: default: return 150;
@@ -142,6 +145,7 @@ static inline bool fusion_state_allowed(const fusion_optimizer_t *o,
     switch (ctx) {
     case FUSION_CONTEXT_NO_CARRIER: return state == 0u;
     case FUSION_CONTEXT_WEAK: return state <= 3u;
+    case FUSION_CONTEXT_WEAK_DISTORTED: return state <= 6u;
     case FUSION_CONTEXT_CLEAN: return state <= 5u;
     case FUSION_CONTEXT_BLOCKER: return state >= 2u;
     case FUSION_CONTEXT_OVERLOAD: return state >= 4u;
@@ -177,6 +181,14 @@ static inline int fusion_candidate_value(const fusion_optimizer_t *o,
 
     int value = expected - risk / 3 + explore - (20 + distance * 35);
     value += fusion_edge_prediction(o, ctx, state) / 2;
+
+    /* RANGE V3: when amplitude is still usable but phase/compression evidence
+     * says the high-gain state is distorting it, prefer exactly one local step
+     * toward more headroom. Trial acceptance still has to prove the step. */
+    if (ctx == FUSION_CONTEXT_WEAK_DISTORTED) {
+        if (state > o->state) value += 180;
+        if (state < o->state) value -= 120;
+    }
 
     if (tm) {
         /* Lower state number means more gain. A real fast fade biases one

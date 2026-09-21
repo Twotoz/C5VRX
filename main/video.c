@@ -239,6 +239,7 @@ typedef enum {
     RX_PROFILE_HW_AGC_EXP,
     RX_PROFILE_FUSION_EXP,
     RX_PROFILE_RANGE_V2_EXP,
+    RX_PROFILE_RANGE_V3_EXP,
     RX_PROFILE_COUNT,
 } rx_profile_t;
 
@@ -764,8 +765,10 @@ typedef struct {
     int p_median;
     int q_phase;
     int n_clip;
+    int n_near_rail;
     int n_origin;
     int clip_permille;
+    int near_rail_permille;
     int origin_permille;
     int n_coherent;
     int sum_cross;
@@ -808,7 +811,14 @@ static control_metrics_t analyze_control_window(const uint8_t *sample, size_t by
         int8_t q = (int8_t)((byte & 0x0fu) << 4) >> 4;
         int8_t in_val = (int8_t)(byte & 0xf0u) >> 4;
 
-        if (in_val == -8 || in_val == 7 || q == -8 || q == 7) ++m.n_clip;
+        bool hard_rail = in_val == -8 || in_val == 7 || q == -8 || q == 7;
+        if (hard_rail) ++m.n_clip;
+        /* Q4 can compress before it reaches an exact rail. Count +/-6 samples
+         * separately from hard clipping; RANGE V3 only acts on this together
+         * with independent phase-distortion evidence. */
+        if (!hard_rail &&
+            (in_val <= -6 || in_val >= 6 || q <= -6 || q >= 6))
+            ++m.n_near_rail;
         int i2 = (int)in_val * in_val;
         int q2 = (int)q * q;
         m.sum_i += in_val;
@@ -881,6 +891,7 @@ static control_metrics_t analyze_control_window(const uint8_t *sample, size_t by
     }
     m.q_phase = bytes > 1u ? (m.n_coherent * 100) / (int)(bytes - 1u) : 0;
     m.clip_permille = bytes ? (m.n_clip * 1000) / (int)bytes : 0;
+    m.near_rail_permille = bytes ? (m.n_near_rail * 1000) / (int)bytes : 0;
     m.origin_permille = bytes ? (m.n_origin * 1000) / (int)bytes : 1000;
     m.winding_permille = m.winding_triplets ?
         (m.winding_events * 1000) / m.winding_triplets : 0;
@@ -969,12 +980,21 @@ static void fusion_observer_task(void *arg)
 
         control_metrics_t metrics =
             analyze_control_window(sample, sizeof(sample), ring_offset);
-        fusion_observation_t obs = fusion_make_observation(
-            metrics.p_median, metrics.q_phase, metrics.clip_permille,
-            metrics.origin_permille, metrics.winding_permille,
-            metrics.strong_winding_permille, metrics.iq_skew_permille,
-            metrics.iq_cross_permille, s_last_sync_quality,
-            active_demod_shadow(metrics.fusion_shadow));
+        fusion_shadow_metrics_t shadow =
+            active_demod_shadow(metrics.fusion_shadow);
+        fusion_observation_t obs =
+            s_rx_profile == RX_PROFILE_RANGE_V3_EXP ?
+            fusion_make_observation_v3(
+                metrics.p_median, metrics.q_phase, metrics.clip_permille,
+                metrics.near_rail_permille, metrics.origin_permille,
+                metrics.winding_permille, metrics.strong_winding_permille,
+                metrics.iq_skew_permille, metrics.iq_cross_permille,
+                s_last_sync_quality, shadow) :
+            fusion_make_observation(
+                metrics.p_median, metrics.q_phase, metrics.clip_permille,
+                metrics.origin_permille, metrics.winding_permille,
+                metrics.strong_winding_permille, metrics.iq_skew_permille,
+                metrics.iq_cross_permille, s_last_sync_quality, shadow);
         fusion_temporal_metrics_t tm = fusion_temporal_update(&temporal, &obs);
         fusion_temporal_publish(&tm);
     }
@@ -1031,6 +1051,7 @@ static const char *rx_profile_name(void)
     case RX_PROFILE_HW_AGC_EXP:   return "HW AGC EXP";
     case RX_PROFILE_FUSION_EXP:   return "FUSION EXP";
     case RX_PROFILE_RANGE_V2_EXP: return "RANGE V2";
+    case RX_PROFILE_RANGE_V3_EXP: return "RANGE V3";
     default:                      return "BALANCED";
     }
 }
@@ -1043,6 +1064,7 @@ static uint8_t profile_gain_min(void)
     case RX_PROFILE_RECOVERY_EXP:return 20u;
     case RX_PROFILE_FUSION_EXP:  return 34u;
     case RX_PROFILE_RANGE_V2_EXP:return 2u;
+    case RX_PROFILE_RANGE_V3_EXP:return 2u;
     default:                     return 2u;
     }
 }
@@ -1155,6 +1177,7 @@ static volatile int s_signal_strength = 0;
 static volatile int s_last_n_clip = 0;
 static volatile int s_last_n_origin = 0;
 static volatile int s_last_clip_permille = 0;
+static volatile int s_last_near_rail_permille = 0;
 static volatile int s_last_origin_permille = 0;
 static volatile int s_last_dc_i_x100 = 0;
 static volatile int s_last_dc_q_x100 = 0;
@@ -1534,7 +1557,7 @@ static void lab_print_row(const char *kind, const hw_transport_counters_t *base)
     rf_get_phy_snapshot(&phy);
 
     printf("C5VRX_LAB_ROW kind=%s gain=%u gain_reg=0x%08lx bw=%u afc=%u offset_khz=%d "
-           "agc=%u state=%u profile=%u p=%d q=%d clip_pm=%d origin_pm=%d strength=%d "
+           "agc=%u state=%u profile=%u p=%d q=%d clip_pm=%d near_rail_pm=%d origin_pm=%d strength=%d "
            "nf_valid=%u nf_dbm=%d rssi_valid=%u rssi_dbm=%d "
            "dc_i_x100=%d dc_q_x100=%d iq_skew_pm=%d iq_cross_pm=%d "
            "winding_pm=%d strong_winding_pm=%d sync_q=%d sync_width=%u "
@@ -1552,7 +1575,7 @@ static void lab_print_row(const char *kind, const hw_transport_counters_t *base)
            rf_get_frequency_offset_khz(), (unsigned)s_agc_mode, (unsigned)s_agc_state,
            (unsigned)s_rx_profile,
            s_last_p_median, s_last_q_phase, s_last_clip_permille,
-           s_last_origin_permille, s_signal_strength,
+           s_last_near_rail_permille, s_last_origin_permille, s_signal_strength,
            s_noise_floor_valid ? 1u : 0u, s_last_noise_floor_dbm,
            s_phy_rssi_valid ? 1u : 0u, s_last_phy_rssi_dbm,
            s_last_dc_i_x100, s_last_dc_q_x100,
@@ -2134,6 +2157,19 @@ static void apply_rx_profile(rx_profile_t profile)
         s_rf_bw_mode = RF_BW_MODE_AUTO;
         apply_rf_bandwidth(true);
         s_afc_mode = AFC_MODE_AUTO;
+        apply_rx_gain_tracked(62u);
+        break;
+
+    case RX_PROFILE_RANGE_V3_EXP:
+        /* Phase-model controller. Keep BW40 and zero frequency offset fixed:
+         * V3 is testing gain/quantization behavior, not mixing in filter/AFC
+         * transients. High gain remains preferred unless distortion evidence
+         * proves that one local lower-gain state is cleaner. */
+        s_agc_mode = ANALOG_AGC_ACTIVE;
+        s_rf_bw_mode = RF_BW_MODE_BW40;
+        apply_rf_bandwidth(true);
+        s_afc_mode = AFC_MODE_OFF;
+        if (rf_get_frequency_offset_khz() != 0) apply_frequency_offset_khz_tracked(0);
         apply_rx_gain_tracked(62u);
         break;
 
@@ -3063,7 +3099,8 @@ static void analog_agc_task(void *arg)
             fusion_optimizer_reset(&fusion_optimizer, s_current_gain);
             fusion_optimizer_set_gain_floor(
                 &fusion_optimizer,
-                s_rx_profile == RX_PROFILE_RANGE_V2_EXP ? 2u : 34u);
+                (s_rx_profile == RX_PROFILE_RANGE_V2_EXP ||
+                 s_rx_profile == RX_PROFILE_RANGE_V3_EXP) ? 2u : 34u);
         }
 
         if (menu_was_active) {
@@ -3102,6 +3139,7 @@ static void analog_agc_task(void *arg)
         s_last_n_clip = n_clip;
         s_last_n_origin = n_origin;
         s_last_clip_permille = clip_permille;
+        s_last_near_rail_permille = metrics.near_rail_permille;
         s_last_origin_permille = origin_permille;
         s_last_dc_i_x100 = metrics.dc_i_x100;
         s_last_dc_q_x100 = metrics.dc_q_x100;
@@ -3174,11 +3212,20 @@ static void analog_agc_task(void *arg)
         else if (sync_age_ticks < 100) ++sync_age_ticks;
         bool recent_sync = sync_age_ticks < 20;
 
-        fusion_observation_t fusion_obs = fusion_make_observation(
-            p_median, q_phase, clip_permille, origin_permille,
-            metrics.winding_permille, metrics.strong_winding_permille,
-            metrics.iq_skew_permille, metrics.iq_cross_permille,
-            sync_quality, active_demod_shadow(metrics.fusion_shadow));
+        fusion_shadow_metrics_t fusion_shadow =
+            active_demod_shadow(metrics.fusion_shadow);
+        fusion_observation_t fusion_obs =
+            s_rx_profile == RX_PROFILE_RANGE_V3_EXP ?
+            fusion_make_observation_v3(
+                p_median, q_phase, clip_permille, metrics.near_rail_permille,
+                origin_permille, metrics.winding_permille,
+                metrics.strong_winding_permille, metrics.iq_skew_permille,
+                metrics.iq_cross_permille, sync_quality, fusion_shadow) :
+            fusion_make_observation(
+                p_median, q_phase, clip_permille, origin_permille,
+                metrics.winding_permille, metrics.strong_winding_permille,
+                metrics.iq_skew_permille, metrics.iq_cross_permille,
+                sync_quality, fusion_shadow);
         s_last_fusion_quality = fusion_obs.quality;
         s_last_fusion_confidence = fusion_obs.confidence;
         s_last_fusion_context = (int)fusion_obs.context;
@@ -3200,7 +3247,8 @@ static void analog_agc_task(void *arg)
         s_last_fusion_fast_samples = fusion_tm.samples;
 
         if ((s_rx_profile == RX_PROFILE_FUSION_EXP ||
-             s_rx_profile == RX_PROFILE_RANGE_V2_EXP) &&
+             s_rx_profile == RX_PROFILE_RANGE_V2_EXP ||
+             s_rx_profile == RX_PROFILE_RANGE_V3_EXP) &&
             s_agc_mode == ANALOG_AGC_ACTIVE) {
             const fusion_temporal_metrics_t *tm_ptr =
                 fusion_tm.samples >= 8u ? &fusion_tm : NULL;
@@ -3212,7 +3260,9 @@ static void analog_agc_task(void *arg)
                           AGC_STATE_TRACK : AGC_STATE_LEARN;
             if (target_gain != s_current_gain) apply_rx_gain_tracked(target_gain);
             settle_ticks = 0;
-            if (s_rx_profile == RX_PROFILE_RANGE_V2_EXP) goto profile_post_gain;
+            if (s_rx_profile == RX_PROFILE_RANGE_V2_EXP ||
+                s_rx_profile == RX_PROFILE_RANGE_V3_EXP)
+                goto profile_post_gain;
             goto control_tail;
         }
 
