@@ -38,6 +38,7 @@
 #include "fusion_optimizer.h"
 #include "arc_controller.h"
 #include "arc_v3_controller.h"
+#include "arc_v4_glide.h"
 #include "rx_auto_lab.h"
 #include "trajectory_v2_lut.h"
 #include "hal/parlio_ll.h"
@@ -251,6 +252,7 @@ typedef enum {
     RX_PROFILE_FUSION_EXP,
     RX_PROFILE_RANGE_V2_EXP,
     RX_PROFILE_ARC_V3_EXP,
+    RX_PROFILE_ARC_V4_GLIDE_EXP,
     RX_PROFILE_COUNT,
 } rx_profile_t;
 
@@ -268,6 +270,21 @@ static volatile int s_last_arc_v3_filtered_q;
 static volatile int s_last_arc_v3_filtered_clip;
 static volatile int s_last_arc_v3_filtered_origin;
 static volatile unsigned s_last_arc_v3_up_guard;
+
+static volatile arc_v4_glide_state_t s_last_arc_v4_glide_state = ARC_V4_GLIDE_HOLD;
+static volatile arc_v4_glide_direction_t s_last_arc_v4_glide_direction = ARC_V4_GLIDE_DIR_NONE;
+static volatile arc_v4_glide_action_t s_last_arc_v4_glide_action = ARC_V4_GLIDE_ACTION_NONE;
+static volatile int s_last_arc_v4_glide_fast_p;
+static volatile int s_last_arc_v4_glide_fast_q;
+static volatile int s_last_arc_v4_glide_fast_clip;
+static volatile int s_last_arc_v4_glide_fast_origin;
+static volatile int s_last_arc_v4_glide_weak_votes;
+static volatile int s_last_arc_v4_glide_strong_votes;
+static volatile int s_last_arc_v4_glide_margin;
+static volatile uint32_t s_last_arc_v4_glide_epoch;
+static volatile uint32_t s_last_arc_v4_glide_writes;
+static volatile uint32_t s_last_arc_v4_glide_escape_writes;
+
 static volatile uint32_t s_profile_generation;
 static volatile bool s_profile_fft_forced;
 static volatile bool s_fft_q4_effect_known;
@@ -1052,6 +1069,7 @@ static const char *rx_profile_name(void)
     case RX_PROFILE_FUSION_EXP:   return "FUSION EXP";
     case RX_PROFILE_RANGE_V2_EXP:return "RANGE V2";
     case RX_PROFILE_ARC_V3_EXP:  return "ARC V3 EXP";
+    case RX_PROFILE_ARC_V4_GLIDE_EXP: return "ARC V4 GLIDE";
     default:                     return "BALANCED";
     }
 }
@@ -1073,7 +1091,9 @@ static uint8_t profile_gain_max(void)
     switch (s_rx_profile) {
     case RX_PROFILE_BLOCKER_EXP: return 48u;
     case RX_PROFILE_ARC:
-    case RX_PROFILE_ARC_V3_EXP:  return rf_get_arc_gain_table()->max_index;
+    case RX_PROFILE_ARC_V3_EXP:
+    case RX_PROFILE_ARC_V4_GLIDE_EXP:
+        return rf_get_arc_gain_table()->max_index;
     default:                     return 62u;
     }
 }
@@ -1378,7 +1398,8 @@ static void settings_load(void)
     if (s_rx_profile == RX_PROFILE_RANGE_EXP ||
         s_rx_profile == RX_PROFILE_FUSION_EXP ||
         s_rx_profile == RX_PROFILE_ARC ||
-        s_rx_profile == RX_PROFILE_ARC_V3_EXP) {
+        s_rx_profile == RX_PROFILE_ARC_V3_EXP ||
+        s_rx_profile == RX_PROFILE_ARC_V4_GLIDE_EXP) {
         /* RANGE/FUSION have one deterministic RF shape across reboot: the
          * proven full-video filter, with no acquisition-time filter or AFC writes. */
         s_rf_bw_mode = RF_BW_MODE_BW40;
@@ -1407,6 +1428,7 @@ static void settings_load(void)
         case RX_PROFILE_RANGE_V2_EXP: s_current_gain = 62u; break;
         case RX_PROFILE_ARC:          s_current_gain = rf_get_arc_survival_gain(); break;
         case RX_PROFILE_ARC_V3_EXP:   s_current_gain = rf_get_arc_survival_gain(); break;
+        case RX_PROFILE_ARC_V4_GLIDE_EXP: s_current_gain = rf_get_arc_survival_gain(); break;
         default:                      s_current_gain = 52u; break;
         }
         s_current_gain = profile_gain_clamp(s_current_gain);
@@ -2738,6 +2760,17 @@ static void apply_rx_profile(rx_profile_t profile)
          * gain placement is the only moving actuator: BW40, offset 0. Q4
          * starvation may climb above the old G62 survival entry; overload may
          * descend below it. Semantic sync is not a gain-up prerequisite. */
+        s_agc_mode = ANALOG_AGC_ACTIVE;
+        s_rf_bw_mode = RF_BW_MODE_BW40;
+        apply_rf_bandwidth(true);
+        s_afc_mode = AFC_MODE_OFF;
+        if (rf_get_frequency_offset_khz() != 0) apply_frequency_offset_khz_tracked(0);
+        apply_rx_gain_tracked(rf_get_arc_survival_gain());
+        break;
+
+    case RX_PROFILE_ARC_V4_GLIDE_EXP:
+        /* GLIDE keeps the analog shape fixed and moves only the vendor gain
+         * index. The ~6 ms observer owns its small overlap steps. */
         s_agc_mode = ANALOG_AGC_ACTIVE;
         s_rf_bw_mode = RF_BW_MODE_BW40;
         apply_rf_bandwidth(true);
