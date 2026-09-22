@@ -185,7 +185,8 @@ uint8_t alpha_fm_reference_pair(uint8_t previous_raw,
                                 uint8_t state,
                                 uint8_t *next_state)
 {
-    return alpha_code_from_phase(q4_phase5(previous_raw),
+    const uint8_t previous_phase = (uint8_t)(s_alpha_lut[previous_raw] & 31u);
+    return alpha_code_from_phase(previous_phase,
                                  sample0, sample1, state, next_state);
 }
 
@@ -281,7 +282,7 @@ esp_err_t alpha_fm_transform(const uint8_t *input, uint8_t *output,
      * same phase; after their 3-bit states match, every later hardware output
      * is byte-identical to the persistent Alpha reference.
      */
-    uint8_t persistent_phase = q4_phase5(previous_raw);
+    uint8_t persistent_phase = (uint8_t)(s_alpha_lut[previous_raw] & 31u);
     uint8_t persistent_state = s_boundary_state;
     uint8_t hardware_phase = 0u;
     uint8_t hardware_state = ALPHA_INITIAL_STATE;
@@ -309,7 +310,7 @@ esp_err_t alpha_fm_transform(const uint8_t *input, uint8_t *output,
         output[pair * 2u + 1u] = accepted;
         repaired_pairs = pair + 1u;
 
-        persistent_phase = q4_phase5(sample1);
+        persistent_phase = (uint8_t)(s_alpha_lut[sample1] & 31u);
         hardware_phase = persistent_phase;
         persistent_state = next_persistent;
         hardware_state = next_hardware;
