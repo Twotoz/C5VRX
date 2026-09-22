@@ -4033,7 +4033,12 @@ static void console_diag_task(void *arg)
                     uint32_t rx_dscr = 0, tx_dscr = 0;
                     uint32_t rx_off = get_rx_dma_offset(&rx_dscr);
                     uint32_t tx_off = get_tx_dma_offset(&tx_dscr);
-                    uint32_t dist = (rx_off >= tx_off) ? (rx_off - tx_off) : (sizeof(s_raw_ring) - tx_off + rx_off);
+                    bool adjacent_diag = s_demod_mode == DEMOD_MODE_ADJACENT_M2M;
+                    uint32_t dist = adjacent_diag ? 0u :
+                        ((rx_off >= tx_off) ? (rx_off - tx_off) :
+                         (sizeof(s_raw_ring) - tx_off + rx_off));
+                    const adjacent_m2m_stats_t *adj_stats =
+                        adjacent_diag ? adjacent_m2m_stats() : NULL;
                     int rx_nodes = s_rx_dscr_count;
                     int tx_nodes = s_menu_active ? 0 : s_tx_dscr_count;
                     const fpv_channel_t *ch = rf_get_current_channel();
@@ -4055,6 +4060,8 @@ static void console_diag_task(void *arg)
                            s_rx_profile == RX_PROFILE_ARC ? " [DEFAULT]" : " [EXPERIMENTAL]");
                     printf(" RF Bandwidth:               mode=%s active=%s\n",
                            rf_bw_mode_name(), s_current_bw40 ? "BW40" : "BW20");
+                    printf(" Demodulator:                %s%s\n", demod_mode_name(),
+                           adjacent_diag ? " [40M adjacent -> 20M [D,D]]" : "");
                     printf(" PHY Environment:            NF=%s%d dBm RSSI=%s%d dBm FFT_Q4=%s best=%d\n",
                            s_noise_floor_valid ? "" : "NA/", s_last_noise_floor_dbm,
                            s_phy_rssi_valid ? "" : "NA/", s_last_phy_rssi_dbm,
@@ -4095,8 +4102,25 @@ static void console_diag_task(void *arg)
                     printf(" Gain Transitions:           %lu (control window=%u IQ samples / %.1f us)\n",
                            (unsigned long)s_gain_transition_count, CONTROL_SAMPLE_BYTES,
                            (double)CONTROL_SAMPLE_BYTES * 1000000.0 / (double)IQ_RATE_HZ);
-                    printf(" GDMA Ring:                  dist=%lu (rx_off=%lu, tx_off=%lu)\n",
-                           (unsigned long)dist, (unsigned long)rx_off, (unsigned long)tx_off);
+                    if (adjacent_diag) {
+                        printf(" GDMA Rings:                 raw_rx=%lu/32768 adjacent_tx=%lu/%u writer_half=%d next_slot=%u\n",
+                               (unsigned long)rx_off, (unsigned long)tx_off,
+                               ADJACENT_TX_RING_BYTES, (int)s_adjacent_writer_half,
+                               (unsigned)s_adjacent_next_slot);
+                        printf(" Adjacent M2M:               runs=%lu last=%luus max=%luus fail=%lu short=%lu boundary_hold=%lu warn=%lu seq_miss=%lu\n",
+                               (unsigned long)adj_stats->transforms,
+                               (unsigned long)adj_stats->last_us,
+                               (unsigned long)adj_stats->max_us,
+                               (unsigned long)adj_stats->failures,
+                               (unsigned long)adj_stats->short_writes,
+                               (unsigned long)adj_stats->held_boundary_pairs,
+                               (unsigned long)s_adjacent_deadline_misses,
+                               (unsigned long)s_adjacent_sequence_misses);
+                    } else {
+                        printf(" GDMA Ring:                  dist=%lu (rx_off=%lu, tx_off=%lu)\n",
+                               (unsigned long)dist, (unsigned long)rx_off,
+                               (unsigned long)tx_off);
+                    }
                     printf(" Zero-EOF Status:            RX patched=%d nodes, TX patched=%d nodes\n",
                            rx_nodes, tx_nodes);
                     printf(" Transport Faults:           PARLIO tx_empty=%lu rx_ovf=%lu tx_eof=%lu | GDMA in=%lu out=%lu | BS eof_ovl=%lu\n",
