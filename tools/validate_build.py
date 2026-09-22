@@ -31,7 +31,7 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("four .bsasm programs (Golden + output + Trajectory + full-Q4 adjacent)",
+check("four .bsasm programs (Golden + output + Trajectory + exact adjacent-Phase5)",
       {f.name for f in bsasm_files} ==
       {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_adjacent.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
@@ -270,7 +270,7 @@ check("offline demod benchmark gates adjacent/PLL experiments",
 adj_c = read(MAIN / "adjacent_fm.c")
 adj_h = read(MAIN / "adjacent_fm.h")
 adj_asm = read(MAIN / "fm_adjacent.bsasm")
-check("full-Q4 adjacent M2M uses every raw sample before 2:1 output mapping",
+check("exact adjacent-Phase5 M2M uses every raw sample before 2:1 output mapping",
       "add_current1:" in adj_asm and
       "add_previous1:" in adj_asm and
       "add_current2:" in adj_asm and
@@ -286,7 +286,7 @@ check("adjacent mode has measured half-ring deadline telemetry and safe fallback
 check("adjacent M2M owns both BS directions only when selected",
       "bitscrambler_loopback_create" in adj_c and
       "SOC_BITSCRAMBLER_ATTACH_I2S0" in adj_c and
-      "s_demod_mode != DEMOD_MODE_ADJACENT_FULLQ4" in all_c and
+      "s_demod_mode != DEMOD_MODE_ADJACENT_PHASE5" in all_c and
       "plain PARLIO TX" in all_c)
 check("adjacent block reset repairs cross-boundary first output pair",
       "previous_raw" in adj_c and
@@ -315,7 +315,7 @@ check("Trajectory v2 is opt-in and Golden remains boot default",
       "s_fm_traj_program" in all_c)
 check("experimental realtime demods keep the 6BIT@40 contract",
       "s_demod_mode == DEMOD_MODE_TRAJECTORY_V2" in all_c and
-      "DEMOD_MODE_ADJACENT_FULLQ4" in all_c and
+      "DEMOD_MODE_ADJACENT_PHASE5" in all_c and
       "s_output_mode = VIDEO_OUTPUT_6BIT_40" in all_c and
       "DEMOD -> GOLDEN" in all_c)
 check("Trajectory v2 supervisor mirrors two-stage token LUT and uncertainty",
