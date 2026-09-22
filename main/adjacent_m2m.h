@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include "esp_err.h"
 
-#define ADJACENT_M2M_BLOCK_BYTES 16384u
+#define ADJACENT_M2M_BLOCK_BYTES 16368u /* 4 x 4092-byte RX GDMA descriptors */
 
 typedef struct {
     uint32_t transforms;
