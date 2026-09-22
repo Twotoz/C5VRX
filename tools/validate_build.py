@@ -186,6 +186,13 @@ check("issue 28 quiet fixed baseline and reset present",
       "AFC_MODE_OFF" in all_c)
 check("vendor PHY timer inventory is reachable on demand",
       "rf_dump_tracked_timers();" in all_c)
+check("LIFT-FM MODEM_DIAG scanner is bounded and restores production IQ routes",
+      "lab_run_modem_diag_scan" in all_c and
+      "rf_route_modem_diag_window(first)" in all_c and
+      "rf_restore_modem_iq_routes()" in all_c and
+      "first_signal > 24u" in all_c and
+      "MODEM_DIAG0_IDX + first_signal + lane" in all_c and
+      "mapping=Q6-9,I16-19" in all_c)
 check("manual gain cannot step below production lower bound",
       "s_current_gain > LAB_GAIN_MIN" in all_c and
       "LAB_GAIN_MIN       2u" in all_c)
