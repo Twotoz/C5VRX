@@ -144,7 +144,7 @@ BITSCRAMBLER_PROGRAM(s_fm_traj_program, "fm_traj");
 #define RAW_RING_BYTES   32768u      /* 32 KiB cyclic raw-Q4 ring */
 #define ADJACENT_TX_SLOTS  3u          /* triple-buffered exact-adjacent [D,D] output */
 #define ADJACENT_TX_RING_BYTES (ADJACENT_M2M_BLOCK_BYTES * ADJACENT_TX_SLOTS)
-#define ADJACENT_BLOCK_US  410u         /* 16 KiB / 40 MB/s = 409.6 us */
+#define ADJACENT_BLOCK_US  409u         /* 16368 / 40 MB/s = 409.2 us */
 #define ADJACENT_WARN_US   330u         /* desired ~20% realtime margin */
 #define ADJACENT_HARD_US   400u         /* fail closed before producer cadence is lost */
 #define DAC_IDLE_CODE    20u         /* Black/blanking pedestal; sync is 0 */
@@ -437,7 +437,9 @@ static esp_err_t start_rx(void)
             .indirect_mount  = false,
         },
     };
-    return parlio_rx_unit_receive(s_rx, s_raw_ring, sizeof(s_raw_ring), &cfg);
+    size_t rx_bytes = s_demod_mode == DEMOD_MODE_ADJACENT_M2M ?
+                      ADJACENT_M2M_BLOCK_BYTES * 2u : sizeof(s_raw_ring);
+    return parlio_rx_unit_receive(s_rx, s_raw_ring, rx_bytes, &cfg);
 }
 
 /* ----- Start TX loop ----- */
@@ -2778,7 +2780,7 @@ static esp_err_t adjacent_transform_completed_half(unsigned half, unsigned slot,
     uint8_t *dst = s_adjacent_tx_ring + slot * ADJACENT_M2M_BLOCK_BYTES;
 
     /* The writer has just crossed into the opposite half, so this complete
-     * 16-KiB half is an immutable zero-copy M2M input for one 409.6-us window.
+     * 16,368-byte half is an immutable zero-copy M2M input for one 409.2-us window.
      * Save only the few bytes needed to repair finite-run priming state. */
     if (adjacent_writer_half() == (int)half) return ESP_ERR_INVALID_STATE;
     sync_dma_m2c(src, ADJACENT_M2M_BLOCK_BYTES);
@@ -2926,7 +2928,7 @@ static esp_err_t adjacent_live_start(void)
 
     int writer = adjacent_writer_half();
 
-    /* Prefill two chronological 16-KiB slots before TX starts. Triple
+    /* Prefill two chronological descriptor-aligned slots before TX starts. Triple
      * buffering leaves the realtime transform one full block to finish before
      * a slot is reused; unlike a two-slot ping-pong it does not require 2x
      * transform-speed headroom. */
