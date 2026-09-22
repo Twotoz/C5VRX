@@ -128,10 +128,16 @@ check("three-second BOOT recovery cannot be blocked by persisted menu state",
 check("experimental BW auto and 4-bit@80 remain opt-in",
       "AUTO EXP" in all_c and "VIDEO_OUTPUT_4BIT_80" in all_c and
       "DAC4_RATE_HZ     80000000u" in all_c)
-check("experimental output implementations remain isolated from the product menu",
+check("experimental output implementations remain isolated from the product menu but lab-accessible",
       "VIDEO_OUTPUT_4BIT_80" in all_c and
       "DEMOD_MODE_TRAJECTORY_V2" in all_c and
-      '"VIDEO"' not in all_c[all_c.index("static const char *const s_menu_nav[4]"):all_c.index("static inline void menu_ui_pixel")])
+      '"VIDEO"' not in all_c[all_c.index("static const char *const s_menu_nav[4]"):all_c.index("static inline void menu_ui_pixel")] and
+      "lab_apply_video_pair" in all_c and
+      "} else if (c == 'D') {" in all_c and
+      "} else if (c == 'B') {" in all_c and
+      "demod == DEMOD_MODE_TRAJECTORY_V2" in all_c and
+      "output == VIDEO_OUTPUT_4BIT_80" in all_c and
+      "not persisted; reboot returns production defaults" in all_c)
 check("TRAJ V2 keeps its required 6BIT@40 pairing",
       "if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)" in all_c and
       "s_output_mode = VIDEO_OUTPUT_6BIT_40;" in all_c and
