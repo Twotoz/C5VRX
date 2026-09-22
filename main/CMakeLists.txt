@@ -36,3 +36,5 @@ target_bitscrambler_add_src("fm_traj.bsasm")
 # Exact two-bundle Phase5-domain LUT16 hardware oracle for LIFT-FM research.
 # This is compiled for assembler/firmware validation but is not a live menu mode.
 target_bitscrambler_add_src("fm_lift16_phase.bsasm")
+# Independent RX BitScrambler preprocessor for the opt-in exact LIFT-FM path.
+target_bitscrambler_add_src("fm_rx_phase.bsasm")
