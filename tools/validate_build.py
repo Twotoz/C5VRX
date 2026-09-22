@@ -137,10 +137,9 @@ check("experimental BW auto and 4-bit@80 remain opt-in",
       "DAC4_RATE_HZ     80000000u" in all_c)
 check("4BIT@80 remains reachable with a valid GOLDEN pairing",
       's_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?' in all_c and
-      "s_demod_mode == DEMOD_MODE_TRAJECTORY_V2" in all_c and
+      "s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5" in all_c and
       "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;" in all_c and
-      "DEMOD -> GOLDEN" in all_c and
-      "selecting 4BIT@80" in all_c)
+      "DEMOD -> GOLDEN" in all_c)
 check("TRAJ V2 keeps its required 6BIT@40 pairing",
       "if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)" in all_c and
       "s_output_mode = VIDEO_OUTPUT_6BIT_40;" in all_c and
@@ -271,10 +270,12 @@ adj_c = read(MAIN / "adjacent_fm.c")
 adj_h = read(MAIN / "adjacent_fm.h")
 adj_asm = read(MAIN / "fm_adjacent.bsasm")
 check("exact adjacent-Phase5 M2M uses every raw sample before 2:1 output mapping",
-      "add_current1:" in adj_asm and
+      "load_current1:" in adj_asm and
       "add_previous1:" in adj_asm and
-      "add_current2:" in adj_asm and
+      "load_current2:" in adj_asm and
       "add_previous2:" in adj_asm and
+      "map_pair:" in adj_asm and
+      "emit_and_prefetch:" in adj_asm and
       "write 16" in adj_asm and
       "ADJACENT_FM_BLOCK_BYTES 16384u" in adj_h)
 check("adjacent mode has measured half-ring deadline telemetry and safe fallback",
