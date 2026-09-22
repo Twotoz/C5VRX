@@ -37,6 +37,7 @@
 #include "fusion_temporal.h"
 #include "fusion_optimizer.h"
 #include "arc_controller.h"
+#include "adjacent_m2m.h"
 #include "trajectory_v2_lut.h"
 #include "hal/parlio_ll.h"
 #include "hal/usb_serial_jtag_ll.h"
@@ -59,6 +60,7 @@
 #include "nvs.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -138,7 +140,12 @@ BITSCRAMBLER_PROGRAM(s_fm_traj_program, "fm_traj");
 #define IQ_RATE_HZ       40000000u   /* MODEM_DIAG / PARLIO RX clock */
 #define DAC_RATE_HZ      40000000u   /* default 6-bit PARLIO TX clock */
 #define DAC4_RATE_HZ     80000000u   /* experimental 4-bit PARLIO TX clock */
-#define RAW_RING_BYTES   32768u      /* 32 KiB cyclic ring; Golden Phase5 datapath */
+#define RAW_RING_BYTES   32768u      /* 32 KiB cyclic raw-Q4 ring */
+#define ADJACENT_TX_SLOTS  3u          /* triple-buffered exact-adjacent [D,D] output */
+#define ADJACENT_TX_RING_BYTES (ADJACENT_M2M_BLOCK_BYTES * ADJACENT_TX_SLOTS)
+#define ADJACENT_BLOCK_US  410u         /* 16 KiB / 40 MB/s = 409.6 us */
+#define ADJACENT_WARN_US   330u         /* desired ~20% realtime margin */
+#define ADJACENT_HARD_US   400u         /* fail closed before producer cadence is lost */
 #define DAC_IDLE_CODE    20u         /* Black/blanking pedestal; sync is 0 */
 #define BOOT_BTN_GPIO    GPIO_NUM_28 /* Seeed Studio XIAO ESP32-C5 BOOT Button */
 #define MENU_RUNTIME_ENABLED 1       /* Native CVBS menu enabled after geometry rework */
@@ -227,6 +234,7 @@ typedef enum {
 typedef enum {
     DEMOD_MODE_GOLDEN_PHASE5 = 0,
     DEMOD_MODE_TRAJECTORY_V2 = 1,
+    DEMOD_MODE_ADJACENT_M2M = 2,
     DEMOD_MODE_COUNT,
 } demod_mode_t;
 
@@ -279,6 +287,22 @@ static const char *TAG = "c5vrx3_video";
  * TX starts one block (4096 bytes = 102.4 µs) behind RX; they share
  * PLL_F240M/6, so separation cannot drift during normal operation. */
 static DMA_ATTR __attribute__((aligned(64))) uint8_t s_raw_ring[RAW_RING_BYTES];
+
+/* Exact-adjacent mode allocates these only when selected at boot. Keeping
+ * 64 KiB of experimental buffering out of static BSS preserves Golden's
+ * proven memory headroom. */
+static uint8_t *s_adjacent_tx_ring;
+static uint8_t *s_adjacent_scratch;
+static const uint8_t *s_tx_ring_base = s_raw_ring;
+static size_t s_tx_ring_bytes = RAW_RING_BYTES;
+static TaskHandle_t s_adjacent_task_handle;
+static esp_timer_handle_t s_adjacent_timer;
+static volatile int s_adjacent_writer_half = -1;
+static volatile unsigned s_adjacent_next_slot;
+static volatile uint32_t s_adjacent_deadline_misses;
+static volatile uint32_t s_adjacent_sequence_misses;
+static uint8_t s_adjacent_previous_raw;
+static uint8_t s_adjacent_previous_code = DAC_IDLE_CODE;
 
 static parlio_rx_unit_handle_t      s_rx;
 static parlio_rx_delimiter_handle_t s_rx_delimiter;
@@ -346,7 +370,8 @@ static esp_err_t create_tx_unit(video_output_mode_t mode)
         .valid_start_delay     = 0,
         .valid_stop_delay      = 0,
         .trans_queue_depth     = 1u,
-        .max_transfer_size     = sizeof(s_raw_ring),
+        .max_transfer_size     = s_demod_mode == DEMOD_MODE_ADJACENT_M2M ?
+                                 ADJACENT_TX_RING_BYTES : sizeof(s_raw_ring),
         .dma_burst_size        = 32u,
         .shift_edge            = PARLIO_SHIFT_EDGE_NEG,
         .bit_pack_order        = PARLIO_BIT_PACK_ORDER_LSB,
@@ -387,12 +412,14 @@ static esp_err_t prepare_tx(void)
     esp_err_t err = create_tx_unit(s_output_mode);
     if (err != ESP_OK) return err;
 
-    const bitscrambler_config_t bs_cfg = {
-        .dir = BITSCRAMBLER_DIR_TX,
-        .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
-    };
-    err = bitscrambler_new(&bs_cfg, &s_flight_bs);
-    if (err != ESP_OK) return err;
+    if (s_demod_mode != DEMOD_MODE_ADJACENT_M2M) {
+        const bitscrambler_config_t bs_cfg = {
+            .dir = BITSCRAMBLER_DIR_TX,
+            .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
+        };
+        err = bitscrambler_new(&bs_cfg, &s_flight_bs);
+        if (err != ESP_OK) return err;
+    }
 
     return parlio_tx_unit_enable(s_tx);
 }
@@ -417,19 +444,21 @@ static esp_err_t start_rx(void)
 
 static esp_err_t start_tx(void)
 {
-    /* Phase5 LUT is embedded in fm.bsasm -- no runtime bitscrambler_load_lut().
-     * Hardware oracle v9 proved embedded LUT is byte-exact at 20 MS/s;
-     * a separately preloaded LUT is NOT retained by the active PARLIO TX run. */
+    /* Golden/Trajectory decorate the raw ring. Exact-adjacent instead feeds
+     * an already-demodulated triple-buffered [D,D] ring to plain PARLIO TX. */
+    const bool adjacent = s_demod_mode == DEMOD_MODE_ADJACENT_M2M;
+    uint8_t *buffer = adjacent ? s_adjacent_tx_ring : s_raw_ring;
+    size_t bytes = adjacent ? ADJACENT_TX_RING_BYTES : sizeof(s_raw_ring);
+    if (!buffer) return ESP_ERR_INVALID_STATE;
+
     const parlio_transmit_config_t cfg = {
         .idle_value          = s_output_mode == VIDEO_OUTPUT_4BIT_80 ? (DAC_IDLE_CODE >> 2) : DAC_IDLE_CODE,
-        .bitscrambler_program = NULL, /* s_flight_bs is controlled explicitly */
-        .flags.loop_transmission = true,  /* Infinite -- never generates downstream EOF */
+        .bitscrambler_program = NULL,
+        .flags.loop_transmission = true,
     };
-    /* TX reads sizeof(s_raw_ring) * 8 bits, then loops.
-     * loop_transmission=true means PARLIO TX never stops; the BitScrambler
-     * with eof_on=downstream therefore runs uninterrupted forever. */
-    return parlio_tx_unit_transmit(s_tx, s_raw_ring,
-                                   sizeof(s_raw_ring) * 8u, &cfg);
+    s_tx_ring_base = buffer;
+    s_tx_ring_bytes = bytes;
+    return parlio_tx_unit_transmit(s_tx, buffer, bytes * 8u, &cfg);
 }
 
 static int s_rx_dma_ch = -1;
@@ -443,8 +472,9 @@ static inline uint32_t get_rx_dma_offset(uint32_t *out_dscr_addr)
     if (dscr_addr >= 0x40800000u && dscr_addr < 0x40860000u) {
         dma_descriptor_t *dscr = (dma_descriptor_t *)(uintptr_t)dscr_addr;
         uint8_t *buf = (uint8_t *)dscr->buffer;
-        if (buf >= s_raw_ring && buf < s_raw_ring + sizeof(s_raw_ring)) {
-            return (uint32_t)(buf - s_raw_ring);
+        if (s_tx_ring_base && buf >= s_tx_ring_base &&
+            buf < s_tx_ring_base + s_tx_ring_bytes) {
+            return (uint32_t)(buf - s_tx_ring_base);
         }
     }
     return 0;
@@ -1099,18 +1129,18 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
-    return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
+    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) return "TRAJ V2";
+    if (s_demod_mode == DEMOD_MODE_ADJACENT_M2M) return "ADJ M2M";
+    return "GOLDEN";
 }
 
 static void cycle_demod_mode(void)
 {
-    s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
-                   DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
-    /* TRAJ V2 and 4BIT@80 use different BitScrambler/output contracts.
-     * Selecting TRAJ V2 therefore moves the DAC back to its proven 6-bit path.
-     * The inverse action is handled on the DAC control: selecting 4BIT@80
-     * automatically returns to GOLDEN instead of making 4-bit unreachable. */
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)
+    s_demod_mode = (demod_mode_t)(((unsigned)s_demod_mode + 1u) % DEMOD_MODE_COUNT);
+    /* Both trajectory experiments need the quiet 6BIT@40 output contract.
+     * ADJ M2M additionally changes BitScrambler ownership and therefore takes
+     * effect after leaving the menu and rebooting. */
+    if (s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5)
         s_output_mode = VIDEO_OUTPUT_6BIT_40;
 
     /* Semantic sync interpretation changes with the demod LUT. Do not carry
@@ -1344,7 +1374,7 @@ static void settings_load(void)
     } else if (settings.demod_mode < DEMOD_MODE_COUNT) {
         s_demod_mode = (demod_mode_t)settings.demod_mode;
     }
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    if (s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5) s_output_mode = VIDEO_OUTPUT_6BIT_40;
     if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
     if (settings.rx_profile < RX_PROFILE_COUNT) {
         s_rx_profile = (rx_profile_t)settings.rx_profile;
@@ -2500,7 +2530,7 @@ static void menu_draw_video_page(void)
 {
     char detected[24];
     bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80 ||
-                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2;
+                        s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5;
     menu_draw_page_title("VIDEO OUTPUT", experimental ? "EXPERIMENTAL" : "DEFAULT");
     menu_ui_value_box(100, 22, 130, "DAC", output_mode_name());
     menu_ui_value_box(238, 22, 138, "DEMOD", demod_mode_name());
@@ -2553,6 +2583,7 @@ static void quiet_tx_interrupts(void)
 
 static void start_flight_demodulator(void)
 {
+    ESP_ERROR_CHECK(s_flight_bs ? ESP_OK : ESP_ERR_INVALID_STATE);
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
     if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
@@ -2620,8 +2651,9 @@ static void video_set_menu_mode(bool active)
         }
 
         ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
-        /* Live -> menu: stop the live producer once. */
-        ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+        /* Live -> menu: exact-adjacent is reboot-scoped and never enters this
+         * path; Golden/Trajectory own the flight TX BitScrambler here. */
+        ESP_ERROR_CHECK(s_flight_bs ? bitscrambler_disable(s_flight_bs) : ESP_ERR_INVALID_STATE);
 
         /* Menu raster is byte-oriented 6-bit@40 even if live output was 4-bit@80. */
         if (s_tx_unit_mode != VIDEO_OUTPUT_6BIT_40) {
@@ -2629,6 +2661,11 @@ static void video_set_menu_mode(bool active)
         }
         start_menu_tx();
     } else {
+        if (s_demod_mode == DEMOD_MODE_ADJACENT_M2M) {
+            settings_save();
+            printf("[DEMOD] ADJ M2M selected; rebooting into split M2M pipeline\n");
+            esp_restart();
+        }
         ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
         /* Menu -> live: the BitScrambler is already disabled; do not disable twice. */
         if (s_tx_unit_mode != s_output_mode) {
@@ -2787,6 +2824,7 @@ static void open_recovery_menu(void)
      * hold restores the simplest proven video contract before menu TX starts. */
     s_menu_boot_btn_enabled = true;
     s_video_std_mode = VIDEO_STD_MODE_AUTO;
+    bool adjacent_was_active = s_demod_mode == DEMOD_MODE_ADJACENT_M2M;
     s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
     s_output_mode = VIDEO_OUTPUT_6BIT_40;
     apply_rx_profile(RX_PROFILE_ARC);
@@ -2794,6 +2832,10 @@ static void open_recovery_menu(void)
     s_menu_cursor = 0;
     s_menu_timeout_ticks = 0;
     settings_save();
+    if (adjacent_was_active) {
+        printf("[RECOVERY] GOLDEN + 6BIT@40 + ARC restored; rebooting from ADJ M2M\n");
+        esp_restart();
+    }
     video_set_menu_mode(true);
     printf("[RECOVERY] GOLDEN + 6BIT@40 + ARC restored; menu %s\n",
            s_menu_active ? "opened" : "unavailable");
@@ -2802,6 +2844,10 @@ static void open_recovery_menu(void)
 static void handle_button_long_click(void)
 {
     if (!s_menu_active) {
+        if (s_demod_mode == DEMOD_MODE_ADJACENT_M2M) {
+            printf("[ADJ M2M] Menu entry is reboot-scoped; hold BOOT 3s to restore GOLDEN first\n");
+            return;
+        }
         if (!MENU_RUNTIME_ENABLED) {
             printf("[BTN: LONG] Menu temporarily disabled; live video unchanged\n");
             return;
@@ -2857,7 +2903,7 @@ static void handle_button_long_click(void)
             s_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
                             VIDEO_OUTPUT_4BIT_80 : VIDEO_OUTPUT_6BIT_40;
             if (s_output_mode == VIDEO_OUTPUT_4BIT_80 &&
-                s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
+                s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5) {
                 /* 4BIT@80 has its own fm4 BitScrambler contract. Keep the
                  * combination valid by returning to GOLDEN automatically. */
                 s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
@@ -2989,7 +3035,9 @@ static void analog_agc_task(void *arg)
                         settings_save();
                         printf("[MENU: DEMOD] -> %s%s\n", demod_mode_name(),
                                s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ?
-                               " (6BIT@40 forced)" : "");
+                               " (6BIT@40 forced)" :
+                               s_demod_mode == DEMOD_MODE_ADJACENT_M2M ?
+                               " (6BIT@40, reboot on exit)" : "");
                         menu_render_menu();
                         s_menu_timeout_ticks = 0;
                     }
