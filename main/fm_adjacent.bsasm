@@ -1,35 +1,33 @@
-# Experimental exact full-Q4 adjacent-FM M2M kernel.
+# Exact adjacent-Phase5 FM M2M kernel.
 #
-# Input:  packed Q4/I4 bytes at 40 MS/s.
-# Output: 6-bit CVBS at 20 MS/s duplicated as [D,D], so output byte rate
-#         remains 40 MB/s for the proven 40 MHz resistor-DAC transport.
+# Input:  full packed Q4/I4 bytes at 40 MS/s.
+# Output: 20 MS/s unique 6-bit CVBS duplicated as [D,D] at 40 MB/s.
 #
-# The LUT is loaded by adjacent_fm.c:
-#   0x000..0x0ff: raw Q4/I4 -> {phase8, -phase8}
-#   0x200..0x3ff: signed 9-bit adjacent pair sum -> P20/G2 CVBS code
+# This deliberately uses the SAME 5-bit circular phase quantizer as Golden so
+# the live A/B changes trajectory ordering rather than phase resolution:
 #
-# Exact ordering:
-#   d0 = wrap8(phi1 - phi0)
-#   d1 = wrap8(phi2 - phi1)
-#   pair = sign_extend(d0) + sign_extend(d1)
-#   CVBS = map(pair)
+#   Golden:  phase[n-2] ----------------> phase[n]   (endpoint)
+#   ADJ:     phase[n-2] -> phase[n-1] -> phase[n]   (two adjacent deltas)
 #
-# The pair sum is NOT wrapped a second time. Counter A/B temporarily hold
-# sign-extended adjacent deltas so A8 carries the required winding state into
-# the 512-entry final map bank.
+# LUT word layout:
+#   bits  0..5  final CVBS for address (d0_5 | d1_5<<5)
+#   bits  6..10 positive Phase5 for raw-Q4 addresses 0..255
+#   bits 11..15 negative Phase5 for raw-Q4 addresses 0..255
 #
-# O8..O15 retains -phase(previous) across steady-state pairs. A finite M2M run
-# resets transport state at a block boundary; adjacent_fm.c repairs the first
-# [D,D] pair from the previous raw sample after each run.
+# d0 and d1 are kept separately as 5-bit circular deltas and only combined by
+# the final 32x32 LUT. There is therefore NO second wrap of d0+d1.
+#
+# O26..O30 retains -Phase5(current) between output pairs. Finite M2M runs reset
+# this state, so adjacent_fm.c repairs output pair 0 from the preceding raw byte.
 
 cfg prefetch true
 cfg eof_on upstream
 cfg trailing_bytes 9
 cfg lut_width_bits 16
 
-address1:
-    # Address sample 1 and reset the low-byte delta accumulator.
-    set 8..15 O8..O15,
+prime:
+    # Prime the first raw Q4/I4 lookup. The first pair's previous phase is
+    # unavailable after a finite M2M reset and is repaired by adjacent_fm.c.
     set 16 0,
     set 17 1,
     set 18 2,
@@ -39,38 +37,33 @@ address1:
     set 22 6,
     set 23 7,
     set 24..25 L,
-    read 8,
-    LDCTDAL 0
+    read 8
 
-add_current1:
-    # O0..O7 = -phase1, O8..O15 = -phase(previous).
-    set 0..7 L8..L15,
-    set 8..15 O8..O15,
-    set 16..23 L0..L7,
-    ADDCTIAL
+load_current1:
+    # Save old -phase in O0..O4, retain new -phase in O26..O30, and initialize
+    # A low with current Phase5 * 8 on the phase8 circle.
+    set 0..4 O26..O30,
+    set 5..18 L,
+    set 19..23 L6..L10,
+    set 24..25 L,
+    set 26..30 L11..L15,
+    set 31 L,
+    LDCTIAL
 
 add_previous1:
-    set 0..15 O0..O15,
-    set 16..23 O8..O15,
+    # A = wrap8(+phase1 + -phase_previous); bits A3..A7 are exact d0_5.
+    set 0..18 L,
+    set 19..23 O0..O4,
+    set 24..25 L,
+    set 26..30 O26..O30,
+    set 31 L,
     ADDCTIAL
 
-sign_d0:
-    # A low now contains wrapped d0. Sign-extend it before pair accumulation.
-    set 0..15 O0..O15,
-    set 16..23 A0..A7,
-    set 24 A7,
-    set 25 A7,
-    set 26 A7,
-    set 27 A7,
-    set 28 A7,
-    set 29 A7,
-    set 30 A7,
-    set 31 A7,
-    LDCTIA
-
 address2:
-    # Address sample 2 while preserving -phase1. Clear B low for d1.
-    set 0..15 O0..O15,
+    # Preserve d0 and -phase1 while addressing the middle/current second sample.
+    set 5..9 A3..A7,
+    set 10..14 O26..O30,
+    set 15 L,
     set 16 0,
     set 17 1,
     set 18 2,
@@ -80,61 +73,57 @@ address2:
     set 22 6,
     set 23 7,
     set 24..25 L,
-    read 8,
-    LDCTDBL 0
+    set 26..30 O26..O30,
+    set 31 L,
+    read 8
 
-add_current2:
-    # Replace retained previous phase with -phase2 for the next pair.
-    set 0..7 O0..O7,
-    set 8..15 L8..L15,
-    set 16..23 L0..L7,
-    ADDCTIBL
+load_current2:
+    # Initialize A with phase2 * 8 and retain -phase2 for the next output pair.
+    set 5..14 O5..O14,
+    set 15..18 L,
+    set 19..23 L6..L10,
+    set 24..25 L,
+    set 26..30 L11..L15,
+    set 31 L,
+    LDCTIAL
 
 add_previous2:
-    set 0..15 O0..O15,
-    set 16..23 O0..O7,
-    ADDCTIBL
+    # A = wrap8(+phase2 + -phase1); bits A3..A7 are exact d1_5.
+    set 5..9 O5..O9,
+    set 10..18 L,
+    set 19..23 O10..O14,
+    set 24..25 L,
+    set 26..30 O26..O30,
+    set 31 L,
+    ADDCTIAL
 
-sign_d1:
-    # B low now contains wrapped d1. Sign-extend independently.
-    set 0..15 O0..O15,
-    set 16..23 B0..B7,
-    set 24 B7,
-    set 25 B7,
-    set 26 B7,
-    set 27 B7,
-    set 28 B7,
-    set 29 B7,
-    set 30 B7,
-    set 31 B7,
-    LDCTIB
+map_pair:
+    # Final LUT address: d0_5 in bits 0..4, d1_5 in bits 5..9.
+    # The table converts signed(d0)+signed(d1) directly to CVBS; it never wraps
+    # the pair sum back onto the 5-bit phase circle.
+    set 0..15 L,
+    set 16..20 O5..O9,
+    set 21..25 A3..A7,
+    set 26..30 O26..O30,
+    set 31 L
 
-pair_sum:
-    # Full-width add preserves d0+d1 in [-256,+254].
-    set 0..15 O0..O15,
-    set 16..31 B0..B15,
-    ADDCTIA
-
-map_cvbs:
-    # Address 0x200 | (pair & 0x1ff): A0..A8 plus bank bit 9.
-    set 0..15 O0..O15,
-    set 16 A0,
-    set 17 A1,
-    set 18 A2,
-    set 19 A3,
-    set 20 A4,
-    set 21 A5,
-    set 22 A6,
-    set 23 A7,
-    set 24 A8,
-    set 25 H
-
-emit:
-    # Duplicate the exact 20-MS/s CVBS code to the 40-MHz DAC transport.
+emit_and_prefetch:
+    # Emit [D,D] and prefetch the first raw sample of the next pair.
     set 0..5 L0..L5,
     set 6..7 L,
     set 8..13 L0..L5,
     set 14..15 L,
-    set 16..31 L,
+    set 16 0,
+    set 17 1,
+    set 18 2,
+    set 19 3,
+    set 20 4,
+    set 21 5,
+    set 22 6,
+    set 23 7,
+    set 24..25 L,
+    set 26..30 O26..O30,
+    set 31 L,
+    read 8,
     write 16,
-    jmp address1
+    jmp load_current1
