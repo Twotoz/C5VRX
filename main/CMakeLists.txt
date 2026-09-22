@@ -3,6 +3,7 @@ idf_component_register(
         "main.c"
         "arc_phy.c"
         "adjacent_fm.c"
+        "alpha_fm.c"
         "rf.c"
         "video.c"
         "menu_raster.c"
@@ -31,3 +32,4 @@ target_bitscrambler_add_src("fm.bsasm")
 target_bitscrambler_add_src("fm4.bsasm")
 target_bitscrambler_add_src("fm_traj.bsasm")
 target_bitscrambler_add_src("fm_adjacent.bsasm")
+target_bitscrambler_add_src("fm_alpha.bsasm")
