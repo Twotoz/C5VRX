@@ -30,10 +30,16 @@ findings that explain its failure.
 - Do not silently change the tested XIAO D4..D9 DAC pin order or the physical
   8.2k/3.9k/2k/1k/470R/240R plus 200R network.
 - Keep live output compatibility explicit: GOLDEN supports both `6BIT@40` and
-  experimental `4BIT@80`; TRAJ V2 currently supports only `6BIT@40`.
-  Selecting TRAJ V2 must auto-select `6BIT@40`; selecting `4BIT@80` while
-  TRAJ V2 is selected must auto-return the demodulator to GOLDEN rather than
-  making the 4-bit mode unreachable.
+  experimental `4BIT@80`; TRAJ V2, ADJ PHASE5 and ALPHA support only
+  `6BIT@40`. Selecting any experimental demod must force `6BIT@40`;
+  selecting `4BIT@80` while one is active must auto-return the demodulator to
+  GOLDEN rather than making the 4-bit mode unreachable.
+- ADJ PHASE5 and ALPHA own both BitScrambler directions through the finite M2M
+  loopback path. Entering or leaving either mode requires the clean reboot
+  ownership transition. Alpha must keep high-confidence exact-adjacent samples
+  transparent; predictive correction is only for low-confidence observations.
+  The bounded prefix repair after each finite M2M half is boundary stitching,
+  not permission to move the 40 MS/s data plane onto the CPU.
 - The standalone menu raster is always emitted through the byte-oriented
   `6BIT@40` TX geometry. On menu exit, recreate the live TX unit for the
   selected output mode before restarting the flight BitScrambler.

@@ -42,6 +42,8 @@ The current Range v2 work is documented in:
 - `docs/range-v2-knowledge.md` — preserved control/demod engineering knowledge;
 - `docs/range-v2-research-notes.md` — RF research hypotheses and hardware test plan.
 - `docs/trajectory-v2.md` — two-bundle adjacent-trajectory demod, confidence model and PLL-lite validation plan.
+- `docs/adjacent-phase5.md` — exact adjacent Phase5 M2M discriminator and realtime boundary contract.
+- `docs/alpha.md` — Alpha predictive exact-adjacent demod, confidence gate and hardware A/B plan.
 
 ## Web Flasher (Zero-Install Browser Flashing)
 

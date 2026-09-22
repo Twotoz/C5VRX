@@ -31,14 +31,14 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("four .bsasm programs (Golden + output + Trajectory + exact adjacent-Phase5)",
+check("five .bsasm programs (Golden + output + Trajectory + adjacent + Alpha)",
       {f.name for f in bsasm_files} ==
-      {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_adjacent.bsasm"},
+      {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_adjacent.bsasm", "fm_alpha.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
-    if bsasm_file.name == "fm_adjacent.bsasm":
+    if bsasm_file.name in {"fm_adjacent.bsasm", "fm_alpha.bsasm"}:
         check("fm_adjacent.bsasm: bounded M2M uses upstream EOF",
               "cfg eof_on upstream" in bsasm)
         check("fm_adjacent.bsasm: bounded M2M flushes prefetch",
@@ -58,7 +58,7 @@ c_files = list(MAIN.glob("*.c"))
 all_c = "\n".join(read(f) for f in c_files)
 c_names = [f.name for f in c_files]
 
-check("production receiver, adjacent demod and dedicated menu raster modules", set(c_names) == {"main.c", "arc_phy.c", "adjacent_fm.c", "rf.c", "video.c", "menu_raster.c"},
+check("production receiver, M2M demods and dedicated menu raster modules", set(c_names) == {"main.c", "arc_phy.c", "adjacent_fm.c", "alpha_fm.c", "rf.c", "video.c", "menu_raster.c"},
       f"found: {c_names}")
 check("main.c present", "main.c" in c_names)
 check("rf.c present", "rf.c" in c_names)
@@ -294,6 +294,45 @@ check("adjacent block reset repairs cross-boundary first output pair",
       "output[0] = first" in adj_c and
       "output[1] = first" in adj_c and
       "previous_off" in all_c)
+
+alpha_c = read(MAIN / "alpha_fm.c")
+alpha_h = read(MAIN / "alpha_fm.h")
+alpha_asm = read(MAIN / "fm_alpha.bsasm")
+alpha_model = read(ROOT / "tools" / "alpha_demod_model.py")
+check("Alpha uses exact adjacent evidence before predictive correction",
+      "delta0_lookup:" in alpha_asm and
+      "delta1_lookup:" in alpha_asm and
+      "sum_load:" in alpha_asm and
+      "sum_add:" in alpha_asm and
+      "tracker_lookup:" in alpha_asm and
+      "emit_and_prefetch:" in alpha_asm and
+      "A0..A5" in alpha_asm and
+      "A9" in alpha_asm)
+check("Alpha high-confidence path is transparent and low-confidence path is bounded",
+      "if (high_confidence) return" in alpha_c and
+      "ALPHA_MILD_INNOVATION 8" in alpha_c and
+      "ALPHA_MEDIUM_INNOVATION 28" in alpha_c and
+      "ALPHA_MAX_LOWCONF_STEP 24" in alpha_c and
+      "raw_high_confidence" in alpha_c)
+check("Alpha carries predictive state before CVBS output",
+      "previous_code >> 3" in read(ROOT / "docs" / "alpha.md") and
+      "set 0 O3" in alpha_asm and
+      "set 22..24 O0..O2" in alpha_asm and
+      "set 0..5 L10..L15" in alpha_asm)
+check("Alpha finite M2M reset has bounded convergence repair",
+      "ALPHA_BOUNDARY_REPAIR_MAX_PAIRS 512u" in alpha_h and
+      "hardware_state == persistent_state" in alpha_c and
+      "state_convergence_misses" in alpha_h and
+      "max_boundary_repair_pairs" in alpha_h)
+check("Alpha host oracle guards strong transparency and weak hard-error tail",
+      "high-confidence Alpha is deliberately transparent" in alpha_model and
+      'weak["alpha_ge16_pm"] < weak["adjacent_ge16_pm"] * 0.75' in alpha_model and
+      'weak["alpha_ge32_pm"] < weak["adjacent_ge32_pm"] * 0.50' in alpha_model)
+check("Alpha is selectable as a separate persisted experimental demod",
+      "DEMOD_MODE_ALPHA = 3" in all_c and
+      'return "ALPHA"' in all_c and
+      "alpha_fm_transform" in all_c and
+      "demod_uses_m2m" in all_c)
 
 traj_asm = read(MAIN / "fm_traj.bsasm")
 traj_gen = read(ROOT / "tools" / "train_trajectory_v2.py")
@@ -566,8 +605,8 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, 4-bit, Trajectory and adjacent BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_adjacent.bsasm"],
+check("Golden, 4-bit, Trajectory, adjacent and Alpha BitScrambler programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_adjacent.bsasm", "fm_alpha.bsasm"],
       f"found: {bs_srcs}")
 
 # ---- Summary ----

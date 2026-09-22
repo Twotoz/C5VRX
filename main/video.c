@@ -6,7 +6,7 @@
  *   MODEM_DIAG full Q4/I4 @ 40 MS/s
  *     -> PARLIO RX POS edge @ 40 MHz
  *     -> 32 KiB cyclic raw DMA ring (HP SRAM)
- *     -> PARLIO TX + selectable Golden Phase5 / Trajectory v2 BitScrambler
+ *     -> selectable Golden / Trajectory or ADJ/Alpha M2M demod
  *     -> [D,D] 6-bit CVBS @ 20 MS/s unique / 40 MHz DAC clock
  *     -> 6-bit resistor DAC
  *
@@ -38,6 +38,7 @@
 #include "fusion_optimizer.h"
 #include "arc_controller.h"
 #include "adjacent_fm.h"
+#include "alpha_fm.h"
 #include "trajectory_v2_lut.h"
 #include "hal/parlio_ll.h"
 #include "hal/usb_serial_jtag_ll.h"
@@ -230,6 +231,7 @@ typedef enum {
     DEMOD_MODE_GOLDEN_PHASE5 = 0,
     DEMOD_MODE_TRAJECTORY_V2 = 1,
     DEMOD_MODE_ADJACENT_PHASE5 = 2,
+    DEMOD_MODE_ALPHA = 3,
     DEMOD_MODE_COUNT,
 } demod_mode_t;
 
@@ -251,23 +253,29 @@ static volatile video_output_mode_t s_output_mode = VIDEO_OUTPUT_6BIT_40;
 static video_output_mode_t s_tx_unit_mode = VIDEO_OUTPUT_6BIT_40;
 static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
 static demod_mode_t s_boot_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+
+static bool demod_uses_m2m(demod_mode_t mode)
+{
+    return mode == DEMOD_MODE_ADJACENT_PHASE5 || mode == DEMOD_MODE_ALPHA;
+}
 static volatile rx_profile_t s_rx_profile = RX_PROFILE_ARC;
 
 /* Exact-adjacent mode uses a second DMA-capable ring. It is allocated only
  * when that experimental mode boots, so Golden keeps its proven memory shape. */
-static uint8_t *s_adj_ring;
-static TaskHandle_t s_adj_task;
-static volatile bool s_adj_run;
-static volatile bool s_adj_task_stopped = true;
-static volatile bool s_adj_tx_started;
-static volatile esp_err_t s_adj_error = ESP_OK;
-static volatile uint32_t s_adj_half0_runs;
-static volatile uint32_t s_adj_half1_runs;
-static volatile uint32_t s_adj_boundary_misses;
+static uint8_t *s_m2m_ring;
+static TaskHandle_t s_m2m_task;
+static volatile bool s_m2m_run;
+static volatile bool s_m2m_task_stopped = true;
+static volatile bool s_m2m_tx_started;
+static volatile esp_err_t s_m2m_error = ESP_OK;
+static volatile uint32_t s_m2m_half0_runs;
+static volatile uint32_t s_m2m_half1_runs;
+static volatile uint32_t s_m2m_boundary_misses;
 
 /* Used by the early adjacent boot-fallback path; implementation lives with
  * the rest of the NVS settings helpers below. */
 static void settings_save(void);
+static const char *demod_mode_name(void);
 static volatile uint32_t s_profile_generation;
 static volatile bool s_profile_fft_forced;
 static volatile bool s_fft_q4_effect_known;
@@ -289,6 +297,8 @@ static const int s_dac4_gpio[4] = {11, 12, 8, 9};
 _Static_assert(IQ_RATE_HZ == 40000000u, "IQ rate must be 40 MHz");
 _Static_assert(DAC_RATE_HZ == 40000000u, "DAC rate must be 40 MHz");
 _Static_assert(RAW_RING_BYTES == 32768u, "Ring must be exactly 32768 bytes");
+_Static_assert(ALPHA_FM_BLOCK_BYTES == ADJACENT_FM_BLOCK_BYTES,
+               "Alpha and adjacent M2M halves must have identical geometry");
 _Static_assert(CONTROL_SAMPLE_BYTES <= 4092u, "Control window must fit one GDMA descriptor");
 _Static_assert(FUSION_FAST_SAMPLE_BYTES <= 4092u, "Fusion shadow window must fit one GDMA descriptor");
 
@@ -407,9 +417,9 @@ static esp_err_t prepare_tx(void)
     esp_err_t err = create_tx_unit(s_output_mode);
     if (err != ESP_OK) return err;
 
-    /* ADJACENT owns both BitScrambler directions through the M2M loopback
-     * driver. Its DAC path is therefore plain PARLIO TX fed by s_adj_ring. */
-    if (s_demod_mode != DEMOD_MODE_ADJACENT_PHASE5) {
+    /* ADJ PHASE5 and ALPHA own both BitScrambler directions through M2M.
+     * Their output is already DAC-ready [D,D], so PARLIO TX stays plain. */
+    if (!demod_uses_m2m(s_demod_mode)) {
         const bitscrambler_config_t bs_cfg = {
             .dir = BITSCRAMBLER_DIR_TX,
             .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
@@ -449,11 +459,10 @@ static esp_err_t start_tx(void)
         .bitscrambler_program = NULL, /* s_flight_bs is controlled explicitly */
         .flags.loop_transmission = true,  /* Infinite -- never generates downstream EOF */
     };
-    /* Golden/Trajectory read raw IQ through the TX BitScrambler. ADJACENT
-     * reads an already-demodulated [D,D] ring and therefore bypasses the
-     * PARLIO decorator entirely. Both rings remain 32 KiB / 40 MB/s. */
-    void *payload = s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5 ?
-                    (void *)s_adj_ring : (void *)s_raw_ring;
+    /* Golden/Trajectory read raw IQ through the TX BitScrambler. M2M demods
+     * feed an already-demodulated [D,D] ring directly to plain PARLIO TX. */
+    void *payload = demod_uses_m2m(s_demod_mode) ?
+                    (void *)s_m2m_ring : (void *)s_raw_ring;
     return parlio_tx_unit_transmit(s_tx, payload,
                                    sizeof(s_raw_ring) * 8u, &cfg);
 }
@@ -487,37 +496,38 @@ static inline uint32_t get_tx_dma_offset(uint32_t *out_dscr_addr)
         if (buf >= s_raw_ring && buf < s_raw_ring + sizeof(s_raw_ring)) {
             return (uint32_t)(buf - s_raw_ring);
         }
-        if (s_adj_ring && buf >= s_adj_ring &&
-            buf < s_adj_ring + sizeof(s_raw_ring)) {
-            return (uint32_t)(buf - s_adj_ring);
+        if (s_m2m_ring && buf >= s_m2m_ring &&
+            buf < s_m2m_ring + sizeof(s_raw_ring)) {
+            return (uint32_t)(buf - s_m2m_ring);
         }
     }
     return 0;
 }
 
-#define ADJ_HALF_TRIGGER_OFFSET (4u * 4092u) /* 16368: descriptor begins 16 B before half */
-#define ADJ_BOUNDARY_SETTLE_US 2u
-#define ADJ_TX_GUARD_US 64u
+#define M2M_HALF_TRIGGER_OFFSET (4u * 4092u) /* 16368: descriptor begins 16 B before half */
+#define M2M_BOUNDARY_SETTLE_US 2u
+#define M2M_TX_GUARD_US 64u
 
-static esp_err_t adjacent_runtime_prepare(void)
+static esp_err_t m2m_runtime_prepare(void)
 {
-    if (s_adj_ring) return ESP_OK;
-    s_adj_ring = heap_caps_aligned_alloc(64u, RAW_RING_BYTES,
+    if (s_m2m_ring) return ESP_OK;
+    s_m2m_ring = heap_caps_aligned_alloc(64u, RAW_RING_BYTES,
                                          MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    if (!s_adj_ring) return ESP_ERR_NO_MEM;
-    memset(s_adj_ring, DAC_IDLE_CODE, RAW_RING_BYTES);
-    sync_dma_c2m(s_adj_ring, RAW_RING_BYTES);
+    if (!s_m2m_ring) return ESP_ERR_NO_MEM;
+    memset(s_m2m_ring, DAC_IDLE_CODE, RAW_RING_BYTES);
+    sync_dma_c2m(s_m2m_ring, RAW_RING_BYTES);
 
-    esp_err_t err = adjacent_fm_init();
+    esp_err_t err = s_demod_mode == DEMOD_MODE_ALPHA ?
+                    alpha_fm_init() : adjacent_fm_init();
     if (err != ESP_OK) {
-        free(s_adj_ring);
-        s_adj_ring = NULL;
+        free(s_m2m_ring);
+        s_m2m_ring = NULL;
         return err;
     }
     return ESP_OK;
 }
 
-static esp_err_t adjacent_fallback_to_golden(esp_err_t reason)
+static esp_err_t m2m_fallback_to_golden(esp_err_t reason)
 {
     /* Never leave a persisted experimental demod in a boot loop. If the M2M
      * engine cannot allocate/start or misses its initial realtime deadline,
@@ -525,92 +535,100 @@ static esp_err_t adjacent_fallback_to_golden(esp_err_t reason)
     s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
     s_output_mode = VIDEO_OUTPUT_6BIT_40;
     settings_save();
-    ESP_LOGE(TAG, "ADJACENT unavailable (%s); restoring GOLDEN and rebooting",
-             esp_err_to_name(reason));
+    ESP_LOGE(TAG, "%s unavailable (%s); restoring GOLDEN and rebooting",
+             demod_mode_name(), esp_err_to_name(reason));
     vTaskDelay(pdMS_TO_TICKS(80));
     esp_restart();
     return reason;
 }
 
-static bool adjacent_process_half(unsigned half)
+static bool m2m_process_half(unsigned half)
 {
-    const size_t input_off = half ? ADJACENT_FM_BLOCK_BYTES : 0u;
-    const size_t output_off = half ? 0u : ADJACENT_FM_BLOCK_BYTES;
-    const size_t previous_off = half ? (ADJACENT_FM_BLOCK_BYTES - 1u) :
+    const size_t block_bytes = ALPHA_FM_BLOCK_BYTES;
+    const size_t input_off = half ? block_bytes : 0u;
+    const size_t output_off = half ? 0u : block_bytes;
+    const size_t previous_off = half ? (block_bytes - 1u) :
                                        (RAW_RING_BYTES - 1u);
 
     sync_dma_m2c(s_raw_ring + previous_off, 1u);
     const uint8_t previous_raw = s_raw_ring[previous_off];
 
-    esp_err_t err = adjacent_fm_transform(
-        s_raw_ring + input_off, s_adj_ring + output_off,
-        ADJACENT_FM_BLOCK_BYTES, previous_raw);
+    esp_err_t err;
+    if (s_boot_demod_mode == DEMOD_MODE_ALPHA) {
+        err = alpha_fm_transform(
+            s_raw_ring + input_off, s_m2m_ring + output_off,
+            block_bytes, previous_raw);
+    } else {
+        err = adjacent_fm_transform(
+            s_raw_ring + input_off, s_m2m_ring + output_off,
+            block_bytes, previous_raw);
+    }
     if (err != ESP_OK) {
-        s_adj_error = err;
+        s_m2m_error = err;
         return false;
     }
 
-    if (half) ++s_adj_half1_runs;
-    else ++s_adj_half0_runs;
+    if (half) ++s_m2m_half1_runs;
+    else ++s_m2m_half0_runs;
 
     /* A half must be transformed before RX reaches that same raw half again.
      * Detect a missed 409.6 us service window from the live descriptor region. */
     uint32_t off = get_rx_dma_offset(NULL);
-    bool missed = half ? (off >= ADJ_HALF_TRIGGER_OFFSET) :
-                         (off < ADJ_HALF_TRIGGER_OFFSET);
+    bool missed = half ? (off >= M2M_HALF_TRIGGER_OFFSET) :
+                         (off < M2M_HALF_TRIGGER_OFFSET);
     if (missed) {
-        ++s_adj_boundary_misses;
-        s_adj_error = ESP_ERR_TIMEOUT;
+        ++s_m2m_boundary_misses;
+        s_m2m_error = ESP_ERR_TIMEOUT;
         return false;
     }
     return true;
 }
 
-static void adjacent_worker_task(void *arg)
+static void m2m_worker_task(void *arg)
 {
     (void)arg;
-    s_adj_task_stopped = false;
-    s_adj_tx_started = false;
-    s_adj_error = ESP_OK;
+    s_m2m_task_stopped = false;
+    s_m2m_tx_started = false;
+    s_m2m_error = ESP_OK;
 
     uint32_t last_off = get_rx_dma_offset(NULL);
-    bool was_high = last_off >= ADJ_HALF_TRIGGER_OFFSET;
+    bool was_high = last_off >= M2M_HALF_TRIGGER_OFFSET;
     unsigned ready_mask = 0u;
 
-    while (s_adj_run) {
+    while (s_m2m_run) {
         uint32_t off = get_rx_dma_offset(NULL);
-        bool high = off >= ADJ_HALF_TRIGGER_OFFSET;
+        bool high = off >= M2M_HALF_TRIGGER_OFFSET;
 
         /* Descriptor 4 starts at 16368. Wait 2 us so the final 16 bytes of
          * half 0 have definitely landed before the M2M reader touches them. */
         if (!was_high && high) {
-            esp_rom_delay_us(ADJ_BOUNDARY_SETTLE_US);
-            if (!adjacent_process_half(0u)) break;
+            esp_rom_delay_us(M2M_BOUNDARY_SETTLE_US);
+            if (!m2m_process_half(0u)) break;
             ready_mask |= 1u;
             off = get_rx_dma_offset(NULL);
-            high = off >= ADJ_HALF_TRIGGER_OFFSET;
+            high = off >= M2M_HALF_TRIGGER_OFFSET;
         }
 
         /* High->low is the 32 KiB ring wrap: half 1 is now immutable. */
         if (was_high && !high) {
-            esp_rom_delay_us(ADJ_BOUNDARY_SETTLE_US);
-            if (!adjacent_process_half(1u)) break;
+            esp_rom_delay_us(M2M_BOUNDARY_SETTLE_US);
+            if (!m2m_process_half(1u)) break;
             ready_mask |= 2u;
 
             /* Start only immediately after a fresh half-1 transform. raw1 maps
              * to output half0, so TX reads half0 while the next raw0 transform
              * writes output half1. The guard gives M2M jitter headroom. */
-            if (!s_adj_tx_started && ready_mask == 3u) {
-                esp_rom_delay_us(ADJ_TX_GUARD_US);
+            if (!s_m2m_tx_started && ready_mask == 3u) {
+                esp_rom_delay_us(M2M_TX_GUARD_US);
                 esp_err_t err = start_tx();
                 if (err != ESP_OK) {
-                    s_adj_error = err;
+                    s_m2m_error = err;
                     break;
                 }
-                s_adj_tx_started = true;
+                s_m2m_tx_started = true;
             }
             off = get_rx_dma_offset(NULL);
-            high = off >= ADJ_HALF_TRIGGER_OFFSET;
+            high = off >= M2M_HALF_TRIGGER_OFFSET;
         }
 
         was_high = high;
@@ -620,9 +638,9 @@ static void adjacent_worker_task(void *arg)
         taskYIELD();
     }
 
-    s_adj_run = false;
-    s_adj_task_stopped = true;
-    s_adj_task = NULL;
+    s_m2m_run = false;
+    s_m2m_task_stopped = true;
+    s_m2m_task = NULL;
     vTaskDelete(NULL);
 }
 
@@ -1261,6 +1279,7 @@ static const char *output_mode_name(void)
 static const char *demod_mode_name(void)
 {
     if (s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) return "ADJ PHASE5";
+    if (s_demod_mode == DEMOD_MODE_ALPHA) return "ALPHA";
     return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
 }
 
@@ -1269,6 +1288,8 @@ static void cycle_demod_mode(void)
     if (s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5)
         s_demod_mode = DEMOD_MODE_ADJACENT_PHASE5;
     else if (s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5)
+        s_demod_mode = DEMOD_MODE_ALPHA;
+    else if (s_demod_mode == DEMOD_MODE_ALPHA)
         s_demod_mode = DEMOD_MODE_TRAJECTORY_V2;
     else
         s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
@@ -1285,8 +1306,7 @@ static void cycle_demod_mode(void)
 
 static bool demod_requires_reboot(void)
 {
-    return s_boot_demod_mode == DEMOD_MODE_ADJACENT_PHASE5 ||
-           s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5;
+    return demod_uses_m2m(s_boot_demod_mode) || demod_uses_m2m(s_demod_mode);
 }
 
 static void apply_rf_bandwidth(bool bw40)
@@ -1641,7 +1661,7 @@ static void poll_transport_faults(void)
     }
     if (BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].eof_overload) {
         ++s_hw_counters.bs_eof_overload_count;
-        if (s_demod_mode != DEMOD_MODE_ADJACENT_PHASE5)
+        if (!demod_uses_m2m(s_demod_mode))
         BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
         flags |= LAG_EVT_BS_EOF_OVERLOAD;
     }
@@ -2723,7 +2743,7 @@ static void quiet_tx_interrupts(void)
 
 static void start_flight_demodulator(void)
 {
-    if (s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) return;
+    if (demod_uses_m2m(s_demod_mode)) return;
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
     if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
@@ -2793,10 +2813,10 @@ static void video_set_menu_mode(bool active)
         ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
         /* Live -> menu: stop the live producer once. ADJACENT has no PARLIO
          * flight BitScrambler; stop its half-ring worker instead. */
-        if (s_boot_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) {
-            s_adj_run = false;
+        if (demod_uses_m2m(s_boot_demod_mode)) {
+            s_m2m_run = false;
             int64_t stop_deadline = esp_timer_get_time() + 20000;
-            while (!s_adj_task_stopped && esp_timer_get_time() < stop_deadline)
+            while (!s_m2m_task_stopped && esp_timer_get_time() < stop_deadline)
                 vTaskDelay(1);
         } else {
             ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
@@ -2963,14 +2983,14 @@ static void open_recovery_menu(void)
 {
     /* ADJACENT changes BitScrambler ownership. A three-second recovery from
      * that mode first persists the proven Golden contract and reboots cleanly. */
-    if (s_boot_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) {
+    if (demod_uses_m2m(s_boot_demod_mode)) {
         s_menu_boot_btn_enabled = true;
         s_video_std_mode = VIDEO_STD_MODE_AUTO;
         s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
         s_output_mode = VIDEO_OUTPUT_6BIT_40;
         apply_rx_profile(RX_PROFILE_ARC);
         settings_save();
-        printf("[RECOVERY] ADJACENT -> GOLDEN + 6BIT@40 + ARC; rebooting\n");
+        printf("[RECOVERY] M2M demod -> GOLDEN + 6BIT@40 + ARC; rebooting\n");
         vTaskDelay(pdMS_TO_TICKS(80));
         esp_restart();
     }
@@ -3066,7 +3086,7 @@ static void handle_button_long_click(void)
         case 5: /* SAVE & EXIT */
             settings_save();
             if (demod_requires_reboot()) {
-                printf("[MENU] Applying ADJACENT demod ownership -> reboot\n");
+                printf("[MENU] Applying M2M demod ownership -> reboot\n");
                 vTaskDelay(pdMS_TO_TICKS(80));
                 esp_restart();
             }
@@ -3187,7 +3207,7 @@ static void analog_agc_task(void *arg)
                         settings_save();
                         printf("[MENU: DEMOD] -> %s%s\n", demod_mode_name(),
                                s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5 ?
-                               " (6BIT@40 forced; ADJ applies on reboot)" : "");
+                               " (6BIT@40 forced; M2M modes apply on reboot)" : "");
                         menu_render_menu();
                         s_menu_timeout_ticks = 0;
                     }
@@ -3261,7 +3281,7 @@ static void analog_agc_task(void *arg)
             if (s_menu_timeout_ticks >= 240) {
                 settings_save();
                 if (demod_requires_reboot()) {
-                    printf("[MENU] Applying ADJACENT demod ownership -> reboot\n");
+                    printf("[MENU] Applying M2M demod ownership -> reboot\n");
                     vTaskDelay(pdMS_TO_TICKS(80));
                     esp_restart();
                 }
@@ -3993,9 +4013,26 @@ static void console_diag_task(void *arg)
                                (unsigned long)adj->short_writes,
                                (unsigned long)adj->failures,
                                (unsigned long)adj->deadline_misses,
-                               (unsigned long)s_adj_boundary_misses,
-                               (unsigned long)s_adj_half0_runs,
-                               (unsigned long)s_adj_half1_runs);
+                               (unsigned long)s_m2m_boundary_misses,
+                               (unsigned long)s_m2m_half0_runs,
+                               (unsigned long)s_m2m_half1_runs);
+                    } else if (s_boot_demod_mode == DEMOD_MODE_ALPHA) {
+                        const alpha_fm_stats_t *alpha = alpha_fm_stats();
+                        printf(" Alpha M2M:                  runs=%lu m2m=%lu/%luus total=%lu/%luus written=%lu short=%lu fail=%lu deadline=%lu boundary=%lu repair_max=%lu converge_fail=%lu halves=%lu/%lu\n",
+                               (unsigned long)alpha->runs,
+                               (unsigned long)alpha->last_m2m_us,
+                               (unsigned long)alpha->max_m2m_us,
+                               (unsigned long)alpha->last_us,
+                               (unsigned long)alpha->max_us,
+                               (unsigned long)alpha->last_bytes_written,
+                               (unsigned long)alpha->short_writes,
+                               (unsigned long)alpha->failures,
+                               (unsigned long)alpha->deadline_misses,
+                               (unsigned long)s_m2m_boundary_misses,
+                               (unsigned long)alpha->max_boundary_repair_pairs,
+                               (unsigned long)alpha->state_convergence_misses,
+                               (unsigned long)s_m2m_half0_runs,
+                               (unsigned long)s_m2m_half1_runs);
                     }
                     printf(" Gain Transitions:           %lu (control window=%u IQ samples / %.1f us)\n",
                            (unsigned long)s_gain_transition_count, CONTROL_SAMPLE_BYTES,
@@ -4105,9 +4142,9 @@ esp_err_t video_start(void)
     s_boot_demod_mode = s_demod_mode;
 
     esp_err_t err;
-    if (s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) {
-        err = adjacent_runtime_prepare();
-        if (err != ESP_OK) return adjacent_fallback_to_golden(err);
+    if (demod_uses_m2m(s_demod_mode)) {
+        err = m2m_runtime_prepare();
+        if (err != ESP_OK) return m2m_fallback_to_golden(err);
     }
 
     /* Zero the ring before starting. Flush to DMA-visible SRAM. */
@@ -4141,23 +4178,23 @@ esp_err_t video_start(void)
     }
     if (s_rx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
 
-    if (s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) {
-        s_adj_run = true;
-        s_adj_task_stopped = false;
-        if (xTaskCreate(adjacent_worker_task, "adjacent_fm", 4096, NULL, 6,
-                        &s_adj_task) != pdPASS)
-            return adjacent_fallback_to_golden(ESP_ERR_NO_MEM);
+    if (demod_uses_m2m(s_demod_mode)) {
+        s_m2m_run = true;
+        s_m2m_task_stopped = false;
+        if (xTaskCreate(m2m_worker_task, "m2m_demod", 4096, NULL, 6,
+                        &s_m2m_task) != pdPASS)
+            return m2m_fallback_to_golden(ESP_ERR_NO_MEM);
 
         /* The worker fills both output halves and starts plain PARLIO TX at a
          * safe ping-pong phase. This wait is startup-only; live pacing remains
          * RX descriptor position + hardware M2M, never USB or a timer. */
         int64_t deadline = esp_timer_get_time() + 100000;
-        while (!s_adj_tx_started && s_adj_error == ESP_OK &&
+        while (!s_m2m_tx_started && s_m2m_error == ESP_OK &&
                esp_timer_get_time() < deadline)
             vTaskDelay(1);
-        if (!s_adj_tx_started)
-            return adjacent_fallback_to_golden(
-                s_adj_error != ESP_OK ? s_adj_error : ESP_ERR_TIMEOUT);
+        if (!s_m2m_tx_started)
+            return m2m_fallback_to_golden(
+                s_m2m_error != ESP_OK ? s_m2m_error : ESP_ERR_TIMEOUT);
     } else {
         /* Golden/Trajectory keep the proven half-ring producer/consumer delay. */
         esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
@@ -4216,8 +4253,8 @@ esp_err_t video_start(void)
         "=======================================================\n",
         s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes,
         demod_mode_name(), DAC_IDLE_CODE, 2u,
-        s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5 ?
-        "adjacent half-ring scheduler active" :
+        demod_uses_m2m(s_demod_mode) ?
+        "M2M half-ring scheduler active" :
         "done (hardware runs in unbroken infinite loop)");
 
     return ESP_OK;
