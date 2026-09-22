@@ -94,6 +94,19 @@ uint8_t rf_get_arc_survival_gain(void);
 uint32_t rf_get_arc_generation(void);
 
 /**
+ * Lab-only MODEM_DIAG routing probe.
+ *
+ * rf_route_modem_diag_window(first) routes eight consecutive MODEM_DIAG
+ * signals [first..first+7] onto the normal 8-bit PARLIO RX pins. Valid
+ * first_signal is 0..24. rf_restore_modem_iq_routes() always restores the
+ * production Q[9:6]/I[9:6] mapping.
+ *
+ * These helpers do not change undocumented modem selector registers.
+ */
+esp_err_t rf_route_modem_diag_window(unsigned first_signal);
+esp_err_t rf_restore_modem_iq_routes(void);
+
+/**
  * FPV Channel and Carrier Frequency Fine-Tuning:
  */
 typedef struct {
