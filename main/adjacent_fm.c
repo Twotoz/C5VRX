@@ -12,7 +12,7 @@
 #include "esp_heap_caps.h"
 #include "esp_memory_utils.h"
 #include "esp_timer.h"
-#include "soc/bitscrambler_peri_select.h"
+#include "hal/bitscrambler_peri_select.h"
 
 BITSCRAMBLER_PROGRAM(s_adjacent_fm_program, "fm_adjacent");
 
