@@ -261,7 +261,7 @@ static volatile bool s_current_bw40 = true;
 static volatile video_output_mode_t s_output_mode = VIDEO_OUTPUT_6BIT_40;
 static video_output_mode_t s_tx_unit_mode = VIDEO_OUTPUT_6BIT_40;
 static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
-static volatile rx_profile_t s_rx_profile = RX_PROFILE_ARC;
+static volatile rx_profile_t s_rx_profile = RX_PROFILE_ARC_V5_AUTOTUNE_EXP;
 static volatile arc_v3_state_t s_last_arc_v3_state = ARC_V3_ACQUIRE;
 static volatile arc_v3_q4_state_t s_last_arc_v3_q4_state = ARC_V3_Q4_STARVED;
 static volatile bool s_last_arc_v3_filtered_valid;
@@ -1128,44 +1128,12 @@ static const char *demod_mode_name(void)
     return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
 }
 
-static void cycle_demod_mode(void)
-{
-    s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
-                   DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
-    /* TRAJ V2 and 4BIT@80 use different BitScrambler/output contracts.
-     * Selecting TRAJ V2 therefore moves the DAC back to its proven 6-bit path.
-     * The inverse action is handled on the DAC control: selecting 4BIT@80
-     * automatically returns to GOLDEN instead of making 4-bit unreachable. */
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)
-        s_output_mode = VIDEO_OUTPUT_6BIT_40;
-
-    /* Semantic sync interpretation changes with the demod LUT. Do not carry
-     * PAL/NTSC votes or lock age from the previous demodulator across an A/B
-     * switch. receive_generation also makes the controller relearn cleanly. */
-    video_standard_detector_reset();
-    ++s_profile_generation; /* reset Fusion temporal/optimizer state for clean A/B */
-}
-
 static void apply_rf_bandwidth(bool bw40)
 {
     s_last_phy_write_us = esp_timer_get_time();
     s_last_phy_write_kind = PHY_WRITE_BW;
     s_current_bw40 = bw40;
     rf_set_analog_bandwidth(bw40);
-}
-
-static void cycle_rf_bandwidth_mode(void)
-{
-    if (s_rf_bw_mode == RF_BW_MODE_BW40) {
-        s_rf_bw_mode = RF_BW_MODE_BW20;
-        apply_rf_bandwidth(false);
-    } else if (s_rf_bw_mode == RF_BW_MODE_BW20) {
-        s_rf_bw_mode = RF_BW_MODE_AUTO;
-        apply_rf_bandwidth(true); /* AUTO always enters in high gear. */
-    } else {
-        s_rf_bw_mode = RF_BW_MODE_BW40;
-        apply_rf_bandwidth(true);
-    }
 }
 
 static volatile analog_agc_mode_t s_agc_mode = ANALOG_AGC_ACTIVE;
@@ -1239,31 +1207,32 @@ static volatile bool s_pre_q4_probe_active;
 
 static const int8_t s_lab_fft_values[] = {16, 24, 32, 40};
 
-#define SETTINGS_VERSION 4u
+#define SETTINGS_VERSION 5u
 #define SETTINGS_NAMESPACE "c5vrx"
 #define SETTINGS_KEY "settings"
 
+/* v5 keeps the historical 14-byte blob layout only so v3/v4 installations
+ * can migrate channel/video-standard/menu preferences safely. Receiver tuning,
+ * gain, BW, AFC, demod and output mode are no longer user-persisted settings:
+ * production always boots ARC V5 + BW40 + AFC OFF + GOLDEN 6BIT@40. */
 typedef struct {
     uint8_t version;
     uint8_t channel_index;
-    uint8_t rf_bw_mode;
-    uint8_t afc_mode;
-    uint8_t output_mode;
+    uint8_t legacy_rf_bw_mode;
+    uint8_t legacy_afc_mode;
+    uint8_t legacy_output_mode;
     uint8_t video_std_mode;
-    uint8_t agc_mode;
-    uint8_t manual_gain;
-    int16_t frequency_offset_khz;
+    uint8_t legacy_agc_mode;
+    uint8_t legacy_manual_gain;
+    int16_t legacy_frequency_offset_khz;
     uint8_t menu_boot_btn_enabled;
-    uint8_t rx_profile;
-    uint8_t demod_mode;
+    uint8_t legacy_rx_profile;
+    uint8_t legacy_demod_mode;
     uint8_t reserved[1];
 } persisted_settings_t;
 
-/* v4 deliberately consumes one of v3's two reserved bytes for demod_mode.
- * Keep the blob byte-for-byte the same size so a v3 record can be migrated
- * safely with DEMOD_MODE_GOLDEN_PHASE5. */
 _Static_assert(sizeof(persisted_settings_t) == 14u,
-               "settings v3/v4 migration layout changed");
+               "settings v3/v4/v5 migration layout changed");
 
 /* Frequency-offset writes in rf.c re-assert the current forced RX gain after
  * touching the PHY channel offset. Track that hidden gain write so issue #28
@@ -1314,16 +1283,8 @@ static void settings_save(void)
     persisted_settings_t settings = {
         .version = SETTINGS_VERSION,
         .channel_index = (uint8_t)rf_get_channel_index(),
-        .rf_bw_mode = (uint8_t)s_rf_bw_mode,
-        .afc_mode = (uint8_t)s_afc_mode,
-        .output_mode = (uint8_t)s_output_mode,
         .video_std_mode = (uint8_t)s_video_std_mode,
-        .agc_mode = (uint8_t)s_agc_mode,
-        .manual_gain = s_current_gain,
-        .frequency_offset_khz = (int16_t)rf_get_frequency_offset_khz(),
         .menu_boot_btn_enabled = s_menu_boot_btn_enabled ? 1u : 0u,
-        .rx_profile = (uint8_t)s_rx_profile,
-        .demod_mode = (uint8_t)s_demod_mode,
     };
     nvs_handle_t handle;
     esp_err_t err = nvs_open(SETTINGS_NAMESPACE, NVS_READWRITE, &handle);
@@ -1345,87 +1306,40 @@ static void settings_load(void)
         err = nvs_get_blob(handle, SETTINGS_KEY, &settings, &length);
         nvs_close(handle);
     }
-    bool legacy_v3 = settings.version == 3u;
-    if (err != ESP_OK || length != sizeof(settings) ||
-        (!legacy_v3 && settings.version != SETTINGS_VERSION)) {
-        s_rx_profile = RX_PROFILE_ARC;
-        s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
-        s_rf_bw_mode = RF_BW_MODE_BW40;
-        s_afc_mode = AFC_MODE_OFF;
-        s_agc_mode = ANALOG_AGC_ACTIVE;
-        s_current_gain = rf_get_arc_survival_gain();
-        s_shadow_gain = s_current_gain;
-        apply_rf_bandwidth(true);
-        rf_set_rx_gain(true, s_current_gain);
-        return;
-    }
 
-    if (settings.channel_index < rf_get_channel_count()) (void)rf_set_channel(settings.channel_index);
-    if (settings.rf_bw_mode <= RF_BW_MODE_AUTO) s_rf_bw_mode = (rf_bw_mode_t)settings.rf_bw_mode;
-    apply_rf_bandwidth(s_rf_bw_mode != RF_BW_MODE_BW20);
-    if (settings.afc_mode <= AFC_MODE_OFF) s_afc_mode = (afc_mode_t)settings.afc_mode;
-    if (settings.output_mode <= VIDEO_OUTPUT_4BIT_80) s_output_mode = (video_output_mode_t)settings.output_mode;
-    /* v3 used this exact byte as zero-initialized reserved storage, so old
-     * Range-v2 settings migrate losslessly with the proven GOLDEN demod. */
-    if (legacy_v3) {
-        s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
-    } else if (settings.demod_mode < DEMOD_MODE_COUNT) {
-        s_demod_mode = (demod_mode_t)settings.demod_mode;
-    }
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) s_output_mode = VIDEO_OUTPUT_6BIT_40;
-    if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
-    if (settings.rx_profile < RX_PROFILE_COUNT) {
-        s_rx_profile = (rx_profile_t)settings.rx_profile;
-    } else {
-        s_rx_profile = RX_PROFILE_RANGE_EXP;
-    }
-    if (s_rx_profile == RX_PROFILE_RANGE_EXP ||
-        s_rx_profile == RX_PROFILE_FUSION_EXP ||
-        s_rx_profile == RX_PROFILE_ARC ||
-        s_rx_profile == RX_PROFILE_ARC_V3_EXP ||
-        s_rx_profile == RX_PROFILE_ARC_V5_AUTOTUNE_EXP) {
-        /* RANGE/FUSION have one deterministic RF shape across reboot: the
-         * proven full-video filter, with no acquisition-time filter or AFC writes. */
-        s_rf_bw_mode = RF_BW_MODE_BW40;
-        s_afc_mode = AFC_MODE_OFF;
-        apply_rf_bandwidth(true);
-    } else if (s_rx_profile == RX_PROFILE_RANGE_V2_EXP) {
-        /* RANGE V2 always boots from the proven full-video shape, then permits
-         * BW/AFC changes only while acquiring/relearning. Persisted menu fields
-         * must not silently turn it into a different controller after reboot. */
-        s_rf_bw_mode = RF_BW_MODE_AUTO;
-        s_afc_mode = AFC_MODE_AUTO;
-        apply_rf_bandwidth(true);
-    }
+    bool compatible = err == ESP_OK && length == sizeof(settings) &&
+                      (settings.version == 3u ||
+                       settings.version == 4u ||
+                       settings.version == SETTINGS_VERSION);
+
+    if (compatible && settings.channel_index < rf_get_channel_count())
+        (void)rf_set_channel(settings.channel_index);
+    if (compatible && settings.video_std_mode <= VIDEO_STD_MODE_PAL)
+        s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
+    if (compatible)
+        s_menu_boot_btn_enabled = settings.menu_boot_btn_enabled != 0;
+
     if (s_video_std_mode == VIDEO_STD_MODE_PAL) s_video_std = VIDEO_STD_PAL;
     else if (s_video_std_mode == VIDEO_STD_MODE_NTSC) s_video_std = VIDEO_STD_NTSC;
-    if (settings.agc_mode <= ANALOG_AGC_MANUAL) s_agc_mode = (analog_agc_mode_t)settings.agc_mode;
-    if (s_agc_mode == ANALOG_AGC_MANUAL && settings.manual_gain >= 2u && settings.manual_gain <= 62u) {
-        s_current_gain = profile_gain_clamp(settings.manual_gain);
-    } else {
-        switch (s_rx_profile) {
-        case RX_PROFILE_RANGE_EXP:    s_current_gain = 62u; break;
-        case RX_PROFILE_BLOCKER_EXP:  s_current_gain = 36u; break;
-        case RX_PROFILE_RECOVERY_EXP: s_current_gain = 52u; break;
-        case RX_PROFILE_AUTO_EXP:     s_current_gain = 52u; break;
-        case RX_PROFILE_FUSION_EXP:   s_current_gain = 62u; break;
-        case RX_PROFILE_RANGE_V2_EXP: s_current_gain = 62u; break;
-        case RX_PROFILE_ARC:          s_current_gain = rf_get_arc_survival_gain(); break;
-        case RX_PROFILE_ARC_V3_EXP:   s_current_gain = rf_get_arc_survival_gain(); break;
-        case RX_PROFILE_ARC_V5_AUTOTUNE_EXP: s_current_gain = rf_get_arc_survival_gain(); break;
-        default:                      s_current_gain = 52u; break;
-        }
-        s_current_gain = profile_gain_clamp(s_current_gain);
-    }
+
+    /* One production receive contract. Historical/experimental receiver
+     * settings remain available through serial/lab code, but never survive a
+     * reboot or silently alter normal flight behavior. */
+    s_rx_profile = RX_PROFILE_ARC_V5_AUTOTUNE_EXP;
+    s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+    s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    s_rf_bw_mode = RF_BW_MODE_BW40;
+    s_afc_mode = AFC_MODE_OFF;
+    s_agc_mode = ANALOG_AGC_ACTIVE;
+    apply_rf_bandwidth(true);
+    if (rf_get_frequency_offset_khz() != 0) apply_frequency_offset_khz_tracked(0);
+    s_current_gain = profile_gain_clamp(rf_get_arc_survival_gain());
     s_shadow_gain = s_current_gain;
     rf_set_rx_gain(true, s_current_gain);
-    s_menu_boot_btn_enabled = settings.menu_boot_btn_enabled != 0;
-    if (s_afc_mode == AFC_MODE_HOLD) apply_frequency_offset_khz_tracked(settings.frequency_offset_khz);
-    else if (s_afc_mode == AFC_MODE_OFF) apply_frequency_offset_khz_tracked(0);
-    ESP_LOGI(TAG, "Restored settings%s: channel=%u profile=%s BW=%s output=%s demod=%s",
-             legacy_v3 ? " (v3 migrated)" : "",
-             settings.channel_index, rx_profile_name(), rf_bw_mode_name(),
-             output_mode_name(), demod_mode_name());
+
+    ESP_LOGI(TAG, "Restored production settings%s: channel=%u profile=ARC V5 BW=BW40 output=6BIT@40 demod=GOLDEN",
+             compatible ? "" : " (defaults)",
+             (unsigned)rf_get_channel_index());
 }
 
 static void record_transport_event(uint32_t flags)
@@ -2813,16 +2727,14 @@ enum {
     UI_WHITE = 60,
 };
 
-static const uint8_t s_menu_icons[6][8] = {
+static const uint8_t s_menu_icons[4][8] = {
     {0x10,0x38,0x54,0x10,0x10,0x38,0x7c,0x00}, /* band / antenna */
     {0x7e,0x42,0x5a,0x5a,0x5a,0x42,0x7e,0x00}, /* channel */
-    {0x00,0x40,0x50,0x54,0x55,0x55,0x55,0x00}, /* RF bars */
-    {0x10,0x10,0x54,0x38,0x54,0x10,0x10,0x00}, /* AFC crosshair */
-    {0x7e,0x42,0x42,0x42,0x7e,0x18,0x3c,0x00}, /* video */
+    {0x00,0x40,0x50,0x54,0x55,0x55,0x55,0x00}, /* receiver status */
     {0x7c,0x44,0x04,0x1f,0x04,0x44,0x7c,0x00}, /* exit */
 };
-static const char *const s_menu_nav[6] = {
-    "BAND", "CHANNEL", "RF", "AFC", "VIDEO", "EXIT"
+static const char *const s_menu_nav[4] = {
+    "BAND", "CHANNEL", "STATUS", "EXIT"
 };
 
 static inline void menu_ui_pixel(int x, int y, uint8_t code)
@@ -2898,7 +2810,7 @@ static void menu_ui_text_right(const char *str, int right, int y, uint8_t code)
 
 static void menu_ui_icon(unsigned icon, int x, int y, uint8_t code)
 {
-    if (icon >= 6u) return;
+    if (icon >= 4u) return;
     for (unsigned gy = 0; gy < 8u; ++gy) {
         uint8_t bits = s_menu_icons[icon][gy];
         for (unsigned gx = 0; gx < 8u; ++gx) {
@@ -3061,7 +2973,7 @@ static void menu_draw_shell(void)
 
     menu_ui_rect(0, 8, 92, MENU_UI_LINES - 8, UI_ROOT);
     menu_ui_vline(91, 8, MENU_UI_LINES - 8, UI_DIVIDER);
-    for (unsigned i = 0; i < 6u; ++i) {
+    for (unsigned i = 0; i < 4u; ++i) {
         int y = 8 + (int)i * 8;
         bool selected = (int)i == s_menu_cursor;
         if (selected) {
@@ -3126,55 +3038,21 @@ static void menu_draw_channel_page(void)
     menu_ui_text_right(buf, 376, 47, UI_WHITE);
 }
 
-static void menu_draw_rf_page(void)
+static void menu_draw_status_page(void)
 {
-    char buf[32];
-    menu_draw_page_title("RF FRONTEND",
-                         s_rx_profile == RX_PROFILE_ARC ? "DEFAULT" : "EXPERIMENTAL");
-    menu_ui_value_box(100, 22, 276, "RX PROFILE", rx_profile_name());
-    menu_ui_value_box(100, 34, 130, "BANDWIDTH", rf_bw_mode_name());
-    menu_ui_value_box(238, 34, 138, "AGC", agc_mode_name());
+    char gain[16];
+    char signal[24];
 
-    if (s_noise_floor_valid) {
-        snprintf(buf, sizeof(buf), "Q%d NF%d", s_last_q_phase, s_last_noise_floor_dbm);
-    } else {
-        snprintf(buf, sizeof(buf), "P%d Q%d%%", s_last_p_median, s_last_q_phase);
-    }
-    menu_ui_text(buf, 100, 47, UI_MUTED);
-    menu_ui_text_right("LONG:BW  2S:PROFILE", 376, 47, UI_WHITE);
-}
+    menu_draw_page_title("RECEIVER STATUS", "AUTO");
+    menu_ui_value_box(100, 22, 130, "RX", "ARC V5");
+    menu_ui_value_box(238, 22, 138, "RF", "BW40");
+    menu_ui_value_box(100, 34, 130, "AFC", "OFF");
+    snprintf(gain, sizeof(gain), "G%u", s_current_gain);
+    menu_ui_value_box(238, 34, 138, "GAIN", gain);
 
-static void menu_draw_afc_page(void)
-{
-    char buf[24];
-    menu_draw_page_title("AFC", "EXPERIMENTAL");
-    menu_ui_value_box(100, 22, 130, "MODE", afc_mode_name());
-    snprintf(buf, sizeof(buf), "%+dK", rf_get_frequency_offset_khz());
-    menu_ui_value_box(238, 22, 138, "OFFSET", buf);
-    snprintf(buf, sizeof(buf), "%+dK", s_cfo_khz);
-    menu_ui_value_box(100, 34, 276, "EST CFO", buf);
-    menu_ui_text("DEFAULT OFF FOR FLIGHT", 100, 47, UI_MUTED);
-}
-
-static void menu_draw_video_page(void)
-{
-    char detected[24];
-    bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80 ||
-                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2;
-    menu_draw_page_title("VIDEO OUTPUT", experimental ? "EXPERIMENTAL" : "DEFAULT");
-    menu_ui_value_box(100, 22, 130, "DAC", output_mode_name());
-    menu_ui_value_box(238, 22, 138, "DEMOD", demod_mode_name());
-    menu_ui_value_box(100, 34, 130, "STANDARD",
-                      s_video_std == VIDEO_STD_PAL ? "PAL" : "NTSC");
-    if (s_detected_video_std_valid) {
-        snprintf(detected, sizeof(detected), "%s %u",
-                 s_detected_video_std == VIDEO_STD_PAL ? "PAL" : "NTSC",
-                 s_last_line_period_20m);
-    } else {
-        snprintf(detected, sizeof(detected), "SEARCHING");
-    }
-    menu_ui_value_box(238, 34, 138, "DETECTED", detected);
-    menu_ui_text("LONG:DAC  2S:DEMOD - APPLIES ON EXIT", 100, 47, UI_MUTED);
+    snprintf(signal, sizeof(signal), "P%d Q%d%%", s_last_p_median, s_last_q_phase);
+    menu_ui_text(signal, 100, 47, UI_MUTED);
+    menu_ui_text_right("AUTO-TUNING - NO SETUP", 376, 47, UI_WHITE);
 }
 
 static void menu_draw_exit_page(void)
@@ -3195,9 +3073,7 @@ static void menu_render_menu(void)
     switch (s_menu_cursor) {
     case 0: menu_draw_band_page(); break;
     case 1: menu_draw_channel_page(); break;
-    case 2: menu_draw_rf_page(); break;
-    case 3: menu_draw_afc_page(); break;
-    case 4: menu_draw_video_page(); break;
+    case 2: menu_draw_status_page(); break;
     default: menu_draw_exit_page(); break;
     }
 
@@ -3556,7 +3432,7 @@ static void channel_auto_search(void)
 static void handle_button_short_click(void)
 {
     if (s_menu_active) {
-        s_menu_cursor = (s_menu_cursor + 1) % 6;
+        s_menu_cursor = (s_menu_cursor + 1) % 4;
         menu_render_menu();
         s_menu_timeout_ticks = 0;
         printf("[BTN: SHORT] Menu cursor -> %d\n", s_menu_cursor);
@@ -3582,13 +3458,13 @@ static void open_recovery_menu(void)
     s_video_std_mode = VIDEO_STD_MODE_AUTO;
     s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
     s_output_mode = VIDEO_OUTPUT_6BIT_40;
-    apply_rx_profile(RX_PROFILE_ARC);
+    apply_rx_profile(RX_PROFILE_ARC_V5_AUTOTUNE_EXP);
     video_standard_detector_reset();
     s_menu_cursor = 0;
     s_menu_timeout_ticks = 0;
     settings_save();
     video_set_menu_mode(true);
-    printf("[RECOVERY] GOLDEN + 6BIT@40 + ARC restored; menu %s\n",
+    printf("[RECOVERY] GOLDEN + 6BIT@40 + ARC V5 restored; menu %s\n",
            s_menu_active ? "opened" : "unavailable");
 }
 
@@ -3628,42 +3504,10 @@ static void handle_button_long_click(void)
             printf("[MENU: CHANNEL] Switched to %s (%u MHz)\n",
                    rf_get_current_channel()->name, rf_get_current_channel()->freq_mhz);
             break;
-        case 2: /* RF BANDWIDTH (2s hold cycles whole RX profile) */
-            cycle_rf_bandwidth_mode();
-            settings_save();
-            printf("[MENU: RF BW] Mode -> %s (active %s)\n",
-                   rf_bw_mode_name(), s_current_bw40 ? "BW40" : "BW20");
+        case 2: /* STATUS: intentionally read-only */
+            printf("[MENU: STATUS] ARC V5 auto-tuning; no user RF settings\n");
             break;
-        case 3: /* AFC MODE */
-            if (s_afc_mode == AFC_MODE_AUTO) {
-                s_afc_mode = AFC_MODE_HOLD;
-            } else if (s_afc_mode == AFC_MODE_HOLD) {
-                s_afc_mode = AFC_MODE_OFF;
-                apply_frequency_offset_khz_tracked(0);
-            } else {
-                s_afc_mode = AFC_MODE_AUTO;
-            }
-            printf("[MENU: AFC] Mode -> %d\n", s_afc_mode);
-            settings_save();
-            break;
-        case 4: /* VIDEO OUTPUT */
-            s_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
-                            VIDEO_OUTPUT_4BIT_80 : VIDEO_OUTPUT_6BIT_40;
-            if (s_output_mode == VIDEO_OUTPUT_4BIT_80 &&
-                s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
-                /* 4BIT@80 has its own fm4 BitScrambler contract. Keep the
-                 * combination valid by returning to GOLDEN automatically. */
-                s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
-                video_standard_detector_reset();
-                ++s_profile_generation;
-                printf("[MENU: OUTPUT] -> 4BIT@80 (EXPERIMENTAL); DEMOD -> GOLDEN\n");
-            } else {
-                printf("[MENU: OUTPUT] -> %s%s\n", output_mode_name(),
-                       s_output_mode == VIDEO_OUTPUT_4BIT_80 ? " (EXPERIMENTAL)" : "");
-            }
-            settings_save();
-            break;
-        case 5: /* SAVE & EXIT */
+        case 3: /* SAVE & EXIT */
             settings_save();
             video_set_menu_mode(false);
             printf("[BTN: LONG] Menu Closed -> Live Video!\n");
@@ -3701,8 +3545,6 @@ static void analog_agc_task(void *arg)
     int btn_ticks = 0;
     bool btn_long_fired = false;
     bool btn_scan_fired = false;
-    bool btn_profile_fired = false;
-    bool btn_demod_fired = false;
     bool btn_recovery_fired = false;
     bool was_locked = false;
     range_control_t range_controller;
@@ -3752,8 +3594,6 @@ static void analog_agc_task(void *arg)
             btn_ticks = 0;
             btn_long_fired = false;
             btn_scan_fired = false;
-            btn_profile_fired = false;
-            btn_demod_fired = false;
             btn_recovery_fired = false;
         } else {
             int btn_level = gpio_get_level(BOOT_BTN_GPIO);
@@ -3769,30 +3609,7 @@ static void analog_agc_task(void *arg)
                     open_recovery_menu();
                 }
 
-                /* RF page gets two independent controls without adding menu
-                 * geometry: 0.6-2.0 s changes BW on release; >=2.0 s changes
-                 * the complete RX profile once. */
-                if (s_menu_active && s_menu_cursor == 2) {
-                    if (btn_ticks >= 40 && !btn_profile_fired) {
-                        btn_profile_fired = true;
-                        btn_long_fired = true;
-                        cycle_rx_profile();
-                        menu_render_menu();
-                        s_menu_timeout_ticks = 0;
-                    }
-                } else if (s_menu_active && s_menu_cursor == 4) {
-                    if (btn_ticks >= 40 && !btn_demod_fired) {
-                        btn_demod_fired = true;
-                        btn_long_fired = true;
-                        cycle_demod_mode();
-                        settings_save();
-                        printf("[MENU: DEMOD] -> %s%s\n", demod_mode_name(),
-                               s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ?
-                               " (6BIT@40 forced)" : "");
-                        menu_render_menu();
-                        s_menu_timeout_ticks = 0;
-                    }
-                } else if (btn_ticks >= 12 && !btn_long_fired) {
+                if (btn_ticks >= 12 && !btn_long_fired) {
                     btn_long_fired = true;
                     handle_button_long_click();
                 }
@@ -3803,27 +3620,12 @@ static void analog_agc_task(void *arg)
                     s_menu_timeout_ticks = 0;
                 }
             } else if (btn_ticks > 0) {
-                if (s_menu_active && s_menu_cursor == 2) {
-                    if (!btn_profile_fired && btn_ticks >= 12) {
-                        handle_button_long_click(); /* normal RF bandwidth action */
-                    } else if (!btn_profile_fired && btn_ticks >= 2) {
-                        handle_button_short_click();
-                    }
-                } else if (s_menu_active && s_menu_cursor == 4) {
-                    if (!btn_demod_fired && btn_ticks >= 12) {
-                        handle_button_long_click(); /* normal DAC-output action */
-                    } else if (!btn_demod_fired && btn_ticks >= 2) {
-                        handle_button_short_click();
-                    }
-                } else if (!btn_long_fired && btn_ticks >= 2) {
+                if (!btn_long_fired && btn_ticks >= 2)
                     handle_button_short_click();
-                }
                 btn_ticks = 0;
                 btn_long_fired = false;
                 btn_scan_fired = false;
-                btn_profile_fired = false;
-                btn_demod_fired = false;
-                btn_recovery_fired = false;
+                        btn_recovery_fired = false;
             }
         }
 
@@ -4621,7 +4423,7 @@ static void console_diag_task(void *arg)
                            (s_afc_mode == AFC_MODE_HOLD) ? "HOLD (Offset Frozen)" : "OFF (0 kHz)");
                     printf(" RX Profile:                 %s%s\n",
                            rx_profile_name(),
-                           s_rx_profile == RX_PROFILE_ARC ? " [DEFAULT]" : " [EXPERIMENTAL]");
+                           s_rx_profile == RX_PROFILE_ARC_V5_AUTOTUNE_EXP ? " [DEFAULT]" : " [LAB/EXPERIMENTAL]");
                     printf(" RF Bandwidth:               mode=%s active=%s\n",
                            rf_bw_mode_name(), s_current_bw40 ? "BW40" : "BW20");
                     printf(" PHY Environment:            NF=%s%d dBm RSSI=%s%d dBm FFT_Q4=%s best=%d\n",
