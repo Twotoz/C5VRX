@@ -3101,6 +3101,71 @@ static void start_flight_demodulator(void)
     ESP_ERROR_CHECK(bitscrambler_start(s_flight_bs));
 }
 
+/* Lab-only output A/B switch. The production menu never exposes these modes,
+ * but keeping a deliberate serial path avoids turning the retained experimental
+ * BitScrambler programs into dead code. A switch performs the same controlled
+ * live-pipeline restart used after leaving the standalone menu. */
+static void lab_apply_video_pair(video_output_mode_t output, demod_mode_t demod)
+{
+    if (s_menu_active || s_pre_q4_probe_active || s_gain_sweep.active) {
+        printf("[LAB VIDEO] refused: %s\n",
+               s_menu_active ? "menu active" :
+               s_pre_q4_probe_active ? "PRE-Q4 probe active" : "gain sweep active");
+        return;
+    }
+
+    if (demod == DEMOD_MODE_TRAJECTORY_V2)
+        output = VIDEO_OUTPUT_6BIT_40;
+    if (output == VIDEO_OUTPUT_4BIT_80)
+        demod = DEMOD_MODE_GOLDEN_PHASE5;
+
+    if (s_output_mode == output && s_demod_mode == demod) {
+        printf("[LAB VIDEO] unchanged: %s / %s\n",
+               output_mode_name(), demod_mode_name());
+        return;
+    }
+
+    ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
+    ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+
+    s_output_mode = output;
+    s_demod_mode = demod;
+    if (s_tx_unit_mode != s_output_mode)
+        ESP_ERROR_CHECK(replace_tx_unit(s_output_mode));
+
+    start_flight_demodulator();
+
+    /* Re-arm both sides exactly like menu -> live so the ring separation and
+     * descriptor patch are re-established after a lab output-mode switch. */
+    ESP_ERROR_CHECK(parlio_rx_unit_disable(s_rx));
+    ESP_ERROR_CHECK(parlio_rx_unit_enable(s_rx, false));
+    ESP_ERROR_CHECK(parlio_tx_unit_enable(s_tx));
+
+    s_tx_dma_ch = -1;
+    for (int i = 0; i < 3; ++i) {
+        if (AHB_DMA.channel[i].out.out_peri_sel.peri_out_sel_chn == 9) {
+            s_tx_dma_ch = i;
+            break;
+        }
+    }
+    ESP_ERROR_CHECK(s_tx_dma_ch >= 0 ? ESP_OK : ESP_ERR_NOT_FOUND);
+
+    quiet_tx_interrupts();
+    ESP_ERROR_CHECK(start_rx());
+    if (s_rx_dma_ch >= 0) AHB_DMA.in_intr[s_rx_dma_ch].ena.val = 0;
+    PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1;
+    esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
+    ESP_ERROR_CHECK(start_tx());
+    quiet_tx_interrupts();
+    patch_descriptors_clear_eof(s_rx_dma_ch, true);
+    patch_descriptors_clear_eof(s_tx_dma_ch, false);
+
+    video_standard_detector_reset();
+    ++s_profile_generation;
+    printf("[LAB VIDEO] -> %s / %s (not persisted; reboot returns production defaults)\n",
+           output_mode_name(), demod_mode_name());
+}
+
 /* Restore the exact live topology used after leaving the standalone menu.
  * The self-noise probe intentionally destroys/recreates the TX unit so the
  * quiet state can disconnect PARLIO from every DAC GPIO instead of merely
@@ -4279,6 +4344,16 @@ static void console_diag_task(void *arg)
                     lab_run_tx_self_noise_probe();
                 } else if (c == 'K') {
                     lab_request_fresh_phy_calibration();
+                } else if (c == 'D') {
+                    demod_mode_t next =
+                        s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
+                        DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
+                    lab_apply_video_pair(VIDEO_OUTPUT_6BIT_40, next);
+                } else if (c == 'B') {
+                    video_output_mode_t next =
+                        s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
+                        VIDEO_OUTPUT_4BIT_80 : VIDEO_OUTPUT_6BIT_40;
+                    lab_apply_video_pair(next, s_demod_mode);
                 } else if (c == 'Y') {
                     apply_rx_profile(RX_PROFILE_ARC_V3_EXP);
                     settings_save();
@@ -4544,7 +4619,9 @@ static void console_diag_task(void *arg)
                     printf("  'U':         ARC V3 RX AUTO LAB (gain -> BW -> center -> repeated A/B proof)\n");
                     printf("  'S':         PRE-Q4 self-noise A/B (live TX vs DAC/PARLIO electrically quiet)\n");
                     printf("  'K':         Erase stored PHY calibration and reboot for a fresh vendor calibration\n");
-                    printf("  'X':         Cycle RX profile (Balanced/Range/Blocker/Recovery/Auto/ARC/Fusion/Range V2)\n");
+                    printf("  'D':         LAB ONLY: toggle GOLDEN / TRAJ V2 (forces 6BIT@40)\n");
+                    printf("  'B':         LAB ONLY: toggle 6BIT@40 / 4BIT@80 (4-bit forces GOLDEN)\n");
+                    printf("  'X':         Cycle RX profile (lab/experimental A/B)\n");
                     printf("  'p'/'r':     Machine-readable PHY/Q4 snapshot / reset lag counters\n");
                     printf("  't'/'q':     Vendor timer inventory / quiet unsolicited lock message\n");
                     printf("  'l':         Mark a visible lag/freeze for correlation\n");
