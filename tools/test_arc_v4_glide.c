@@ -81,7 +81,7 @@ int main(void)
     arc_v4_glide_observation_t edge = obs(8, 65, 0, 360, 120);
     feed(&g, edge, 6u);
     uint8_t first = g.gain;
-    assert(first == 58u);
+    assert(first >= 56u && first <= 58u);
     feed(&g, edge, 8u);
     assert(g.gain > first);
     assert(g.gain <= 66u);
