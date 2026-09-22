@@ -50,7 +50,8 @@ int main(void)
     assert(s.state == ARC_V4_SNAP_LOCK);
 
     /* A one-sample deep fade is not enough to force a physical handoff. */
-    (void)arc_v4_snap_tick(&s, &obs(2, 5, 0, 900, 20));
+    arc_v4_snap_observation_t one_fade = obs(2, 5, 0, 900, 20);
+    (void)arc_v4_snap_tick(&s, &one_fade);
     assert(s.gain == 54u);
     feed(&s, good, 8u);
     assert(s.gain == 54u);
@@ -103,7 +104,8 @@ int main(void)
      * RF limit. This matches the 25 mW walk where Q often remained 60-100%. */
     arc_v4_snap_reset(&s, &t, 81u);
     settle_lock(&s, good);
-    feed(&s, obs(8, 62, 0, 300, 100), 80u);
+    arc_v4_snap_observation_t marginal = obs(8, 62, 0, 300, 100);
+    feed(&s, marginal, 80u);
     assert(s.gain == 81u);
     assert(s.state != ARC_V4_SNAP_RF_LIMIT);
 
