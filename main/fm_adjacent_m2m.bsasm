@@ -10,12 +10,16 @@
 # IMPORTANT: pair is NOT wrapped again. Phase is represented on a 7-bit
 # circle so two signed adjacent deltas fit losslessly in an 8-bit signed sum.
 #
-# State:
+# Persistent state:
 #   A[14:8] = -phase(previous) modulo 128
 #   A[15]   = middle-sample low-confidence flag for the current pair
 #   A[6:0]  = temporary wrapped adjacent delta
 #   B       = signed no-rewrap pair accumulator
-#   O29..31 = coarse previous final CVBS for confidence holdover
+#   O29..31 immediately after emit = coarse previous final CVBS
+#   O8..10 during the working loop = the same coarse previous CVBS
+#
+# O0..O7 is scratch used to retain the current phase LUT metadata while
+# counter instructions temporarily repurpose the LUT-address output bits.
 #
 # LUT layout (16-bit entries):
 #   0x000..0x0ff raw Q4/I4 ->
@@ -41,8 +45,9 @@ cfg trailing_bytes 9
 cfg lut_width_bits 16
 
 address1:
-    # Address first new sample and reset the signed pair accumulator B.
-    # Counter A persists -phase(previous) across steady-state pairs.
+    # Move prior CVBS hold state out of the high address area, address sample 1,
+    # and reset the full signed pair accumulator B.
+    set 8..10 O29..O31,
     set 16 0,
     set 17 1,
     set 18 2,
@@ -51,40 +56,43 @@ address1:
     set 21 5,
     set 22 6,
     set 23 7,
-    set 24..28 L,
-    set 29..31 O29..O31,
+    set 24..31 L,
     read 8,
     LDCTDB 0
 
 load_current1:
-    # A.low = phase(current); A.high still holds -phase(previous).
-    set 16..25 O16..O25,
-    set 29..31 O29..O31,
+    # Save current -phase/confidence in O scratch while loading phase into A.low.
+    set 0..6 L9..L15,
+    set 7 L7,
+    set 8..10 O8..O10,
     set 16..22 L0..L6,
+    set 23..31 L,
     LDCTIAL
 
 add_previous1:
-    # A.low += A.high[6:0], yielding wrapped d0 modulo 128.
-    set 16..25 O16..O25,
-    set 29..31 O29..O31,
+    set 0..7 O0..O7,
+    set 8..10 O8..O10,
     set 16..22 A8..A14,
+    set 23..31 L,
     ADDCTIAL
 
 accumulate1:
-    # Sign-extend d0 from A6 and add to the full 16-bit pair accumulator.
+    # Sign-extend the wrapped 7-bit d0 from A6 into full counter B.
+    set 0..7 O0..O7,
+    set 8..10 O8..O10,
     set 16..22 A0..A6,
-    set 23..28 A6,
-    set 29..31 O29..O31,
+    set 23..31 A6,
     ADDCTIB
 
 save_middle:
-    # Preserve -phase(middle) and its confidence in A.high.
-    set 24..30 L9..L15,
-    set 31 L7,
-    set 29..31 O29..O31,
+    # A.high = {-phase(middle), low-confidence(middle)}.
+    set 8..10 O8..O10,
+    set 24..30 O0..O6,
+    set 31 O7,
     LDCTIAH
 
 address2:
+    set 8..10 O8..O10,
     set 16 0,
     set 17 1,
     set 18 2,
@@ -93,57 +101,65 @@ address2:
     set 21 5,
     set 22 6,
     set 23 7,
-    set 24..28 L,
-    set 29..31 O29..O31,
+    set 24..31 L,
     read 8
 
 load_current2:
-    set 16..25 O16..O25,
-    set 29..31 O29..O31,
+    set 0..6 L9..L15,
+    set 7 L7,
+    set 8..10 O8..O10,
     set 16..22 L0..L6,
+    set 23..31 L,
     LDCTIAL
 
 add_previous2:
-    set 16..25 O16..O25,
-    set 29..31 O29..O31,
+    set 0..7 O0..O7,
+    set 8..10 O8..O10,
     set 16..22 A8..A14,
+    set 23..31 L,
     ADDCTIAL
 
 accumulate2:
+    set 0..7 O0..O7,
+    set 8..10 O8..O10,
     set 16..22 A0..A6,
-    set 23..28 A6,
-    set 29..31 O29..O31,
+    set 23..31 A6,
     ADDCTIB
 
 save_current:
-    # Keep -phase(current) for the next pair but retain middle confidence A15.
-    set 24..30 L9..L15,
+    # Keep current -phase for the next pair, but retain middle confidence A15.
+    set 8..10 O8..O10,
+    set 24..30 O0..O6,
     set 31 A15,
-    set 29..31 O29..O31,
     LDCTIAH
 
 pair_map:
     # B is the no-rewrap signed pair sum (-128..+126 phase7 units).
-    # B1..B7 is an arithmetic /2 in signed 7-bit form. Bank 0x100 maps it
-    # to quiet 20 MS/s CVBS and flags only low-confidence winding events.
+    # B1..B7 is arithmetic /2 in signed 7-bit form. Bank 0x100 maps it to
+    # quiet 20 MS/s CVBS and flags only low-confidence winding events.
+    set 8..10 O8..O10,
     set 16..22 B1..B7,
     set 23 A15,
     set 24 H,
     set 25 L,
-    set 26..28 L,
-    set 29..31 O29..O31
+    set 26..31 L
 
 hold_map:
-    # Bank 0x200 combines the candidate with a coarse previous-output state.
+    # Bank 0x200:
+    # address[4:0] = candidate code / 2
+    # address[7:5] = previous output coarse state
+    # address[8]   = confidence-gated hold request
+    # address[9]   = bank select
+    set 8..10 O8..O10,
     set 16..20 L0..L4,
-    set 21..23 O29..O31,
+    set 21..23 O8..O10,
     set 24 L5,
     set 25 H,
-    set 26..28 L,
-    set 29..31 O29..O31
+    set 26..31 L
 
 emit:
     # Final 20 MS/s value duplicated physically as [D,D] at 40 MHz.
+    # Save its upper three bits in O29..31 for a possible next-sample hold.
     set 0..5 L0..L5,
     set 6..7 L,
     set 8..13 L0..L5,
