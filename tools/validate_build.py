@@ -51,7 +51,7 @@ c_names = [f.name for f in c_files]
 video_c = read(MAIN / "video.c")
 menu_lifecycle = video_c.split("static void video_set_menu_mode", 1)[1].split("static void menu_cycle_standard_mode", 1)[0]
 
-check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "arc_phy.c", "arc_v3_controller.c", "rx_auto_lab.c", "rf.c", "video.c", "menu_raster.c"},
+check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "arc_phy.c", "arc_v3_controller.c", "arc_v4_snap.c", "rx_auto_lab.c", "rf.c", "video.c", "menu_raster.c"},
       f"found: {c_names}")
 check("main.c present", "main.c" in c_names)
 check("rf.c present", "rf.c" in c_names)
@@ -383,6 +383,7 @@ check("ARC is the production default and legacy RX profiles remain explicit",
       "RX_PROFILE_FUSION_EXP" in all_c and
       "RX_PROFILE_RANGE_V2_EXP" in all_c and
       "RX_PROFILE_ARC_V3_EXP" in all_c and
+      "RX_PROFILE_ARC_V4_SNAP_EXP" in all_c and
       "s_rx_profile = RX_PROFILE_ARC" in all_c and
       "s_rf_bw_mode = RF_BW_MODE_BW40" in all_c)
 check("Range v2 combines Fusion with acquisition-only BW/AFC and full overload headroom",
@@ -467,6 +468,37 @@ check("ARC V3 exposes an explicit RF limit at the vendor-table ceiling",
       "ARC_V3_RF_LIMIT" in arc_v3 and
       "arc->gain >= arc->table.max_index" in arc_v3 and
       "ARC_V3_RF_LIMIT_CONFIRM_TICKS" in arc_v3)
+
+arc_v4_snap = read(MAIN / "arc_v4_snap.c") + read(MAIN / "arc_v4_snap.h")
+check("ARC V4 SNAP is an explicit fast calibrated handoff profile",
+      "RX_PROFILE_ARC_V4_SNAP_EXP" in video_c and
+      'return "ARC V4 SNAP"' in video_c and
+      "} else if (c == 'Z') {" in video_c and
+      "arc_v4_snap_tick" in video_c and
+      "FUSION_FAST_PERIOD_MS 6u" in video_c and
+      "s_rf_bw_mode = RF_BW_MODE_BW40" in video_c and
+      "s_afc_mode = AFC_MODE_OFF" in video_c)
+check("ARC V4 SNAP uses measured gain anchors instead of one-index hunting",
+      "16u, 40u, 54u, 70u, 78u, 81u" in arc_v4_snap and
+      "first_anchor_above" in arc_v4_snap and
+      "first_anchor_below" in arc_v4_snap and
+      "commit_handoff" in arc_v4_snap)
+check("ARC V4 SNAP hands off before starvation with adaptive confirmation",
+      "SNAP_SOFT_CONFIRM_SAMPLES        50u" in arc_v4_snap and
+      "SNAP_FAST_CONFIRM_SAMPLES        18u" in arc_v4_snap and
+      "SNAP_CRITICAL_CONFIRM_SAMPLES     2u" in arc_v4_snap and
+      "P8-10 / Q60-80" in arc_v4_snap and
+      "ARC_V4_SNAP_PREHANDOFF" in arc_v4_snap)
+check("ARC V4 SNAP verifies only fresh post-write Q4 without 500ms settle",
+      "SNAP_POST_WRITE_DISCARD_SAMPLES   5u" in arc_v4_snap and
+      "snap->discard_samples" in arc_v4_snap and
+      "reset_filter(snap)" in arc_v4_snap and
+      "one-second reversal lockout" in arc_v4_snap)
+check("ARC V4 SNAP fast observer is sole in-flight actuator",
+      "sole in-flight gain actuator" in video_c and
+      "s_rx_profile == RX_PROFILE_ARC_V4_SNAP_EXP" in video_c and
+      "target_gain = s_current_gain;" in video_c and
+      'xTaskCreate(fusion_observer_task, "fusion_obs", 4096, NULL, 4, NULL)' in video_c)
 
 rx_auto = read(MAIN / "rx_auto_lab.c") + read(MAIN / "rx_auto_lab.h")
 check("ARC V3 RX AUTO LAB is explicit opt-in console instrumentation",
