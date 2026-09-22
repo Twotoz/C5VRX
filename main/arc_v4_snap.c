@@ -110,15 +110,24 @@ static arc_v4_snap_urgency_t weak_urgency(
         snap->fast_origin >= snap->slow_origin + 80 ||
         snap->fast_winding >= snap->slow_winding + 90;
 
+    /* Absolute overlap zones come directly from the live walks: around
+     * P8-10 / Q60-80 the current gain can still show video, but the next
+     * calibrated region already provides more Q4 margin. That is the handoff
+     * zone SNAP is designed to catch before the quantizer cliff. */
+    if ((snap->fast_p <= 7 && snap->fast_q < 62) ||
+        snap->fast_q < 50 ||
+        snap->fast_origin >= 500)
+        return ARC_V4_SNAP_FAST;
+
     if ((snap->fast_p <= 8 && snap->fast_q < 68) ||
-        snap->fast_q < 55 ||
         snap->fast_origin >= 430)
         return weak_trend ? ARC_V4_SNAP_FAST : ARC_V4_SNAP_SOFT;
 
-    if (weak_trend &&
-        (snap->fast_p <= 12 ||
-         snap->fast_q < 86 ||
-         snap->fast_origin >= 180))
+    if ((snap->fast_p <= 10 && snap->fast_q < 82) ||
+        (weak_trend &&
+         (snap->fast_p <= 12 ||
+          snap->fast_q < 86 ||
+          snap->fast_origin >= 180)))
         return ARC_V4_SNAP_SOFT;
 
     return ARC_V4_SNAP_URGENCY_NONE;
@@ -376,15 +385,16 @@ uint8_t arc_v4_snap_tick(arc_v4_snap_t *snap,
      * Urgency may upgrade without resetting the timer. A direction reversal
      * starts a fresh handoff candidate; there is deliberately no fixed
      * one-second reversal lockout. */
-    if (direction != snap->pending_direction) {
+    if (direction != snap->pending_direction ||
+        urgency != snap->pending_urgency) {
+        /* Confirmation is consecutive evidence at the current urgency. A
+         * single CRITICAL fade followed by a merely SOFT window must never
+         * satisfy the two-sample emergency path. */
         snap->pending_direction = direction;
         snap->pending_urgency = urgency;
         snap->pending_samples = 1u;
-    } else {
-        if (urgency > snap->pending_urgency)
-            snap->pending_urgency = urgency;
-        if (snap->pending_samples < 1000u)
-            ++snap->pending_samples;
+    } else if (snap->pending_samples < 1000u) {
+        ++snap->pending_samples;
     }
 
     snap->state = ARC_V4_SNAP_PREHANDOFF;
