@@ -110,8 +110,11 @@ prefix until the reset hardware state converges. After pair zero both paths
 have the same current phase. Once their three-bit predictor states match, all
 remaining hardware outputs are identical to the persistent reference.
 
-The repair cap is 512 pairs. Diagnostics expose total/max repaired pairs and
-convergence failures. This is boundary stitching, not CPU processing of the
+The repair cap is 512 pairs. Diagnostics expose total/max repaired pairs,
+convergence misses and bounded state handoffs. If a deep fade provides no
+converging pair in that window, Alpha does not stop video: the final repaired
+sample is bridged to the nearest code in the hardware predictor bin and the
+hardware path continues. This is boundary stitching, not CPU processing of the
 40-MS/s stream.
 
 ## Host regression

@@ -324,6 +324,8 @@ check("Alpha finite M2M reset has bounded convergence repair",
       "ALPHA_BOUNDARY_REPAIR_MAX_PAIRS 512u" in alpha_h and
       "hardware_state == persistent_state" in alpha_c and
       "state_convergence_misses" in alpha_h and
+      "state_handoffs" in alpha_h and
+      "hardware predictor bin" in alpha_c and
       "max_boundary_repair_pairs" in alpha_h)
 check("Alpha host oracle guards strong transparency and weak hard-error tail",
       "High-confidence Alpha is deliberately transparent" in alpha_model and

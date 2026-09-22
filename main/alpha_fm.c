@@ -326,9 +326,22 @@ esp_err_t alpha_fm_transform(const uint8_t *input, uint8_t *output,
         s_stats.max_boundary_repair_pairs = repaired_pairs;
 
     if (!converged) {
+        /*
+         * Deep fades may contain no high-confidence pair for the whole repair
+         * window. Never turn that into a frozen receiver. Hand state back to
+         * the hardware on the last repaired pair, but choose the closest code
+         * inside the hardware predictor bin so the transition is bounded.
+         */
         s_stats.state_convergence_misses++;
-        s_stats.failures++;
-        return ESP_ERR_INVALID_STATE;
+        s_stats.state_handoffs++;
+        const unsigned last = repaired_pairs - 1u;
+        const int lo = (int)hardware_state * 8;
+        const int hi = lo + 7 > 63 ? 63 : lo + 7;
+        int bridge = output[last * 2u];
+        if (bridge < lo) bridge = lo;
+        if (bridge > hi) bridge = hi;
+        output[last * 2u] = (uint8_t)bridge;
+        output[last * 2u + 1u] = (uint8_t)bridge;
     }
 
     sync_c2m(output, (size_t)repaired_pairs * 2u);

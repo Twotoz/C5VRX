@@ -4033,6 +4033,7 @@ static void console_diag_task(void *arg)
                                (unsigned long)s_m2m_boundary_misses,
                                (unsigned long)alpha->max_boundary_repair_pairs,
                                (unsigned long)alpha->state_convergence_misses,
+                               (unsigned long)alpha->state_handoffs,
                                (unsigned long)s_m2m_half0_runs,
                                (unsigned long)s_m2m_half1_runs);
                     }

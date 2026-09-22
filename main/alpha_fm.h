@@ -26,6 +26,7 @@ typedef struct {
     uint32_t boundary_repair_pairs;
     uint32_t max_boundary_repair_pairs;
     uint32_t state_convergence_misses;
+    uint32_t state_handoffs;
 } alpha_fm_stats_t;
 
 /*
