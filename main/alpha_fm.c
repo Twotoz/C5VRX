@@ -281,8 +281,6 @@ esp_err_t alpha_fm_transform(const uint8_t *input, uint8_t *output,
      * same phase; after their 3-bit states match, every later hardware output
      * is byte-identical to the persistent Alpha reference.
      */
-    sync_m2c(output, bytes);
-
     uint8_t persistent_phase = q4_phase5(previous_raw);
     uint8_t persistent_state = s_boundary_state;
     uint8_t hardware_phase = 0u;
@@ -334,8 +332,10 @@ esp_err_t alpha_fm_transform(const uint8_t *input, uint8_t *output,
 
     sync_c2m(output, (size_t)repaired_pairs * 2u);
 
-    /* From convergence onward the hardware path is authoritative. The final
-     * duplicated code is therefore the exact state entering the next half. */
+    /* The prefix repair never needs to read the hardware output. Invalidate
+     * only the final cache line to recover the hardware state entering the
+     * next half; invalidating all 16 KiB would waste realtime budget. */
+    sync_m2c(output + bytes - 64u, 64u);
     s_boundary_state = output[bytes - 1u] >> 3u;
 
     const uint32_t total_us = (uint32_t)(esp_timer_get_time() - start);
