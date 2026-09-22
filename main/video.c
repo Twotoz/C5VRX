@@ -986,6 +986,10 @@ static void fusion_temporal_publish(const fusion_temporal_metrics_t *m)
  * explicit exception: while that profile is selected, this task also owns the
  * in-flight gain handoff so a pre-cliff event does not wait for the 50 ms
  * legacy actuator loop. */
+/* s_current_gain is defined with its boot initializer below, after the AGC
+ * type declarations. This tentative declaration lets the fast observer use it
+ * without moving legacy state around. */
+static volatile uint8_t s_current_gain;
 static void apply_rx_gain_tracked(uint8_t gain);
 
 static void fusion_observer_task(void *arg)
@@ -4089,6 +4093,20 @@ static void analog_agc_task(void *arg)
             goto control_tail;
         }
 
+        if (s_rx_profile == RX_PROFILE_ARC_V4_SNAP_EXP &&
+            s_agc_mode == ANALOG_AGC_ACTIVE) {
+            /* ARC V4 SNAP is actuated by the ~6 ms observer. The 50 ms legacy
+             * task is status-only for this profile so two controllers can
+             * never fight over the vendor gain table. */
+            target_gain = s_current_gain;
+            s_shadow_gain = s_current_gain;
+            s_agc_state =
+                s_last_arc_v4_snap_state == ARC_V4_SNAP_LOCK ?
+                AGC_STATE_TRACK : AGC_STATE_LEARN;
+            settle_ticks = 0;
+            goto control_tail;
+        }
+
         if (s_rx_profile == RX_PROFILE_ARC_V3_EXP &&
             s_agc_mode == ANALOG_AGC_ACTIVE) {
             arc_v3_observation_t v3_obs = {
@@ -4526,6 +4544,10 @@ static void console_diag_task(void *arg)
                     apply_rx_profile(RX_PROFILE_ARC_V3_EXP);
                     settings_save();
                     printf("[RX PROFILE] -> ARC V3 EXP (gain-first raw-Q4 controller)\n");
+                } else if (c == 'Z') {
+                    apply_rx_profile(RX_PROFILE_ARC_V4_SNAP_EXP);
+                    settings_save();
+                    printf("[RX PROFILE] -> ARC V4 SNAP (6ms calibrated margin handoff)\n");
                 } else if (c == 'X') {
                     cycle_rx_profile();
                 } else if (c == 't') {
@@ -4692,6 +4714,24 @@ static void console_diag_task(void *arg)
                                    s_last_arc_v3_filtered_origin % 10,
                                    s_last_arc_v3_up_guard);
                         }
+                    }
+                    if (s_rx_profile == RX_PROFILE_ARC_V4_SNAP_EXP) {
+                        printf(" ARC V4 SNAP:                %s dir=%s urgency=%s margin=%d/1000\n",
+                               arc_v4_snap_state_name(s_last_arc_v4_snap_state),
+                               arc_v4_snap_direction_name(s_last_arc_v4_snap_direction),
+                               arc_v4_snap_urgency_name(s_last_arc_v4_snap_urgency),
+                               s_last_arc_v4_snap_margin);
+                        printf(" SNAP Fast Q4:               P=%d Q=%d%% Clip=%d.%d%% Origin=%d.%d%% pending=%u discard=%u epoch=%lu handoffs=%lu\n",
+                               s_last_arc_v4_snap_fast_p,
+                               s_last_arc_v4_snap_fast_q,
+                               s_last_arc_v4_snap_fast_clip / 10,
+                               s_last_arc_v4_snap_fast_clip % 10,
+                               s_last_arc_v4_snap_fast_origin / 10,
+                               s_last_arc_v4_snap_fast_origin % 10,
+                               s_last_arc_v4_snap_pending,
+                               s_last_arc_v4_snap_discard,
+                               (unsigned long)s_last_arc_v4_snap_epoch,
+                               (unsigned long)s_last_arc_v4_snap_handoffs);
                     }
                     printf(" FM Vector Metrics:          P_median=%d, Q_phase=%d%%, Clip=%d.%d%%, Origin=%d.%d%%\n",
                            s_last_p_median, s_last_q_phase,
