@@ -4020,7 +4020,7 @@ static void console_diag_task(void *arg)
                                (unsigned long)s_m2m_half1_runs);
                     } else if (s_boot_demod_mode == DEMOD_MODE_ALPHA) {
                         const alpha_fm_stats_t *alpha = alpha_fm_stats();
-                        printf(" Alpha M2M:                  runs=%lu m2m=%lu/%luus total=%lu/%luus written=%lu short=%lu fail=%lu deadline=%lu boundary=%lu repair_max=%lu converge_fail=%lu halves=%lu/%lu\n",
+                        printf(" Alpha M2M:                  runs=%lu m2m=%lu/%luus total=%lu/%luus written=%lu short=%lu fail=%lu deadline=%lu boundary=%lu repair_max=%lu converge_fail=%lu handoff=%lu halves=%lu/%lu\n",
                                (unsigned long)alpha->runs,
                                (unsigned long)alpha->last_m2m_us,
                                (unsigned long)alpha->max_m2m_us,
