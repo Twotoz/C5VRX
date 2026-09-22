@@ -978,14 +978,22 @@ static void fusion_temporal_publish(const fusion_temporal_metrics_t *m)
 }
 
 /* Distributed observation closes a major blind spot in the old controller:
- * one 102 us descriptor every 50 ms observed only ~0.2% of RF time. This task
- * spreads similarly small CPU reads across the interval. It never writes PHY
- * state and never participates in DMA pacing. */
+ * one 102 us descriptor every 50 ms observed only ~0.2% of RF time. Legacy
+ * profiles remain read-only here. ARC V4 GLIDE is the explicit exception:
+ * its edge detector and small gain slew run at this ~6 ms cadence so movement
+ * starts while the old gain still has usable video margin. */
+static volatile uint8_t s_current_gain;
+static void apply_rx_gain_tracked(uint8_t gain);
+
 static void fusion_observer_task(void *arg)
 {
     (void)arg;
     fusion_temporal_t temporal;
     fusion_temporal_reset(&temporal);
+
+    arc_v4_glide_t glide;
+    arc_v4_glide_reset(&glide, rf_get_arc_gain_table(), s_current_gain);
+
     uint32_t seen_generation = s_profile_generation;
     uint8_t sample[FUSION_FAST_SAMPLE_BYTES];
 
@@ -995,6 +1003,7 @@ static void fusion_observer_task(void *arg)
         if (seen_generation != s_profile_generation) {
             seen_generation = s_profile_generation;
             fusion_temporal_reset(&temporal);
+            arc_v4_glide_reset(&glide, rf_get_arc_gain_table(), s_current_gain);
         }
 
         uint8_t *src = get_completed_rx_sample_window(sizeof(sample));
@@ -1014,6 +1023,45 @@ static void fusion_observer_task(void *arg)
             active_demod_shadow(metrics.fusion_shadow));
         fusion_temporal_metrics_t tm = fusion_temporal_update(&temporal, &obs);
         fusion_temporal_publish(&tm);
+
+        if (s_rx_profile != RX_PROFILE_ARC_V4_GLIDE_EXP || s_menu_active)
+            continue;
+
+        /* A channel/profile/manual write starts a fresh GLIDE epoch. */
+        if (glide.gain != s_current_gain)
+            arc_v4_glide_reset(&glide, rf_get_arc_gain_table(), s_current_gain);
+
+        arc_v4_glide_observation_t glide_obs = {
+            .p_median = metrics.p_median,
+            .q_phase = metrics.q_phase,
+            .clip_permille = metrics.clip_permille,
+            .origin_permille = metrics.origin_permille,
+            .winding_permille = metrics.winding_permille,
+        };
+
+        uint8_t before = s_current_gain;
+        uint8_t target = arc_v4_glide_tick(&glide, &glide_obs);
+
+        s_last_arc_v4_glide_state = glide.state;
+        s_last_arc_v4_glide_direction = glide.direction;
+        s_last_arc_v4_glide_action = glide.last_action;
+        s_last_arc_v4_glide_fast_p = glide.fast_p;
+        s_last_arc_v4_glide_fast_q = glide.fast_q;
+        s_last_arc_v4_glide_fast_clip = glide.fast_clip;
+        s_last_arc_v4_glide_fast_origin = glide.fast_origin;
+        s_last_arc_v4_glide_weak_votes = glide.weak_votes;
+        s_last_arc_v4_glide_strong_votes = glide.strong_votes;
+        s_last_arc_v4_glide_margin = glide.margin_score;
+        s_last_arc_v4_glide_epoch = glide.epoch;
+        s_last_arc_v4_glide_writes = glide.writes;
+        s_last_arc_v4_glide_escape_writes = glide.escape_writes;
+
+        if (target != before &&
+            seen_generation == s_profile_generation &&
+            s_rx_profile == RX_PROFILE_ARC_V4_GLIDE_EXP &&
+            !s_menu_active) {
+            apply_rx_gain_tracked(target);
+        }
     }
 }
 
@@ -4833,8 +4881,9 @@ esp_err_t video_start(void)
     if (s_tx_dma_ch >= 0) AHB_DMA.out_intr[s_tx_dma_ch].clr.val = UINT32_MAX;
     BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
 
-    /* Distributed shadow observer: read-only, no PHY writes and no DMA pacing. */
-    xTaskCreate(fusion_observer_task, "fusion_obs", 4096, NULL, 2, NULL);
+    /* Legacy profiles use a read-only fast observer. ARC V4 GLIDE owns only
+     * its bounded gain slew here; DMA remains fully hardware paced. */
+    xTaskCreate(fusion_observer_task, "fusion_obs", 4096, NULL, 4, NULL);
 
     /* Start interactive console for on-demand diagnostics (zero periodic CPU/bus traffic) */
     xTaskCreate(console_diag_task, "console_diag", 3072, NULL, 1, NULL);
