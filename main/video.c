@@ -487,6 +487,122 @@ static inline uint32_t get_tx_dma_offset(uint32_t *out_dscr_addr)
     return 0;
 }
 
+#define ADJ_HALF_TRIGGER_OFFSET (4u * 4092u) /* 16368: descriptor begins 16 B before half */
+#define ADJ_BOUNDARY_SETTLE_US 2u
+#define ADJ_TX_GUARD_US 64u
+
+static esp_err_t adjacent_runtime_prepare(void)
+{
+    if (s_adj_ring) return ESP_OK;
+    s_adj_ring = heap_caps_aligned_alloc(64u, RAW_RING_BYTES,
+                                         MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    if (!s_adj_ring) return ESP_ERR_NO_MEM;
+    memset(s_adj_ring, DAC_IDLE_CODE, RAW_RING_BYTES);
+    sync_dma_c2m(s_adj_ring, RAW_RING_BYTES);
+
+    esp_err_t err = adjacent_fm_init();
+    if (err != ESP_OK) {
+        free(s_adj_ring);
+        s_adj_ring = NULL;
+        return err;
+    }
+    return ESP_OK;
+}
+
+static bool adjacent_process_half(unsigned half)
+{
+    const size_t input_off = half ? ADJACENT_FM_BLOCK_BYTES : 0u;
+    const size_t output_off = half ? 0u : ADJACENT_FM_BLOCK_BYTES;
+    const size_t previous_off = half ? (ADJACENT_FM_BLOCK_BYTES - 1u) :
+                                       (RAW_RING_BYTES - 1u);
+
+    sync_dma_m2c(s_raw_ring + previous_off, 1u);
+    const uint8_t previous_raw = s_raw_ring[previous_off];
+
+    esp_err_t err = adjacent_fm_transform(
+        s_raw_ring + input_off, s_adj_ring + output_off,
+        ADJACENT_FM_BLOCK_BYTES, previous_raw);
+    if (err != ESP_OK) {
+        s_adj_error = err;
+        return false;
+    }
+
+    if (half) ++s_adj_half1_runs;
+    else ++s_adj_half0_runs;
+
+    /* A half must be transformed before RX reaches that same raw half again.
+     * Detect a missed 409.6 us service window from the live descriptor region. */
+    uint32_t off = get_rx_dma_offset(NULL);
+    bool missed = half ? (off >= ADJ_HALF_TRIGGER_OFFSET) :
+                         (off < ADJ_HALF_TRIGGER_OFFSET);
+    if (missed) {
+        ++s_adj_boundary_misses;
+        s_adj_error = ESP_ERR_TIMEOUT;
+        return false;
+    }
+    return true;
+}
+
+static void adjacent_worker_task(void *arg)
+{
+    (void)arg;
+    s_adj_task_stopped = false;
+    s_adj_tx_started = false;
+    s_adj_error = ESP_OK;
+
+    uint32_t last_off = get_rx_dma_offset(NULL);
+    bool was_high = last_off >= ADJ_HALF_TRIGGER_OFFSET;
+    unsigned ready_mask = 0u;
+
+    while (s_adj_run) {
+        uint32_t off = get_rx_dma_offset(NULL);
+        bool high = off >= ADJ_HALF_TRIGGER_OFFSET;
+
+        /* Descriptor 4 starts at 16368. Wait 2 us so the final 16 bytes of
+         * half 0 have definitely landed before the M2M reader touches them. */
+        if (!was_high && high) {
+            esp_rom_delay_us(ADJ_BOUNDARY_SETTLE_US);
+            if (!adjacent_process_half(0u)) break;
+            ready_mask |= 1u;
+            off = get_rx_dma_offset(NULL);
+            high = off >= ADJ_HALF_TRIGGER_OFFSET;
+        }
+
+        /* High->low is the 32 KiB ring wrap: half 1 is now immutable. */
+        if (was_high && !high) {
+            esp_rom_delay_us(ADJ_BOUNDARY_SETTLE_US);
+            if (!adjacent_process_half(1u)) break;
+            ready_mask |= 2u;
+
+            /* Start only immediately after a fresh half-1 transform. raw1 maps
+             * to output half0, so TX reads half0 while the next raw0 transform
+             * writes output half1. The guard gives M2M jitter headroom. */
+            if (!s_adj_tx_started && ready_mask == 3u) {
+                esp_rom_delay_us(ADJ_TX_GUARD_US);
+                esp_err_t err = start_tx();
+                if (err != ESP_OK) {
+                    s_adj_error = err;
+                    break;
+                }
+                s_adj_tx_started = true;
+            }
+            off = get_rx_dma_offset(NULL);
+            high = off >= ADJ_HALF_TRIGGER_OFFSET;
+        }
+
+        was_high = high;
+        last_off = off;
+        (void)last_off;
+        esp_rom_delay_us(2u);
+        taskYIELD();
+    }
+
+    s_adj_run = false;
+    s_adj_task_stopped = true;
+    s_adj_task = NULL;
+    vTaskDelete(NULL);
+}
+
 #define MAX_RING_DESCRIPTORS 16
 
 typedef struct {
@@ -1502,6 +1618,7 @@ static void poll_transport_faults(void)
     }
     if (BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].eof_overload) {
         ++s_hw_counters.bs_eof_overload_count;
+        if (s_demod_mode != DEMOD_MODE_ADJACENT_FULLQ4)
         BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
         flags |= LAG_EVT_BS_EOF_OVERLOAD;
     }
@@ -3843,6 +3960,20 @@ static void console_diag_task(void *arg)
                            s_last_winding_permille / 10, s_last_winding_permille % 10,
                            s_last_strong_winding_permille / 10, s_last_strong_winding_permille % 10,
                            s_last_sync_quality, (unsigned)s_last_sync_width_20m);
+                    if (s_boot_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) {
+                        const adjacent_fm_stats_t *adj = adjacent_fm_stats();
+                        printf(" Adjacent M2M:               runs=%lu last=%luus max=%luus written=%lu short=%lu fail=%lu deadline=%lu boundary=%lu halves=%lu/%lu\n",
+                               (unsigned long)adj->runs,
+                               (unsigned long)adj->last_us,
+                               (unsigned long)adj->max_us,
+                               (unsigned long)adj->last_bytes_written,
+                               (unsigned long)adj->short_writes,
+                               (unsigned long)adj->failures,
+                               (unsigned long)adj->deadline_misses,
+                               (unsigned long)s_adj_boundary_misses,
+                               (unsigned long)s_adj_half0_runs,
+                               (unsigned long)s_adj_half1_runs);
+                    }
                     printf(" Gain Transitions:           %lu (control window=%u IQ samples / %.1f us)\n",
                            (unsigned long)s_gain_transition_count, CONTROL_SAMPLE_BYTES,
                            (double)CONTROL_SAMPLE_BYTES * 1000000.0 / (double)IQ_RATE_HZ);
@@ -3948,12 +4079,17 @@ esp_err_t video_start(void)
     if (!s_menu_commands) return ESP_ERR_NO_MEM;
 
     settings_load();
+    s_boot_demod_mode = s_demod_mode;
+
+    esp_err_t err;
+    if (s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) {
+        err = adjacent_runtime_prepare();
+        if (err != ESP_OK) return err;
+    }
 
     /* Zero the ring before starting. Flush to DMA-visible SRAM. */
     memset(s_raw_ring, 0, sizeof(s_raw_ring));
     sync_dma_c2m(s_raw_ring, sizeof(s_raw_ring));
-
-    esp_err_t err;
 
     if ((err = prepare_rx()) != ESP_OK) return err;
     if ((err = prepare_tx()) != ESP_OK) return err;
@@ -3974,21 +4110,42 @@ esp_err_t video_start(void)
     AHB_DMA.in_intr[2].ena.val = 0;
     PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1;
 
-    /* Request half-ring producer/consumer separation before starting TX.
-     * The integer-microsecond delay and driver latency need hardware validation. */
-    esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
-
-    if ((err = start_tx()) != ESP_OK) return err;
-
-    /* Discover AHB_DMA channels assigned to PARL_IO (peripheral ID 9) */
+    /* Discover RX DMA as soon as capture is running. ADJACENT uses the live
+     * descriptor position as its half-ring scheduling clock. */
     for (int i = 0; i < 3; i++) {
-        if (AHB_DMA.channel[i].in.in_peri_sel.peri_in_sel_chn == 9) {
+        if (AHB_DMA.channel[i].in.in_peri_sel.peri_in_sel_chn == 9)
             s_rx_dma_ch = i;
-        }
-        if (AHB_DMA.channel[i].out.out_peri_sel.peri_out_sel_chn == 9) {
-            s_tx_dma_ch = i;
-        }
     }
+    if (s_rx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
+
+    if (s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) {
+        s_adj_run = true;
+        s_adj_task_stopped = false;
+        if (xTaskCreate(adjacent_worker_task, "adjacent_fm", 4096, NULL, 6,
+                        &s_adj_task) != pdPASS)
+            return ESP_ERR_NO_MEM;
+
+        /* The worker fills both output halves and starts plain PARLIO TX at a
+         * safe ping-pong phase. This wait is startup-only; live pacing remains
+         * RX descriptor position + hardware M2M, never USB or a timer. */
+        int64_t deadline = esp_timer_get_time() + 100000;
+        while (!s_adj_tx_started && s_adj_error == ESP_OK &&
+               esp_timer_get_time() < deadline)
+            vTaskDelay(1);
+        if (!s_adj_tx_started)
+            return s_adj_error != ESP_OK ? s_adj_error : ESP_ERR_TIMEOUT;
+    } else {
+        /* Golden/Trajectory keep the proven half-ring producer/consumer delay. */
+        esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
+        if ((err = start_tx()) != ESP_OK) return err;
+    }
+
+    /* Discover TX DMA after either the normal starter or ADJ worker launched it. */
+    for (int i = 0; i < 3; i++) {
+        if (AHB_DMA.channel[i].out.out_peri_sel.peri_out_sel_chn == 9)
+            s_tx_dma_ch = i;
+    }
+    if (s_tx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
 
     /* Put PARLIO TX into pure continuous hardware mode:
      * Disable all GDMA TX channel interrupts and PARL_IO core interrupts.
@@ -4028,12 +4185,16 @@ esp_err_t video_start(void)
         " Telemetry: Live GDMA ring pointer tracking (rx_ch=%d, tx_ch=%d)\n"
         " Buffer:  32,768 bytes cyclic ring (Zero-EOF patched: RX=%d TX=%d)\n"
         " RX:      40 MS/s POS edge, 32,768 bytes pure HW cyclic GDMA\n"
-        " Demod:   Phase5 50ns / P%u / G%u / current-minus-previous\n"
+        " Demod:   %s / P%u / G%u / current-minus-previous\n"
         " TX:      40 MHz [D,D] / eof=downstream / tail=0\n"
         " Lock:    GDMA ISRs disabled, RX EOF disabled, suc_eof=0 cleared\n"
-        " CPU:     done (hardware runs in unbroken infinite loop)\n"
+        " CPU:     %s\n"
         "=======================================================\n",
-        s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes, DAC_IDLE_CODE, 2u);
+        s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes,
+        demod_mode_name(), DAC_IDLE_CODE, 2u,
+        s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4 ?
+        "adjacent half-ring scheduler active" :
+        "done (hardware runs in unbroken infinite loop)");
 
     return ESP_OK;
 }
