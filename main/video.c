@@ -219,6 +219,7 @@ static unsigned s_menu_node_capacity;
 /* AGC sampling and channel scan are serialized in analog_agc_task, so they
  * share one descriptor-sized CPU snapshot instead of reserving 8 KiB. */
 static uint8_t s_control_sample_buf[CONTROL_SAMPLE_BYTES];
+static uint8_t s_diag_scan_buf[1024];
 static unsigned s_menu_node_count;
 static volatile bool s_menu_active;
 static volatile bool s_menu_boot_btn_enabled = true;
@@ -2075,6 +2076,107 @@ static void lab_request_fresh_phy_calibration(void)
 /* Acquisition-only centering characterization. This deliberately does not
  * become a continuous AFC loop: each PHY retune can disturb analog video.
  * The probe scores actual demod/sync quality and restores the prior offset. */
+static void lab_run_modem_diag_scan(void)
+{
+    if (s_gain_sweep.active || s_menu_active || s_pre_q4_probe_active) {
+        printf("C5VRX_DIAG_SCAN_REFUSED reason=%s\n",
+               s_gain_sweep.active ? "gain_sweep_active" :
+               s_menu_active ? "menu_active" : "preq4_busy");
+        return;
+    }
+
+    const analog_agc_mode_t saved_agc_mode = s_agc_mode;
+    const agc_state_t saved_agc_state = s_agc_state;
+    const bool saved_quiet = s_lab_quiet;
+
+    s_agc_mode = ANALOG_AGC_MANUAL;
+    s_lab_quiet = true;
+    ++s_profile_generation;
+    video_standard_detector_reset();
+
+    printf("C5VRX_DIAG_SCAN_BEGIN windows=25 width=8 settle_ms=4 "
+           "note=video_will_glitch_during_probe\n");
+
+    for (unsigned first = 0u; first <= 24u; ++first) {
+        esp_err_t err = rf_route_modem_diag_window(first);
+        if (err != ESP_OK) {
+            printf("C5VRX_DIAG_WINDOW first=%u err=%s\n",
+                   first, esp_err_to_name(err));
+            continue;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(4));
+        uint8_t *src = get_completed_rx_sample_window(sizeof(s_diag_scan_buf));
+        sync_dma_m2c((void *)src, sizeof(s_diag_scan_buf));
+        memcpy(s_diag_scan_buf, src, sizeof(s_diag_scan_buf));
+
+        bool seen[256] = {false};
+        unsigned unique = 0u;
+        unsigned changed = 0u;
+        unsigned small16 = 0u;
+        unsigned accel8 = 0u;
+        unsigned bit_transitions[8] = {0};
+        int previous_delta = 0;
+        uint8_t previous = s_diag_scan_buf[0];
+        seen[previous] = true;
+        unique = 1u;
+
+        for (size_t i = 1u; i < sizeof(s_diag_scan_buf); ++i) {
+            const uint8_t current = s_diag_scan_buf[i];
+            if (!seen[current]) {
+                seen[current] = true;
+                ++unique;
+            }
+            const uint8_t xorv = current ^ previous;
+            if (xorv) ++changed;
+            for (unsigned bit = 0u; bit < 8u; ++bit)
+                bit_transitions[bit] += (xorv >> bit) & 1u;
+
+            const int delta = (int)(int8_t)(current - previous);
+            const int abs_delta = delta < 0 ? -delta : delta;
+            if (abs_delta <= 16) ++small16;
+            if (i > 1u) {
+                int accel = delta - previous_delta;
+                if (accel > 127) accel -= 256;
+                if (accel < -128) accel += 256;
+                if (accel < 0) accel = -accel;
+                if (accel <= 8) ++accel8;
+            }
+            previous_delta = delta;
+            previous = current;
+        }
+
+        const unsigned denom = (unsigned)sizeof(s_diag_scan_buf) - 1u;
+        const unsigned change_pm = denom ? changed * 1000u / denom : 0u;
+        const unsigned smooth_pm = denom ? small16 * 1000u / denom : 0u;
+        const unsigned accel_pm = denom > 1u ? accel8 * 1000u / (denom - 1u) : 0u;
+        const unsigned score =
+            smooth_pm + accel_pm + (unique < 128u ? unique * 3u : 384u);
+
+        printf("C5VRX_DIAG_WINDOW first=%u last=%u unique=%u "
+               "change_pm=%u smooth16_pm=%u accel8_pm=%u score=%u "
+               "bt=%u,%u,%u,%u,%u,%u,%u,%u\n",
+               first, first + 7u, unique, change_pm, smooth_pm, accel_pm,
+               score,
+               bit_transitions[0], bit_transitions[1],
+               bit_transitions[2], bit_transitions[3],
+               bit_transitions[4], bit_transitions[5],
+               bit_transitions[6], bit_transitions[7]);
+    }
+
+    const esp_err_t restore_err = rf_restore_modem_iq_routes();
+    vTaskDelay(pdMS_TO_TICKS(10));
+    ++s_profile_generation;
+    video_standard_detector_reset();
+    s_agc_state = saved_agc_state;
+    s_agc_mode = saved_agc_mode;
+    s_lab_quiet = saved_quiet;
+
+    printf("C5VRX_DIAG_SCAN_END restore=%s mapping=Q6-9,I16-19\n",
+           esp_err_to_name(restore_err));
+}
+
+
 static void lab_run_frequency_probe(void)
 {
     if (s_gain_sweep.active || s_menu_active) {
@@ -4467,6 +4569,8 @@ static void console_diag_task(void *arg)
                     lab_run_bandwidth_probe();
                 } else if (c == 'A') {
                     lab_run_frequency_probe();
+                } else if (c == 'D') {
+                    lab_run_modem_diag_scan();
                 } else if (c == 'H') {
                     lab_print_arc_oracle();
                 } else if (c == 'G') {
