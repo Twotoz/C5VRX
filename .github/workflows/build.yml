@@ -171,6 +171,8 @@ jobs:
           git diff --exit-code -- main/fm_lift16_phase.bsasm
           python3 tools/lift_fm_raw_wall.py
           python3 tools/lift_fm_phase6.py
+          python3 tools/lift_fm_rx_phase.py --write --self-test
+          git diff --exit-code -- main/fm_rx_phase.bsasm
           python3 tools/range_demod_bench.py --self-test
 
   build:
