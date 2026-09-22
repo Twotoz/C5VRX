@@ -264,6 +264,10 @@ static volatile esp_err_t s_adj_error = ESP_OK;
 static volatile uint32_t s_adj_half0_runs;
 static volatile uint32_t s_adj_half1_runs;
 static volatile uint32_t s_adj_boundary_misses;
+
+/* Used by the early adjacent boot-fallback path; implementation lives with
+ * the rest of the NVS settings helpers below. */
+static void settings_save(void);
 static volatile uint32_t s_profile_generation;
 static volatile bool s_profile_fft_forced;
 static volatile bool s_fft_q4_effect_known;
