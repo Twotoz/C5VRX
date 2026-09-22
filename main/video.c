@@ -3042,17 +3042,25 @@ static void menu_draw_status_page(void)
 {
     char gain[16];
     char signal[24];
+    char video[32];
+    bool production =
+        s_rx_profile == RX_PROFILE_ARC_V5_AUTOTUNE_EXP &&
+        s_rf_bw_mode == RF_BW_MODE_BW40 &&
+        s_afc_mode == AFC_MODE_OFF &&
+        s_output_mode == VIDEO_OUTPUT_6BIT_40 &&
+        s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5;
 
-    menu_draw_page_title("RECEIVER STATUS", "AUTO");
-    menu_ui_value_box(100, 22, 130, "RX", "ARC V5");
-    menu_ui_value_box(238, 22, 138, "RF", "BW40");
-    menu_ui_value_box(100, 34, 130, "AFC", "OFF");
+    menu_draw_page_title("RECEIVER STATUS", production ? "AUTO" : "LAB");
+    menu_ui_value_box(100, 22, 130, "RX", rx_profile_name());
+    menu_ui_value_box(238, 22, 138, "RF", rf_bw_mode_name());
+    menu_ui_value_box(100, 34, 130, "AFC", afc_mode_name());
     snprintf(gain, sizeof(gain), "G%u", s_current_gain);
     menu_ui_value_box(238, 34, 138, "GAIN", gain);
 
     snprintf(signal, sizeof(signal), "P%d Q%d%%", s_last_p_median, s_last_q_phase);
     menu_ui_text(signal, 100, 47, UI_MUTED);
-    menu_ui_text_right("AUTO-TUNING - NO SETUP", 376, 47, UI_WHITE);
+    snprintf(video, sizeof(video), "%s/%s", output_mode_name(), demod_mode_name());
+    menu_ui_text_right(video, 376, 47, production ? UI_WHITE : UI_MUTED);
 }
 
 static void menu_draw_exit_page(void)
