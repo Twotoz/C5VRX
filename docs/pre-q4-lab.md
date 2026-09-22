@@ -960,7 +960,7 @@ Confirmation is adaptive at the ~6 ms observer cadence:
 
 ```text
 SOFT      50 samples ~= 300 ms
-FAST      18 samples ~= 108 ms
+FAST      15 samples ~= 90 ms
 CRITICAL   2 samples ~= 12 ms
 ```
 
