@@ -157,16 +157,16 @@ check("three-second BOOT recovery cannot be blocked by persisted menu state",
 check("experimental BW auto and 4-bit@80 remain opt-in",
       "AUTO EXP" in all_c and "VIDEO_OUTPUT_4BIT_80" in all_c and
       "DAC4_RATE_HZ     80000000u" in all_c)
-check("4BIT@80 remains reachable with a valid GOLDEN pairing",
+check("4BIT@80 remains reachable only with a valid GOLDEN pairing",
       's_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?' in all_c and
-      "s_demod_mode == DEMOD_MODE_TRAJECTORY_V2" in all_c and
+      "s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5" in all_c and
       "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;" in all_c and
-      "DEMOD -> GOLDEN" in all_c and
-      "selecting 4BIT@80" in all_c)
-check("TRAJ V2 keeps its required 6BIT@40 pairing",
-      "if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)" in all_c and
+      "DEMOD -> GOLDEN" in all_c)
+check("all experimental demods keep the required 6BIT@40 pairing",
+      "s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5" in all_c and
       "s_output_mode = VIDEO_OUTPUT_6BIT_40;" in all_c and
-      "start_flight_demodulator" in all_c)
+      "start_flight_demodulator" in all_c and
+      "DEMOD_MODE_ADJACENT_M2M" in all_c)
 check("menu lifecycle does not double-disable BitScrambler",
       all_c.count("bitscrambler_disable(s_flight_bs)") == 1)
 check("large menu descriptor chain is transient DMA heap, not static BSS",
@@ -308,10 +308,10 @@ check("Trajectory v2 is opt-in and Golden remains boot default",
       "DEMOD_MODE_TRAJECTORY_V2 = 1" in all_c and
       "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5" in all_c and
       "s_fm_traj_program" in all_c)
-check("Trajectory v2 initial hardware A/B keeps the 6BIT@40 contract",
+check("Trajectory v2 and ADJ M2M hardware A/B keep the 6BIT@40 contract",
       "s_demod_mode == DEMOD_MODE_TRAJECTORY_V2" in all_c and
+      "DEMOD_MODE_ADJACENT_M2M" in all_c and
       "s_output_mode = VIDEO_OUTPUT_6BIT_40" in all_c and
-      "Selecting TRAJ V2 therefore moves the DAC back" in all_c and
       "DEMOD -> GOLDEN" in all_c)
 check("Trajectory v2 supervisor mirrors two-stage token LUT and uncertainty",
       "trajectory_v2_stage1_address" in all_c and
