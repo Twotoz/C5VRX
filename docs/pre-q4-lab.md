@@ -912,6 +912,85 @@ At each step, record the settled gain together with P/Q/origin/clip/winding.
 That produces a repeatable **relative RF power -> required generated gain**
 curve without pretending that distance itself is a receiver observable.
 
+### ARC V4 GLIDE: overlapping closed-loop gain regions
+
+ARC V3 proved that pre-Q4 gain placement is a major range limiter. The next
+control problem is visual continuity: waiting until STARVED is too late, while
+large anchor-to-anchor jumps can be unnecessarily visible and can hunt when a
+stable low-margin state is still usable.
+
+ARC V4 GLIDE therefore treats the measured gain regions as **overlapping
+operating regions**, not hard switch points.
+
+```text
+HOLD
+  stable current region
+  zero gain writes
+
+GLIDE
+  real movement away from the HOLD baseline
+  small +2/+4 or -2/-4 vendor gain steps
+  fresh-Q4 verification after every step
+  stop immediately when broad margin is restored
+
+ESCAPE
+  genuine Q4 collapse or major clipping only
+  calibrated anchor jump using G16/G40/G54/G70/G78/G81
+```
+
+The measured anchors remain:
+
+```text
+G16 -> G40 -> G54 -> G70 -> G78 -> G81
+```
+
+They are empirical operating-region anchors, not distance labels and not
+linear dB. Normal GLIDE does **not** jump between them. It moves through the
+intermediate vendor gain indices so adjacent regions overlap in time.
+
+The normal handoff is edge-triggered. A stable low state such as P9/Q75 is not
+a reason to change gain by itself. GLIDE stores a HOLD baseline and requires at
+least two independent raw-Q4 metrics to move away from it before ordinary
+motion starts. Weak-side motion is intentionally faster than strong-side
+motion:
+
+```text
+WEAKER trend:   3 fast samples ~= 18 ms before first small step
+STRONGER trend: 8 fast samples ~= 48 ms before first small step
+```
+
+This asymmetry protects range: temporarily carrying a little extra gain is
+less harmful than waiting until weak Q4 loses phase.
+
+After each small physical step:
+
+```text
+write
+ -> discard 2 fast windows (~12 ms nominal)
+ -> verify 3 fresh windows
+ -> HOLD if comfortable
+ -> another small step only if still genuinely near the same edge
+```
+
+There is no fixed 500 ms decision hold and no one-second reversal lockout in
+GLIDE. The existing 500 ms constant remains for legacy profiles only.
+
+The only level-triggered paths are true ESCAPE conditions:
+
+- weak escape: P<=4, Q<20, origin>=75%, clip<=0.8%;
+- strong escape: clip>=10% or P>=60.
+
+ESCAPE uses the measured anchor ladder because preserving usable video matters
+more than smoothness once Q4 is already collapsing or badly clipping.
+
+Initial hardware A/B goal:
+
+1. steady video should show long HOLD plateaus with zero writes;
+2. walking away should start +2/+4 movement before visible breakup;
+3. walking closer should glide downward more slowly;
+4. ordinary movement should avoid hard G54->G70 style transitions;
+5. a wall/antenna block should still recover quickly through ESCAPE.
+
 ### Demodulator boundary
 
 `U` does not mix frontend discovery with demodulator selection. Q4 placement is
