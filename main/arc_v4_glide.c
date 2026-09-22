@@ -166,23 +166,19 @@ static void update_votes(arc_v4_glide_t *g)
 
 static void baseline_follow_hold(arc_v4_glide_t *g)
 {
-    if (!g->baseline_valid) {
-        g->base_p = g->fast_p;
-        g->base_q = g->fast_q;
-        g->base_clip = g->fast_clip;
-        g->base_origin = g->fast_origin;
-        g->base_winding = g->fast_winding;
-        g->baseline_valid = 1u;
-        return;
-    }
+    if (g->baseline_valid) return;
 
-    /* Very slow adaptation means stable low-margin operation remains HOLD
-     * instead of eventually manufacturing a trend against itself. */
-    g->base_p = ema(g->base_p, g->fast_p, 64u);
-    g->base_q = ema(g->base_q, g->fast_q, 64u);
-    g->base_clip = ema(g->base_clip, g->fast_clip, 64u);
-    g->base_origin = ema(g->base_origin, g->fast_origin, 64u);
-    g->base_winding = ema(g->base_winding, g->fast_winding, 64u);
+    /* Freeze one baseline for the complete HOLD epoch. If the user walks away
+     * slowly, GLIDE must measure the accumulated loss of margin instead of
+     * adapting the reference along with it. A fresh baseline is created only
+     * after reset or a physical gain write. Stable-low startup still remains
+     * HOLD because that low state becomes the epoch baseline itself. */
+    g->base_p = g->fast_p;
+    g->base_q = g->fast_q;
+    g->base_clip = g->fast_clip;
+    g->base_origin = g->fast_origin;
+    g->base_winding = g->fast_winding;
+    g->baseline_valid = 1u;
 }
 
 static int first_anchor_above(const arc_v4_glide_t *g)
