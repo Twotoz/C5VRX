@@ -123,3 +123,62 @@ The search is allowed to use:
 
 Any candidate still has to match the exhaustive exact oracle before it can be
 called LIFT-FM.
+
+## Phase6: the middle sample is one parity bit
+
+There is a stronger exact representation than carrying both adjacent deltas.
+
+Lift the Phase5 circle into a signed six-bit local phase state. For one pair
+`p -> m -> c`, the exact sum is always in `[-32, 30]`, so six signed bits
+are sufficient.
+
+The low five bits telescope:
+
+```text
+S[4:0] = (c - p) mod 32
+```
+
+The middle sample only decides whether bit 5 of that endpoint must be toggled.
+
+Define `cross(a,b)` as the principal-branch crossing for one adjacent
+transition. It has an exact comparator form:
+
+```text
+a4=0, b4=1 : cross = (b_low4 >= a_low4)
+a4=1, b4=0 : cross = (a_low4 >  b_low4)
+otherwise   : cross = 0
+```
+
+Then the complete exact pair is:
+
+```text
+S[4:0] = (c - p) & 31
+S[5]   = (c < p) XOR cross(p,m) XOR cross(m,c)
+```
+
+The sign of the `+/-32` correction does not need to be retained: modulo 64,
+both corrections toggle exactly the same sixth bit.
+
+Equivalently, maintain an unwrapped Phase6 state `U`:
+
+```text
+U.low5 <- current Phase5
+U.bit5 <- U.bit5 XOR cross(previous,current)
+```
+
+Then `signed6(U_c - U_p)` is exactly
+`wrap32(m-p)+wrap32(c-m)`.
+
+`tools/lift_fm_phase6.py` checks every one of the 1024 Phase5 transitions
+for both lift parities and all 32768 `p,m,c` triplets, including equality
+with the existing P20/G2 exact DAC oracle.
+
+This moves the hardware target again. We do not need two complete adjacent
+delta values in persistent state. We need:
+
+- one endpoint subtraction;
+- one persistent lift bit;
+- exact branch-cross information for each 25-ns transition.
+
+That is a much smaller state machine and maps naturally onto the C5's byte
+comparators/counter state.
