@@ -4081,6 +4081,19 @@ static void analog_agc_task(void *arg)
             goto control_tail;
         }
 
+        if (s_rx_profile == RX_PROFILE_ARC_V4_GLIDE_EXP &&
+            s_agc_mode == ANALOG_AGC_ACTIVE) {
+            /* GLIDE's fast observer is the sole in-flight gain actuator.
+             * The legacy 50 ms loop only mirrors state for diagnostics. */
+            target_gain = s_current_gain;
+            s_shadow_gain = s_current_gain;
+            s_agc_state =
+                s_last_arc_v4_glide_state == ARC_V4_GLIDE_HOLD ?
+                AGC_STATE_TRACK : AGC_STATE_LEARN;
+            settle_ticks = 0;
+            goto control_tail;
+        }
+
         if (s_rx_profile == RX_PROFILE_ARC_V3_EXP &&
             s_agc_mode == ANALOG_AGC_ACTIVE) {
             arc_v3_observation_t v3_obs = {
@@ -4518,6 +4531,10 @@ static void console_diag_task(void *arg)
                     apply_rx_profile(RX_PROFILE_ARC_V3_EXP);
                     settings_save();
                     printf("[RX PROFILE] -> ARC V3 EXP (gain-first raw-Q4 controller)\n");
+                } else if (c == 'Z') {
+                    apply_rx_profile(RX_PROFILE_ARC_V4_GLIDE_EXP);
+                    settings_save();
+                    printf("[RX PROFILE] -> ARC V4 GLIDE (overlap gain slew + calibrated escape)\n");
                 } else if (c == 'X') {
                     cycle_rx_profile();
                 } else if (c == 't') {
@@ -4684,6 +4701,25 @@ static void console_diag_task(void *arg)
                                    s_last_arc_v3_filtered_origin % 10,
                                    s_last_arc_v3_up_guard);
                         }
+                    }
+                    if (s_rx_profile == RX_PROFILE_ARC_V4_GLIDE_EXP) {
+                        printf(" ARC V4 GLIDE:               %s dir=%s action=%s margin=%d/1000\n",
+                               arc_v4_glide_state_name(s_last_arc_v4_glide_state),
+                               arc_v4_glide_direction_name(s_last_arc_v4_glide_direction),
+                               arc_v4_glide_action_name(s_last_arc_v4_glide_action),
+                               s_last_arc_v4_glide_margin);
+                        printf(" GLIDE Fast Q4:              P=%d Q=%d%% Clip=%d.%d%% Origin=%d.%d%% weak_votes=%d strong_votes=%d epoch=%lu writes=%lu escape=%lu\n",
+                               s_last_arc_v4_glide_fast_p,
+                               s_last_arc_v4_glide_fast_q,
+                               s_last_arc_v4_glide_fast_clip / 10,
+                               s_last_arc_v4_glide_fast_clip % 10,
+                               s_last_arc_v4_glide_fast_origin / 10,
+                               s_last_arc_v4_glide_fast_origin % 10,
+                               s_last_arc_v4_glide_weak_votes,
+                               s_last_arc_v4_glide_strong_votes,
+                               (unsigned long)s_last_arc_v4_glide_epoch,
+                               (unsigned long)s_last_arc_v4_glide_writes,
+                               (unsigned long)s_last_arc_v4_glide_escape_writes);
                     }
                     printf(" FM Vector Metrics:          P_median=%d, Q_phase=%d%%, Clip=%d.%d%%, Origin=%d.%d%%\n",
                            s_last_p_median, s_last_q_phase,
