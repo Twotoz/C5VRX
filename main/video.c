@@ -472,9 +472,8 @@ static inline uint32_t get_rx_dma_offset(uint32_t *out_dscr_addr)
     if (dscr_addr >= 0x40800000u && dscr_addr < 0x40860000u) {
         dma_descriptor_t *dscr = (dma_descriptor_t *)(uintptr_t)dscr_addr;
         uint8_t *buf = (uint8_t *)dscr->buffer;
-        if (s_tx_ring_base && buf >= s_tx_ring_base &&
-            buf < s_tx_ring_base + s_tx_ring_bytes) {
-            return (uint32_t)(buf - s_tx_ring_base);
+        if (buf >= s_raw_ring && buf < s_raw_ring + sizeof(s_raw_ring)) {
+            return (uint32_t)(buf - s_raw_ring);
         }
     }
     return 0;
@@ -488,8 +487,9 @@ static inline uint32_t get_tx_dma_offset(uint32_t *out_dscr_addr)
     if (dscr_addr >= 0x40800000u && dscr_addr < 0x40860000u) {
         dma_descriptor_t *dscr = (dma_descriptor_t *)(uintptr_t)dscr_addr;
         uint8_t *buf = (uint8_t *)dscr->buffer;
-        if (buf >= s_raw_ring && buf < s_raw_ring + sizeof(s_raw_ring)) {
-            return (uint32_t)(buf - s_raw_ring);
+        if (s_tx_ring_base && buf >= s_tx_ring_base &&
+            buf < s_tx_ring_base + s_tx_ring_bytes) {
+            return (uint32_t)(buf - s_tx_ring_base);
         }
     }
     return 0;
@@ -2702,6 +2702,243 @@ static void video_set_menu_mode(bool active)
     }
     s_menu_timeout_ticks = 0;
     s_menu_active = active;
+}
+
+
+static bool s_adjacent_have_history;
+
+static void adjacent_release(void)
+{
+    if (s_adjacent_timer) {
+        (void)esp_timer_stop(s_adjacent_timer);
+        esp_timer_delete(s_adjacent_timer);
+        s_adjacent_timer = NULL;
+    }
+    adjacent_m2m_deinit();
+    free(s_adjacent_tx_ring);
+    free(s_adjacent_scratch);
+    s_adjacent_tx_ring = NULL;
+    s_adjacent_scratch = NULL;
+    s_adjacent_task_handle = NULL;
+    s_adjacent_have_history = false;
+}
+
+static esp_err_t adjacent_allocate(void)
+{
+    s_adjacent_tx_ring = heap_caps_aligned_alloc(
+        64u, ADJACENT_TX_RING_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    s_adjacent_scratch = heap_caps_aligned_alloc(
+        64u, ADJACENT_M2M_BLOCK_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    if (!s_adjacent_tx_ring || !s_adjacent_scratch) {
+        adjacent_release();
+        return ESP_ERR_NO_MEM;
+    }
+    memset(s_adjacent_tx_ring, DAC_IDLE_CODE, ADJACENT_TX_RING_BYTES);
+    memset(s_adjacent_scratch, 0, ADJACENT_M2M_BLOCK_BYTES);
+    sync_dma_c2m(s_adjacent_tx_ring, ADJACENT_TX_RING_BYTES);
+    sync_dma_c2m(s_adjacent_scratch, ADJACENT_M2M_BLOCK_BYTES);
+    s_adjacent_previous_code = DAC_IDLE_CODE;
+    s_adjacent_previous_raw = 0u;
+    s_adjacent_have_history = false;
+    s_adjacent_deadline_misses = 0u;
+    s_adjacent_sequence_misses = 0u;
+    return adjacent_m2m_init();
+}
+
+static esp_err_t adjacent_transform_completed_half(unsigned half, unsigned slot,
+                                                   uint32_t *elapsed_us)
+{
+    if (half > 1u || slot >= ADJACENT_TX_SLOTS ||
+        !s_adjacent_tx_ring || !s_adjacent_scratch) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t *src = s_raw_ring + half * ADJACENT_M2M_BLOCK_BYTES;
+    uint8_t *dst = s_adjacent_tx_ring + slot * ADJACENT_M2M_BLOCK_BYTES;
+
+    /* Copy immediately after the RX descriptor crosses the half boundary.
+     * The M2M engine then owns an immutable snapshot while RF continues. */
+    sync_dma_m2c(src, ADJACENT_M2M_BLOCK_BYTES);
+    memcpy(s_adjacent_scratch, src, ADJACENT_M2M_BLOCK_BYTES);
+
+    uint32_t us = 0u;
+    esp_err_t err = adjacent_m2m_transform(
+        s_adjacent_scratch, ADJACENT_M2M_BLOCK_BYTES,
+        dst, ADJACENT_M2M_BLOCK_BYTES, &us);
+    if (elapsed_us) *elapsed_us = us;
+    if (err != ESP_OK) return err;
+
+    /* Loopback reset intentionally restarts BitScrambler state per block.
+     * Repair the bounded leading state in software from the true preceding
+     * sample. Continue only until two ordinary (non-hold) pairs have restored
+     * the same temporal state that the hardware loop will carry internally. */
+    uint8_t previous_raw = s_adjacent_have_history ?
+                           s_adjacent_previous_raw : s_adjacent_scratch[0];
+    uint8_t previous_code = s_adjacent_have_history ?
+                            s_adjacent_previous_code : DAC_IDLE_CODE;
+    unsigned clean_run = 0u;
+    unsigned patched_pairs = 0u;
+    for (unsigned pair = 0u; pair < 16u; ++pair) {
+        size_t at = pair * 2u;
+        bool held = false;
+        uint8_t code = adjacent_m2m_reference_pair(
+            previous_raw, s_adjacent_scratch[at], s_adjacent_scratch[at + 1u],
+            previous_code, &held);
+        dst[at] = code;
+        dst[at + 1u] = code;
+        ++patched_pairs;
+        if (held) {
+            adjacent_m2m_note_boundary_hold();
+            clean_run = 0u;
+        } else {
+            ++clean_run;
+        }
+        previous_raw = s_adjacent_scratch[at + 1u];
+        previous_code = code;
+        if (pair >= 1u && clean_run >= 2u) break;
+    }
+    sync_dma_c2m(dst, patched_pairs * 2u);
+
+    s_adjacent_previous_raw =
+        s_adjacent_scratch[ADJACENT_M2M_BLOCK_BYTES - 1u];
+    sync_dma_m2c(dst + ADJACENT_M2M_BLOCK_BYTES - 1u, 1u);
+    s_adjacent_previous_code = dst[ADJACENT_M2M_BLOCK_BYTES - 1u];
+    s_adjacent_have_history = true;
+    return ESP_OK;
+}
+
+static int adjacent_writer_half(void)
+{
+    return get_rx_dma_offset(NULL) >= ADJACENT_M2M_BLOCK_BYTES ? 1 : 0;
+}
+
+static esp_err_t adjacent_wait_transition(int *last_half, int64_t deadline_us)
+{
+    while (esp_timer_get_time() < deadline_us) {
+        int now = adjacent_writer_half();
+        if (now != *last_half) {
+            *last_half = now;
+            return ESP_OK;
+        }
+        esp_rom_delay_us(8u);
+    }
+    return ESP_ERR_TIMEOUT;
+}
+
+static void adjacent_timer_cb(void *arg)
+{
+    (void)arg;
+    TaskHandle_t task = s_adjacent_task_handle;
+    if (task) xTaskNotifyGive(task);
+}
+
+static void adjacent_schedule_poll(uint32_t elapsed_us)
+{
+    if (!s_adjacent_timer) return;
+    uint32_t delay = 25u;
+    if (elapsed_us + 50u < ADJACENT_BLOCK_US)
+        delay = ADJACENT_BLOCK_US - elapsed_us - 50u;
+    if (delay < 20u) delay = 20u;
+    (void)esp_timer_start_once(s_adjacent_timer, delay);
+}
+
+static void adjacent_pipeline_task(void *arg)
+{
+    (void)arg;
+    uint32_t last_elapsed = 0u;
+
+    adjacent_schedule_poll(0u);
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        int current = adjacent_writer_half();
+        if (current == s_adjacent_writer_half) {
+            /* Descriptor granularity puts the observable crossing slightly
+             * after the mathematical half boundary. Recheck without a busy
+             * high-priority spin. */
+            (void)esp_timer_start_once(s_adjacent_timer, 25u);
+            continue;
+        }
+
+        unsigned completed = (unsigned)s_adjacent_writer_half;
+        s_adjacent_writer_half = current;
+        unsigned slot = s_adjacent_next_slot;
+
+        uint32_t us = 0u;
+        esp_err_t err = adjacent_transform_completed_half(completed, slot, &us);
+        if (err != ESP_OK) {
+            ++s_adjacent_sequence_misses;
+        } else {
+            if (us > ADJACENT_WARN_US) ++s_adjacent_deadline_misses;
+            if (us >= ADJACENT_HARD_US) ++s_adjacent_sequence_misses;
+            s_adjacent_next_slot = (slot + 1u) % ADJACENT_TX_SLOTS;
+        }
+        last_elapsed = us;
+        adjacent_schedule_poll(last_elapsed);
+    }
+}
+
+static esp_err_t adjacent_live_start(void)
+{
+    esp_err_t err = adjacent_allocate();
+    if (err != ESP_OK) return err;
+
+    int writer = adjacent_writer_half();
+
+    /* Prefill two chronological 16-KiB slots before TX starts. Triple
+     * buffering leaves the realtime transform one full block to finish before
+     * a slot is reused; unlike a two-slot ping-pong it does not require 2x
+     * transform-speed headroom. */
+    for (unsigned slot = 0u; slot < 2u; ++slot) {
+        int completed = writer;
+        err = adjacent_wait_transition(&writer, esp_timer_get_time() + 2000);
+        if (err != ESP_OK) return err;
+
+        uint32_t us = 0u;
+        err = adjacent_transform_completed_half((unsigned)completed, slot, &us);
+        if (err != ESP_OK) return err;
+        if (us >= ADJACENT_HARD_US) return ESP_ERR_TIMEOUT;
+        if (us > ADJACENT_WARN_US) ++s_adjacent_deadline_misses;
+    }
+
+    s_adjacent_writer_half = writer;
+    s_adjacent_next_slot = 2u;
+
+    err = start_tx();
+    if (err != ESP_OK) return err;
+
+    s_tx_dma_ch = -1;
+    for (int i = 0; i < 3; ++i) {
+        if (AHB_DMA.channel[i].out.out_peri_sel.peri_out_sel_chn == 9) {
+            s_tx_dma_ch = i;
+            break;
+        }
+    }
+    if (s_tx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
+    quiet_tx_interrupts();
+    patch_descriptors_clear_eof(s_tx_dma_ch, false);
+
+    BaseType_t task_ok = xTaskCreate(
+        adjacent_pipeline_task, "adjacent_m2m", 4096, NULL, 18,
+        &s_adjacent_task_handle);
+    if (task_ok != pdPASS) return ESP_ERR_NO_MEM;
+
+    const esp_timer_create_args_t timer_args = {
+        .callback = adjacent_timer_cb,
+        .arg = NULL,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "adj_poll",
+    };
+    err = esp_timer_create(&timer_args, &s_adjacent_timer);
+    if (err != ESP_OK) return err;
+
+    const adjacent_m2m_stats_t *stats = adjacent_m2m_stats();
+    printf("C5VRX_ADJACENT_LIVE_START block=%u us_last=%lu us_max=%lu target_warn=%u hard=%u slots=%u\n",
+           ADJACENT_M2M_BLOCK_BYTES,
+           (unsigned long)stats->last_us, (unsigned long)stats->max_us,
+           ADJACENT_WARN_US, ADJACENT_HARD_US, ADJACENT_TX_SLOTS);
+    adjacent_schedule_poll(stats->last_us);
+    return ESP_OK;
 }
 
 static void menu_cycle_standard_mode(void)
