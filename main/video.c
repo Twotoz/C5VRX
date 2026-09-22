@@ -2870,6 +2870,17 @@ static void adjacent_schedule_poll(uint32_t elapsed_us)
     (void)esp_timer_start_once(s_adjacent_timer, delay);
 }
 
+static void adjacent_fail_closed(const char *reason, uint32_t elapsed_us)
+{
+    ++s_adjacent_sequence_misses;
+    printf("C5VRX_ADJACENT_RUNTIME_FAIL reason=%s elapsed_us=%lu action=restore_golden\n",
+           reason, (unsigned long)elapsed_us);
+    s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+    s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    settings_save();
+    esp_restart();
+}
+
 static void adjacent_pipeline_task(void *arg)
 {
     (void)arg;
@@ -2894,12 +2905,15 @@ static void adjacent_pipeline_task(void *arg)
         uint32_t us = 0u;
         esp_err_t err = adjacent_transform_completed_half(completed, slot, &us);
         if (err != ESP_OK) {
-            ++s_adjacent_sequence_misses;
-        } else {
-            if (us > ADJACENT_WARN_US) ++s_adjacent_deadline_misses;
-            if (us >= ADJACENT_HARD_US) ++s_adjacent_sequence_misses;
-            s_adjacent_next_slot = (slot + 1u) % ADJACENT_TX_SLOTS;
+            adjacent_fail_closed(esp_err_to_name(err), us);
+            return;
         }
+        if (us > ADJACENT_WARN_US) ++s_adjacent_deadline_misses;
+        if (us >= ADJACENT_HARD_US) {
+            adjacent_fail_closed("deadline", us);
+            return;
+        }
+        s_adjacent_next_slot = (slot + 1u) % ADJACENT_TX_SLOTS;
         last_elapsed = us;
         adjacent_schedule_poll(last_elapsed);
     }
