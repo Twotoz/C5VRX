@@ -147,26 +147,28 @@ def render_bsasm(unified: list[int]) -> str:
 # IMPORTANT: this program consumes synthetic/predecoded Phase5 test symbols.
 # It is not selectable as the live raw-Q4 flight demodulator yet.
 #
-# Test input format after the one-time prime:
-#   low byte  bits 0..4  = middle Phase5
-#   high byte bits 8..12 = current Phase5
-#
-# O26..O30 stores previous/current endpoint Phase5 across pairs.
-# O0..O4 temporarily stores the five free bits needed by stage 2.
+# Test stream:
+#   prime high byte bits 8..12 = first previous endpoint Phase5
+#   then each 16-bit pair:
+#     low byte  bits 0..4  = middle Phase5
+#     high byte bits 8..12 = current Phase5
 #
 # Shared 1024x16 LUT:
 #   L0..L5   = stage-2 exact P20/G2 DAC
 #   L8..L12  = stage-1 5-bit token (24 states used)
 #
-# Steady-state schedule is exactly two bundles per output:
-#   lift -> emit -> lift -> emit ...
+# State packing:
+#   O0..O4   = previous endpoint p while emit executes
+#   O26..O30 = stage-2 free bits p[1:0],m[0],c[1:0]
 #
-# Stage 1 address (10 bits):
-#   p[4:2], m[4:1], c[4:2]
+# lift reconstructs next p=c in O0..O4 while issuing stage 2, so emit can use
+# all O0..O15 for the [D,D] DAC write without losing state.
 #
-# Stage 2 address (10 bits):
-#   p[1:0], m[0], c[1:0], token[4:0]
+# Steady state is exactly two bundles:
+#   emit -> lift -> emit -> lift ...
 #
+# Stage 1: p[4:2],m[4:1],c[4:2] -> token[4:0]
+# Stage 2: p[1:0],m[0],c[1:0],token[4:0] -> exact DAC
 # No second wrap is performed.
 cfg prefetch true
 cfg eof_on downstream
@@ -175,54 +177,52 @@ cfg lut_width_bits 16
 {lut_line}
 
 prime_previous:
-    # Take the first endpoint Phase5 from the high byte of the prefetched
-    # synthetic stream, then advance to the first [middle,current] pair.
-    set 26..30 8..12,
+    # Prime p from the high byte, then advance to the first [m,c] pair.
+    set 0..4 8..12,
     read 16
 
 prime_stage1:
-    # Address exact stage 1 for the first pair and save its five stage-2 free
-    # bits. The old O26..O30 value is previous p; the new value becomes c.
-    set 0 O26,
-    set 1 O27,
-    set 2 0,
-    set 3 8,
-    set 4 9,
-    set 16..18 O28..O30,
+    # Address stage 1 and save all five free bits outside the LUT address.
+    set 16..18 O2..O4,
     set 19..22 1..4,
     set 23..25 10..12,
-    set 26..30 8..12,
-    read 16
-
-lift:
-    # Stage-1 result is in L8..L12. Build the exact stage-2 address from the
-    # preserved free bits plus the 5-bit token. Keep c as next pair's p.
-    set 0..4 O0..O4,
-    set 16..20 O0..O4,
-    set 21..25 L8..L12,
-    set 26..30 O26..O30
+    set 26 O0,
+    set 27 O1,
+    set 28 0,
+    set 29 8,
+    set 30 9,
+    read 16,
+    jmp lift
 
 emit:
-    # Stage-2 result is the exact adjacent-FM P20/G2 DAC code. Emit [D,D] and
-    # simultaneously issue stage 1 for the following synthetic phase pair.
+    # L now holds stage 2. Emit exact [D,D], issue stage 1 for the next pair,
+    # and save that pair's five stage-2 free bits in O26..O30.
     set 0..5 L0..L5,
     set 6..7 L,
     set 8..13 L0..L5,
     set 14..15 L,
-    set 16..18 O28..O30,
+    set 16..18 O2..O4,
     set 19..22 1..4,
     set 23..25 10..12,
-    set 0 O26,
-    set 1 O27,
-    set 2 0,
-    set 3 8,
-    set 4 9,
-    set 26..30 8..12,
-    read 16,
-    write 16,
-    jmp lift
-"""
+    set 26 O0,
+    set 27 O1,
+    set 28 0,
+    set 29 8,
+    set 30 9,
+    read 16
 
+lift:
+    # L contains stage-1 token. Stage 2 consumes the five saved free bits.
+    # At the same time reconstruct next previous endpoint p=c:
+    #   c[1:0] came through O29..O30
+    #   c[4:2] is still present in the previous stage-1 address O23..O25.
+    set 0 O29,
+    set 1 O30,
+    set 2..4 O23..O25,
+    set 16..20 O26..O30,
+    set 21..25 L8..L12,
+    jmp emit
+"""
 
 def write_generated() -> None:
     stage1, stage2, unified = build_tables()
