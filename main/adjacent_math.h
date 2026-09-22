@@ -3,47 +3,43 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Pure host-testable arithmetic shared by the exact-adjacent software oracle.
- * Phase7 uses one full turn = 128. Each adjacent interval is wrapped once;
- * the two adjacent intervals are then added in a wider integer and MUST NOT
- * be wrapped a second time. */
+/* Host-testable arithmetic for the live adjacent Phase5 M2M kernel.
+ *
+ * One turn = 32 Phase5 states. Each adjacent difference is wrapped exactly
+ * once into [-16,+15]. Two adjacent differences are added in a wider signed
+ * integer and MUST NOT be wrapped a second time. */
 
-static inline int adjacent_signed7(unsigned value)
+static inline int adjacent_signed5(unsigned value)
 {
-    value &= 0x7fu;
-    return (value & 0x40u) ? (int)value - 128 : (int)value;
+    value &= 0x1fu;
+    return (value & 0x10u) ? (int)value - 32 : (int)value;
 }
 
-static inline int adjacent_wrap_delta7(int delta)
+static inline int adjacent_signed6(unsigned value)
 {
-    while (delta >= 64) delta -= 128;
-    while (delta < -64) delta += 128;
+    value &= 0x3fu;
+    return (value & 0x20u) ? (int)value - 64 : (int)value;
+}
+
+static inline int adjacent_wrap_delta5(int delta)
+{
+    while (delta >= 16) delta -= 32;
+    while (delta < -16) delta += 32;
     return delta;
 }
 
-static inline int adjacent_arshift1(int value)
-{
-    return value >= 0 ? value / 2 : -(((-value) + 1) / 2);
-}
-
-static inline int adjacent_pair_sum7(unsigned previous,
+static inline int adjacent_pair_sum5(unsigned previous,
                                      unsigned middle,
                                      unsigned current)
 {
-    int d0 = adjacent_wrap_delta7((int)middle - (int)previous);
-    int d1 = adjacent_wrap_delta7((int)current - (int)middle);
+    int d0 = adjacent_wrap_delta5((int)middle - (int)previous);
+    int d1 = adjacent_wrap_delta5((int)current - (int)middle);
     return d0 + d1; /* NO SECOND WRAP */
-}
-
-static inline int adjacent_pair_qsum7(int pair)
-{
-    return adjacent_arshift1(pair);
 }
 
 static inline bool adjacent_pair_proves_winding(int pair)
 {
-    int qsum = adjacent_pair_qsum7(pair);
-    return qsum < -32 || qsum >= 32;
+    return pair < -16 || pair >= 16;
 }
 
 static inline uint8_t adjacent_clamp_code(int value)
@@ -53,7 +49,9 @@ static inline uint8_t adjacent_clamp_code(int value)
     return (uint8_t)value;
 }
 
-static inline uint8_t adjacent_map_qsum_to_cvbs(int qsum)
+static inline uint8_t adjacent_map_pair_to_cvbs(int pair)
 {
-    return adjacent_clamp_code(20 + 3 * qsum);
+    /* One Phase5 step is approximately eight phase8 units. Golden's P20/G2
+     * mapping applies 1.5x gain and the real 2:1 combine: 8 * 3 / 4 = 6. */
+    return adjacent_clamp_code(20 + 6 * pair);
 }
