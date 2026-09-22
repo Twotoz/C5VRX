@@ -7,7 +7,7 @@
  * This table is an exact phase-domain proof. It does not by itself solve the
  * live raw-Q4 -> Phase5 scheduling problem.
  *
- * sha256(stage1||stage2) = 7f931df925c76525d39130225c44828e7a8aed1ee28bc3bb82222c5b641e9539
+ * sha256(stage1||stage2) = 7f931df925c765253d0a63eab6900da6c246e8f31c97cf63dbf6d08c1cecec23
  */
 #pragma once
 #include <stdint.h>
