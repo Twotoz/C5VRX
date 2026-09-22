@@ -148,3 +148,92 @@ phase -> delta0 -> delta1 -> accumulator -> mapper pipeline.
     git diff --exit-code -- main/lift_fm_phase_lut.h
 
 The generated table is deterministic and dependency-free.
+
+
+## LUT16 exact 10 -> 5 -> 10 hardware oracle
+
+The first proof used an 11-bit stage-1 partition and found 34 residual
+functions. A second exhaustive search specifically constrained both stages to
+the ESP32-C5 16-bit LUT address width and found a tighter exact decomposition:
+
+```text
+stage 1:
+    p[4:2]     3
+    m[4:1]     4
+    c[4:2]     3
+               --
+               10 bits
+
+    -> 5-bit token
+       only 24 token values are used
+
+stage 2:
+    p[1:0]     2
+    m[0]       1
+    c[1:0]     2
+    token      5
+               --
+               10 bits
+```
+
+That means both stages fit the native **1024 x 16** C5 LUT mode exactly.
+
+Even better, they can share the same physical LUT word:
+
+```text
+bits  0..5   stage-2 exact DAC code
+bits  8..12  stage-1 token
+```
+
+An address collision between stage 1 and stage 2 is therefore harmless: the
+two roles occupy disjoint result bits.
+
+`main/fm_lift16_phase.bsasm` is a real BitScrambler program implementing this
+phase-domain oracle. After priming, the hardware loop is exactly:
+
+```text
+emit
+  -> writes exact [D,D]
+  -> addresses stage 1 for the next pair
+  -> preserves the five free bits
+
+lift
+  -> consumes the stage-1 token
+  -> addresses stage 2
+  -> reconstructs next endpoint state
+  -> jump emit
+```
+
+So steady-state cost is exactly **two bundles per 50 ns output**.
+
+The subtle state trick is important. `emit` needs all `O0..O15` for the
+duplicated DAC word, so it stores the five stage-2 free bits in `O26..O30`.
+During `lift`, the next endpoint `p=c` is reconstructed into `O0..O4`
+from the saved low c bits plus the c high bits still present in the previous
+stage-1 address. No third state-maintenance bundle is needed.
+
+### Boundary that still remains
+
+The LUT16 oracle consumes **predecoded Phase5 symbols**. It proves that once
+`p,m,c` exist, the exact adjacent transform and P20/G2 map fit in the real
+two-bundle C5 schedule.
+
+The flight stream is still raw Q4/I4. Two fresh raw symbols arrive per output,
+and exact raw-byte -> Phase5 decode is itself nonlinear. Therefore
+`fm_lift16_phase.bsasm` is intentionally compiled but not exposed as a flight
+demodulator.
+
+The remaining superoptimization target is now narrower:
+
+```text
+two raw Q4 bytes / 50 ns
+    -> exact information equivalent to the LUT16 oracle inputs
+    -> without adding a third lookup/bundle
+```
+
+Reproduce the LUT16 proof with:
+
+```sh
+python3 tools/lift_fm_lut16.py --write --self-test
+git diff --exit-code -- main/fm_lift16_phase.bsasm
+```
