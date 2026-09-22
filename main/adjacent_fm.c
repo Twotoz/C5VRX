@@ -10,7 +10,6 @@
 #include "driver/bitscrambler_loopback.h"
 #include "esp_cache.h"
 #include "esp_heap_caps.h"
-#include "esp_memory_utils.h"
 #include "esp_timer.h"
 #include "hal/bitscrambler_peri_select.h"
 
@@ -18,9 +17,7 @@ BITSCRAMBLER_PROGRAM(s_adjacent_fm_program, "fm_adjacent");
 
 #define ADJ_LUT_ITEMS 1024u
 #define ADJ_LUT_BYTES (ADJ_LUT_ITEMS * sizeof(uint16_t))
-#define ADJ_PHASE_BANK 0x000u
-#define ADJ_MAP_BANK   0x200u
-#define ADJ_PEDESTAL   20
+#define ADJ_PEDESTAL 20
 #define ADJ_GAIN_SETTING 2
 #define PI_F 3.14159265358979323846f
 
@@ -31,37 +28,42 @@ static adjacent_fm_stats_t s_stats;
 static float signed_bucket_center(unsigned code)
 {
     /* MODEM_DIAG exposes signed Q[9:6]/I[9:6]. Each nibble represents one
-     * 64-code Q10/I10 bucket. Use the bucket center exactly like the legacy
-     * full-Q4 oracle. */
+     * 64-code Q10/I10 bucket. */
     float center = (float)(code * 64u) + 31.5f;
     if (center >= 512.0f) center -= 1024.0f;
     return center;
 }
 
-static uint8_t q4_phase8(uint8_t packed)
+static uint8_t q4_phase5(uint8_t packed)
 {
     const float q = signed_bucket_center(packed & 0x0fu);
     const float i = signed_bucket_center((packed >> 4u) & 0x0fu);
-    int phase = (int)lrintf(atan2f(q, i) * (256.0f / (2.0f * PI_F)));
-    if (phase < -128) phase = -128;
-    if (phase > 127) phase = 127;
-    return (uint8_t)phase;
+    const int phase = (int)lrintf(atan2f(q, i) *
+                                  (32.0f / (2.0f * PI_F)));
+    return (uint8_t)phase & 0x1fu;
 }
 
-static int scale_real_sum(int sum)
+static int signed_phase5_delta(uint8_t delta)
 {
-    /* G2 is the proven 1.5x discriminator gain. The division by two is the
-     * real 40->20 MS/s boxcar after two adjacent discriminator intervals. */
-    const int numerator = sum * (ADJ_GAIN_SETTING + 1);
+    int value = delta & 0x1fu;
+    if (value >= 16) value -= 32;
+    return value;
+}
+
+static int scale_real_sum_phase5(int pair_steps)
+{
+    /* One Phase5 step is 8/256 of the phase8 circle. G2 is the proven 1.5x
+     * discriminator gain and the /2 belongs after the two adjacent deltas. */
+    const int phase8_sum = pair_steps * 8;
+    const int numerator = phase8_sum * (ADJ_GAIN_SETTING + 1);
     return numerator < 0 ? -((-numerator + 2) / 4) :
                            (numerator + 2) / 4;
 }
 
-static uint8_t map_sum9(unsigned sum_mod)
+static uint8_t map_delta_pair(uint8_t d0, uint8_t d1)
 {
-    int sum = (int)(sum_mod & 0x1ffu);
-    if (sum >= 256) sum -= 512;
-    int code = ADJ_PEDESTAL + scale_real_sum(sum);
+    const int pair = signed_phase5_delta(d0) + signed_phase5_delta(d1);
+    int code = ADJ_PEDESTAL + scale_real_sum_phase5(pair);
     if (code < 0) code = 0;
     if (code > 63) code = 63;
     return (uint8_t)code;
@@ -69,28 +71,34 @@ static uint8_t map_sum9(unsigned sum_mod)
 
 static void build_lut(uint16_t *lut)
 {
-    memset(lut, 0, ADJ_LUT_BYTES);
-    for (unsigned packed = 0; packed < 256u; ++packed) {
-        uint8_t phase = q4_phase8((uint8_t)packed);
-        uint8_t negative = (uint8_t)(0u - phase);
-        lut[ADJ_PHASE_BANK | packed] =
-            (uint16_t)phase | ((uint16_t)negative << 8u);
+    /* Low six bits are valid for every possible (d0,d1) final address. */
+    for (unsigned address = 0; address < ADJ_LUT_ITEMS; ++address) {
+        const uint8_t d0 = (uint8_t)(address & 0x1fu);
+        const uint8_t d1 = (uint8_t)((address >> 5u) & 0x1fu);
+        lut[address] = map_delta_pair(d0, d1);
     }
-    for (unsigned sum = 0; sum < 512u; ++sum)
-        lut[ADJ_MAP_BANK | sum] = map_sum9(sum);
+
+    /* Raw-Q4 addresses 0..255 also carry the same Phase5 quantizer used by
+     * Golden. The final-map code remains in low bits; phase state lives above
+     * it, so one physical 1024x16 LUT safely serves both stages. */
+    for (unsigned packed = 0; packed < 256u; ++packed) {
+        const uint8_t phase = q4_phase5((uint8_t)packed);
+        const uint8_t negative = (uint8_t)(0u - phase) & 0x1fu;
+        lut[packed] |= (uint16_t)phase << 6u;
+        lut[packed] |= (uint16_t)negative << 11u;
+    }
 }
 
 uint8_t adjacent_fm_reference_pair(uint8_t previous_raw,
                                    uint8_t sample0,
                                    uint8_t sample1)
 {
-    const uint8_t p = q4_phase8(previous_raw);
-    const uint8_t a = q4_phase8(sample0);
-    const uint8_t b = q4_phase8(sample1);
-    const int8_t d0 = (int8_t)(uint8_t)(a - p);
-    const int8_t d1 = (int8_t)(uint8_t)(b - a);
-    const int pair = (int)d0 + (int)d1;
-    return map_sum9((unsigned)pair & 0x1ffu);
+    const uint8_t p = q4_phase5(previous_raw);
+    const uint8_t a = q4_phase5(sample0);
+    const uint8_t b = q4_phase5(sample1);
+    const uint8_t d0 = (uint8_t)(a - p) & 0x1fu;
+    const uint8_t d1 = (uint8_t)(b - a) & 0x1fu;
+    return map_delta_pair(d0, d1);
 }
 
 esp_err_t adjacent_fm_init(void)
@@ -153,17 +161,15 @@ esp_err_t adjacent_fm_transform(const uint8_t *input, uint8_t *output,
     if (!s_adj_bs || !input || !output || bytes != ADJACENT_FM_BLOCK_BYTES)
         return ESP_ERR_INVALID_ARG;
 
-    /* RX GDMA produced input. Invalidate any stale CPU cache before the public
-     * loopback helper performs its own C2M maintenance. This prevents an old
-     * CPU line from being written back over fresh MODEM_DIAG bytes. */
+    /* RX GDMA produced input. Invalidate stale CPU cache before the loopback
+     * helper performs its own C2M maintenance on that same buffer. */
     sync_m2c(input, bytes);
 
     size_t written = 0;
     const int64_t start = esp_timer_get_time();
     esp_err_t err = bitscrambler_loopback_run(
         s_adj_bs, (void *)input, bytes, output, bytes, &written);
-    const uint32_t elapsed =
-        (uint32_t)(esp_timer_get_time() - start);
+    const uint32_t elapsed = (uint32_t)(esp_timer_get_time() - start);
 
     s_stats.runs++;
     s_stats.last_us = elapsed;
@@ -181,9 +187,9 @@ esp_err_t adjacent_fm_transform(const uint8_t *input, uint8_t *output,
         return ESP_ERR_INVALID_SIZE;
     }
 
-    /* The M2M driver resets BitScrambler transport state for every finite run.
-     * Only the first 50 ns output depends on state from the previous block.
-     * Repair that pair byte-exactly from the captured previous raw sample. */
+    /* A finite M2M run resets O26..O30, so only output pair zero lacks the
+     * preceding Phase5 state. Repair exactly one [D,D] pair in CPU; every
+     * following pair remains hardware adjacent-FM and state-continuous. */
     sync_m2c(output, bytes);
     const uint8_t first = adjacent_fm_reference_pair(
         previous_raw, input[0], input[1]);
