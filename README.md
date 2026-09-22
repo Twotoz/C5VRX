@@ -188,8 +188,8 @@ Connect a 6-bit binary-weighted resistor DAC ladder to the XIAO pins, meeting at
 ### Recommended Analog Filters:
 1. **Shunt Termination**: 200 Ω resistor from `VIDEO` to `GND`. When connected to goggles with standard 75 Ω termination, this forms a matched 0–1.0 V standard CVBS level.
 2. **De-Emphasis Filter**: A **470 pF ceramic capacitor** placed in parallel across `VIDEO` and `GND` creates a 10–14 dB high-frequency de-emphasis low-pass filter, dramatically reducing triangular FM noise and snow.
-3. **BOOT Button**: The built-in BOOT button (GPIO 28) switches channels on short click. A long press opens the standalone PAL/NTSC menu; short presses move between pages and a long press applies the selected action. On the CHANNEL page, a long press scans all 48 channels and selects the strongest coherent carrier. If a persisted Safe Flight setting blocks normal menu entry, hold BOOT for three seconds to restore GOLDEN/6BIT@40/ARC and open the recovery menu.
-4. **Persistent settings**: Channel, RF bandwidth mode, AFC/output/video-standard modes, AGC/manual gain and the BOOT-menu preference are stored in NVS and restored after restart.
+3. **BOOT Button**: The built-in BOOT button (GPIO 28) switches channels on short click. A long press opens the compact production menu: **BAND → CHANNEL → STATUS → EXIT**. The STATUS page is read-only because ARC V5 owns gain placement automatically. On the CHANNEL page, a long hold scans all 48 channels and selects the strongest coherent carrier. If a persisted Safe Flight setting blocks normal menu entry, hold BOOT for three seconds to restore GOLDEN/6BIT@40/ARC V5 and open the recovery menu.
+4. **Persistent settings**: Only the channel, video-standard preference and BOOT-menu preference persist across restart. Receiver tuning always boots into the production contract: **ARC V5 AUTOTUNE + BW40 + AFC OFF + GOLDEN 6BIT@40**. Experimental profiles and PHY controls remain available through the serial/lab interface but are not normal menu settings.
 
 ---
 
