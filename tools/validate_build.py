@@ -404,7 +404,11 @@ check("production menu exposes only band, channel, read-only status and exit",
       'static const char *const s_menu_nav[4]' in all_c and
       '"BAND", "CHANNEL", "STATUS", "EXIT"' in all_c and
       "menu_draw_status_page" in all_c and
-      "AUTO-TUNING - NO SETUP" in all_c and
+      'production ? "AUTO" : "LAB"' in all_c and
+      "rx_profile_name()" in all_c and
+      "rf_bw_mode_name()" in all_c and
+      "afc_mode_name()" in all_c and
+      'snprintf(video, sizeof(video), "%s/%s", output_mode_name(), demod_mode_name())' in all_c and
       "LONG:BW  2S:PROFILE" not in all_c and
       "LONG:DAC  2S:DEMOD" not in all_c and
       "btn_profile_fired" not in all_c and
