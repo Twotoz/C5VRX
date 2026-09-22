@@ -31,8 +31,8 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("four .bsasm programs (Golden + output experiment + Trajectory v2 + LIFT-FM oracle)",
-      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_lift16_phase.bsasm"},
+check("five .bsasm programs including dual-channel LIFT-FM",
+      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_lift16_phase.bsasm", "fm_rx_phase.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
 check("LIFT-FM LUT16 oracle is phase-domain only and two-bundle steady state",
@@ -665,8 +665,8 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, 4-bit output, Trajectory v2 and LIFT-FM oracle BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_lift16_phase.bsasm"], f"found: {bs_srcs}")
+check("Golden, 4-bit, Trajectory and dual-channel LIFT-FM programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_lift16_phase.bsasm", "fm_rx_phase.bsasm"], f"found: {bs_srcs}")
 
 # ---- Summary ----
 print(f"\n{'='*50}")
