@@ -532,11 +532,13 @@ static esp_err_t m2m_fallback_to_golden(esp_err_t reason)
     /* Never leave a persisted experimental demod in a boot loop. If the M2M
      * engine cannot allocate/start or misses its initial realtime deadline,
      * persist the proven contract before restarting. */
+    const char *failed_mode =
+        s_demod_mode == DEMOD_MODE_ALPHA ? "ALPHA" : "ADJ PHASE5";
     s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
     s_output_mode = VIDEO_OUTPUT_6BIT_40;
     settings_save();
     ESP_LOGE(TAG, "%s unavailable (%s); restoring GOLDEN and rebooting",
-             demod_mode_name(), esp_err_to_name(reason));
+             failed_mode, esp_err_to_name(reason));
     vTaskDelay(pdMS_TO_TICKS(80));
     esp_restart();
     return reason;

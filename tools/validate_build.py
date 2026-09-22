@@ -281,13 +281,14 @@ check("exact adjacent-Phase5 M2M uses every raw sample before 2:1 output mapping
 check("adjacent mode has measured half-ring deadline telemetry and safe fallback",
       "adjacent_fm_transform" in all_c and
       "deadline_misses" in adj_h and
-      "s_adj_boundary_misses" in all_c and
-      "adjacent_fallback_to_golden" in all_c and
+      "s_m2m_boundary_misses" in all_c and
+      "m2m_fallback_to_golden" in all_c and
       "restoring GOLDEN and rebooting" in all_c)
 check("adjacent M2M owns both BS directions only when selected",
       "bitscrambler_loopback_create" in adj_c and
       "SOC_BITSCRAMBLER_ATTACH_I2S0" in adj_c and
-      "s_demod_mode != DEMOD_MODE_ADJACENT_PHASE5" in all_c and
+      "demod_uses_m2m" in all_c and
+      "DEMOD_MODE_ADJACENT_PHASE5" in all_c and
       "plain PARLIO TX" in all_c)
 check("adjacent block reset repairs cross-boundary first output pair",
       "previous_raw" in adj_c and
@@ -325,7 +326,7 @@ check("Alpha finite M2M reset has bounded convergence repair",
       "state_convergence_misses" in alpha_h and
       "max_boundary_repair_pairs" in alpha_h)
 check("Alpha host oracle guards strong transparency and weak hard-error tail",
-      "high-confidence Alpha is deliberately transparent" in alpha_model and
+      "High-confidence Alpha is deliberately transparent" in alpha_model and
       'weak["alpha_ge16_pm"] < weak["adjacent_ge16_pm"] * 0.75' in alpha_model and
       'weak["alpha_ge32_pm"] < weak["adjacent_ge32_pm"] * 0.50' in alpha_model)
 check("Alpha is selectable as a separate persisted experimental demod",
