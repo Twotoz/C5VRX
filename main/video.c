@@ -44,6 +44,7 @@
 
 #include <stdint.h>
 #include <inttypes.h>
+#include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -1502,7 +1503,7 @@ static void poll_transport_faults(void)
     }
     if (BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].eof_overload) {
         ++s_hw_counters.bs_eof_overload_count;
-        BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
+        if (!adjacent_live) BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
         flags |= LAG_EVT_BS_EOF_OVERLOAD;
     }
 
@@ -4180,50 +4181,67 @@ esp_err_t video_start(void)
     if ((err = prepare_rx()) != ESP_OK) return err;
     if ((err = prepare_tx()) != ESP_OK) return err;
 
-    start_flight_demodulator();
+    const bool adjacent_live = s_demod_mode == DEMOD_MODE_ADJACENT_M2M;
+    if (!adjacent_live) start_flight_demodulator();
 
     /* Start RX cyclic ring. GDMA begins writing at s_raw_ring[0]. */
     if ((err = start_rx()) != ESP_OK) return err;
 
-    /* Put PARLIO RX into pure continuous hardware mode:
-     * 1. Disable all GDMA RX channel interrupts so the CPU is never interrupted
-     *    (~9,775 ISRs/sec eliminated!).
-     * 2. Set rx_eof_gen_sel = 1 (external enable, non-existent in soft mode)
-     *    so PARLIO RX never generates an EOF stall event.
-     * This matches PARLIO TX's unbroken hardware loop, eliminating pointer drift! */
+    /* Put PARLIO RX into pure continuous hardware mode. */
     AHB_DMA.in_intr[0].ena.val = 0;
     AHB_DMA.in_intr[1].ena.val = 0;
     AHB_DMA.in_intr[2].ena.val = 0;
     PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1;
 
-    /* Request half-ring producer/consumer separation before starting TX.
-     * The integer-microsecond delay and driver latency need hardware validation. */
-    esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
-
-    if ((err = start_tx()) != ESP_OK) return err;
-
-    /* Discover AHB_DMA channels assigned to PARL_IO (peripheral ID 9) */
-    for (int i = 0; i < 3; i++) {
+    /* Discover RX before exact-adjacent prefill; that path intentionally starts
+     * TX only after two chronological output slots have been produced. */
+    s_rx_dma_ch = -1;
+    for (int i = 0; i < 3; ++i) {
         if (AHB_DMA.channel[i].in.in_peri_sel.peri_in_sel_chn == 9) {
             s_rx_dma_ch = i;
-        }
-        if (AHB_DMA.channel[i].out.out_peri_sel.peri_out_sel_chn == 9) {
-            s_tx_dma_ch = i;
+            break;
         }
     }
+    if (s_rx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
+    int rx_nodes = patch_descriptors_clear_eof(s_rx_dma_ch, true);
+    int tx_nodes = 0;
 
-    /* Put PARLIO TX into pure continuous hardware mode:
-     * Disable all GDMA TX channel interrupts and PARL_IO core interrupts.
-     * Prevents PARLIO_LL_EVENT_TX_FIFO_EMPTY and EOF interrupts from stealing CPU cycles! */
+    if (adjacent_live) {
+        err = adjacent_live_start();
+        if (err != ESP_OK) {
+            printf("C5VRX_ADJACENT_START_FAILED err=%s action=restore_golden\n",
+                   esp_err_to_name(err));
+            adjacent_release();
+            s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+            s_output_mode = VIDEO_OUTPUT_6BIT_40;
+            settings_save();
+            esp_restart();
+            return err;
+        }
+        tx_nodes = s_tx_dscr_count;
+    } else {
+        /* Golden/Trajectory keep the proven half-ring raw producer/consumer
+         * separation and single uninterrupted TX BitScrambler. */
+        esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
+        if ((err = start_tx()) != ESP_OK) return err;
+
+        s_tx_dma_ch = -1;
+        for (int i = 0; i < 3; ++i) {
+            if (AHB_DMA.channel[i].out.out_peri_sel.peri_out_sel_chn == 9) {
+                s_tx_dma_ch = i;
+                break;
+            }
+        }
+        if (s_tx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
+        quiet_tx_interrupts();
+        tx_nodes = patch_descriptors_clear_eof(s_tx_dma_ch, false);
+    }
+
+    /* Keep TX IRQ pacing out of both production paths. */
     AHB_DMA.out_intr[0].ena.val = 0;
     AHB_DMA.out_intr[1].ena.val = 0;
     AHB_DMA.out_intr[2].ena.val = 0;
     PARL_IO.int_ena.val = 0;
-
-    /* Clear suc_eof on ALL GDMA descriptors for both RX and TX to eliminate
-     * hardware wrap EOF bubbles completely! The buffer becomes a truly infinite ring. */
-    int rx_nodes = patch_descriptors_clear_eof(s_rx_dma_ch, true);
-    int tx_nodes = patch_descriptors_clear_eof(s_tx_dma_ch, false);
 
     /* Issue #28: clear stale startup/driver status once. Subsequent sticky
      * faults are observed by poll_transport_faults() without enabling IRQs. */
@@ -4245,17 +4263,19 @@ esp_err_t video_start(void)
     /* Print startup stamp (visible on serial monitor at boot). */
     ESP_EARLY_LOGW(TAG,
         "\n=======================================================\n"
-        " C5VRX-3  Seamless 32K Phase5 receiver (Zero-EOF Circular GDMA)\n"
-        " Clock:   PARLIO_CLK_SRC_DEFAULT 40MHz (SPLL internal)\n"
+        " C5VRX-3  %s\n"
+        " Clock:   PARLIO RX/TX 40MHz\n"
         " Telemetry: Live GDMA ring pointer tracking (rx_ch=%d, tx_ch=%d)\n"
-        " Buffer:  32,768 bytes cyclic ring (Zero-EOF patched: RX=%d TX=%d)\n"
-        " RX:      40 MS/s POS edge, 32,768 bytes pure HW cyclic GDMA\n"
-        " Demod:   Phase5 50ns / P%u / G%u / current-minus-previous\n"
-        " TX:      40 MHz [D,D] / eof=downstream / tail=0\n"
-        " Lock:    GDMA ISRs disabled, RX EOF disabled, suc_eof=0 cleared\n"
-        " CPU:     done (hardware runs in unbroken infinite loop)\n"
+        " Raw IQ:  32,768 bytes cyclic ring (Zero-EOF patched: RX=%d TX=%d)\n"
+        " Demod:   %s\n"
+        " TX:      40 MHz [D,D] 6-bit CVBS\n"
         "=======================================================\n",
-        s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes, DAC_IDLE_CODE, 2u);
+        adjacent_live ? "EXPERIMENTAL exact-adjacent M2M receiver" :
+                        "Seamless 32K Phase5 receiver",
+        s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes,
+        adjacent_live ?
+        "40M every-sample adjacent -> no-rewrap pair -> confidence hold -> 20M" :
+        "Phase5 50ns endpoint / Golden or Trajectory");
 
     return ESP_OK;
 }
