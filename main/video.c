@@ -293,7 +293,6 @@ static DMA_ATTR __attribute__((aligned(64))) uint8_t s_raw_ring[RAW_RING_BYTES];
  * 64 KiB of experimental buffering out of static BSS preserves Golden's
  * proven memory headroom. */
 static uint8_t *s_adjacent_tx_ring;
-static uint8_t *s_adjacent_scratch;
 static const uint8_t *s_tx_ring_base = s_raw_ring;
 static size_t s_tx_ring_bytes = RAW_RING_BYTES;
 static TaskHandle_t s_adjacent_task_handle;
@@ -2744,9 +2743,7 @@ static void adjacent_release(void)
     }
     adjacent_m2m_deinit();
     free(s_adjacent_tx_ring);
-    free(s_adjacent_scratch);
     s_adjacent_tx_ring = NULL;
-    s_adjacent_scratch = NULL;
     s_adjacent_task_handle = NULL;
     s_adjacent_have_history = false;
 }
@@ -2755,16 +2752,12 @@ static esp_err_t adjacent_allocate(void)
 {
     s_adjacent_tx_ring = heap_caps_aligned_alloc(
         64u, ADJACENT_TX_RING_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    s_adjacent_scratch = heap_caps_aligned_alloc(
-        64u, ADJACENT_M2M_BLOCK_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    if (!s_adjacent_tx_ring || !s_adjacent_scratch) {
+    if (!s_adjacent_tx_ring) {
         adjacent_release();
         return ESP_ERR_NO_MEM;
     }
     memset(s_adjacent_tx_ring, DAC_IDLE_CODE, ADJACENT_TX_RING_BYTES);
-    memset(s_adjacent_scratch, 0, ADJACENT_M2M_BLOCK_BYTES);
     sync_dma_c2m(s_adjacent_tx_ring, ADJACENT_TX_RING_BYTES);
-    sync_dma_c2m(s_adjacent_scratch, ADJACENT_M2M_BLOCK_BYTES);
     s_adjacent_previous_code = DAC_IDLE_CODE;
     s_adjacent_previous_raw = 0u;
     s_adjacent_have_history = false;
@@ -2773,35 +2766,43 @@ static esp_err_t adjacent_allocate(void)
     return adjacent_m2m_init();
 }
 
+static int adjacent_writer_half(void);
+
 static esp_err_t adjacent_transform_completed_half(unsigned half, unsigned slot,
                                                    uint32_t *elapsed_us)
 {
-    if (half > 1u || slot >= ADJACENT_TX_SLOTS ||
-        !s_adjacent_tx_ring || !s_adjacent_scratch) {
+    if (half > 1u || slot >= ADJACENT_TX_SLOTS || !s_adjacent_tx_ring)
         return ESP_ERR_INVALID_ARG;
-    }
 
     uint8_t *src = s_raw_ring + half * ADJACENT_M2M_BLOCK_BYTES;
     uint8_t *dst = s_adjacent_tx_ring + slot * ADJACENT_M2M_BLOCK_BYTES;
 
-    /* Copy immediately after the RX descriptor crosses the half boundary.
-     * The M2M engine then owns an immutable snapshot while RF continues. */
+    /* The writer has just crossed into the opposite half, so this complete
+     * 16-KiB half is an immutable zero-copy M2M input for one 409.6-us window.
+     * Save only the few bytes needed to repair finite-run priming state. */
+    if (adjacent_writer_half() == (int)half) return ESP_ERR_INVALID_STATE;
     sync_dma_m2c(src, ADJACENT_M2M_BLOCK_BYTES);
-    memcpy(s_adjacent_scratch, src, ADJACENT_M2M_BLOCK_BYTES);
+
+    uint8_t boundary_raw[32];
+    memcpy(boundary_raw, src, sizeof(boundary_raw));
+    uint8_t last_raw = src[ADJACENT_M2M_BLOCK_BYTES - 1u];
 
     uint32_t us = 0u;
     esp_err_t err = adjacent_m2m_transform(
-        s_adjacent_scratch, ADJACENT_M2M_BLOCK_BYTES,
+        src, ADJACENT_M2M_BLOCK_BYTES,
         dst, ADJACENT_M2M_BLOCK_BYTES, &us);
     if (elapsed_us) *elapsed_us = us;
     if (err != ESP_OK) return err;
 
+    /* If RF reached this half again while M2M was still consuming it, input
+     * was ambiguous. Never publish the corresponding output slot. */
+    if (adjacent_writer_half() == (int)half)
+        return ESP_ERR_TIMEOUT;
+
     /* Loopback reset intentionally restarts BitScrambler state per block.
-     * Repair the bounded leading state in software from the true preceding
-     * sample. Continue only until two ordinary (non-hold) pairs have restored
-     * the same temporal state that the hardware loop will carry internally. */
+     * Repair the bounded leading state from the true preceding sample. */
     uint8_t previous_raw = s_adjacent_have_history ?
-                           s_adjacent_previous_raw : s_adjacent_scratch[0];
+                           s_adjacent_previous_raw : boundary_raw[0];
     uint8_t previous_code = s_adjacent_have_history ?
                             s_adjacent_previous_code : DAC_IDLE_CODE;
     unsigned clean_run = 0u;
@@ -2810,7 +2811,7 @@ static esp_err_t adjacent_transform_completed_half(unsigned half, unsigned slot,
         size_t at = pair * 2u;
         bool held = false;
         uint8_t code = adjacent_m2m_reference_pair(
-            previous_raw, s_adjacent_scratch[at], s_adjacent_scratch[at + 1u],
+            previous_raw, boundary_raw[at], boundary_raw[at + 1u],
             previous_code, &held);
         dst[at] = code;
         dst[at + 1u] = code;
@@ -2821,14 +2822,13 @@ static esp_err_t adjacent_transform_completed_half(unsigned half, unsigned slot,
         } else {
             ++clean_run;
         }
-        previous_raw = s_adjacent_scratch[at + 1u];
+        previous_raw = boundary_raw[at + 1u];
         previous_code = code;
         if (pair >= 1u && clean_run >= 2u) break;
     }
     sync_dma_c2m(dst, patched_pairs * 2u);
 
-    s_adjacent_previous_raw =
-        s_adjacent_scratch[ADJACENT_M2M_BLOCK_BYTES - 1u];
+    s_adjacent_previous_raw = last_raw;
     sync_dma_m2c(dst + ADJACENT_M2M_BLOCK_BYTES - 1u, 1u);
     s_adjacent_previous_code = dst[ADJACENT_M2M_BLOCK_BYTES - 1u];
     s_adjacent_have_history = true;
