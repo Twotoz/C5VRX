@@ -978,15 +978,25 @@ static void fusion_temporal_publish(const fusion_temporal_metrics_t *m)
     ++s_fusion_temporal_seq;
 }
 
-/* Distributed observation closes a major blind spot in the old controller:
+/* Fast observation closes a major blind spot in the old controller:
  * one 102 us descriptor every 50 ms observed only ~0.2% of RF time. This task
- * spreads similarly small CPU reads across the interval. It never writes PHY
- * state and never participates in DMA pacing. */
+ * spreads 512-byte Q4 reads across the interval without ever pacing DMA.
+ *
+ * It remains observation-only for every legacy profile. ARC V4 SNAP is the
+ * explicit exception: while that profile is selected, this task also owns the
+ * in-flight gain handoff so a pre-cliff event does not wait for the 50 ms
+ * legacy actuator loop. */
+static void apply_rx_gain_tracked(uint8_t gain);
+
 static void fusion_observer_task(void *arg)
 {
     (void)arg;
     fusion_temporal_t temporal;
     fusion_temporal_reset(&temporal);
+
+    arc_v4_snap_t snap;
+    arc_v4_snap_reset(&snap, rf_get_arc_gain_table(), s_current_gain);
+
     uint32_t seen_generation = s_profile_generation;
     uint8_t sample[FUSION_FAST_SAMPLE_BYTES];
 
@@ -996,6 +1006,7 @@ static void fusion_observer_task(void *arg)
         if (seen_generation != s_profile_generation) {
             seen_generation = s_profile_generation;
             fusion_temporal_reset(&temporal);
+            arc_v4_snap_reset(&snap, rf_get_arc_gain_table(), s_current_gain);
         }
 
         uint8_t *src = get_completed_rx_sample_window(sizeof(sample));
@@ -1015,6 +1026,49 @@ static void fusion_observer_task(void *arg)
             active_demod_shadow(metrics.fusion_shadow));
         fusion_temporal_metrics_t tm = fusion_temporal_update(&temporal, &obs);
         fusion_temporal_publish(&tm);
+
+        if (s_rx_profile != RX_PROFILE_ARC_V4_SNAP_EXP || s_menu_active)
+            continue;
+
+        /* Any external/channel/profile gain write starts a new SNAP epoch.
+         * This keeps pre-write observations from being interpreted as fresh
+         * post-write evidence. */
+        if (snap.gain != s_current_gain)
+            arc_v4_snap_reset(&snap, rf_get_arc_gain_table(), s_current_gain);
+
+        arc_v4_snap_observation_t snap_obs = {
+            .p_median = metrics.p_median,
+            .q_phase = metrics.q_phase,
+            .clip_permille = metrics.clip_permille,
+            .origin_permille = metrics.origin_permille,
+            .winding_permille = metrics.winding_permille,
+        };
+
+        uint8_t before = s_current_gain;
+        uint8_t target = arc_v4_snap_tick(&snap, &snap_obs);
+
+        s_last_arc_v4_snap_state = snap.state;
+        s_last_arc_v4_snap_direction = snap.last_direction;
+        s_last_arc_v4_snap_urgency = snap.last_urgency;
+        s_last_arc_v4_snap_fast_p = snap.fast_p;
+        s_last_arc_v4_snap_fast_q = snap.fast_q;
+        s_last_arc_v4_snap_fast_origin = snap.fast_origin;
+        s_last_arc_v4_snap_fast_clip = snap.fast_clip;
+        s_last_arc_v4_snap_margin = snap.margin_score;
+        s_last_arc_v4_snap_pending = snap.pending_samples;
+        s_last_arc_v4_snap_discard = snap.discard_samples;
+        s_last_arc_v4_snap_epoch = snap.epoch;
+        s_last_arc_v4_snap_handoffs = snap.handoffs;
+
+        /* On ESP32-C5 the higher-priority fast observer cannot be pre-empted
+         * here by the menu/legacy AGC tasks. Re-check the generation anyway so
+         * a profile transition never receives a stale handoff. */
+        if (target != before &&
+            seen_generation == s_profile_generation &&
+            s_rx_profile == RX_PROFILE_ARC_V4_SNAP_EXP &&
+            !s_menu_active) {
+            apply_rx_gain_tracked(target);
+        }
     }
 }
 
@@ -4835,8 +4889,9 @@ esp_err_t video_start(void)
     if (s_tx_dma_ch >= 0) AHB_DMA.out_intr[s_tx_dma_ch].clr.val = UINT32_MAX;
     BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
 
-    /* Distributed shadow observer: read-only, no PHY writes and no DMA pacing. */
-    xTaskCreate(fusion_observer_task, "fusion_obs", 4096, NULL, 2, NULL);
+    /* Fast observer never paces DMA. Legacy profiles remain read-only; ARC V4
+     * SNAP may perform a bounded gain handoff here to avoid the 50 ms loop. */
+    xTaskCreate(fusion_observer_task, "fusion_obs", 4096, NULL, 4, NULL);
 
     /* Start interactive console for on-demand diagnostics (zero periodic CPU/bus traffic) */
     xTaskCreate(console_diag_task, "console_diag", 3072, NULL, 1, NULL);
