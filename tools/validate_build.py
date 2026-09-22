@@ -31,25 +31,36 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("three .bsasm programs (Golden + output experiment + Trajectory v2)",
-      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
+check("four BitScrambler programs including exact-adjacent M2M",
+      {f.name for f in bsasm_files} ==
+      {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_adjacent_m2m.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
-    check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
-    check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
     check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
     check(f"{bsasm_file.name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
-    check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
-    check(f"{bsasm_file.name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
+    if bsasm_file.name == "fm_adjacent_m2m.bsasm":
+        check("adjacent M2M uses bounded upstream EOF",
+              "cfg eof_on upstream" in bsasm and "cfg trailing_bytes 9" in bsasm)
+        check("adjacent M2M preserves no-second-wrap pair accumulator",
+              "B is the no-rewrap signed pair sum" in bsasm and
+              "ADDCTIB" in bsasm and "B1..B7" in bsasm)
+        check("adjacent M2M emits quiet duplicated 20M CVBS",
+              "write 16" in bsasm and "set 8..13 L0..L5" in bsasm)
+    else:
+        check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+        check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
+        check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
+        check(f"{bsasm_file.name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
 
 # ---- Production .c file checks ----
 c_files = list(MAIN.glob("*.c"))
 all_c = "\n".join(read(f) for f in c_files)
 c_names = [f.name for f in c_files]
 
-check("production receiver and dedicated menu raster modules", set(c_names) == {"main.c", "arc_phy.c", "rf.c", "video.c", "menu_raster.c"},
+check("production receiver, adjacent engine and dedicated menu raster modules",
+      set(c_names) == {"main.c", "arc_phy.c", "adjacent_m2m.c", "rf.c", "video.c", "menu_raster.c"},
       f"found: {c_names}")
 check("main.c present", "main.c" in c_names)
 check("rf.c present", "rf.c" in c_names)
@@ -70,12 +81,32 @@ check("no RF dump engine in production", "continuous_iq" not in all_c and "s_rf_
       "RF dump subsystem must not be present")
 check("no startup_trace in production", "startup_trace" not in all_c)
 check("no snapshot infrastructure", "live_snapshot" not in all_c)
-check("legacy trajectory/M2M code stays out of production",
+check("legacy M2M code stays out; bounded adjacent loopback is explicit",
       "c5vrx2_wbfm_q4_trajectory" not in all_c and
       "trajectory_reference" not in all_c and
-      "BITSCRAMBLER_ATTACH_MEM2MEM" not in all_c)
+      "BITSCRAMBLER_ATTACH_MEM2MEM" not in all_c and
+      "bitscrambler_loopback_create" in read(MAIN / "adjacent_m2m.c") and
+      "SOC_BITSCRAMBLER_ATTACH_I2S0" in read(MAIN / "adjacent_m2m.c"))
 check("no true40 in production", "true40" not in all_c)
 check("no wbfm_q4.h in production", "wbfm_q4.h" not in all_c)
+adjacent_c = read(MAIN / "adjacent_m2m.c")
+adjacent_h = read(MAIN / "adjacent_m2m.h")
+check("adjacent pair math never endpoint-wraps the two-step trajectory",
+      "int pair = d0 + d1; /* intentionally no second wrap */" in adjacent_c and
+      "wrap_delta7(m - p)" in adjacent_c and "wrap_delta7(c - m)" in adjacent_c)
+check("adjacent confidence repair is winding and low-confidence gated",
+      "bool hold = s_low_conf[middle] != 0u" in adjacent_c and
+      "qsum < -32 || qsum >= 32" in adjacent_c and
+      "A large FM delta alone is never a reason" in adjacent_c)
+check("adjacent live path retains quiet 20M information in [D,D] DAC bytes",
+      "ADJACENT_TX_SLOTS  3u" in all_c and
+      "adjacent_transform_completed_half" in all_c and
+      "s_adjacent_tx_ring" in all_c and
+      "ADJACENT_TX_RING_BYTES" in all_c)
+check("adjacent startup fails closed to Golden when realtime gate fails",
+      "C5VRX_ADJACENT_START_FAILED" in all_c and
+      "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;" in all_c and
+      "ADJACENT_HARD_US   400u" in all_c)
 
 # Fixed constants
 check("RAW_RING_BYTES == 32768",
@@ -528,8 +559,9 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, 4-bit output and Trajectory v2 BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"], f"found: {bs_srcs}")
+check("Golden, output, Trajectory and exact-adjacent BitScrambler programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_adjacent_m2m.bsasm"],
+      f"found: {bs_srcs}")
 
 # ---- Summary ----
 print(f"\n{'='*50}")
