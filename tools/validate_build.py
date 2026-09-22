@@ -91,12 +91,14 @@ check("no true40 in production", "true40" not in all_c)
 check("no wbfm_q4.h in production", "wbfm_q4.h" not in all_c)
 adjacent_c = read(MAIN / "adjacent_m2m.c")
 adjacent_h = read(MAIN / "adjacent_m2m.h")
+adjacent_math = read(MAIN / "adjacent_math.h")
 check("adjacent pair math never endpoint-wraps the two-step trajectory",
-      "int pair = d0 + d1; /* intentionally no second wrap */" in adjacent_c and
-      "wrap_delta7(m - p)" in adjacent_c and "wrap_delta7(c - m)" in adjacent_c)
+      "return d0 + d1; /* NO SECOND WRAP */" in adjacent_math and
+      "adjacent_wrap_delta7((int)middle - (int)previous)" in adjacent_math and
+      "adjacent_wrap_delta7((int)current - (int)middle)" in adjacent_math)
 check("adjacent confidence repair is winding and low-confidence gated",
       "bool hold = s_low_conf[middle] != 0u" in adjacent_c and
-      "qsum < -32 || qsum >= 32" in adjacent_c and
+      "adjacent_pair_proves_winding(pair)" in adjacent_c and
       "A large FM delta alone is never a reason" in adjacent_c)
 check("adjacent live path retains quiet 20M information in [D,D] DAC bytes",
       "ADJACENT_TX_SLOTS  3u" in all_c and
