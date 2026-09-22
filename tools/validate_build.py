@@ -31,25 +31,34 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("three .bsasm programs (Golden + output experiment + Trajectory v2)",
-      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
+check("four .bsasm programs (Golden + output + Trajectory + full-Q4 adjacent)",
+      {f.name for f in bsasm_files} ==
+      {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_adjacent.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
-    check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
-    check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
+    if bsasm_file.name == "fm_adjacent.bsasm":
+        check("fm_adjacent.bsasm: bounded M2M uses upstream EOF",
+              "cfg eof_on upstream" in bsasm)
+        check("fm_adjacent.bsasm: bounded M2M flushes prefetch",
+              "cfg trailing_bytes 9" in bsasm)
+        check("fm_adjacent.bsasm: emits duplicated [D,D]",
+              "write 16" in bsasm)
+    else:
+        check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+        check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
+        check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
+        check(f"{bsasm_file.name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
     check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
     check(f"{bsasm_file.name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
-    check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
-    check(f"{bsasm_file.name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
 
 # ---- Production .c file checks ----
 c_files = list(MAIN.glob("*.c"))
 all_c = "\n".join(read(f) for f in c_files)
 c_names = [f.name for f in c_files]
 
-check("production receiver and dedicated menu raster modules", set(c_names) == {"main.c", "arc_phy.c", "rf.c", "video.c", "menu_raster.c"},
+check("production receiver, adjacent demod and dedicated menu raster modules", set(c_names) == {"main.c", "arc_phy.c", "adjacent_fm.c", "rf.c", "video.c", "menu_raster.c"},
       f"found: {c_names}")
 check("main.c present", "main.c" in c_names)
 check("rf.c present", "rf.c" in c_names)
@@ -258,6 +267,33 @@ check("offline demod benchmark gates adjacent/PLL experiments",
       "pll_lite_pair_codes" in read(ROOT / "tools/range_demod_bench.py") and
       "pll_demod" in read(ROOT / "tools/range_demod_bench.py"))
 
+adj_c = read(MAIN / "adjacent_fm.c")
+adj_h = read(MAIN / "adjacent_fm.h")
+adj_asm = read(MAIN / "fm_adjacent.bsasm")
+check("full-Q4 adjacent M2M uses every raw sample before 2:1 output mapping",
+      "add_current1:" in adj_asm and
+      "add_previous1:" in adj_asm and
+      "add_current2:" in adj_asm and
+      "add_previous2:" in adj_asm and
+      "write 16" in adj_asm and
+      "ADJACENT_FM_BLOCK_BYTES 16384u" in adj_h)
+check("adjacent mode has measured half-ring deadline telemetry and safe fallback",
+      "adjacent_fm_transform" in all_c and
+      "deadline_misses" in adj_h and
+      "s_adj_boundary_misses" in all_c and
+      "adjacent_fallback_to_golden" in all_c and
+      "restoring GOLDEN and rebooting" in all_c)
+check("adjacent M2M owns both BS directions only when selected",
+      "bitscrambler_loopback_create" in adj_c and
+      "SOC_BITSCRAMBLER_ATTACH_I2S0" in adj_c and
+      "s_demod_mode != DEMOD_MODE_ADJACENT_FULLQ4" in all_c and
+      "plain PARLIO TX" in all_c)
+check("adjacent block reset repairs cross-boundary first output pair",
+      "previous_raw" in adj_c and
+      "output[0] = first" in adj_c and
+      "output[1] = first" in adj_c and
+      "previous_off" in all_c)
+
 traj_asm = read(MAIN / "fm_traj.bsasm")
 traj_gen = read(ROOT / "tools" / "train_trajectory_v2.py")
 check("Trajectory v2 preserves no-rewrap adjacent trajectory target",
@@ -277,10 +313,10 @@ check("Trajectory v2 is opt-in and Golden remains boot default",
       "DEMOD_MODE_TRAJECTORY_V2 = 1" in all_c and
       "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5" in all_c and
       "s_fm_traj_program" in all_c)
-check("Trajectory v2 initial hardware A/B keeps the 6BIT@40 contract",
+check("experimental realtime demods keep the 6BIT@40 contract",
       "s_demod_mode == DEMOD_MODE_TRAJECTORY_V2" in all_c and
+      "DEMOD_MODE_ADJACENT_FULLQ4" in all_c and
       "s_output_mode = VIDEO_OUTPUT_6BIT_40" in all_c and
-      "Selecting TRAJ V2 therefore moves the DAC back" in all_c and
       "DEMOD -> GOLDEN" in all_c)
 check("Trajectory v2 supervisor mirrors two-stage token LUT and uncertainty",
       "trajectory_v2_stage1_address" in all_c and
@@ -303,7 +339,7 @@ check("Trajectory v2 live two-stage address contract is mirrored everywhere",
 check("demod A/B switch resets semantic lock state",
       "cycle_demod_mode" in all_c and
       "video_standard_detector_reset();" in all_c and
-      "receive_generation also makes the controller relearn cleanly" in all_c)
+      "++s_profile_generation;" in all_c)
 check("demod mode persists, migrates v3 and defaults safely to Golden",
       "SETTINGS_VERSION 4u" in all_c and
       ".demod_mode = (uint8_t)s_demod_mode" in all_c and
@@ -327,7 +363,8 @@ check("Fusion/Range supervisor remains independent from selectable realtime demo
       "fusion_optimizer_tick" in all_c and
       "fusion_make_observation" in all_c and
       'target_bitscrambler_add_src("fm.bsasm")' in read(MAIN / "CMakeLists.txt") and
-      'target_bitscrambler_add_src("fm_traj.bsasm")' in read(MAIN / "CMakeLists.txt"))
+      'target_bitscrambler_add_src("fm_traj.bsasm")' in read(MAIN / "CMakeLists.txt") and
+      'target_bitscrambler_add_src("fm_adjacent.bsasm")' in read(MAIN / "CMakeLists.txt"))
 check("lag correlation covers any tracked PHY write",
       "near_phy_event_count" in all_c and
       "s_last_phy_write_us" in all_c and
@@ -528,8 +565,9 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, 4-bit output and Trajectory v2 BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"], f"found: {bs_srcs}")
+check("Golden, 4-bit, Trajectory and adjacent BitScrambler programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_adjacent.bsasm"],
+      f"found: {bs_srcs}")
 
 # ---- Summary ----
 print(f"\n{'='*50}")
