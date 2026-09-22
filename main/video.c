@@ -3122,10 +3122,13 @@ static void lab_apply_video_pair(video_output_mode_t output, demod_mode_t demod)
         return;
     }
 
-    if (demod == DEMOD_MODE_TRAJECTORY_V2)
-        output = VIDEO_OUTPUT_6BIT_40;
+    /* Explicit output selection wins: requesting 4BIT@80 must leave
+     * TRAJ V2 and return to GOLDEN. Otherwise TRAJ keeps its required 6BIT@40
+     * pairing. */
     if (output == VIDEO_OUTPUT_4BIT_80)
         demod = DEMOD_MODE_GOLDEN_PHASE5;
+    else if (demod == DEMOD_MODE_TRAJECTORY_V2)
+        output = VIDEO_OUTPUT_6BIT_40;
 
     if (s_output_mode == output && s_demod_mode == demod) {
         printf("[LAB VIDEO] unchanged: %s / %s\n",
