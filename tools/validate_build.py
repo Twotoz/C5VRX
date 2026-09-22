@@ -485,7 +485,7 @@ check("ARC V4 SNAP uses measured gain anchors instead of one-index hunting",
       "commit_handoff" in arc_v4_snap)
 check("ARC V4 SNAP hands off before starvation with adaptive confirmation",
       "SNAP_SOFT_CONFIRM_SAMPLES        50u" in arc_v4_snap and
-      "SNAP_FAST_CONFIRM_SAMPLES        18u" in arc_v4_snap and
+      "SNAP_FAST_CONFIRM_SAMPLES        15u" in arc_v4_snap and
       "SNAP_CRITICAL_CONFIRM_SAMPLES     2u" in arc_v4_snap and
       "P8-10 / Q60-80" in arc_v4_snap and
       "ARC_V4_SNAP_PREHANDOFF" in arc_v4_snap)
