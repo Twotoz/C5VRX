@@ -1,0 +1,145 @@
+# Experimental exact-adjacent M2M demodulator.
+#
+# Two packed Q4/I4 bytes are consumed for every 20 MS/s video result.
+# Every adjacent 40 MS/s interval participates:
+#
+#   d0 = wrap(phi[m] - phi[p])
+#   d1 = wrap(phi[c] - phi[m])
+#   pair = d0 + d1
+#
+# IMPORTANT: pair is NOT wrapped again. Phase is represented on a 7-bit
+# circle so two signed adjacent deltas fit losslessly in an 8-bit signed sum.
+#
+# LUT layout (16-bit entries):
+#   0x000..0x0ff raw Q4/I4 ->
+#       bits 0..6   phase7
+#       bit  7      low-confidence quantization cell
+#       bits 9..15  -phase7 modulo 128
+#   0x100..0x1ff pair-map ->
+#       bits 0..4   5-bit candidate CVBS (one-LSB reduced)
+#       bit  5      confidence-gated winding hold request
+#   0x200..0x3ff hold-map ->
+#       bits 0..5   final 6-bit CVBS
+#
+# Low-confidence winding events use a short coarse holdover from the previous
+# output. Large credible FM motion is never smoothed merely because it is large.
+#
+# This program is memory-to-memory only. It intentionally uses upstream EOF
+# because each half-ring transform is a bounded loopback transaction. The live
+# DAC consumes the already duplicated [D,D] output ring without a BitScrambler.
+
+cfg prefetch true
+cfg eof_on upstream
+cfg trailing_bytes 9
+cfg lut_width_bits 16
+
+address1:
+    # Address first new sample and reset the full signed pair accumulator B.
+    # O8..O14 carries -phase(previous) across the steady-state loop.
+    set 8..15 O8..O15,
+    set 16 0,
+    set 17 1,
+    set 18 2,
+    set 19 3,
+    set 20 4,
+    set 21 5,
+    set 22 6,
+    set 23 7,
+    set 24..31 L,
+    read 8,
+    LDCTDB 0
+
+load_current1:
+    # A = phase(current), keeping only the 7-bit circular state.
+    set 8..15 O8..O15,
+    set 16..22 L0..L6,
+    set 23..31 L,
+    LDCTIA
+
+add_previous1:
+    # A += -phase(previous). A0..A6 is therefore the wrapped adjacent delta.
+    # Save the current negative phase and its confidence for the second edge.
+    set 8..14 L9..L15,
+    set 15 L7,
+    set 16..22 O8..O14,
+    set 23..31 L,
+    ADDCTIA
+
+accumulate1:
+    # Sign-extend the wrapped 7-bit delta and add it to full 16-bit B.
+    set 8..15 O8..O15,
+    set 16..22 A0..A6,
+    set 23..31 A6,
+    ADDCTIB
+
+address2:
+    # Address the second new sample. O15 keeps the middle-sample confidence.
+    set 8..15 O8..O15,
+    set 16 0,
+    set 17 1,
+    set 18 2,
+    set 19 3,
+    set 20 4,
+    set 21 5,
+    set 22 6,
+    set 23 7,
+    set 24..31 L,
+    read 8
+
+load_current2:
+    set 8..15 O8..O15,
+    set 16..22 L0..L6,
+    set 23..31 L,
+    LDCTIA
+
+add_previous2:
+    # Save -phase(current) for the next pair while forming d1.
+    set 8..14 L9..L15,
+    set 15 O15,
+    set 16..22 O8..O14,
+    set 23..31 L,
+    ADDCTIA
+
+accumulate2:
+    set 8..15 O8..O15,
+    set 16..22 A0..A6,
+    set 23..31 A6,
+    ADDCTIB
+
+pair_map:
+    # B is the unwrapped signed pair sum (-128..+126 phase7 units).
+    # Arithmetic shift-right by one is B1..B7. Keep middle confidence in bit7.
+    # LUT bank 0x100 maps this quiet 2:1 combined value to candidate CVBS and
+    # requests holdover only for a low-confidence full-winding disagreement.
+    set 8..15 O8..O15,
+    set 16..22 B1..B7,
+    set 23 O15,
+    set 24 H,
+    set 25 L,
+    set 26..31 L
+
+hold_map:
+    # LUT bank 0x200:
+    #   address[4:0] = candidate CVBS / 2
+    #   address[7:5] = previous output coarse state
+    #   address[8]   = confidence-gated hold request
+    #   address[9]   = bank select
+    set 8..15 O8..O15,
+    set 16..20 L0..L4,
+    set 21..23 O26..O28,
+    set 24 L5,
+    set 25 H,
+    set 26..31 L
+
+emit:
+    # Emit the final code twice: quiet 20 MS/s information, physical [D,D]
+    # at 40 MHz. Retain final-code coarse state for a bounded one-sample hold.
+    set 0..5 L0..L5,
+    set 6..7 L,
+    set 8..13 L0..L5,
+    set 14..15 L,
+    set 16..25 L,
+    set 26..28 L3..L5,
+    set 29..31 L,
+    write 16,
+    jmp address1
