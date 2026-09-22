@@ -1,4 +1,5 @@
 #include "adjacent_m2m.h"
+#include "adjacent_math.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -15,7 +16,6 @@ BITSCRAMBLER_PROGRAM(s_adjacent_m2m_program, "fm_adjacent_m2m");
 #define ADJ_LUT_ITEMS 1024u
 #define ADJ_LUT_BYTES (ADJ_LUT_ITEMS * sizeof(uint16_t))
 #define ADJ_PI_F 3.14159265358979323846f
-#define ADJ_PEDestal 20
 
 static bitscrambler_handle_t s_adj_bs;
 static uint8_t s_phase7[256];
@@ -79,31 +79,6 @@ static bool quantized_low_confidence(uint8_t packed)
     return origin_cell || spread > 0.60f || (rail && spread > 0.35f);
 }
 
-static int signed7(unsigned value)
-{
-    value &= 0x7fu;
-    return (value & 0x40u) ? (int)value - 128 : (int)value;
-}
-
-static int wrap_delta7(int delta)
-{
-    while (delta >= 64) delta -= 128;
-    while (delta < -64) delta += 128;
-    return delta;
-}
-
-static int arshift1(int value)
-{
-    return value >= 0 ? value / 2 : -(((-value) + 1) / 2);
-}
-
-static uint8_t clamp_code(int value)
-{
-    if (value < 0) return 0u;
-    if (value > 63) return 63u;
-    return (uint8_t)value;
-}
-
 static void build_lut(uint16_t lut[ADJ_LUT_ITEMS])
 {
     memset(lut, 0, ADJ_LUT_BYTES);
@@ -123,10 +98,10 @@ static void build_lut(uint16_t lut[ADJ_LUT_ITEMS])
      * phase7 turn is 128, qsum outside [-32,+31] proves a winding that an
      * endpoint discriminator would fold by one full turn. */
     for (unsigned state = 0; state < 256u; ++state) {
-        int qsum = signed7(state & 0x7fu);
+        int qsum = adjacent_signed7(state & 0x7fu);
         bool low_middle = (state & 0x80u) != 0u;
         int code = 20 + 3 * qsum; /* P20/G2, including real 2:1 boxcar. */
-        uint8_t candidate = clamp_code(code);
+        uint8_t candidate = adjacent_clamp_code(code);
         bool winding = qsum < -32 || qsum >= 32;
         bool hold = low_middle && winding;
         lut[0x100u | state] = (uint16_t)(candidate >> 1u) |
@@ -207,20 +182,15 @@ uint8_t adjacent_m2m_reference_pair(uint8_t previous, uint8_t middle,
                                     uint8_t current, uint8_t previous_code,
                                     bool *held)
 {
-    int p = s_phase7[previous];
-    int m = s_phase7[middle];
-    int c = s_phase7[current];
-    int d0 = wrap_delta7(m - p);
-    int d1 = wrap_delta7(c - m);
-    int pair = d0 + d1; /* intentionally no second wrap */
-    int qsum = arshift1(pair);
+    int pair = adjacent_pair_sum7(
+        s_phase7[previous], s_phase7[middle], s_phase7[current]);
+    int qsum = adjacent_pair_qsum7(pair);
     if (qsum < -64) qsum = -64;
     if (qsum > 63) qsum = 63;
 
     bool hold = s_low_conf[middle] != 0u &&
-                (qsum < -32 || qsum >= 32);
-    int candidate = 20 + 3 * qsum;
-    uint8_t candidate_code = clamp_code(candidate);
+                adjacent_pair_proves_winding(pair);
+    uint8_t candidate_code = adjacent_map_qsum_to_cvbs(qsum);
     uint8_t code = hold ? (uint8_t)(((previous_code >> 3u) & 7u) * 8u + 4u)
                         : (uint8_t)(candidate_code & 0x3eu);
     if (held) *held = hold;
