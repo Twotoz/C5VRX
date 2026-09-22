@@ -483,6 +483,10 @@ static inline uint32_t get_tx_dma_offset(uint32_t *out_dscr_addr)
         if (buf >= s_raw_ring && buf < s_raw_ring + sizeof(s_raw_ring)) {
             return (uint32_t)(buf - s_raw_ring);
         }
+        if (s_adj_ring && buf >= s_adj_ring &&
+            buf < s_adj_ring + sizeof(s_raw_ring)) {
+            return (uint32_t)(buf - s_adj_ring);
+        }
     }
     return 0;
 }
@@ -507,6 +511,21 @@ static esp_err_t adjacent_runtime_prepare(void)
         return err;
     }
     return ESP_OK;
+}
+
+static esp_err_t adjacent_fallback_to_golden(esp_err_t reason)
+{
+    /* Never leave a persisted experimental demod in a boot loop. If the M2M
+     * engine cannot allocate/start or misses its initial realtime deadline,
+     * persist the proven contract before restarting. */
+    s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+    s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    settings_save();
+    ESP_LOGE(TAG, "ADJACENT unavailable (%s); restoring GOLDEN and rebooting",
+             esp_err_to_name(reason));
+    vTaskDelay(pdMS_TO_TICKS(80));
+    esp_restart();
+    return reason;
 }
 
 static bool adjacent_process_half(unsigned half)
@@ -4084,7 +4103,7 @@ esp_err_t video_start(void)
     esp_err_t err;
     if (s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) {
         err = adjacent_runtime_prepare();
-        if (err != ESP_OK) return err;
+        if (err != ESP_OK) return adjacent_fallback_to_golden(err);
     }
 
     /* Zero the ring before starting. Flush to DMA-visible SRAM. */
@@ -4123,7 +4142,7 @@ esp_err_t video_start(void)
         s_adj_task_stopped = false;
         if (xTaskCreate(adjacent_worker_task, "adjacent_fm", 4096, NULL, 6,
                         &s_adj_task) != pdPASS)
-            return ESP_ERR_NO_MEM;
+            return adjacent_fallback_to_golden(ESP_ERR_NO_MEM);
 
         /* The worker fills both output halves and starts plain PARLIO TX at a
          * safe ping-pong phase. This wait is startup-only; live pacing remains
@@ -4133,7 +4152,8 @@ esp_err_t video_start(void)
                esp_timer_get_time() < deadline)
             vTaskDelay(1);
         if (!s_adj_tx_started)
-            return s_adj_error != ESP_OK ? s_adj_error : ESP_ERR_TIMEOUT;
+            return adjacent_fallback_to_golden(
+                s_adj_error != ESP_OK ? s_adj_error : ESP_ERR_TIMEOUT);
     } else {
         /* Golden/Trajectory keep the proven half-ring producer/consumer delay. */
         esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
