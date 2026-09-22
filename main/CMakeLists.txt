@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "main.c"
         "arc_phy.c"
+        "adjacent_fm.c"
         "rf.c"
         "video.c"
         "menu_raster.c"
@@ -29,3 +30,4 @@ idf_component_register(
 target_bitscrambler_add_src("fm.bsasm")
 target_bitscrambler_add_src("fm4.bsasm")
 target_bitscrambler_add_src("fm_traj.bsasm")
+target_bitscrambler_add_src("fm_adjacent.bsasm")
