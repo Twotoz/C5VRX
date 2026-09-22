@@ -344,7 +344,8 @@ static esp_err_t prepare_rx(void)
     const parlio_rx_soft_delimiter_config_t delim_cfg = {
         .sample_edge  = PARLIO_SAMPLE_EDGE_POS,
         .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
-        .eof_data_len = sizeof(s_raw_ring),
+        .eof_data_len = s_demod_mode == DEMOD_MODE_ADJACENT_M2M ?
+                        ADJACENT_M2M_BLOCK_BYTES * 2u : sizeof(s_raw_ring),
         .timeout_ticks = 0u,
     };
     err = parlio_new_rx_soft_delimiter(&delim_cfg, &s_rx_delimiter);
