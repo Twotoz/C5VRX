@@ -2875,7 +2875,6 @@ static void adjacent_pipeline_task(void *arg)
     (void)arg;
     uint32_t last_elapsed = 0u;
 
-    adjacent_schedule_poll(0u);
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
@@ -2946,11 +2945,6 @@ static esp_err_t adjacent_live_start(void)
     quiet_tx_interrupts();
     patch_descriptors_clear_eof(s_tx_dma_ch, false);
 
-    BaseType_t task_ok = xTaskCreate(
-        adjacent_pipeline_task, "adjacent_m2m", 4096, NULL, 18,
-        &s_adjacent_task_handle);
-    if (task_ok != pdPASS) return ESP_ERR_NO_MEM;
-
     const esp_timer_create_args_t timer_args = {
         .callback = adjacent_timer_cb,
         .arg = NULL,
@@ -2959,6 +2953,11 @@ static esp_err_t adjacent_live_start(void)
     };
     err = esp_timer_create(&timer_args, &s_adjacent_timer);
     if (err != ESP_OK) return err;
+
+    BaseType_t task_ok = xTaskCreate(
+        adjacent_pipeline_task, "adjacent_m2m", 4096, NULL, 18,
+        &s_adjacent_task_handle);
+    if (task_ok != pdPASS) return ESP_ERR_NO_MEM;
 
     const adjacent_m2m_stats_t *stats = adjacent_m2m_stats();
     printf("C5VRX_ADJACENT_LIVE_START block=%u us_last=%lu us_max=%lu target_warn=%u hard=%u slots=%u\n",
