@@ -709,10 +709,16 @@ static int video_semantic_observe(const uint8_t *raw, size_t bytes, size_t ring_
 {
     if (!raw || bytes < 3000u) return 0;
 
+    const bool adjacent = s_demod_mode == DEMOD_MODE_ADJACENT_M2M;
     const size_t first = (ring_offset & 1u) ? 0u : 1u;
-    if (first + 2u >= bytes) return 0;
+    const size_t pair_start = (ring_offset & 1u) ? 1u : 0u;
+    if ((!adjacent && first + 2u >= bytes) ||
+        (adjacent && pair_start + 3u >= bytes)) return 0;
 
     uint8_t previous = s_phase5_state_lut[raw[first]];
+    uint8_t adjacent_previous_raw =
+        adjacent ? raw[pair_start + 1u] : 0u;
+    uint8_t adjacent_previous_code = DAC_IDLE_CODE;
     bool in_sync = false;
     unsigned run_start = 0;
     unsigned run_len = 0;
@@ -721,12 +727,27 @@ static int video_semantic_observe(const uint8_t *raw, size_t bytes, size_t ring_
     unsigned start_count = 0;
     unsigned out_index = 1;
 
-    for (size_t i = first + 2u; i < bytes; i += 2u, ++out_index) {
-        uint8_t current = s_phase5_state_lut[raw[i]];
-        bool low = s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ?
-                   trajectory_v2_code(previous, raw[i - 1u], raw[i]) <= 8u :
-                   phase5_pair_is_sync(previous, current);
-        previous = current;
+    size_t loop_start = adjacent ? pair_start + 2u : first + 2u;
+    for (size_t i = loop_start;
+         adjacent ? (i + 1u < bytes) : (i < bytes);
+         i += 2u, ++out_index) {
+        bool low;
+        if (adjacent) {
+            bool held = false;
+            uint8_t code = adjacent_m2m_reference_pair(
+                adjacent_previous_raw, raw[i], raw[i + 1u],
+                adjacent_previous_code, &held);
+            (void)held;
+            low = code <= 8u;
+            adjacent_previous_raw = raw[i + 1u];
+            adjacent_previous_code = code;
+        } else {
+            uint8_t current = s_phase5_state_lut[raw[i]];
+            low = s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ?
+                  trajectory_v2_code(previous, raw[i - 1u], raw[i]) <= 8u :
+                  phase5_pair_is_sync(previous, current);
+            previous = current;
+        }
 
         if (low) {
             if (!in_sync) {
@@ -1498,13 +1519,18 @@ static void poll_transport_faults(void)
         }
     }
 
-    if (tx_rempty && BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].fifo_empty) {
-        ++s_hw_counters.bs_fifo_empty_count;
-    }
-    if (BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].eof_overload) {
-        ++s_hw_counters.bs_eof_overload_count;
-        if (!adjacent_live) BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
-        flags |= LAG_EVT_BS_EOF_OVERLOAD;
+    /* Golden/Trajectory have one continuously running TX BitScrambler.
+     * ADJ M2M deliberately resets the finite loopback engine per block, so its
+     * EOF/FIFO state is not a live-PARLIO fault signal. */
+    if (s_demod_mode != DEMOD_MODE_ADJACENT_M2M) {
+        if (tx_rempty && BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].fifo_empty) {
+            ++s_hw_counters.bs_fifo_empty_count;
+        }
+        if (BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].eof_overload) {
+            ++s_hw_counters.bs_eof_overload_count;
+            BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
+            flags |= LAG_EVT_BS_EOF_OVERLOAD;
+        }
     }
 
     ++s_hw_counters.checks;
@@ -1523,7 +1549,8 @@ static void lab_clear_transport_sticky(void)
     PARL_IO.int_clr.val = UINT32_MAX;
     if (s_rx_dma_ch >= 0) AHB_DMA.in_intr[s_rx_dma_ch].clr.val = UINT32_MAX;
     if (s_tx_dma_ch >= 0) AHB_DMA.out_intr[s_tx_dma_ch].clr.val = UINT32_MAX;
-    BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
+    if (s_demod_mode != DEMOD_MODE_ADJACENT_M2M)
+        BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
 }
 
 static void lab_reset_correlation(void)
