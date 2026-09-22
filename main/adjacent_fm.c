@@ -19,7 +19,7 @@ BITSCRAMBLER_PROGRAM(s_adjacent_fm_program, "fm_adjacent");
 #define ADJ_LUT_ITEMS 1024u
 #define ADJ_LUT_BYTES (ADJ_LUT_ITEMS * sizeof(uint16_t))
 #define ADJ_PHASE_BANK 0x000u
-#define ADJ_MAP_BANK   0x100u
+#define ADJ_MAP_BANK   0x200u
 #define ADJ_PEDESTAL   20
 #define ADJ_GAIN_SETTING 2
 #define PI_F 3.14159265358979323846f
@@ -57,10 +57,10 @@ static int scale_real_sum(int sum)
                            (numerator + 2) / 4;
 }
 
-static uint8_t map_sum(uint8_t sum_mod)
+static uint8_t map_sum9(unsigned sum_mod)
 {
-    int sum = (int)sum_mod;
-    if (sum >= 128) sum -= 256;
+    int sum = (int)(sum_mod & 0x1ffu);
+    if (sum >= 256) sum -= 512;
     int code = ADJ_PEDESTAL + scale_real_sum(sum);
     if (code < 0) code = 0;
     if (code > 63) code = 63;
@@ -76,8 +76,8 @@ static void build_lut(uint16_t *lut)
         lut[ADJ_PHASE_BANK | packed] =
             (uint16_t)phase | ((uint16_t)negative << 8u);
     }
-    for (unsigned sum = 0; sum < 256u; ++sum)
-        lut[ADJ_MAP_BANK | sum] = map_sum((uint8_t)sum);
+    for (unsigned sum = 0; sum < 512u; ++sum)
+        lut[ADJ_MAP_BANK | sum] = map_sum9(sum);
 }
 
 uint8_t adjacent_fm_reference_pair(uint8_t previous_raw,
@@ -87,9 +87,10 @@ uint8_t adjacent_fm_reference_pair(uint8_t previous_raw,
     const uint8_t p = q4_phase8(previous_raw);
     const uint8_t a = q4_phase8(sample0);
     const uint8_t b = q4_phase8(sample1);
-    const uint8_t d0 = (uint8_t)(a - p);
-    const uint8_t d1 = (uint8_t)(b - a);
-    return map_sum((uint8_t)(d0 + d1));
+    const int8_t d0 = (int8_t)(uint8_t)(a - p);
+    const int8_t d1 = (int8_t)(uint8_t)(b - a);
+    const int pair = (int)d0 + (int)d1;
+    return map_sum9((unsigned)pair & 0x1ffu);
 }
 
 esp_err_t adjacent_fm_init(void)
