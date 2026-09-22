@@ -1171,6 +1171,13 @@ static const char *demod_mode_name(void)
 
 static void cycle_demod_mode(void)
 {
+    /* LIFT EXACT changes the RX DMA-ring format and is therefore boot-only.
+     * Never half-switch a live Phase5 ring back into a raw-Q4 TX decoder. */
+    if (lift_exact_enabled()) {
+        printf("[DEMOD] LIFT EXACT is boot-selected; use 'J' to leave it safely\n");
+        return;
+    }
+
     s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
                    DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
     /* TRAJ V2 and 4BIT@80 use different BitScrambler/output contracts.
@@ -1460,6 +1467,11 @@ static void settings_load(void)
         }
         s_current_gain = profile_gain_clamp(s_current_gain);
     }
+    /* First live dual-BitScrambler proof keeps the physical gain fixed.
+     * The preprocessed ring carries a 3-bit envelope class for a later ARC
+     * port, but raw-Q4 ARC writes must not run against the new ring format. */
+    if (lift_exact_enabled()) s_agc_mode = ANALOG_AGC_MANUAL;
+
     s_shadow_gain = s_current_gain;
     rf_set_rx_gain(true, s_current_gain);
     s_menu_boot_btn_enabled = settings.menu_boot_btn_enabled != 0;
@@ -3724,6 +3736,7 @@ static void open_recovery_menu(void)
     /* Persisted Safe Flight state must never make the on-screen controls
      * unreachable after flashing another build. A deliberate three-second
      * hold restores the simplest proven video contract before menu TX starts. */
+    const bool lift_reboot = lift_exact_enabled();
     s_menu_boot_btn_enabled = true;
     s_video_std_mode = VIDEO_STD_MODE_AUTO;
     s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
@@ -3733,6 +3746,13 @@ static void open_recovery_menu(void)
     s_menu_cursor = 0;
     s_menu_timeout_ticks = 0;
     settings_save();
+    if (lift_reboot) {
+        printf("[RECOVERY] LIFT RX format -> GOLDEN persisted; rebooting safe raw-Q4 path\n");
+        fflush(stdout);
+        vTaskDelay(pdMS_TO_TICKS(120));
+        esp_restart();
+        return;
+    }
     video_set_menu_mode(true);
     printf("[RECOVERY] GOLDEN + 6BIT@40 + ARC restored; menu %s\n",
            s_menu_active ? "opened" : "unavailable");
@@ -3793,6 +3813,12 @@ static void handle_button_long_click(void)
             settings_save();
             break;
         case 4: /* VIDEO OUTPUT */
+            if (lift_exact_enabled()) {
+                s_output_mode = VIDEO_OUTPUT_6BIT_40;
+                printf("[MENU: OUTPUT] LIFT EXACT is locked to 6BIT@40\n");
+                settings_save();
+                break;
+            }
             s_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
                             VIDEO_OUTPUT_4BIT_80 : VIDEO_OUTPUT_6BIT_40;
             if (s_output_mode == VIDEO_OUTPUT_4BIT_80 &&
@@ -4615,6 +4641,19 @@ static void console_diag_task(void *arg)
                     lab_run_frequency_probe();
                 } else if (c == 'D') {
                     lab_run_modem_diag_scan();
+                } else if (c == 'J') {
+                    const bool leaving_lift = lift_exact_enabled();
+                    s_demod_mode = leaving_lift ?
+                                   DEMOD_MODE_GOLDEN_PHASE5 :
+                                   DEMOD_MODE_LIFT_EXACT_EXP;
+                    s_output_mode = VIDEO_OUTPUT_6BIT_40;
+                    s_agc_mode = ANALOG_AGC_MANUAL;
+                    settings_save();
+                    printf("[DEMOD] -> %s; fixed gain=%u; rebooting for RX ring topology\n",
+                           demod_mode_name(), s_current_gain);
+                    fflush(stdout);
+                    vTaskDelay(pdMS_TO_TICKS(120));
+                    esp_restart();
                 } else if (c == 'H') {
                     lab_print_arc_oracle();
                 } else if (c == 'G') {
