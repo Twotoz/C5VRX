@@ -229,7 +229,7 @@ typedef enum {
 typedef enum {
     DEMOD_MODE_GOLDEN_PHASE5 = 0,
     DEMOD_MODE_TRAJECTORY_V2 = 1,
-    DEMOD_MODE_ADJACENT_FULLQ4 = 2,
+    DEMOD_MODE_ADJACENT_PHASE5 = 2,
     DEMOD_MODE_COUNT,
 } demod_mode_t;
 
@@ -405,7 +405,7 @@ static esp_err_t prepare_tx(void)
 
     /* ADJACENT owns both BitScrambler directions through the M2M loopback
      * driver. Its DAC path is therefore plain PARLIO TX fed by s_adj_ring. */
-    if (s_demod_mode != DEMOD_MODE_ADJACENT_FULLQ4) {
+    if (s_demod_mode != DEMOD_MODE_ADJACENT_PHASE5) {
         const bitscrambler_config_t bs_cfg = {
             .dir = BITSCRAMBLER_DIR_TX,
             .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
@@ -448,7 +448,7 @@ static esp_err_t start_tx(void)
     /* Golden/Trajectory read raw IQ through the TX BitScrambler. ADJACENT
      * reads an already-demodulated [D,D] ring and therefore bypasses the
      * PARLIO decorator entirely. Both rings remain 32 KiB / 40 MB/s. */
-    void *payload = s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4 ?
+    void *payload = s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5 ?
                     (void *)s_adj_ring : (void *)s_raw_ring;
     return parlio_tx_unit_transmit(s_tx, payload,
                                    sizeof(s_raw_ring) * 8u, &cfg);
@@ -1256,15 +1256,15 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
-    if (s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) return "ADJ FULLQ4";
+    if (s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) return "ADJ PHASE5";
     return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
 }
 
 static void cycle_demod_mode(void)
 {
     if (s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5)
-        s_demod_mode = DEMOD_MODE_ADJACENT_FULLQ4;
-    else if (s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4)
+        s_demod_mode = DEMOD_MODE_ADJACENT_PHASE5;
+    else if (s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5)
         s_demod_mode = DEMOD_MODE_TRAJECTORY_V2;
     else
         s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
@@ -1281,8 +1281,8 @@ static void cycle_demod_mode(void)
 
 static bool demod_requires_reboot(void)
 {
-    return s_boot_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4 ||
-           s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4;
+    return s_boot_demod_mode == DEMOD_MODE_ADJACENT_PHASE5 ||
+           s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5;
 }
 
 static void apply_rf_bandwidth(bool bw40)
@@ -1637,7 +1637,7 @@ static void poll_transport_faults(void)
     }
     if (BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].eof_overload) {
         ++s_hw_counters.bs_eof_overload_count;
-        if (s_demod_mode != DEMOD_MODE_ADJACENT_FULLQ4)
+        if (s_demod_mode != DEMOD_MODE_ADJACENT_PHASE5)
         BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
         flags |= LAG_EVT_BS_EOF_OVERLOAD;
     }
@@ -2719,7 +2719,7 @@ static void quiet_tx_interrupts(void)
 
 static void start_flight_demodulator(void)
 {
-    if (s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) return;
+    if (s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) return;
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
     if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
@@ -2789,7 +2789,7 @@ static void video_set_menu_mode(bool active)
         ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
         /* Live -> menu: stop the live producer once. ADJACENT has no PARLIO
          * flight BitScrambler; stop its half-ring worker instead. */
-        if (s_boot_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) {
+        if (s_boot_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) {
             s_adj_run = false;
             int64_t stop_deadline = esp_timer_get_time() + 20000;
             while (!s_adj_task_stopped && esp_timer_get_time() < stop_deadline)
@@ -2959,7 +2959,7 @@ static void open_recovery_menu(void)
 {
     /* ADJACENT changes BitScrambler ownership. A three-second recovery from
      * that mode first persists the proven Golden contract and reboots cleanly. */
-    if (s_boot_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) {
+    if (s_boot_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) {
         s_menu_boot_btn_enabled = true;
         s_video_std_mode = VIDEO_STD_MODE_AUTO;
         s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
@@ -3979,7 +3979,7 @@ static void console_diag_task(void *arg)
                            s_last_winding_permille / 10, s_last_winding_permille % 10,
                            s_last_strong_winding_permille / 10, s_last_strong_winding_permille % 10,
                            s_last_sync_quality, (unsigned)s_last_sync_width_20m);
-                    if (s_boot_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) {
+                    if (s_boot_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) {
                         const adjacent_fm_stats_t *adj = adjacent_fm_stats();
                         printf(" Adjacent M2M:               runs=%lu last=%luus max=%luus written=%lu short=%lu fail=%lu deadline=%lu boundary=%lu halves=%lu/%lu\n",
                                (unsigned long)adj->runs,
@@ -4101,7 +4101,7 @@ esp_err_t video_start(void)
     s_boot_demod_mode = s_demod_mode;
 
     esp_err_t err;
-    if (s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) {
+    if (s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) {
         err = adjacent_runtime_prepare();
         if (err != ESP_OK) return adjacent_fallback_to_golden(err);
     }
@@ -4137,7 +4137,7 @@ esp_err_t video_start(void)
     }
     if (s_rx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
 
-    if (s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4) {
+    if (s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5) {
         s_adj_run = true;
         s_adj_task_stopped = false;
         if (xTaskCreate(adjacent_worker_task, "adjacent_fm", 4096, NULL, 6,
@@ -4212,7 +4212,7 @@ esp_err_t video_start(void)
         "=======================================================\n",
         s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes,
         demod_mode_name(), DAC_IDLE_CODE, 2u,
-        s_demod_mode == DEMOD_MODE_ADJACENT_FULLQ4 ?
+        s_demod_mode == DEMOD_MODE_ADJACENT_PHASE5 ?
         "adjacent half-ring scheduler active" :
         "done (hardware runs in unbroken infinite loop)");
 
