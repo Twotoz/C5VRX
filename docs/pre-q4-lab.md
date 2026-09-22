@@ -912,6 +912,98 @@ At each step, record the settled gain together with P/Q/origin/clip/winding.
 That produces a repeatable **relative RF power -> required generated gain**
 curve without pretending that distance itself is a receiver observable.
 
+### ARC V4 SNAP: calibrated margin handoff
+
+The ARC V3 hardware walks solved the original range failure but also exposed a
+second control problem: once gain placement is mostly correct, a slow
+50 ms + median + fixed-settle actuator can still react after the picture has
+already started to collapse. The next controller therefore does not use
+STARVED/static as its normal trigger.
+
+ARC V4 SNAP is an explicit experimental profile built around the existing
+~6 ms Q4 observer. Its policy is:
+
+```text
+good Q4 margin
+  -> LOCK / zero writes
+
+margin enters overlap zone
+  -> PRE-HANDOFF
+  -> confirm according to urgency
+
+confirmed weaker/stronger RF condition
+  -> jump to a measured gain anchor
+  -> discard stale post-write windows
+  -> verify fresh Q4
+  -> LOCK again
+```
+
+The first calibrated handoff ladder comes directly from the current hardware
+walks:
+
+```text
+G16 -> G40 -> G54 -> G70 -> G78 -> G81
+```
+
+These values are **handoff/search anchors**, not distance labels and not linear
+dB. They summarize the operating regions observed across the 200 mW and 25 mW
+walks. The controller is allowed to skip one or more anchors when raw Q4 is
+already close to collapse.
+
+The important weak-side overlap is intentionally earlier than the old
+STARVED classifier. Observations around roughly P8-P10 and Q60-Q80 can still
+produce usable video, but the walk data show that a higher gain region often
+provides more Q4 phase margin there. SNAP treats that region as an opportunity
+to hand off before static instead of waiting for P~1/Q~0.
+
+Confirmation is adaptive at the ~6 ms observer cadence:
+
+```text
+SOFT      50 samples ~= 300 ms
+FAST      18 samples ~= 108 ms
+CRITICAL   2 samples ~= 12 ms
+```
+
+These are confirmation windows, not polling intervals. The observer is always
+running. Stable LOCK can remain at one gain indefinitely with zero PHY writes.
+
+After a physical gain write SNAP does not use ARC V3's fixed 500 ms hold. It
+starts a new gain epoch, discards five fast windows (~30 ms nominal), resets
+its fast/slow Q4 history, and verifies only fresh post-write data. There is
+also no fixed one-second reversal guard: if fresh Q4 proves the previous
+handoff overshot or the RF condition genuinely reversed, the next calibrated
+handoff is allowed immediately after verification.
+
+The initial implementation keeps BW40 and 0 kHz offset fixed. Only the
+vendor-generated gain-table index moves, so the hardware A/B remains directly
+comparable with ARC V3.
+
+Expected hardware test:
+
+```text
+close -> far:
+  stable gain
+  -> PRE-HANDOFF before visible static
+  -> one calibrated jump
+  -> VERIFY
+  -> LOCK
+
+far -> close:
+  rising P/clip margin
+  -> calibrated downward jump
+  -> VERIFY
+  -> LOCK
+```
+
+Primary success criteria:
+
+1. visible static caused by late gain placement is reduced or eliminated;
+2. the first handoff occurs before the old P~1/Q~0 cliff;
+3. steady video produces long zero-write plateaus;
+4. gain-transition flicker is lower because SNAP uses fewer, larger writes;
+5. the controller can reverse quickly on real RF changes without reintroducing
+   the measured ARC V3 G66->G81 short-fade bounce.
+
 ### Demodulator boundary
 
 `U` does not mix frontend discovery with demodulator selection. Q4 placement is
