@@ -202,7 +202,9 @@ Connecting to the USB serial console (115200 baud) provides live telemetry and s
 | `c` / `C` | Cycle FPV channel / band (48 standard channels: RaceBand, Boscam A/B/E, FatShark, LowBand) |
 | `+` / `-` | Manual RF gain step (±2 index) |
 | `a` / `s` / `m` | Switch AGC mode: **Active** (auto-adapting) / **Shadow** (dry-run) / **Manual** (fixed) |
-| `f` | Cycle AFC Mode: **Auto Centering** (±1.5 MHz) / **Hold** / **Off** (0 kHz) |
+| `f` | Cycle AFC Mode: **Auto Centering** (±1.5 MHz) / **Hold** / **Off** (0 kHz) — lab/debug only; not persisted |
+| `D` | **Lab only:** toggle GOLDEN / TRAJ V2; TRAJ forces 6BIT@40 |
+| `B` | **Lab only:** toggle 6BIT@40 / 4BIT@80; 4-bit forces GOLDEN |
 | `,` / `.` | Fine-tune carrier frequency offset in ±50 kHz steps |
 | `0` | Reset frequency offset to 0 kHz |
 | `e` | Toggle RX sample clock edge (POS / NEG) |
