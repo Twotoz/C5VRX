@@ -7,14 +7,14 @@
  * Timing is expressed in fast-observer samples.  The production observer is
  * currently ~6 ms/sample:
  *   SOFT      50 samples ~= 300 ms
- *   FAST      18 samples ~= 108 ms
+ *   FAST      15 samples ~= 90 ms
  *   CRITICAL   2 samples ~= 12 ms
  *
  * These are handoff confirmation windows, not polling periods.  LOCK is still
  * observed every fast sample and performs zero PHY writes.
  */
 #define SNAP_SOFT_CONFIRM_SAMPLES        50u
-#define SNAP_FAST_CONFIRM_SAMPLES        18u
+#define SNAP_FAST_CONFIRM_SAMPLES        15u
 #define SNAP_CRITICAL_CONFIRM_SAMPLES     2u
 #define SNAP_POST_WRITE_DISCARD_SAMPLES   5u
 #define SNAP_VERIFY_GOOD_SAMPLES          3u
