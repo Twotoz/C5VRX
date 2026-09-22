@@ -123,17 +123,15 @@ check("three-second BOOT recovery cannot be blocked by persisted menu state",
       "s_menu_boot_btn_enabled = true;" in all_c and
       "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;" in all_c and
       "s_output_mode = VIDEO_OUTPUT_6BIT_40;" in all_c and
-      "apply_rx_profile(RX_PROFILE_ARC);" in all_c and
-      "[RECOVERY] GOLDEN + 6BIT@40 + ARC restored" in all_c)
+      "apply_rx_profile(RX_PROFILE_ARC_V5_AUTOTUNE_EXP);" in all_c and
+      "[RECOVERY] GOLDEN + 6BIT@40 + ARC V5 restored" in all_c)
 check("experimental BW auto and 4-bit@80 remain opt-in",
       "AUTO EXP" in all_c and "VIDEO_OUTPUT_4BIT_80" in all_c and
       "DAC4_RATE_HZ     80000000u" in all_c)
-check("4BIT@80 remains reachable with a valid GOLDEN pairing",
-      's_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?' in all_c and
-      "s_demod_mode == DEMOD_MODE_TRAJECTORY_V2" in all_c and
-      "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;" in all_c and
-      "DEMOD -> GOLDEN" in all_c and
-      "selecting 4BIT@80" in all_c)
+check("experimental output implementations remain isolated from the product menu",
+      "VIDEO_OUTPUT_4BIT_80" in all_c and
+      "DEMOD_MODE_TRAJECTORY_V2" in all_c and
+      '"VIDEO"' not in all_c[all_c.index("static const char *const s_menu_nav[4]"):all_c.index("static inline void menu_ui_pixel")])
 check("TRAJ V2 keeps its required 6BIT@40 pairing",
       "if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)" in all_c and
       "s_output_mode = VIDEO_OUTPUT_6BIT_40;" in all_c and
@@ -373,7 +371,7 @@ check("unsafe undocumented gain/filter ROM controls remain out of production",
           "phy_rxiq_set_reg(",
       )))
 
-check("ARC is the production default and legacy RX profiles remain explicit",
+check("ARC V5 is the production default while legacy RX profiles remain lab-accessible",
       "RX_PROFILE_BALANCED = 0" in all_c and
       "RX_PROFILE_RANGE_EXP" in all_c and
       "RX_PROFILE_BLOCKER_EXP" in all_c and
@@ -383,7 +381,7 @@ check("ARC is the production default and legacy RX profiles remain explicit",
       "RX_PROFILE_FUSION_EXP" in all_c and
       "RX_PROFILE_RANGE_V2_EXP" in all_c and
       "RX_PROFILE_ARC_V3_EXP" in all_c and
-      "s_rx_profile = RX_PROFILE_ARC" in all_c and
+      "s_rx_profile = RX_PROFILE_ARC_V5_AUTOTUNE_EXP" in all_c and
       "s_rf_bw_mode = RF_BW_MODE_BW40" in all_c)
 check("Range v2 combines Fusion with acquisition-only BW/AFC and full overload headroom",
       "RX_PROFILE_RANGE_V2_EXP" in all_c and
@@ -395,14 +393,23 @@ check("Range v2 combines Fusion with acquisition-only BW/AFC and full overload h
       "fusion_optimizer_set_gain_floor" in fusion_optimizer and
       "RX_PROFILE_RANGE_V2_EXP:return 2u" in all_c)
 
-check("RF menu preserves BW control and adds two-second profile selector",
-      "LONG:BW  2S:PROFILE" in all_c and
-      "btn_ticks >= 40" in all_c and
-      "cycle_rx_profile();" in all_c)
-check("VIDEO menu exposes explicit two-second demod selector",
-      "LONG:DAC  2S:DEMOD" in all_c and
-      "cycle_demod_mode();" in all_c and
-      "btn_demod_fired" in all_c)
+check("production menu exposes only band, channel, read-only status and exit",
+      'static const char *const s_menu_nav[4]' in all_c and
+      '"BAND", "CHANNEL", "STATUS", "EXIT"' in all_c and
+      "menu_draw_status_page" in all_c and
+      "AUTO-TUNING - NO SETUP" in all_c and
+      "LONG:BW  2S:PROFILE" not in all_c and
+      "LONG:DAC  2S:DEMOD" not in all_c and
+      "btn_profile_fired" not in all_c and
+      "btn_demod_fired" not in all_c)
+check("production settings persist only safe user-facing preferences",
+      "SETTINGS_VERSION 5u" in all_c and
+      "legacy_rf_bw_mode" in all_c and
+      "legacy_rx_profile" in all_c and
+      ".channel_index = (uint8_t)rf_get_channel_index()" in all_c and
+      ".video_std_mode = (uint8_t)s_video_std_mode" in all_c and
+      ".menu_boot_btn_enabled = s_menu_boot_btn_enabled ? 1u : 0u" in all_c and
+      "production always boots ARC V5 + BW40 + AFC OFF + GOLDEN 6BIT@40" in all_c)
 check("experimental PHY environment reads stay out of the range default",
       "s_rx_profile == RX_PROFILE_AUTO_EXP && ++phy_metric_ticks >= 5" in all_c and
       "rf_try_get_noise_floor_dbm" in all_c and
