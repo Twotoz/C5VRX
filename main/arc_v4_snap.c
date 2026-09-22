@@ -30,7 +30,6 @@ static const uint8_t k_snap_anchors[ARC_V4_SNAP_ANCHOR_COUNT] = {
     16u, 40u, 54u, 70u, 78u, 81u
 };
 
-static int iabs_i(int v) { return v < 0 ? -v : v; }
 
 static int ema(int current, int sample, unsigned divisor)
 {
