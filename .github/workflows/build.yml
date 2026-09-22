@@ -165,6 +165,8 @@ jobs:
           /tmp/test_arc_v5_autotune
           python3 tools/train_trajectory_v2.py --write --self-test
           git diff --exit-code -- main/fm_traj.bsasm main/trajectory_v2_lut.h
+          python3 tools/lift_fm_synth.py --write --self-test
+          git diff --exit-code -- main/lift_fm_phase_lut.h
           python3 tools/range_demod_bench.py --self-test
 
   build:
