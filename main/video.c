@@ -137,6 +137,8 @@ static volatile int64_t s_last_user_lag_mark_us;
 BITSCRAMBLER_PROGRAM(s_fm_program, "fm");
 BITSCRAMBLER_PROGRAM(s_fm4_program, "fm4");
 BITSCRAMBLER_PROGRAM(s_fm_traj_program, "fm_traj");
+BITSCRAMBLER_PROGRAM(s_fm_lift16_phase_program, "fm_lift16_phase");
+BITSCRAMBLER_PROGRAM(s_rx_phase_program, "fm_rx_phase");
 
 /* ----- Fixed production constants ----- */
 #define IQ_RATE_HZ       40000000u   /* MODEM_DIAG / PARLIO RX clock */
@@ -186,6 +188,7 @@ static volatile uint16_t s_last_sync_width_20m;
 static volatile int s_last_sync_quality;
 static QueueHandle_t s_menu_commands;
 static bitscrambler_handle_t s_flight_bs;
+static bitscrambler_handle_t s_rx_bs;
 
 /* Cache synchronization helpers for DMA buffers and descriptors on ESP32-C5.
  * Aligns address down and size up to 64-byte cache line boundaries so esp_cache_msync
@@ -240,6 +243,7 @@ typedef enum {
 typedef enum {
     DEMOD_MODE_GOLDEN_PHASE5 = 0,
     DEMOD_MODE_TRAJECTORY_V2 = 1,
+    DEMOD_MODE_LIFT_EXACT_EXP = 2,
     DEMOD_MODE_COUNT,
 } demod_mode_t;
 
@@ -263,6 +267,11 @@ static volatile video_output_mode_t s_output_mode = VIDEO_OUTPUT_6BIT_40;
 static video_output_mode_t s_tx_unit_mode = VIDEO_OUTPUT_6BIT_40;
 static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
 static volatile rx_profile_t s_rx_profile = RX_PROFILE_ARC;
+
+static inline bool lift_exact_enabled(void)
+{
+    return s_demod_mode == DEMOD_MODE_LIFT_EXACT_EXP;
+}
 static volatile arc_v3_state_t s_last_arc_v3_state = ARC_V3_ACQUIRE;
 static volatile arc_v3_q4_state_t s_last_arc_v3_q4_state = ARC_V3_Q4_STARVED;
 static volatile bool s_last_arc_v3_filtered_valid;
@@ -349,6 +358,27 @@ static esp_err_t prepare_rx(void)
     err = parlio_new_rx_soft_delimiter(&delim_cfg, &s_rx_delimiter);
     if (err != ESP_OK) return err;
 
+    /* Exact LIFT-FM uses the C5's independent RX BitScrambler channel as a
+     * one-byte-per-cycle preprocessor. The DMA ring remains exactly 40 MB/s:
+     * low five bits are Phase5, high three bits retain envelope class.
+     *
+     * ESP-IDF 6.0.2 has independent RX/TX BitScrambler claims, instruction
+     * RAM and LUT RAM. TX is allocated later by prepare_tx(). */
+    if (lift_exact_enabled()) {
+        const bitscrambler_config_t rx_bs_cfg = {
+            .dir = BITSCRAMBLER_DIR_RX,
+            .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
+        };
+        err = bitscrambler_new(&rx_bs_cfg, &s_rx_bs);
+        if (err != ESP_OK) return err;
+        err = bitscrambler_enable(s_rx_bs);
+        if (err != ESP_OK) return err;
+        err = bitscrambler_load_program(s_rx_bs, s_rx_phase_program);
+        if (err != ESP_OK) return err;
+        err = bitscrambler_reset(s_rx_bs);
+        if (err != ESP_OK) return err;
+    }
+
     return parlio_rx_unit_enable(s_rx, false);
 }
 
@@ -424,6 +454,15 @@ static esp_err_t prepare_tx(void)
 
 static esp_err_t start_rx(void)
 {
+    /* Reset the RX preprocessor whenever PARLIO RX is restarted. This keeps
+     * the one-cycle LUT pipeline aligned after menu/lab ownership changes. */
+    if (s_rx_bs) {
+        esp_err_t bs_err = bitscrambler_reset(s_rx_bs);
+        if (bs_err != ESP_OK) return bs_err;
+        bs_err = bitscrambler_start(s_rx_bs);
+        if (bs_err != ESP_OK) return bs_err;
+    }
+
     esp_err_t err = parlio_rx_soft_delimiter_start_stop(s_rx, s_rx_delimiter, true);
     if (err != ESP_OK) return err;
     const parlio_receive_config_t cfg = {
@@ -1126,6 +1165,7 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
+    if (s_demod_mode == DEMOD_MODE_LIFT_EXACT_EXP) return "LIFT EXACT EXP";
     return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
 }
 
@@ -1373,7 +1413,9 @@ static void settings_load(void)
     } else if (settings.demod_mode < DEMOD_MODE_COUNT) {
         s_demod_mode = (demod_mode_t)settings.demod_mode;
     }
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ||
+        s_demod_mode == DEMOD_MODE_LIFT_EXACT_EXP)
+        s_output_mode = VIDEO_OUTPUT_6BIT_40;
     if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
     if (settings.rx_profile < RX_PROFILE_COUNT) {
         s_rx_profile = (rx_profile_t)settings.rx_profile;
@@ -3316,7 +3358,9 @@ static void quiet_tx_interrupts(void)
 static void start_flight_demodulator(void)
 {
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
+    if (s_demod_mode == DEMOD_MODE_LIFT_EXACT_EXP) {
+        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_lift16_phase_program));
+    } else if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
     } else if (s_output_mode == VIDEO_OUTPUT_4BIT_80) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm4_program));
