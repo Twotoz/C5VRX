@@ -43,11 +43,16 @@ for bsasm_file in bsasm_files:
     if bsasm_file.name == "fm_adjacent_m2m.bsasm":
         check("adjacent M2M uses bounded upstream EOF",
               "cfg eof_on upstream" in bsasm and "cfg trailing_bytes 9" in bsasm)
-        check("adjacent M2M preserves no-second-wrap pair accumulator",
-              "B is the no-rewrap signed pair sum" in bsasm and
-              "ADDCTIB" in bsasm and "B1..B7" in bsasm)
+        check("adjacent M2M fits the eight-bundle hardware limit and never rewraps",
+              bsasm.count("\naddress_middle:") == 1 and
+              bsasm.count("\n") > 0 and
+              "Eight instruction bundles exactly" in bsasm and
+              "ADDCTIAL" in bsasm and
+              "No modulo-32/endpoint re-wrap" in bsasm)
         check("adjacent M2M emits quiet duplicated 20M CVBS",
-              "write 16" in bsasm and "set 8..13 L0..L5" in bsasm)
+              "write 16" in bsasm and
+              "set 1..5 L5..L9" in bsasm and
+              "set 9..13 L5..L9" in bsasm)
     else:
         check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
         check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
@@ -94,8 +99,8 @@ adjacent_h = read(MAIN / "adjacent_m2m.h")
 adjacent_math = read(MAIN / "adjacent_math.h")
 check("adjacent pair math never endpoint-wraps the two-step trajectory",
       "return d0 + d1; /* NO SECOND WRAP */" in adjacent_math and
-      "adjacent_wrap_delta7((int)middle - (int)previous)" in adjacent_math and
-      "adjacent_wrap_delta7((int)current - (int)middle)" in adjacent_math)
+      "adjacent_wrap_delta5((int)middle - (int)previous)" in adjacent_math and
+      "adjacent_wrap_delta5((int)current - (int)middle)" in adjacent_math)
 check("adjacent confidence repair is winding and low-confidence gated",
       "bool hold = s_low_conf[middle] != 0u" in adjacent_c and
       "adjacent_pair_proves_winding(pair)" in adjacent_c and
