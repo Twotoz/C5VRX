@@ -157,6 +157,8 @@ jobs:
           /tmp/test_menu_raster
           gcc -std=c11 -Wall -Wextra -Werror -Imain tools/test_arc.c main/arc_phy.c -o /tmp/test_arc
           /tmp/test_arc
+          gcc -std=c11 -Wall -Wextra -Werror -Imain tools/test_adjacent_math.c -o /tmp/test_adjacent_math
+          /tmp/test_adjacent_math
           python3 tools/train_trajectory_v2.py --write --self-test
           git diff --exit-code -- main/fm_traj.bsasm main/trajectory_v2_lut.h
           python3 tools/range_demod_bench.py --self-test
