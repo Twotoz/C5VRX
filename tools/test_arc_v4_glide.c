@@ -55,6 +55,21 @@ int main(void)
     assert(g.writes == 0u);
     assert(g.state == ARC_V4_GLIDE_HOLD);
 
+    /* Slow deterioration must not be learned away by the HOLD baseline. */
+    arc_v4_glide_reset(&g, &t, 54u);
+    prime_good(&g);
+    const arc_v4_glide_observation_t slow_walk[] = {
+        {16, 98, 0,  30,  25},
+        {15, 96, 0,  50,  35},
+        {14, 94, 0,  70,  45},
+        {13, 91, 0, 110,  70},
+        {12, 88, 0, 160, 100},
+    };
+    for (unsigned i = 0; i < sizeof(slow_walk) / sizeof(slow_walk[0]); ++i)
+        feed(&g, slow_walk[i], 3u);
+    assert(g.gain > 54u);
+    assert(g.last_action == ARC_V4_GLIDE_ACTION_STEP);
+
     /* A real weak-side trend starts early, before the old P~1/Q~0 cliff.
      * Normal movement is a small +2/+4 glide step, not an anchor jump. */
     arc_v4_glide_reset(&g, &t, 54u);
