@@ -137,6 +137,8 @@ check("experimental output implementations remain isolated from the product menu
       "} else if (c == 'B') {" in all_c and
       "demod == DEMOD_MODE_TRAJECTORY_V2" in all_c and
       "output == VIDEO_OUTPUT_4BIT_80" in all_c and
+      all_c.index("if (output == VIDEO_OUTPUT_4BIT_80)") <
+          all_c.index("else if (demod == DEMOD_MODE_TRAJECTORY_V2)") and
       "not persisted; reboot returns production defaults" in all_c)
 check("TRAJ V2 keeps its required 6BIT@40 pairing",
       "if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)" in all_c and
