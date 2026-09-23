@@ -145,8 +145,8 @@ def render_bsasm(unified: list[int]) -> str:
     lut_line = "lut " + " ".join(str(word) for word in unified)
     return f"""# LIFT-FM LUT16 exact Phase5 hardware oracle.
 #
-# IMPORTANT: this program consumes synthetic/predecoded Phase5 test symbols.
-# It is not selectable as the live raw-Q4 flight demodulator yet.
+# This TX backend consumes predecoded Phase5 symbols. In live LIFT mode the
+# independent RX BitScrambler supplies those symbols from raw Q4/I4.
 #
 # Test stream:
 #   prime high byte bits 8..12 = first previous endpoint Phase5
@@ -210,7 +210,8 @@ emit:
     set 28 0,
     set 29 8,
     set 30 9,
-    read 16
+    read 16,
+    write 16
 
 lift:
     # L contains stage-1 token. Stage 2 consumes the five saved free bits.
