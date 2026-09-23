@@ -400,15 +400,10 @@ static esp_err_t prepare_rx(void)
         err = bitscrambler_load_program(s_rx_bs, s_rx_phase_program);
         if (err != ESP_OK) return err;
 
-        /* The generic reset helper cannot be used here on ESP32-C5 RX:
-         * it waits for in_idle before pulsing the FIFO reset, but that state
-         * never asserted in the pre-transaction PARLIO topology on hardware.
-         *
-         * We still MUST perform the FIFO re-arm after load_program(), because
-         * cfg prefetch=true primes the 64-bit input register as part of that
-         * transaction reset.  Without it the live RX predecoder can begin from
-         * an empty/zero pipeline, which collapses LIFT output to black pedestal. */
-        bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX);
+        /* RX uses cfg prefetch=false and self-primes with explicit read 8
+         * instructions. Do not arm a transaction here: PARLIO has not started
+         * producing samples yet. start_rx() resets/re-arms the byte-local
+         * program immediately before every live receive transaction. */
     }
 
     return parlio_rx_unit_enable(s_rx, false);
@@ -486,14 +481,13 @@ static esp_err_t prepare_tx(void)
 
 static esp_err_t start_rx(void)
 {
-    /* RX BitScrambler is intentionally not reset here.
-     *
-     * ESP32-C5 hardware does not report RX in_idle before an active PARLIO
-     * transaction, while bitscrambler_reset() waits specifically for that
-     * state.  Reasserting RUN is sufficient for this byte-local preprocessor:
-     * it has no inter-sample state beyond the hardware prefetch pipeline and
-     * can resume cleanly after menu/lab ownership changes. */
+    /* Reset the RX byte-predecoder at every receive restart. Unlike the old
+     * prefetch=true experiment, fm_rx_phase.bsasm now starts with an empty
+     * input register and explicitly reads/looks up its first sample. That
+     * makes this quiescent FIFO/program re-arm safe before PARLIO delivers
+     * data and prevents stale phase alignment after menu/lab restarts. */
     if (s_rx_bs) {
+        bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX);
         esp_err_t bs_err = bitscrambler_start(s_rx_bs);
         if (bs_err != ESP_OK) return bs_err;
     }
