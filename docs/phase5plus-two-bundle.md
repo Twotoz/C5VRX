@@ -68,6 +68,42 @@ The required next proof is a raw-IQ oracle and a live Golden A/B with CVBS lock,
 image quality, transport counters, and exact DAC timing. Do not enable this
 candidate as a default based on assembler or model results alone.
 
+### Full adjacent FM path (CPU feasibility unproven)
+
+The entire three-phase result does **not** need a 32,768-entry direct LUT.
+For `D = clip(20 + 6 * (wrap32(m-p) + wrap32(c-m)), 0, 63)`, exhaustive
+factorization with the existing Phase5+ address split produces **24 distinct
+interstage vectors**. Five token bits suffice, and all 32,768 phase triplets
+reconstruct exactly through a single 1024x16 (2 KiB) LUT in two TX bundles
+per 50 ns. This clips only the summed 50 ns FM result, unlike PR #69's two
+separately clipped 25 ns outputs. It still assumes the phase of *every* raw
+IQ sample is available before TX reads it.
+
+With RX BitScrambler unavailable during TX, the only identified single-chip
+preprocessor is the 240 MHz CPU: map all 40 MS/s raw IQ bytes through a
+256-byte raw-to-Phase5 table, writing phase symbols into completed RX DMA
+blocks before TX reaches them. The CPU has only six cycles per input sample
+(12 cycles per two-sample pair) at that rate. A 65,536-entry pair table with
+16-bit outputs would occupy 128 KiB, while the current firmware's IDF size
+report leaves about 52 KiB of HP SRAM before runtime allocations. The
+256-byte table avoids that memory cost but has not met a measured end-to-end
+cycle, DMA-coherency, and control-task budget. Raw IQ needed by ARC must be
+observed or copied *before* in-place conversion. A missed conversion deadline
+must fail safely back to Golden; it cannot silently mix raw and phase bytes.
+
+The 257-bit instruction word is a wide routing/control word, not 257 ALU
+operations or an additional LUT. Many `set` routes, one `read`, one `write`,
+and one opcode can already run in one bundle. The C5 still supplies only one
+LUT result per bundle, with the next dependent address available a cycle
+later. In the straightforward raw-IQ formulation, each 50 ns pair needs two
+new raw-to-phase lookups (middle and current endpoint) and two dependent
+phase-domain factorization lookups; packing `set` routes cannot reduce those
+four lookups to two. RMT provides timed pulse channels, not a
+40 MS/s complex-IQ-to-phase lookup. If a measured CPU preprocessor cannot
+sustain this rate, exact full-adjacent FM needs a separate proven parallel
+preprocessor or a different SoC; the 2 KiB LUT alone cannot ingest raw IQ and
+finish all three phase lookups in two bundles.
+
 ## Host-side experiment
 
 Phase5+ fixes a specific error in the 25 ns Polar11 experiment: clipping two
