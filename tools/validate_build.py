@@ -47,9 +47,14 @@ for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
     if bsasm_file.name == "fm_rx_phase.bsasm":
         check("fm_rx_phase.bsasm: cfg eof_on upstream", "cfg eof_on upstream" in bsasm)
-        check("fm_rx_phase.bsasm: cfg prefetch true", "cfg prefetch true" in bsasm)
+        check("fm_rx_phase.bsasm: cfg prefetch false", "cfg prefetch false" in bsasm)
+        check("fm_rx_phase.bsasm: software-prefills 64-bit input register",
+              "prime_first:" in bsasm and
+              "LDCTDA 0" in bsasm and
+              "fill_input:" in bsasm and
+              "LOOPA 6 1 fill_input" in bsasm)
         check("fm_rx_phase.bsasm: mux-compatible byte-lane address",
-              "prime:" in bsasm and
+              "prime_lookup:" in bsasm and
               "set 16..23 0..7" in bsasm and
               "set 16..23 56..63" not in bsasm)
     else:
@@ -71,7 +76,7 @@ check("PHASE6 RX uses the quiescent FIFO re-arm path",
       "bitscrambler_reset(s_rx_bs)" not in video_c and
       "bitscrambler_start(s_rx_bs)" in video_c and
       "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and
-      "cfg prefetch=true" in video_c)
+      "cfg prefetch=false" in video_c)
 
 check("C5 BitScrambler rearm pulses FIFO without idle polling",
       "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and

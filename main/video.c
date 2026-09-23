@@ -201,8 +201,8 @@ static bitscrambler_handle_t s_rx_bs;
  * At every call site below the engine is already HALTed by load_program() or
  * the owning PARLIO unit is disabled, so it is safe to perform the actual
  * reset portion directly: keep HALT asserted, pulse fifo_rst and clear the EOF
- * trace.  This also triggers the configured prefetch=true transaction prime
- * without relying on the broken idle poll.
+ * trace. Programs using hardware prefetch will prime when restarted; the
+ * PHASE6 RX program deliberately uses software reads instead.
  */
 static inline void bitscrambler_rearm_quiescent(bitscrambler_direction_t dir)
 {
@@ -400,9 +400,10 @@ static esp_err_t prepare_rx(void)
         err = bitscrambler_load_program(s_rx_bs, s_rx_phase_program);
         if (err != ESP_OK) return err;
 
-        /* The RX program uses cfg prefetch=true so each steady-state bundle can
-         * select both the previous LUT result and the next byte from M[7:0].
-         * start_rx() re-arms the program immediately before each receive. */
+        /* RX hardware prefetch is deliberately disabled: start_rx() starts the
+         * BitScrambler before PARLIO produces data. The program performs eight
+         * ordinary read-8 cycles to fill M[63:0], then consumes M[7:0] at one
+         * byte per bundle in steady state. */
     }
 
     return parlio_rx_unit_enable(s_rx, false);
@@ -480,9 +481,10 @@ static esp_err_t prepare_tx(void)
 
 static esp_err_t start_rx(void)
 {
-    /* Reset the RX byte-predecoder at every receive restart. The generated
-     * one-bundle program uses the prefetched low byte lane, which can share an
-     * instruction with the prior LUT result; the high lane cannot. */
+    /* Reset the RX byte-predecoder at every receive restart. With prefetch
+     * disabled it may safely RUN before PARLIO has data: its startup read-8
+     * instructions simply wait for the stream, fill the 64-bit input register,
+     * then enter the one-bundle low-byte steady-state loop. */
     if (s_rx_bs) {
         bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX);
         esp_err_t bs_err = bitscrambler_start(s_rx_bs);

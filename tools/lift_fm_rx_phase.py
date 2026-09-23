@@ -70,25 +70,40 @@ def render(lut: list[int]) -> str:
 # Steady state is one BitScrambler bundle per input byte. RX and TX use
 # independent C5 BitScrambler channels and independent instruction/LUT RAM.
 #
-# Use the prefetched low byte lane for the LUT address. The ESP32-C5 mux cannot
-# select L (the previous LUT result) and M[63:56] in one instruction, so the
-# high-lane explicit-read form cannot sustain one output byte per input byte.
-cfg prefetch true
+# Do not use hardware prefetch on RX. bitscrambler_start() runs before PARLIO
+# begins producing bytes, while ESP-IDF requires prefetch=true to synchronously
+# obtain 64 input bits at startup. Instead, warm the 64-bit input register with
+# eight ordinary read-8 cycles, then use the mux-compatible low byte lane in
+# the one-bundle steady-state loop.
+cfg prefetch false
 cfg eof_on upstream
 cfg trailing_bytes 0
 cfg lut_width_bits 16
 lut %s
 
-prime:
-    # Prefetch presents the first real RX byte in M[7:0]. Address that sample
-    # while advancing the input stream by one byte.
+prime_first:
+    # Counter A starts the bounded eight-byte software prefill. Ordinary reads
+    # may stall until PARLIO supplies data; unlike hardware prefetch this does
+    # not require 64 bits to exist at bitscrambler_start().
+    LDCTDA 0,
+    read 8
+
+fill_input:
+    # prime_first read byte 1. This bundle executes seven times total:
+    # six taken loops plus the final fall-through at A==6, reading bytes 2..8.
+    # After that, the oldest sample is exactly in M[7:0].
+    LOOPA 6 1 fill_input,
+    read 8
+
+prime_lookup:
+    # Address sample 1 while advancing the input register to sample 2.
     set 16..23 0..7,
     set 24..25 L,
     read 8
 
 convert:
-    # Emit the previous sample's LUT result while addressing the prefetched
-    # next byte from the mux-compatible low register lane.
+    # Emit the previous sample's LUT result while addressing the next oldest
+    # byte from M[7:0]. Steady state remains one bundle per 25 ns sample.
     set 0..7 L0..L7,
     set 16..23 0..7,
     set 24..25 L,
