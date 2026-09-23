@@ -79,6 +79,9 @@ describe a diagnostic mode or future proof gate rather than the default build.
   CVBS proof, and resistor-model material.
 - **PARLIO / GDMA / BitScrambler:** current source/findings, then legacy issues
   #20, #22, #24 and the preserved PR notes.
+- **Phase5+ hardware limit:** `phase5plus-two-bundle.md` records the RX identity
+  A/B and the C5 BitScrambler half-duplex restriction; do not infer that
+  separate RX/TX channels can run concurrently.
 - **Continuous capture:** distinguish writer-pointer continuity, readable sample
   continuity, and coherent RF-time continuity. They are separate claims.
 - **Old failed approaches:** start with legacy issue/PR dispositions before

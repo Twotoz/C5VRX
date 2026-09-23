@@ -207,6 +207,14 @@ PARLIO TX transaction instead. A bounded full-duplex hardware test proved that
 the direct TX decorator consumes two input bytes per 20-MHz output byte without
 FIFO underrun while PARLIO RX captures the output concurrently.
 
+Later Phase5+ A/B testing established a stronger architectural limit:
+[Espressif's ESP32-C5 datasheet](https://documentation.espressif.com/esp32-c5_datasheet_en.html)
+specifies that the BitScrambler RX and TX channels are half-duplex and cannot
+run at the same time. This does not restrict simultaneous PARLIO RX and
+TX-BitScrambler operation, which is the proven Golden topology. It rules out
+using RX-BitScrambler IQ predecode concurrently with TX-BitScrambler FM
+demodulation. See `phase5plus-two-bundle.md` for the identity-pass-through A/B.
+
 The final realtime core contains two instruction bundles. It retains the
 second Q4/I4 byte from each input pair as a compact Q3/I2 state and directly
 addresses a 32-by-32 discriminator/output LUT with the preceding and current

@@ -27,6 +27,10 @@ findings that explain its failure.
 - The normal live path recovers the transmitted composite waveform; it does not
   decode pixels or regenerate PAL/NTSC.
 - Keep USB/debug outside realtime pacing.
+- On ESP32-C5, the BitScrambler RX and TX channels are half-duplex and cannot
+  execute simultaneously. The flight demodulator uses TX, so an RX-attached
+  BitScrambler cannot predecode IQ in the same live pipeline. See
+  `docs/phase5plus-two-bundle.md` for the hardware A/B that exposed this.
 - Do not silently change the tested XIAO D4..D9 DAC pin order or the physical
   8.2k/3.9k/2k/1k/470R/240R plus 200R network.
 - Keep live output compatibility explicit: GOLDEN supports both `6BIT@40` and
