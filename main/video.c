@@ -717,9 +717,11 @@ static esp_err_t m2m_process_group(unsigned group)
     s_m2m_stats.last_lift_written = (uint32_t)lift_written;
     if (elapsed_us > budget_us) ++s_m2m_stats.deadline_misses;
 
-    if (s_m2m_stats.groups <= 6u ||
-        (s_m2m_stats.groups & 0xffu) == 0u ||
-        elapsed_us > budget_us) {
+    /* Never turn serial telemetry into a 40-MB/s pacing dependency.
+     * Print the pre-TX seed once, plus the first observed realtime miss.
+     * Full counters remain available through console 'd'. */
+    if (s_m2m_stats.groups == 1u ||
+        (elapsed_us > budget_us && s_m2m_stats.deadline_misses == 1u)) {
         uint32_t rate_x10 = elapsed_us ?
             (uint32_t)((bytes * 10ULL + elapsed_us / 2u) / elapsed_us) : 0u;
         printf("M2M_EXACT group=%u n=%lu bytes=%u phase=%u lift=%u "
