@@ -42,6 +42,7 @@
 #include "rx_auto_lab.h"
 #include "trajectory_v2_lut.h"
 #include "hal/parlio_ll.h"
+#include "hal/bitscrambler_ll.h"
 #include "hal/usb_serial_jtag_ll.h"
 
 #include <stdint.h>
@@ -624,6 +625,58 @@ static inline void m2m_group_span(unsigned group, size_t *offset, size_t *bytes)
     *bytes = len;
 }
 
+typedef struct {
+    uint8_t version;
+    uint8_t hw_rev;
+    uint8_t hdr_len;
+    uint8_t inst_ct;
+    uint16_t lut_word_ct;
+    uint8_t lut_width;
+    uint8_t prefetch;
+    uint16_t trailing_bits;
+    uint8_t eof_on;
+    uint8_t unused;
+} m2m_program_hdr_t;
+
+_Static_assert(sizeof(m2m_program_hdr_t) == 12u,
+               "ESP-IDF v6 BitScrambler program header layout changed");
+
+/* Both M2M programs embed the exact same 1024x16 resident LUT.  Loading that
+ * LUT (1024 register writes) for every ~307-us block would dominate realtime
+ * cost.  Load it once in m2m_exact_init(), then switch only the 18/36
+ * instruction words needed by the two bounded passes. */
+static esp_err_t m2m_switch_instructions(const void *program_bin)
+{
+    if (!s_m2m_bs || !program_bin) return ESP_ERR_INVALID_ARG;
+
+    m2m_program_hdr_t hdr;
+    memcpy(&hdr, program_bin, sizeof(hdr));
+    if (hdr.version != 1u || hdr.hw_rev != 0u ||
+        hdr.hdr_len * sizeof(uint32_t) < sizeof(hdr) ||
+        hdr.inst_ct == 0u || hdr.inst_ct > BITSCRAMBLER_LL_MAX_INST) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    /* Bounded loopback_run() ends at EOF. Halt/reset here before touching
+     * instruction RAM; the following run resets the FIFO again before start. */
+    esp_err_t err = bitscrambler_reset(s_m2m_bs);
+    if (err != ESP_OK) return err;
+
+    const uint8_t *p = (const uint8_t *)program_bin +
+                       (size_t)hdr.hdr_len * sizeof(uint32_t);
+    for (unsigned inst = 0; inst < hdr.inst_ct; ++inst) {
+        for (unsigned word = 0; word < BITSCRAMBLER_LL_INST_LEN_WORDS; ++word) {
+            uint32_t value;
+            memcpy(&value, p, sizeof(value));
+            p += sizeof(value);
+            bitscrambler_ll_instmem_write(&BITSCRAMBLER,
+                                          BITSCRAMBLER_DIR_TX,
+                                          inst, word, value);
+        }
+    }
+    return ESP_OK;
+}
+
 static esp_err_t m2m_process_group(unsigned group)
 {
     if (!s_m2m_bs || group >= M2M_GROUP_COUNT) return ESP_ERR_INVALID_STATE;
@@ -642,7 +695,7 @@ static esp_err_t m2m_process_group(unsigned group)
     /* Pass 1: every acquired raw Q4/I4 sample is converted with the same
      * production Phase5 LUT used by Golden.  The raw ring itself is untouched,
      * so all existing ARC/Fusion observers continue to see true Q4/I4. */
-    esp_err_t err = bitscrambler_load_program(s_m2m_bs, s_m2m_phase_program);
+    esp_err_t err = m2m_switch_instructions(s_m2m_phase_program);
     if (err == ESP_OK) {
         err = bitscrambler_loopback_run(
             s_m2m_bs, raw, bytes, s_m2m_phase, bytes, &phase_written);
@@ -675,7 +728,7 @@ static esp_err_t m2m_process_group(unsigned group)
      *   pair = d0 + d1
      * with no second wrap.  fm_m2m_lift emits the proven [D,D] 6-bit DAC
      * contract, so its output byte rate equals the raw input byte rate. */
-    err = bitscrambler_load_program(s_m2m_bs, s_m2m_lift_program);
+    err = m2m_switch_instructions(s_m2m_lift_program);
     if (err == ESP_OK) {
         err = bitscrambler_loopback_run(
             s_m2m_bs, s_m2m_phase, bytes, cvbs, bytes, &lift_written);
@@ -786,6 +839,11 @@ static esp_err_t m2m_exact_init(void)
      * used by the legacy bounded BitScrambler hardware oracle. */
     esp_err_t err = bitscrambler_loopback_create(
         &s_m2m_bs, SOC_BITSCRAMBLER_ATTACH_I2S0, M2M_MAX_GROUP_BYTES);
+    if (err != ESP_OK) return err;
+
+    /* Load instructions + the shared 2 KiB LUT exactly once.  Subsequent
+     * pass changes touch only instruction RAM via m2m_switch_instructions(). */
+    err = bitscrambler_load_program(s_m2m_bs, s_m2m_phase_program);
     if (err != ESP_OK) return err;
 
     /* Remember the live producer group before the blocking seed transform.
