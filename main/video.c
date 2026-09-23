@@ -3443,7 +3443,8 @@ static void menu_draw_video_page(void)
 {
     char detected[24];
     bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80 ||
-                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2;
+                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ||
+                        s_demod_mode == DEMOD_MODE_M2M_LIFT_EXACT;
     menu_draw_page_title("VIDEO OUTPUT", experimental ? "EXPERIMENTAL" : "DEFAULT");
     menu_ui_value_box(100, 22, 130, "DAC", output_mode_name());
     menu_ui_value_box(238, 22, 138, "DEMOD", demod_mode_name());
@@ -5002,6 +5003,20 @@ static void console_diag_task(void *arg)
                            (unsigned long)s_hw_counters.gdma_in_fault_count,
                            (unsigned long)s_hw_counters.gdma_out_fault_count,
                            (unsigned long)s_hw_counters.bs_eof_overload_count);
+                    if (m2m_exact_enabled()) {
+                        printf(" M2M Exact:                  groups=%lu err=%lu miss=%lu skipped=%lu short=%lu/%lu last=%luus max=%luus bytes=%lu phase=%lu lift=%lu\n",
+                               (unsigned long)s_m2m_stats.groups,
+                               (unsigned long)s_m2m_stats.errors,
+                               (unsigned long)s_m2m_stats.deadline_misses,
+                               (unsigned long)s_m2m_stats.skipped_groups,
+                               (unsigned long)s_m2m_stats.phase_short,
+                               (unsigned long)s_m2m_stats.lift_short,
+                               (unsigned long)s_m2m_stats.last_us,
+                               (unsigned long)s_m2m_stats.max_us,
+                               (unsigned long)s_m2m_stats.last_input_bytes,
+                               (unsigned long)s_m2m_stats.last_phase_written,
+                               (unsigned long)s_m2m_stats.last_lift_written);
+                    }
                     int64_t transport_age_ms = s_last_transport_event_us > 0 ?
                         (esp_timer_get_time() - s_last_transport_event_us) / 1000 : -1;
                     printf(" Lag Correlation:            events=%lu near_gain_200ms=%lu near_phy_200ms=%lu gain_Qdrop=%lu marks=%lu last_flags=0x%02lx age=%lldms checks=%lu\n",
@@ -5224,12 +5239,23 @@ esp_err_t video_start(void)
         " Telemetry: Live GDMA ring pointer tracking (rx_ch=%d, tx_ch=%d)\n"
         " Buffer:  32,768 bytes cyclic ring (Zero-EOF patched: RX=%d TX=%d)\n"
         " RX:      40 MS/s POS edge, 32,768 bytes pure HW cyclic GDMA\n"
-        " Demod:   Phase5 50ns / P%u / G%u / current-minus-previous\n"
-        " TX:      40 MHz [D,D] / eof=downstream / tail=0\n"
+        " Demod:   %s / P%u / G%u / current-minus-previous\n"
+        " Path:    %s\n"
+        " TX:      40 MHz %s\n"
         " Lock:    GDMA ISRs disabled, RX EOF disabled, suc_eof=0 cleared\n"
-        " CPU:     done (hardware runs in unbroken infinite loop)\n"
+        " CPU:     %s\n"
         "=======================================================\n",
-        s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes, DAC_IDLE_CODE, 2u);
+        s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes,
+        demod_mode_name(), DAC_IDLE_CODE, 2u,
+        m2m_exact_enabled() ?
+            "raw Q4 -> single-BS M2M Phase5 -> exact LIFT -> CVBS ring" :
+            "raw Q4 ring -> TX BitScrambler",
+        m2m_exact_enabled() ?
+            "plain DMA CVBS ring -> 6-bit DAC" :
+            "[D,D] / eof=downstream / tail=0",
+        m2m_exact_enabled() ?
+            "slow control + M2M block scheduler; see M2M_EXACT telemetry" :
+            "done (hardware runs in unbroken infinite loop)");
 
     return ESP_OK;
 }
