@@ -35,10 +35,12 @@ check("five .bsasm programs including dual-channel LIFT-FM",
       {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_lift16_phase.bsasm", "fm_rx_phase.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
-check("LIFT-FM LUT16 oracle is phase-domain only and two-bundle steady state",
-      "synthetic/predecoded Phase5" in read(MAIN / "fm_lift16_phase.bsasm") and
+check("LIFT-FM TX backend is predecoded, two-bundle, and emits [D,D]",
+      "predecoded Phase5 symbols" in read(MAIN / "fm_lift16_phase.bsasm") and
+      "independent RX BitScrambler" in read(MAIN / "fm_lift16_phase.bsasm") and
       "emit -> lift -> emit -> lift" in read(MAIN / "fm_lift16_phase.bsasm") and
       "set 21..25 L8..L12" in read(MAIN / "fm_lift16_phase.bsasm") and
+      "read 16,\n    write 16" in read(MAIN / "fm_lift16_phase.bsasm") and
       "jmp emit" in read(MAIN / "fm_lift16_phase.bsasm"))
 
 for bsasm_file in bsasm_files:
