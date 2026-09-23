@@ -375,8 +375,16 @@ static esp_err_t prepare_rx(void)
         if (err != ESP_OK) return err;
         err = bitscrambler_load_program(s_rx_bs, s_rx_phase_program);
         if (err != ESP_OK) return err;
-        err = bitscrambler_reset(s_rx_bs);
-        if (err != ESP_OK) return err;
+
+        /* Do NOT call bitscrambler_reset() on the C5 RX channel here.
+         * The generic driver implements reset by requesting HALT and polling
+         * state.rx.in_idle.  Hardware validation on ESP32-C5 shows that the
+         * RX channel does not assert in_idle before the first PARLIO receive,
+         * so that path times out even though bitscrambler_new() has already
+         * performed the dedicated RX function reset in claim_channel().
+         *
+         * load_program() deliberately leaves the engine halted. start_rx()
+         * simply asserts RUN when the live receive path is armed. */
     }
 
     return parlio_rx_unit_enable(s_rx, false);
@@ -454,12 +462,15 @@ static esp_err_t prepare_tx(void)
 
 static esp_err_t start_rx(void)
 {
-    /* Reset the RX preprocessor whenever PARLIO RX is restarted. This keeps
-     * the one-cycle LUT pipeline aligned after menu/lab ownership changes. */
+    /* RX BitScrambler is intentionally not reset here.
+     *
+     * ESP32-C5 hardware does not report RX in_idle before an active PARLIO
+     * transaction, while bitscrambler_reset() waits specifically for that
+     * state.  Reasserting RUN is sufficient for this byte-local preprocessor:
+     * it has no inter-sample state beyond the hardware prefetch pipeline and
+     * can resume cleanly after menu/lab ownership changes. */
     if (s_rx_bs) {
-        esp_err_t bs_err = bitscrambler_reset(s_rx_bs);
-        if (bs_err != ESP_OK) return bs_err;
-        bs_err = bitscrambler_start(s_rx_bs);
+        esp_err_t bs_err = bitscrambler_start(s_rx_bs);
         if (bs_err != ESP_OK) return bs_err;
     }
 
