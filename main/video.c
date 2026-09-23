@@ -52,6 +52,8 @@
 
 #include "driver/usb_serial_jtag_vfs.h"
 #include "driver/bitscrambler.h"
+#include "driver/bitscrambler_loopback.h"
+#include "hal/bitscrambler_peri_select.h"
 #include "driver/gpio.h"
 #include "driver/parlio_rx.h"
 #include "driver/parlio_tx.h"
@@ -137,6 +139,8 @@ static volatile int64_t s_last_user_lag_mark_us;
 BITSCRAMBLER_PROGRAM(s_fm_program, "fm");
 BITSCRAMBLER_PROGRAM(s_fm4_program, "fm4");
 BITSCRAMBLER_PROGRAM(s_fm_traj_program, "fm_traj");
+BITSCRAMBLER_PROGRAM(s_m2m_phase_program, "fm_m2m_phase");
+BITSCRAMBLER_PROGRAM(s_m2m_lift_program, "fm_m2m_lift");
 
 /* ----- Fixed production constants ----- */
 #define IQ_RATE_HZ       40000000u   /* MODEM_DIAG / PARLIO RX clock */
@@ -186,6 +190,7 @@ static volatile uint16_t s_last_sync_width_20m;
 static volatile int s_last_sync_quality;
 static QueueHandle_t s_menu_commands;
 static bitscrambler_handle_t s_flight_bs;
+static bitscrambler_handle_t s_m2m_bs;
 
 /* Cache synchronization helpers for DMA buffers and descriptors on ESP32-C5.
  * Aligns address down and size up to 64-byte cache line boundaries so esp_cache_msync
@@ -239,6 +244,7 @@ typedef enum {
 typedef enum {
     DEMOD_MODE_GOLDEN_PHASE5 = 0,
     DEMOD_MODE_TRAJECTORY_V2 = 1,
+    DEMOD_MODE_M2M_LIFT_EXACT = 2,
     DEMOD_MODE_COUNT,
 } demod_mode_t;
 
@@ -262,6 +268,11 @@ static volatile video_output_mode_t s_output_mode = VIDEO_OUTPUT_6BIT_40;
 static video_output_mode_t s_tx_unit_mode = VIDEO_OUTPUT_6BIT_40;
 static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
 static volatile rx_profile_t s_rx_profile = RX_PROFILE_ARC;
+
+static inline bool m2m_exact_enabled(void)
+{
+    return s_demod_mode == DEMOD_MODE_M2M_LIFT_EXACT;
+}
 static volatile arc_v3_state_t s_last_arc_v3_state = ARC_V3_ACQUIRE;
 static volatile arc_v3_q4_state_t s_last_arc_v3_q4_state = ARC_V3_Q4_STARVED;
 static volatile bool s_last_arc_v3_filtered_valid;
@@ -301,6 +312,41 @@ static const char *TAG = "c5vrx3_video";
  * TX starts one block (4096 bytes = 102.4 µs) behind RX; they share
  * PLL_F240M/6, so separation cannot drift during normal operation. */
 static DMA_ATTR __attribute__((aligned(64))) uint8_t s_raw_ring[RAW_RING_BYTES];
+
+/* M2M exact-adjacent flight path.
+ *
+ * PARLIO RX always owns the raw 40 MB/s ring.  In M2M mode one BitScrambler
+ * core is used sequentially for:
+ *   raw Q4/I4 -> production Phase5 -> exact LIFT -> [D,D] CVBS.
+ * PARLIO TX is deliberately undecorated and loops this independent CVBS ring.
+ *
+ * Three RX descriptors are transformed as one block.  At the normal 4092-byte
+ * descriptor size that is 12,276 raw bytes (306.9 us of RF time).  The worker
+ * records any block that takes longer than its RF-time budget instead of
+ * silently pretending realtime throughput was achieved. */
+#define M2M_GROUP_DESCRIPTORS 3u
+#define M2M_MAX_GROUP_BYTES   (4092u * M2M_GROUP_DESCRIPTORS)
+
+static DMA_ATTR __attribute__((aligned(64))) uint8_t s_cvbs_ring[RAW_RING_BYTES];
+static DMA_ATTR __attribute__((aligned(64))) uint8_t s_m2m_phase[M2M_MAX_GROUP_BYTES];
+
+typedef struct {
+    uint32_t groups;
+    uint32_t errors;
+    uint32_t deadline_misses;
+    uint32_t skipped_groups;
+    uint32_t phase_short;
+    uint32_t lift_short;
+    uint32_t last_us;
+    uint32_t max_us;
+    uint32_t last_input_bytes;
+    uint32_t last_phase_written;
+    uint32_t last_lift_written;
+} m2m_stats_t;
+
+static volatile m2m_stats_t s_m2m_stats;
+static uint8_t s_m2m_last_phase;
+static uint8_t s_m2m_last_cvbs = DAC_IDLE_CODE;
 
 static parlio_rx_unit_handle_t      s_rx;
 static parlio_rx_delimiter_handle_t s_rx_delimiter;
@@ -409,6 +455,13 @@ static esp_err_t prepare_tx(void)
     esp_err_t err = create_tx_unit(s_output_mode);
     if (err != ESP_OK) return err;
 
+    if (m2m_exact_enabled()) {
+        /* M2M loopback claims the BitScrambler core later, after PARLIO has
+         * allocated its own GDMA pair.  TX remains a plain DMA->DAC engine. */
+        s_flight_bs = NULL;
+        return parlio_tx_unit_enable(s_tx);
+    }
+
     const bitscrambler_config_t bs_cfg = {
         .dir = BITSCRAMBLER_DIR_TX,
         .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
@@ -450,8 +503,9 @@ static esp_err_t start_tx(void)
     /* TX reads sizeof(s_raw_ring) * 8 bits, then loops.
      * loop_transmission=true means PARLIO TX never stops; the BitScrambler
      * with eof_on=downstream therefore runs uninterrupted forever. */
-    return parlio_tx_unit_transmit(s_tx, s_raw_ring,
-                                   sizeof(s_raw_ring) * 8u, &cfg);
+    uint8_t *tx_ring = m2m_exact_enabled() ? s_cvbs_ring : s_raw_ring;
+    return parlio_tx_unit_transmit(s_tx, tx_ring,
+                                   RAW_RING_BYTES * 8u, &cfg);
 }
 
 static int s_rx_dma_ch = -1;
@@ -480,8 +534,9 @@ static inline uint32_t get_tx_dma_offset(uint32_t *out_dscr_addr)
     if (dscr_addr >= 0x40800000u && dscr_addr < 0x40860000u) {
         dma_descriptor_t *dscr = (dma_descriptor_t *)(uintptr_t)dscr_addr;
         uint8_t *buf = (uint8_t *)dscr->buffer;
-        if (buf >= s_raw_ring && buf < s_raw_ring + sizeof(s_raw_ring)) {
-            return (uint32_t)(buf - s_raw_ring);
+        uint8_t *base = m2m_exact_enabled() ? s_cvbs_ring : s_raw_ring;
+        if (buf >= base && buf < base + RAW_RING_BYTES) {
+            return (uint32_t)(buf - base);
         }
     }
     return 0;
@@ -1125,11 +1180,18 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
-    return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
+    switch (s_demod_mode) {
+    case DEMOD_MODE_TRAJECTORY_V2: return "TRAJ V2";
+    case DEMOD_MODE_M2M_LIFT_EXACT: return "M2M EXACT";
+    default: return "GOLDEN";
+    }
 }
 
 static void cycle_demod_mode(void)
 {
+    /* The on-screen menu keeps the two proven live-decorator choices.
+     * M2M EXACT changes the entire buffer topology and is toggled with J +
+     * reboot; entering this menu from that mode is intentionally refused. */
     s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
                    DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
     /* TRAJ V2 and 4BIT@80 use different BitScrambler/output contracts.
@@ -1372,7 +1434,9 @@ static void settings_load(void)
     } else if (settings.demod_mode < DEMOD_MODE_COUNT) {
         s_demod_mode = (demod_mode_t)settings.demod_mode;
     }
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ||
+        s_demod_mode == DEMOD_MODE_M2M_LIFT_EXACT)
+        s_output_mode = VIDEO_OUTPUT_6BIT_40;
     if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
     if (settings.rx_profile < RX_PROFILE_COUNT) {
         s_rx_profile = (rx_profile_t)settings.rx_profile;
@@ -3213,6 +3277,7 @@ static void quiet_tx_interrupts(void)
 
 static void start_flight_demodulator(void)
 {
+    if (m2m_exact_enabled()) return;
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
     if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
@@ -3272,6 +3337,10 @@ static esp_err_t lab_restore_live_tx_pipeline(void)
  * removed and all six resistor-DAC GPIOs are held static low. */
 static void lab_run_tx_self_noise_probe(void)
 {
+    if (m2m_exact_enabled()) {
+        printf("C5VRX_PREQ4_TXNOISE_REFUSED reason=m2m_exact_topology\n");
+        return;
+    }
     if (s_gain_sweep.active || s_menu_active || s_pre_q4_probe_active) {
         printf("C5VRX_PREQ4_TXNOISE_REFUSED reason=%s\n",
                s_gain_sweep.active ? "gain_sweep_active" :
@@ -3394,6 +3463,10 @@ static void start_menu_tx(void)
 
 static void video_set_menu_mode(bool active)
 {
+    if (active && m2m_exact_enabled()) {
+        printf("[MENU] unavailable in M2M EXACT; press J to return to GOLDEN\n");
+        return;
+    }
     if (s_pre_q4_probe_active) return;
     if (active && !MENU_RUNTIME_ENABLED) return;
     if (s_menu_active == active) return;
@@ -3414,7 +3487,7 @@ static void video_set_menu_mode(bool active)
 
         ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
         /* Live -> menu: stop the live producer once. */
-        ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+        if (s_flight_bs) ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
 
         /* Menu raster is byte-oriented 6-bit@40 even if live output was 4-bit@80. */
         if (s_tx_unit_mode != VIDEO_OUTPUT_6BIT_40) {
@@ -3578,6 +3651,7 @@ static void open_recovery_menu(void)
     /* Persisted Safe Flight state must never make the on-screen controls
      * unreachable after flashing another build. A deliberate three-second
      * hold restores the simplest proven video contract before menu TX starts. */
+    const bool topology_reboot = m2m_exact_enabled();
     s_menu_boot_btn_enabled = true;
     s_video_std_mode = VIDEO_STD_MODE_AUTO;
     s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
@@ -3587,6 +3661,13 @@ static void open_recovery_menu(void)
     s_menu_cursor = 0;
     s_menu_timeout_ticks = 0;
     settings_save();
+    if (topology_reboot) {
+        printf("[RECOVERY] M2M topology -> GOLDEN persisted; rebooting safe flight path\n");
+        fflush(stdout);
+        vTaskDelay(pdMS_TO_TICKS(120));
+        esp_restart();
+        return;
+    }
     video_set_menu_mode(true);
     printf("[RECOVERY] GOLDEN + 6BIT@40 + ARC restored; menu %s\n",
            s_menu_active ? "opened" : "unavailable");
@@ -4485,6 +4566,18 @@ static void console_diag_task(void *arg)
                     apply_rx_profile(RX_PROFILE_ARC_V5_AUTOTUNE_EXP);
                     settings_save();
                     printf("[RX PROFILE] -> ARC V5 AUTOTUNE (predictive V3 + persistent self-calibration)\n");
+                } else if (c == 'J') {
+                    s_demod_mode = m2m_exact_enabled() ?
+                                   DEMOD_MODE_GOLDEN_PHASE5 :
+                                   DEMOD_MODE_M2M_LIFT_EXACT;
+                    s_output_mode = VIDEO_OUTPUT_6BIT_40;
+                    settings_save();
+                    printf("[DEMOD] -> %s; rebooting for %s topology\n",
+                           demod_mode_name(),
+                           m2m_exact_enabled() ? "single-BitScrambler M2M" : "live TX");
+                    fflush(stdout);
+                    vTaskDelay(pdMS_TO_TICKS(120));
+                    esp_restart();
                 } else if (c == 'X') {
                     cycle_rx_profile();
                 } else if (c == 't') {
@@ -4743,6 +4836,7 @@ static void console_diag_task(void *arg)
                     printf("  'S':         PRE-Q4 self-noise A/B (live TX vs DAC/PARLIO electrically quiet)\n");
                     printf("  'K':         Erase stored PHY calibration and reboot for a fresh vendor calibration\n");
                     printf("  'X':         Cycle RX profile (Balanced/Range/Blocker/Recovery/Auto/ARC/Fusion/Range V2)\n");
+                    printf("  'J':         Toggle GOLDEN <-> M2M EXACT (saves + reboots)\n");
                     printf("  'p'/'r':     Machine-readable PHY/Q4 snapshot / reset lag counters\n");
                     printf("  't'/'q':     Vendor timer inventory / quiet unsolicited lock message\n");
                     printf("  'l':         Mark a visible lag/freeze for correlation\n");
@@ -4790,6 +4884,15 @@ esp_err_t video_start(void)
     /* Zero the ring before starting. Flush to DMA-visible SRAM. */
     memset(s_raw_ring, 0, sizeof(s_raw_ring));
     sync_dma_c2m(s_raw_ring, sizeof(s_raw_ring));
+    if (m2m_exact_enabled()) {
+        memset(s_cvbs_ring, DAC_IDLE_CODE, sizeof(s_cvbs_ring));
+        memset(s_m2m_phase, 0, sizeof(s_m2m_phase));
+        sync_dma_c2m(s_cvbs_ring, sizeof(s_cvbs_ring));
+        sync_dma_c2m(s_m2m_phase, sizeof(s_m2m_phase));
+        memset((void *)&s_m2m_stats, 0, sizeof(s_m2m_stats));
+        s_m2m_last_phase = 0;
+        s_m2m_last_cvbs = DAC_IDLE_CODE;
+    }
 
     esp_err_t err;
 
