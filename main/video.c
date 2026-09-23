@@ -47,6 +47,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <string.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -137,6 +138,8 @@ static volatile int64_t s_last_user_lag_mark_us;
 BITSCRAMBLER_PROGRAM(s_fm_program, "fm");
 BITSCRAMBLER_PROGRAM(s_fm4_program, "fm4");
 BITSCRAMBLER_PROGRAM(s_fm_traj_program, "fm_traj");
+BITSCRAMBLER_PROGRAM(s_fm_phase5plus_program, "fm_phase5plus");
+BITSCRAMBLER_PROGRAM(s_rx_phase5plus_program, "fm_rx_phase5plus");
 
 /* ----- Fixed production constants ----- */
 #define IQ_RATE_HZ       40000000u   /* MODEM_DIAG / PARLIO RX clock */
@@ -186,6 +189,21 @@ static volatile uint16_t s_last_sync_width_20m;
 static volatile int s_last_sync_quality;
 static QueueHandle_t s_menu_commands;
 static bitscrambler_handle_t s_flight_bs;
+static bitscrambler_handle_t s_rx_bs;
+
+/* RX Phase5+ starts before PARLIO has produced data. Avoid the public
+ * bitscrambler_reset() idle-poll trap on the attached RX channel; at these
+ * call sites the engine is already quiescent, so pulse the FIFO reset
+ * directly before restarting the software-prefetched program. */
+static inline void bitscrambler_rearm_rx_quiescent(void)
+{
+    BITSCRAMBLER.ctrl[BITSCRAMBLER_DIR_RX].pause = 0;
+    BITSCRAMBLER.ctrl[BITSCRAMBLER_DIR_RX].halt = 1;
+    BITSCRAMBLER.ctrl[BITSCRAMBLER_DIR_RX].fifo_rst = 1;
+    BITSCRAMBLER.ctrl[BITSCRAMBLER_DIR_RX].fifo_rst = 0;
+    BITSCRAMBLER.state[BITSCRAMBLER_DIR_RX].eof_trace_clr = 1;
+    BITSCRAMBLER.state[BITSCRAMBLER_DIR_RX].eof_trace_clr = 0;
+}
 
 /* Cache synchronization helpers for DMA buffers and descriptors on ESP32-C5.
  * Aligns address down and size up to 64-byte cache line boundaries so esp_cache_msync
@@ -239,6 +257,7 @@ typedef enum {
 typedef enum {
     DEMOD_MODE_GOLDEN_PHASE5 = 0,
     DEMOD_MODE_TRAJECTORY_V2 = 1,
+    DEMOD_MODE_PHASE5PLUS_EXP = 2,
     DEMOD_MODE_COUNT,
 } demod_mode_t;
 
@@ -262,6 +281,44 @@ static volatile video_output_mode_t s_output_mode = VIDEO_OUTPUT_6BIT_40;
 static video_output_mode_t s_tx_unit_mode = VIDEO_OUTPUT_6BIT_40;
 static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
 static volatile rx_profile_t s_rx_profile = RX_PROFILE_ARC;
+
+static inline bool phase5plus_enabled(void)
+{
+    return s_demod_mode == DEMOD_MODE_PHASE5PLUS_EXP;
+}
+
+static inline int phase5plus_wrap32(int delta)
+{
+    return ((delta + 16) & 31) - 16;
+}
+
+/* Mirror the generated LUT oracle for observation only. Flight video is made
+ * by fm_phase5plus.bsasm, never by the CPU. */
+static uint8_t phase5plus_pair_code(uint8_t previous, uint8_t middle,
+                                     uint8_t current)
+{
+    int p = previous & 31;
+    int m = middle & 31;
+    int c = current & 31;
+    int d0 = phase5plus_wrap32(m - p);
+    int d1 = phase5plus_wrap32(c - m);
+    int endpoint = phase5plus_wrap32(c - p);
+    int pair = d0 + d1;
+    bool coherent = abs(d0) <= 12 && abs(d1) <= 12 &&
+                    abs(d0 - d1) <= 6 && abs(pair) >= 16;
+    int code;
+    if (coherent) code = 20 + 6 * pair;
+    else if (abs(endpoint) >= 12) code = 20;
+    else if (endpoint == 9) code = 60;
+    else if (endpoint == 10) code = 48;
+    else if (endpoint == 11) code = 36;
+    else if (endpoint == -9) code = 8;
+    else if (endpoint == -10) code = 14;
+    else if (endpoint == -11) code = 18;
+    else code = 20 + 6 * endpoint;
+    return (uint8_t)(code < 0 ? 0 : code > 63 ? 63 : code);
+}
+
 static volatile arc_v3_state_t s_last_arc_v3_state = ARC_V3_ACQUIRE;
 static volatile arc_v3_q4_state_t s_last_arc_v3_q4_state = ARC_V3_Q4_STARVED;
 static volatile bool s_last_arc_v3_filtered_valid;
@@ -348,6 +405,21 @@ static esp_err_t prepare_rx(void)
     err = parlio_new_rx_soft_delimiter(&delim_cfg, &s_rx_delimiter);
     if (err != ESP_OK) return err;
 
+    /* Phase5+ uses the independent RX BitScrambler as a 40 MS/s raw8 ->
+     * Phase5/envelope predecoder. DMA bandwidth stays one byte/sample. */
+    if (phase5plus_enabled()) {
+        const bitscrambler_config_t rx_bs_cfg = {
+            .dir = BITSCRAMBLER_DIR_RX,
+            .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
+        };
+        err = bitscrambler_new(&rx_bs_cfg, &s_rx_bs);
+        if (err != ESP_OK) return err;
+        err = bitscrambler_enable(s_rx_bs);
+        if (err != ESP_OK) return err;
+        err = bitscrambler_load_program(s_rx_bs, s_rx_phase5plus_program);
+        if (err != ESP_OK) return err;
+    }
+
     return parlio_rx_unit_enable(s_rx, false);
 }
 
@@ -423,6 +495,12 @@ static esp_err_t prepare_tx(void)
 
 static esp_err_t start_rx(void)
 {
+    if (s_rx_bs) {
+        bitscrambler_rearm_rx_quiescent();
+        esp_err_t bs_err = bitscrambler_start(s_rx_bs);
+        if (bs_err != ESP_OK) return bs_err;
+    }
+
     esp_err_t err = parlio_rx_soft_delimiter_start_stop(s_rx, s_rx_delimiter, true);
     if (err != ESP_OK) return err;
     const parlio_receive_config_t cfg = {
@@ -703,7 +781,8 @@ static int video_semantic_observe(const uint8_t *raw, size_t bytes, size_t ring_
     const size_t first = (ring_offset & 1u) ? 0u : 1u;
     if (first + 2u >= bytes) return 0;
 
-    uint8_t previous = s_phase5_state_lut[raw[first]];
+    uint8_t previous = phase5plus_enabled() ?
+                       (raw[first] & 31u) : s_phase5_state_lut[raw[first]];
     bool in_sync = false;
     unsigned run_start = 0;
     unsigned run_len = 0;
@@ -713,8 +792,11 @@ static int video_semantic_observe(const uint8_t *raw, size_t bytes, size_t ring_
     unsigned out_index = 1;
 
     for (size_t i = first + 2u; i < bytes; i += 2u, ++out_index) {
-        uint8_t current = s_phase5_state_lut[raw[i]];
-        bool low = s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ?
+        uint8_t current = phase5plus_enabled() ?
+                          (raw[i] & 31u) : s_phase5_state_lut[raw[i]];
+        bool low = phase5plus_enabled() ?
+                   phase5plus_pair_code(previous, raw[i - 1u], current) <= 8u :
+                   s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ?
                    trajectory_v2_code(previous, raw[i - 1u], raw[i]) <= 8u :
                    phase5_pair_is_sync(previous, current);
         previous = current;
@@ -1125,11 +1207,19 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
+    if (s_demod_mode == DEMOD_MODE_PHASE5PLUS_EXP) return "PHASE5+ EXP";
     return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
 }
 
 static void cycle_demod_mode(void)
 {
+    /* Phase5+ changes the RX ring from raw Q4/I4 to phase/envelope codes. It is
+     * boot-only; never live-switch this ring into a raw-Q4 demodulator. */
+    if (phase5plus_enabled()) {
+        printf("[DEMOD] PHASE5+ is boot-selected; use 'J' to return to GOLDEN\n");
+        return;
+    }
+
     s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
                    DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
     /* TRAJ V2 and 4BIT@80 use different BitScrambler/output contracts.
@@ -1372,7 +1462,9 @@ static void settings_load(void)
     } else if (settings.demod_mode < DEMOD_MODE_COUNT) {
         s_demod_mode = (demod_mode_t)settings.demod_mode;
     }
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ||
+        s_demod_mode == DEMOD_MODE_PHASE5PLUS_EXP)
+        s_output_mode = VIDEO_OUTPUT_6BIT_40;
     if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
     if (settings.rx_profile < RX_PROFILE_COUNT) {
         s_rx_profile = (rx_profile_t)settings.rx_profile;
@@ -1417,6 +1509,10 @@ static void settings_load(void)
         }
         s_current_gain = profile_gain_clamp(s_current_gain);
     }
+    /* The Phase5+ DMA ring contains phase/envelope codes, not raw Q4/I4.
+     * Keep raw-Q4 ARC decisions away from the transformed ring. */
+    if (phase5plus_enabled()) s_agc_mode = ANALOG_AGC_MANUAL;
+
     s_shadow_gain = s_current_gain;
     rf_set_rx_gain(true, s_current_gain);
     s_menu_boot_btn_enabled = settings.menu_boot_btn_enabled != 0;
@@ -3160,7 +3256,8 @@ static void menu_draw_video_page(void)
 {
     char detected[24];
     bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80 ||
-                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2;
+                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ||
+                        s_demod_mode == DEMOD_MODE_PHASE5PLUS_EXP;
     menu_draw_page_title("VIDEO OUTPUT", experimental ? "EXPERIMENTAL" : "DEFAULT");
     menu_ui_value_box(100, 22, 130, "DAC", output_mode_name());
     menu_ui_value_box(238, 22, 138, "DEMOD", demod_mode_name());
@@ -3214,7 +3311,9 @@ static void quiet_tx_interrupts(void)
 static void start_flight_demodulator(void)
 {
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
+    if (s_demod_mode == DEMOD_MODE_PHASE5PLUS_EXP) {
+        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_phase5plus_program));
+    } else if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
     } else if (s_output_mode == VIDEO_OUTPUT_4BIT_80) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm4_program));
@@ -3575,6 +3674,7 @@ static void handle_button_short_click(void)
 
 static void open_recovery_menu(void)
 {
+    const bool phase5plus_reboot = phase5plus_enabled();
     /* Persisted Safe Flight state must never make the on-screen controls
      * unreachable after flashing another build. A deliberate three-second
      * hold restores the simplest proven video contract before menu TX starts. */
@@ -3587,6 +3687,13 @@ static void open_recovery_menu(void)
     s_menu_cursor = 0;
     s_menu_timeout_ticks = 0;
     settings_save();
+    if (phase5plus_reboot) {
+        printf("[RECOVERY] PHASE5+ RX format -> GOLDEN persisted; rebooting raw-Q4 path\n");
+        fflush(stdout);
+        vTaskDelay(pdMS_TO_TICKS(120));
+        esp_restart();
+        return;
+    }
     video_set_menu_mode(true);
     printf("[RECOVERY] GOLDEN + 6BIT@40 + ARC restored; menu %s\n",
            s_menu_active ? "opened" : "unavailable");
@@ -3647,10 +3754,14 @@ static void handle_button_long_click(void)
             settings_save();
             break;
         case 4: /* VIDEO OUTPUT */
+            {
+            bool leaving_phase5plus = phase5plus_enabled() &&
+                                      s_output_mode == VIDEO_OUTPUT_6BIT_40;
             s_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
                             VIDEO_OUTPUT_4BIT_80 : VIDEO_OUTPUT_6BIT_40;
             if (s_output_mode == VIDEO_OUTPUT_4BIT_80 &&
-                s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
+                (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ||
+                 s_demod_mode == DEMOD_MODE_PHASE5PLUS_EXP)) {
                 /* 4BIT@80 has its own fm4 BitScrambler contract. Keep the
                  * combination valid by returning to GOLDEN automatically. */
                 s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
@@ -3662,7 +3773,14 @@ static void handle_button_long_click(void)
                        s_output_mode == VIDEO_OUTPUT_4BIT_80 ? " (EXPERIMENTAL)" : "");
             }
             settings_save();
+            if (leaving_phase5plus) {
+                printf("[MENU: OUTPUT] RX format changed; rebooting raw-Q4 path\n");
+                fflush(stdout);
+                vTaskDelay(pdMS_TO_TICKS(120));
+                esp_restart();
+            }
             break;
+            }
         case 5: /* SAVE & EXIT */
             settings_save();
             video_set_menu_mode(false);
@@ -3699,6 +3817,7 @@ static void analog_agc_task(void *arg)
     int learn_timeout_ticks = 0;
     unsigned range_probe_index = 0;
     int btn_ticks = 0;
+    bool btn_started_outside_menu = false;
     bool btn_long_fired = false;
     bool btn_scan_fired = false;
     bool btn_profile_fired = false;
@@ -3750,6 +3869,7 @@ static void analog_agc_task(void *arg)
         if (boot_grace_ticks > 0) {
             boot_grace_ticks--;
             btn_ticks = 0;
+            btn_started_outside_menu = false;
             btn_long_fired = false;
             btn_scan_fired = false;
             btn_profile_fired = false;
@@ -3758,12 +3878,13 @@ static void analog_agc_task(void *arg)
         } else {
             int btn_level = gpio_get_level(BOOT_BTN_GPIO);
             if (btn_level == 0) {
+                if (btn_ticks == 0) btn_started_outside_menu = !s_menu_active;
                 btn_ticks++;
 
                 /* This path deliberately ignores the persisted BOOT-menu bit.
                  * The ordinary 0.6 s long-click may report Safe Flight at tick
                  * 12; continuing to hold until tick 60 must still recover. */
-                if (!s_menu_active && btn_ticks >= 60 && !btn_recovery_fired) {
+                if (btn_started_outside_menu && btn_ticks >= 60 && !btn_recovery_fired) {
                     btn_recovery_fired = true;
                     btn_long_fired = true;
                     open_recovery_menu();
@@ -3819,6 +3940,7 @@ static void analog_agc_task(void *arg)
                     handle_button_short_click();
                 }
                 btn_ticks = 0;
+                btn_started_outside_menu = false;
                 btn_long_fired = false;
                 btn_scan_fired = false;
                 btn_profile_fired = false;
@@ -3848,6 +3970,10 @@ static void analog_agc_task(void *arg)
             arc_v5_autotune_rearm(&arc_v5_autotune, rf_get_arc_gain_table(),
                                   s_current_gain, rf_get_arc_survival_gain());
         }
+
+        /* The ring carries Phase5+ symbols, not raw Q4/I4. Never let a menu
+         * or console AGC selection actuate a raw-IQ controller on this data. */
+        if (phase5plus_enabled()) s_agc_mode = ANALOG_AGC_MANUAL;
 
         /* rf_set_channel() recaptures the vendor table after every successful
          * retune. Reset even when the caller did not change profile generation
@@ -4459,6 +4585,28 @@ static void console_diag_task(void *arg)
                            s_current_gain, s_current_bw40 ? 40u : 20u, (unsigned)s_afc_mode);
                 } else if (c == 'p') {
                     lab_print_row("SNAPSHOT", NULL);
+                } else if (c == 'P') {
+                    if (!phase5plus_enabled()) {
+                        printf("[PHASE5+ RX] select Phase5+ first with J\n");
+                        continue;
+                    }
+                    /* Read a completed DMA window, never the active descriptor.
+                     * This distinguishes RX predecoder/ring faults from TX FM
+                     * math without changing the live sample stream. */
+                    uint8_t *src = get_completed_rx_sample_window(CONTROL_SAMPLE_BYTES);
+                    sync_dma_m2c(src, CONTROL_SAMPLE_BYTES);
+                    uint32_t phase_mask = 0;
+                    unsigned classes[8] = {0};
+                    for (size_t i = 0; i < CONTROL_SAMPLE_BYTES; ++i) {
+                        uint8_t code = src[i];
+                        phase_mask |= 1u << (code & 31u);
+                        ++classes[code >> 5];
+                    }
+                    printf("[PHASE5+ RX] phases=%u classes=%u,%u,%u,%u,%u,%u,%u,%u first=%02x,%02x,%02x,%02x G=%u\n",
+                           (unsigned)__builtin_popcount(phase_mask),
+                           classes[0], classes[1], classes[2], classes[3],
+                           classes[4], classes[5], classes[6], classes[7],
+                           src[0], src[1], src[2], src[3], s_current_gain);
                 } else if (c == 'g') {
                     lab_start_gain_sweep();
                 } else if (c == 'F') {
@@ -4477,6 +4625,18 @@ static void console_diag_task(void *arg)
                     lab_run_tx_self_noise_probe();
                 } else if (c == 'K') {
                     lab_request_fresh_phy_calibration();
+                } else if (c == 'J') {
+                    s_demod_mode = phase5plus_enabled() ?
+                                   DEMOD_MODE_GOLDEN_PHASE5 : DEMOD_MODE_PHASE5PLUS_EXP;
+                    s_output_mode = VIDEO_OUTPUT_6BIT_40;
+                    if (s_demod_mode == DEMOD_MODE_PHASE5PLUS_EXP)
+                        s_agc_mode = ANALOG_AGC_MANUAL;
+                    settings_save();
+                    printf("[DEMOD] persisted %s; rebooting for RX-ring format change\n",
+                           demod_mode_name());
+                    fflush(stdout);
+                    vTaskDelay(pdMS_TO_TICKS(120));
+                    esp_restart();
                 } else if (c == 'Y') {
                     apply_rx_profile(RX_PROFILE_ARC_V3_EXP);
                     settings_save();

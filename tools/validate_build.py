@@ -31,18 +31,38 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("three .bsasm programs (Golden + output experiment + Trajectory v2)",
-      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
+expected_bsasm = {
+    "fm.bsasm",
+    "fm4.bsasm",
+    "fm_traj.bsasm",
+    "fm_rx_phase5plus.bsasm",
+    "fm_phase5plus.bsasm",
+}
+check("expected Golden, output, Trajectory and Phase5+ BitScrambler programs",
+      {f.name for f in bsasm_files} == expected_bsasm,
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
-    check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
-    check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
-    check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
-    check(f"{bsasm_file.name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
-    check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
-    check(f"{bsasm_file.name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
+    name = bsasm_file.name
+    check(f"{name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
+    check(f"{name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
+
+    if name == "fm_rx_phase5plus.bsasm":
+        check(f"{name}: cfg eof_on upstream", "cfg eof_on upstream" in bsasm)
+        check(f"{name}: NO eof_on downstream", "cfg eof_on downstream" not in bsasm)
+        check(f"{name}: cfg prefetch false", "cfg prefetch false" in bsasm)
+        check(f"{name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
+    elif name == "fm_phase5plus.bsasm":
+        check(f"{name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+        check(f"{name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
+        check(f"{name}: cfg prefetch true", "cfg prefetch true" in bsasm)
+        check(f"{name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
+    else:
+        check(f"{name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+        check(f"{name}: cfg prefetch true", "cfg prefetch true" in bsasm)
+        check(f"{name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
+        check(f"{name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
 
 # ---- Production .c file checks ----
 c_files = list(MAIN.glob("*.c"))
@@ -652,8 +672,25 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, 4-bit output and Trajectory v2 BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"], f"found: {bs_srcs}")
+check("Golden, experimental and Phase5+ BitScrambler programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_rx_phase5plus.bsasm", "fm_phase5plus.bsasm"],
+      f"found: {bs_srcs}")
+
+phase5plus_rx = read(MAIN / "fm_rx_phase5plus.bsasm")
+phase5plus_tx = read(MAIN / "fm_phase5plus.bsasm")
+check("Phase5+ RX is one-bundle 40M raw-to-phase predecoder",
+      "cfg prefetch false" in phase5plus_rx and
+      "cfg lut_width_bits 16" in phase5plus_rx and
+      "set 16..23 0..7" in phase5plus_rx and
+      "read 8,\n    write 8" in phase5plus_rx)
+check("Phase5+ TX steady state is two bundles per 50 ns",
+      "cfg lut_width_bits 16" in phase5plus_tx and
+      "set 21..25 L8..L12" in phase5plus_tx and
+      "read 16,\n    write 16" in phase5plus_tx and
+      "jmp emit" in phase5plus_tx)
+check("Phase5+ host oracle is wired into CI",
+      "python3 tools/phase5plus.py --write --self-test" in workflow and
+      "python3 tools/phase5plus_rx.py --write --self-test" in workflow)
 
 # ---- Summary ----
 print(f"\n{'='*50}")
