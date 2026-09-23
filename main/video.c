@@ -348,6 +348,8 @@ static volatile m2m_stats_t s_m2m_stats;
 static uint8_t s_m2m_last_phase;
 static uint8_t s_m2m_last_cvbs = DAC_IDLE_CODE;
 static volatile unsigned s_m2m_worker_group;
+static TaskHandle_t s_m2m_task_handle;
+static esp_timer_handle_t s_m2m_poll_timer;
 
 static parlio_rx_unit_handle_t      s_rx;
 static parlio_rx_delimiter_handle_t s_rx_delimiter;
@@ -734,6 +736,12 @@ static esp_err_t m2m_process_group(unsigned group)
     return ESP_OK;
 }
 
+static void m2m_poll_timer_cb(void *arg)
+{
+    (void)arg;
+    if (s_m2m_task_handle) xTaskNotifyGive(s_m2m_task_handle);
+}
+
 static void m2m_exact_task(void *arg)
 {
     (void)arg;
@@ -742,11 +750,13 @@ static void m2m_exact_task(void *arg)
     unsigned current = s_m2m_worker_group;
 
     for (;;) {
+        /* A 50-us esp_timer poll is well below one ~307-us full M2M group.
+         * The worker blocks between polls instead of burning a CPU core or
+         * starving the AGC/console tasks. Notifications coalesce while the
+         * hardware transform itself is running. */
+        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         unsigned observed = m2m_group_from_rx_offset(get_rx_dma_offset(NULL));
-        if (observed == current) {
-            taskYIELD();
-            continue;
-        }
+        if (observed == current) continue;
 
         unsigned delta = (observed + M2M_GROUP_COUNT - current) %
                          M2M_GROUP_COUNT;
@@ -786,9 +796,28 @@ static esp_err_t m2m_exact_init(void)
     err = m2m_process_group(0u);
     if (err != ESP_OK) return err;
 
+    return ESP_OK;
+}
+
+static esp_err_t m2m_exact_start_worker(void)
+{
+    if (!m2m_exact_enabled() || !s_m2m_bs) return ESP_ERR_INVALID_STATE;
+    if (s_m2m_task_handle) return ESP_OK;
+
     BaseType_t task_ok = xTaskCreate(m2m_exact_task, "m2m_exact", 4096,
-                                     NULL, 20, NULL);
-    return task_ok == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
+                                     NULL, 20, &s_m2m_task_handle);
+    if (task_ok != pdPASS) return ESP_ERR_NO_MEM;
+
+    const esp_timer_create_args_t timer_args = {
+        .callback = m2m_poll_timer_cb,
+        .arg = NULL,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "m2m_poll",
+        .skip_unhandled_events = true,
+    };
+    esp_err_t err = esp_timer_create(&timer_args, &s_m2m_poll_timer);
+    if (err != ESP_OK) return err;
+    return esp_timer_start_periodic(s_m2m_poll_timer, 50u);
 }
 
 /* Pick a descriptor that RX has already completed, rather than sampling a
