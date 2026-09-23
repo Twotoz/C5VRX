@@ -652,8 +652,25 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, 4-bit output and Trajectory v2 BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"], f"found: {bs_srcs}")
+check("Golden, experimental and Polar11 BitScrambler programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_rx_polar6.bsasm", "fm_polar11.bsasm"],
+      f"found: {bs_srcs}")
+
+polar_rx = read(MAIN / "fm_rx_polar6.bsasm")
+polar_tx = read(MAIN / "fm_polar11.bsasm")
+check("Polar11 RX is one-bundle 40M raw-to-polar predecoder",
+      "cfg prefetch false" in polar_rx and
+      "cfg lut_width_bits 8" in polar_rx and
+      "set 21..28 0..7" in polar_rx and
+      "read 8,\n    write 8" in polar_rx)
+check("Polar11 TX steady state is one bundle per 25 ns",
+      "cfg lut_width_bits 8" in polar_tx and
+      "set 21..26 0..5" in polar_tx and
+      "set 27..31 O8..O12" in polar_tx and
+      "read 8,\n    write 8,\n    jmp stream" in polar_tx)
+check("Polar11 host oracle is wired into CI",
+      "python3 tools/polar11.py --write --self-test" in workflow and
+      "main/fm_rx_polar6.bsasm main/fm_polar11.bsasm" in workflow)
 
 # ---- Summary ----
 print(f"\n{'='*50}")
