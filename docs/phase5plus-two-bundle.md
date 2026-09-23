@@ -61,7 +61,7 @@ The CPU keeps receiving untouched raw IQ for ARC and diagnostics.
 This is a conservative *approximation*, not exact adjacent FM. Under a simple
 32-bin model with both adjacent steps at most 12 bins and their difference at
 most 6 bins, the middle Q sign uniquely identifies the winding branch for
-1,370 of 2,400 winding triplets (57.1%). Ambiguous endpoint/sign cells must
+1,572 of 2,400 winding triplets (65.5%). Ambiguous endpoint/sign cells must
 fall back to Golden. These model counts do not predict live image quality:
 quantized IQ, noise, and trajectories outside the gate can change the result.
 The required next proof is a raw-IQ oracle and a live Golden A/B with CVBS lock,
