@@ -347,6 +347,7 @@ typedef struct {
 static volatile m2m_stats_t s_m2m_stats;
 static uint8_t s_m2m_last_phase;
 static uint8_t s_m2m_last_cvbs = DAC_IDLE_CODE;
+static volatile unsigned s_m2m_worker_group;
 
 static parlio_rx_unit_handle_t      s_rx;
 static parlio_rx_delimiter_handle_t s_rx_delimiter;
@@ -653,6 +654,10 @@ static esp_err_t m2m_process_group(unsigned group)
         return err;
     }
 
+    /* Make GDMA-produced phase bytes visible before this same buffer becomes
+     * the input of the second loopback transaction. */
+    sync_dma_m2c(s_m2m_phase, bytes);
+
     if (phase_written > bytes) phase_written = bytes;
     if (phase_written < bytes) {
         ++s_m2m_stats.phase_short;
@@ -681,6 +686,9 @@ static esp_err_t m2m_process_group(unsigned group)
                group, esp_err_to_name(err), (unsigned)bytes);
         return err;
     }
+
+    /* The CPU reads the last output byte and may fill a finite-block tail. */
+    sync_dma_m2c(cvbs, bytes);
 
     if (lift_written > bytes) lift_written = bytes;
     if (lift_written < bytes) {
@@ -729,7 +737,9 @@ static esp_err_t m2m_process_group(unsigned group)
 static void m2m_exact_task(void *arg)
 {
     (void)arg;
-    unsigned current = m2m_group_from_rx_offset(get_rx_dma_offset(NULL));
+    /* Seeded before the first blocking transform so a producer transition
+     * that happens while group 0 is being transformed is observed here. */
+    unsigned current = s_m2m_worker_group;
 
     for (;;) {
         unsigned observed = m2m_group_from_rx_offset(get_rx_dma_offset(NULL));
@@ -765,6 +775,11 @@ static esp_err_t m2m_exact_init(void)
     esp_err_t err = bitscrambler_loopback_create(
         &s_m2m_bs, SOC_BITSCRAMBLER_ATTACH_I2S0, M2M_MAX_GROUP_BYTES);
     if (err != ESP_OK) return err;
+
+    /* Remember the live producer group before the blocking seed transform.
+     * At the normal half-ring startup point this is group 1. */
+    s_m2m_worker_group =
+        m2m_group_from_rx_offset(get_rx_dma_offset(NULL));
 
     /* Seed group 0 before TX begins so the DAC never outruns the producer on
      * its first lap.  Subsequent groups are filled by m2m_exact_task. */
