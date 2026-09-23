@@ -1,5 +1,50 @@
 # Phase5+ two-bundle demodulator
 
+## Full-turn requirement and current feasibility boundary
+
+At 40 MS/s, an adjacent phase step is identifiable only when its magnitude is
+strictly below 180 degrees. Two such 25 ns steps can add to more than 180 degrees
+over 50 ns (for example 0 -> 110 -> 220 degrees); their signed sum preserves the
+turn that a 50 ns endpoint difference loses. No demodulator can infer a single
+25 ns step beyond 180 degrees from sampled IQ alone without a motion prior.
+
+The full-current-raw8 recurrent LUT16 proposal has only two addressed history
+bits; the LUT8 version can address three. `tools/prove_polarcell_capacity.py`
+shows that exact adjacent Phase5 delta over bounded 25 ns steps up to 135
+degrees requires distinguishing all 32 previous phase bins (five bits). Both
+proposals can be trained approximations but cannot guarantee full-turn recovery.
+
+`tools/evaluate_winding_hints.py` exhausts a 32-bin smooth-motion model with
+each adjacent step at most 135 degrees and adjacent-step difference at most
+67.5 degrees. With exact five-bit endpoint phases, one middle half-plane bit
+permits unambiguous correction of 1,572/2,400 winding events; two middle
+quadrant bits permit 2,400/2,400. However the same tables miscorrect 1,900
+and 1,016 respectively of all 32^3 arbitrary phase triplets. These are not
+RF error rates: they demonstrate that a motion-model gate alone cannot promise
+clean video when IQ is noisy or discontinuous. A live design must preserve
+Golden on uncertain cells and be compared on recorded/live IQ.
+
+A possible Golden-preserving TX-only one-bit pipeline delays each DAC write one
+pair. Conceptually, bundle A addresses the normal five-bit endpoint-pair LUT
+and branches on a raw middle sign bit; bundle B stores the Golden DAC and a
+rail-polarity bit, addresses the next raw endpoint, and branches on the
+corresponding LUT correction flag. The next A emits either the saved Golden DAC
+or the selected rail. A 16-bit LUT word has room for Golden DAC6 + phase5 plus
+two correction flags and one polarity bit. This would consume every raw Q4/I4
+sample and leave RX BitScrambler unused. **The required four-way branch cycle
+has not been assembled or shown to loop in eight instruction slots without an
+extra jump.** Therefore this is not yet an executable two-bundle program. Its
+one-bit hint also cannot recover every full-turn trajectory, and the
+smooth-motion gate has false corrections on arbitrary phase triplets.
+
+The desired combination of exact Golden behavior on arbitrary noisy IQ, exact
+full-turn recovery on all admissible smooth trajectories, all 40 MS/s raw IQ,
+TX-only processing, and two bundles per 50 ns has **not** been demonstrated.
+Do not treat an assembler probe or synthetic score as proof of static-free
+video. The immediate experimental target is a Golden-preserving correction
+whose default branch is byte-identical to Golden, followed by live A/B and an
+IQ capture to measure whether >180-degree 50 ns events actually occur.
+
 ## Hardware disposition: blocked by C5 half-duplex BitScrambler
 
 The implementation below is a valid host-side DSP/LUT experiment but **cannot
