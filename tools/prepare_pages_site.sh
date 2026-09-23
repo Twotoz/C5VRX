@@ -19,8 +19,11 @@ gh api --paginate --slurp "repos/${REPO}/releases?per_page=100" \
 
 # Keep a bounded history of normal firmware plus every active PR prerelease.
 # Legacy archive releases are intentionally excluded.
+#
+# Mutable PR prereleases are briefly assetless while CI replaces their files.
+# Skip those transient snapshots instead of failing the entire Pages mirror.
 jq '
-  [ .[] | select(.draft == false) ] as $all
+  [ .[] | select(.draft == false and (.assets | length) > 0) ] as $all
   | ($all
       | map(select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")))
       | sort_by(.published_at)
