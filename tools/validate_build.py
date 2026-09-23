@@ -31,18 +31,38 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("three .bsasm programs (Golden + output experiment + Trajectory v2)",
-      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
+expected_bsasm = {
+    "fm.bsasm",
+    "fm4.bsasm",
+    "fm_traj.bsasm",
+    "fm_rx_polar6.bsasm",
+    "fm_polar11.bsasm",
+}
+check("expected Golden, output, Trajectory and Polar11 BitScrambler programs",
+      {f.name for f in bsasm_files} == expected_bsasm,
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
-    check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
-    check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
-    check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
-    check(f"{bsasm_file.name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
-    check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
-    check(f"{bsasm_file.name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
+    name = bsasm_file.name
+    check(f"{name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
+    check(f"{name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
+
+    if name == "fm_rx_polar6.bsasm":
+        check(f"{name}: cfg eof_on upstream", "cfg eof_on upstream" in bsasm)
+        check(f"{name}: NO eof_on downstream", "cfg eof_on downstream" not in bsasm)
+        check(f"{name}: cfg prefetch false", "cfg prefetch false" in bsasm)
+        check(f"{name}: cfg lut_width_bits 8", "cfg lut_width_bits 8" in bsasm)
+    elif name == "fm_polar11.bsasm":
+        check(f"{name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+        check(f"{name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
+        check(f"{name}: cfg prefetch true", "cfg prefetch true" in bsasm)
+        check(f"{name}: cfg lut_width_bits 8", "cfg lut_width_bits 8" in bsasm)
+    else:
+        check(f"{name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+        check(f"{name}: cfg prefetch true", "cfg prefetch true" in bsasm)
+        check(f"{name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
+        check(f"{name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
 
 # ---- Production .c file checks ----
 c_files = list(MAIN.glob("*.c"))
