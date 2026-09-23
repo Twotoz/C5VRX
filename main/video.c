@@ -648,6 +648,37 @@ static uint8_t *get_completed_rx_sample_window(size_t bytes)
     return s_raw_ring;
 }
 
+static void lift_boot_hw_probe(void)
+{
+    if (!lift_exact_enabled() || !s_rx_bs) return;
+
+    /* One bounded post-start sample tells hardware tests whether the RX
+     * predecoder is actually producing a changing Phase5 stream.  A constant
+     * low-five-bit payload maps to D=0 / DAC pedestal 20 and appears exactly
+     * as a black CVBS picture. */
+    uint8_t snapshot[64];
+    uint8_t *src = get_completed_rx_sample_window(sizeof(snapshot));
+    sync_dma_m2c(src, sizeof(snapshot));
+    memcpy(snapshot, src, sizeof(snapshot));
+
+    uint32_t phase_mask = 0;
+    unsigned transitions = 0;
+    unsigned nonzero_meta = 0;
+    for (unsigned i = 0; i < sizeof(snapshot); ++i) {
+        phase_mask |= 1u << (snapshot[i] & 0x1fu);
+        if ((snapshot[i] & 0xe0u) != 0) ++nonzero_meta;
+        if (i && ((snapshot[i] ^ snapshot[i - 1]) & 0x1fu)) ++transitions;
+    }
+
+    printf("LIFT_HW_PROBE rx_state=0x%08lx tx_state=0x%08lx "
+           "phase_mask=0x%08lx transitions=%u/63 meta_nonzero=%u/64 first=",
+           (unsigned long)BITSCRAMBLER.state[BITSCRAMBLER_DIR_RX].val,
+           (unsigned long)BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val,
+           (unsigned long)phase_mask, transitions, nonzero_meta);
+    for (unsigned i = 0; i < 16u; ++i) printf("%02x", snapshot[i]);
+    printf("\n");
+}
+
 
 /* Exact Phase5 state decode mirrored from the embedded fm.bsasm LUT.  The
  * detector is observation-only: the realtime BitScrambler remains the sole
@@ -5075,6 +5106,12 @@ esp_err_t video_start(void)
     BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
     if (s_rx_bs) {
         BITSCRAMBLER.state[BITSCRAMBLER_DIR_RX].val = 1u << 31;
+    }
+
+    if (lift_exact_enabled()) {
+        /* Allow several ring laps before taking the one-shot hardware probe. */
+        esp_rom_delay_us(2000);
+        lift_boot_hw_probe();
     }
 
     /* Distributed shadow observer: read-only, no PHY writes and no DMA pacing. */
