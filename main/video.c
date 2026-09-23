@@ -653,7 +653,7 @@ static esp_err_t m2m_switch_instructions(const void *program_bin)
     memcpy(&hdr, program_bin, sizeof(hdr));
     if (hdr.version != 1u || hdr.hw_rev != 0u ||
         hdr.hdr_len * sizeof(uint32_t) < sizeof(hdr) ||
-        hdr.inst_ct == 0u || hdr.inst_ct > BITSCRAMBLER_LL_MAX_INST) {
+        hdr.inst_ct == 0u || hdr.inst_ct > 8u) {
         return ESP_ERR_INVALID_ARG;
     }
 
