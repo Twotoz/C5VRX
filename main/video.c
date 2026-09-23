@@ -601,6 +601,181 @@ static int patch_descriptors_clear_eof(int dma_ch, bool is_rx)
     return count;
 }
 
+
+/* ----- Single-BitScrambler M2M exact-adjacent pipeline ----- */
+
+#define M2M_GROUP_COUNT 3u
+
+static inline unsigned m2m_group_from_rx_offset(uint32_t offset)
+{
+    unsigned group = offset / M2M_MAX_GROUP_BYTES;
+    return group < M2M_GROUP_COUNT ? group : (M2M_GROUP_COUNT - 1u);
+}
+
+static inline void m2m_group_span(unsigned group, size_t *offset, size_t *bytes)
+{
+    size_t off = (size_t)group * M2M_MAX_GROUP_BYTES;
+    size_t len = off < RAW_RING_BYTES ? RAW_RING_BYTES - off : 0u;
+    if (len > M2M_MAX_GROUP_BYTES) len = M2M_MAX_GROUP_BYTES;
+    *offset = off;
+    *bytes = len;
+}
+
+static esp_err_t m2m_process_group(unsigned group)
+{
+    if (!s_m2m_bs || group >= M2M_GROUP_COUNT) return ESP_ERR_INVALID_STATE;
+
+    size_t offset = 0;
+    size_t bytes = 0;
+    m2m_group_span(group, &offset, &bytes);
+    if (bytes < 8u || offset + bytes > RAW_RING_BYTES) return ESP_ERR_INVALID_SIZE;
+
+    uint8_t *raw = s_raw_ring + offset;
+    uint8_t *cvbs = s_cvbs_ring + offset;
+    size_t phase_written = 0;
+    size_t lift_written = 0;
+    int64_t begin_us = esp_timer_get_time();
+
+    /* Pass 1: every acquired raw Q4/I4 sample is converted with the same
+     * production Phase5 LUT used by Golden.  The raw ring itself is untouched,
+     * so all existing ARC/Fusion observers continue to see true Q4/I4. */
+    esp_err_t err = bitscrambler_load_program(s_m2m_bs, s_m2m_phase_program);
+    if (err == ESP_OK) {
+        err = bitscrambler_loopback_run(
+            s_m2m_bs, raw, bytes, s_m2m_phase, bytes, &phase_written);
+    }
+    if (err != ESP_OK) {
+        ++s_m2m_stats.errors;
+        memset(cvbs, s_m2m_last_cvbs, bytes);
+        sync_dma_c2m(cvbs, bytes);
+        printf("M2M_EXACT_ERROR stage=phase group=%u err=%s bytes=%u\n",
+               group, esp_err_to_name(err), (unsigned)bytes);
+        return err;
+    }
+
+    if (phase_written > bytes) phase_written = bytes;
+    if (phase_written < bytes) {
+        ++s_m2m_stats.phase_short;
+        uint8_t hold = phase_written ? s_m2m_phase[phase_written - 1u]
+                                     : s_m2m_last_phase;
+        memset(s_m2m_phase + phase_written, hold, bytes - phase_written);
+    }
+    if (bytes) s_m2m_last_phase = s_m2m_phase[bytes - 1u];
+
+    /* Pass 2: exact Phase5 adjacent FM:
+     *   d0 = wrap32(m-p)
+     *   d1 = wrap32(c-m)
+     *   pair = d0 + d1
+     * with no second wrap.  fm_m2m_lift emits the proven [D,D] 6-bit DAC
+     * contract, so its output byte rate equals the raw input byte rate. */
+    err = bitscrambler_load_program(s_m2m_bs, s_m2m_lift_program);
+    if (err == ESP_OK) {
+        err = bitscrambler_loopback_run(
+            s_m2m_bs, s_m2m_phase, bytes, cvbs, bytes, &lift_written);
+    }
+    if (err != ESP_OK) {
+        ++s_m2m_stats.errors;
+        memset(cvbs, s_m2m_last_cvbs, bytes);
+        sync_dma_c2m(cvbs, bytes);
+        printf("M2M_EXACT_ERROR stage=lift group=%u err=%s bytes=%u\n",
+               group, esp_err_to_name(err), (unsigned)bytes);
+        return err;
+    }
+
+    if (lift_written > bytes) lift_written = bytes;
+    if (lift_written < bytes) {
+        ++s_m2m_stats.lift_short;
+        uint8_t hold = lift_written ? cvbs[lift_written - 1u]
+                                    : s_m2m_last_cvbs;
+        memset(cvbs + lift_written, hold, bytes - lift_written);
+    }
+    if (bytes) s_m2m_last_cvbs = cvbs[bytes - 1u];
+
+    /* CPU only touches deterministic finite-block tails; flush those writes
+     * before the independent PARLIO TX DMA reaches this region. */
+    sync_dma_c2m(s_m2m_phase, bytes);
+    sync_dma_c2m(cvbs, bytes);
+
+    uint32_t elapsed_us = (uint32_t)(esp_timer_get_time() - begin_us);
+    uint32_t budget_us = (uint32_t)((bytes * 1000000ULL + IQ_RATE_HZ - 1u) /
+                                    IQ_RATE_HZ);
+    ++s_m2m_stats.groups;
+    s_m2m_stats.last_us = elapsed_us;
+    if (elapsed_us > s_m2m_stats.max_us) s_m2m_stats.max_us = elapsed_us;
+    s_m2m_stats.last_input_bytes = (uint32_t)bytes;
+    s_m2m_stats.last_phase_written = (uint32_t)phase_written;
+    s_m2m_stats.last_lift_written = (uint32_t)lift_written;
+    if (elapsed_us > budget_us) ++s_m2m_stats.deadline_misses;
+
+    if (s_m2m_stats.groups <= 6u ||
+        (s_m2m_stats.groups & 0xffu) == 0u ||
+        elapsed_us > budget_us) {
+        uint32_t rate_x10 = elapsed_us ?
+            (uint32_t)((bytes * 10ULL + elapsed_us / 2u) / elapsed_us) : 0u;
+        printf("M2M_EXACT group=%u n=%lu bytes=%u phase=%u lift=%u "
+               "time=%luus budget=%luus rate=%lu.%luMB/s miss=%lu short=%lu/%lu err=%lu\n",
+               group, (unsigned long)s_m2m_stats.groups, (unsigned)bytes,
+               (unsigned)phase_written, (unsigned)lift_written,
+               (unsigned long)elapsed_us, (unsigned long)budget_us,
+               (unsigned long)(rate_x10 / 10u), (unsigned long)(rate_x10 % 10u),
+               (unsigned long)s_m2m_stats.deadline_misses,
+               (unsigned long)s_m2m_stats.phase_short,
+               (unsigned long)s_m2m_stats.lift_short,
+               (unsigned long)s_m2m_stats.errors);
+    }
+    return ESP_OK;
+}
+
+static void m2m_exact_task(void *arg)
+{
+    (void)arg;
+    unsigned current = m2m_group_from_rx_offset(get_rx_dma_offset(NULL));
+
+    for (;;) {
+        unsigned observed = m2m_group_from_rx_offset(get_rx_dma_offset(NULL));
+        if (observed == current) {
+            taskYIELD();
+            continue;
+        }
+
+        unsigned delta = (observed + M2M_GROUP_COUNT - current) %
+                         M2M_GROUP_COUNT;
+        if (delta == 0u) continue;
+        if (delta > 1u) s_m2m_stats.skipped_groups += delta - 1u;
+
+        /* Advance the logical producer marker before doing blocking M2M work.
+         * If RX crosses another boundary during the transform, the next loop
+         * will see that delta and process the additional completed group. */
+        unsigned completed = current;
+        current = observed;
+        for (unsigned step = 0; step < delta; ++step) {
+            (void)m2m_process_group((completed + step) % M2M_GROUP_COUNT);
+        }
+    }
+}
+
+static esp_err_t m2m_exact_init(void)
+{
+    if (!m2m_exact_enabled()) return ESP_OK;
+    if (s_m2m_bs) return ESP_OK;
+
+    /* I2S0 is used only as the internal GDMA trigger for BitScrambler
+     * loopback.  No I2S peripheral is started.  This is the same C5 M2M route
+     * used by the legacy bounded BitScrambler hardware oracle. */
+    esp_err_t err = bitscrambler_loopback_create(
+        &s_m2m_bs, SOC_BITSCRAMBLER_ATTACH_I2S0, M2M_MAX_GROUP_BYTES);
+    if (err != ESP_OK) return err;
+
+    /* Seed group 0 before TX begins so the DAC never outruns the producer on
+     * its first lap.  Subsequent groups are filled by m2m_exact_task. */
+    err = m2m_process_group(0u);
+    if (err != ESP_OK) return err;
+
+    BaseType_t task_ok = xTaskCreate(m2m_exact_task, "m2m_exact", 4096,
+                                     NULL, 20, NULL);
+    return task_ok == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
+}
+
 /* Pick a descriptor that RX has already completed, rather than sampling a
  * fixed address that GDMA may be overwriting at the same instant. The control
  * loop now consumes one complete 4092-byte descriptor per 50 ms evaluation. */
