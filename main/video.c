@@ -190,6 +190,30 @@ static QueueHandle_t s_menu_commands;
 static bitscrambler_handle_t s_flight_bs;
 static bitscrambler_handle_t s_rx_bs;
 
+/* ESP32-C5 BitScrambler transaction re-arm.
+ *
+ * The public bitscrambler_reset() helper first requests HALT and then polls
+ * state[dir].in_idle before it resets the FIFO.  On a PARLIO-attached C5
+ * channel that state is not guaranteed to assert while the peripheral side
+ * is quiescent, which caused deterministic timeouts on both the experimental
+ * RX predecoder and TX restore-after-menu path.
+ *
+ * At every call site below the engine is already HALTed by load_program() or
+ * the owning PARLIO unit is disabled, so it is safe to perform the actual
+ * reset portion directly: keep HALT asserted, pulse fifo_rst and clear the EOF
+ * trace.  This also triggers the configured prefetch=true transaction prime
+ * without relying on the broken idle poll.
+ */
+static inline void bitscrambler_rearm_quiescent(bitscrambler_direction_t dir)
+{
+    BITSCRAMBLER.ctrl[dir].pause = 0;
+    BITSCRAMBLER.ctrl[dir].halt = 1;
+    BITSCRAMBLER.ctrl[dir].fifo_rst = 1;
+    BITSCRAMBLER.ctrl[dir].fifo_rst = 0;
+    BITSCRAMBLER.state[dir].eof_trace_clr = 1;
+    BITSCRAMBLER.state[dir].eof_trace_clr = 0;
+}
+
 /* Cache synchronization helpers for DMA buffers and descriptors on ESP32-C5.
  * Aligns address down and size up to 64-byte cache line boundaries so esp_cache_msync
  * never fails with ESP_ERR_INVALID_ARG on unaligned descriptors or buffers. */
@@ -376,15 +400,15 @@ static esp_err_t prepare_rx(void)
         err = bitscrambler_load_program(s_rx_bs, s_rx_phase_program);
         if (err != ESP_OK) return err;
 
-        /* Do NOT call bitscrambler_reset() on the C5 RX channel here.
-         * The generic driver implements reset by requesting HALT and polling
-         * state.rx.in_idle.  Hardware validation on ESP32-C5 shows that the
-         * RX channel does not assert in_idle before the first PARLIO receive,
-         * so that path times out even though bitscrambler_new() has already
-         * performed the dedicated RX function reset in claim_channel().
+        /* The generic reset helper cannot be used here on ESP32-C5 RX:
+         * it waits for in_idle before pulsing the FIFO reset, but that state
+         * never asserted in the pre-transaction PARLIO topology on hardware.
          *
-         * load_program() deliberately leaves the engine halted. start_rx()
-         * simply asserts RUN when the live receive path is armed. */
+         * We still MUST perform the FIFO re-arm after load_program(), because
+         * cfg prefetch=true primes the 64-bit input register as part of that
+         * transaction reset.  Without it the live RX predecoder can begin from
+         * an empty/zero pipeline, which collapses LIFT output to black pedestal. */
+        bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX);
     }
 
     return parlio_rx_unit_enable(s_rx, false);
@@ -3391,7 +3415,10 @@ static void start_flight_demodulator(void)
     } else {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_program));
     }
-    ESP_ERROR_CHECK(bitscrambler_reset(s_flight_bs));
+    /* load_program() leaves the TX engine halted.  Re-arm the FIFO directly
+     * while PARLIO TX is quiescent instead of polling in_idle; the latter
+     * times out after returning from the standalone menu on ESP32-C5. */
+    bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_TX);
     ESP_ERROR_CHECK(bitscrambler_start(s_flight_bs));
 }
 
