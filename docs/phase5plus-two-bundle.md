@@ -31,6 +31,43 @@ only the TX BitScrambler in the realtime path, or use a separately proven
 accelerator that can run concurrently with TX. A host oracle and two TX
 bundles alone are insufficient evidence of a runnable C5 design.
 
+### TX-only successor candidate (not hardware validated)
+
+Keep Golden's raw 8-bit Q4/I4 DMA ring and consume both bytes of each 50 ns
+pair. The TX BitScrambler can use the middle byte's Q sign as a one-bit
+winding hint while retaining a five-bit state for each endpoint:
+
+- Encode an endpoint as two raw I/Q sign bits and three phase-within-quadrant
+  bits from a 256-entry LUT. This is 32 states, though the nine Golden phase
+  values observed in each sign quadrant must be remapped to eight; at least
+  one boundary bin per quadrant cannot be preserved byte-for-byte.
+- Use the previous and current five-bit states as the 10-bit address of the
+  same 1024x16 LUT. Each word carries two six-bit DAC outcomes: one for each
+  value of the middle Q-sign bit. Its remaining upper three bits supply the
+  phase-within-quadrant code when the word is addressed by a raw IQ byte.
+  The first 256 words serve both purposes without exceeding 16 bits
+  (`6 + 6 + 3 = 15`).
+- In the first steady-state bundle, address the endpoint-pair LUT and branch
+  on the raw middle Q sign. In the second bundle, emit the selected DAC code
+  twice and address the next endpoint's raw-to-phase LUT entry. Both branch
+  targets jump back to the first bundle. This is four stored instructions
+  including the startup prime, but exactly two executed bundles per 50 ns.
+
+An ESP-IDF v6.0.2 assembler probe accepted the complete four-instruction
+schedule, including mixed LUT/output/input bit sources and the middle-sign
+branch. This proves encoding feasibility, not sustained hardware throughput.
+The CPU keeps receiving untouched raw IQ for ARC and diagnostics.
+
+This is a conservative *approximation*, not exact adjacent FM. Under a simple
+32-bin model with both adjacent steps at most 12 bins and their difference at
+most 6 bins, the middle Q sign uniquely identifies the winding branch for
+1,370 of 2,400 winding triplets (57.1%). Ambiguous endpoint/sign cells must
+fall back to Golden. These model counts do not predict live image quality:
+quantized IQ, noise, and trajectories outside the gate can change the result.
+The required next proof is a raw-IQ oracle and a live Golden A/B with CVBS lock,
+image quality, transport counters, and exact DAC timing. Do not enable this
+candidate as a default based on assembler or model results alone.
+
 ## Host-side experiment
 
 Phase5+ fixes a specific error in the 25 ns Polar11 experiment: clipping two
