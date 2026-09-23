@@ -137,6 +137,7 @@ static volatile int64_t s_last_user_lag_mark_us;
 BITSCRAMBLER_PROGRAM(s_fm_program, "fm");
 BITSCRAMBLER_PROGRAM(s_fm4_program, "fm4");
 BITSCRAMBLER_PROGRAM(s_fm_traj_program, "fm_traj");
+BITSCRAMBLER_PROGRAM(s_fm_phase6_tx_program, "fm_phase6_tx");
 
 /* ----- Fixed production constants ----- */
 #define IQ_RATE_HZ       40000000u   /* MODEM_DIAG / PARLIO RX clock */
@@ -239,6 +240,7 @@ typedef enum {
 typedef enum {
     DEMOD_MODE_GOLDEN_PHASE5 = 0,
     DEMOD_MODE_TRAJECTORY_V2 = 1,
+    DEMOD_MODE_PHASE6_TX = 2,
     DEMOD_MODE_COUNT,
 } demod_mode_t;
 
@@ -1125,18 +1127,18 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
+    if (s_demod_mode == DEMOD_MODE_PHASE6_TX) return "PHASE6 TX";
     return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
 }
 
 static void cycle_demod_mode(void)
 {
-    s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
-                   DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
+    s_demod_mode = (demod_mode_t)((s_demod_mode + 1) % DEMOD_MODE_COUNT);
     /* TRAJ V2 and 4BIT@80 use different BitScrambler/output contracts.
      * Selecting TRAJ V2 therefore moves the DAC back to its proven 6-bit path.
      * The inverse action is handled on the DAC control: selecting 4BIT@80
      * automatically returns to GOLDEN instead of making 4-bit unreachable. */
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)
+    if (s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5)
         s_output_mode = VIDEO_OUTPUT_6BIT_40;
 
     /* Semantic sync interpretation changes with the demod LUT. Do not carry
@@ -1372,7 +1374,7 @@ static void settings_load(void)
     } else if (settings.demod_mode < DEMOD_MODE_COUNT) {
         s_demod_mode = (demod_mode_t)settings.demod_mode;
     }
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    if (s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5) s_output_mode = VIDEO_OUTPUT_6BIT_40;
     if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
     if (settings.rx_profile < RX_PROFILE_COUNT) {
         s_rx_profile = (rx_profile_t)settings.rx_profile;
@@ -3160,7 +3162,7 @@ static void menu_draw_video_page(void)
 {
     char detected[24];
     bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80 ||
-                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2;
+                        s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5;
     menu_draw_page_title("VIDEO OUTPUT", experimental ? "EXPERIMENTAL" : "DEFAULT");
     menu_ui_value_box(100, 22, 130, "DAC", output_mode_name());
     menu_ui_value_box(238, 22, 138, "DEMOD", demod_mode_name());
@@ -3216,6 +3218,8 @@ static void start_flight_demodulator(void)
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
     if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
+    } else if (s_demod_mode == DEMOD_MODE_PHASE6_TX) {
+        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_phase6_tx_program));
     } else if (s_output_mode == VIDEO_OUTPUT_4BIT_80) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm4_program));
     } else {
@@ -3650,7 +3654,7 @@ static void handle_button_long_click(void)
             s_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
                             VIDEO_OUTPUT_4BIT_80 : VIDEO_OUTPUT_6BIT_40;
             if (s_output_mode == VIDEO_OUTPUT_4BIT_80 &&
-                s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
+                s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5) {
                 /* 4BIT@80 has its own fm4 BitScrambler contract. Keep the
                  * combination valid by returning to GOLDEN automatically. */
                 s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
@@ -3704,6 +3708,7 @@ static void analog_agc_task(void *arg)
     bool btn_profile_fired = false;
     bool btn_demod_fired = false;
     bool btn_recovery_fired = false;
+    bool btn_started_outside_menu = false;
     bool was_locked = false;
     range_control_t range_controller;
     range_control_reset(&range_controller, s_current_gain);
@@ -3755,15 +3760,17 @@ static void analog_agc_task(void *arg)
             btn_profile_fired = false;
             btn_demod_fired = false;
             btn_recovery_fired = false;
+            btn_started_outside_menu = false;
         } else {
             int btn_level = gpio_get_level(BOOT_BTN_GPIO);
             if (btn_level == 0) {
+                if (btn_ticks == 0) btn_started_outside_menu = !s_menu_active;
                 btn_ticks++;
 
                 /* This path deliberately ignores the persisted BOOT-menu bit.
                  * The ordinary 0.6 s long-click may report Safe Flight at tick
                  * 12; continuing to hold until tick 60 must still recover. */
-                if (!s_menu_active && btn_ticks >= 60 && !btn_recovery_fired) {
+                if (btn_started_outside_menu && btn_ticks >= 60 && !btn_recovery_fired) {
                     btn_recovery_fired = true;
                     btn_long_fired = true;
                     open_recovery_menu();
@@ -3787,7 +3794,7 @@ static void analog_agc_task(void *arg)
                         cycle_demod_mode();
                         settings_save();
                         printf("[MENU: DEMOD] -> %s%s\n", demod_mode_name(),
-                               s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ?
+                               s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5 ?
                                " (6BIT@40 forced)" : "");
                         menu_render_menu();
                         s_menu_timeout_ticks = 0;
@@ -3824,6 +3831,7 @@ static void analog_agc_task(void *arg)
                 btn_profile_fired = false;
                 btn_demod_fired = false;
                 btn_recovery_fired = false;
+                btn_started_outside_menu = false;
             }
         }
 
@@ -4475,6 +4483,16 @@ static void console_diag_task(void *arg)
                     lab_run_rx_auto();
                 } else if (c == 'S') {
                     lab_run_tx_self_noise_probe();
+                } else if (c == 'J') {
+                    s_demod_mode = s_demod_mode == DEMOD_MODE_PHASE6_TX ?
+                                   DEMOD_MODE_GOLDEN_PHASE5 : DEMOD_MODE_PHASE6_TX;
+                    s_output_mode = VIDEO_OUTPUT_6BIT_40;
+                    settings_save();
+                    printf("[DEMOD] -> %s; AGC=%s; rebooting\n",
+                           demod_mode_name(), s_agc_mode == ANALOG_AGC_ACTIVE ? "AUTO" : "MANUAL");
+                    fflush(stdout);
+                    vTaskDelay(pdMS_TO_TICKS(120));
+                    esp_restart();
                 } else if (c == 'K') {
                     lab_request_fresh_phy_calibration();
                 } else if (c == 'Y') {

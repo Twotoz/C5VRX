@@ -33,3 +33,4 @@ idf_component_register(
 target_bitscrambler_add_src("fm.bsasm")
 target_bitscrambler_add_src("fm4.bsasm")
 target_bitscrambler_add_src("fm_traj.bsasm")
+target_bitscrambler_add_src("fm_phase6_tx.bsasm")
