@@ -55,9 +55,11 @@ The ESP32-C5 has independent RX and TX BitScrambler channels. PHASE6 uses:
 
 - RX channel: one-byte raw Q4/I4 -> Phase5 conversion at 40 MS/s.
 - TX channel: two-bundle 50 ns Phase6 backend.
-- The RX preprocessor uses `prefetch=false` and explicit self-priming. This
-  avoids the C5 RX `in_idle` reset timeout and the earlier empty-prefetch
-  black-screen failure.
+- The RX preprocessor uses the prefetched low byte lane. The C5 instruction
+  mux cannot select LUT output `L` and high input lane `M[63:56]` in one
+  bundle, so explicit high-lane reads cannot sustain one output byte per input
+  byte. RX is re-armed at each receive restart using the C5 FIFO reset path,
+  without polling the unreliable `in_idle` state.
 - PHASE6 is boot-only because its DMA ring stores Phase5+metadata instead of
   raw Q4/I4.
 

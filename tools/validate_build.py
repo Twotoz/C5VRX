@@ -47,11 +47,11 @@ for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
     if bsasm_file.name == "fm_rx_phase.bsasm":
         check("fm_rx_phase.bsasm: cfg eof_on upstream", "cfg eof_on upstream" in bsasm)
-        check("fm_rx_phase.bsasm: cfg prefetch false", "cfg prefetch false" in bsasm)
-        check("fm_rx_phase.bsasm: explicit one-byte self-prime",
-              "prime_read:" in bsasm and
-              "prime_lookup:" in bsasm and
-              "set 16..23 56..63" in bsasm)
+        check("fm_rx_phase.bsasm: cfg prefetch true", "cfg prefetch true" in bsasm)
+        check("fm_rx_phase.bsasm: mux-compatible byte-lane address",
+              "prime:" in bsasm and
+              "set 16..23 0..7" in bsasm and
+              "set 16..23 56..63" not in bsasm)
     else:
         check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
         check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
@@ -67,11 +67,11 @@ c_names = [f.name for f in c_files]
 video_c = read(MAIN / "video.c")
 menu_lifecycle = video_c.split("static void video_set_menu_mode", 1)[1].split("static void menu_cycle_standard_mode", 1)[0]
 
-check("PHASE6 RX self-primes without public idle-reset",
+check("PHASE6 RX uses the quiescent FIFO re-arm path",
       "bitscrambler_reset(s_rx_bs)" not in video_c and
       "bitscrambler_start(s_rx_bs)" in video_c and
       "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and
-      "cfg prefetch=false" in video_c)
+      "cfg prefetch=true" in video_c)
 
 check("C5 BitScrambler rearm pulses FIFO without idle polling",
       "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and

@@ -400,10 +400,9 @@ static esp_err_t prepare_rx(void)
         err = bitscrambler_load_program(s_rx_bs, s_rx_phase_program);
         if (err != ESP_OK) return err;
 
-        /* RX uses cfg prefetch=false and self-primes with explicit read 8
-         * instructions. Do not arm a transaction here: PARLIO has not started
-         * producing samples yet. start_rx() resets/re-arms the byte-local
-         * program immediately before every live receive transaction. */
+        /* The RX program uses cfg prefetch=true so each steady-state bundle can
+         * select both the previous LUT result and the next byte from M[7:0].
+         * start_rx() re-arms the program immediately before each receive. */
     }
 
     return parlio_rx_unit_enable(s_rx, false);
@@ -481,11 +480,9 @@ static esp_err_t prepare_tx(void)
 
 static esp_err_t start_rx(void)
 {
-    /* Reset the RX byte-predecoder at every receive restart. Unlike the old
-     * prefetch=true experiment, fm_rx_phase.bsasm now starts with an empty
-     * input register and explicitly reads/looks up its first sample. That
-     * makes this quiescent FIFO/program re-arm safe before PARLIO delivers
-     * data and prevents stale phase alignment after menu/lab restarts. */
+    /* Reset the RX byte-predecoder at every receive restart. The generated
+     * one-bundle program uses the prefetched low byte lane, which can share an
+     * instruction with the prior LUT result; the high lane cannot. */
     if (s_rx_bs) {
         bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX);
         esp_err_t bs_err = bitscrambler_start(s_rx_bs);

@@ -70,33 +70,27 @@ def render(lut: list[int]) -> str:
 # Steady state is one BitScrambler bundle per input byte. RX and TX use
 # independent C5 BitScrambler channels and independent instruction/LUT RAM.
 #
-# Deliberately DO NOT use hardware prefetch here. ESP32-C5 RX startup showed
-# that pre-transaction prefetch/reset state is fragile when PARLIO has not
-# started delivering data yet. This byte-local converter primes itself with
-# explicit reads instead.
-cfg prefetch false
+# Use the prefetched low byte lane for the LUT address. The ESP32-C5 mux cannot
+# select L (the previous LUT result) and M[63:56] in one instruction, so the
+# high-lane explicit-read form cannot sustain one output byte per input byte.
+cfg prefetch true
 cfg eof_on upstream
 cfg trailing_bytes 0
 cfg lut_width_bits 16
 lut %s
 
-prime_read:
-    # With prefetch disabled the input register starts at zero. Pull one real
-    # peripheral byte into M[63:56].
-    read 8
-
-prime_lookup:
-    # Address the first real raw byte from the newest byte lane, while reading
-    # the following sample. No output is emitted during the two-cycle prime.
-    set 16..23 56..63,
+prime:
+    # Prefetch presents the first real RX byte in M[7:0]. Address that sample
+    # while advancing the input stream by one byte.
+    set 16..23 0..7,
     set 24..25 L,
     read 8
 
 convert:
-    # L is the lookup result for the previous sample. Emit it while addressing
-    # the newest byte now sitting in M[63:56], and advance by exactly one byte.
+    # Emit the previous sample's LUT result while addressing the prefetched
+    # next byte from the mux-compatible low register lane.
     set 0..7 L0..L7,
-    set 16..23 56..63,
+    set 16..23 0..7,
     set 24..25 L,
     read 8,
     write 8,
