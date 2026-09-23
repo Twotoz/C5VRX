@@ -45,11 +45,19 @@ check("LIFT-FM TX backend is predecoded, two-bundle, and emits [D,D]",
 
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
-    check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+    if bsasm_file.name == "fm_rx_phase.bsasm":
+        check("fm_rx_phase.bsasm: cfg eof_on upstream", "cfg eof_on upstream" in bsasm)
+        check("fm_rx_phase.bsasm: cfg prefetch false", "cfg prefetch false" in bsasm)
+        check("fm_rx_phase.bsasm: explicit one-byte self-prime",
+              "prime_read:" in bsasm and
+              "prime_lookup:" in bsasm and
+              "set 16..23 56..63" in bsasm)
+    else:
+        check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+        check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
+        check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
     check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
-    check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
     check(f"{bsasm_file.name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
-    check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
     check(f"{bsasm_file.name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
 
 # ---- Production .c file checks ----
@@ -59,10 +67,11 @@ c_names = [f.name for f in c_files]
 video_c = read(MAIN / "video.c")
 menu_lifecycle = video_c.split("static void video_set_menu_mode", 1)[1].split("static void menu_cycle_standard_mode", 1)[0]
 
-check("LIFT RX avoids pre-transaction bitscrambler_reset on ESP32-C5",
+check("LIFT RX self-primes without public idle-reset",
       "bitscrambler_reset(s_rx_bs)" not in video_c and
       "bitscrambler_start(s_rx_bs)" in video_c and
-      "in_idle before pulsing the FIFO reset" in video_c)
+      "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and
+      "cfg prefetch=false" in video_c)
 
 check("C5 BitScrambler rearm pulses FIFO without idle polling",
       "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and
