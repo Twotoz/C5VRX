@@ -62,7 +62,7 @@ menu_lifecycle = video_c.split("static void video_set_menu_mode", 1)[1].split("s
 check("LIFT RX avoids pre-transaction bitscrambler_reset on ESP32-C5",
       "bitscrambler_reset(s_rx_bs)" not in video_c and
       "bitscrambler_start(s_rx_bs)" in video_c and
-      "RX channel does not assert in_idle before the first PARLIO receive" in video_c)
+      "in_idle before pulsing the FIFO reset" in video_c)
 
 check("C5 BitScrambler rearm pulses FIFO without idle polling",
       "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and
