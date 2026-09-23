@@ -64,6 +64,17 @@ check("LIFT RX avoids pre-transaction bitscrambler_reset on ESP32-C5",
       "bitscrambler_start(s_rx_bs)" in video_c and
       "RX channel does not assert in_idle before the first PARLIO receive" in video_c)
 
+check("C5 BitScrambler rearm pulses FIFO without idle polling",
+      "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and
+      "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_TX)" in video_c and
+      "BITSCRAMBLER.ctrl[dir].fifo_rst = 1;" in video_c and
+      "bitscrambler_reset(s_flight_bs)" not in video_c)
+
+check("LIFT hardware boot probe reports live Phase5 variation",
+      "LIFT_HW_PROBE" in video_c and
+      "phase_mask=0x%08lx" in video_c and
+      "transitions=%u/63" in video_c)
+
 check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "menu_raster.c"},
       f"found: {c_names}")
 check("main.c present", "main.c" in c_names)
