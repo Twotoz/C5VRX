@@ -142,6 +142,29 @@ static esp_err_t route_modem_iq(void)
     return ESP_OK;
 }
 
+esp_err_t rf_route_modem_diag_window(unsigned first_signal)
+{
+    if (first_signal > 24u) return ESP_ERR_INVALID_ARG;
+    for (unsigned lane = 0u; lane < 8u; ++lane) {
+        esp_rom_gpio_connect_out_signal(s_iq_pins[lane],
+                                        MODEM_DIAG0_IDX + first_signal + lane,
+                                        false, false);
+    }
+    __asm__ __volatile__("fence iorw, iorw" ::: "memory");
+    return ESP_OK;
+}
+
+esp_err_t rf_restore_modem_iq_routes(void)
+{
+    for (unsigned lane = 0u; lane < 8u; ++lane) {
+        esp_rom_gpio_connect_out_signal(s_iq_pins[lane],
+                                        MODEM_DIAG0_IDX + s_iq_diag[lane],
+                                        false, false);
+    }
+    __asm__ __volatile__("fence iorw, iorw" ::: "memory");
+    return ESP_OK;
+}
+
 static void rf_enable_continuous_modem(void)
 {
     /* Keep CPU ownership of HP SRAM */

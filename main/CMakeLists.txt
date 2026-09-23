@@ -33,3 +33,8 @@ idf_component_register(
 target_bitscrambler_add_src("fm.bsasm")
 target_bitscrambler_add_src("fm4.bsasm")
 target_bitscrambler_add_src("fm_traj.bsasm")
+# Exact two-bundle Phase5-domain LUT16 hardware oracle for PHASE6 research.
+# This is compiled for assembler/firmware validation but is not a live menu mode.
+target_bitscrambler_add_src("fm_lift16_phase.bsasm")
+# Independent RX BitScrambler preprocessor for the opt-in exact PHASE6 path.
+target_bitscrambler_add_src("fm_rx_phase.bsasm")

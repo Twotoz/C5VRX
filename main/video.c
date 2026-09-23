@@ -137,6 +137,8 @@ static volatile int64_t s_last_user_lag_mark_us;
 BITSCRAMBLER_PROGRAM(s_fm_program, "fm");
 BITSCRAMBLER_PROGRAM(s_fm4_program, "fm4");
 BITSCRAMBLER_PROGRAM(s_fm_traj_program, "fm_traj");
+BITSCRAMBLER_PROGRAM(s_fm_lift16_phase_program, "fm_lift16_phase");
+BITSCRAMBLER_PROGRAM(s_rx_phase_program, "fm_rx_phase");
 
 /* ----- Fixed production constants ----- */
 #define IQ_RATE_HZ       40000000u   /* MODEM_DIAG / PARLIO RX clock */
@@ -186,6 +188,31 @@ static volatile uint16_t s_last_sync_width_20m;
 static volatile int s_last_sync_quality;
 static QueueHandle_t s_menu_commands;
 static bitscrambler_handle_t s_flight_bs;
+static bitscrambler_handle_t s_rx_bs;
+
+/* ESP32-C5 BitScrambler transaction re-arm.
+ *
+ * The public bitscrambler_reset() helper first requests HALT and then polls
+ * state[dir].in_idle before it resets the FIFO.  On a PARLIO-attached C5
+ * channel that state is not guaranteed to assert while the peripheral side
+ * is quiescent, which caused deterministic timeouts on both the experimental
+ * RX predecoder and TX restore-after-menu path.
+ *
+ * At every call site below the engine is already HALTed by load_program() or
+ * the owning PARLIO unit is disabled, so it is safe to perform the actual
+ * reset portion directly: keep HALT asserted, pulse fifo_rst and clear the EOF
+ * trace.  This also triggers the configured prefetch=true transaction prime
+ * without relying on the broken idle poll.
+ */
+static inline void bitscrambler_rearm_quiescent(bitscrambler_direction_t dir)
+{
+    BITSCRAMBLER.ctrl[dir].pause = 0;
+    BITSCRAMBLER.ctrl[dir].halt = 1;
+    BITSCRAMBLER.ctrl[dir].fifo_rst = 1;
+    BITSCRAMBLER.ctrl[dir].fifo_rst = 0;
+    BITSCRAMBLER.state[dir].eof_trace_clr = 1;
+    BITSCRAMBLER.state[dir].eof_trace_clr = 0;
+}
 
 /* Cache synchronization helpers for DMA buffers and descriptors on ESP32-C5.
  * Aligns address down and size up to 64-byte cache line boundaries so esp_cache_msync
@@ -219,6 +246,7 @@ static unsigned s_menu_node_capacity;
 /* AGC sampling and channel scan are serialized in analog_agc_task, so they
  * share one descriptor-sized CPU snapshot instead of reserving 8 KiB. */
 static uint8_t s_control_sample_buf[CONTROL_SAMPLE_BYTES];
+static uint8_t s_diag_scan_buf[1024];
 static unsigned s_menu_node_count;
 static volatile bool s_menu_active;
 static volatile bool s_menu_boot_btn_enabled = true;
@@ -239,6 +267,7 @@ typedef enum {
 typedef enum {
     DEMOD_MODE_GOLDEN_PHASE5 = 0,
     DEMOD_MODE_TRAJECTORY_V2 = 1,
+    DEMOD_MODE_PHASE6_EXP = 2,
     DEMOD_MODE_COUNT,
 } demod_mode_t;
 
@@ -262,6 +291,11 @@ static volatile video_output_mode_t s_output_mode = VIDEO_OUTPUT_6BIT_40;
 static video_output_mode_t s_tx_unit_mode = VIDEO_OUTPUT_6BIT_40;
 static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
 static volatile rx_profile_t s_rx_profile = RX_PROFILE_ARC;
+
+static inline bool phase6_enabled(void)
+{
+    return s_demod_mode == DEMOD_MODE_PHASE6_EXP;
+}
 static volatile arc_v3_state_t s_last_arc_v3_state = ARC_V3_ACQUIRE;
 static volatile arc_v3_q4_state_t s_last_arc_v3_q4_state = ARC_V3_Q4_STARVED;
 static volatile bool s_last_arc_v3_filtered_valid;
@@ -348,6 +382,30 @@ static esp_err_t prepare_rx(void)
     err = parlio_new_rx_soft_delimiter(&delim_cfg, &s_rx_delimiter);
     if (err != ESP_OK) return err;
 
+    /* Phase6 Unwrapped Golden uses the C5's independent RX BitScrambler channel as a
+     * one-byte-per-cycle preprocessor. The DMA ring remains exactly 40 MB/s:
+     * low five bits are Phase5, high three bits retain envelope class.
+     *
+     * ESP-IDF 6.0.2 has independent RX/TX BitScrambler claims, instruction
+     * RAM and LUT RAM. TX is allocated later by prepare_tx(). */
+    if (phase6_enabled()) {
+        const bitscrambler_config_t rx_bs_cfg = {
+            .dir = BITSCRAMBLER_DIR_RX,
+            .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
+        };
+        err = bitscrambler_new(&rx_bs_cfg, &s_rx_bs);
+        if (err != ESP_OK) return err;
+        err = bitscrambler_enable(s_rx_bs);
+        if (err != ESP_OK) return err;
+        err = bitscrambler_load_program(s_rx_bs, s_rx_phase_program);
+        if (err != ESP_OK) return err;
+
+        /* RX uses cfg prefetch=false and self-primes with explicit read 8
+         * instructions. Do not arm a transaction here: PARLIO has not started
+         * producing samples yet. start_rx() resets/re-arms the byte-local
+         * program immediately before every live receive transaction. */
+    }
+
     return parlio_rx_unit_enable(s_rx, false);
 }
 
@@ -423,6 +481,17 @@ static esp_err_t prepare_tx(void)
 
 static esp_err_t start_rx(void)
 {
+    /* Reset the RX byte-predecoder at every receive restart. Unlike the old
+     * prefetch=true experiment, fm_rx_phase.bsasm now starts with an empty
+     * input register and explicitly reads/looks up its first sample. That
+     * makes this quiescent FIFO/program re-arm safe before PARLIO delivers
+     * data and prevents stale phase alignment after menu/lab restarts. */
+    if (s_rx_bs) {
+        bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX);
+        esp_err_t bs_err = bitscrambler_start(s_rx_bs);
+        if (bs_err != ESP_OK) return bs_err;
+    }
+
     esp_err_t err = parlio_rx_soft_delimiter_start_stop(s_rx, s_rx_delimiter, true);
     if (err != ESP_OK) return err;
     const parlio_receive_config_t cfg = {
@@ -571,6 +640,37 @@ static uint8_t *get_completed_rx_sample_window(size_t bytes)
         }
     }
     return s_raw_ring;
+}
+
+static void phase6_boot_hw_probe(void)
+{
+    if (!phase6_enabled() || !s_rx_bs) return;
+
+    /* One bounded post-start sample tells hardware tests whether the RX
+     * predecoder is actually producing a changing Phase5 stream.  A constant
+     * low-five-bit payload maps to D=0 / DAC pedestal 20 and appears exactly
+     * as a black CVBS picture. */
+    uint8_t snapshot[64];
+    uint8_t *src = get_completed_rx_sample_window(sizeof(snapshot));
+    sync_dma_m2c(src, sizeof(snapshot));
+    memcpy(snapshot, src, sizeof(snapshot));
+
+    uint32_t phase_mask = 0;
+    unsigned transitions = 0;
+    unsigned nonzero_meta = 0;
+    for (unsigned i = 0; i < sizeof(snapshot); ++i) {
+        phase_mask |= 1u << (snapshot[i] & 0x1fu);
+        if ((snapshot[i] & 0xe0u) != 0) ++nonzero_meta;
+        if (i && ((snapshot[i] ^ snapshot[i - 1]) & 0x1fu)) ++transitions;
+    }
+
+    printf("PHASE6_HW_PROBE rx_state=0x%08lx tx_state=0x%08lx "
+           "phase_mask=0x%08lx transitions=%u/63 meta_nonzero=%u/64 first=",
+           (unsigned long)BITSCRAMBLER.state[BITSCRAMBLER_DIR_RX].val,
+           (unsigned long)BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val,
+           (unsigned long)phase_mask, transitions, nonzero_meta);
+    for (unsigned i = 0; i < 16u; ++i) printf("%02x", snapshot[i]);
+    printf("\n");
 }
 
 
@@ -1125,11 +1225,19 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
+    if (s_demod_mode == DEMOD_MODE_PHASE6_EXP) return "PHASE6 EXP";
     return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
 }
 
 static void cycle_demod_mode(void)
 {
+    /* PHASE6 changes the RX DMA-ring format and is therefore boot-only.
+     * Never half-switch a live Phase5 ring back into a raw-Q4 TX decoder. */
+    if (phase6_enabled()) {
+        printf("[DEMOD] PHASE6 is boot-selected; use 'J' to leave it safely\n");
+        return;
+    }
+
     s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
                    DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
     /* TRAJ V2 and 4BIT@80 use different BitScrambler/output contracts.
@@ -1372,7 +1480,9 @@ static void settings_load(void)
     } else if (settings.demod_mode < DEMOD_MODE_COUNT) {
         s_demod_mode = (demod_mode_t)settings.demod_mode;
     }
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ||
+        s_demod_mode == DEMOD_MODE_PHASE6_EXP)
+        s_output_mode = VIDEO_OUTPUT_6BIT_40;
     if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
     if (settings.rx_profile < RX_PROFILE_COUNT) {
         s_rx_profile = (rx_profile_t)settings.rx_profile;
@@ -1417,6 +1527,11 @@ static void settings_load(void)
         }
         s_current_gain = profile_gain_clamp(s_current_gain);
     }
+    /* First live dual-BitScrambler proof keeps the physical gain fixed.
+     * The preprocessed ring carries a 3-bit envelope class for a later ARC
+     * port, but raw-Q4 ARC writes must not run against the new ring format. */
+    if (phase6_enabled()) s_agc_mode = ANALOG_AGC_MANUAL;
+
     s_shadow_gain = s_current_gain;
     rf_set_rx_gain(true, s_current_gain);
     s_menu_boot_btn_enabled = settings.menu_boot_btn_enabled != 0;
@@ -2075,6 +2190,107 @@ static void lab_request_fresh_phy_calibration(void)
 /* Acquisition-only centering characterization. This deliberately does not
  * become a continuous AFC loop: each PHY retune can disturb analog video.
  * The probe scores actual demod/sync quality and restores the prior offset. */
+static void lab_run_modem_diag_scan(void)
+{
+    if (s_gain_sweep.active || s_menu_active || s_pre_q4_probe_active) {
+        printf("C5VRX_DIAG_SCAN_REFUSED reason=%s\n",
+               s_gain_sweep.active ? "gain_sweep_active" :
+               s_menu_active ? "menu_active" : "preq4_busy");
+        return;
+    }
+
+    const analog_agc_mode_t saved_agc_mode = s_agc_mode;
+    const agc_state_t saved_agc_state = s_agc_state;
+    const bool saved_quiet = s_lab_quiet;
+
+    s_agc_mode = ANALOG_AGC_MANUAL;
+    s_lab_quiet = true;
+    ++s_profile_generation;
+    video_standard_detector_reset();
+
+    printf("C5VRX_DIAG_SCAN_BEGIN windows=25 width=8 settle_ms=4 "
+           "note=video_will_glitch_during_probe\n");
+
+    for (unsigned first = 0u; first <= 24u; ++first) {
+        esp_err_t err = rf_route_modem_diag_window(first);
+        if (err != ESP_OK) {
+            printf("C5VRX_DIAG_WINDOW first=%u err=%s\n",
+                   first, esp_err_to_name(err));
+            continue;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(4));
+        uint8_t *src = get_completed_rx_sample_window(sizeof(s_diag_scan_buf));
+        sync_dma_m2c((void *)src, sizeof(s_diag_scan_buf));
+        memcpy(s_diag_scan_buf, src, sizeof(s_diag_scan_buf));
+
+        bool seen[256] = {false};
+        unsigned unique = 0u;
+        unsigned changed = 0u;
+        unsigned small16 = 0u;
+        unsigned accel8 = 0u;
+        unsigned bit_transitions[8] = {0};
+        int previous_delta = 0;
+        uint8_t previous = s_diag_scan_buf[0];
+        seen[previous] = true;
+        unique = 1u;
+
+        for (size_t i = 1u; i < sizeof(s_diag_scan_buf); ++i) {
+            const uint8_t current = s_diag_scan_buf[i];
+            if (!seen[current]) {
+                seen[current] = true;
+                ++unique;
+            }
+            const uint8_t xorv = current ^ previous;
+            if (xorv) ++changed;
+            for (unsigned bit = 0u; bit < 8u; ++bit)
+                bit_transitions[bit] += (xorv >> bit) & 1u;
+
+            const int delta = (int)(int8_t)(current - previous);
+            const int abs_delta = delta < 0 ? -delta : delta;
+            if (abs_delta <= 16) ++small16;
+            if (i > 1u) {
+                int accel = delta - previous_delta;
+                if (accel > 127) accel -= 256;
+                if (accel < -128) accel += 256;
+                if (accel < 0) accel = -accel;
+                if (accel <= 8) ++accel8;
+            }
+            previous_delta = delta;
+            previous = current;
+        }
+
+        const unsigned denom = (unsigned)sizeof(s_diag_scan_buf) - 1u;
+        const unsigned change_pm = denom ? changed * 1000u / denom : 0u;
+        const unsigned smooth_pm = denom ? small16 * 1000u / denom : 0u;
+        const unsigned accel_pm = denom > 1u ? accel8 * 1000u / (denom - 1u) : 0u;
+        const unsigned score =
+            smooth_pm + accel_pm + (unique < 128u ? unique * 3u : 384u);
+
+        printf("C5VRX_DIAG_WINDOW first=%u last=%u unique=%u "
+               "change_pm=%u smooth16_pm=%u accel8_pm=%u score=%u "
+               "bt=%u,%u,%u,%u,%u,%u,%u,%u\n",
+               first, first + 7u, unique, change_pm, smooth_pm, accel_pm,
+               score,
+               bit_transitions[0], bit_transitions[1],
+               bit_transitions[2], bit_transitions[3],
+               bit_transitions[4], bit_transitions[5],
+               bit_transitions[6], bit_transitions[7]);
+    }
+
+    const esp_err_t restore_err = rf_restore_modem_iq_routes();
+    vTaskDelay(pdMS_TO_TICKS(10));
+    ++s_profile_generation;
+    video_standard_detector_reset();
+    s_agc_state = saved_agc_state;
+    s_agc_mode = saved_agc_mode;
+    s_lab_quiet = saved_quiet;
+
+    printf("C5VRX_DIAG_SCAN_END restore=%s mapping=Q6-9,I16-19\n",
+           esp_err_to_name(restore_err));
+}
+
+
 static void lab_run_frequency_probe(void)
 {
     if (s_gain_sweep.active || s_menu_active) {
@@ -3160,7 +3376,8 @@ static void menu_draw_video_page(void)
 {
     char detected[24];
     bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80 ||
-                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2;
+                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ||
+                        s_demod_mode == DEMOD_MODE_PHASE6_EXP;
     menu_draw_page_title("VIDEO OUTPUT", experimental ? "EXPERIMENTAL" : "DEFAULT");
     menu_ui_value_box(100, 22, 130, "DAC", output_mode_name());
     menu_ui_value_box(238, 22, 138, "DEMOD", demod_mode_name());
@@ -3214,14 +3431,19 @@ static void quiet_tx_interrupts(void)
 static void start_flight_demodulator(void)
 {
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
+    if (s_demod_mode == DEMOD_MODE_PHASE6_EXP) {
+        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_lift16_phase_program));
+    } else if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
     } else if (s_output_mode == VIDEO_OUTPUT_4BIT_80) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm4_program));
     } else {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_program));
     }
-    ESP_ERROR_CHECK(bitscrambler_reset(s_flight_bs));
+    /* load_program() leaves the TX engine halted.  Re-arm the FIFO directly
+     * while PARLIO TX is quiescent instead of polling in_idle; the latter
+     * times out after returning from the standalone menu on ESP32-C5. */
+    bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_TX);
     ESP_ERROR_CHECK(bitscrambler_start(s_flight_bs));
 }
 
@@ -3578,6 +3800,7 @@ static void open_recovery_menu(void)
     /* Persisted Safe Flight state must never make the on-screen controls
      * unreachable after flashing another build. A deliberate three-second
      * hold restores the simplest proven video contract before menu TX starts. */
+    const bool lift_reboot = phase6_enabled();
     s_menu_boot_btn_enabled = true;
     s_video_std_mode = VIDEO_STD_MODE_AUTO;
     s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
@@ -3587,6 +3810,13 @@ static void open_recovery_menu(void)
     s_menu_cursor = 0;
     s_menu_timeout_ticks = 0;
     settings_save();
+    if (lift_reboot) {
+        printf("[RECOVERY] PHASE6 RX format -> GOLDEN persisted; rebooting safe raw-Q4 path\n");
+        fflush(stdout);
+        vTaskDelay(pdMS_TO_TICKS(120));
+        esp_restart();
+        return;
+    }
     video_set_menu_mode(true);
     printf("[RECOVERY] GOLDEN + 6BIT@40 + ARC restored; menu %s\n",
            s_menu_active ? "opened" : "unavailable");
@@ -3647,6 +3877,12 @@ static void handle_button_long_click(void)
             settings_save();
             break;
         case 4: /* VIDEO OUTPUT */
+            if (phase6_enabled()) {
+                s_output_mode = VIDEO_OUTPUT_6BIT_40;
+                printf("[MENU: OUTPUT] PHASE6 is locked to 6BIT@40\n");
+                settings_save();
+                break;
+            }
             s_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
                             VIDEO_OUTPUT_4BIT_80 : VIDEO_OUTPUT_6BIT_40;
             if (s_output_mode == VIDEO_OUTPUT_4BIT_80 &&
@@ -4467,6 +4703,21 @@ static void console_diag_task(void *arg)
                     lab_run_bandwidth_probe();
                 } else if (c == 'A') {
                     lab_run_frequency_probe();
+                } else if (c == 'D') {
+                    lab_run_modem_diag_scan();
+                } else if (c == 'J') {
+                    const bool leaving_phase6 = phase6_enabled();
+                    s_demod_mode = leaving_phase6 ?
+                                   DEMOD_MODE_GOLDEN_PHASE5 :
+                                   DEMOD_MODE_PHASE6_EXP;
+                    s_output_mode = VIDEO_OUTPUT_6BIT_40;
+                    s_agc_mode = ANALOG_AGC_MANUAL;
+                    settings_save();
+                    printf("[DEMOD] -> %s; fixed gain=%u; rebooting for RX ring topology\n",
+                           demod_mode_name(), s_current_gain);
+                    fflush(stdout);
+                    vTaskDelay(pdMS_TO_TICKS(120));
+                    esp_restart();
                 } else if (c == 'H') {
                     lab_print_arc_oracle();
                 } else if (c == 'G') {
@@ -4847,6 +5098,15 @@ esp_err_t video_start(void)
     if (s_rx_dma_ch >= 0) AHB_DMA.in_intr[s_rx_dma_ch].clr.val = UINT32_MAX;
     if (s_tx_dma_ch >= 0) AHB_DMA.out_intr[s_tx_dma_ch].clr.val = UINT32_MAX;
     BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
+    if (s_rx_bs) {
+        BITSCRAMBLER.state[BITSCRAMBLER_DIR_RX].val = 1u << 31;
+    }
+
+    if (phase6_enabled()) {
+        /* Allow several ring laps before taking the one-shot hardware probe. */
+        esp_rom_delay_us(2000);
+        phase6_boot_hw_probe();
+    }
 
     /* Distributed shadow observer: read-only, no PHY writes and no DMA pacing. */
     xTaskCreate(fusion_observer_task, "fusion_obs", 4096, NULL, 2, NULL);
@@ -4866,12 +5126,15 @@ esp_err_t video_start(void)
         " Telemetry: Live GDMA ring pointer tracking (rx_ch=%d, tx_ch=%d)\n"
         " Buffer:  32,768 bytes cyclic ring (Zero-EOF patched: RX=%d TX=%d)\n"
         " RX:      40 MS/s POS edge, 32,768 bytes pure HW cyclic GDMA\n"
-        " Demod:   Phase5 50ns / P%u / G%u / current-minus-previous\n"
+        " Demod:   %s / P%u / G%u\n"
+        " Ring:    %s @ 40 MB/s\n"
         " TX:      40 MHz [D,D] / eof=downstream / tail=0\n"
         " Lock:    GDMA ISRs disabled, RX EOF disabled, suc_eof=0 cleared\n"
         " CPU:     done (hardware runs in unbroken infinite loop)\n"
         "=======================================================\n",
-        s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes, DAC_IDLE_CODE, 2u);
+        s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes,
+        demod_mode_name(), DAC_IDLE_CODE, 2u,
+        phase6_enabled() ? "Phase5+Q3 (RX BitScrambler)" : "raw Q4/I4");
 
     return ESP_OK;
 }

@@ -31,17 +31,33 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("three .bsasm programs (Golden + output experiment + Trajectory v2)",
-      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
+check("five .bsasm programs including dual-channel PHASE6",
+      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_lift16_phase.bsasm", "fm_rx_phase.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
+
+check("PHASE6 TX backend is predecoded, two-bundle, and emits [D,D]",
+      "predecoded Phase5 symbols" in read(MAIN / "fm_lift16_phase.bsasm") and
+      "independent RX BitScrambler" in read(MAIN / "fm_lift16_phase.bsasm") and
+      "emit -> lift -> emit -> lift" in read(MAIN / "fm_lift16_phase.bsasm") and
+      "set 21..25 L8..L12" in read(MAIN / "fm_lift16_phase.bsasm") and
+      "read 16,\n    write 16" in read(MAIN / "fm_lift16_phase.bsasm") and
+      "jmp emit" in read(MAIN / "fm_lift16_phase.bsasm"))
 
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
-    check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+    if bsasm_file.name == "fm_rx_phase.bsasm":
+        check("fm_rx_phase.bsasm: cfg eof_on upstream", "cfg eof_on upstream" in bsasm)
+        check("fm_rx_phase.bsasm: cfg prefetch false", "cfg prefetch false" in bsasm)
+        check("fm_rx_phase.bsasm: explicit one-byte self-prime",
+              "prime_read:" in bsasm and
+              "prime_lookup:" in bsasm and
+              "set 16..23 56..63" in bsasm)
+    else:
+        check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+        check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
+        check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
     check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
-    check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
     check(f"{bsasm_file.name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
-    check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
     check(f"{bsasm_file.name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
 
 # ---- Production .c file checks ----
@@ -50,6 +66,23 @@ all_c = "\n".join(read(f) for f in c_files)
 c_names = [f.name for f in c_files]
 video_c = read(MAIN / "video.c")
 menu_lifecycle = video_c.split("static void video_set_menu_mode", 1)[1].split("static void menu_cycle_standard_mode", 1)[0]
+
+check("PHASE6 RX self-primes without public idle-reset",
+      "bitscrambler_reset(s_rx_bs)" not in video_c and
+      "bitscrambler_start(s_rx_bs)" in video_c and
+      "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and
+      "cfg prefetch=false" in video_c)
+
+check("C5 BitScrambler rearm pulses FIFO without idle polling",
+      "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and
+      "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_TX)" in video_c and
+      "BITSCRAMBLER.ctrl[dir].fifo_rst = 1;" in video_c and
+      "bitscrambler_reset(s_flight_bs)" not in video_c)
+
+check("PHASE6 hardware boot probe reports live Phase5 variation",
+      "PHASE6_HW_PROBE" in video_c and
+      "phase_mask=0x%08lx" in video_c and
+      "transitions=%u/63" in video_c)
 
 check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "menu_raster.c"},
       f"found: {c_names}")
@@ -180,6 +213,13 @@ check("issue 28 quiet fixed baseline and reset present",
       "AFC_MODE_OFF" in all_c)
 check("vendor PHY timer inventory is reachable on demand",
       "rf_dump_tracked_timers();" in all_c)
+check("PHASE6 MODEM_DIAG scanner is bounded and restores production IQ routes",
+      "lab_run_modem_diag_scan" in all_c and
+      "rf_route_modem_diag_window(first)" in all_c and
+      "rf_restore_modem_iq_routes()" in all_c and
+      "first_signal > 24u" in all_c and
+      "MODEM_DIAG0_IDX + first_signal + lane" in all_c and
+      "mapping=Q6-9,I16-19" in all_c)
 check("manual gain cannot step below production lower bound",
       "s_current_gain > LAB_GAIN_MIN" in all_c and
       "LAB_GAIN_MIN       2u" in all_c)
@@ -652,8 +692,8 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, 4-bit output and Trajectory v2 BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"], f"found: {bs_srcs}")
+check("Golden, 4-bit, Trajectory and dual-channel PHASE6 programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_lift16_phase.bsasm", "fm_rx_phase.bsasm"], f"found: {bs_srcs}")
 
 # ---- Summary ----
 print(f"\n{'='*50}")
