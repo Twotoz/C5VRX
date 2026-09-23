@@ -5120,48 +5120,84 @@ esp_err_t video_start(void)
 
     start_flight_demodulator();
 
-    /* Start RX cyclic ring. GDMA begins writing at s_raw_ring[0]. */
+    /* Start RX cyclic ring. GDMA begins writing raw Q4/I4 at ring[0]. */
     if ((err = start_rx()) != ESP_OK) return err;
 
-    /* Put PARLIO RX into pure continuous hardware mode:
-     * 1. Disable all GDMA RX channel interrupts so the CPU is never interrupted
-     *    (~9,775 ISRs/sec eliminated!).
-     * 2. Set rx_eof_gen_sel = 1 (external enable, non-existent in soft mode)
-     *    so PARLIO RX never generates an EOF stall event.
-     * This matches PARLIO TX's unbroken hardware loop, eliminating pointer drift! */
+    /* Put PARLIO RX into pure continuous hardware mode. */
     AHB_DMA.in_intr[0].ena.val = 0;
     AHB_DMA.in_intr[1].ena.val = 0;
     AHB_DMA.in_intr[2].ena.val = 0;
     PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1;
 
-    /* Request half-ring producer/consumer separation before starting TX.
-     * The integer-microsecond delay and driver latency need hardware validation. */
+    /* Both ordinary Golden and M2M use roughly half a raw ring of startup
+     * producer lead.  In M2M mode this guarantees group 0 is complete before
+     * the seed transform runs; TX is deliberately not started until that
+     * first CVBS block exists. */
     esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
 
-    if ((err = start_tx()) != ESP_OK) return err;
-
-    /* Discover AHB_DMA channels assigned to PARL_IO (peripheral ID 9) */
+    /* PARLIO units allocate their GDMA channels when created/enabled, so RX
+     * can be discovered before the first TX transaction. */
+    s_rx_dma_ch = -1;
+    s_tx_dma_ch = -1;
     for (int i = 0; i < 3; i++) {
-        if (AHB_DMA.channel[i].in.in_peri_sel.peri_in_sel_chn == 9) {
+        if (AHB_DMA.channel[i].in.in_peri_sel.peri_in_sel_chn == 9)
             s_rx_dma_ch = i;
-        }
-        if (AHB_DMA.channel[i].out.out_peri_sel.peri_out_sel_chn == 9) {
+        if (AHB_DMA.channel[i].out.out_peri_sel.peri_out_sel_chn == 9)
             s_tx_dma_ch = i;
+    }
+    if (s_rx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
+
+    int rx_nodes = patch_descriptors_clear_eof(s_rx_dma_ch, true);
+
+    if (m2m_exact_enabled()) {
+        /* Allocate the one loopback BitScrambler only after PARLIO RX/TX have
+         * claimed their GDMA resources.  Seed group 0 while TX still shows
+         * the initialized black pedestal ring. */
+        err = m2m_exact_init();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "M2M EXACT init failed: %s; restoring GOLDEN",
+                     esp_err_to_name(err));
+            s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+            settings_save();
+            fflush(stdout);
+            vTaskDelay(pdMS_TO_TICKS(120));
+            esp_restart();
+            return err;
         }
     }
 
-    /* Put PARLIO TX into pure continuous hardware mode:
-     * Disable all GDMA TX channel interrupts and PARL_IO core interrupts.
-     * Prevents PARLIO_LL_EVENT_TX_FIFO_EMPTY and EOF interrupts from stealing CPU cycles! */
+    if ((err = start_tx()) != ESP_OK) return err;
+
+    /* Refresh channel discovery now that TX has a live descriptor chain. */
+    for (int i = 0; i < 3; i++) {
+        if (AHB_DMA.channel[i].in.in_peri_sel.peri_in_sel_chn == 9)
+            s_rx_dma_ch = i;
+        if (AHB_DMA.channel[i].out.out_peri_sel.peri_out_sel_chn == 9)
+            s_tx_dma_ch = i;
+    }
+    if (s_tx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
+
+    /* Put PARLIO TX into pure continuous hardware mode. */
     AHB_DMA.out_intr[0].ena.val = 0;
     AHB_DMA.out_intr[1].ena.val = 0;
     AHB_DMA.out_intr[2].ena.val = 0;
     PARL_IO.int_ena.val = 0;
 
-    /* Clear suc_eof on ALL GDMA descriptors for both RX and TX to eliminate
-     * hardware wrap EOF bubbles completely! The buffer becomes a truly infinite ring. */
-    int rx_nodes = patch_descriptors_clear_eof(s_rx_dma_ch, true);
     int tx_nodes = patch_descriptors_clear_eof(s_tx_dma_ch, false);
+
+    if (m2m_exact_enabled()) {
+        err = m2m_exact_start_worker();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "M2M EXACT worker failed: %s; restoring GOLDEN",
+                     esp_err_to_name(err));
+            s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+            settings_save();
+            fflush(stdout);
+            vTaskDelay(pdMS_TO_TICKS(120));
+            esp_restart();
+            return err;
+        }
+    }
 
     /* Issue #28: clear stale startup/driver status once. Subsequent sticky
      * faults are observed by poll_transport_faults() without enabling IRQs. */
