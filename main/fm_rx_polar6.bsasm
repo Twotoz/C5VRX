@@ -1,0 +1,36 @@
+# Polar11 RX preprocessor: raw Q4/I4 -> nested Polar6 at 40 MS/s.
+#
+# Output byte bits:
+#   5:1 = exact production Phase5 state
+#   0   = within-Phase5 half-sector residual
+#   7:6 = 0
+#
+# Hardware prefetch stays disabled because RX BitScrambler starts before
+# PARLIO produces bytes. Eight ordinary reads warm M[63:0], then steady state
+# is exactly one bundle per 25 ns input sample.
+cfg prefetch false
+cfg eof_on upstream
+cfg trailing_bytes 0
+cfg lut_width_bits 8
+lut 9 13 15 15 15 16 16 16 49 49 49 50 50 50 52 56 4 9 11 12 13 14 14 14 50 51 51 52 53 54 56 61 2 6 9 10 11 12 13 13 52 52 53 54 55 56 59 62 2 5 7 9 10 11 11 12 53 54 54 55 56 58 60 63 2 4 6 7 9 10 10 11 54 55 55 56 58 59 61 63 1 3 5 6 7 9 9 10 55 56 56 57 59 60 62 0 1 3 4 6 7 8 9 9 56 56 57 58 59 61 62 0 1 3 4 5 6 7 8 9 56 57 58 59 60 61 62 0 32 31 29 28 27 26 25 25 41 40 39 38 37 36 35 33 32 30 29 27 26 25 25 24 41 41 40 39 38 36 35 33 32 30 28 27 26 25 24 23 42 41 41 39 38 37 35 33 31 29 27 26 25 24 23 22 43 42 42 41 39 38 36 34 31 28 26 25 23 22 22 21 44 43 43 42 41 39 37 34 31 27 25 23 22 21 20 20 45 45 44 43 42 41 38 35 29 25 22 21 20 19 19 19 46 46 46 45 44 43 41 36 25 20 19 18 18 17 17 17 48 48 48 47 47 46 45 41
+
+prime_first:
+    LDCTDA 0,
+    read 8
+
+fill_input:
+    LOOPA 6 1 fill_input,
+    read 8
+
+prime_lookup:
+    set 21..28 0..7,
+    set 29..31 L,
+    read 8
+
+convert:
+    set 0..7 L0..L7,
+    set 21..28 0..7,
+    set 29..31 L,
+    read 8,
+    write 8,
+    jmp convert
