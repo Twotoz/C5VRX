@@ -45,6 +45,33 @@ video. The immediate experimental target is a Golden-preserving correction
 whose default branch is byte-identical to Golden, followed by live A/B and an
 IQ capture to measure whether >180-degree 50 ns events actually occur.
 
+### Review of the proposed PolarSigma P6+M4 -> token4 -> C6 design
+
+Its algebra for unwrapped adjacent phase differences is valid. The proposed
+two-bundle LUT routing may also be schedulable in principle. Neither point
+establishes exact adjacent FM or clean video:
+
+- The demodulator actually uses 6+4+6 of the 24 raw bits in `(p,m,c)`, so it
+  omits two previous, four middle, and two current IQ bits. Keeping all bytes
+  in the RX DMA ring does not make those omitted bits available to the LUT.
+- `tools/prove_polarsigma_token.py` enumerates all 32^3 Phase5 triplets using
+  the production P20/G2 DAC calibration. The `(p,m)` histories require 224
+  distinct continuation classes for exact 25 ns adjacent DAC pairs (eight
+  token bits). Even the repeated-DAC unwrapped 50 ns sum requires 1,024
+  classes (ten bits). A four-bit token has only 16 values. This does not rule
+  out a useful learned approximation on real RF, but exact full-turn behavior
+  is impossible for this fixed stage split.
+- `(Y0+Y1)/2 = P+KS` holds before DAC clipping/rounding and only if `S` is
+  correctly estimated. For `d0=+45 deg, d1=-45 deg`, `P=20`, and current
+  P20/G2 scaling, ideal adjacent codes 68 and -28 clip to 63 and 0. Their
+  mean is 31.5, not 20. If the estimated winding in `S` is wrong, setting
+  alpha to zero leaves the same wrong level in both DAC bytes; that error is
+  not shifted to 20 MHz.
+- With the current gain, an unwrapped +220-degree 50 ns difference maps above
+  code 63 and saturates. Preserving the winding internally is still useful
+  for polarity, but an unchanged 6-bit DAC transfer curve cannot represent
+  the full +220-degree magnitude linearly.
+
 ## Hardware disposition: blocked by C5 half-duplex BitScrambler
 
 The implementation below is a valid host-side DSP/LUT experiment but **cannot
