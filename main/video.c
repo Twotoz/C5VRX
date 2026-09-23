@@ -1560,9 +1560,6 @@ static void poll_transport_faults(void)
     if (BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].eof_overload) {
         ++s_hw_counters.bs_eof_overload_count;
         BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
-    if (s_rx_bs) {
-        BITSCRAMBLER.state[BITSCRAMBLER_DIR_RX].val = 1u << 31;
-    }
         flags |= LAG_EVT_BS_EOF_OVERLOAD;
     }
 
@@ -5038,6 +5035,9 @@ esp_err_t video_start(void)
     if (s_rx_dma_ch >= 0) AHB_DMA.in_intr[s_rx_dma_ch].clr.val = UINT32_MAX;
     if (s_tx_dma_ch >= 0) AHB_DMA.out_intr[s_tx_dma_ch].clr.val = UINT32_MAX;
     BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
+    if (s_rx_bs) {
+        BITSCRAMBLER.state[BITSCRAMBLER_DIR_RX].val = 1u << 31;
+    }
 
     /* Distributed shadow observer: read-only, no PHY writes and no DMA pacing. */
     xTaskCreate(fusion_observer_task, "fusion_obs", 4096, NULL, 2, NULL);
