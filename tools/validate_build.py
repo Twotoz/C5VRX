@@ -59,6 +59,11 @@ c_names = [f.name for f in c_files]
 video_c = read(MAIN / "video.c")
 menu_lifecycle = video_c.split("static void video_set_menu_mode", 1)[1].split("static void menu_cycle_standard_mode", 1)[0]
 
+check("LIFT RX avoids pre-transaction bitscrambler_reset on ESP32-C5",
+      "bitscrambler_reset(s_rx_bs)" not in video_c and
+      "bitscrambler_start(s_rx_bs)" in video_c and
+      "RX channel does not assert in_idle before the first PARLIO receive" in video_c)
+
 check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "menu_raster.c"},
       f"found: {c_names}")
 check("main.c present", "main.c" in c_names)
