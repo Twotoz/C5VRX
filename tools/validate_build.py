@@ -76,7 +76,7 @@ check("PHASE6 RX uses the quiescent FIFO re-arm path",
       "bitscrambler_reset(s_rx_bs)" not in video_c and
       "bitscrambler_start(s_rx_bs)" in video_c and
       "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and
-      "cfg prefetch=false" in video_c)
+      "cfg prefetch false" in read(MAIN / "fm_rx_phase.bsasm"))
 
 check("C5 BitScrambler rearm pulses FIFO without idle polling",
       "bitscrambler_rearm_quiescent(BITSCRAMBLER_DIR_RX)" in video_c and
