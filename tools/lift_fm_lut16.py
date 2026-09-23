@@ -31,8 +31,9 @@ A single physical 1024x16 LUT serves both stages at once:
   - bits 0..5:  stage-2 exact DAC result
   - bits 8..12: stage-1 token
 
-The generated BitScrambler program is a phase-domain hardware oracle. Its test
-stream contains Phase5 symbols already; it is NOT yet the live raw-Q4 decoder.
+The generated BitScrambler program is the exact Phase5-domain TX backend.
+Its input must already contain Phase5 symbols; the live dual-channel path feeds
+it from the independent RX BitScrambler raw-Q4 preprocessor.
 The steady-state schedule is exactly two bundles per 20 MS/s output:
 
     lift -> emit -> lift -> emit ...
@@ -246,7 +247,7 @@ def self_test(check_generated: bool = True) -> None:
     print(
         "LIFT-FM LUT16 self-test passed: "
         "32768/32768 exact triplets, 10->5->10, "
-        f"{TOKEN_COUNT} tokens, {LUT_WORDS}x16 shared LUT"
+        f"{TOKEN_COUNT} tokens, {LUT_WORDS}x16 shared LUT, [D,D] write enabled"
     )
 
 
