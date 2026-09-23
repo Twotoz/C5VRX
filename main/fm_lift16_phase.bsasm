@@ -1,6 +1,6 @@
-# PHASE6 Unwrapped Golden LUT16 backend.
+# LIFT-FM LUT16 exact Phase5 hardware oracle.
 #
-# This TX backend consumes predecoded Phase5 symbols. In live PHASE6 mode the
+# This TX backend consumes predecoded Phase5 symbols. In live LIFT mode the
 # independent RX BitScrambler supplies those symbols from raw Q4/I4.
 #
 # Test stream:

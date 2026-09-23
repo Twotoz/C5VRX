@@ -1,4 +1,4 @@
-# PHASE6 RX preprocessor: full raw Q4/I4 -> Phase5 + amplitude class.
+# LIFT-FM RX preprocessor: full raw Q4/I4 -> Phase5 + amplitude class.
 #
 # Input : one packed Q4/I4 byte per 25 ns (40 MS/s).
 # Output: one byte per input sample, same 40 MB/s ring bandwidth.
@@ -6,7 +6,7 @@
 #   bits 0..4 = exact production Phase5 state
 #   bits 5..7 = coarse raw-power / origin / overload class
 #
-# The TX PHASE6 backend consumes only bits 0..4. The upper three bits keep
+# The TX LIFT-FM backend consumes only bits 0..4. The upper three bits keep
 # enough raw-envelope information for the slow ARC supervisor without a
 # second DMA stream.
 #
