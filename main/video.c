@@ -1560,6 +1560,9 @@ static void poll_transport_faults(void)
     if (BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].eof_overload) {
         ++s_hw_counters.bs_eof_overload_count;
         BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].val = 1u << 31;
+    if (s_rx_bs) {
+        BITSCRAMBLER.state[BITSCRAMBLER_DIR_RX].val = 1u << 31;
+    }
         flags |= LAG_EVT_BS_EOF_OVERLOAD;
     }
 
@@ -3316,7 +3319,8 @@ static void menu_draw_video_page(void)
 {
     char detected[24];
     bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80 ||
-                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2;
+                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ||
+                        s_demod_mode == DEMOD_MODE_LIFT_EXACT_EXP;
     menu_draw_page_title("VIDEO OUTPUT", experimental ? "EXPERIMENTAL" : "DEFAULT");
     menu_ui_value_box(100, 22, 130, "DAC", output_mode_name());
     menu_ui_value_box(238, 22, 138, "DEMOD", demod_mode_name());
@@ -5053,12 +5057,15 @@ esp_err_t video_start(void)
         " Telemetry: Live GDMA ring pointer tracking (rx_ch=%d, tx_ch=%d)\n"
         " Buffer:  32,768 bytes cyclic ring (Zero-EOF patched: RX=%d TX=%d)\n"
         " RX:      40 MS/s POS edge, 32,768 bytes pure HW cyclic GDMA\n"
-        " Demod:   Phase5 50ns / P%u / G%u / current-minus-previous\n"
+        " Demod:   %s / P%u / G%u\n"
+        " Ring:    %s @ 40 MB/s\n"
         " TX:      40 MHz [D,D] / eof=downstream / tail=0\n"
         " Lock:    GDMA ISRs disabled, RX EOF disabled, suc_eof=0 cleared\n"
         " CPU:     done (hardware runs in unbroken infinite loop)\n"
         "=======================================================\n",
-        s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes, DAC_IDLE_CODE, 2u);
+        s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes,
+        demod_mode_name(), DAC_IDLE_CODE, 2u,
+        lift_exact_enabled() ? "Phase5+Q3 (RX BitScrambler)" : "raw Q4/I4");
 
     return ESP_OK;
 }
