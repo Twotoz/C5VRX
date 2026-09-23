@@ -64,7 +64,19 @@ def self_test() -> None:
     if len(golden_lut) < 256:
         raise AssertionError("production fm.bsasm LUT too short")
 
-    phase = [phase_lut[x] & 0x1F for x in range(256)]
+    if phase_lut != lift_lut:
+        raise AssertionError("M2M pass programs must embed one identical resident LUT")
+
+    def sparse_phase(word: int) -> int:
+        return (
+            (((word >> 6) & 1) << 0)
+            | (((word >> 7) & 1) << 1)
+            | (((word >> 13) & 1) << 2)
+            | (((word >> 14) & 1) << 3)
+            | (((word >> 15) & 1) << 4)
+        )
+
+    phase = [sparse_phase(phase_lut[x]) for x in range(256)]
     production = [(golden_lut[x] >> 8) & 0x1F for x in range(256)]
     for raw in range(256):
         if phase[raw] != production[raw]:
@@ -72,8 +84,6 @@ def self_test() -> None:
                 f"pass1 Phase5 mismatch raw=0x{raw:02x}: "
                 f"m2m={phase[raw]} production={production[raw]}"
             )
-        if not 0 <= phase_lut[raw] <= 0xFF:
-            raise AssertionError("pass1 escaped one-byte ring code")
 
     checked = 0
     tokens: set[int] = set()
@@ -104,7 +114,7 @@ def self_test() -> None:
     print(
         "M2M exact-adjacent oracle passed: "
         f"{checked}/{expected} raw-boundary combinations exact; "
-        f"{len(tokens)} stage-1 tokens used"
+        f"{len(tokens)} stage-1 tokens used; one shared LUT image"
     )
 
 
