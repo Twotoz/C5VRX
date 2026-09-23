@@ -80,7 +80,7 @@ separately clipped 25 ns outputs. It still assumes the phase of *every* raw
 IQ sample is available before TX reads it.
 
 With RX BitScrambler unavailable during TX, the only identified single-chip
-preprocessor is the 240 MHz CPU: map all 40 MS/s raw IQ bytes through a
+preprocessor for the proven TX datapath is the 240 MHz CPU: map all 40 MS/s raw IQ bytes through a
 256-byte raw-to-Phase5 table, writing phase symbols into completed RX DMA
 blocks before TX reaches them. The CPU has only six cycles per input sample
 (12 cycles per two-sample pair) at that rate. A 65,536-entry pair table with
@@ -103,6 +103,35 @@ four lookups to two. RMT provides timed pulse channels, not a
 sustain this rate, exact full-adjacent FM needs a separate proven parallel
 preprocessor or a different SoC; the 2 KiB LUT alone cannot ingest raw IQ and
 finish all three phase lookups in two bundles.
+
+### Eleven-bit direct raw-pair LUT search
+
+The 2 KiB LUT can alternatively be configured as 2048x8, giving an 11-bit
+address. `tools/evaluate_raw_pair_projection.py` enumerates all 4,368 fixed
+choices of 11 of the 16 bits in `(previous_raw, current_raw)`, and allows the
+best possible exact Phase5 adjacent-delta answer per address. None is exact.
+On the uniform 65,536-pair space, the best choice matches 23,032 pairs
+(35.14%). Its angular-error mean is 10.9 degrees and its 95th percentile is
+33.8 degrees. Every one of the eight raw bits affects the production Phase5
+mapping for at least one input, so dropping five pair bits cannot preserve
+all adjacent deltas. These numbers are a table-capacity bound, not a predicted
+live-RF video score; real IQ pairs are not uniformly distributed.
+
+The B counter's comparators compare B/BH/BL to selected slices of the
+*previous* output word. They can carry state or make threshold decisions, but
+do not provide another LUT lookup or reconstruct the raw bits omitted from
+an 11-bit address. Loading/adding counters also uses the sole opcode slot,
+which must accommodate loop control. A more elaborate multi-bundle counter
+pipeline remains possible in principle; no exact two-bundle raw-IQ program
+has been demonstrated.
+
+An RX-only BitScrambler followed by undecorated PARLIO TX avoids the observed
+RX+TX concurrency failure. Its sustained RX cadence still needs a live
+identity test. Even if one bundle per 25 ns works, the straightforward exact
+raw-IQ solution requires four LUT accesses per 50 ns pair (two raw-to-phase,
+two phase-domain), exceeding the same two-bundle compute budget. This route
+therefore needs a new mathematical factorization, not merely rewiring the
+existing TX program to RX.
 
 ## Host-side experiment
 
