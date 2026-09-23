@@ -31,18 +31,30 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("three .bsasm programs (Golden + output experiment + Trajectory v2)",
-      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
+expected_bsasm = {
+    "fm.bsasm", "fm4.bsasm", "fm_traj.bsasm",
+    "fm_m2m_phase.bsasm", "fm_m2m_lift.bsasm",
+}
+check("five .bsasm programs including single-core M2M exact-adjacent stages",
+      {f.name for f in bsasm_files} == expected_bsasm,
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
-    check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
+    is_m2m = bsasm_file.name.startswith("fm_m2m_")
+    check(f"{bsasm_file.name}: finite/live EOF contract",
+          ("cfg eof_on upstream" in bsasm) if is_m2m
+          else ("cfg eof_on downstream" in bsasm))
     check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
     check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
     check(f"{bsasm_file.name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
-    check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
+    check(f"{bsasm_file.name}: no conflicting EOF contract",
+          ("cfg eof_on downstream" not in bsasm) if is_m2m
+          else ("cfg eof_on upstream" not in bsasm))
     check(f"{bsasm_file.name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
+
+m2m_phase_asm = read(MAIN / "fm_m2m_phase.bsasm")
+m2m_lift_asm = read(MAIN / "fm_m2m_lift.bsasm")
 
 # ---- Production .c file checks ----
 c_files = list(MAIN.glob("*.c"))
@@ -652,8 +664,45 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, 4-bit output and Trajectory v2 BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"], f"found: {bs_srcs}")
+check("Golden, output, Trajectory and M2M BitScrambler programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm",
+                  "fm_m2m_phase.bsasm", "fm_m2m_lift.bsasm"],
+      f"found: {bs_srcs}")
+
+check("M2M exact mode uses one loopback BitScrambler and undecorated CVBS TX",
+      "DEMOD_MODE_M2M_LIFT_EXACT" in all_c and
+      "bitscrambler_loopback_create" in all_c and
+      "SOC_BITSCRAMBLER_ATTACH_I2S0" in all_c and
+      "s_cvbs_ring" in all_c and
+      "m2m_exact_enabled() ? s_cvbs_ring : s_raw_ring" in all_c and
+      "if (m2m_exact_enabled()) {" in all_c)
+
+check("M2M raw-Q4 pass is 1:1 Phase5 and finite-block safe",
+      "write 8" in m2m_phase_asm and
+      "read 8" in m2m_phase_asm and
+      "cfg eof_on upstream" in m2m_phase_asm and
+      "production Phase5" in m2m_phase_asm)
+
+check("M2M LIFT pass emits exact duplicated CVBS without second wrap",
+      "write 16" in m2m_lift_asm and
+      "read 16" in m2m_lift_asm and
+      "cfg eof_on upstream" in m2m_lift_asm and
+      "Stage 1:" in m2m_lift_asm and
+      "Stage 2:" in m2m_lift_asm and
+      "No second wrap" in m2m_lift_asm)
+
+check("M2M scheduler exposes realtime deadline and finite-tail telemetry",
+      "deadline_misses" in all_c and
+      "phase_short" in all_c and
+      "lift_short" in all_c and
+      "M2M_EXACT group=" in all_c and
+      "M2M_EXACT_ERROR" in all_c and
+      "esp_timer_start_periodic(s_m2m_poll_timer, 50u)" in all_c)
+
+check("M2M exact is explicit reboot topology with safe recovery",
+      "Toggle GOLDEN <-> M2M EXACT" in all_c and
+      "M2M topology -> GOLDEN persisted" in all_c and
+      "m2m_exact_topology" in all_c)
 
 # ---- Summary ----
 print(f"\n{'='*50}")
