@@ -21,13 +21,19 @@ Modern C5VRX
   -> TX BitScrambler WBFM and 20 MS/s DAC
   -> first locked live NTSC
   -> phase5 color/static improvements
-  -> current DMA-boundary and image-quality work
+  -> Zero-EOF C5VRX-3 continuous dataplane
+  -> vendor-table ARC + PRE-Q4 gain characterization
+  -> ARC V3/V5 control research on raw-Q4 evidence
+  -> Golden Phase5 remains the live quality reference
+  -> exact-adjacent / LIFT / Phase6 / Polar research remains hardware-gated
 ```
 
 ## Current authority
 
 | Subject | Start here |
 |---|---|
+| Cross-PR canonical findings, corrected assumptions, hardware failures, and experiment disposition through PR #71 | [pr-derived-findings.md](pr-derived-findings.md) |
+| ARC V5 predictive local-gain model and persistence rules | [arc-v5-autotune.md](arc-v5-autotune.md) |
 | Proven RF writer, SRAM visibility, MODEM_DIAG mapping, rates | [continuous-iq-findings.md](continuous-iq-findings.md) |
 | Realtime contracts and source abstraction | [realtime-iq-plan.md](realtime-iq-plan.md) |
 | Current image-quality path and proof gates | [image-quality.md](image-quality.md) |
@@ -81,7 +87,9 @@ describe a diagnostic mode or future proof gate rather than the default build.
   #20, #22, #24 and the preserved PR notes.
 - **Continuous capture:** distinguish writer-pointer continuity, readable sample
   continuity, and coherent RF-time continuity. They are separate claims.
-- **Old failed approaches:** start with legacy issue/PR dispositions before
-  reviving finite rearm, active dump-SRAM reads, RX-attached BitScrambler, or a
-  synthetic raster as the normal receiver.
+- **Old failed approaches:** start with legacy issue/PR dispositions and
+  [PR-derived findings](pr-derived-findings.md) before reviving finite rearm,
+  active dump-SRAM reads, RX-attached BitScrambler, simultaneous RX+TX
+  BitScrambler, >40 MB/s live TX overclocking, raw-Q4 observers on transformed
+  rings, or a synthetic raster as the normal receiver.
 
