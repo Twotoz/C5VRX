@@ -85,6 +85,15 @@ term and deliberate true phase reversals; only the observed IQ is corrupted.
 The resulting DAC table learns a loss-minimizing conditional estimate. This is
 not a calibrated Bayesian posterior or an MMSE estimate under the tail loss.
 
+There is also a deterministic failure without noise or gain changes. For a
+constant +0.14 rad (about +8 degrees) step per 25 ns at amplitude six Q4
+codes, the adjacent teacher is DAC28 at every sample. The geometric seed emits
+DAC20 for 82.2% of 2,000 samples, with occasional spikes near DAC50; its mean
+is only 25.4. The forced `state == state3(raw) -> DAC20` rule and coarse phase
+history turn sustained FM into sparse pulses. This can corrupt CVBS sync even
+when ARC and the transport are stable; gain-switch speckles are a separate
+transient shared with Golden.
+
 For amp=6 and input noise=0.35 Q4 codes, the trained table reduced synthetic
 RMS DAC error from 11.96 to 8.99 and >=16-code errors from 20.0% to 7.9%.
 But with **zero input noise**, the same table passed only about 0.29 of the
