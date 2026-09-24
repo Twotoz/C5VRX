@@ -4,7 +4,9 @@ This is an experimental live mode for the XIAO ESP32-C5 and the existing
 resistor DAC. The first hardware run produced video with heavy static and later
 crashed. The cause is not yet proven. Golden remains the default. The next
 build bounds the descriptor worker, records its worst processing time and
-backlog, and restores Golden if it misses the ring deadline.
+backlog, and reboots into Golden if it misses the ring deadline. The first
+attempt to restart PARLIO TX in place hung in `parlio_tx_do_transaction()` and
+triggered the task watchdog; a full restart avoids that recovery deadlock.
 
 ## Datapath
 

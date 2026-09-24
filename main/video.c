@@ -589,10 +589,13 @@ static void pair_bridge_task(void *arg)
                 ++s_pair_late;
                 break;
             }
-            if (s_pair_tx_started && s_tx_dma_ch >= 0 && !s_menu_active &&
-                get_tx_dma_offset(NULL) == (uint32_t)(buf - s_raw_ring)) {
-                ++s_pair_late;
-                s_pair_fault = true;
+            if (s_pair_tx_started && s_tx_dma_ch >= 0 && !s_menu_active) {
+                uint32_t tx_addr = AHB_DMA.channel[s_tx_dma_ch].out.out_dscr_bf0.val;
+                int tx_index = find_dscr_index(s_tx_dscr_nodes, s_tx_dscr_count, tx_addr);
+                if (tx_index >= 0 && s_tx_dscr_nodes[tx_index].buffer == buf) {
+                    ++s_pair_late;
+                    if (s_pair_late >= 3u) s_pair_fault = true;
+                }
             }
             uint32_t start_cycles = esp_cpu_get_cycle_count();
             sync_dma_m2c(buf, length);
@@ -3418,8 +3421,8 @@ static void start_flight_demodulator(void)
 }
 
 /* A missed descriptor means TX can read tokens and raw IQ from the same ring.
- * Stop that experiment and restart the known-good raw-ring demodulator before
- * the worker can monopolize the CPU or the picture keeps showing random FM. */
+ * Restart into Golden after recording the fault. Restarting PARLIO TX in place
+ * deadlocks at parlio_tx_do_transaction() on this silicon after a loop fault. */
 static void pair_bridge_recover_golden(void)
 {
     if (s_demod_mode != DEMOD_MODE_ADJACENT50_PAIR || !s_pair_fault) return;
@@ -3430,24 +3433,11 @@ static void pair_bridge_recover_golden(void)
            (unsigned long)s_pair_budget_misses,
            (unsigned long)s_pair_max_backlog);
 
-    ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
-    ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
     pair_bridge_stop();
     s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
     settings_save();
-    start_flight_demodulator();
-
-    ESP_ERROR_CHECK(parlio_rx_unit_disable(s_rx));
-    ESP_ERROR_CHECK(parlio_rx_unit_enable(s_rx, false));
-    ESP_ERROR_CHECK(parlio_tx_unit_enable(s_tx));
-    ESP_ERROR_CHECK(start_rx());
-    AHB_DMA.in_intr[s_rx_dma_ch].ena.val = 0;
-    PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1;
-    esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
-    ESP_ERROR_CHECK(start_tx());
-    quiet_tx_interrupts();
-    patch_descriptors_clear_eof(s_rx_dma_ch, true);
-    patch_descriptors_clear_eof(s_tx_dma_ch, false);
+    fflush(stdout);
+    esp_restart();
 }
 
 /* Restore the exact live topology used after leaving the standalone menu.
@@ -3727,12 +3717,12 @@ static void video_set_menu_mode(bool active)
             esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
         }
         ESP_ERROR_CHECK(start_tx());
-        if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR)
-            s_pair_tx_started = true;
         quiet_tx_interrupts();
         if (s_demod_mode != DEMOD_MODE_ADJACENT50_PAIR)
             patch_descriptors_clear_eof(s_rx_dma_ch, true);
         patch_descriptors_clear_eof(s_tx_dma_ch, false);
+        if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR)
+            s_pair_tx_started = true;
 
         /* Live TX now owns its own driver descriptors; the standalone menu
          * scatter chain is no longer referenced by GDMA. Return its large
@@ -5152,8 +5142,6 @@ esp_err_t video_start(void)
     }
 
     if ((err = start_tx()) != ESP_OK) return err;
-    if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR)
-        s_pair_tx_started = true;
 
     /* Discover AHB_DMA channels assigned to PARL_IO (peripheral ID 9) */
     for (int i = 0; i < 3; i++) {
@@ -5178,6 +5166,8 @@ esp_err_t video_start(void)
     if (s_demod_mode != DEMOD_MODE_ADJACENT50_PAIR)
         rx_nodes = patch_descriptors_clear_eof(s_rx_dma_ch, true);
     int tx_nodes = patch_descriptors_clear_eof(s_tx_dma_ch, false);
+    if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR)
+        s_pair_tx_started = true;
 
     /* Issue #28: clear stale startup/driver status once. Subsequent sticky
      * faults are observed by poll_transport_faults() without enabling IRQs. */
