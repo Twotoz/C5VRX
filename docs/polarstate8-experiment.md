@@ -75,3 +75,23 @@ guard only when both the rolling median and current raw window meet the hard
 starvation criteria, after the existing settle and persistence checks. Golden
 and ordinary ARC V3 keep their prior guard. This needs a live close-to-far
 comparison; it is not a fix for rainbow artifacts from the seed LUT.
+
+## Confidence-aware LUT probe (not flashed)
+
+`python tools/probe_polar_mmse.py` compares the geometric seed with a
+tail-penalized supervised LUT on held-out synthetic Q4/I4 trajectories. The
+teacher is the **clean** adjacent 25 ns FM including a 3.58 MHz chroma-like
+term and deliberate true phase reversals; only the observed IQ is corrupted.
+The resulting DAC table learns a loss-minimizing conditional estimate. This is
+not a calibrated Bayesian posterior or an MMSE estimate under the tail loss.
+
+For amp=6 and input noise=0.35 Q4 codes, the trained table reduced synthetic
+RMS DAC error from 11.96 to 8.99 and >=16-code errors from 20.0% to 7.9%.
+But with **zero input noise**, the same table passed only about 0.29 of the
+teacher's chroma/trajectory variation (slope), versus 0.57 for the already
+poor geometric seed. It traded valid high-frequency video for a quieter
+estimate. A two-bit low-IQ hold barely changed the score and cannot freeze
+the full state: the third history bit is wired to current raw-I sign. This
+synthetic result rejects the naive trained LUT as a flash candidate. Real
+RF IQ plus a clean synchronized reference are still needed to separate phase
+glitches from legitimate video motion and evaluate chroma transfer.
