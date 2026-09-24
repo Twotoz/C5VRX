@@ -1,0 +1,92 @@
+# ISA topology probe only: 2 LUT32 lookups/50ns pair, full 5-bit endpoint
+# phases, one raw middle sign, four DAC candidates per pair LUT word.
+# No LUT data is embedded here; do not flash this probe as a demodulator.
+#
+# LUT32 index in pair stage:
+#   bits 0..3 = current_phase[4:1]
+#   bits 4..7 = previous_phase[4:1]
+#   bit 8     = raw middle sample bit 7
+# Candidate DAC6 fields in L: 0..5, 6..11, 12..17, 18..23.
+# Raw phase lookup uses address raw8, with phase5 returned in L24..L28.
+# Program-counter state carries previous_phase[0].
+
+cfg prefetch true
+cfg eof_on downstream
+cfg trailing_bytes 0
+cfg lut_width_bits 32
+
+prime_raw:
+    set 16..23 8..15,
+    set 24 L,
+    read 16
+
+prime_state:
+    set 25..29 L24..L28,
+    set 16..23 8..15,
+    set 24 L,
+    read 16,
+    if L24 pair_p1
+
+pair_p0:
+    set 0..4 L24..L28,
+    set 16..19 L25..L28,
+    set 20..23 O26..O29,
+    set 24 7,
+    set 25..29 L24..L28,
+    if L24 emit_p0_c1
+
+emit_p0_c0:
+    set 0..5 L0..L5,
+    set 6..7 L,
+    set 8..13 L0..L5,
+    set 14..15 L,
+    set 25..29 O0..O4,
+    set 16..23 8..15,
+    set 24 L,
+    read 16,
+    write 16,
+    jmp pair_p0
+
+emit_p0_c1:
+    set 0..5 L6..L11,
+    set 6..7 L,
+    set 8..13 L6..L11,
+    set 14..15 L,
+    set 25..29 O0..O4,
+    set 16..23 8..15,
+    set 24 L,
+    read 16,
+    write 16,
+    jmp pair_p1
+
+pair_p1:
+    set 0..4 L24..L28,
+    set 16..19 L25..L28,
+    set 20..23 O26..O29,
+    set 24 7,
+    set 25..29 L24..L28,
+    if L24 emit_p1_c1
+
+emit_p1_c0:
+    set 0..5 L12..L17,
+    set 6..7 L,
+    set 8..13 L12..L17,
+    set 14..15 L,
+    set 25..29 O0..O4,
+    set 16..23 8..15,
+    set 24 L,
+    read 16,
+    write 16,
+    jmp pair_p0
+
+emit_p1_c1:
+    set 0..5 L18..L23,
+    set 6..7 L,
+    set 8..13 L18..L23,
+    set 14..15 L,
+    set 25..29 O0..O4,
+    set 16..23 8..15,
+    set 24 L,
+    read 16,
+    write 16,
+    jmp pair_p1

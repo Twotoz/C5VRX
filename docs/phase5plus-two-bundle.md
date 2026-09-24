@@ -92,6 +92,34 @@ bits rather than a phase-difference ALU. A counter load/add or a conditional
 branch uses the one opcode slot. No two-bundle program that computes both
 adjacent deltas from every raw Q4/I4 byte has been found or verified.
 
+### Eight-instruction LUT32 control topology (assembled, not live tested)
+
+`tools/phase5_wind_lut32_probe.bsasm` is a genuinely encodable TX-only
+two-bundle topology. ESP-IDF v6.0.2 `bsasm.py` assembles it as exactly eight
+instructions. `tools/test_phase5_wind_lut32_probe.py` constructs a 512x32
+(2 KiB) no-correction LUT and exhaustively verifies that its raw-to-Phase5
+mapping is identical for all 256 raw bytes and that all 2,048 phase-pair /
+middle-sign cases emit the exact production Golden DAC code.
+
+The 9-bit pair address is `previous_phase[4:1] + current_phase[4:1] +
+middle_raw_sign`. The 32-bit LUT word has four 6-bit DAC candidates, one for
+each pair of missing endpoint LSBs, plus five bits for the full raw-to-Phase5
+lookup. Two `pair` instructions carry the previous endpoint LSB in program
+counter state; each conditionally selects one of four `emit` instructions using
+the current endpoint LSB. An `emit` writes `[D,D]`, addresses the next raw
+endpoint, and jumps to the `pair` variant for its saved LSB. Two startup
+instructions fill the eight slots. This avoids the 10-bit endpoint-pair address
+collision and is the first assembled, byte-exact Golden-preserving carrier for
+**one** middle raw bit found in this search.
+
+It is not a strict solution to the full user requirement: only one of the
+middle byte's eight Q4/I4 bits affects the demodulator, and a fixed sign bit
+resolves only 1,572/2,400 smooth-model winding events. Enabling corrections
+from that bit under a smooth prior can still make wrong rail decisions on
+noisy middle samples. The control LUT has not been embedded in a firmware,
+flashed, or checked for sustained PARLIO timing and live video. It is a useful
+hardware control experiment, not a static-free or full-adjacent claim.
+
 ## Hardware disposition: blocked by C5 half-duplex BitScrambler
 
 The implementation below is a valid host-side DSP/LUT experiment but **cannot
