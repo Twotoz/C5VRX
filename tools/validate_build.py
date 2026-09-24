@@ -31,8 +31,8 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("three .bsasm programs (Golden + output experiment + Trajectory v2)",
-      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
+check("four .bsasm programs (Golden + output experiment + Trajectory v2 + PolarState8)",
+      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_polarstate8.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
@@ -40,7 +40,9 @@ for bsasm_file in bsasm_files:
     check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
     check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
     check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
-    check(f"{bsasm_file.name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
+    lut_width = 8 if bsasm_file.name == "fm_polarstate8.bsasm" else 16
+    check(f"{bsasm_file.name}: cfg lut_width_bits {lut_width}",
+          f"cfg lut_width_bits {lut_width}" in bsasm)
     check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
     check(f"{bsasm_file.name}: NO trailing_bytes 9", "trailing_bytes 9" not in bsasm)
 
@@ -653,7 +655,7 @@ check("no periodic telemetry or timer tasks in production",
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
 check("Golden, 4-bit output and Trajectory v2 BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"], f"found: {bs_srcs}")
+      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm", "fm_polarstate8.bsasm"], f"found: {bs_srcs}")
 
 # ---- Summary ----
 print(f"\n{'='*50}")

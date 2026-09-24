@@ -137,6 +137,7 @@ static volatile int64_t s_last_user_lag_mark_us;
 BITSCRAMBLER_PROGRAM(s_fm_program, "fm");
 BITSCRAMBLER_PROGRAM(s_fm4_program, "fm4");
 BITSCRAMBLER_PROGRAM(s_fm_traj_program, "fm_traj");
+BITSCRAMBLER_PROGRAM(s_fm_polarstate8_program, "fm_polarstate8");
 
 /* ----- Fixed production constants ----- */
 #define IQ_RATE_HZ       40000000u   /* MODEM_DIAG / PARLIO RX clock */
@@ -239,6 +240,7 @@ typedef enum {
 typedef enum {
     DEMOD_MODE_GOLDEN_PHASE5 = 0,
     DEMOD_MODE_TRAJECTORY_V2 = 1,
+    DEMOD_MODE_POLARSTATE8_EXP = 2,
     DEMOD_MODE_COUNT,
 } demod_mode_t;
 
@@ -1125,18 +1127,21 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
+    if (s_demod_mode == DEMOD_MODE_POLARSTATE8_EXP) return "POLARSTATE8 EXP";
     return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
 }
 
 static void cycle_demod_mode(void)
 {
     s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
-                   DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
+                   DEMOD_MODE_TRAJECTORY_V2 :
+                   s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ?
+                   DEMOD_MODE_POLARSTATE8_EXP : DEMOD_MODE_GOLDEN_PHASE5;
     /* TRAJ V2 and 4BIT@80 use different BitScrambler/output contracts.
      * Selecting TRAJ V2 therefore moves the DAC back to its proven 6-bit path.
      * The inverse action is handled on the DAC control: selecting 4BIT@80
      * automatically returns to GOLDEN instead of making 4-bit unreachable. */
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)
+    if (s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5)
         s_output_mode = VIDEO_OUTPUT_6BIT_40;
 
     /* Semantic sync interpretation changes with the demod LUT. Do not carry
@@ -1372,7 +1377,7 @@ static void settings_load(void)
     } else if (settings.demod_mode < DEMOD_MODE_COUNT) {
         s_demod_mode = (demod_mode_t)settings.demod_mode;
     }
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    if (s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5) s_output_mode = VIDEO_OUTPUT_6BIT_40;
     if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
     if (settings.rx_profile < RX_PROFILE_COUNT) {
         s_rx_profile = (rx_profile_t)settings.rx_profile;
@@ -3160,7 +3165,7 @@ static void menu_draw_video_page(void)
 {
     char detected[24];
     bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80 ||
-                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2;
+                        s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5;
     menu_draw_page_title("VIDEO OUTPUT", experimental ? "EXPERIMENTAL" : "DEFAULT");
     menu_ui_value_box(100, 22, 130, "DAC", output_mode_name());
     menu_ui_value_box(238, 22, 138, "DEMOD", demod_mode_name());
@@ -3214,7 +3219,9 @@ static void quiet_tx_interrupts(void)
 static void start_flight_demodulator(void)
 {
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
+    if (s_demod_mode == DEMOD_MODE_POLARSTATE8_EXP) {
+        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_polarstate8_program));
+    } else if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
     } else if (s_output_mode == VIDEO_OUTPUT_4BIT_80) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm4_program));
@@ -3650,7 +3657,7 @@ static void handle_button_long_click(void)
             s_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
                             VIDEO_OUTPUT_4BIT_80 : VIDEO_OUTPUT_6BIT_40;
             if (s_output_mode == VIDEO_OUTPUT_4BIT_80 &&
-                s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
+                s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5) {
                 /* 4BIT@80 has its own fm4 BitScrambler contract. Keep the
                  * combination valid by returning to GOLDEN automatically. */
                 s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
