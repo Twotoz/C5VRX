@@ -64,3 +64,14 @@ reduce RF gain. Its LOCK hold range also extends to P45; genuine clipping or
 P>45 still requests less gain. Golden's ARC V3 thresholds stay unchanged.
 This is a targeted mitigation to be checked on live hardware; it does not
 address PolarState8's three-bit phase-history artifacts.
+
+After a close-to-far VTX motion, live snapshots showed Q4 collapsing to
+P1/Q0 with no PARLIO/GDMA/BitScrambler faults; other snapshots showed clean
+P37..45/Q99..100 or severe clipping. This is consistent with RF gain recovery
+being involved, but those snapshots alone do not prove the full transition.
+ARC V3's one-second no-up guard after an overload cut also blocked gain-up
+while Q4 remained at the origin. The Polar-only recovery change bypasses that
+guard only when both the rolling median and current raw window meet the hard
+starvation criteria, after the existing settle and persistence checks. Golden
+and ordinary ARC V3 keep their prior guard. This needs a live close-to-far
+comparison; it is not a fix for rainbow artifacts from the seed LUT.
