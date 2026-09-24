@@ -147,6 +147,20 @@ int main(void)
     assert(a.gain == 47 && a.state == ARC_V3_LOCK);
     drive_until_gain(&a, obs(65, 99, 400, 0), 43, 20);
 
+    /* A close-to-far motion must recover from persistent origin-only IQ
+     * before the one-second walk-back guard expires. A brief fade during
+     * settling still cannot reverse the overload cut. */
+    arc_v3_controller_reset(&a, &t, 47);
+    a.polar_mode = 1u;
+    drive_until_gain(&a, obs(65, 99, 400, 0), 43, 20);
+    uint8_t after_overload = a.gain;
+    for (unsigned i = 0; i < 8; ++i) {
+        (void)tick_values(&a, 1, 0, 0, 1000);
+        assert(a.gain == after_overload);
+    }
+    drive_until_gain(&a, obs(1, 0, 0, 1000), 47, 10);
+    assert(a.up_guard_ticks > 0u);
+
     /* Standard ARC V3 keeps its original response with the guard disabled. */
     arc_v3_controller_reset(&a, &t, 47);
     drive_until_gain(&a, obs(45, 99, 0, 0), 46, 45);

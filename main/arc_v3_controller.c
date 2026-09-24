@@ -272,7 +272,14 @@ uint8_t arc_v3_controller_tick(arc_v3_controller_t *arc,
     if (arc->same_class_ticks < confirm)
         return arc->gain;
 
-    if (arc->up_guard_ticks != 0u)
+    /* Polar's clean-IQ target can place gain close to a front-end stage edge.
+     * After a near-field overload cut, moving the VTX away may leave almost
+     * every Q4 sample at the origin. Once both the rolling median and the
+     * current window confirm hard starvation, do not wait out the old
+     * walk-toward-VTX reversal guard. Short fades still fail the median and
+     * the normal settle/persistence checks above. */
+    if (arc->up_guard_ticks != 0u &&
+        !(arc->polar_mode && hard && hard_starved(o)))
         return arc->gain;
 
     return write_next(arc, step_gain(arc, hard ? 4 : 1));
