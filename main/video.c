@@ -525,10 +525,13 @@ static bool s_pair_timer_enabled;
 static bool s_pair_timer_running;
 static volatile bool s_pair_active;
 static volatile uint32_t s_pair_processed;
+static volatile uint32_t s_pair_processed_bytes;
 static volatile uint32_t s_pair_late;
 static volatile uint32_t s_pair_max_cycles;
 static volatile uint32_t s_pair_budget_misses;
 static volatile uint32_t s_pair_max_backlog;
+static volatile uint32_t s_pair_pointer_jumps;
+static volatile uint32_t s_pair_rx_span;
 static volatile bool s_pair_fault;
 static volatile bool s_pair_tx_started;
 static volatile uint32_t s_pair_shadow_seq;
@@ -567,12 +570,25 @@ static void pair_bridge_task(void *arg)
 {
     (void)arg;
     int next = 0;
+    int last_current = -1;
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         if (!s_pair_active || s_rx_dscr_count < 2 || s_rx_dma_ch < 0) continue;
         uint32_t current_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
         int current = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, current_addr);
         if (current < 0) continue;
+        if (last_current >= 0) {
+            int advance = (current - last_current + s_rx_dscr_count) % s_rx_dscr_count;
+            if (advance > s_rx_dscr_count / 2) {
+                /* A backwards/stale BF0 sample must not make us transform
+                 * almost the whole ring a second time. A real missed half
+                 * ring is already unrecoverable and uses the same fallback. */
+                ++s_pair_pointer_jumps;
+                if (s_pair_pointer_jumps >= 3u) s_pair_fault = true;
+                continue;
+            }
+        }
+        last_current = current;
         unsigned backlog = (unsigned)((current - next + s_rx_dscr_count) % s_rx_dscr_count);
         if (backlog > s_pair_max_backlog) s_pair_max_backlog = backlog;
         if (backlog >= (unsigned)(s_rx_dscr_count / 2)) s_pair_fault = true;
@@ -592,9 +608,13 @@ static void pair_bridge_task(void *arg)
             if (s_pair_tx_started && s_tx_dma_ch >= 0 && !s_menu_active) {
                 uint32_t tx_addr = AHB_DMA.channel[s_tx_dma_ch].out.out_dscr_bf0.val;
                 int tx_index = find_dscr_index(s_tx_dscr_nodes, s_tx_dscr_count, tx_addr);
-                if (tx_index >= 0 && s_tx_dscr_nodes[tx_index].buffer == buf) {
-                    ++s_pair_late;
-                    if (s_pair_late >= 3u) s_pair_fault = true;
+                if (tx_index >= 0) {
+                    uint8_t *tx_buf = s_tx_dscr_nodes[tx_index].buffer;
+                    uint32_t tx_len = s_tx_dscr_nodes[tx_index].length;
+                    if (tx_buf < buf + length && buf < tx_buf + tx_len) {
+                        ++s_pair_late;
+                        if (s_pair_late >= 3u) s_pair_fault = true;
+                    }
                 }
             }
             uint32_t start_cycles = esp_cpu_get_cycle_count();
@@ -613,6 +633,7 @@ static void pair_bridge_task(void *arg)
             if (elapsed_cycles > s_pair_max_cycles) s_pair_max_cycles = elapsed_cycles;
             if (elapsed_cycles > length * 6u) ++s_pair_budget_misses;
             ++s_pair_processed;
+            s_pair_processed_bytes += length;
             next = (next + 1) % s_rx_dscr_count;
         }
         if (s_pair_fault) vTaskDelay(pdMS_TO_TICKS(1));
@@ -623,10 +644,12 @@ static esp_err_t pair_bridge_prepare(void)
 {
     memcpy(s_pair_lut, adjacent50_pair_lut_bin_start, sizeof(s_pair_lut));
     s_pair_processed = 0;
+    s_pair_processed_bytes = 0;
     s_pair_late = 0;
     s_pair_max_cycles = 0;
     s_pair_budget_misses = 0;
     s_pair_max_backlog = 0;
+    s_pair_pointer_jumps = 0;
     s_pair_fault = false;
     s_pair_tx_started = false;
     s_pair_shadow_seq = 0;
@@ -698,6 +721,7 @@ static int patch_descriptors_clear_eof(int dma_ch, bool is_rx)
 
     dma_descriptor_t *curr = (dma_descriptor_t *)(uintptr_t)first_addr;
     int count = 0;
+    uint32_t span = 0;
     if (is_rx) s_rx_dscr_count = 0;
     else s_tx_dscr_count = 0;
 
@@ -709,6 +733,7 @@ static int patch_descriptors_clear_eof(int dma_ch, bool is_rx)
             s_rx_dscr_nodes[count].dscr = curr;
             s_rx_dscr_nodes[count].buffer = (uint8_t *)curr->buffer;
             s_rx_dscr_nodes[count].length = curr->dw0.size ? curr->dw0.size : 4092u;
+            span += s_rx_dscr_nodes[count].length;
         } else {
             s_tx_dscr_nodes[count].dscr = curr;
             s_tx_dscr_nodes[count].buffer = (uint8_t *)curr->buffer;
@@ -719,7 +744,10 @@ static int patch_descriptors_clear_eof(int dma_ch, bool is_rx)
         count++;
         if ((uintptr_t)curr == first_addr) break;
     }
-    if (is_rx) s_rx_dscr_count = count;
+    if (is_rx) {
+        s_rx_dscr_count = count;
+        s_pair_rx_span = span;
+    }
     else s_tx_dscr_count = count;
 
     __asm__ __volatile__("fence rw, rw" ::: "memory");
@@ -3426,8 +3454,12 @@ static void start_flight_demodulator(void)
 static void pair_bridge_recover_golden(void)
 {
     if (s_demod_mode != DEMOD_MODE_ADJACENT50_PAIR || !s_pair_fault) return;
-    printf("[ADJ50 FAULT] blocks=%lu overlap=%lu max_cycles=%lu budget_miss=%lu backlog=%lu; restoring Golden\n",
+    printf("[ADJ50 FAULT] blocks=%lu bytes=%lu rx_nodes=%d rx_span=%lu pointer_jumps=%lu overlap=%lu max_cycles=%lu budget_miss=%lu backlog=%lu; rebooting Golden\n",
            (unsigned long)s_pair_processed,
+           (unsigned long)s_pair_processed_bytes,
+           s_rx_dscr_count,
+           (unsigned long)s_pair_rx_span,
+           (unsigned long)s_pair_pointer_jumps,
            (unsigned long)s_pair_late,
            (unsigned long)s_pair_max_cycles,
            (unsigned long)s_pair_budget_misses,
@@ -3962,6 +3994,8 @@ static void analog_agc_task(void *arg)
     int search_probe_ticks = 0;
     int search_carrier_ticks = 0;
     int telemetry_ticks = 0;
+    uint32_t pair_telemetry_prev_bytes = 0;
+    int64_t pair_telemetry_prev_us = 0;
     int menu_refresh_ticks = 0;
     int phy_metric_ticks = 0;
     uint32_t seen_profile_generation = s_profile_generation;
@@ -4002,8 +4036,20 @@ static void analog_agc_task(void *arg)
 
         if (s_pair_active && ++telemetry_ticks >= 20) {
             telemetry_ticks = 0;
-            printf("[ADJ50] blocks=%lu overlap=%lu max_cycles=%lu budget_miss=%lu backlog=%lu fault=%u heap=%u\n",
+            int64_t now_us = esp_timer_get_time();
+            uint32_t bytes = s_pair_processed_bytes;
+            uint32_t mbps_x10 = pair_telemetry_prev_us && now_us > pair_telemetry_prev_us ?
+                (uint32_t)((uint64_t)(bytes - pair_telemetry_prev_bytes) * 10u /
+                           (uint64_t)(now_us - pair_telemetry_prev_us)) : 0u;
+            pair_telemetry_prev_bytes = bytes;
+            pair_telemetry_prev_us = now_us;
+            printf("[ADJ50] blocks=%lu bytes=%lu MBps_x10=%lu rx_nodes=%d rx_span=%lu pointer_jumps=%lu overlap=%lu max_cycles=%lu budget_miss=%lu backlog=%lu fault=%u heap=%u\n",
                    (unsigned long)s_pair_processed,
+                   (unsigned long)bytes,
+                   (unsigned long)mbps_x10,
+                   s_rx_dscr_count,
+                   (unsigned long)s_pair_rx_span,
+                   (unsigned long)s_pair_pointer_jumps,
                    (unsigned long)s_pair_late,
                    (unsigned long)s_pair_max_cycles,
                    (unsigned long)s_pair_budget_misses,

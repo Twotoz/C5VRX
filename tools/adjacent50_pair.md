@@ -7,6 +7,13 @@ build bounds the descriptor worker, records its worst processing time and
 backlog, and reboots into Golden if it misses the ring deadline. The first
 attempt to restart PARLIO TX in place hung in `parlio_tx_do_transaction()` and
 triggered the task watchdog; a full restart avoids that recovery deadlock.
+The first periodic live counters showed roughly 21,000 transformed descriptors
+per second, zero detected TX overlaps, a maximum backlog of three descriptors,
+and only occasional single-block budget misses. That weakens the original
+CPU-deadline explanation for the static. The next instrumented build measures
+actual transformed bytes per second, RX descriptor count and span, and rejects
+backwards descriptor-pointer observations that could cause a second transform
+of the same raw IQ block.
 
 ## Datapath
 
