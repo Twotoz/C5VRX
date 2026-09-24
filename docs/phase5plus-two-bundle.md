@@ -72,6 +72,26 @@ establishes exact adjacent FM or clean video:
   for polarity, but an unchanged 6-bit DAC transfer curve cannot represent
   the full +220-degree magnitude linearly.
 
+### Adaptive middle-axis result and its limit
+
+`tools/evaluate_adaptive_axis_winding.py` chooses between the middle I-sign
+and Q-sign **after** knowing the exact five-bit endpoint phases. One chosen
+sign bit separates all 2,400 winding events of the same smooth phase model
+across 544 endpoint cells. This is a better phase-domain observation than a
+fixed sign bit. It does not establish a clean hardware implementation: the
+endpoint-dependent choice of axis, the polarity of the correction, and the
+Golden DAC value still have to be selected with two opcode slots per pair,
+one LUT result per bundle, and eight instruction slots. When a correction is
+required to be valid for every possible middle phase rather than only the
+smooth prior, just 24/2,400 modeled winding events remain correctable with
+this one-bit observation. Noise/fades are therefore not a minor edge case.
+
+The TRM confirms that source routing and counter comparators can operate in
+the same bundle as a LUT read, but its comparator outputs are threshold/equality
+bits rather than a phase-difference ALU. A counter load/add or a conditional
+branch uses the one opcode slot. No two-bundle program that computes both
+adjacent deltas from every raw Q4/I4 byte has been found or verified.
+
 ## Hardware disposition: blocked by C5 half-duplex BitScrambler
 
 The implementation below is a valid host-side DSP/LUT experiment but **cannot
