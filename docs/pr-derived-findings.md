@@ -1,9 +1,9 @@
 # C5VRX PR-derived engineering findings
 
 This document preserves the engineering knowledge accumulated in C5VRX pull
-requests through PR #71, reviewed on 2026-09-24. It exists so useful findings
-do not disappear when an experimental PR is closed, superseded, or never
-merged.
+requests through PR #71 plus high-signal non-PR research branches reviewed on
+2026-09-24. It exists so useful findings do not disappear when an experimental
+PR or branch is closed, superseded, or never merged.
 
 The repository state on main remains authoritative for production behavior.
 An open PR can prove mathematics, expose a hardware constraint, or record a
@@ -331,6 +331,74 @@ The unresolved bottleneck is raw 40 MS/s IQ -> phase without a concurrent RX
 BitScrambler. A CPU preprocessor at 240 MHz has only about six CPU cycles per
 input sample, so CPU feasibility must be measured, not assumed.
 
+### Non-PR branch: feat/golden360-middle — Golden360/Adjacent50 capacity proof
+
+HOST-PROVEN NEGATIVE BOUND for the tested two-stage C5 LUT architectures.
+
+This branch asks for a deliberately stricter hybrid target than ordinary exact
+adjacent FM:
+
+```text
+p,m,c = Phase5(previous,middle,current)
+d0 = wrap32(m-p)
+d1 = wrap32(c-m)
+
+if winding == 0:
+    output must remain byte-exact Golden
+else:
+    output uses P20/G2(d0+d1), with no second wrap
+```
+
+That distinction matters. PR #64 proves that exact Phase5-domain adjacent
+mapping itself can be factorized using 24 interstage token classes. Golden360
+adds another requirement: all legal no-winding triplets must retain the exact
+existing Golden DAC byte. The two results therefore do not contradict each
+other.
+
+The exhaustive oracle `tools/prove_golden360_capacity.py` establishes:
+
+- all 1,024 `(middle,current)` pairs have distinct DAC-continuation rows over
+  the 32 possible previous phases for the Golden-preserving target;
+- the naive `(middle,current)->token; (previous,token)->DAC` decomposition
+  therefore needs a 10-bit token and a 15-bit final address, well beyond
+  LUT16's 10-bit address;
+- every direct split of the 15 Phase5 triplet bits exceeds the available token
+  capacity for the tested LUT widths:
+  - LUT8: 1,365 / 1,365 direct splits fail;
+  - LUT16: 3,003 / 3,003 direct splits fail;
+  - LUT32: 5,005 / 5,005 direct splits fail;
+- these split tests are optimistic because they allow independent first/second
+  tables, while the real C5 stages share one physical LUT;
+- all 32 middle phases have distinct winding-continuation behavior over endpoint
+  pairs, so an endpoint-independent arbitrary-input middle summary requires
+  five phase bits;
+- for each of the eight possible direct raw-middle hint bits, there are zero
+  endpoint/hint cells where a non-zero winding correction is safe for every
+  legal raw middle sample in that hint class.
+
+A concrete collision is `p=0,c=20`: middle phase 10 requires the +360-degree
+branch while middle phase 20 requires ordinary Golden, yet both can share the
+same raw-I sign. Therefore a one-bit middle-sign correction cannot be exact and
+safe on arbitrary legal input.
+
+The proof also found six LUT16 direct partitions for the *clipped ideal*
+adjacent50 target if the byte-exact Golden no-winding requirement is dropped.
+Those are not Golden360 solutions; they show that preserving Golden's exact
+existing transfer is the additional capacity burden.
+
+Important scope limit: this is a lower bound for the tested direct LUT
+factorizations and the one-middle-bit idea, not a theorem that no clever use of
+C5 counters or external logic can ever solve Golden360. However, combined with
+the established live constraints — two bundles per 50 ns, one raw->Phase5
+lookup already consumed, endpoint->DAC lookup already consumed, and no
+concurrent RX+TX BitScrambler route — it closes the tempting "just add one
+middle hint bit" shortcut.
+
+No Golden360 firmware is emitted by the branch. Do not replace Golden with a
+model-based one-bit correction: on legal noisy/discontinuous IQ it must produce
+wrong winding decisions and can recreate the static/false-pulse failure class
+seen in earlier adjacent experiments.
+
 ### PR #71 — TX-only PolarState8
 
 This keeps the production raw-Q4 ring and fits one read/write bundle per sample
@@ -635,6 +703,12 @@ repository through #71.
 | [#69](https://github.com/Twotoz/C5VRX/pull/69) | Polar11 host geometry; original concurrent RX/TX topology blocked by #70. |
 | [#70](https://github.com/Twotoz/C5VRX/pull/70) | Half-duplex BitScrambler hardware blocker; exact 24-token adjacent factorization retained. |
 | [#71](https://github.com/Twotoz/C5VRX/pull/71) | TX-only PolarState8 produced video but rapid desync/rainbow; model quality still poor. |
+
+### Non-PR branch coverage
+
+| Branch | Preserved knowledge |
+|---|---|
+| [feat/golden360-middle](https://github.com/Twotoz/C5VRX/tree/feat/golden360-middle) | Exhaustive Golden360/Adjacent50 capacity proof: exact one-bit middle correction is unsafe; all tested direct LUT8/LUT16/LUT32 Golden-preserving two-stage splits exceed token capacity; proof and oracle are preserved on main. |
 
 ## 10. How to use this document
 
