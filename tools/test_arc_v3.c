@@ -138,6 +138,19 @@ int main(void)
     drive_until_gain(&a, obs(65, 99, 300, 0), 77, 20);
     assert(a.state == ARC_V3_ACQUIRE);
 
+    /* PolarState8 prefers stronger raw IQ: live G47/P45/Q99/zero clipping
+     * was usable, while the ordinary Golden target would reduce gain.
+     * Keep that clean observation locked, but descend for real overload. */
+    arc_v3_controller_reset(&a, &t, 47);
+    a.polar_mode = 1u;
+    feed(&a, obs(45, 99, 0, 0), 45);
+    assert(a.gain == 47 && a.state == ARC_V3_LOCK);
+    drive_until_gain(&a, obs(65, 99, 400, 0), 43, 20);
+
+    /* Standard ARC V3 keeps its original response with the guard disabled. */
+    arc_v3_controller_reset(&a, &t, 47);
+    drive_until_gain(&a, obs(45, 99, 0, 0), 46, 45);
+
     puts("arc_v3_controller temporal tests passed");
     return 0;
 }

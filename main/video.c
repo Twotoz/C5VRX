@@ -1131,6 +1131,8 @@ static const char *demod_mode_name(void)
     return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
 }
 
+static void apply_rx_profile(rx_profile_t profile);
+
 static void cycle_demod_mode(void)
 {
     s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
@@ -1143,6 +1145,8 @@ static void cycle_demod_mode(void)
      * automatically returns to GOLDEN instead of making 4-bit unreachable. */
     if (s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5)
         s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    if (s_demod_mode == DEMOD_MODE_POLARSTATE8_EXP)
+        apply_rx_profile(RX_PROFILE_ARC_V3_EXP);
 
     /* Semantic sync interpretation changes with the demod LUT. Do not carry
      * PAL/NTSC votes or lock age from the previous demodulator across an A/B
@@ -1384,6 +1388,8 @@ static void settings_load(void)
     } else {
         s_rx_profile = RX_PROFILE_RANGE_EXP;
     }
+    if (s_demod_mode == DEMOD_MODE_POLARSTATE8_EXP)
+        s_rx_profile = RX_PROFILE_ARC_V3_EXP;
     if (s_rx_profile == RX_PROFILE_RANGE_EXP ||
         s_rx_profile == RX_PROFILE_FUSION_EXP ||
         s_rx_profile == RX_PROFILE_ARC ||
@@ -1405,6 +1411,8 @@ static void settings_load(void)
     if (s_video_std_mode == VIDEO_STD_MODE_PAL) s_video_std = VIDEO_STD_PAL;
     else if (s_video_std_mode == VIDEO_STD_MODE_NTSC) s_video_std = VIDEO_STD_NTSC;
     if (settings.agc_mode <= ANALOG_AGC_MANUAL) s_agc_mode = (analog_agc_mode_t)settings.agc_mode;
+    if (s_demod_mode == DEMOD_MODE_POLARSTATE8_EXP)
+        s_agc_mode = ANALOG_AGC_ACTIVE;
     if (s_agc_mode == ANALOG_AGC_MANUAL && settings.manual_gain >= 2u && settings.manual_gain <= 62u) {
         s_current_gain = profile_gain_clamp(settings.manual_gain);
     } else {
@@ -2657,6 +2665,8 @@ static void lab_print_arc_oracle(void)
 static void apply_rx_profile(rx_profile_t profile)
 {
     if (profile >= RX_PROFILE_COUNT) profile = RX_PROFILE_BALANCED;
+    if (s_demod_mode == DEMOD_MODE_POLARSTATE8_EXP)
+        profile = RX_PROFILE_ARC_V3_EXP;
 
     /* Leave any previous experimental state first. */
     if (s_profile_fft_forced) {
@@ -4053,6 +4063,8 @@ static void analog_agc_task(void *arg)
 
         if (s_rx_profile == RX_PROFILE_ARC_V3_EXP &&
             s_agc_mode == ANALOG_AGC_ACTIVE) {
+            arc_v3_controller.polar_mode =
+                s_demod_mode == DEMOD_MODE_POLARSTATE8_EXP;
             arc_v3_observation_t v3_obs = {
                 .p_median = p_median,
                 .q_phase = q_phase,
@@ -4879,6 +4891,8 @@ esp_err_t video_start(void)
         " CPU:     done (hardware runs in unbroken infinite loop)\n"
         "=======================================================\n",
         s_rx_dma_ch, s_tx_dma_ch, rx_nodes, tx_nodes, DAC_IDLE_CODE, 2u);
+    ESP_EARLY_LOGW(TAG, "Boot reset_reason=%d demod=%s rx_profile=%s",
+                   (int)esp_reset_reason(), demod_mode_name(), rx_profile_name());
 
     return ESP_OK;
 }

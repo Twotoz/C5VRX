@@ -43,3 +43,24 @@ Use Golden for normal viewing. A live PolarState8 test needs a controlled
 Golden/PolarState8 comparison with fixed RF channel, gain, bandwidth and
 carrier. If PolarState8 shows static, first collect raw IQ and train/score
 the state table offline; do not treat the ISA fit as proof of video quality.
+
+## ARC V3 and observed desync
+
+The first live PR #71 build produced recognizable video, but the user saw
+rapid desync and rainbow artifacts. Read-only snapshots showed `demod=2`,
+`profile=8` (ARC V3), zero PARLIO/GDMA/BitScrambler faults, and repeated
+raw-IQ collapse from P45/Q99% to P1/Q0%. The vendor gain table has an RF-stage
+boundary at G47: one good snapshot at G47 had P45/Q99%/zero clipping; several
+nearby lower-stage snapshots had near-origin IQ. These observations establish
+that the C5 did not reboot during the sampled interval. They do not prove the
+cause of the RF collapse because the VTX was switched off during the later
+fixed-gain probe.
+
+This revision automatically selects active ARC V3 when PolarState8 is selected
+or loaded from settings, and logs the ESP reset reason at boot. ARC V3 gains a
+PolarState8-only clean-IQ target: P35..45/Q>=55% with low clipping and low
+origin occupancy counts as useful phase precision instead of a request to
+reduce RF gain. Its LOCK hold range also extends to P45; genuine clipping or
+P>45 still requests less gain. Golden's ARC V3 thresholds stay unchanged.
+This is a targeted mitigation to be checked on live hardware; it does not
+address PolarState8's three-bit phase-history artifacts.

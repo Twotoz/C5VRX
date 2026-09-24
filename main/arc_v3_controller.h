@@ -48,6 +48,9 @@ typedef struct {
     unsigned history_pos;
     arc_v3_observation_t filtered;
     uint8_t filtered_valid;
+    /* PolarState8 needs more raw-Q4 phase precision than Golden. Keep clean
+     * high-IQ observations up to P45 in target/lock instead of reducing RF gain. */
+    uint8_t polar_mode;
 } arc_v3_controller_t;
 
 void arc_v3_controller_reset(arc_v3_controller_t *arc,

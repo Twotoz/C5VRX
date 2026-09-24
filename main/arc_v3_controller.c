@@ -31,10 +31,10 @@ static int hard_starved(const arc_v3_observation_t *o)
            o->origin_permille >= 800;
 }
 
-static int lock_hold_good(const arc_v3_observation_t *o)
+static int lock_hold_good(const arc_v3_observation_t *o, bool polar_mode)
 {
     return o->clip_permille <= 24 &&
-           o->p_median >= 6 && o->p_median <= 40 &&
+           o->p_median >= 6 && o->p_median <= (polar_mode ? 45 : 40) &&
            o->q_phase >= 45 &&
            o->origin_permille <= 500 &&
            o->winding_permille < 320;
@@ -202,6 +202,11 @@ uint8_t arc_v3_controller_tick(arc_v3_controller_t *arc,
 
     const arc_v3_observation_t *f = &arc->filtered;
     arc_v3_q4_state_t cls = arc_v3_classify(f);
+    if (arc->polar_mode && cls == ARC_V3_Q4_HIGH &&
+        f->p_median <= 45 && f->clip_permille <= 16 &&
+        f->q_phase >= 55 && f->origin_permille <= 350 &&
+        f->winding_permille < 300)
+        cls = ARC_V3_Q4_TARGET;
     note_class(arc, cls);
 
     if (arc->state == ARC_V3_RF_LIMIT) {
@@ -213,7 +218,7 @@ uint8_t arc_v3_controller_tick(arc_v3_controller_t *arc,
     }
 
     if (arc->state == ARC_V3_LOCK) {
-        if (lock_hold_good(f)) {
+        if (lock_hold_good(f, arc->polar_mode != 0u)) {
             arc->bad_lock_ticks = 0u;
             return arc->gain; /* Zero-write clean LOCK invariant. */
         }
