@@ -9,6 +9,7 @@ idf_component_register(
         "video.c"
         "menu_raster.c"
     INCLUDE_DIRS "."
+    EMBED_FILES "adjacent50_pair_lut.bin"
     REQUIRES
         esp_wifi
         esp_phy
@@ -19,6 +20,7 @@ idf_component_register(
         esp_driver_gpio
         esp_driver_bitscrambler
         esp_driver_usb_serial_jtag
+        esp_driver_gptimer
         vfs
         esp_rom
         esp_mm
@@ -33,3 +35,4 @@ idf_component_register(
 target_bitscrambler_add_src("fm.bsasm")
 target_bitscrambler_add_src("fm4.bsasm")
 target_bitscrambler_add_src("fm_traj.bsasm")
+target_bitscrambler_add_src("fm_adjacent50_pair.bsasm")

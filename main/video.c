@@ -55,6 +55,7 @@
 #include "driver/gpio.h"
 #include "driver/parlio_rx.h"
 #include "driver/parlio_tx.h"
+#include "driver/gptimer.h"
 #include "esp_attr.h"
 #include "esp_cache.h"
 #include "esp_log.h"
@@ -73,6 +74,7 @@
 #include "modem/modem_syscon_reg.h"
 #include "hal/dma_types.h"
 #include "esp_clock_output.h"
+#include "esp_cpu.h"
 
 /* Hardware diagnostic counters in IRAM to measure transport hiccups without printf spam */
 typedef struct {
@@ -137,6 +139,9 @@ static volatile int64_t s_last_user_lag_mark_us;
 BITSCRAMBLER_PROGRAM(s_fm_program, "fm");
 BITSCRAMBLER_PROGRAM(s_fm4_program, "fm4");
 BITSCRAMBLER_PROGRAM(s_fm_traj_program, "fm_traj");
+BITSCRAMBLER_PROGRAM(s_fm_adjacent50_pair_program, "fm_adjacent50_pair");
+extern const uint8_t adjacent50_pair_lut_bin_start[]
+    asm("_binary_adjacent50_pair_lut_bin_start");
 
 /* ----- Fixed production constants ----- */
 #define IQ_RATE_HZ       40000000u   /* MODEM_DIAG / PARLIO RX clock */
@@ -208,12 +213,23 @@ static inline void sync_dma_m2c(const void *addr, size_t size)
                           ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
 }
 
-/* Timing and descriptors are immutable while running; only text pixels change.
- * This raster is never linked to the RF ring. */
-static DMA_ATTR __attribute__((aligned(64))) menu_raster_t s_menu_raster;
-/* The two-field PAL/NTSC scatter chain is below 20 KiB. Descriptors are needed
- * only while the standalone menu owns TX, so allocate the bounded maximum from
- * internal AHB-DMA descriptor memory and return it on exit. */
+/* The pair-LUT is used only in flight; the raster and descriptor chain are
+ * used only in menu mode. Their exact sizes fit one 128 KiB DMA-capable SRAM
+ * overlay, avoiding a second 128 KiB allocation on the C5. */
+typedef union {
+    uint16_t pair_lut[65536];
+    struct {
+        menu_raster_t raster;
+        dma_descriptor_t nodes[MENU_MAX_NODES];
+    } menu;
+} adjacent50_overlay_t;
+_Static_assert(sizeof(menu_raster_t) == 98304u, "Menu overlay offset changed");
+_Static_assert(sizeof(adjacent50_overlay_t) == 131072u, "Pair/menu overlay overflow");
+static DMA_ATTR __attribute__((aligned(64))) adjacent50_overlay_t s_adjacent50_overlay;
+#define s_menu_raster (s_adjacent50_overlay.menu.raster)
+#define s_pair_lut (s_adjacent50_overlay.pair_lut)
+
+/* Menu descriptors use the tail of the same overlay, after the raster. */
 static dma_descriptor_t *s_menu_nodes;
 static unsigned s_menu_node_capacity;
 /* AGC sampling and channel scan are serialized in analog_agc_task, so they
@@ -239,6 +255,7 @@ typedef enum {
 typedef enum {
     DEMOD_MODE_GOLDEN_PHASE5 = 0,
     DEMOD_MODE_TRAJECTORY_V2 = 1,
+    DEMOD_MODE_ADJACENT50_PAIR = 2,
     DEMOD_MODE_COUNT,
 } demod_mode_t;
 
@@ -500,6 +517,166 @@ static int s_rx_dscr_count = 0;
 
 static ring_dscr_node_t s_tx_dscr_nodes[MAX_RING_DESCRIPTORS];
 static int s_tx_dscr_count = 0;
+static int find_dscr_index(const ring_dscr_node_t *nodes, int count, uint32_t addr);
+
+static TaskHandle_t s_pair_task;
+static gptimer_handle_t s_pair_timer;
+static bool s_pair_timer_enabled;
+static bool s_pair_timer_running;
+static volatile bool s_pair_active;
+static volatile uint32_t s_pair_processed;
+static volatile uint32_t s_pair_late;
+static volatile uint32_t s_pair_max_cycles;
+static volatile uint32_t s_pair_budget_misses;
+static volatile uint32_t s_pair_max_backlog;
+static volatile bool s_pair_fault;
+static volatile bool s_pair_tx_started;
+static volatile uint32_t s_pair_shadow_seq;
+static volatile uint32_t s_pair_shadow_offset;
+static volatile bool s_pair_shadow_valid;
+static uint8_t s_pair_raw_shadow[CONTROL_SAMPLE_BYTES] __attribute__((aligned(64)));
+
+static void IRAM_ATTR pair_transform_inplace(uint8_t *buffer, uint32_t bytes)
+{
+    uint16_t *ptr = (uint16_t *)buffer;
+    uint16_t *end = ptr + bytes / 2u;
+    while (ptr + 1 < end) {
+        uint16_t first = s_pair_lut[ptr[0]];
+        uint16_t second = s_pair_lut[ptr[1]];
+        ptr[0] = first;
+        ptr[1] = second;
+        ptr += 2;
+    }
+    if (ptr < end) *ptr = s_pair_lut[*ptr];
+}
+
+static bool IRAM_ATTR pair_timer_alarm(gptimer_handle_t timer,
+                                       const gptimer_alarm_event_data_t *event,
+                                       void *ctx)
+{
+    (void)timer;
+    (void)event;
+    (void)ctx;
+    BaseType_t wake = pdFALSE;
+    TaskHandle_t task = s_pair_task;
+    if (task) vTaskNotifyGiveFromISR(task, &wake);
+    return wake == pdTRUE;
+}
+
+static void pair_bridge_task(void *arg)
+{
+    (void)arg;
+    int next = 0;
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        if (!s_pair_active || s_rx_dscr_count < 2 || s_rx_dma_ch < 0) continue;
+        uint32_t current_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
+        int current = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, current_addr);
+        if (current < 0) continue;
+        unsigned backlog = (unsigned)((current - next + s_rx_dscr_count) % s_rx_dscr_count);
+        if (backlog > s_pair_max_backlog) s_pair_max_backlog = backlog;
+        if (backlog >= (unsigned)(s_rx_dscr_count / 2)) s_pair_fault = true;
+        unsigned processed_this_wake = 0;
+        while (next != current) {
+            if (++processed_this_wake >= (unsigned)s_rx_dscr_count) {
+                s_pair_fault = true;
+                break;
+            }
+            ring_dscr_node_t *node = &s_rx_dscr_nodes[next];
+            uint8_t *buf = node->buffer;
+            uint32_t length = node->length;
+            if (!buf || (length & 1u) || length > 4092u) {
+                ++s_pair_late;
+                break;
+            }
+            if (s_pair_tx_started && s_tx_dma_ch >= 0 && !s_menu_active &&
+                get_tx_dma_offset(NULL) == (uint32_t)(buf - s_raw_ring)) {
+                ++s_pair_late;
+                s_pair_fault = true;
+            }
+            uint32_t start_cycles = esp_cpu_get_cycle_count();
+            sync_dma_m2c(buf, length);
+            if (length >= CONTROL_SAMPLE_BYTES &&
+                (s_pair_processed % 49u) == 0u) {
+                __atomic_add_fetch(&s_pair_shadow_seq, 1u, __ATOMIC_ACQ_REL);
+                memcpy(s_pair_raw_shadow, buf, CONTROL_SAMPLE_BYTES);
+                s_pair_shadow_offset = (uint32_t)(buf - s_raw_ring);
+                s_pair_shadow_valid = true;
+                __atomic_add_fetch(&s_pair_shadow_seq, 1u, __ATOMIC_RELEASE);
+            }
+            pair_transform_inplace(buf, length);
+            sync_dma_c2m(buf, length);
+            uint32_t elapsed_cycles = esp_cpu_get_cycle_count() - start_cycles;
+            if (elapsed_cycles > s_pair_max_cycles) s_pair_max_cycles = elapsed_cycles;
+            if (elapsed_cycles > length * 6u) ++s_pair_budget_misses;
+            ++s_pair_processed;
+            next = (next + 1) % s_rx_dscr_count;
+        }
+        if (s_pair_fault) vTaskDelay(pdMS_TO_TICKS(1));
+    }
+}
+
+static esp_err_t pair_bridge_prepare(void)
+{
+    memcpy(s_pair_lut, adjacent50_pair_lut_bin_start, sizeof(s_pair_lut));
+    s_pair_processed = 0;
+    s_pair_late = 0;
+    s_pair_max_cycles = 0;
+    s_pair_budget_misses = 0;
+    s_pair_max_backlog = 0;
+    s_pair_fault = false;
+    s_pair_tx_started = false;
+    s_pair_shadow_seq = 0;
+    s_pair_shadow_valid = false;
+    s_pair_active = false;
+    if (xTaskCreate(pair_bridge_task, "pair_bridge", 3072, NULL, 4,
+                    &s_pair_task) != pdPASS) return ESP_ERR_NO_MEM;
+    const gptimer_config_t cfg = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = 1000000u,
+    };
+    esp_err_t err = gptimer_new_timer(&cfg, &s_pair_timer);
+    if (err != ESP_OK) return err;
+    const gptimer_event_callbacks_t callbacks = {.on_alarm = pair_timer_alarm};
+    if ((err = gptimer_register_event_callbacks(s_pair_timer, &callbacks, NULL)) != ESP_OK)
+        return err;
+    if ((err = gptimer_enable(s_pair_timer)) != ESP_OK) return err;
+    s_pair_timer_enabled = true;
+    const gptimer_alarm_config_t alarm = {
+        .alarm_count = 50u,
+        .reload_count = 0u,
+        .flags.auto_reload_on_alarm = true,
+    };
+    if ((err = gptimer_set_alarm_action(s_pair_timer, &alarm)) != ESP_OK) return err;
+    return ESP_OK;
+}
+
+static esp_err_t pair_bridge_run(void)
+{
+    s_pair_active = true;
+    esp_err_t err = gptimer_start(s_pair_timer);
+    if (err == ESP_OK) s_pair_timer_running = true;
+    else s_pair_active = false;
+    return err;
+}
+
+static void pair_bridge_stop(void)
+{
+    s_pair_active = false;
+    s_pair_tx_started = false;
+    if (s_pair_timer) {
+        if (s_pair_timer_running) ESP_ERROR_CHECK(gptimer_stop(s_pair_timer));
+        s_pair_timer_running = false;
+        if (s_pair_timer_enabled) ESP_ERROR_CHECK(gptimer_disable(s_pair_timer));
+        s_pair_timer_enabled = false;
+        ESP_ERROR_CHECK(gptimer_del_timer(s_pair_timer));
+        s_pair_timer = NULL;
+    }
+    TaskHandle_t task = s_pair_task;
+    s_pair_task = NULL;
+    if (task) vTaskDelete(task);
+}
 
 static inline int find_dscr_index(const ring_dscr_node_t *nodes, int count, uint32_t addr)
 {
@@ -571,6 +748,32 @@ static uint8_t *get_completed_rx_sample_window(size_t bytes)
         }
     }
     return s_raw_ring;
+}
+
+/* ARC and Fusion consume a raw snapshot made before the pair bridge replaces
+ * that descriptor with BS tokens. The sequence counter rejects a concurrent
+ * shadow update without allocating another descriptor-sized buffer. */
+static bool copy_completed_raw_window(uint8_t *dst, size_t bytes,
+                                      size_t *ring_offset)
+{
+    if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR && s_pair_active) {
+        if (!s_pair_shadow_valid || bytes > sizeof(s_pair_raw_shadow)) return false;
+        for (unsigned retry = 0; retry < 4u; ++retry) {
+            uint32_t before = __atomic_load_n(&s_pair_shadow_seq, __ATOMIC_ACQUIRE);
+            if (before & 1u) continue;
+            memcpy(dst, s_pair_raw_shadow, bytes);
+            *ring_offset = s_pair_shadow_offset;
+            uint32_t after = __atomic_load_n(&s_pair_shadow_seq, __ATOMIC_ACQUIRE);
+            if (before == after) return true;
+        }
+        return false;
+    }
+    uint8_t *src = get_completed_rx_sample_window(bytes);
+    *ring_offset = (src >= s_raw_ring && src < s_raw_ring + sizeof(s_raw_ring)) ?
+                   (size_t)(src - s_raw_ring) : 0u;
+    sync_dma_m2c(src, bytes);
+    memcpy(dst, src, bytes);
+    return true;
 }
 
 
@@ -982,12 +1185,8 @@ static void fusion_observer_task(void *arg)
             fusion_temporal_reset(&temporal);
         }
 
-        uint8_t *src = get_completed_rx_sample_window(sizeof(sample));
-        size_t ring_offset =
-            (src >= s_raw_ring && src < s_raw_ring + sizeof(s_raw_ring)) ?
-            (size_t)(src - s_raw_ring) : 0u;
-        sync_dma_m2c((void *)src, sizeof(sample));
-        memcpy(sample, src, sizeof(sample));
+        size_t ring_offset = 0;
+        if (!copy_completed_raw_window(sample, sizeof(sample), &ring_offset)) continue;
 
         control_metrics_t metrics =
             analyze_control_window(sample, sizeof(sample), ring_offset);
@@ -1125,18 +1324,18 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
-    return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
+    return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" :
+           s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR ? "ADJ50" : "GOLDEN";
 }
 
 static void cycle_demod_mode(void)
 {
-    s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
-                   DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
+    s_demod_mode = (demod_mode_t)((s_demod_mode + 1u) % DEMOD_MODE_COUNT);
     /* TRAJ V2 and 4BIT@80 use different BitScrambler/output contracts.
      * Selecting TRAJ V2 therefore moves the DAC back to its proven 6-bit path.
      * The inverse action is handled on the DAC control: selecting 4BIT@80
      * automatically returns to GOLDEN instead of making 4-bit unreachable. */
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)
+    if (s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5)
         s_output_mode = VIDEO_OUTPUT_6BIT_40;
 
     /* Semantic sync interpretation changes with the demod LUT. Do not carry
@@ -1372,7 +1571,7 @@ static void settings_load(void)
     } else if (settings.demod_mode < DEMOD_MODE_COUNT) {
         s_demod_mode = (demod_mode_t)settings.demod_mode;
     }
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    if (s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5) s_output_mode = VIDEO_OUTPUT_6BIT_40;
     if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
     if (settings.rx_profile < RX_PROFILE_COUNT) {
         s_rx_profile = (rx_profile_t)settings.rx_profile;
@@ -2963,7 +3162,6 @@ static bool menu_append_segment(void *ctx, const uint8_t *data, unsigned length)
 static void menu_free_nodes(void)
 {
     if (!s_menu_nodes) return;
-    heap_caps_free(s_menu_nodes);
     s_menu_nodes = NULL;
     s_menu_node_capacity = 0;
     s_menu_node_count = 0;
@@ -2985,16 +3183,8 @@ static esp_err_t menu_init_buffers(void)
         return ESP_ERR_INVALID_SIZE;
     }
 
-    if (s_menu_node_capacity < MENU_MAX_NODES) {
-        menu_free_nodes();
-        size_t bytes = MENU_MAX_NODES * sizeof(*s_menu_nodes);
-        size_t alloc_bytes = (bytes + 63u) & ~(size_t)63u;
-        s_menu_nodes = (dma_descriptor_t *)heap_caps_aligned_alloc(
-            64u, alloc_bytes,
-            MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
-        if (!s_menu_nodes) return ESP_ERR_NO_MEM;
-        s_menu_node_capacity = MENU_MAX_NODES;
-    }
+    s_menu_nodes = s_adjacent50_overlay.menu.nodes;
+    s_menu_node_capacity = MENU_MAX_NODES;
 
     s_menu_node_count = 0;
     if (!menu_raster_emit(&s_menu_raster, s_video_std,
@@ -3160,7 +3350,7 @@ static void menu_draw_video_page(void)
 {
     char detected[24];
     bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80 ||
-                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2;
+                        s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5;
     menu_draw_page_title("VIDEO OUTPUT", experimental ? "EXPERIMENTAL" : "DEFAULT");
     menu_ui_value_box(100, 22, 130, "DAC", output_mode_name());
     menu_ui_value_box(238, 22, 138, "DEMOD", demod_mode_name());
@@ -3214,7 +3404,9 @@ static void quiet_tx_interrupts(void)
 static void start_flight_demodulator(void)
 {
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
+    if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR) {
+        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_adjacent50_pair_program));
+    } else if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
     } else if (s_output_mode == VIDEO_OUTPUT_4BIT_80) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm4_program));
@@ -3223,6 +3415,39 @@ static void start_flight_demodulator(void)
     }
     ESP_ERROR_CHECK(bitscrambler_reset(s_flight_bs));
     ESP_ERROR_CHECK(bitscrambler_start(s_flight_bs));
+}
+
+/* A missed descriptor means TX can read tokens and raw IQ from the same ring.
+ * Stop that experiment and restart the known-good raw-ring demodulator before
+ * the worker can monopolize the CPU or the picture keeps showing random FM. */
+static void pair_bridge_recover_golden(void)
+{
+    if (s_demod_mode != DEMOD_MODE_ADJACENT50_PAIR || !s_pair_fault) return;
+    printf("[ADJ50 FAULT] blocks=%lu overlap=%lu max_cycles=%lu budget_miss=%lu backlog=%lu; restoring Golden\n",
+           (unsigned long)s_pair_processed,
+           (unsigned long)s_pair_late,
+           (unsigned long)s_pair_max_cycles,
+           (unsigned long)s_pair_budget_misses,
+           (unsigned long)s_pair_max_backlog);
+
+    ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
+    ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+    pair_bridge_stop();
+    s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+    settings_save();
+    start_flight_demodulator();
+
+    ESP_ERROR_CHECK(parlio_rx_unit_disable(s_rx));
+    ESP_ERROR_CHECK(parlio_rx_unit_enable(s_rx, false));
+    ESP_ERROR_CHECK(parlio_tx_unit_enable(s_tx));
+    ESP_ERROR_CHECK(start_rx());
+    AHB_DMA.in_intr[s_rx_dma_ch].ena.val = 0;
+    PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1;
+    esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
+    ESP_ERROR_CHECK(start_tx());
+    quiet_tx_interrupts();
+    patch_descriptors_clear_eof(s_rx_dma_ch, true);
+    patch_descriptors_clear_eof(s_tx_dma_ch, false);
 }
 
 /* Restore the exact live topology used after leaving the standalone menu.
@@ -3272,7 +3497,8 @@ static esp_err_t lab_restore_live_tx_pipeline(void)
  * removed and all six resistor-DAC GPIOs are held static low. */
 static void lab_run_tx_self_noise_probe(void)
 {
-    if (s_gain_sweep.active || s_menu_active || s_pre_q4_probe_active) {
+    if (s_gain_sweep.active || s_menu_active || s_pre_q4_probe_active ||
+        s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR) {
         printf("C5VRX_PREQ4_TXNOISE_REFUSED reason=%s\n",
                s_gain_sweep.active ? "gain_sweep_active" :
                s_menu_active ? "menu_active" : "preq4_busy");
@@ -3399,6 +3625,14 @@ static void video_set_menu_mode(bool active)
     if (s_menu_active == active) return;
 
     if (active) {
+        /* The menu raster shares SRAM with the pair table. Stop every reader
+         * of the table before menu_init_buffers overwrites that memory. */
+        bool pair_was_active = s_pair_active;
+        if (pair_was_active) {
+            ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
+            ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+            pair_bridge_stop();
+        }
         /* Allocate/render before touching the live pipeline. If memory is
          * unavailable, keep flight video running instead of rebooting. */
         s_video_std = resolved_menu_standard();
@@ -3409,12 +3643,30 @@ static void video_set_menu_mode(bool active)
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
             menu_free_nodes();
+            if (pair_was_active) {
+                /* A failed menu render cannot leave the DAC stopped. Recover
+                 * with the proven raw-ring Golden path. */
+                s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+                settings_save();
+                start_flight_demodulator();
+                ESP_ERROR_CHECK(parlio_rx_unit_disable(s_rx));
+                ESP_ERROR_CHECK(parlio_rx_unit_enable(s_rx, false));
+                ESP_ERROR_CHECK(parlio_tx_unit_enable(s_tx));
+                ESP_ERROR_CHECK(start_rx());
+                AHB_DMA.in_intr[s_rx_dma_ch].ena.val = 0;
+                PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1;
+                esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
+                ESP_ERROR_CHECK(start_tx());
+                patch_descriptors_clear_eof(s_rx_dma_ch, true);
+                patch_descriptors_clear_eof(s_tx_dma_ch, false);
+            }
             return;
         }
 
-        ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
-        /* Live -> menu: stop the live producer once. */
-        ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+        if (!pair_was_active) {
+            ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
+            ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+        }
 
         /* Menu raster is byte-oriented 6-bit@40 even if live output was 4-bit@80. */
         if (s_tx_unit_mode != VIDEO_OUTPUT_6BIT_40) {
@@ -3423,9 +3675,19 @@ static void video_set_menu_mode(bool active)
         start_menu_tx();
     } else {
         ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
+        menu_free_nodes();
         /* Menu -> live: the BitScrambler is already disabled; do not disable twice. */
         if (s_tx_unit_mode != s_output_mode) {
             ESP_ERROR_CHECK(replace_tx_unit(s_output_mode));
+        }
+        if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR) {
+            esp_err_t bridge_err = pair_bridge_prepare();
+            if (bridge_err != ESP_OK) {
+                pair_bridge_stop();
+                s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+                ESP_LOGE(TAG, "Adjacent50 bridge unavailable after menu (%s)",
+                         esp_err_to_name(bridge_err));
+            }
         }
         start_flight_demodulator();
         ESP_ERROR_CHECK(parlio_rx_unit_disable(s_rx));
@@ -3445,16 +3707,37 @@ static void video_set_menu_mode(bool active)
         ESP_ERROR_CHECK(start_rx());
         AHB_DMA.in_intr[s_rx_dma_ch].ena.val = 0;
         PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1;
-        esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
+        if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR) {
+            int nodes = patch_descriptors_clear_eof(s_rx_dma_ch, true);
+            esp_err_t bridge_err = nodes >= 2 ? pair_bridge_run() : ESP_ERR_NOT_FOUND;
+            if (bridge_err != ESP_OK) {
+                pair_bridge_stop();
+                s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+                ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+                start_flight_demodulator();
+            }
+        }
+        if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR) {
+            int64_t deadline = esp_timer_get_time() + 2500;
+            while (get_rx_dma_offset(NULL) < RAW_RING_BYTES / 2u) {
+                ESP_ERROR_CHECK(esp_timer_get_time() < deadline ? ESP_OK : ESP_ERR_TIMEOUT);
+                esp_rom_delay_us(1);
+            }
+        } else {
+            esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
+        }
         ESP_ERROR_CHECK(start_tx());
+        if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR)
+            s_pair_tx_started = true;
         quiet_tx_interrupts();
-        patch_descriptors_clear_eof(s_rx_dma_ch, true);
+        if (s_demod_mode != DEMOD_MODE_ADJACENT50_PAIR)
+            patch_descriptors_clear_eof(s_rx_dma_ch, true);
         patch_descriptors_clear_eof(s_tx_dma_ch, false);
 
         /* Live TX now owns its own driver descriptors; the standalone menu
          * scatter chain is no longer referenced by GDMA. Return its large
          * descriptor allocation to internal heap for normal flight. */
-        menu_free_nodes();
+        /* menu_free_nodes() ran before table refill and RX restart. */
     }
     s_menu_timeout_ticks = 0;
     s_menu_active = active;
@@ -3508,12 +3791,10 @@ static void channel_auto_search(void)
     for (size_t channel = 0; channel < channel_count; ++channel) {
         if (rf_set_channel(channel) != ESP_OK) continue;
         vTaskDelay(pdMS_TO_TICKS(90));
-        uint8_t *src = get_completed_rx_sample_window(CONTROL_SAMPLE_BYTES);
-        size_t scan_ring_offset =
-            (src >= s_raw_ring && src < s_raw_ring + sizeof(s_raw_ring)) ?
-            (size_t)(src - s_raw_ring) : 0u;
-        sync_dma_m2c(src, CONTROL_SAMPLE_BYTES);
-        memcpy(s_control_sample_buf, src, sizeof(s_control_sample_buf));
+        size_t scan_ring_offset = 0;
+        if (!copy_completed_raw_window(s_control_sample_buf,
+                                       sizeof(s_control_sample_buf),
+                                       &scan_ring_offset)) continue;
         control_metrics_t metrics =
             analyze_control_window(s_control_sample_buf,
                                    sizeof(s_control_sample_buf),
@@ -3650,7 +3931,7 @@ static void handle_button_long_click(void)
             s_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
                             VIDEO_OUTPUT_4BIT_80 : VIDEO_OUTPUT_6BIT_40;
             if (s_output_mode == VIDEO_OUTPUT_4BIT_80 &&
-                s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
+                s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5) {
                 /* 4BIT@80 has its own fm4 BitScrambler contract. Keep the
                  * combination valid by returning to GOLDEN automatically. */
                 s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
@@ -3727,6 +4008,20 @@ static void analog_agc_task(void *arg)
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(50));
 
+        if (s_pair_fault) pair_bridge_recover_golden();
+
+        if (s_pair_active && ++telemetry_ticks >= 20) {
+            telemetry_ticks = 0;
+            printf("[ADJ50] blocks=%lu overlap=%lu max_cycles=%lu budget_miss=%lu backlog=%lu fault=%u heap=%u\n",
+                   (unsigned long)s_pair_processed,
+                   (unsigned long)s_pair_late,
+                   (unsigned long)s_pair_max_cycles,
+                   (unsigned long)s_pair_budget_misses,
+                   (unsigned long)s_pair_max_backlog,
+                   s_pair_fault ? 1u : 0u,
+                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        }
+
         int command;
         for (unsigned commands = 0; commands < 16 &&
              xQueueReceive(s_menu_commands, &command, 0) == pdTRUE; ++commands) {
@@ -3787,7 +4082,7 @@ static void analog_agc_task(void *arg)
                         cycle_demod_mode();
                         settings_save();
                         printf("[MENU: DEMOD] -> %s%s\n", demod_mode_name(),
-                               s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ?
+                               s_demod_mode != DEMOD_MODE_GOLDEN_PHASE5 ?
                                " (6BIT@40 forced)" : "");
                         menu_render_menu();
                         s_menu_timeout_ticks = 0;
@@ -3878,11 +4173,10 @@ static void analog_agc_task(void *arg)
 
         /* A complete finished descriptor gives 102.3 us of Q4/I4 rather than
          * the old 6.4 us peek, while averaging only ~82 kB/s of CPU reads. */
-        uint8_t *sample_src = get_completed_rx_sample_window(CONTROL_SAMPLE_BYTES);
-        size_t ring_offset = (sample_src >= s_raw_ring && sample_src < s_raw_ring + sizeof(s_raw_ring))
-                           ? (size_t)(sample_src - s_raw_ring) : 0u;
-        sync_dma_m2c((void *)sample_src, CONTROL_SAMPLE_BYTES);
-        memcpy(s_control_sample_buf, sample_src, sizeof(s_control_sample_buf));
+        size_t ring_offset = 0;
+        if (!copy_completed_raw_window(s_control_sample_buf,
+                                       sizeof(s_control_sample_buf),
+                                       &ring_offset)) continue;
         control_metrics_t metrics =
             analyze_control_window(s_control_sample_buf,
                                    sizeof(s_control_sample_buf),
@@ -4681,6 +4975,12 @@ static void console_diag_task(void *arg)
                            (double)CONTROL_SAMPLE_BYTES * 1000000.0 / (double)IQ_RATE_HZ);
                     printf(" GDMA Ring:                  dist=%lu (rx_off=%lu, tx_off=%lu)\n",
                            (unsigned long)dist, (unsigned long)rx_off, (unsigned long)tx_off);
+                    printf(" Adjacent50 Bridge:          active=%u blocks=%lu tx_overlap=%lu raw_shadow=%u heap=%u\n",
+                           s_pair_active ? 1u : 0u,
+                           (unsigned long)s_pair_processed,
+                           (unsigned long)s_pair_late,
+                           s_pair_shadow_valid ? 1u : 0u,
+                           (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
                     printf(" Zero-EOF Status:            RX patched=%d nodes, TX patched=%d nodes\n",
                            rx_nodes, tx_nodes);
                     printf(" Transport Faults:           PARLIO tx_empty=%lu rx_ovf=%lu tx_eof=%lu | GDMA in=%lu out=%lu | BS eof_ovl=%lu\n",
@@ -4796,6 +5096,16 @@ esp_err_t video_start(void)
     if ((err = prepare_rx()) != ESP_OK) return err;
     if ((err = prepare_tx()) != ESP_OK) return err;
 
+    if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR) {
+        err = pair_bridge_prepare();
+        if (err != ESP_OK) {
+            pair_bridge_stop();
+            s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+            ESP_LOGE(TAG, "Adjacent50 bridge unavailable (%s); using Golden",
+                     esp_err_to_name(err));
+        }
+    }
+
     start_flight_demodulator();
 
     /* Start RX cyclic ring. GDMA begins writing at s_raw_ring[0]. */
@@ -4812,11 +5122,38 @@ esp_err_t video_start(void)
     AHB_DMA.in_intr[2].ena.val = 0;
     PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1;
 
+    int rx_nodes = 0;
+    if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR) {
+        for (int i = 0; i < 3; ++i) {
+            if (AHB_DMA.channel[i].in.in_peri_sel.peri_in_sel_chn == 9)
+                s_rx_dma_ch = i;
+        }
+        rx_nodes = patch_descriptors_clear_eof(s_rx_dma_ch, true);
+        err = rx_nodes >= 2 ? pair_bridge_run() : ESP_ERR_NOT_FOUND;
+        if (err != ESP_OK) {
+            pair_bridge_stop();
+            s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+            ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+            start_flight_demodulator();
+            ESP_LOGE(TAG, "Adjacent50 RX ring unavailable; using Golden");
+        }
+    }
+
     /* Request half-ring producer/consumer separation before starting TX.
      * The integer-microsecond delay and driver latency need hardware validation. */
-    esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
+    if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR) {
+        int64_t deadline = esp_timer_get_time() + 2500;
+        while (get_rx_dma_offset(NULL) < RAW_RING_BYTES / 2u) {
+            if (esp_timer_get_time() >= deadline) return ESP_ERR_TIMEOUT;
+            esp_rom_delay_us(1);
+        }
+    } else {
+        esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
+    }
 
     if ((err = start_tx()) != ESP_OK) return err;
+    if (s_demod_mode == DEMOD_MODE_ADJACENT50_PAIR)
+        s_pair_tx_started = true;
 
     /* Discover AHB_DMA channels assigned to PARL_IO (peripheral ID 9) */
     for (int i = 0; i < 3; i++) {
@@ -4838,7 +5175,8 @@ esp_err_t video_start(void)
 
     /* Clear suc_eof on ALL GDMA descriptors for both RX and TX to eliminate
      * hardware wrap EOF bubbles completely! The buffer becomes a truly infinite ring. */
-    int rx_nodes = patch_descriptors_clear_eof(s_rx_dma_ch, true);
+    if (s_demod_mode != DEMOD_MODE_ADJACENT50_PAIR)
+        rx_nodes = patch_descriptors_clear_eof(s_rx_dma_ch, true);
     int tx_nodes = patch_descriptors_clear_eof(s_tx_dma_ch, false);
 
     /* Issue #28: clear stale startup/driver status once. Subsequent sticky

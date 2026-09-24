@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate the two-bundle Adjacent50 backend and its raw-pair CPU table.
 
-This is a host-verified candidate. The 128 KiB table must be copied to fast
-internal RAM and applied to the DMA ring ahead of TX; that live bridge still
-requires a silicon throughput and ring-ownership test.
+This is a host-verified experimental backend. The 128 KiB table is copied to
+internal RAM and applied to the DMA ring ahead of TX. Live throughput and ring
+ownership are not yet proven; the first hardware run showed static and a crash.
 """
 
 from pathlib import Path
@@ -17,7 +17,9 @@ from train_trajectory_v2 import phase5
 
 ROOT = Path(__file__).resolve().parents[1]
 ASM = ROOT / "tools/fm_adjacent50_pair.bsasm"
+PRODUCTION_ASM = ROOT / "main/fm_adjacent50_pair.bsasm"
 PAIR_TABLE = ROOT / "tools/cpu_phase_bench/main/pair_lut.bin"
+PRODUCTION_PAIR_TABLE = ROOT / "main/adjacent50_pair_lut.bin"
 PHASE_TABLE = ROOT / "tools/cpu_phase_bench/main/phase5_lut.bin"
 
 
@@ -92,12 +94,14 @@ def main():
         "    jmp delta0_and_emit\n"
     )
     ASM.write_text(asm, encoding="utf-8")
+    PRODUCTION_ASM.write_text(asm, encoding="utf-8")
 
     PAIR_TABLE.parent.mkdir(parents=True, exist_ok=True)
     PAIR_TABLE.write_bytes(b"".join(
         struct.pack("<H", pack_raw_pair(i & 255, i >> 8))
         for i in range(65536)
     ))
+    PRODUCTION_PAIR_TABLE.write_bytes(PAIR_TABLE.read_bytes())
     PHASE_TABLE.write_bytes(bytes(phase5(i) for i in range(256)))
     print(f"generated LUT16 backend and {PAIR_TABLE.stat().st_size}-byte "
           "exact raw-pair table")

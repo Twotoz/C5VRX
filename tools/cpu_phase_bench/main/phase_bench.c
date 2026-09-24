@@ -269,33 +269,14 @@ void app_main(void)
         result.wrong[5] = UINT32_MAX;
         result.wrong[6] = UINT32_MAX;
     }
-    /* Persist the result before testing flash-cache behavior: a cache fault or
-     * a long-running diagnostic must not erase the decisive internal-SRAM
-     * measurement. */
-    const esp_partition_t *partition = esp_partition_find_first(
-        ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, NULL);
-    if (partition && partition->size >= 0x100000u) {
-        esp_partition_erase_range(partition, 0xf0000u, 0x1000u);
-        esp_partition_write(partition, 0xf0000u, &result, sizeof result);
-    }
-    fill_source();
-    run("scalar", transform_scalar, phase_lut, false);
-    run("pair", transform_pair, phase_lut, false);
-    run("word", transform_word, phase_lut, false);
-    run("word_stores", transform_word_stores, phase_lut, false);
-    run("pair_table_flash", transform_pair_table, pair_lut_bin_start, true);
-    if (internal_table)
-        run("pair_table_internal", transform_pair_table, internal_table, true);
-    for (unsigned pair = 0; pair < 65536u; ++pair) {
-        int previous = phase_lut[pair & 255u];
-        int current = phase_lut[pair >> 8];
-        delta_lut[pair] = (uint8_t)((current - previous + 16) & 31);
-    }
-    run_winding();
-    if (partition && partition->size >= 0x100000u)
-        esp_partition_write(partition, 0xf0000u, &result, sizeof result);
+    /* Print only. ESP-IDF deliberately aborts when asked to erase its running
+     * factory app partition, even an unused page near the end. */
+    printf("PHASE_BENCH result inplace=%lu unrolled=%lu wrong=%lu,%lu\n",
+           (unsigned long)result.cycles_per_byte_x1000[6],
+           (unsigned long)result.cycles_per_byte_x1000[7],
+           (unsigned long)result.wrong[6], (unsigned long)result.wrong[7]);
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(2000));
-        run("word_stores", transform_word_stores, phase_lut, false);
+        printf("PHASE_BENCH alive\n");
     }
 }

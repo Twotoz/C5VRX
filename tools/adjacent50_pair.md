@@ -1,9 +1,10 @@
 # Adjacent50 pair-LUT candidate
 
-This is a host-verified design for the XIAO ESP32-C5 and the existing resistor
-DAC. It is **not** a live flight mode yet. The remaining acceptance tests are
-CPU throughput while RX/TX DMA is active, safe in-place ring ownership, and
-video quality on real RF. Keep Golden as the default until those pass.
+This is an experimental live mode for the XIAO ESP32-C5 and the existing
+resistor DAC. The first hardware run produced video with heavy static and later
+crashed. The cause is not yet proven. Golden remains the default. The next
+build bounds the descriptor worker, records its worst processing time and
+backlog, and restores Golden if it misses the ring deadline.
 
 ## Datapath
 
@@ -64,26 +65,33 @@ The standalone speed probe is built with ESP-IDF 6.0.2 after generating its
 binary tables: `python tools/gen_adjacent50_pair.py`, then `idf.py build` in
 `tools/cpu_phase_bench`. It targets ESP32-C5 at 240 MHz, uses 4096 distinct
 raw pairs spread across the full 128 KiB table, and measures an unrolled
-two-pair in-place loop as well as the scalar baseline. It writes its result
-structure to offset `0x100000` after the internal-SRAM measurements so they
-remain readable if a later cache test fails. This is a temporary test app;
+two-pair in-place loop. It prints its result over USB Serial/JTAG. This is a temporary test app;
 back up and restore the receiver flash when testing on a shared board.
 
-An initial C5 run measured roughly 8 cycles/raw byte for the simple scalar
-phase loop. The pair-table result was not captured because the temporary app
-stopped responding before it wrote its result. The optimized probe has built,
-but its throughput is **not measured yet**.
+On COM10 at 240 MHz, the isolated SRAM pair-table probe measured 4.555 to
+4.557 cycles/raw byte for the out-of-place loop, 4.128 for the in-place loop,
+and **3.754 for the unrolled in-place loop**, all with zero wrong 16-bit words
+on the 4096-pair spread input. This leaves about 2.246 CPU cycles/raw byte
+for DMA contention and all other work. The previous simple scalar phase loop
+measured about 8 cycles/raw byte. The earlier probe called
+`esp_partition_erase_range` on its own running factory partition and rebooted
+after printing the valid pair measurements; the receiver flash was restored
+and verified afterward. The probe no longer attempts that flash write.
 
 ## Live integration conditions
 
-1. Measure the pair-LUT conversion on COM10 in flash and internal SRAM with
-   `tools/cpu_phase_bench`; pass requires **strictly below 6 cycles/raw byte**
-   with enough margin for ARC and DMA contention. The isolated benchmark is
-   only a lower bound for the full receiver.
+1. Measure the in-place loop while RX/TX DMA and ARC are active. The isolated
+   3.754 cycles/raw byte is only a lower bound for the full receiver. The first
+   live test showed heavy static and a later crash, so this condition remains
+   open until the ring telemetry identifies the cause.
 2. Reserve 128 KiB of internal SRAM or demonstrate flash-cache throughput
    under both strong and near-random weak IQ. The current menu raster is
-   96 KiB and can share memory with the table because the menu stops flight,
-   but that adds 32 KiB of static SRAM before other optimizations.
+   98,304 bytes and can share memory with the table because the menu stops
+   flight. The remaining 32,768 bytes can hold the menu's 25,600 bytes of
+   GDMA descriptors too, leaving one 128 KiB overlay and no menu descriptor
+   heap allocation. The extra 32,768 static bytes over main still need a
+   boot/runtime heap check; the pair table must be copied from flash after
+   every menu exit before enabling the pair demodulator again.
 3. Transform completed RX descriptors before TX reads them. RX and TX are
    separated by half the 32 KiB ring at startup. Deadline checks must reject
    a mode switch before any unconverted raw byte reaches the phase backend.
