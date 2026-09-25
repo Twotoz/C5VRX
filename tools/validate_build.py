@@ -31,8 +31,9 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("three .bsasm programs (Golden + output experiment + Trajectory v2)",
-      {f.name for f in bsasm_files} == {"fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
+check("Golden, FSM capture, 4-bit and Trajectory BitScrambler programs",
+      {f.name for f in bsasm_files} == {"fm.bsasm", "fm_phase5_fsm_capture.bsasm",
+                                      "fm4.bsasm", "fm_traj.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
@@ -652,8 +653,9 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, 4-bit output and Trajectory v2 BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm4.bsasm", "fm_traj.bsasm"], f"found: {bs_srcs}")
+check("Golden, FSM capture, 4-bit and Trajectory BitScrambler programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "fm_phase5_fsm_capture.bsasm", "fm4.bsasm",
+                  "fm_traj.bsasm"], f"found: {bs_srcs}")
 
 # ---- Summary ----
 print(f"\n{'='*50}")
