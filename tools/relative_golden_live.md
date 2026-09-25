@@ -31,6 +31,12 @@ capacity proofs after the live equivalence check.
 The opt-in firmware was flashed to a XIAO ESP32-C5 on COM10 on 2026-09-25;
 esptool verified the bootloader, partition table, and app image hashes. With
 the VTX off, the firmware booted and answered the serial `d` command. It
-reported A1, `PARLIO tx_empty=0`, `rx_ovf=0`, and `BS eof_ovl=0`. The live
-video-equivalence check still requires the VTX to be on and a visual
-comparison against Golden; transport counters alone cannot establish that.
+reported A1, `PARLIO tx_empty=0`, `rx_ovf=0`, and `BS eof_ovl=0`.
+
+With the VTX on A1, the user reported Golden-like video from this flashed
+build. The live serial snapshot showed ARC V3 in LOCK, Q_phase=99%,
+`PARLIO tx_empty=0`, `rx_ovf=0`, `BS eof_ovl=0`, and NTSC detection. This
+establishes that relative mux routing and the repacked LUT can run in the
+live two-bundle video path. It is a visual equivalence result, not a
+byte-for-byte physical DAC capture. The middle sample and winding correction
+remain unimplemented.
