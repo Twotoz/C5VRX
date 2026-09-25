@@ -13,13 +13,18 @@ firmware feeds 128 pairs of distinct bytes and compares all 256 output bytes
 with the expected selection. A success is printed as `BS_REL_WORKER status=PASS`.
 The result remains available through the existing serial `p` snapshot command
 after startup, so USB reconnection cannot hide a quick boot-time result.
-The finite loopback drains the eight prefetched bytes with `trailing_bytes 8`;
+The finite loopback drains its prefetched window with `trailing_bytes 10`;
 the live Golden programs retain their existing `trailing_bytes 0` setting.
 
 Enable `CONFIG_C5VRX_BS_RELATIVE_WORKER_PROBE=y` for a diagnostic build. The
 oracle runs once before RF/video startup and releases the loopback handle.
 It is disabled in a normal build. It does not substitute its output into the
 live CVBS path.
+
+The first silicon run with `trailing_bytes 8` wrote 254 of 256 output bytes:
+the two missing terminal bytes were the only mismatches. The source-selected
+bytes that were written matched the expected stream. Increasing the finite
+loopback drain by two bytes is intended to finish that last word.
 
 The assembler accepted exactly two bundles. The compiled worker bundle has
 `CTL_MUX_REL=1`, while the controller has `CTL_MUX_REL=0`. The default and

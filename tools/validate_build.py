@@ -40,7 +40,7 @@ check("Golden, FSM capture, relative worker, 4-bit and Trajectory BitScrambler p
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
     check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
-    expected_trailing = 8 if bsasm_file.name == "bs_relative_worker_probe.bsasm" else 0
+    expected_trailing = 10 if bsasm_file.name == "bs_relative_worker_probe.bsasm" else 0
     check(f"{bsasm_file.name}: cfg trailing_bytes {expected_trailing}",
           f"cfg trailing_bytes {expected_trailing}" in bsasm)
     check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
