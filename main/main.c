@@ -9,9 +9,13 @@
 #include "rf.h"
 #include "video.h"
 #include "esp_log.h"
+#include "bs_relative_worker_probe.h"
 
 void app_main(void)
 {
+#if CONFIG_C5VRX_BS_RELATIVE_WORKER_PROBE
+    bs_relative_worker_probe_run();
+#endif
     ESP_ERROR_CHECK(rf_start());
     ESP_ERROR_CHECK(video_start());
     /* Hardware pipeline is running. Application has nothing more to do. */

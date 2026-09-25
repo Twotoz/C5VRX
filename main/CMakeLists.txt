@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "main.c"
+        "bs_relative_worker_probe.c"
         "arc_phy.c"
         "arc_v3_controller.c"
         "arc_v5_autotune.c"
@@ -31,6 +32,7 @@ idf_component_register(
 
 # Proven default plus opt-in experimental demod/output paths.
 target_bitscrambler_add_src("fm.bsasm")
+target_bitscrambler_add_src("bs_relative_worker_probe.bsasm")
 target_bitscrambler_add_src("fm_phase5_fsm_capture.bsasm")
 target_bitscrambler_add_src("fm4.bsasm")
 target_bitscrambler_add_src("fm_traj.bsasm")
