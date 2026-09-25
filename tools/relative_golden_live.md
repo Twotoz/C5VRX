@@ -25,3 +25,12 @@ mux selection with the real LUT, DMA and 40 MHz PARLIO path. It does not
 select the middle byte, retain all middle IQ information, perform adjacent
 FM, or correct winding. Those require separate information and arithmetic
 capacity proofs after the live equivalence check.
+
+## Initial silicon check
+
+The opt-in firmware was flashed to a XIAO ESP32-C5 on COM10 on 2026-09-25;
+esptool verified the bootloader, partition table, and app image hashes. With
+the VTX off, the firmware booted and answered the serial `d` command. It
+reported A1, `PARLIO tx_empty=0`, `rx_ovf=0`, and `BS eof_ovl=0`. The live
+video-equivalence check still requires the VTX to be on and a visual
+comparison against Golden; transport counters alone cannot establish that.
