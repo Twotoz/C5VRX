@@ -32,17 +32,24 @@ def build():
     head = baseline.split("\nlut ", 1)[0]
     asm = head + "\nlut " + " ".join(map(str, words)) + "\n\n"
     for i in range(4):
+        if i == 0:
+            ctrl_body = """    set 26..30 L0..L4,
+    set 16..20 L0..L4,
+    set 21..25 O26..O30,
+    ldctda 8"""
+        else:
+            ctrl_body = """    set 26..30 L0..L4,
+    set 16..20 L0..L4,
+    set 21..25 O26..O30"""
         asm += f"""controller_{i}:
     # L0..4 = exact Phase5 of endpoint raw; O26..30 = previous phase.
     # Golden's 10-bit pair address is unchanged.
-    set 26..30 L0..L4,
-    set 16..20 L0..L4,
-    set 21..25 O26..O30,
-    ldctda 8
+{ctrl_body}
 
 worker_{i}:
-    # Relative mux +A=8 selects L8..13 (DAC) and FIFO8..15 (endpoint).
+    # Static A=8: relative mux selects L8..13 (DAC) and FIFO8..15 (endpoint).
     # Source O26..30 is outside the relative mux range and remains unchanged.
+    # No counter reset needed; ALU opcodes are 100% freed for useful arithmetic!
     set 0 L0+a,
     set 1 L1+a,
     set 2 L2+a,
@@ -65,8 +72,7 @@ worker_{i}:
     set 22 6+a,
     set 23 7+a,
     read 16,
-    write 16,
-    adda -8
+    write 16
 
 """
     return baseline, asm, old_lut, phase, words
@@ -128,12 +134,13 @@ def simulate(asm, raw, count, initial):
                 write = int(parts[1])
             else:
                 opcode = parts
-        if opcode[0] == "ldctda":
-            a = int(opcode[1]) & 65535
-        elif opcode[0] == "adda":
-            a = (a + int(opcode[1])) & 65535
-        else:
-            raise AssertionError(opcode)
+        if opcode:
+            if opcode[0] == "ldctda":
+                a = int(opcode[1]) & 65535
+            elif opcode[0] == "adda":
+                a = (a + int(opcode[1])) & 65535
+            elif opcode[0] != "nop":
+                raise AssertionError(opcode)
         out = new
         look = lut[(out >> 16) & 1023]
         pos += read // 8

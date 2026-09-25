@@ -8,7 +8,7 @@ menu "C5VRX diagnostic probes"
 
     config C5VRX_BS_RELATIVE_MIDDLE_PROBE
         bool "Run alternating middle/endpoint relative-mux loopback probe before starting video"
-        default n
+        default y
         help
             Run a finite two-bundle BitScrambler loopback test at boot to prove
             alternating middle-sample and endpoint-sample Phase5 extraction,
@@ -18,7 +18,7 @@ endmenu
 menu "C5VRX experimental video demodulators"
     config C5VRX_RELATIVE_GOLDEN_LIVE
         bool "Use relative-mux Golden in the live 6-bit video path"
-        default n
+        default y
         help
             Replace only the 6-bit Golden BitScrambler program with the
             two-bundle Counter-A relative-mux oracle. Intended for live

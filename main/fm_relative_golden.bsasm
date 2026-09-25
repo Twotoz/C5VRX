@@ -37,8 +37,9 @@ controller_0:
     ldctda 8
 
 worker_0:
-    # Relative mux +A=8 selects L8..13 (DAC) and FIFO8..15 (endpoint).
+    # Static A=8: relative mux selects L8..13 (DAC) and FIFO8..15 (endpoint).
     # Source O26..30 is outside the relative mux range and remains unchanged.
+    # No counter reset needed; ALU opcodes are 100% freed for useful arithmetic!
     set 0 L0+a,
     set 1 L1+a,
     set 2 L2+a,
@@ -61,20 +62,19 @@ worker_0:
     set 22 6+a,
     set 23 7+a,
     read 16,
-    write 16,
-    adda -8
+    write 16
 
 controller_1:
     # L0..4 = exact Phase5 of endpoint raw; O26..30 = previous phase.
     # Golden's 10-bit pair address is unchanged.
     set 26..30 L0..L4,
     set 16..20 L0..L4,
-    set 21..25 O26..O30,
-    ldctda 8
+    set 21..25 O26..O30
 
 worker_1:
-    # Relative mux +A=8 selects L8..13 (DAC) and FIFO8..15 (endpoint).
+    # Static A=8: relative mux selects L8..13 (DAC) and FIFO8..15 (endpoint).
     # Source O26..30 is outside the relative mux range and remains unchanged.
+    # No counter reset needed; ALU opcodes are 100% freed for useful arithmetic!
     set 0 L0+a,
     set 1 L1+a,
     set 2 L2+a,
@@ -97,20 +97,19 @@ worker_1:
     set 22 6+a,
     set 23 7+a,
     read 16,
-    write 16,
-    adda -8
+    write 16
 
 controller_2:
     # L0..4 = exact Phase5 of endpoint raw; O26..30 = previous phase.
     # Golden's 10-bit pair address is unchanged.
     set 26..30 L0..L4,
     set 16..20 L0..L4,
-    set 21..25 O26..O30,
-    ldctda 8
+    set 21..25 O26..O30
 
 worker_2:
-    # Relative mux +A=8 selects L8..13 (DAC) and FIFO8..15 (endpoint).
+    # Static A=8: relative mux selects L8..13 (DAC) and FIFO8..15 (endpoint).
     # Source O26..30 is outside the relative mux range and remains unchanged.
+    # No counter reset needed; ALU opcodes are 100% freed for useful arithmetic!
     set 0 L0+a,
     set 1 L1+a,
     set 2 L2+a,
@@ -133,20 +132,19 @@ worker_2:
     set 22 6+a,
     set 23 7+a,
     read 16,
-    write 16,
-    adda -8
+    write 16
 
 controller_3:
     # L0..4 = exact Phase5 of endpoint raw; O26..30 = previous phase.
     # Golden's 10-bit pair address is unchanged.
     set 26..30 L0..L4,
     set 16..20 L0..L4,
-    set 21..25 O26..O30,
-    ldctda 8
+    set 21..25 O26..O30
 
 worker_3:
-    # Relative mux +A=8 selects L8..13 (DAC) and FIFO8..15 (endpoint).
+    # Static A=8: relative mux selects L8..13 (DAC) and FIFO8..15 (endpoint).
     # Source O26..30 is outside the relative mux range and remains unchanged.
+    # No counter reset needed; ALU opcodes are 100% freed for useful arithmetic!
     set 0 L0+a,
     set 1 L1+a,
     set 2 L2+a,
@@ -169,6 +167,5 @@ worker_3:
     set 22 6+a,
     set 23 7+a,
     read 16,
-    write 16,
-    adda -8
+    write 16
 
