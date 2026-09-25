@@ -11,6 +11,8 @@ byte. `worker` reads the selected raw byte through `0+a..7+a`, duplicates it
 to a 16-bit output word, reads the next two input bytes, and loops. The
 firmware feeds 128 pairs of distinct bytes and compares all 256 output bytes
 with the expected selection. A success is printed as `BS_REL_WORKER status=PASS`.
+The result remains available through the existing serial `p` snapshot command
+after startup, so USB reconnection cannot hide a quick boot-time result.
 The finite loopback drains the eight prefetched bytes with `trailing_bytes 8`;
 the live Golden programs retain their existing `trailing_bytes 0` setting.
 

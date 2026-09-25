@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -13,6 +14,18 @@ BITSCRAMBLER_PROGRAM(s_relative_worker_probe, "bs_relative_worker_probe");
 
 static uint8_t s_input[256] __attribute__((aligned(4)));
 static uint8_t s_output[256] __attribute__((aligned(4)));
+static bool s_ran;
+static bool s_pass;
+static size_t s_written;
+static unsigned s_mismatches;
+static esp_err_t s_err;
+
+void bs_relative_worker_probe_report(void)
+{
+    printf("BS_REL_WORKER status=%s written=%u mismatches=%u err=%s\n",
+           !s_ran ? "NOT_RUN" : s_pass ? "PASS" : "FAIL",
+           (unsigned)s_written, s_mismatches, esp_err_to_name(s_err));
+}
 
 void bs_relative_worker_probe_run(void)
 {
@@ -45,8 +58,10 @@ void bs_relative_worker_probe_run(void)
         mismatches += s_output[2 * pair] != selected;
         mismatches += s_output[2 * pair + 1] != selected;
     }
-    printf("BS_REL_WORKER status=%s written=%u mismatches=%u err=%s\n",
-           (err == ESP_OK && written == sizeof(s_output) && mismatches == 0)
-               ? "PASS" : "FAIL",
-           (unsigned)written, mismatches, esp_err_to_name(err));
+    s_ran = true;
+    s_pass = err == ESP_OK && written == sizeof(s_output) && mismatches == 0;
+    s_written = written;
+    s_mismatches = mismatches;
+    s_err = err;
+    bs_relative_worker_probe_report();
 }
