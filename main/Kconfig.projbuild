@@ -1,0 +1,8 @@
+menu "C5VRX diagnostic probes"
+    config C5VRX_BS_RELATIVE_WORKER_PROBE
+        bool "Run Counter-A relative-mux loopback oracle before starting video"
+        default n
+        help
+            Run a finite two-bundle BitScrambler loopback test at boot and
+            print BS_REL_WORKER PASS/FAIL, then start the normal RF/video path.
+endmenu

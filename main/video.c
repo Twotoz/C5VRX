@@ -43,6 +43,7 @@
 #include "trajectory_v2_lut.h"
 #include "hal/parlio_ll.h"
 #include "hal/usb_serial_jtag_ll.h"
+#include "bs_relative_worker_probe.h"
 
 #include <stdint.h>
 #include <inttypes.h>
@@ -4461,6 +4462,9 @@ static void console_diag_task(void *arg)
                            s_current_gain, s_current_bw40 ? 40u : 20u, (unsigned)s_afc_mode);
                 } else if (c == 'p') {
                     lab_print_row("SNAPSHOT", NULL);
+#if CONFIG_C5VRX_BS_RELATIVE_WORKER_PROBE
+                    bs_relative_worker_probe_report();
+#endif
                 } else if (c == 'g') {
                     lab_start_gain_sweep();
                 } else if (c == 'F') {

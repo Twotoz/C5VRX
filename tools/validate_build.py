@@ -31,15 +31,18 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("Golden, FSM capture, 4-bit and Trajectory BitScrambler programs",
+check("Golden, FSM capture, relative worker, 4-bit and Trajectory BitScrambler programs",
       {f.name for f in bsasm_files} == {"fm.bsasm", "fm_phase5_fsm_capture.bsasm",
+                                      "bs_relative_worker_probe.bsasm",
                                       "fm4.bsasm", "fm_traj.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
     check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
-    check(f"{bsasm_file.name}: cfg trailing_bytes 0", "cfg trailing_bytes 0" in bsasm)
+    expected_trailing = 10 if bsasm_file.name == "bs_relative_worker_probe.bsasm" else 0
+    check(f"{bsasm_file.name}: cfg trailing_bytes {expected_trailing}",
+          f"cfg trailing_bytes {expected_trailing}" in bsasm)
     check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
     check(f"{bsasm_file.name}: cfg lut_width_bits 16", "cfg lut_width_bits 16" in bsasm)
     check(f"{bsasm_file.name}: NO eof_on upstream", "cfg eof_on upstream" not in bsasm)
@@ -52,7 +55,7 @@ c_names = [f.name for f in c_files]
 video_c = read(MAIN / "video.c")
 menu_lifecycle = video_c.split("static void video_set_menu_mode", 1)[1].split("static void menu_cycle_standard_mode", 1)[0]
 
-check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "menu_raster.c"},
+check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "bs_relative_worker_probe.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "menu_raster.c"},
       f"found: {c_names}")
 check("main.c present", "main.c" in c_names)
 check("rf.c present", "rf.c" in c_names)
@@ -653,8 +656,9 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, FSM capture, 4-bit and Trajectory BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm_phase5_fsm_capture.bsasm", "fm4.bsasm",
+check("Golden, FSM capture, relative worker, 4-bit and Trajectory BitScrambler programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "bs_relative_worker_probe.bsasm",
+                  "fm_phase5_fsm_capture.bsasm", "fm4.bsasm",
                   "fm_traj.bsasm"], f"found: {bs_srcs}")
 
 # ---- Summary ----
