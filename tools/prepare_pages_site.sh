@@ -41,7 +41,20 @@ while IFS= read -r tag; do
   dest="${OUT_DIR}/firmware/${tag}"
   mkdir -p "${dest}"
   echo "  -> ${tag}"
-  gh release download "${tag}" --repo "${REPO}" --dir "${dest}" --clobber
+  if ! gh release download "${tag}" --repo "${REPO}" --dir "${dest}" --clobber; then
+    # A PR can merge and delete its prerelease between the releases listing
+    # above and this download. Drop that now-missing release from the mirror,
+    # but keep genuine download/asset errors fatal.
+    if gh release view "${tag}" --repo "${REPO}" >/dev/null 2>&1; then
+      echo "Failed to mirror existing release ${tag}" >&2
+      exit 1
+    fi
+    echo "Skipping ${tag}: release disappeared during mirror preparation"
+    rm -rf "${dest}"
+    jq --arg tag "${tag}" 'map(select(.tag_name != $tag))' \
+      "${tmp_dir}/selected-releases.json" > "${tmp_dir}/remaining-releases.json"
+    mv "${tmp_dir}/remaining-releases.json" "${tmp_dir}/selected-releases.json"
+  fi
 done < <(jq -r '.[].tag_name' "${tmp_dir}/selected-releases.json")
 
 # Preserve GitHub release metadata, but add a same-origin local_url for every
