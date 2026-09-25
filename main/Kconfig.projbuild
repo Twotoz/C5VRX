@@ -5,6 +5,14 @@ menu "C5VRX diagnostic probes"
         help
             Run a finite two-bundle BitScrambler loopback test at boot and
             print BS_REL_WORKER PASS/FAIL, then start the normal RF/video path.
+
+    config C5VRX_BS_RELATIVE_MIDDLE_PROBE
+        bool "Run alternating middle/endpoint relative-mux loopback probe before starting video"
+        default n
+        help
+            Run a finite two-bundle BitScrambler loopback test at boot to prove
+            alternating middle-sample and endpoint-sample Phase5 extraction,
+            then start the normal RF/video path.
 endmenu
 
 menu "C5VRX experimental video demodulators"

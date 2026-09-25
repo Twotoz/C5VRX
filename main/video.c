@@ -44,6 +44,7 @@
 #include "hal/parlio_ll.h"
 #include "hal/usb_serial_jtag_ll.h"
 #include "bs_relative_worker_probe.h"
+#include "bs_relative_middle_probe.h"
 
 #include <stdint.h>
 #include <inttypes.h>
@@ -4470,6 +4471,9 @@ static void console_diag_task(void *arg)
                     lab_print_row("SNAPSHOT", NULL);
 #if CONFIG_C5VRX_BS_RELATIVE_WORKER_PROBE
                     bs_relative_worker_probe_report();
+#endif
+#if CONFIG_C5VRX_BS_RELATIVE_MIDDLE_PROBE
+                    bs_relative_middle_probe_report();
 #endif
                 } else if (c == 'g') {
                     lab_start_gain_sweep();
