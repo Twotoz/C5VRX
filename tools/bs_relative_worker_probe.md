@@ -23,12 +23,21 @@ live CVBS path.
 
 The first silicon run with `trailing_bytes 8` wrote 254 of 256 output bytes:
 the two missing terminal bytes were the only mismatches. The source-selected
-bytes that were written matched the expected stream. Increasing the finite
-loopback drain by two bytes is intended to finish that last word.
+bytes that were written matched the expected stream. With `trailing_bytes 10`,
+the COM10 silicon run reported:
+
+```text
+BS_REL_WORKER status=PASS written=256 mismatches=0 err=ESP_OK
+```
+
+The same snapshot reported zero PARLIO TX empty, RX overflow, GDMA fault,
+and BitScrambler EOF overload counts after normal video startup. The VTX was
+off during this result, so `sync_q=0` is expected and is not a video-quality
+measurement.
 
 The assembler accepted exactly two bundles. The compiled worker bundle has
 `CTL_MUX_REL=1`, while the controller has `CTL_MUX_REL=0`. The default and
-enabled firmware variants both build under ESP-IDF 6.0.2. A silicon result
-still needs to be recorded. This probe answers the source-selection question;
+enabled firmware variants both build under ESP-IDF 6.0.2. This silicon result
+answers the source-selection question;
 it does not establish exact adjacent FM, 360-degree winding, or live PARLIO
 timing on its own.
