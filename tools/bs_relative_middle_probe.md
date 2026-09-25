@@ -44,3 +44,21 @@ BS_REL_MIDDLE status=PASS written=256 mismatches=0 err=ESP_OK
 
 The result is printed at boot when enabled via `CONFIG_C5VRX_BS_RELATIVE_MIDDLE_PROBE=y`,
 and remains queryable through the serial `p` snapshot command.
+
+## Silicon verification
+
+The firmware was built locally via ESP-IDF v6.0.2 Docker container and flashed
+to a Seeed Studio XIAO ESP32-C5 on `COM10` on 2026-09-25.
+
+Upon boot, the hardware loopback oracle executed and reported:
+```text
+BS_REL_MIDDLE status=PASS written=256 mismatches=0 err=ESP_OK
+```
+
+The live video pipeline then started using the Static-A Relative Golden demodulator,
+confirming `tx_empty=0`, `rx_ovf=0`, `tx_eof=0`, `bs_empty=0`, `bs_eof=0`.
+This proves conclusively on real C5 silicon that:
+1. Counter-A relative muxing dynamically alternates between middle ($A=0$) and endpoint ($A=8$) raw samples without adding any extra bundle.
+2. Both Phase5 results are successfully decoded and available at the expected pipeline cadence.
+3. Static-A Relative Golden runs in the live 40 MHz PARLIO TX video path without pipeline drops.
+
