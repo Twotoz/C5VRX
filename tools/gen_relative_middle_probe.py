@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Generate a two-bundle live Golden variant using Counter-A relative mux.
+"""Generate and verify the alternating middle/endpoint relative-mux probe.
 
-The phase and FM tables share the same 1024x16 LUT: low five bits are the
-Phase5 code for address.low8, and high six bits are the exact Golden DAC for
-the full ten-bit pair address. Controller uses normal L0..4; worker with A=8
-uses L0+a..L5+a, which physically selects L8..13. The same relative offset
-routes raw FIFO bits 8..15 through 0+a..7+a.
+The probe runs four controller/worker pairs across all eight C5 instruction
+slots. Controller 0/2 sets A=0; worker 0/2 selects the middle sample from
+FIFO bits 0..7 via relative mux 0+a..7+a. Controller 1/3 sets A=8; worker 1/3
+selects the endpoint sample from FIFO bits 8..15 via 0+a..7+a.
+
+In each controller bundle, L0..4 holds the Phase5 result of the raw byte
+addressed by the previous worker. The controller latches this into O26..30.
+In each worker bundle, O26..30 is emitted as duplicated output bytes
+[Phase5, Phase5], consuming two bytes (16 bits) and writing two bytes (16 bits)
+per 50 ns pair.
 """
 
 from pathlib import Path
@@ -15,7 +20,7 @@ import random
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / "main/fm.bsasm"
-TARGET = ROOT / "main/fm_relative_golden.bsasm"
+TARGET = ROOT / "main/bs_relative_middle_probe.bsasm"
 MODEL_PATH = ROOT / "legacy/c5vrx2/tools/bs_model.py"
 
 spec = importlib.util.spec_from_file_location("bs_model", MODEL_PATH)
@@ -30,39 +35,28 @@ def build():
     words = [(phase[i & 255] | ((old_lut[i] & 63) << 8))
              for i in range(1024)]
     head = baseline.split("\nlut ", 1)[0]
-    asm = head + "\nlut " + " ".join(map(str, words)) + "\n\n"
-    for i in range(4):
-        if i == 0:
-            ctrl_body = """    set 26..30 L0..L4,
-    set 16..20 L0..L4,
-    set 21..25 O26..O30,
-    ldctda 8"""
+    head_lines = []
+    for line in head.splitlines():
+        if line.startswith("cfg trailing_bytes"):
+            head_lines.append("cfg trailing_bytes 10")
         else:
-            ctrl_body = """    set 26..30 L0..L4,
-    set 16..20 L0..L4,
-    set 21..25 O26..O30"""
+            head_lines.append(line)
+    asm = "\n".join(head_lines) + "\nlut " + " ".join(map(str, words)) + "\n\n"
+
+    for i in range(4):
+        a_val = 0 if (i % 2 == 0) else 8
+        adda_val = 0 if (i % 2 == 0) else -8
         asm += f"""controller_{i}:
-    # L0..4 = exact Phase5 of endpoint raw; O26..30 = previous phase.
-    # Golden's 10-bit pair address is unchanged.
-{ctrl_body}
+    # L0..4 = exact Phase5 of previous worker's selected raw byte.
+    # Latch into O26..30; set A={a_val} for upcoming worker_{i}.
+    set 26..30 L0..L4,
+    ldctda {a_val}
 
 worker_{i}:
-    # Static A=8: relative mux selects L8..13 (DAC) and FIFO8..15 (endpoint).
-    # Source O26..30 is outside the relative mux range and remains unchanged.
-    # No counter reset needed; ALU opcodes are 100% freed for useful arithmetic!
-    set 0 L0+a,
-    set 1 L1+a,
-    set 2 L2+a,
-    set 3 L3+a,
-    set 4 L4+a,
-    set 5 L5+a,
-    set 8 L0+a,
-    set 9 L1+a,
-    set 10 L2+a,
-    set 11 L3+a,
-    set 12 L4+a,
-    set 13 L5+a,
-    set 26..30 O26..O30,
+    # A={a_val}: routes {'middle byte (0..7)' if a_val == 0 else 'endpoint byte (8..15)'} into LUT address (out[23:16]).
+    # Emits previous Phase5 from O26..30 to duplicated output [Phase5, Phase5].
+    set 0..4 O26..O30,
+    set 8..12 O26..O30,
     set 16 0+a,
     set 17 1+a,
     set 18 2+a,
@@ -72,13 +66,14 @@ worker_{i}:
     set 22 6+a,
     set 23 7+a,
     read 16,
-    write 16
+    write 16,
+    adda {adda_val}
 
 """
-    return baseline, asm, old_lut, phase, words
+    return asm, phase, words
 
 
-def simulate(asm, raw, count, initial):
+def simulate(asm, raw, count, initial=(0, 0, 0)):
     _, lut, blocks, _ = model.parse(asm)
     assert len(blocks) == 8
     out, a, look = initial
@@ -134,13 +129,12 @@ def simulate(asm, raw, count, initial):
                 write = int(parts[1])
             else:
                 opcode = parts
-        if opcode:
-            if opcode[0] == "ldctda":
-                a = int(opcode[1]) & 65535
-            elif opcode[0] == "adda":
-                a = (a + int(opcode[1])) & 65535
-            elif opcode[0] != "nop":
-                raise AssertionError(opcode)
+        if opcode[0] == "ldctda":
+            a = int(opcode[1]) & 65535
+        elif opcode[0] == "adda":
+            a = (a + int(opcode[1])) & 65535
+        else:
+            raise AssertionError(opcode)
         out = new
         look = lut[(out >> 16) & 1023]
         pos += read // 8
@@ -150,30 +144,37 @@ def simulate(asm, raw, count, initial):
     return result[:count]
 
 
-def verify(baseline, asm, old_lut, phase, words):
-    _, _, blocks, _ = model.parse(asm)
-    assert len(blocks) == 8
-    assert all((words[i] & 31) == phase[i & 255] for i in range(1024))
-    assert all(((words[i] >> 8) & 63) == (old_lut[i] & 63)
-               for i in range(1024))
+def verify(asm, phase):
+    # 1. Deterministic probe vector (matches C implementation)
+    s_input = bytearray(256)
+    for pair in range(128):
+        s_input[2 * pair] = (pair * 37 + 5) & 255
+        s_input[2 * pair + 1] = (pair * 13 + 0x43) & 255
+
+    s_output = simulate(asm, bytes(s_input), 256, initial=(0, 0, 0))
+    for pair in range(1, 128):
+        src = pair - 1
+        expected = phase[s_input[2 * src]] if (src % 2 == 0) else phase[s_input[2 * src + 1]]
+        assert s_output[2 * pair] == expected
+        assert s_output[2 * pair + 1] == expected
+
+    # 2. 256 random streams of 512 bytes each
     for seed in range(256):
         rng = random.Random(seed)
         raw = bytes(rng.randrange(256) for _ in range(512))
-        initial_out = rng.getrandbits(32)
-        initial_look = rng.getrandbits(16)
-        golden = model.simulate(baseline, raw, 512,
-                                initial=(initial_out, 0, 0, initial_look))
-        actual = simulate(asm, raw, 512,
-                          initial=(initial_out, rng.getrandbits(16), initial_look))
-        assert actual[4:] == golden[4:], (seed, actual[:16], golden[:16])
+        out = simulate(asm, raw, 512, initial=(rng.getrandbits(32), 0, rng.getrandbits(16)))
+        for pair in range(1, 256):
+            src = pair - 1
+            expected = phase[raw[2 * src]] if (src % 2 == 0) else phase[raw[2 * src + 1]]
+            assert out[2 * pair] == expected, f"seed={seed} pair={pair}"
+            assert out[2 * pair + 1] == expected, f"seed={seed} pair={pair}"
 
 
 def main():
-    baseline, asm, old_lut, phase, words = build()
-    verify(baseline, asm, old_lut, phase, words)
+    asm, phase, words = build()
+    verify(asm, phase)
     TARGET.write_text(asm, encoding="utf-8")
-    print("PASS: relative Golden is byte-exact after startup in 256 random "
-          "streams; 8 slots / 2 bundles per pair")
+    print("PASS: relative middle-sample probe generated and verified; 0 mismatches across 256 streams")
 
 
 if __name__ == "__main__":
