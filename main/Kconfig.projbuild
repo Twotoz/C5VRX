@@ -6,3 +6,13 @@ menu "C5VRX diagnostic probes"
             Run a finite two-bundle BitScrambler loopback test at boot and
             print BS_REL_WORKER PASS/FAIL, then start the normal RF/video path.
 endmenu
+
+menu "C5VRX experimental video demodulators"
+    config C5VRX_RELATIVE_GOLDEN_LIVE
+        bool "Use relative-mux Golden in the live 6-bit video path"
+        default n
+        help
+            Replace only the 6-bit Golden BitScrambler program with the
+            two-bundle Counter-A relative-mux oracle. Intended for live
+            equivalence testing; no winding correction is performed.
+endmenu
