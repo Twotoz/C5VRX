@@ -70,6 +70,21 @@ def main():
     print("Required exact token: 10 bits; previous Phase5: 5 bits")
     print("Stage-2 exact address: 15 bits > LUT16's 10 bits")
 
+    # The opposite time order matters for the measured alternating-middle
+    # probe: after decoding previous and middle, the next raw byte is current.
+    # A direct LUT continuation must retain every (previous,middle) pair;
+    # compressing the pair before the final raw-current lookup loses an output.
+    pm_rows = {
+        tuple((GOLDEN[(p << 5) | c] & 63)
+              if winding(p, m, c) == 0 else pair_dac(p, m, c)
+              for c in range(32))
+        for p in range(32) for m in range(32)
+    }
+    assert len(pm_rows) == 1024
+    print("Distinct (previous,middle) continuation rows: 1024")
+    print("Direct final raw-current address: 10 state + 8 raw = 18 bits"
+          " > LUT8's 11-bit address")
+
     # For every direct split of the 15 phase bits into first-stage X10 and
     # second-stage Y5, two X values may share a five-bit token only if their
     # 32 DAC outputs over all Y agree. Stop each split once 33 distinct rows

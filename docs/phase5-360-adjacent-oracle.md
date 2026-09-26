@@ -80,6 +80,16 @@ negative results. Direct LUT factorization lower bounds in
 `docs/golden360-feasibility.md` further constrain the known two-bundle routes,
 without ruling out every possible counter/logic design.
 
+The alternating-middle silicon probe does decode both new raw samples within
+the two-bundle cadence, but that uses both LUT accesses. A further direct-LUT
+continuation would have to retain all 1,024 distinct `(previous,middle)`
+continuation rows (10 bits) and address the next raw-current byte (8 bits).
+That 18-bit address exceeds even the LUT8 mode's 11 address bits. The new
+exhaustive check in `tools/prove_golden360_capacity.py` confirms the row count
+for the Golden-preserving adjacent target. This rules out that *specific*
+direct final-lookup scheme; it does not rule out untested counter logic,
+additional hardware, or a different signal-path architecture.
+
 Before any live `PHASE5-360` mode or flashable claim, a candidate must:
 
 1. Decode both raw Q4/I4 samples and retain the previous phase with one C5 TX
