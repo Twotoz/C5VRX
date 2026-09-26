@@ -1303,12 +1303,28 @@ static void step_frequency_offset_khz_tracked(int delta_khz)
 static void apply_rx_gain_tracked(uint8_t gain)
 {
     gain = profile_gain_clamp(gain);
-    s_current_gain = gain;
     s_shadow_gain = gain;
+
+    /* Global Smooth Slew-Rate Limiter:
+     * When tracking valid video (s_last_p_median >= 8), cap gain step to +4 / -6 steps per tick.
+     * This eliminates luminance stepping, flashes, and DC transient jumps across ALL profiles!
+     * Emergency cuts on clipping (>= 25 permille) and cold-start acquisition bypass slew-limiting. */
+    bool emergency = (s_last_clip_permille >= 25) || (s_last_p_median > 44);
+    bool cold_start = (s_last_p_median == 0) && (s_last_q_phase < 20);
+
+    uint8_t next_gain = gain;
+    if (!emergency && !cold_start && s_current_gain > 0) {
+        int step = (int)gain - (int)s_current_gain;
+        if (step > 4) step = 4;
+        if (step < -6) step = -6;
+        next_gain = profile_gain_clamp(s_current_gain + step);
+    }
+
+    s_current_gain = next_gain;
     s_last_gain_write_us = esp_timer_get_time();
     s_last_phy_write_us = s_last_gain_write_us;
     s_last_phy_write_kind = PHY_WRITE_GAIN;
-    rf_set_rx_gain(true, gain);
+    rf_set_rx_gain(true, next_gain);
     ++s_gain_transition_count;
 }
 
