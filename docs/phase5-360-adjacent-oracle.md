@@ -125,6 +125,31 @@ It needs a third computation path beyond the two measured C5 TX LUT accesses,
 or a proved C5 counter/bit-routing implementation of the same predicate and
 DAC transfer. This is an architectural target, **not** a new live C5 mode.
 
+### Partial correction with fewer middle bits
+
+For an optional conservative demodulator, a coarse middle token can correct
+only when **every** Phase5 middle compatible with that token gives the same
+nonzero winding for the endpoint pair. All ambiguous tokens emit Golden. The
+exhaustive `tools/probe_middle_compression.py` checks the raw Q4 map and all
+endpoint phases; its outputs are state-space coverage, not on-air rates:
+
+| Middle token | Corrected raw winding states | Corrected Phase5 winding triples |
+| --- | ---: | ---: |
+| Best 1 direct raw bit | 0 / 65,536 | 0 / 8,192 |
+| Best 2 direct raw bits (3, 7) | 16,384 / 65,536 | 2,304 / 8,192 |
+| Best 3 direct raw bits (3, 6, 7) | 25,856 / 65,536 | 4,136 / 8,192 |
+| Best 4 direct raw bits (2, 3, 6, 7) | 40,576 / 65,536 | 6,696 / 8,192 |
+| Top 3 **decoded** Phase5 bits | 43,264 / 65,536 | 5,408 / 8,192 |
+| Top 4 **decoded** Phase5 bits | 57,600 / 65,536 | 7,200 / 8,192 |
+
+Even this conservative option is **not scheduled** on the existing Golden
+core: its final endpoint DAC lookup already addresses 10 phase bits in LUT16
+mode, while LUT8 offers at most one extra address bit (11 bits total). One
+direct raw-middle bit has zero safe corrections; two need at least 12 address
+bits on that direct lookup. Decoded Phase5 hint bits also require the missing
+middle-phase decode. These offline results therefore identify a quality and
+capacity trade-off for a redesigned datapath, not a flashable partial mode.
+
 Before any live `PHASE5-360` mode or flashable claim, a candidate must:
 
 1. Decode both raw Q4/I4 samples and retain the previous phase with one C5 TX
