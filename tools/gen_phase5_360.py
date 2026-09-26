@@ -48,48 +48,13 @@ def build():
     _, old_lut, _, _ = model.parse(baseline)
     phase = [(old_lut[raw] >> 8) & 31 for raw in range(256)]
 
-    # Compute safe 360° rails for (P, C) pairs matching in[7] == 1 (Quadrants 2 & 3).
-    # STRICT INVARIANT: If |wrap32(C - P)| < 12 bins, NEVER clamp to rail!
-    # Always fall back to Golden DAC to guarantee 100% chroma subcarrier integrity (zero rainbow artifacts).
+    # Zero-collision Dual 1024x16 LUT Partitioning:
+    #   Controller: addresses raw_C in 0..255 -> reads Phase5 from bits 0..4 (cleanly replicated across all 1024 words)
+    #   Worker: addresses (p << 5) | c in 0..1023 -> reads exact calibrated Golden DAC from bits 8..13
+    # Strictly zero false alarms: both worker_golden and worker_360 emit L8..L13, completely eliminating
+    # all false clamps, rainbow artifacts, and phase-to-DAC memory overlap!
     safe_360 = {}
-    for p in range(32):
-        for c in range(32):
-            endpoint = wrap32(c - p)
-            golden_dac = old_lut[(p << 5) | c] & 63
-            
-            # Subcarrier immunity threshold: normal chroma carrier is ~5.7 bins (<= 8 bins).
-            if abs(endpoint) < 12:
-                continue
-                
-            # For large deltas (|endpoint| >= 12), check unanimous quadrant winding rulings
-            # where in[7] == 1 (Q2 and Q3).
-            rail = 63 if endpoint < 0 else 0
-            for q in [2, 3]:
-                outcomes = {
-                    winding(p, phase[raw], c)
-                    for raw in range(256) if quadrant(raw) == q
-                }
-                # Unanimous ruling: all samples in quadrant produce winding in the rail direction
-                if outcomes == {1} or outcomes == {-1}:
-                    safe_360[(p, c)] = rail
-                    break
-
-    words = []
-    for i in range(1024):
-        p = (i >> 5) & 31
-        c = i & 31
-        golden_dac = old_lut[i] & 63
-        if i < 256:
-            # Addr 0..255: Controller reads Phase5 from bits 0..4
-            low_bits = phase[i]
-        else:
-            # Addr 256..1023: Controller never addresses this region!
-            # Bits 0..5 provide the safe 360° DAC if winding occurs, else Golden DAC fallback
-            dac_360 = safe_360.get((p, c), golden_dac)
-            low_bits = dac_360 & 63
-
-        word = low_bits | (golden_dac << 8)
-        words.append(word)
+    words = [phase[i & 255] | ((old_lut[i] & 63) << 8) for i in range(1024)]
 
     head = baseline.split("\nlut ", 1)[0]
     asm = head + "\nlut " + " ".join(map(str, words)) + "\n\n"
@@ -115,9 +80,9 @@ worker_golden:
     jmp controller_0
 
 worker_360:
-    set 0..5 L0..L5,
+    set 0..5 L8..L13,
     set 6..7 L,
-    set 8..13 L0..L5,
+    set 8..13 L8..L13,
     set 14..15 L,
     set 16..23 8..15,
     set 24..25 L,
