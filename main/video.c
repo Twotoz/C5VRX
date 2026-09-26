@@ -271,6 +271,7 @@ static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
 static volatile rx_profile_t s_rx_profile = RX_PROFILE_DIRECT_GAIN;
 static direct_gain_controller_t s_direct_gain_controller;
 static volatile direct_gain_state_t s_last_direct_gain_state = DIRECT_GAIN_SEEK;
+static volatile uint8_t s_last_direct_gain_target;
 static volatile int s_last_direct_gain_delta;
 static volatile int s_last_direct_gain_est_dbm = -127;
 static volatile bool s_last_direct_gain_rssi_used;
@@ -4146,6 +4147,7 @@ static void analog_agc_task(void *arg)
             };
             target_gain = direct_gain_tick(&s_direct_gain_controller, &dg_obs);
             s_last_direct_gain_state = s_direct_gain_controller.state;
+            s_last_direct_gain_target = s_direct_gain_controller.target_gain;
             s_last_direct_gain_delta = s_direct_gain_controller.last_delta_gain;
             s_last_direct_gain_est_dbm = s_direct_gain_controller.last_estimated_input_dbm;
             s_last_direct_gain_rssi_used = s_direct_gain_controller.last_rssi_used;
@@ -4767,8 +4769,9 @@ static void console_diag_task(void *arg)
                     printf(" Gain Settings:              G_actual=%u, G_shadow_rec=%u (reg=0x%08lx)\n",
                            s_current_gain, s_shadow_gain, (unsigned long)rf_get_rx_gain_reg());
                     if (s_rx_profile == RX_PROFILE_DIRECT_GAIN) {
-                        printf(" Direct Gain State:          %s (delta=%+d, est_RF=%d dBm, RSSI_used=%s)\n",
+                        printf(" Direct Gain State:          %s (target=G%u, delta=%+d, est_RF=%d dBm, RSSI_used=%s)\n",
                                direct_gain_state_name(s_last_direct_gain_state),
+                               (unsigned)s_last_direct_gain_target,
                                s_last_direct_gain_delta,
                                s_last_direct_gain_est_dbm,
                                s_last_direct_gain_rssi_used ? "YES" : "NO");

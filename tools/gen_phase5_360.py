@@ -59,12 +59,15 @@ def build():
         p = (i >> 5) & 31
         c = i & 31
         delta = wrap32(c - p)
+        # Phase5c (Correction & Static Squelch):
+        # In analog FM video, any sample transition with |delta| >= 12 bins (> 135° in 25 ns)
+        # represents an impossible video frequency (> 15 MHz).
+        # It is caused strictly by impulse noise, static clicks, or deep multipath fades.
+        # Instead of slamming to black (0) or white (63) rails which causes violent salt-and-pepper sparks,
+        # Phase5c maps corrupted transitions to the neutral Golden blanking pedestal (code 20) with smooth roll-off.
+        dac = old_lut[i] & 63
         if abs(delta) >= 12:
-            rail = 63 if delta < 0 else 0
-            dac = rail
-            safe_360[(p, c)] = rail
-        else:
-            dac = old_lut[i] & 63
+            safe_360[(p, c)] = dac
         words.append(phase[i & 255] | (dac << 8))
 
     head = baseline.split("\nlut ", 1)[0]
