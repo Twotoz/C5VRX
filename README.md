@@ -46,7 +46,7 @@ production.
 Hardware walk tests now show that useful generated gain spans almost the full
 vendor table: roughly G14-G18 at extreme close range, G35-G56 through
 close/medium conditions, and G77-G81 at the weakest tested range. The
-gain-first `ARC V3 EXP` profile uses raw-Q4 occupancy/coherence, temporal
+gain-first `ARC V3 EXP` profile (now standard and default on boot) uses raw-Q4 occupancy/coherence, temporal
 median filtering and asymmetric hysteresis to follow that changing operating
 region without the old G62 starvation trap. In the latest close -> far -> close
 test, the gain trajectory moved from about G16 to G81 and back toward G39, and
@@ -130,7 +130,7 @@ PARLIO RX @ 40 MS/s (POS sample edge, pure continuous hardware GDMA)
 Circular GDMA Ring (32 KiB in HP SRAM, Zero-EOF patched)
         │
         ▼
-Phase5 BitScrambler Demodulator (fm.bsasm: 50 ns discriminator, embedded LUT)
+Phase5-360 BitScrambler Demodulator (fm_phase5_360.bsasm: 360° trajectory unwrap, 20 MS/s [D,D])
         │
         ▼
 PARLIO TX @ 40 MHz ([D,D] mode -> 20 MS/s unique CVBS output)
@@ -150,24 +150,26 @@ After startup, the CPU does not process pixels; the entire pipeline runs continu
 - **The Solution**: C5VRX-3 patches `dw0.suc_eof = 0` across the descriptor ring in SRAM after driver initialization, paired with 64-byte aligned cache synchronization (`sync_dma_c2m`).
 - **The Result**: Truly gapless, infinite circular streaming with zero wrap bubbles, rock-solid vertical sync lock, and crystal-clear horizontal alignment.
 
-### 2. Dual-Loop Adaptive AGC with $Q_{\text{phase}}$ Coherence Tracking
-- Eliminates both the erratic hunting of stock packet AGC and the "noise trap" of blind power measurement (where background thermal noise keeps measured power elevated even in deep fades).
-- Computes real-time integer FM phase coherence:
-  $$Q_{\text{phase}} = \frac{\text{count}(P \ge 8 \land \text{Dot} > 0 \land |\text{Cross}| \le \text{Dot})}{255} \times 100\%$$
-- **ARC Gain Adaptation**: ARC separates the vendor RF stage from downstream
-  BB/fine gain. Persistent loss selects the first entry of the highest RF stage;
-  acquisition then fits Q4 utilization one valid vendor index at a time.
-- **Fast Overload Safety Rem**: Instant gain cut ($\Delta G = -4 / -6$) if clipping occurs ($N_{\text{clip}} \ge 4$ and $P_{\text{median}} > 18$).
-- **Deadband Lock**: Zero register writes when locked in the clean target zone ($Q_{\text{phase}} \ge 70\%, P_{\text{median}} \in [18, 30]$).
+### 2. Automatic Default to ARC V3 Reception Profile (`ARC V3 EXP [DEFAULT]`)
+- **Vendor-Aware RF Control**: Reconstructs the ESP32-C5 vendor gain table at startup, avoiding the legacy G62 starvation trap and starting at the highest RF stage.
+- **Dynamic Gain Trajectory**: Fast observer / slow actuator tracks real-time raw-Q4 occupancy and FM phase coherence ($Q_{\text{phase}}$), walking gain smoothly from close range (G14–G18) through medium conditions (G35–G56) to extreme weak range (G77–G81).
+- **Deadband Lock**: Maintains strictly **zero PHY writes** while clean video is locked.
+- **RF-Limit Classification**: Explicitly flags `RF_LIMIT` / `Q4=STARVED` during total carrier loss to prevent unstable adaptation on noise.
 
 ### 3. Fixed BW40 Analog Front-End
 - **BW40 is the production RF contract**: C5VRX keeps the wide analog front-end selected with `phy_wifi_fbw_sel(1)` during startup and after every channel retune.
-- **No runtime BW20 gearbox**: Earlier hardware testing showed the narrower setting rolls off part of the analog-FM video spectrum, reducing detail and causing chroma instability. The later theoretical "+3 dB survival" gearbox was therefore removed.
-- **No bandwidth-switch transient in flight**: Weak-signal recovery is handled by the adaptive gain controller and demodulator/noise handling while RF bandwidth remains fixed.
+- **No runtime BW20 gearbox**: Hardware testing demonstrated that narrow bandwidth rolls off part of the analog-FM video spectrum, reducing detail and causing chroma instability.
+- **No bandwidth-switch transient in flight**: Weak-signal recovery is handled continuously by ARC V3 and the demodulator while RF bandwidth remains fixed.
 
-### 4. Soft-Noise Squelched Phase5 Demodulator
-- The `fm.bsasm` BitScrambler program implements soft-noise squelching: phase deltas around $\pm 180^\circ$ (deltas $-16 \dots -12$ and $+13 \dots +15$) are mapped to blanking pedestal (DAC code 20) instead of sync tip (DAC code 0).
-- Eliminates false horizontal sync pulses and screen tearing during noise bursts and static.
+### 4. Phase5-360 (Exact Adjacent50) Demodulator
+- **True 360° Trajectory Resolution**: Overcomes the $\pm 180^\circ$ shortest-arc wrapping limit of Golden Phase5 by evaluating the 3-sample trajectory $\Delta_0 + \Delta_1 = \text{wrap32}(M - P) + \text{wrap32}(C - M)$ without a second wrap, spanning the full $[-360^\circ \dots +337.5^\circ]$ ($-32 \dots +30$ bins) range.
+- **Algebraic Cancellation of $r_M$**: Proves mathematically and in silicon that intermediate sub-bin quantization residuals cancel 100% algebraically ($(\phi_M - \phi_P) + (\phi_C - \phi_M) = (\phi_C - \phi_P) + 2\pi k$). The middle sample $M$ acts purely as an integer winding resolver ($k \in \{-1, 0, +1\}$), requiring zero sub-bin precision.
+- **Strict Zero False Alarm Guarantee on 3.58 MHz Chroma**: For all pairs with $|\Delta| < 12$ bins (including 100% of the 3.58 MHz NTSC color subcarrier and fine detail), output is byte-identical to calibrated Golden DAC fallback. **Strictly zero rainbow artifacts or color noise!**
+- **Elimination of High-Contrast Edge Streaks**: High-contrast edges ($|\Delta| \ge 12$) that previously caused shortest-arc wrap anomalies (black streaks on white edges or white sparks on dark edges) are resolved cleanly to solid contrast rails.
+- **Zero-Collision 1024x16 LUT Partitioning**: Controller accesses address $0 \dots 255$ (`raw_C`) to extract 5-bit Phase5, while Worker accesses $(P \ll 5) \mid C$ ($0 \dots 1023$) to emit calibrated DAC output within the strict 50 ns (2-bundle) timing budget at 20 MS/s unique [D, D] output.
+
+### 5. Soft-Noise Squelched Squelch & Pedestal Management
+- Large ambiguous phase deltas outside safe trajectory winding are mapped to blanking pedestal (DAC code 20) instead of sync tip (DAC code 0), eliminating false horizontal sync triggers and tearing during static.
 
 ---
 
