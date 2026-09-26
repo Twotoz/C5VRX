@@ -32,7 +32,8 @@ Modern C5VRX
 
 | Subject | Start here |
 |---|---|
-| Cross-PR canonical findings, corrected assumptions, hardware failures, and experiment disposition through PR #71 | [pr-derived-findings.md](pr-derived-findings.md) |
+| Cross-PR canonical findings, corrected assumptions, hardware failures, and experiment disposition through PR #77 | [pr-derived-findings.md](pr-derived-findings.md) |
+| Phase5-360 architecture specification, 2-bit quadrant oracle, and 16-bit word packing | [phase5_360_architecture.md](../tools/phase5_360_architecture.md) |
 | Golden360 / Adjacent50 exact-capacity proof, one-middle-bit impossibility result, and reproducible oracle | [golden360-feasibility.md](golden360-feasibility.md) |
 | ARC V5 predictive local-gain model and persistence rules | [arc-v5-autotune.md](arc-v5-autotune.md) |
 | Proven RF writer, SRAM visibility, MODEM_DIAG mapping, rates | [continuous-iq-findings.md](continuous-iq-findings.md) |

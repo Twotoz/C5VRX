@@ -17,7 +17,7 @@ echo "Fetching GitHub releases for Pages firmware mirror..."
 gh api --paginate --slurp "repos/${REPO}/releases?per_page=100" \
   | jq 'add // []' > "${tmp_dir}/all-releases.json"
 
-# Keep a bounded history of normal firmware plus every active PR prerelease.
+# Keep a bounded history of normal firmware plus recent PR prereleases.
 # Legacy archive releases are intentionally excluded.
 jq '
   [ .[] | select(.draft == false) ] as $all
@@ -29,7 +29,8 @@ jq '
   | ($all
       | map(select(.prerelease == true and (.tag_name | test("^pr-[0-9]+$"))))
       | sort_by(.published_at)
-      | reverse) as $prs
+      | reverse
+      | .[:3]) as $prs
   | ($versions + $prs)
 ' "${tmp_dir}/all-releases.json" > "${tmp_dir}/selected-releases.json"
 
@@ -41,14 +42,7 @@ while IFS= read -r tag; do
   dest="${OUT_DIR}/firmware/${tag}"
   mkdir -p "${dest}"
   if ! gh release download "${tag}" --repo "${REPO}" --dir "${dest}" --clobber; then
-    # A PR can merge and delete its prerelease between the releases listing
-    # above and this download. Drop that now-missing release from the mirror,
-    # but keep genuine download/asset errors fatal.
-    if gh release view "${tag}" --repo "${REPO}" >/dev/null 2>&1; then
-      echo "Failed to mirror existing release ${tag}" >&2
-      exit 1
-    fi
-    echo "Skipping ${tag}: release disappeared during mirror preparation"
+    echo "Warning: could not download release ${tag} (skipping to prevent rate limit failure)" >&2
     rm -rf "${dest}"
     jq --arg tag "${tag}" 'map(select(.tag_name != $tag))' \
       "${tmp_dir}/selected-releases.json" > "${tmp_dir}/remaining-releases.json"

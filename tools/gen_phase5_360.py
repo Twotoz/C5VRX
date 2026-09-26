@@ -54,7 +54,18 @@ def build():
     # Strictly zero false alarms: both worker_golden and worker_360 emit L8..L13, completely eliminating
     # all false clamps, rainbow artifacts, and phase-to-DAC memory overlap!
     safe_360 = {}
-    words = [phase[i & 255] | ((old_lut[i] & 63) << 8) for i in range(1024)]
+    words = []
+    for i in range(1024):
+        p = (i >> 5) & 31
+        c = i & 31
+        delta = wrap32(c - p)
+        if abs(delta) >= 12:
+            rail = 63 if delta < 0 else 0
+            dac = rail
+            safe_360[(p, c)] = rail
+        else:
+            dac = old_lut[i] & 63
+        words.append(phase[i & 255] | (dac << 8))
 
     head = baseline.split("\nlut ", 1)[0]
     asm = head + "\nlut " + " ".join(map(str, words)) + "\n\n"

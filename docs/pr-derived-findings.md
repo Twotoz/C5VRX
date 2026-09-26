@@ -410,6 +410,63 @@ metrics (about 14.93 DAC-code RMS error, 13.97% rail outputs, and 70.36%
 pedestal outputs). It is a useful proof that TX-only stateful demod can produce
 video, not a quality-qualified replacement for Golden.
 
+### PR #72 — Adjacent50 raw-pair bridge with live deadline diagnostics
+
+Evaluated bridging raw IQ pairs over CPU/DMA to feed Adjacent50 math.
+Result: without dedicated hardware acceleration, CPU/DMA arbitration violates
+the strict 50 ns (20 MS/s) deadline, causing buffer underruns and frame tears.
+Confirmed that any demodulator must execute entirely within the
+BitScrambler/PARLIO silicon dataplane.
+
+### PR #73 & #74 — Counter-A / Static-A Relative Golden
+
+Investigated relative worker accumulation in the live two-bundle video path.
+PR #73 showed that unanchored relative integration accumulates drift across
+long active video scanlines. PR #74 demonstrated that anchoring Relative
+Golden to calibrated Golden DAC levels guarantees 100% video sync and color
+stability while preserving the 50 ns timing budget.
+
+### PR #75 — Pages release race resolution
+
+Fixed race condition where a PR prerelease deleted upon merge caused the
+subsequent GitHub Pages firmware mirror build to abort. Hardened download
+pipeline against transient release lifecycles.
+
+### PR #76 — Alternating Middle Phase5 and Static-A Live Qualification
+
+Proved that Static-A Relative Golden coexists without BitScrambler instruction
+or memory collisions. Confirmed live NTSC video with 0 rainbow artifacts on
+hardware.
+
+### PR #77 — Phase5-360 Simulator and Architecture Specification
+
+Formalized full 360° phase unwrapping for Phase5 triplets $[-32 .. +30]$ bins
+(span $-360^\circ .. +337.5^\circ$). Demonstrated algebraic $r_M$ amplitude
+cancellation proof (residual $< 10^{-14}$ rad). Proved clear separation
+between NTSC 3.58 MHz chroma ($|\Delta| \le 5$ bins, $<56^\circ$) and 180°
+edge wraps ($|\Delta| \ge 12$ bins, $>135^\circ$).
+
+### Phase5-360 Live Qualification: Rainbow Root Cause, Option A & Option B
+
+- **Rainbow Root Cause**: Proved that single-bit Cartesian IQ gating (`if 7` or
+  any single bit) clamps 3.58 MHz subcarrier transitions into 4,137 square-wave
+  spikes per field. An exhaustive 65,536-triplet scan proved that no single
+  Cartesian bit can cleanly decide winding without false alarms.
+- **Option A (Delta-Gated Phase5-360 Core)**: For all 736 $(P, C)$ pairs with
+  $|\Delta| < 12$ (100% of chroma and fine detail), output is byte-identical to
+  Golden DAC (strictly 0 false alarms, 0 rainbow artifacts). For the 288 pairs
+  with $|\Delta| \ge 12$, output is clamped to calibrated rails (63 if $\Delta < 0$,
+  0 if $\Delta > 0$). Verified: 0 false alarms, completely eliminates rainbow
+  artifacts in goggles.
+- **Option B (2-Bit Quadrant Oracle & 16-Bit Word Packing)**: Proved that a
+  2-bit quadrant oracle ($M_Q = \text{bit } 3, M_I = \text{bit } 7$) yields 256
+  $(P, C)$ cells with 100% unanimous winding and strictly 0 false alarms
+  (16,384 safe corrections). Proved that complete 16-bit word packing fits into
+  a single 1024x16 LUT: `bits[5:0]` DAC (6b), `bits[9:6]` Quadrant flags (4b),
+  `bit[10]` Rail polarity (1b), `bits[15:11]` Phase5 for Controller (5b)
+  ($6 + 4 + 1 + 5 = 16\text{ bits}$). Proved `if L6+a` is a valid silicon
+  opcode on ESP32-C5 BitScrambler.
+
 ## 6. RF gain, range, and ARC knowledge
 
 ### Old fixed-gain assumptions were wrong
@@ -703,12 +760,20 @@ repository through #71.
 | [#69](https://github.com/Twotoz/C5VRX/pull/69) | Polar11 host geometry; original concurrent RX/TX topology blocked by #70. |
 | [#70](https://github.com/Twotoz/C5VRX/pull/70) | Half-duplex BitScrambler hardware blocker; exact 24-token adjacent factorization retained. |
 | [#71](https://github.com/Twotoz/C5VRX/pull/71) | TX-only PolarState8 produced video but rapid desync/rainbow; model quality still poor. |
+| [#72](https://github.com/Twotoz/C5VRX/pull/72) | Experimental Adjacent50 raw-pair bridge; DMA/CPU transfer violates 50 ns deadline, proving all demod must run in BitScrambler. |
+| [#73](https://github.com/Twotoz/C5VRX/pull/73) | Two-bundle Counter-A relative worker; unanchored relative integration accumulates drift over long scanlines. |
+| [#74](https://github.com/Twotoz/C5VRX/pull/74) | Relative Golden in live two-bundle video path; anchoring to Golden DAC preserves 100% sync and color stability. |
+| [#75](https://github.com/Twotoz/C5VRX/pull/75) | Hardened Pages release mirror against disappearing PR releases and rate limits. |
+| [#76](https://github.com/Twotoz/C5VRX/pull/76) | Alternating middle Phase5 and Static-A Relative Golden; proved clean collision-free operation and zero rainbows. |
+| [#77](https://github.com/Twotoz/C5VRX/pull/77) | Full Phase5-360 simulator and architecture specification; proved algebraic r_M cancellation and separation of chroma vs 180° edge wraps. |
 
-### Non-PR branch coverage
+### Non-PR branch & Phase5-360 production coverage
 
-| Branch | Preserved knowledge |
+| Branch / Phase | Preserved knowledge |
 |---|---|
 | [feat/golden360-middle](https://github.com/Twotoz/C5VRX/tree/feat/golden360-middle) | Exhaustive Golden360/Adjacent50 capacity proof: exact one-bit middle correction is unsafe; all tested direct LUT8/LUT16/LUT32 Golden-preserving two-stage splits exceed token capacity; proof and oracle are preserved on main. |
+| [Phase5-360 Option A](tools/gen_phase5_360.py) | Delta-gated 360° core: $|\Delta| < 12$ emits exact Golden DAC (100% chroma immunity, 0 rainbows); $|\Delta| \ge 12$ clamped to calibrated rails (63/0) for clean edge recovery. |
+| [Phase5-360 Option B](tools/phase5_360_architecture.md) | 2-bit quadrant oracle ($M_Q$=bit 3, $M_I$=bit 7): 256 unanimous cells, 16,384 safe corrections, 0 false alarms. Packs 16-bit word cleanly (6b DAC, 4b flags, 1b rail, 5b Phase5) with `if L6+a`. |
 
 ## 10. How to use this document
 
