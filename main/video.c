@@ -1046,6 +1046,8 @@ typedef enum {
     ANALOG_AGC_MANUAL = 2,
 } analog_agc_mode_t;
 
+static volatile analog_agc_mode_t s_agc_mode = ANALOG_AGC_ACTIVE;
+
 typedef enum {
     AGC_STATE_SEARCH = 0,
     AGC_STATE_LEARN  = 1,
@@ -1189,7 +1191,6 @@ static void cycle_rf_bandwidth_mode(void)
     }
 }
 
-static volatile analog_agc_mode_t s_agc_mode = ANALOG_AGC_ACTIVE;
 static volatile agc_state_t s_agc_state = AGC_STATE_SEARCH;
 /* WBFM instantaneous phase slope contains the video modulation itself.
  * The short-window CFO estimator is useful diagnostics, but it is not yet a

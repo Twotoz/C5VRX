@@ -110,9 +110,15 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
         dg->cal_offset_db = 0;
         dg->settle_ticks = 0;
         dg->state = DIRECT_GAIN_SEEK;
-        if (dg->no_carrier_ticks >= 3u && obs->survival_gain) {
-            dg->target_gain = clamp_gain(dg, obs->survival_gain);
-            dg->current_gain = dg->target_gain;
+        if (obs->survival_gain) {
+            uint8_t survival = clamp_gain(dg, obs->survival_gain);
+            /* Recover quickly if below survival. When a weak carrier drops
+             * out above it, preserve the extra sensitivity for ~1 second. */
+            if ((dg->current_gain < survival && dg->no_carrier_ticks >= 3u) ||
+                (dg->current_gain > survival && dg->no_carrier_ticks >= 20u)) {
+                dg->target_gain = survival;
+                dg->current_gain = survival;
+            }
         }
         return dg->current_gain;
     }
@@ -155,8 +161,8 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
         return dg->current_gain;
     }
 
-    /* 3. EMERGENCY OVERLOAD / CLIPPING PROTECTION
-     * Rail saturation requires an immediate fast cut to restore linearity. */
+    /* 3. EMERGENCY OVERLOAD PROTECTION
+     * Outer Q4-bin occupancy alone is not evidence of analog saturation. */
     if (p > 44) {
         int cut = -14;
         uint8_t next = clamp_gain(dg, (int)dg->current_gain + cut);
@@ -202,12 +208,9 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
 
     dg->last_delta_gain = delta;
 
-    /* 5. TARGET GAIN ESTIMATION & SMOOTH SLEW-RATE HOP EXECUTION
-     * When tracking an active carrier (p >= 8 or carrier authentic), we cap the
-     * gain step size to +5 / -6 steps per tick. This produces seamless, butter-smooth
-     * AGC ramping with zero video flicker or DC shifts.
-     * When carrier is absent (p == 0, cold start or channel switch), a full 1-hop write
-     * is permitted for instantaneous signal lock! */
+    /* 5. TARGET ESTIMATE & ONE SLEW AUTHORITY
+     * Bound active tracking to +4/-6 indices per tick. The physical writer
+     * must not apply an additional cap; PHY transitions may still affect video. */
     if (delta != 0) {
         uint8_t desired_target = clamp_gain(dg, (int)dg->current_gain + delta);
         dg->target_gain = desired_target;

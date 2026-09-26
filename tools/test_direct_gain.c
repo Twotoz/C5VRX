@@ -34,6 +34,13 @@ int main(void)
     assert(direct_gain_tick(&dg, &o) == 62);
     assert(dg.cal_offset_db == 0);
 
+    /* A fading weak carrier already above survival keeps its sensitivity
+     * briefly rather than immediately jumping down on three noisy windows. */
+    direct_gain_reset(&dg, &table, 70);
+    for (unsigned i = 0; i < 19; ++i)
+        assert(direct_gain_tick(&dg, &o) == 70);
+    assert(direct_gain_tick(&dg, &o) == 62);
+
     /* Outer-bin occupancy alone is not proof of analog saturation. */
     direct_gain_reset(&dg, &table, 40);
     o.p_median = 22;

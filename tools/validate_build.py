@@ -683,6 +683,9 @@ check("Direct Gain headers and source present",
 check("Direct Gain profile declared and active in video.c",
       "RX_PROFILE_DIRECT_GAIN" in video_c and
       'case RX_PROFILE_DIRECT_GAIN: return "DIRECT GAIN";' in video_c)
+check("Manual gain mode declared before profile_gain_max uses it",
+      video_c.index("static volatile analog_agc_mode_t s_agc_mode") <
+      video_c.index("static uint8_t profile_gain_max(void)"))
 check("Direct Gain deadband sweet spot [19..25] in Inverse-Q4 LUT",
       "DIRECT_GAIN_DEADBAND_LO   19" in direct_gain_c and
       "DIRECT_GAIN_DEADBAND_HI   25" in direct_gain_c and
