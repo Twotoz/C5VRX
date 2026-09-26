@@ -662,6 +662,18 @@ check("Golden, FSM capture, relative worker, relative middle, 4-bit and Trajecto
                   "fm_phase5_fsm_capture.bsasm", "fm4.bsasm",
                   "fm_traj.bsasm"], f"found: {bs_srcs}")
 
+# Phase5-360 architecture and simulator validation
+TOOLS_DIR = ROOT / "tools"
+check("Phase5-360 architecture document present",
+      (TOOLS_DIR / "phase5_360_architecture.md").exists())
+check("Phase5-360 simulator present",
+      (TOOLS_DIR / "sim_phase5_360.py").exists())
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+import sim_phase5_360
+check("Phase5-360 mathematical simulation passes all checks",
+      sim_phase5_360.run_all_simulations())
+
 # ---- Summary ----
 print(f"\n{'='*50}")
 print(f"C5VRX-3 build validation: {len(passes)} passed, {len(failures)} failed")
