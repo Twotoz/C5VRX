@@ -5,14 +5,23 @@ from pathlib import Path
 import serial.tools.list_ports
 
 ROOT = Path(__file__).resolve().parent.parent
-BUILD = ROOT / "build"
 
-bootloader = BUILD / "bootloader" / "bootloader.bin"
-ptable = BUILD / "partition_table" / "partition-table.bin"
-app = BUILD / "c5vrx3.bin"
+# Prefer downloaded release artifacts if present
+REL = ROOT / "release_download"
+if (REL / "c5vrx3.bin").exists():
+    bootloader = REL / "bootloader.bin"
+    ptable = REL / "partition-table.bin"
+    app = REL / "c5vrx3.bin"
+    version_txt = (REL / "VERSION").read_text(encoding="utf-8").strip() if (REL / "VERSION").exists() else "release"
+else:
+    BUILD = ROOT / "build"
+    bootloader = BUILD / "bootloader" / "bootloader.bin"
+    ptable = BUILD / "partition_table" / "partition-table.bin"
+    app = BUILD / "c5vrx3.bin"
+    version_txt = "local build"
 
 print("=" * 60)
-print(" AUTO-FLASH WATCHER GESTART")
+print(f" AUTO-FLASH WATCHER GESTART (Firmware: {version_txt})")
 print(" Wachten tot ESP32-C5 wordt aangesloten...")
 print(" (Zodra de USB-kabel contact maakt, begint het flashen direct!)")
 print("=" * 60)
