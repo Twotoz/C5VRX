@@ -150,11 +150,13 @@ After startup, the CPU does not process pixels; the entire pipeline runs continu
 - **The Solution**: C5VRX-3 patches `dw0.suc_eof = 0` across the descriptor ring in SRAM after driver initialization, paired with 64-byte aligned cache synchronization (`sync_dma_c2m`).
 - **The Result**: Truly gapless, infinite circular streaming with zero wrap bubbles, rock-solid vertical sync lock, and crystal-clear horizontal alignment.
 
-### 2. Automatic Default to ARC V3 Reception Profile (`ARC V3 EXP [DEFAULT]`)
-- **Vendor-Aware RF Control**: Reconstructs the ESP32-C5 vendor gain table at startup, avoiding the legacy G62 starvation trap and starting at the highest RF stage.
-- **Dynamic Gain Trajectory**: Fast observer / slow actuator tracks real-time raw-Q4 occupancy and FM phase coherence ($Q_{\text{phase}}$), walking gain smoothly from close range (G14–G18) through medium conditions (G35–G56) to extreme weak range (G77–G81).
-- **Deadband Lock**: Maintains strictly **zero PHY writes** while clean video is locked.
-- **RF-Limit Classification**: Explicitly flags `RF_LIMIT` / `Q4=STARVED` during total carrier loss to prevent unstable adaptation on noise.
+### 2. Direct Gain Feed-Forward Control (`DIRECT GAIN [DEFAULT]`)
+- **Feed-Forward Input Estimation**: Rather than iteratively stepping gain ($\pm 1$ or $\pm 2$ every 50 ms), Direct Gain evaluates the raw RF level via an **Inverse-Q4 transfer function** ($\Delta\text{dB} = 20\log_{10}(P_{\text{target}} / P_{\text{current}})$), calculating the exact target hardware gain in closed form.
+- **Single-Write Hops (e.g. G22 $\to$ G73 in 1 write)**: Executes instant single-hop transitions directly to the optimal operating point.
+- **Separation of Amplitude from Quality**: Phase coherence ($Q_{\text{phase}}$), origin distance, and winding metrics are used strictly for **quality verification**, never to drive gain. When amplitude $P$ is in the sweet spot ($19 \le P \le 25$), Direct Gain enters **HOLD** (zero writes) regardless of multipath fades, completely eliminating multipath saturation traps!
+- **Fast Blanking/Settling (~10–20 ms)**: Bypasses the legacy 500 ms algorithmic damping timer, settling in a single control tick after the ~0.82 ms GDMA ring flush.
+- **Self-Calibration & Hardware RSSI**: Blends hardware wideband RSSI when available, and continuously validates post-hop accuracy with small ($\pm 1$ dB) offset self-calibration.
+- **ARC V3 EXP Preserved**: ARC V3 EXP remains fully selectable via the menu or console for comparative testing.
 
 ### 3. Fixed BW40 Analog Front-End
 - **BW40 is the production RF contract**: C5VRX keeps the wide analog front-end selected with `phy_wifi_fbw_sel(1)` during startup and after every channel retune.
