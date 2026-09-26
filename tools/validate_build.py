@@ -687,29 +687,47 @@ check("Direct Gain deadband sweet spot [19..25] in Inverse-Q4 LUT",
       "DIRECT_GAIN_DEADBAND_LO   19" in direct_gain_c and
       "DIRECT_GAIN_DEADBAND_HI   25" in direct_gain_c and
       "DIRECT_GAIN_TARGET_P      22" in direct_gain_c)
-check("Direct Gain fast 1-tick settle window (~10-20 ms)",
+check("Direct Gain one-tick decision settling (~50 ms)",
       "DIRECT_GAIN_SETTLE_TICKS  1u" in direct_gain_c)
 check("Direct Gain quality separation (multipath never triggers gain drive)",
       "obs->clip_permille < 20" in direct_gain_c and
       "dg->state = DIRECT_GAIN_HOLD" in direct_gain_c)
-check("Direct Gain emergency clipping cut",
-      "cut = -14" in direct_gain_c and "cut = -8" in direct_gain_c)
+check("Direct Gain emergency power/outer-bin cut",
+      "cut = -14" in direct_gain_c and "cut = -8" in direct_gain_c and
+      "obs->clip_permille >= 80 && p > 35" in direct_gain_c)
 check("Direct Gain single-write hop execution",
       "dg->settle_ticks = DIRECT_GAIN_SETTLE_TICKS" in direct_gain_c and
       "++dg->total_writes" in direct_gain_c)
-check("Direct Gain smooth slew-rate limiting (+5/-6 steps)",
-      "DIRECT_GAIN_MAX_SLEW_UP   5u" in direct_gain_c and
+check("Direct Gain single slew authority (+4/-6 steps)",
+      "DIRECT_GAIN_MAX_SLEW_UP   4u" in direct_gain_c and
       "DIRECT_GAIN_MAX_SLEW_DOWN 6u" in direct_gain_c and
-      "is_tracking" in direct_gain_c)
+      "is_tracking" in direct_gain_c and
+      "s_rx_profile != RX_PROFILE_DIRECT_GAIN" in video_c and
+      "direct_gain_sync_applied(&s_direct_gain_controller" in video_c)
+
+check("Direct Gain no-carrier precedes power feedback and RSSI cannot steer PHY",
+      direct_gain_c.index("if (obs->q_phase < 18") <
+      direct_gain_c.index("if (dg->settle_ticks > 0)") and
+      "int rssi_target" not in direct_gain_c)
 
 # Phase5c Static Correction validation
 phase5_360_asm = read(MAIN / "fm_phase5_360.bsasm")
-p360_words = [int(w) for w in phase5_360_asm.split("\nlut ", 1)[1].split("\n\ncontroller_0:", 1)[0].split()]
+p360_words = [int(w) for w in phase5_360_asm.split("\nlut ", 1)[1].split("\n\n# Both workers", 1)[0].split()]
 # In Phase5c, large delta pairs (|delta| >= 12) must output Golden pedestal 20 (bits 8..13), never rail-slam to 0 or 63!
 p360_large_delta_dacs = [(p360_words[i] >> 8) & 63 for i in range(1024) if abs(((i & 31) - ((i >> 5) & 31) + 16) % 32 - 16) >= 12]
 check("Phase5c static squelch eliminates harsh salt-and-pepper rails",
       len(p360_large_delta_dacs) == 288 and
       all(dac == 20 for dac in p360_large_delta_dacs))
+
+workers = phase5_360_asm.split("worker_golden:\n", 1)[1].split("worker_360:\n", 1)
+check("Live middle-sample branch remains endpoint Golden, not ideal 360",
+      len(workers) == 2 and
+      "set 0..5 L8..L13" in workers[0] and
+      "set 0..5 L8..L13" in workers[1] and
+      sum(1 for p in range(32) for m in range(32) for c in range(32)
+          if (((m - p + 16) % 32 - 16) +
+              ((c - m + 16) % 32 - 16)) !=
+             ((c - p + 16) % 32 - 16)) == 8192)
 
 # ---- Summary ----
 print(f"\n{'='*50}")

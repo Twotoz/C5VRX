@@ -360,7 +360,7 @@ def run_all_simulations() -> bool:
     assert lut_ok
     
     print("\n" + "=" * 65)
-    print(" ALL 5 PHASE5-360 MATHEMATICAL & SILICON CHECKS PASSED!")
+    print(" ALL 5 IDEAL PHASE5-360 MODEL CHECKS PASSED (NOT LIVE BSASM PROOF)")
     print("=" * 65)
     return True
 

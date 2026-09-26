@@ -1089,6 +1089,10 @@ static uint8_t profile_gain_min(void)
 
 static uint8_t profile_gain_max(void)
 {
+    /* MANUAL is allowed to reproduce the vendor states used by Direct Gain.
+     * The legacy LAB_GAIN_MAX=62 still bounds the old automatic sweep. */
+    if (s_agc_mode == ANALOG_AGC_MANUAL)
+        return rf_get_arc_gain_table()->max_index;
     switch (s_rx_profile) {
     case RX_PROFILE_BLOCKER_EXP: return 48u;
     case RX_PROFILE_ARC:
@@ -1300,7 +1304,7 @@ static void step_frequency_offset_khz_tracked(int delta_khz)
     apply_frequency_offset_khz_tracked(rf_get_frequency_offset_khz() + delta_khz);
 }
 
-static void apply_rx_gain_tracked(uint8_t gain)
+static uint8_t apply_rx_gain_tracked(uint8_t gain)
 {
     gain = profile_gain_clamp(gain);
     s_shadow_gain = gain;
@@ -1313,19 +1317,24 @@ static void apply_rx_gain_tracked(uint8_t gain)
     bool cold_start = (s_last_p_median == 0) && (s_last_q_phase < 20);
 
     uint8_t next_gain = gain;
-    if (!emergency && !cold_start && s_current_gain > 0) {
+    /* Direct Gain already owns its slew. A second limit would leave its
+     * controller state one or more gain indices ahead of the PHY. */
+    if (s_rx_profile != RX_PROFILE_DIRECT_GAIN &&
+        !emergency && !cold_start && s_current_gain > 0) {
         int step = (int)gain - (int)s_current_gain;
         if (step > 4) step = 4;
         if (step < -6) step = -6;
         next_gain = profile_gain_clamp(s_current_gain + step);
     }
 
+    if (next_gain == s_current_gain) return s_current_gain;
     s_current_gain = next_gain;
     s_last_gain_write_us = esp_timer_get_time();
     s_last_phy_write_us = s_last_gain_write_us;
     s_last_phy_write_kind = PHY_WRITE_GAIN;
     rf_set_rx_gain(true, next_gain);
     ++s_gain_transition_count;
+    return next_gain;
 }
 
 static int signal_strength_score(const control_metrics_t *m, uint8_t gain)
@@ -1437,7 +1446,8 @@ static void settings_load(void)
     if (s_video_std_mode == VIDEO_STD_MODE_PAL) s_video_std = VIDEO_STD_PAL;
     else if (s_video_std_mode == VIDEO_STD_MODE_NTSC) s_video_std = VIDEO_STD_NTSC;
     if (settings.agc_mode <= ANALOG_AGC_MANUAL) s_agc_mode = (analog_agc_mode_t)settings.agc_mode;
-    if (s_agc_mode == ANALOG_AGC_MANUAL && settings.manual_gain >= 2u && settings.manual_gain <= 62u) {
+    if (s_agc_mode == ANALOG_AGC_MANUAL && settings.manual_gain >= 2u &&
+        settings.manual_gain <= rf_get_arc_gain_table()->max_index) {
         s_current_gain = profile_gain_clamp(settings.manual_gain);
     } else {
         switch (s_rx_profile) {
@@ -2100,11 +2110,17 @@ static void lab_run_rssi_gain_probe(void)
 
     const uint8_t test_gains[] = {15, 30, 45, 60, 75, 81};
     uint8_t saved_gain = s_current_gain;
+    analog_agc_mode_t saved_mode = s_agc_mode;
+
+    /* Prevent the higher-priority control task from relabelling probe rows
+     * by replacing a forced gain while the probe waits for settling. */
+    s_agc_mode = ANALOG_AGC_MANUAL;
+    vTaskDelay(pdMS_TO_TICKS(60));
 
     for (unsigned i = 0; i < sizeof(test_gains); ++i) {
         uint8_t g = test_gains[i];
-        rf_set_rx_gain(true, g);
-        s_current_gain = g;
+        lab_apply_vendor_gain(g);
+        g = s_current_gain;
         vTaskDelay(pdMS_TO_TICKS(50));
 
         int rssi_val = -127;
@@ -2133,8 +2149,10 @@ static void lab_run_rssi_gain_probe(void)
     }
 
     /* Restore initial gain */
-    rf_set_rx_gain(true, saved_gain);
-    s_current_gain = saved_gain;
+    lab_apply_vendor_gain(saved_gain);
+    /* Re-arm all controller state from the physical state when AUTO resumes. */
+    ++s_profile_generation;
+    s_agc_mode = saved_mode;
     printf("=======================================================\n\n");
 }
 
@@ -3959,6 +3977,7 @@ static void analog_agc_task(void *arg)
             seen_arc_generation = arc_generation;
             target_gain = rf_get_arc_survival_gain();
             apply_rx_gain_tracked(target_gain);
+            target_gain = s_current_gain;
             arc_controller_reset(&arc_controller, rf_get_arc_gain_table(),
                                  target_gain);
             arc_v3_controller_reset(&arc_v3_controller, rf_get_arc_gain_table(),
@@ -4160,6 +4179,7 @@ static void analog_agc_task(void *arg)
                 .winding_permille = winding_permille,
                 .rssi_dbm = rssi_ok ? rssi_val : -127,
                 .rssi_valid = rssi_ok,
+                .survival_gain = rf_get_arc_survival_gain(),
             };
             target_gain = direct_gain_tick(&s_direct_gain_controller, &dg_obs);
             s_last_direct_gain_state = s_direct_gain_controller.state;
@@ -4173,8 +4193,10 @@ static void analog_agc_task(void *arg)
             s_shadow_gain = target_gain;
             s_agc_state = s_direct_gain_controller.state == DIRECT_GAIN_HOLD ?
                           AGC_STATE_TRACK : AGC_STATE_LEARN;
-            if (target_gain != s_current_gain) apply_rx_gain_tracked(target_gain);
-            /* Direct Gain owns settling (1-tick blanking). BW40 and 0 kHz remain fixed. */
+            if (target_gain != s_current_gain)
+                direct_gain_sync_applied(&s_direct_gain_controller,
+                                         apply_rx_gain_tracked(target_gain));
+            /* Direct Gain owns decision settling. BW40 and 0 kHz remain fixed. */
             settle_ticks = 0;
             goto control_tail;
         }
@@ -4642,9 +4664,10 @@ static void console_diag_task(void *arg)
                 } else if (c == '+' || c == 'k') {
                     leave_experimental_profile();
                     s_agc_mode = ANALOG_AGC_MANUAL;
-                    if (s_current_gain < LAB_GAIN_MAX) {
-                        s_current_gain = s_current_gain <= LAB_GAIN_MAX - LAB_GAIN_STEP ?
-                                         (uint8_t)(s_current_gain + LAB_GAIN_STEP) : LAB_GAIN_MAX;
+                    uint8_t manual_max = rf_get_arc_gain_table()->max_index;
+                    if (s_current_gain < manual_max) {
+                        s_current_gain = s_current_gain <= manual_max - LAB_GAIN_STEP ?
+                                         (uint8_t)(s_current_gain + LAB_GAIN_STEP) : manual_max;
                         s_last_gain_write_us = esp_timer_get_time();
                         s_last_phy_write_us = s_last_gain_write_us;
                         s_last_phy_write_kind = PHY_WRITE_GAIN;
