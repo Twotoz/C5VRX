@@ -31,10 +31,10 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("Golden, FSM capture, relative worker, relative middle, 4-bit and Trajectory BitScrambler programs",
-      {f.name for f in bsasm_files} == {"fm.bsasm", "fm_relative_golden.bsasm", "fm_phase5_fsm_capture.bsasm",
-                                      "bs_relative_worker_probe.bsasm", "bs_relative_middle_probe.bsasm",
-                                      "fm4.bsasm", "fm_traj.bsasm"},
+check("Golden, FSM capture, relative worker, relative middle, 4-bit, Trajectory, and Phase5-360 BitScrambler programs",
+      {f.name for f in bsasm_files} == {"fm.bsasm", "fm_relative_golden.bsasm", "fm_phase5_360.bsasm",
+                                      "fm_phase5_fsm_capture.bsasm", "bs_relative_worker_probe.bsasm",
+                                      "bs_relative_middle_probe.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
@@ -656,9 +656,9 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, FSM capture, relative worker, relative middle, 4-bit and Trajectory BitScrambler programs in CMakeLists",
-      bs_srcs == ["fm.bsasm", "fm_relative_golden.bsasm", "bs_relative_worker_probe.bsasm",
-                  "bs_relative_middle_probe.bsasm",
+check("Golden, FSM capture, relative worker, relative middle, 4-bit, Trajectory, and Phase5-360 BitScrambler programs in CMakeLists",
+      bs_srcs == ["fm.bsasm", "fm_relative_golden.bsasm", "fm_phase5_360.bsasm",
+                  "bs_relative_worker_probe.bsasm", "bs_relative_middle_probe.bsasm",
                   "fm_phase5_fsm_capture.bsasm", "fm4.bsasm",
                   "fm_traj.bsasm"], f"found: {bs_srcs}")
 

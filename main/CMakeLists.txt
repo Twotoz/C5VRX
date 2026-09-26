@@ -34,6 +34,7 @@ idf_component_register(
 # Proven default plus opt-in experimental demod/output paths.
 target_bitscrambler_add_src("fm.bsasm")
 target_bitscrambler_add_src("fm_relative_golden.bsasm")
+target_bitscrambler_add_src("fm_phase5_360.bsasm")
 target_bitscrambler_add_src("bs_relative_worker_probe.bsasm")
 target_bitscrambler_add_src("bs_relative_middle_probe.bsasm")
 target_bitscrambler_add_src("fm_phase5_fsm_capture.bsasm")

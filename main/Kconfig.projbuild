@@ -16,9 +16,17 @@ menu "C5VRX diagnostic probes"
 endmenu
 
 menu "C5VRX experimental video demodulators"
+    config C5VRX_PHASE5_360_LIVE
+        bool "Use Phase5-360 (Exact Adjacent50) in the live 6-bit video path"
+        default y
+        help
+            Enable Phase5-360 travel resolution across the 50 ns interval.
+            Resolves full 360-degree trajectory while maintaining strictly
+            zero false alarms on the 3.58 MHz color subcarrier.
+
     config C5VRX_RELATIVE_GOLDEN_LIVE
         bool "Use relative-mux Golden in the live 6-bit video path"
-        default y
+        default n
         help
             Replace only the 6-bit Golden BitScrambler program with the
             two-bundle Counter-A relative-mux oracle. Intended for live
