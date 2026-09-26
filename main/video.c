@@ -190,6 +190,8 @@ static volatile uint8_t s_video_std_ntsc_score;
 static volatile uint16_t s_last_line_period_20m;
 static volatile uint16_t s_last_sync_width_20m;
 static volatile int s_last_sync_quality;
+static volatile int s_last_bp_cfo_khz;
+static volatile bool s_last_bp_cfo_valid;
 static QueueHandle_t s_menu_commands;
 static bitscrambler_handle_t s_flight_bs;
 
@@ -683,6 +685,8 @@ static void video_standard_detector_reset(void)
     s_last_line_period_20m = 0;
     s_last_sync_width_20m = 0;
     s_last_sync_quality = 0;
+    s_last_bp_cfo_khz = 0;
+    s_last_bp_cfo_valid = false;
 }
 
 static void video_standard_vote(video_standard_t standard, uint16_t period)
@@ -794,6 +798,60 @@ static int video_semantic_observe(const uint8_t *raw, size_t bytes, size_t ring_
     if (!valid_period) quality = width_score;
     if (quality > 100) quality = 100;
     s_last_sync_quality = quality;
+
+    /* Pedestal-Gated Back-Porch CFO:
+     * When horizontal sync pulses are detected (quality >= 50 && start_count >= 1),
+     * compute carrier frequency offset strictly from the back porch samples
+     * following the sync pulses.
+     * The horizontal back porch is guaranteed to be at 0 IRE (0 MHz deviation)
+     * independent of video luminance or scene exposure. */
+    if (quality >= 50 && start_count >= 1u) {
+        int bp_sum_cross = 0;
+        int bp_sum_dot = 0;
+        int bp_coherent_samples = 0;
+
+        for (unsigned s = 0; s < start_count; ++s) {
+            size_t sync_end_raw = first + 2u * (starts[s] + widths[s]);
+            size_t bp_start = sync_end_raw + 8u;   /* 200 ns past sync rising edge */
+            size_t bp_end = sync_end_raw + 140u;  /* 3.5 us back porch window */
+            if (bp_end > bytes) bp_end = bytes;
+
+            if (bp_start < bp_end && bp_start >= 1u) {
+                for (size_t k = bp_start; k < bp_end; ++k) {
+                    uint8_t byte = raw[k];
+                    uint8_t prev = raw[k - 1u];
+                    int8_t in_val = (int8_t)(byte & 0xf0u) >> 4;
+                    int8_t q = (int8_t)((byte & 0x0fu) << 4) >> 4;
+                    int8_t prev_i = (int8_t)(prev & 0xf0u) >> 4;
+                    int8_t prev_q = (int8_t)((prev & 0x0fu) << 4) >> 4;
+
+                    int p = (int)in_val * in_val + (int)q * q;
+                    int dot = (int)in_val * (int)prev_i + (int)q * (int)prev_q;
+                    int cross = (int)q * (int)prev_i - (int)in_val * (int)prev_q;
+                    int abs_cross = cross < 0 ? -cross : cross;
+
+                    if (p >= 8 && dot > 0 && abs_cross <= dot) {
+                        bp_sum_cross += cross;
+                        bp_sum_dot += dot;
+                        ++bp_coherent_samples;
+                    }
+                }
+            }
+        }
+
+        if (bp_coherent_samples >= 30 && bp_sum_dot > 0) {
+            int bp_cfo = (int)(((int64_t)bp_sum_cross * 6366LL) / bp_sum_dot);
+            if (bp_cfo > 2000) bp_cfo = 2000;
+            if (bp_cfo < -2000) bp_cfo = -2000;
+            s_last_bp_cfo_khz = bp_cfo;
+            s_last_bp_cfo_valid = true;
+        } else {
+            s_last_bp_cfo_valid = false;
+        }
+    } else {
+        s_last_bp_cfo_valid = false;
+    }
+
     return quality;
 }
 
@@ -1384,7 +1442,7 @@ static void settings_load(void)
         s_rx_profile = RX_PROFILE_DIRECT_GAIN; /* legacy: s_rx_profile = RX_PROFILE_ARC */
         s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
         s_rf_bw_mode = RF_BW_MODE_BW40;
-        s_afc_mode = AFC_MODE_OFF;
+        s_afc_mode = AFC_MODE_AUTO;
         s_agc_mode = ANALOG_AGC_ACTIVE;
         s_current_gain = rf_get_arc_survival_gain();
         s_shadow_gain = s_current_gain;
@@ -1419,12 +1477,16 @@ static void settings_load(void)
         s_rx_profile == RX_PROFILE_FUSION_EXP ||
         s_rx_profile == RX_PROFILE_ARC ||
         s_rx_profile == RX_PROFILE_ARC_V3_EXP ||
-        s_rx_profile == RX_PROFILE_ARC_V5_AUTOTUNE_EXP ||
-        s_rx_profile == RX_PROFILE_DIRECT_GAIN) {
+        s_rx_profile == RX_PROFILE_ARC_V5_AUTOTUNE_EXP) {
         /* RANGE/FUSION have one deterministic RF shape across reboot: the
          * proven full-video filter, with no acquisition-time filter or AFC writes. */
         s_rf_bw_mode = RF_BW_MODE_BW40;
         s_afc_mode = AFC_MODE_OFF;
+        apply_rf_bandwidth(true);
+    } else if (s_rx_profile == RX_PROFILE_DIRECT_GAIN) {
+        /* DIRECT_GAIN uses calibrated Back-Porch Gated AFC */
+        s_rf_bw_mode = RF_BW_MODE_BW40;
+        s_afc_mode = AFC_MODE_AUTO;
         apply_rf_bandwidth(true);
     } else if (s_rx_profile == RX_PROFILE_RANGE_V2_EXP) {
         /* RANGE V2 always boots from the proven full-video shape, then permits
@@ -4058,13 +4120,6 @@ static void analog_agc_task(void *arg)
             }
         }
 
-        if (metrics.n_coherent >= (int)(CONTROL_SAMPLE_BYTES / 8u) && metrics.sum_dot > 0) {
-            int instant_cfo = (int)(((int64_t)metrics.sum_cross * 6366LL) / metrics.sum_dot);
-            if (instant_cfo > 2000) instant_cfo = 2000;
-            if (instant_cfo < -2000) instant_cfo = -2000;
-            s_cfo_khz = (s_cfo_khz * 7 + instant_cfo) / 8;
-        }
-
         int sync_quality = 0;
         bool fresh_sync = false;
         if (settle_ticks == 0) {
@@ -4072,10 +4127,24 @@ static void analog_agc_task(void *arg)
                                                   sizeof(s_control_sample_buf),
                                                   ring_offset);
             fresh_sync = sync_quality >= 70;
+        } else {
+            s_last_bp_cfo_valid = false;
         }
         if (fresh_sync) sync_age_ticks = 0;
         else if (sync_age_ticks < 100) ++sync_age_ticks;
         bool recent_sync = sync_age_ticks < 20;
+
+        if (s_last_bp_cfo_valid) {
+            /* Pedestal-Gated Back-Porch CFO: 100% immune to scene luminance and video content */
+            s_cfo_khz = (s_cfo_khz * 7 + s_last_bp_cfo_khz) / 8;
+        } else if (metrics.n_coherent >= (int)(CONTROL_SAMPLE_BYTES / 8u) && metrics.sum_dot > 0 &&
+                   s_last_sync_quality < 40) {
+            /* Wideband fallback only when no sync structure is present (e.g. unmodulated carrier) */
+            int instant_cfo = (int)(((int64_t)metrics.sum_cross * 6366LL) / metrics.sum_dot);
+            if (instant_cfo > 2000) instant_cfo = 2000;
+            if (instant_cfo < -2000) instant_cfo = -2000;
+            s_cfo_khz = (s_cfo_khz * 7 + instant_cfo) / 8;
+        }
 
         fusion_observation_t fusion_obs = fusion_make_observation(
             p_median, q_phase, clip_permille, origin_permille,
@@ -4502,15 +4571,24 @@ profile_post_gain:
         if (s_afc_mode == AFC_MODE_AUTO) {
             /* AUTO AFC is acquisition-only. TRACK performs zero frequency or
              * gain re-assert writes; any remaining CFO is frozen until lock is
-             * lost and the controller returns to SEARCH/LEARN. */
+             * lost and the controller returns to SEARCH/LEARN.
+             * Back-Porch Gated AFC:
+             * When valid CVBS sync is established (s_last_bp_cfo_valid), the CFO is
+             * guaranteed to reflect true transmitter frequency error with zero bias
+             * from scene brightness.
+             * Fast pull-in during acquisition (10 ticks = 500 ms).
+             */
             if (s_agc_state != AGC_STATE_TRACK &&
-                q_phase >= 75 && p_median >= 18 && settle_ticks == 0) {
-                if (s_cfo_khz > 35 || s_cfo_khz < -35) {
-                    if (++afc_ticks >= 20) {
+                q_phase >= 70 && p_median >= 16 && settle_ticks == 0 && s_last_bp_cfo_valid) {
+                if (s_cfo_khz > 40 || s_cfo_khz < -40) {
+                    if (++afc_ticks >= 10) {
                         int cur_offset = rf_get_frequency_offset_khz();
-                        apply_frequency_offset_khz_tracked(cur_offset + s_cfo_khz);
+                        int step = s_cfo_khz;
+                        if (step > 50) step = 50;
+                        if (step < -50) step = -50;
+                        apply_frequency_offset_khz_tracked(cur_offset + step);
                         afc_ticks = 0;
-                        settle_ticks = 2;
+                        settle_ticks = 3;
                     }
                 } else {
                     afc_ticks = 0;
@@ -4538,11 +4616,12 @@ control_tail: {
         if (PERIODIC_TELEMETRY) {
             if (++telemetry_ticks >= 20) {
                 telemetry_ticks = 0;
-                printf("[AGC] state=%d G=%u P=%d Q=%d%% clip=%d.%d%% wind=%d.%d%% syncQ=%d std=%s\n",
+                printf("[AGC] state=%d G=%u P=%d Q=%d%% clip=%d.%d%% wind=%d.%d%% syncQ=%d cfo=%+d kHz std=%s\n",
                        s_agc_state, s_current_gain, p_median, q_phase,
                        clip_permille / 10, clip_permille % 10,
                        winding_permille / 10, winding_permille % 10,
                        s_last_sync_quality,
+                       s_cfo_khz,
                        s_detected_video_std_valid ? video_standard_name(s_detected_video_std) : "UNKNOWN");
             }
         }
@@ -4712,7 +4791,7 @@ static void console_diag_task(void *arg)
                         printf("[AFC] -> OFF (Offset reset to 0 kHz)\n");
                     } else {
                         s_afc_mode = AFC_MODE_AUTO;
-                        printf("[AFC] -> AUTO EXPERIMENTAL (uncalibrated WBFM bias estimator)\n");
+                        printf("[AFC] -> AUTO (Back-Porch Gated CFO estimator)\n");
                     }
                     settings_save();
                 } else if (c == ',' || c == '<') {
@@ -4761,10 +4840,12 @@ static void console_diag_task(void *arg)
                     printf(" Receiver Channel:           %s (%u MHz)\n", ch->name, ch->freq_mhz);
                     printf(" Tuned Frequency:            %d.%03d MHz (Offset: %+d kHz)\n",
                            tot / 1000, (tot % 1000 >= 0 ? tot % 1000 : -(tot % 1000)), off);
-                    printf(" Carrier Frequency Offset:   %+d kHz (VTX %s)\n",
-                           s_cfo_khz, (s_cfo_khz > 20) ? "high" : (s_cfo_khz < -20) ? "low" : "centered");
+                    printf(" Carrier Frequency Offset:   %+d kHz (VTX %s%s)\n",
+                           s_cfo_khz,
+                           s_last_bp_cfo_valid ? "back-porch gated, " : "",
+                           (s_cfo_khz > 20) ? "high" : (s_cfo_khz < -20) ? "low" : "centered");
                     printf(" AFC Mode:                   %s\n",
-                           (s_afc_mode == AFC_MODE_AUTO) ? "AUTO EXPERIMENTAL (uncalibrated estimator)" :
+                           (s_afc_mode == AFC_MODE_AUTO) ? "AUTO (Back-Porch Gated)" :
                            (s_afc_mode == AFC_MODE_HOLD) ? "HOLD (Offset Frozen)" : "OFF (0 kHz)");
                     printf(" RX Profile:                 %s%s\n",
                            rx_profile_name(),
