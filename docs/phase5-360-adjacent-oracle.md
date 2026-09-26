@@ -90,6 +90,41 @@ for the Golden-preserving adjacent target. This rules out that *specific*
 direct final-lookup scheme; it does not rule out untested counter logic,
 additional hardware, or a different signal-path architecture.
 
+### Can the middle sample be compressed?
+
+Yes, **after** both endpoint phases are known: for 992 of the 1,024 endpoint
+pairs, the possible winding outcomes across all middle phases are exactly two
+(`0` and one direction). The other 32 pairs always have winding `0`. Thus the
+final correction for fixed endpoints is one bit at most. But that bit is a
+predicate of *all three phases*, not an endpoint-independent middle-sample bit.
+Before the current endpoint arrives, even fixing the previous phase leaves 32
+distinct middle-phase continuation patterns across possible current phases.
+An exact early summary still needs all five middle Phase5 bits. The exhaustive
+counts are asserted by `tools/prove_golden360_capacity.py`.
+
+There is an exact small **endpoint-conditioned interval circuit**. Let
+`u = (M-P) & 31` and `e = wrap32(C-P)`. Then:
+
+```
+if e >= 0: k = -1 when 16 <= u <= 16+e, otherwise 0
+if e <  0: k = +1 when 16+e < u < 16, otherwise 0
+```
+
+The proof checks this against both wrapped adjacent differences for all
+32,768 triples. For the winding case, the exact adjacent sum is `e + 32*k`;
+otherwise emit the Golden calibrated DAC byte. This reduces the **final
+decision** to an interval predicate, but the circuit still needs five bits of
+middle phase until `C` is decoded, a modulo-32 subtraction, comparisons and
+the calibrated output selection. No two-bundle single-C5 implementation of
+those operations has been demonstrated.
+
+A feasible additional-hardware design would decode each raw byte at 40 MS/s,
+retain `P,M,C`, evaluate the two shortest-arc deltas and sum in a parallel
+combinational datapath, then apply the calibrated Golden DAC for no winding.
+It needs a third computation path beyond the two measured C5 TX LUT accesses,
+or a proved C5 counter/bit-routing implementation of the same predicate and
+DAC transfer. This is an architectural target, **not** a new live C5 mode.
+
 Before any live `PHASE5-360` mode or flashable claim, a candidate must:
 
 1. Decode both raw Q4/I4 samples and retain the previous phase with one C5 TX

@@ -40,6 +40,15 @@ def winding(previous, middle, current):
     return (pair - endpoint) // 32
 
 
+def interval_winding(previous, middle, current):
+    """Endpoint-conditioned interval circuit; the output needs one bit."""
+    u = (middle - previous) & 31
+    endpoint = wrap32(current - previous)
+    if endpoint >= 0:
+        return -int(16 <= u <= 16 + endpoint)
+    return int(16 + endpoint < u < 16)
+
+
 def pair_dac(previous, middle, current):
     pair = wrap32(middle - previous) + wrap32(current - middle)
     return scale_rad(pair * 2 * math.pi / 32)
@@ -129,6 +138,31 @@ def main():
     }
     assert len(middle_rows) == 32
     print("Distinct middle-phase winding rows: 32 (5-bit middle summary needed)")
+
+    # Endpoint-conditioned compression is real, but becomes available only
+    # after current has been decoded.  It cannot replace an earlier,
+    # endpoint-independent middle token passed to the next raw lookup.
+    conditioned = {1: 0, 2: 0}
+    for previous in range(32):
+        local_rows = {
+            tuple(winding(previous, middle, current)
+                  for current in range(32))
+            for middle in range(32)
+        }
+        assert len(local_rows) == 32
+        for current in range(32):
+            choices = {winding(previous, middle, current)
+                       for middle in range(32)}
+            assert len(choices) in conditioned
+            conditioned[len(choices)] += 1
+    assert conditioned == {1: 32, 2: 992}
+    print("With BOTH endpoints known, winding choices:"
+          " 32 cells need 0 bits, 992 need 1 bit")
+    print("With only previous known, every previous needs 32 distinct"
+          " middle continuations (5 bits)")
+    assert all(interval_winding(p, m, c) == winding(p, m, c)
+               for p in range(32) for m in range(32) for c in range(32))
+    print("Endpoint-conditioned interval circuit: 32768/32768 exact")
 
     # All raw Q4 bytes in each direct-bit class are legal middle samples.
     # A correction is unconditionally safe only if every possible phase in
