@@ -2098,6 +2098,41 @@ static void lab_run_far_gain_probe(void)
            saved_gain, (unsigned)saved_agc_mode, saved_bw40 ? 40u : 20u);
 }
 
+typedef struct {
+    int p_median;
+    int origin_permille;
+} centered_q4_metrics_t;
+
+/* Diagnostic only: the Phase5 decoder places Q4 bins at signed n + 0.5,
+ * including 0x00 at (+0.5,+0.5). The production gain thresholds are still
+ * calibrated to integer-bin metrics, so measure both during a frozen R sweep
+ * before changing any control decision or fast observer stack. */
+static centered_q4_metrics_t measure_centered_q4(const uint8_t *sample, size_t bytes)
+{
+    uint16_t hist[129] = {0};
+    unsigned origin = 0;
+    for (size_t i = 0; i < bytes; ++i) {
+        int q = (int8_t)((sample[i] & 0x0fu) << 4) >> 4;
+        int in_val = (int8_t)(sample[i] & 0xf0u) >> 4;
+        int ci = 2 * in_val + 1;
+        int cq = 2 * q + 1;
+        int power = (ci * ci + cq * cq + 2) / 4;
+        if (power <= 4) ++origin;
+        ++hist[power]; /* Max power is 113, within the 129-bin histogram. */
+    }
+    centered_q4_metrics_t m = {.origin_permille = bytes ?
+        (int)(origin * 1000u / bytes) : 1000};
+    unsigned cumulative = 0;
+    for (unsigned p = 0; p <= 128u; ++p) {
+        cumulative += hist[p];
+        if (cumulative >= (bytes + 1u) / 2u) {
+            m.p_median = (int)p;
+            break;
+        }
+    }
+    return m;
+}
+
 /* Fast empirical probe for Direct Gain: measures phy_get_rssi() and Q4 metrics
  * across 6 fixed gains (G15..G81) to verify pre-gain vs post-gain RSSI behavior. */
 static void lab_run_rssi_gain_probe(void)
@@ -2111,8 +2146,8 @@ static void lab_run_rssi_gain_probe(void)
     printf(" Channel: %s (%u MHz) | Target: P~22\n",
            rf_get_current_channel()->name, rf_get_current_channel()->freq_mhz);
     printf("-------------------------------------------------------\n");
-    printf(" Gain  | RSSI (dBm) | P_median | Q_phase | Clip | Origin | Status\n");
-    printf("-------+------------+----------+---------+------+--------+--------\n");
+    printf(" Gain  | RSSI (dBm) | P raw/center | Q_phase | Outer | Origin raw/center | Status\n");
+    printf("-------+------------+--------------+---------+-------+-------------------+--------\n");
 
     const uint8_t test_gains[] = {15, 30, 45, 60, 75, 81};
     uint8_t saved_gain = s_current_gain;
@@ -2137,21 +2172,27 @@ static void lab_run_rssi_gain_probe(void)
         size_t ring_offset = (sample_src >= s_raw_ring && sample_src < s_raw_ring + sizeof(s_raw_ring))
                            ? (size_t)(sample_src - s_raw_ring) : 0u;
         sync_dma_m2c((void *)sample_src, CONTROL_SAMPLE_BYTES);
-        control_metrics_t m = analyze_control_window(sample_src, CONTROL_SAMPLE_BYTES, ring_offset);
+        memcpy(s_control_sample_buf, sample_src, CONTROL_SAMPLE_BYTES);
+        control_metrics_t m = analyze_control_window(s_control_sample_buf,
+                                                     CONTROL_SAMPLE_BYTES, ring_offset);
+        centered_q4_metrics_t center = measure_centered_q4(s_control_sample_buf,
+                                                            CONTROL_SAMPLE_BYTES);
 
         const char *verdict = "STARVED";
-        if (m.clip_permille >= 20 || m.p_median > 40) verdict = "CLIPPING";
+        if (m.clip_permille >= 20 || m.p_median > 40) verdict = "HIGH P/OUTER";
         else if (m.p_median >= 19 && m.p_median <= 25) verdict = "SWEET SPOT";
         else if (m.p_median >= 12) verdict = "USABLE";
 
-        printf(" G%-3u | %-6s%-4d | %-8d | %-6d%% | %-4d | %-6d | %s\n",
+        printf(" G%-3u | %-6s%-4d | %3d/%-8d | %-6d%% | %-5d | %3d/%-13d | %s\n",
                g,
                rssi_ok ? "" : "NA/",
                rssi_val,
                m.p_median,
+               center.p_median,
                m.q_phase,
                m.clip_permille / 10,
                m.origin_permille / 10,
+               center.origin_permille / 10,
                verdict);
     }
 
