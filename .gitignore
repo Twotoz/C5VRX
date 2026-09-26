@@ -12,3 +12,4 @@ __pycache__/
 scratch/
 *_log.txt
 packages/
+release_download/
