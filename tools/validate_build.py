@@ -712,15 +712,32 @@ check("Direct Gain no-carrier precedes power feedback and RSSI cannot steer PHY"
       direct_gain_c.index("if (obs->q_phase < 18") <
       direct_gain_c.index("if (dg->settle_ticks > 0)") and
       "int rssi_target" not in direct_gain_c)
+check("RSSI probe owns every AGC/BW/AFC write during its measurement",
+      "s_rssi_probe_active = true;" in video_c and
+      "if (s_rssi_probe_active) continue;" in video_c and
+      "s_rssi_probe_active = false;" in video_c)
+check("Direct Gain confirms ordinary direction before writing",
+      "pending_direction" in direct_gain_c and
+      direct_gain_c.index("if (p > 44)") <
+      direct_gain_c.index("int8_t direction = delta > 0"))
 
 # Phase5c Static Correction validation
 phase5_360_asm = read(MAIN / "fm_phase5_360.bsasm")
 p360_words = [int(w) for w in phase5_360_asm.split("\nlut ", 1)[1].split("\n\n# Both workers", 1)[0].split()]
+golden_words = [int(w) for w in read(MAIN / "fm.bsasm").split("\nlut ", 1)[1].split("\n\naddress_delta:", 1)[0].split()]
 # In Phase5c, large delta pairs (|delta| >= 12) must output Golden pedestal 20 (bits 8..13), never rail-slam to 0 or 63!
 p360_large_delta_dacs = [(p360_words[i] >> 8) & 63 for i in range(1024) if abs(((i & 31) - ((i >> 5) & 31) + 16) % 32 - 16) >= 12]
 check("Phase5c static squelch eliminates harsh salt-and-pepper rails",
       len(p360_large_delta_dacs) == 288 and
       all(dac == 20 for dac in p360_large_delta_dacs))
+check("Live Phase5c LUT matches Golden or pedestal for all endpoint pairs",
+      len(p360_words) == len(golden_words) == 1024 and
+      all(((p360_words[i] >> 8) & 63) ==
+          (20 if abs(((i & 31) - (i >> 5) + 16) % 32 - 16) >= 12
+           else golden_words[i] & 63)
+          for i in range(1024)) and
+      all((p360_words[i] & 31) == ((golden_words[i & 255] >> 8) & 31)
+          for i in range(1024)))
 
 workers = phase5_360_asm.split("worker_golden:\n", 1)[1].split("worker_360:\n", 1)
 check("Live middle-sample branch remains endpoint Golden, not ideal 360",

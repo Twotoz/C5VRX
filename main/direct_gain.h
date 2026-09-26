@@ -33,8 +33,9 @@ typedef struct {
 
     uint8_t settle_ticks;      /* Settle countdown after a write (typically 1 tick) */
     uint16_t hold_ticks;       /* Consecutive ticks held in optimal envelope */
-    int8_t  cal_offset_db;     /* Gain-index trim (not a calibrated dB value) */
     uint8_t no_carrier_ticks;
+    int8_t pending_direction; /* Direction awaiting a second independent window */
+    uint8_t pending_votes;
 
     /* Diagnostics & Telemetry */
     int last_p;

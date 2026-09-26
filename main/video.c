@@ -1258,6 +1258,7 @@ static volatile bool s_lab_fft_forced;
 static volatile int8_t s_lab_fft_value;
 static volatile bool s_lab_tx_quiet;
 static volatile bool s_pre_q4_probe_active;
+static volatile bool s_rssi_probe_active;
 
 static const int8_t s_lab_fft_values[] = {16, 24, 32, 40};
 
@@ -2101,6 +2102,10 @@ static void lab_run_far_gain_probe(void)
  * across 6 fixed gains (G15..G81) to verify pre-gain vs post-gain RSSI behavior. */
 static void lab_run_rssi_gain_probe(void)
 {
+    if (s_gain_sweep.active || s_menu_active || s_pre_q4_probe_active) {
+        printf("C5VRX_RSSI_PROBE_REFUSED reason=other_lab_or_menu_active\n");
+        return;
+    }
     printf("\n=======================================================\n");
     printf(" C5VRX-3 DIRECT GAIN: RSSI & INVERSE-Q4 ORACLE PROBE\n");
     printf(" Channel: %s (%u MHz) | Target: P~22\n",
@@ -2113,9 +2118,10 @@ static void lab_run_rssi_gain_probe(void)
     uint8_t saved_gain = s_current_gain;
     analog_agc_mode_t saved_mode = s_agc_mode;
 
-    /* Prevent the higher-priority control task from relabelling probe rows
-     * by replacing a forced gain while the probe waits for settling. */
+    /* Own all RF writes during the probe, including automatic BW and AFC.
+     * The controller skips its entire cycle until restoration is complete. */
     s_agc_mode = ANALOG_AGC_MANUAL;
+    s_rssi_probe_active = true;
     vTaskDelay(pdMS_TO_TICKS(60));
 
     for (unsigned i = 0; i < sizeof(test_gains); ++i) {
@@ -2154,6 +2160,7 @@ static void lab_run_rssi_gain_probe(void)
     /* Re-arm all controller state from the physical state when AUTO resumes. */
     ++s_profile_generation;
     s_agc_mode = saved_mode;
+    s_rssi_probe_active = false;
     printf("=======================================================\n\n");
 }
 
@@ -3846,6 +3853,10 @@ static void analog_agc_task(void *arg)
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(50));
 
+        /* The RSSI oracle owns gain/BW/AFC for this interval. Manual AGC
+         * alone would still allow the AUTO gearbox and AFC below to write. */
+        if (s_rssi_probe_active) continue;
+
         int command;
         for (unsigned commands = 0; commands < 16 &&
              xQueueReceive(s_menu_commands, &command, 0) == pdTRUE; ++commands) {
@@ -4646,7 +4657,7 @@ static void console_diag_task(void *arg)
                 } else if (c == 'D') {
                     apply_rx_profile(RX_PROFILE_DIRECT_GAIN);
                     settings_save();
-                    printf("[RX PROFILE] -> DIRECT GAIN (Feed-Forward with Self-Calibration)\n");
+                    printf("[RX PROFILE] -> DIRECT GAIN (Feed-Forward with temporal confirmation)\n");
                 } else if (c == 'Y') {
                     apply_rx_profile(RX_PROFILE_ARC_V3_EXP);
                     settings_save();

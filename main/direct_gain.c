@@ -84,12 +84,13 @@ void direct_gain_reset(direct_gain_controller_t *dg,
     dg->target_gain = dg->current_gain;
     dg->state = DIRECT_GAIN_SEEK;
     dg->settle_ticks = 0;
-    dg->cal_offset_db = 0;
     dg->last_p = 0;
     dg->last_delta_gain = 0;
     dg->last_estimated_input_dbm = -127;
     dg->last_rssi_used = false;
     dg->no_carrier_ticks = 0;
+    dg->pending_direction = 0;
+    dg->pending_votes = 0;
     dg->total_writes = 0;
     dg->hold_cycles = 0;
 }
@@ -107,8 +108,9 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
      * as an overload or a request for more gain. Never learn on these windows. */
     if (obs->q_phase < 18 && obs->origin_permille >= 650) {
         if (dg->no_carrier_ticks < 255u) ++dg->no_carrier_ticks;
-        dg->cal_offset_db = 0;
         dg->settle_ticks = 0;
+        dg->pending_direction = 0;
+        dg->pending_votes = 0;
         dg->state = DIRECT_GAIN_SEEK;
         if (obs->survival_gain) {
             uint8_t survival = clamp_gain(dg, obs->survival_gain);
@@ -136,16 +138,10 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
                 dg->state = DIRECT_GAIN_HOLD;
                 dg->hold_ticks = 1;
                 ++dg->hold_cycles;
-            } else if (p < DIRECT_GAIN_DEADBAND_LO - 3 && dg->cal_offset_db < 4) {
-                /* Slight undershoot: tiny learned offset trim */
-                dg->cal_offset_db += 1;
-                dg->state = DIRECT_GAIN_SEEK;
-            } else if (p > DIRECT_GAIN_DEADBAND_HI + 3 && dg->cal_offset_db > -4) {
-                /* Slight overshoot: tiny learned offset trim */
-                dg->cal_offset_db -= 1;
-                dg->state = DIRECT_GAIN_SEEK;
             } else {
-                dg->state = DIRECT_GAIN_HOLD;
+                /* One 102 us window cannot train a persistent offset in an
+                 * uncalibrated vendor index. Wait for directional agreement. */
+                dg->state = DIRECT_GAIN_SEEK;
             }
         }
         return dg->current_gain;
@@ -156,6 +152,8 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
      * NOT RF amplitude. If P is in the sweet spot, DO NOT TOUCH GAIN, even if Q is degraded! */
     if (p >= DIRECT_GAIN_DEADBAND_LO && p <= DIRECT_GAIN_DEADBAND_HI &&
         obs->clip_permille < 20) {
+        dg->pending_direction = 0;
+        dg->pending_votes = 0;
         dg->state = DIRECT_GAIN_HOLD;
         if (dg->hold_ticks < 65535u) ++dg->hold_ticks;
         return dg->current_gain;
@@ -164,6 +162,8 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
     /* 3. EMERGENCY OVERLOAD PROTECTION
      * Outer Q4-bin occupancy alone is not evidence of analog saturation. */
     if (p > 44) {
+        dg->pending_direction = 0;
+        dg->pending_votes = 0;
         int cut = -14;
         uint8_t next = clamp_gain(dg, (int)dg->current_gain + cut);
         if (next != dg->current_gain) {
@@ -176,6 +176,8 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
             return dg->current_gain;
         }
     } else if (obs->clip_permille >= 80 && p > 35) {
+        dg->pending_direction = 0;
+        dg->pending_votes = 0;
         int cut = -8;
         uint8_t next = clamp_gain(dg, (int)dg->current_gain + cut);
         if (next != dg->current_gain) {
@@ -189,10 +191,10 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
         }
     }
 
-    /* 4. FEED-FORWARD RF LEVEL ESTIMATION & DIRECT GAIN TRANSFER
-     * Estimate input deficit in dB via Inverse-Q4 LUT */
+    /* 4. POWER-DOMAIN FEED-FORWARD
+     * Approximate local index correction from the power ratio. */
     int lut_idx = p > 45 ? 45 : p;
-    int delta = (int)s_p_to_delta_gain[lut_idx] + (int)dg->cal_offset_db;
+    int delta = (int)s_p_to_delta_gain[lut_idx];
 
     /* RSSI is telemetry only until forced-gain sweeps establish whether it
      * is pre-gain, monotonic and calibrated for this PHY/table. */
@@ -207,13 +209,31 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
     }
 
     dg->last_delta_gain = delta;
+    dg->target_gain = clamp_gain(dg, (int)dg->current_gain + delta);
+
+    /* A single 102 us descriptor is only 0.2% of the preceding 50 ms.
+     * Confirm ordinary tracking direction in a second control window;
+     * overload above remains immediate. This also prevents alternating
+     * weak/strong outliers from causing opposing PHY writes. */
+    int8_t direction = delta > 0 ? 1 : delta < 0 ? -1 : 0;
+    if (direction != dg->pending_direction) {
+        dg->pending_direction = direction;
+        dg->pending_votes = direction ? 1u : 0u;
+        dg->state = direction ? DIRECT_GAIN_SEEK : DIRECT_GAIN_HOLD;
+        return dg->current_gain;
+    }
+    if (direction && dg->pending_votes < 2u) {
+        ++dg->pending_votes;
+        dg->state = DIRECT_GAIN_SEEK;
+        if (dg->pending_votes < 2u) return dg->current_gain;
+    }
+    if (!direction) dg->pending_votes = 0;
 
     /* 5. TARGET ESTIMATE & ONE SLEW AUTHORITY
      * Bound active tracking to +4/-6 indices per tick. The physical writer
      * must not apply an additional cap; PHY transitions may still affect video. */
     if (delta != 0) {
-        uint8_t desired_target = clamp_gain(dg, (int)dg->current_gain + delta);
-        dg->target_gain = desired_target;
+        uint8_t desired_target = dg->target_gain;
 
         int step = (int)desired_target - (int)dg->current_gain;
         bool is_tracking = (p >= 8) || carrier_authentic || (dg->hold_ticks > 0);
@@ -226,6 +246,8 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
         uint8_t next_gain = clamp_gain(dg, (int)dg->current_gain + step);
         if (next_gain != dg->current_gain) {
             dg->current_gain = next_gain;
+            dg->pending_direction = 0;
+            dg->pending_votes = 0;
             dg->settle_ticks = DIRECT_GAIN_SETTLE_TICKS;
             dg->state = DIRECT_GAIN_SETTLE;
             dg->hold_ticks = 0;
@@ -251,6 +273,8 @@ void direct_gain_sync_applied(direct_gain_controller_t *dg, uint8_t applied_gain
         dg->target_gain = applied_gain;
         dg->settle_ticks = DIRECT_GAIN_SETTLE_TICKS;
         dg->state = DIRECT_GAIN_SETTLE;
+        dg->pending_direction = 0;
+        dg->pending_votes = 0;
     }
 }
 

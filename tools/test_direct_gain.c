@@ -12,8 +12,10 @@ int main(void)
     };
     direct_gain_reset(&dg, &table, 40);
 
-    /* P is power: halving 22 to 11 requests ~3.7 indices; one writer
-     * applies the entire requested step with no second hidden limiter. */
+    /* P is power: halving 22 to 11 requests ~3.7 indices. One isolated
+     * window cannot move gain; a second independent weak window can. */
+    assert(direct_gain_tick(&dg, &o) == 40);
+    assert(dg.target_gain == 44);
     assert(direct_gain_tick(&dg, &o) == 44);
     assert(dg.last_delta_gain == 4);
     direct_gain_sync_applied(&dg, 44);
@@ -24,15 +26,23 @@ int main(void)
     assert(dg.current_gain == 43 && dg.target_gain == 43);
     assert(dg.state == DIRECT_GAIN_SETTLE);
 
+    /* A single outlying weak window followed by a healthy one cannot
+     * create a PHY write or a learned calibration offset. */
+    direct_gain_reset(&dg, &table, 40);
+    assert(direct_gain_tick(&dg, &o) == 40);
+    o.p_median = 22;
+    assert(direct_gain_tick(&dg, &o) == 40);
+    assert(dg.total_writes == 0);
+
     /* Noise with no carrier is not an overload or a P=0 gain-up oracle. */
     o.p_median = 0;
     o.q_phase = 0;
     o.origin_permille = 950;
     o.clip_permille = 900;
-    assert(direct_gain_tick(&dg, &o) == 43);
-    assert(direct_gain_tick(&dg, &o) == 43);
+    assert(direct_gain_tick(&dg, &o) == 40);
+    assert(direct_gain_tick(&dg, &o) == 40);
     assert(direct_gain_tick(&dg, &o) == 62);
-    assert(dg.cal_offset_db == 0);
+    assert(dg.pending_votes == 0);
 
     /* A fading weak carrier already above survival keeps its sensitivity
      * briefly rather than immediately jumping down on three noisy windows. */
@@ -47,6 +57,9 @@ int main(void)
     o.q_phase = 75;
     o.origin_permille = 0;
     assert(direct_gain_tick(&dg, &o) == 40);
+    /* Genuine high-power overload bypasses ordinary direction votes. */
+    o.p_median = 50;
+    assert(direct_gain_tick(&dg, &o) == 26);
     puts("direct gain: OK");
     return 0;
 }
