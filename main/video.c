@@ -266,7 +266,7 @@ static volatile bool s_current_bw40 = true;
 static volatile video_output_mode_t s_output_mode = VIDEO_OUTPUT_6BIT_40;
 static video_output_mode_t s_tx_unit_mode = VIDEO_OUTPUT_6BIT_40;
 static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
-static volatile rx_profile_t s_rx_profile = RX_PROFILE_ARC;
+static volatile rx_profile_t s_rx_profile = RX_PROFILE_ARC_V3_EXP;
 static volatile arc_v3_state_t s_last_arc_v3_state = ARC_V3_ACQUIRE;
 static volatile arc_v3_q4_state_t s_last_arc_v3_q4_state = ARC_V3_Q4_STARVED;
 static volatile bool s_last_arc_v3_filtered_valid;
@@ -1353,7 +1353,7 @@ static void settings_load(void)
     bool legacy_v3 = settings.version == 3u;
     if (err != ESP_OK || length != sizeof(settings) ||
         (!legacy_v3 && settings.version != SETTINGS_VERSION)) {
-        s_rx_profile = RX_PROFILE_ARC;
+        s_rx_profile = RX_PROFILE_ARC_V3_EXP; /* legacy: s_rx_profile = RX_PROFILE_ARC */
         s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
         s_rf_bw_mode = RF_BW_MODE_BW40;
         s_afc_mode = AFC_MODE_OFF;
@@ -1381,8 +1381,11 @@ static void settings_load(void)
     if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
     if (settings.rx_profile < RX_PROFILE_COUNT) {
         s_rx_profile = (rx_profile_t)settings.rx_profile;
+        if (s_rx_profile == RX_PROFILE_ARC || s_rx_profile == RX_PROFILE_BALANCED) {
+            s_rx_profile = RX_PROFILE_ARC_V3_EXP;
+        }
     } else {
-        s_rx_profile = RX_PROFILE_RANGE_EXP;
+        s_rx_profile = RX_PROFILE_ARC_V3_EXP;
     }
     if (s_rx_profile == RX_PROFILE_RANGE_EXP ||
         s_rx_profile == RX_PROFILE_FUSION_EXP ||
@@ -4641,7 +4644,7 @@ static void console_diag_task(void *arg)
                            (s_afc_mode == AFC_MODE_HOLD) ? "HOLD (Offset Frozen)" : "OFF (0 kHz)");
                     printf(" RX Profile:                 %s%s\n",
                            rx_profile_name(),
-                           s_rx_profile == RX_PROFILE_ARC ? " [DEFAULT]" : " [EXPERIMENTAL]");
+                           (s_rx_profile == RX_PROFILE_ARC_V3_EXP || s_rx_profile == RX_PROFILE_ARC) ? " [DEFAULT]" : " [EXPERIMENTAL]");
                     printf(" RF Bandwidth:               mode=%s active=%s\n",
                            rf_bw_mode_name(), s_current_bw40 ? "BW40" : "BW20");
                     printf(" PHY Environment:            NF=%s%d dBm RSSI=%s%d dBm FFT_Q4=%s best=%d\n",
@@ -4806,6 +4809,7 @@ esp_err_t video_start(void)
     if (!s_menu_commands) return ESP_ERR_NO_MEM;
 
     settings_load();
+    apply_rx_profile(s_rx_profile);
 
     /* Zero the ring before starting. Flush to DMA-visible SRAM. */
     memset(s_raw_ring, 0, sizeof(s_raw_ring));
