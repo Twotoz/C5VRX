@@ -39,6 +39,7 @@
 #include "arc_controller.h"
 #include "arc_v3_controller.h"
 #include "arc_v5_autotune.h"
+#include "direct_gain.h"
 #include "rx_auto_lab.h"
 #include "trajectory_v2_lut.h"
 #include "hal/parlio_ll.h"
@@ -258,6 +259,7 @@ typedef enum {
     RX_PROFILE_RANGE_V2_EXP,
     RX_PROFILE_ARC_V3_EXP,
     RX_PROFILE_ARC_V5_AUTOTUNE_EXP,
+    RX_PROFILE_DIRECT_GAIN,
     RX_PROFILE_COUNT,
 } rx_profile_t;
 
@@ -266,7 +268,14 @@ static volatile bool s_current_bw40 = true;
 static volatile video_output_mode_t s_output_mode = VIDEO_OUTPUT_6BIT_40;
 static video_output_mode_t s_tx_unit_mode = VIDEO_OUTPUT_6BIT_40;
 static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
-static volatile rx_profile_t s_rx_profile = RX_PROFILE_ARC_V3_EXP;
+static volatile rx_profile_t s_rx_profile = RX_PROFILE_DIRECT_GAIN;
+static direct_gain_controller_t s_direct_gain_controller;
+static volatile direct_gain_state_t s_last_direct_gain_state = DIRECT_GAIN_SEEK;
+static volatile int s_last_direct_gain_delta;
+static volatile int s_last_direct_gain_est_dbm = -127;
+static volatile bool s_last_direct_gain_rssi_used;
+static volatile uint32_t s_last_direct_gain_total_writes;
+static volatile uint32_t s_last_direct_gain_hold_cycles;
 static volatile arc_v3_state_t s_last_arc_v3_state = ARC_V3_ACQUIRE;
 static volatile arc_v3_q4_state_t s_last_arc_v3_q4_state = ARC_V3_Q4_STARVED;
 static volatile bool s_last_arc_v3_filtered_valid;
@@ -1060,6 +1069,7 @@ static const char *rx_profile_name(void)
     case RX_PROFILE_RANGE_V2_EXP:return "RANGE V2";
     case RX_PROFILE_ARC_V3_EXP:  return "ARC V3 EXP";
     case RX_PROFILE_ARC_V5_AUTOTUNE_EXP: return "ARC V5 AUTOTUNE";
+    case RX_PROFILE_DIRECT_GAIN: return "DIRECT GAIN";
     default:                     return "BALANCED";
     }
 }
@@ -1082,7 +1092,8 @@ static uint8_t profile_gain_max(void)
     case RX_PROFILE_BLOCKER_EXP: return 48u;
     case RX_PROFILE_ARC:
     case RX_PROFILE_ARC_V3_EXP:
-    case RX_PROFILE_ARC_V5_AUTOTUNE_EXP: return rf_get_arc_gain_table()->max_index;
+    case RX_PROFILE_ARC_V5_AUTOTUNE_EXP:
+    case RX_PROFILE_DIRECT_GAIN: return rf_get_arc_gain_table()->max_index;
     default:                     return 62u;
     }
 }
@@ -1353,7 +1364,7 @@ static void settings_load(void)
     bool legacy_v3 = settings.version == 3u;
     if (err != ESP_OK || length != sizeof(settings) ||
         (!legacy_v3 && settings.version != SETTINGS_VERSION)) {
-        s_rx_profile = RX_PROFILE_ARC_V3_EXP; /* legacy: s_rx_profile = RX_PROFILE_ARC */
+        s_rx_profile = RX_PROFILE_DIRECT_GAIN; /* legacy: s_rx_profile = RX_PROFILE_ARC */
         s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
         s_rf_bw_mode = RF_BW_MODE_BW40;
         s_afc_mode = AFC_MODE_OFF;
@@ -1382,16 +1393,17 @@ static void settings_load(void)
     if (settings.rx_profile < RX_PROFILE_COUNT) {
         s_rx_profile = (rx_profile_t)settings.rx_profile;
         if (s_rx_profile == RX_PROFILE_ARC || s_rx_profile == RX_PROFILE_BALANCED) {
-            s_rx_profile = RX_PROFILE_ARC_V3_EXP;
+            s_rx_profile = RX_PROFILE_DIRECT_GAIN;
         }
     } else {
-        s_rx_profile = RX_PROFILE_ARC_V3_EXP;
+        s_rx_profile = RX_PROFILE_DIRECT_GAIN;
     }
     if (s_rx_profile == RX_PROFILE_RANGE_EXP ||
         s_rx_profile == RX_PROFILE_FUSION_EXP ||
         s_rx_profile == RX_PROFILE_ARC ||
         s_rx_profile == RX_PROFILE_ARC_V3_EXP ||
-        s_rx_profile == RX_PROFILE_ARC_V5_AUTOTUNE_EXP) {
+        s_rx_profile == RX_PROFILE_ARC_V5_AUTOTUNE_EXP ||
+        s_rx_profile == RX_PROFILE_DIRECT_GAIN) {
         /* RANGE/FUSION have one deterministic RF shape across reboot: the
          * proven full-video filter, with no acquisition-time filter or AFC writes. */
         s_rf_bw_mode = RF_BW_MODE_BW40;
@@ -1421,6 +1433,7 @@ static void settings_load(void)
         case RX_PROFILE_ARC:          s_current_gain = rf_get_arc_survival_gain(); break;
         case RX_PROFILE_ARC_V3_EXP:   s_current_gain = rf_get_arc_survival_gain(); break;
         case RX_PROFILE_ARC_V5_AUTOTUNE_EXP: s_current_gain = rf_get_arc_survival_gain(); break;
+        case RX_PROFILE_DIRECT_GAIN:  s_current_gain = rf_get_arc_survival_gain(); break;
         default:                      s_current_gain = 52u; break;
         }
         s_current_gain = profile_gain_clamp(s_current_gain);
@@ -2747,6 +2760,7 @@ static void apply_rx_profile(rx_profile_t profile)
         apply_rx_gain_tracked(rf_get_arc_survival_gain());
         break;
 
+    case RX_PROFILE_DIRECT_GAIN:
     case RX_PROFILE_ARC_V3_EXP:
     case RX_PROFILE_ARC_V5_AUTOTUNE_EXP:
         /* Hardware-proven gain-first experiment. Keep the RF shape fixed so
@@ -3864,6 +3878,8 @@ static void analog_agc_task(void *arg)
                                     s_current_gain);
             arc_v5_autotune_rearm(&arc_v5_autotune, rf_get_arc_gain_table(),
                                   s_current_gain, rf_get_arc_survival_gain());
+            direct_gain_reset(&s_direct_gain_controller, rf_get_arc_gain_table(),
+                              s_current_gain);
         }
 
         /* rf_set_channel() recaptures the vendor table after every successful
@@ -3880,6 +3896,8 @@ static void analog_agc_task(void *arg)
                                     target_gain);
             arc_v5_autotune_rearm(&arc_v5_autotune, rf_get_arc_gain_table(),
                                   target_gain, rf_get_arc_survival_gain());
+            direct_gain_reset(&s_direct_gain_controller, rf_get_arc_gain_table(),
+                              target_gain);
         }
 
         if (menu_was_active) {
@@ -4057,6 +4075,36 @@ static void analog_agc_task(void *arg)
 
             /* V5 keeps BW40/0 kHz fixed. Predictive motion is bounded by the
              * learned local response; unknown regions fall back to ARC V3. */
+            settle_ticks = 0;
+            goto control_tail;
+        }
+
+        if (s_rx_profile == RX_PROFILE_DIRECT_GAIN &&
+            s_agc_mode == ANALOG_AGC_ACTIVE) {
+            int rssi_val = -127;
+            bool rssi_ok = rf_try_get_wideband_rssi_dbm(&rssi_val);
+            direct_gain_observation_t dg_obs = {
+                .p_median = p_median,
+                .q_phase = q_phase,
+                .clip_permille = clip_permille,
+                .origin_permille = origin_permille,
+                .winding_permille = winding_permille,
+                .rssi_dbm = rssi_ok ? rssi_val : -127,
+                .rssi_valid = rssi_ok,
+            };
+            target_gain = direct_gain_tick(&s_direct_gain_controller, &dg_obs);
+            s_last_direct_gain_state = s_direct_gain_controller.state;
+            s_last_direct_gain_delta = s_direct_gain_controller.last_delta_gain;
+            s_last_direct_gain_est_dbm = s_direct_gain_controller.last_estimated_input_dbm;
+            s_last_direct_gain_rssi_used = s_direct_gain_controller.last_rssi_used;
+            s_last_direct_gain_total_writes = s_direct_gain_controller.total_writes;
+            s_last_direct_gain_hold_cycles = s_direct_gain_controller.hold_cycles;
+
+            s_shadow_gain = target_gain;
+            s_agc_state = s_direct_gain_controller.state == DIRECT_GAIN_HOLD ?
+                          AGC_STATE_TRACK : AGC_STATE_LEARN;
+            if (target_gain != s_current_gain) apply_rx_gain_tracked(target_gain);
+            /* Direct Gain owns settling (1-tick blanking). BW40 and 0 kHz remain fixed. */
             settle_ticks = 0;
             goto control_tail;
         }
@@ -4644,7 +4692,7 @@ static void console_diag_task(void *arg)
                            (s_afc_mode == AFC_MODE_HOLD) ? "HOLD (Offset Frozen)" : "OFF (0 kHz)");
                     printf(" RX Profile:                 %s%s\n",
                            rx_profile_name(),
-                           (s_rx_profile == RX_PROFILE_ARC_V3_EXP || s_rx_profile == RX_PROFILE_ARC) ? " [DEFAULT]" : " [EXPERIMENTAL]");
+                           (s_rx_profile == RX_PROFILE_DIRECT_GAIN || s_rx_profile == RX_PROFILE_ARC_V3_EXP || s_rx_profile == RX_PROFILE_ARC) ? " [DEFAULT]" : " [EXPERIMENTAL]");
                     printf(" RF Bandwidth:               mode=%s active=%s\n",
                            rf_bw_mode_name(), s_current_bw40 ? "BW40" : "BW20");
                     printf(" PHY Environment:            NF=%s%d dBm RSSI=%s%d dBm FFT_Q4=%s best=%d\n",
@@ -4660,6 +4708,16 @@ static void console_diag_task(void *arg)
                            (s_agc_state == AGC_STATE_LEARN) ? "LEARN" : "SEARCH");
                     printf(" Gain Settings:              G_actual=%u, G_shadow_rec=%u (reg=0x%08lx)\n",
                            s_current_gain, s_shadow_gain, (unsigned long)rf_get_rx_gain_reg());
+                    if (s_rx_profile == RX_PROFILE_DIRECT_GAIN) {
+                        printf(" Direct Gain State:          %s (delta=%+d, est_RF=%d dBm, RSSI_used=%s)\n",
+                               direct_gain_state_name(s_last_direct_gain_state),
+                               s_last_direct_gain_delta,
+                               s_last_direct_gain_est_dbm,
+                               s_last_direct_gain_rssi_used ? "YES" : "NO");
+                        printf(" Direct Gain Telemetry:      writes=%" PRIu32 ", hold_cycles=%" PRIu32 "\n",
+                               s_last_direct_gain_total_writes,
+                               s_last_direct_gain_hold_cycles);
+                    }
                     if (s_rx_profile == RX_PROFILE_ARC_V3_EXP) {
                         printf(" ARC V3 State:               %s (Q4=%s)\n",
                                arc_v3_state_name(s_last_arc_v3_state),

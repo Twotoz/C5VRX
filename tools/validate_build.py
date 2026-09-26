@@ -55,7 +55,7 @@ c_names = [f.name for f in c_files]
 video_c = read(MAIN / "video.c")
 menu_lifecycle = video_c.split("static void video_set_menu_mode", 1)[1].split("static void menu_cycle_standard_mode", 1)[0]
 
-check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "bs_relative_worker_probe.c", "bs_relative_middle_probe.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "menu_raster.c"},
+check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "bs_relative_worker_probe.c", "bs_relative_middle_probe.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "direct_gain.c", "menu_raster.c"},
       f"found: {c_names}")
 check("main.c present", "main.c" in c_names)
 check("rf.c present", "rf.c" in c_names)
@@ -673,6 +673,30 @@ if str(TOOLS_DIR) not in sys.path:
 import sim_phase5_360
 check("Phase5-360 mathematical simulation passes all checks",
       sim_phase5_360.run_all_simulations())
+
+# Direct Gain Feed-Forward & Inverse-Q4 Architecture validation
+direct_gain_h = read(MAIN / "direct_gain.h")
+direct_gain_c = read(MAIN / "direct_gain.c")
+
+check("Direct Gain headers and source present",
+      (MAIN / "direct_gain.h").exists() and (MAIN / "direct_gain.c").exists())
+check("Direct Gain profile declared and active in video.c",
+      "RX_PROFILE_DIRECT_GAIN" in video_c and
+      'case RX_PROFILE_DIRECT_GAIN: return "DIRECT GAIN";' in video_c)
+check("Direct Gain deadband sweet spot [19..25] in Inverse-Q4 LUT",
+      "DIRECT_GAIN_DEADBAND_LO   19" in direct_gain_c and
+      "DIRECT_GAIN_DEADBAND_HI   25" in direct_gain_c and
+      "DIRECT_GAIN_TARGET_P      22" in direct_gain_c)
+check("Direct Gain fast 1-tick settle window (~10-20 ms)",
+      "DIRECT_GAIN_SETTLE_TICKS  1u" in direct_gain_c)
+check("Direct Gain quality separation (multipath never triggers gain drive)",
+      "obs->clip_permille < 20" in direct_gain_c and
+      "dg->state = DIRECT_GAIN_HOLD" in direct_gain_c)
+check("Direct Gain emergency clipping cut",
+      "cut = -14" in direct_gain_c and "cut = -8" in direct_gain_c)
+check("Direct Gain single-write hop execution",
+      "dg->settle_ticks = DIRECT_GAIN_SETTLE_TICKS" in direct_gain_c and
+      "++dg->total_writes" in direct_gain_c)
 
 # ---- Summary ----
 print(f"\n{'='*50}")

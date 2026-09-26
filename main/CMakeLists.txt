@@ -9,6 +9,7 @@ idf_component_register(
         "rx_auto_lab.c"
         "rf.c"
         "video.c"
+        "direct_gain.c"
         "menu_raster.c"
     INCLUDE_DIRS "."
     REQUIRES
