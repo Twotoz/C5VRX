@@ -169,8 +169,11 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
     int lut_idx = p > 45 ? 45 : p;
     int delta = (int)s_p_to_delta_gain[lut_idx] + (int)dg->cal_offset_db;
 
-    /* Combine with hardware RSSI if valid and physically plausible */
-    if (obs->rssi_valid && obs->rssi_dbm >= -100 && obs->rssi_dbm <= -10) {
+    /* Carrier Authenticator: Only trust hardware RSSI if the signal
+     * demonstrates analog FM carrier coherence. This prevents nearby Wi-Fi
+     * or adjacent-channel jammers from falsely driving gain down! */
+    bool carrier_authentic = obs->q_phase >= 50 && obs->origin_permille <= 350;
+    if (obs->rssi_valid && obs->rssi_dbm >= -100 && obs->rssi_dbm <= -10 && carrier_authentic) {
         dg->last_rssi_used = true;
         dg->last_estimated_input_dbm = obs->rssi_dbm;
         /* Hardware RSSI target gain estimation:

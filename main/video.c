@@ -2069,6 +2069,58 @@ static void lab_run_far_gain_probe(void)
            saved_gain, (unsigned)saved_agc_mode, saved_bw40 ? 40u : 20u);
 }
 
+/* Fast empirical probe for Direct Gain: measures phy_get_rssi() and Q4 metrics
+ * across 6 fixed gains (G15..G81) to verify pre-gain vs post-gain RSSI behavior. */
+static void lab_run_rssi_gain_probe(void)
+{
+    printf("\n=======================================================\n");
+    printf(" C5VRX-3 DIRECT GAIN: RSSI & INVERSE-Q4 ORACLE PROBE\n");
+    printf(" Channel: %s (%u MHz) | Target: P~22\n",
+           rf_get_current_channel()->name, rf_get_current_channel()->freq_mhz);
+    printf("-------------------------------------------------------\n");
+    printf(" Gain  | RSSI (dBm) | P_median | Q_phase | Clip | Origin | Status\n");
+    printf("-------+------------+----------+---------+------+--------+--------\n");
+
+    const uint8_t test_gains[] = {15, 30, 45, 60, 75, 81};
+    uint8_t saved_gain = s_current_gain;
+
+    for (unsigned i = 0; i < sizeof(test_gains); ++i) {
+        uint8_t g = test_gains[i];
+        rf_set_rx_gain(true, g);
+        s_current_gain = g;
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        int rssi_val = -127;
+        bool rssi_ok = rf_try_get_wideband_rssi_dbm(&rssi_val);
+
+        uint8_t *sample_src = get_completed_rx_sample_window(CONTROL_SAMPLE_BYTES);
+        size_t ring_offset = (sample_src >= s_raw_ring && sample_src < s_raw_ring + sizeof(s_raw_ring))
+                           ? (size_t)(sample_src - s_raw_ring) : 0u;
+        sync_dma_m2c((void *)sample_src, CONTROL_SAMPLE_BYTES);
+        control_metrics_t m = analyze_control_window(sample_src, CONTROL_SAMPLE_BYTES, ring_offset);
+
+        const char *verdict = "STARVED";
+        if (m.clip_permille >= 20 || m.p_median > 40) verdict = "CLIPPING";
+        else if (m.p_median >= 19 && m.p_median <= 25) verdict = "SWEET SPOT";
+        else if (m.p_median >= 12) verdict = "USABLE";
+
+        printf(" G%-3u | %-6s%-4d | %-8d | %-6d%% | %-4d | %-6d | %s\n",
+               g,
+               rssi_ok ? "" : "NA/",
+               rssi_val,
+               m.p_median,
+               m.q_phase,
+               m.clip_permille / 10,
+               m.origin_permille / 10,
+               verdict);
+    }
+
+    /* Restore initial gain */
+    rf_set_rx_gain(true, saved_gain);
+    s_current_gain = saved_gain;
+    printf("=======================================================\n\n");
+}
+
 /* Request a fresh vendor PHY calibration on the next boot. The live receiver
  * is never recalibrated in place: only the stored PHY calibration namespace is
  * erased, then C5VRX reboots immediately. */
@@ -4548,6 +4600,12 @@ static void console_diag_task(void *arg)
                     lab_run_tx_self_noise_probe();
                 } else if (c == 'K') {
                     lab_request_fresh_phy_calibration();
+                } else if (c == 'R') {
+                    lab_run_rssi_gain_probe();
+                } else if (c == 'D') {
+                    apply_rx_profile(RX_PROFILE_DIRECT_GAIN);
+                    settings_save();
+                    printf("[RX PROFILE] -> DIRECT GAIN (Feed-Forward with Self-Calibration)\n");
                 } else if (c == 'Y') {
                     apply_rx_profile(RX_PROFILE_ARC_V3_EXP);
                     settings_save();
@@ -4822,8 +4880,10 @@ static void console_diag_task(void *arg)
                     printf("  'G':         PRE-Q4 highest-RF-stage vendor gain sweep (survival..table max)\n");
                     printf("  'U':         ARC V3 RX AUTO LAB (gain -> BW -> center -> repeated A/B proof)\n");
                     printf("  'S':         PRE-Q4 self-noise A/B (live TX vs DAC/PARLIO electrically quiet)\n");
+                    printf("  'R':         Run RSSI & Inverse-Q4 Oracle Probe (G15..G81 sweep)\n");
+                    printf("  'D':         Select DIRECT GAIN profile (Feed-Forward)\n");
                     printf("  'K':         Erase stored PHY calibration and reboot for a fresh vendor calibration\n");
-                    printf("  'X':         Cycle RX profile (Balanced/Range/Blocker/Recovery/Auto/ARC/Fusion/Range V2)\n");
+                    printf("  'X':         Cycle RX profile (Balanced/Range/Blocker/Recovery/Auto/ARC/Fusion/Range V2/Direct Gain)\n");
                     printf("  'p'/'r':     Machine-readable PHY/Q4 snapshot / reset lag counters\n");
                     printf("  't'/'q':     Vendor timer inventory / quiet unsolicited lock message\n");
                     printf("  'l':         Mark a visible lag/freeze for correlation\n");
