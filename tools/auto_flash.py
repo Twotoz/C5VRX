@@ -30,7 +30,7 @@ def find_esp_port():
         return candidates[0]
     return None
 
-for attempt in range(120): # 2 minutes
+for attempt in range(1800): # 30 minutes
     port = find_esp_port()
     if port:
         print(f"\n[GEVONDEN] Poort gedetecteerd: {port}! Starten met flashen...")
