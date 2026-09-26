@@ -674,6 +674,32 @@ import sim_phase5_360
 check("Phase5-360 mathematical simulation passes all checks",
       sim_phase5_360.run_all_simulations())
 
+# The ideal triplet oracle is observation-only. Assert that its lookup inputs
+# still match the firmware's actual raw->phase map and both BSASM programs.
+oracle_lut = read(MAIN / "phase5_360_oracle_lut.h")
+def oracle_array(name):
+    match = re.search(r"static const uint8_t " + name + r"\[\d+\] = \{([^}]+)\};",
+                      oracle_lut, re.S)
+    return [int(v) for v in re.findall(r"\d+", match.group(1))] if match else []
+
+golden_words_oracle = [int(v) for v in read(MAIN / "fm.bsasm").split("\nlut ", 1)[1]
+                       .split("\n\naddress_delta:", 1)[0].split()]
+live_words_oracle = [int(v) for v in read(MAIN / "fm_phase5_360.bsasm").split("\nlut ", 1)[1]
+                     .split("\n\ncontroller_0:", 1)[0].split()]
+phase_map_match = re.search(r"s_phase5_state_lut\[256\] = \{([^}]+)\};",
+                            video_c, re.S)
+firmware_phase_map = ([int(v) for v in re.findall(r"\d+", phase_map_match.group(1))]
+                      if phase_map_match else [])
+check("Phase5-360 oracle tables match the live source programs and phase map",
+      len(golden_words_oracle) == len(live_words_oracle) == 1024 and
+      oracle_array("s_phase5_360_golden_dac") == [v & 63 for v in golden_words_oracle] and
+      oracle_array("s_phase5_360_live_dac") == [(v >> 8) & 63 for v in live_words_oracle] and
+      oracle_array("s_phase5_360_raw_phase") == firmware_phase_map)
+check("Full adjacent oracle cannot silently replace the live TX program",
+      video_c.count("phase5_360_adjacent_dac(") == 1 and
+      "phase5_360_adjacent_dac(prev2_phase" in video_c and
+      "BITSCRAMBLER_PROGRAM(s_fm_phase5_360_program" in video_c)
+
 # Direct Gain Feed-Forward & Inverse-Q4 Architecture validation
 direct_gain_h = read(MAIN / "direct_gain.h")
 direct_gain_c = read(MAIN / "direct_gain.c")

@@ -1,0 +1,94 @@
+# Phase5-360: exact adjacent oracle and live hardware gate
+
+This experimental PR computes the exact Phase5-domain adjacent result from
+completed raw-IQ snapshots. It **does not route this result to the live DAC**.
+The existing 40 MS/s raw ring, two-bundle Golden/Phase5c BitScrambler, semantic
+sync observer and 6-bit output remain unchanged.
+
+## Exact reference
+
+For three consecutive 25 ns raw Q4/I4 samples, decode phases `P`, `M`, `C`:
+
+```
+first = wrap32(M - P)
+second = wrap32(C - M)
+adjacent = first + second       # no second wrap
+endpoint = wrap32(C - P)
+
+if adjacent == endpoint:
+    dac = calibrated_golden[P, C]
+else:
+    dac = clamp(20 + 2 * adjacent, 0, 63)
+```
+
+Each 25 ns step is interpreted by the Phase5 shortest arc. This cannot infer
+physical jumps of 180 degrees or more within a single 25 ns interval, and
+low-magnitude IQ still makes phase estimates unreliable. "Exact" describes
+the stated Phase5-domain model, not an error-free analog FM reconstruction.
+
+`tools/gen_phase5_360_oracle_lut.py` copies the raw-to-phase and calibrated DAC
+maps from `fm.bsasm` and the live endpoint DAC map from
+`fm_phase5_360.bsasm`. Build validation rejects stale copies. The host test
+checks all 32,768 Phase5 triples against an independent wrap/sum expression:
+
+- 24,576 triples have no winding and preserve the calibrated Golden byte.
+- 8,192 triples need winding handling; their exact reference DAC differs from
+  the live endpoint output in this exhaustive *state-space* enumeration.
+- 5,494 triples cross the `DAC <= 8` sync-tip threshold relative to live.
+- The current live `fm_phase5_360.bsasm` endpoint DAC table is byte-identical
+  to `fm.bsasm` for all 1,024 endpoint pairs. Its worker branches also emit
+  the same DAC bits. Its present name does not imply live adjacent FM.
+
+The percentages above are not RF error rates: legal triplets are not equally
+likely on a particular VTX, and noisy near-origin triples can make the oracle
+worse than the endpoint path. Hardware observations must separate strong-IQ
+events, sync-tip changes and actual visible defects.
+
+## Firmware observation
+
+The existing 50 ms supervisory task examines a completed ~102 us DMA window.
+Its `?` diagnostics now report:
+
+```
+Phase5-360 oracle (read-only): DAC delta=... strong=... sync-tip flip=...
+```
+
+`DAC delta` is the fraction of sampled 50 ns endpoint intervals where the
+ideal adjacent result differs from the current live DAC. `strong` is the same
+fraction restricted to triples that pass the existing strong-IQ power filter.
+`sync-tip flip` counts an oracle/live disagreement across DAC code 8. No
+oracle value drives PHY gain, PAL/NTSC detection, the semantic sync observer,
+the output ring or the live DAC.
+
+For a useful capture, compare those counters and a user `L` lag mark with a
+recording of the same live video. A high oracle correction rate alone does not
+show that enabling it will improve the picture.
+
+## Missing live schedule
+
+The proven TX-only path has **two BitScrambler bundles per 50 ns output pair**.
+Golden spends one LUT access decoding a raw 8-bit endpoint to Phase5 and the
+other looking up its calibrated endpoint DAC. Full adjacent needs the 5-bit
+middle phase too. The earlier two-stage exact Phase5-domain LIFT proof assumes
+both new raw samples have already been decoded; it does not schedule their
+raw-to-Phase5 conversion. A one-bit middle sign is insufficient: legal
+triplets with the same sign can require opposite winding decisions.
+
+The project's four-bundle TX-only Phase6 attempt produced an empty TX FIFO,
+and concurrent RX+TX BitScramblers failed on this C5. Those are measured
+negative results. Direct LUT factorization lower bounds in
+`docs/golden360-feasibility.md` further constrain the known two-bundle routes,
+without ruling out every possible counter/logic design.
+
+Before any live `PHASE5-360` mode or flashable claim, a candidate must:
+
+1. Decode both raw Q4/I4 samples and retain the previous phase with one C5 TX
+   BitScrambler, no CPU work in the 40 MS/s path.
+2. Emit the exact oracle result in at most two bundles per 50 ns pair, within
+   the resident LUT budget, with semantic sync matching the final DAC.
+3. Pass exhaustive raw/phase source-model equivalence, boundary-continuity,
+   assembler and sustained C5 video/transport tests.
+
+Until those conditions pass, keep the live demodulator on the known Golden
+path. A successful ESP-IDF build of this oracle proves only the observation
+path and must not be described as a live Phase5-360 receiver.

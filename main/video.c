@@ -33,6 +33,7 @@
 #include "menu_raster.h"
 #include "range_control.h"
 #include "demod_quality.h"
+#include "phase5_360_oracle.h"
 #include "fusion_receiver.h"
 #include "fusion_temporal.h"
 #include "fusion_optimizer.h"
@@ -822,13 +823,20 @@ typedef struct {
     int strong_winding_events;
     int strong_winding_triplets;
     int strong_winding_permille;
+    int phase360_changed;
+    int phase360_sync_flip;
+    int phase360_strong_changed;
+    int phase360_changed_permille;
+    int phase360_sync_flip_permille;
+    int phase360_strong_changed_permille;
     uint32_t trajectory_uncertainty_sum;
     uint32_t trajectory_states;
     fusion_shadow_metrics_t fusion_shadow;
 } control_metrics_t;
 
 static control_metrics_t analyze_control_window(const uint8_t *sample, size_t bytes,
-                                                size_t ring_offset)
+                                                size_t ring_offset,
+                                                bool observe_phase360)
 {
     control_metrics_t m = {0};
     uint16_t hist[129] = {0};
@@ -885,9 +893,21 @@ static control_metrics_t analyze_control_window(const uint8_t *sample, size_t by
                                                                phase);
             ++m.winding_triplets;
             if (winding) ++m.winding_events;
-            if (prev2_power >= DEMOD_STRONG_POWER_MIN &&
+            bool strong = prev2_power >= DEMOD_STRONG_POWER_MIN &&
                 prev_power >= DEMOD_STRONG_POWER_MIN &&
-                raw_power >= DEMOD_STRONG_POWER_MIN) {
+                raw_power >= DEMOD_STRONG_POWER_MIN;
+            if (observe_phase360) {
+                uint8_t adjacent = phase5_360_adjacent_dac(prev2_phase,
+                                                            prev_phase, phase);
+                uint8_t live = phase5_360_live_dac(prev2_phase, phase);
+                if (adjacent != live) {
+                    ++m.phase360_changed;
+                    if (strong) ++m.phase360_strong_changed;
+                }
+                if ((adjacent <= 8u) != (live <= 8u))
+                    ++m.phase360_sync_flip;
+            }
+            if (strong) {
                 ++m.strong_winding_triplets;
                 if (winding) ++m.strong_winding_events;
             }
@@ -923,6 +943,12 @@ static control_metrics_t analyze_control_window(const uint8_t *sample, size_t by
         (m.winding_events * 1000) / m.winding_triplets : 0;
     m.strong_winding_permille = m.strong_winding_triplets ?
         (m.strong_winding_events * 1000) / m.strong_winding_triplets : 0;
+    m.phase360_changed_permille = m.winding_triplets ?
+        (m.phase360_changed * 1000) / m.winding_triplets : 0;
+    m.phase360_sync_flip_permille = m.winding_triplets ?
+        (m.phase360_sync_flip * 1000) / m.winding_triplets : 0;
+    m.phase360_strong_changed_permille = m.strong_winding_triplets ?
+        (m.phase360_strong_changed * 1000) / m.strong_winding_triplets : 0;
     m.dc_i_x100 = bytes ? (m.sum_i * 100) / (int)bytes : 0;
     m.dc_q_x100 = bytes ? (m.sum_q * 100) / (int)bytes : 0;
 
@@ -1005,7 +1031,7 @@ static void fusion_observer_task(void *arg)
         memcpy(sample, src, sizeof(sample));
 
         control_metrics_t metrics =
-            analyze_control_window(sample, sizeof(sample), ring_offset);
+            analyze_control_window(sample, sizeof(sample), ring_offset, false);
         fusion_observation_t obs = fusion_make_observation(
             metrics.p_median, metrics.q_phase, metrics.clip_permille,
             metrics.origin_permille, metrics.winding_permille,
@@ -1206,6 +1232,9 @@ static volatile int s_last_iq_skew_permille = 0;
 static volatile int s_last_iq_cross_permille = 0;
 static volatile int s_last_winding_permille = 0;
 static volatile int s_last_strong_winding_permille = 0;
+static volatile int s_last_phase360_changed_permille;
+static volatile int s_last_phase360_sync_flip_permille;
+static volatile int s_last_phase360_strong_changed_permille;
 static volatile int s_last_fusion_quality = 0;
 static volatile int s_last_fusion_confidence = 0;
 static volatile int s_last_fusion_context = FUSION_CONTEXT_NO_CARRIER;
@@ -2114,7 +2143,8 @@ static void lab_run_rssi_gain_probe(void)
         size_t ring_offset = (sample_src >= s_raw_ring && sample_src < s_raw_ring + sizeof(s_raw_ring))
                            ? (size_t)(sample_src - s_raw_ring) : 0u;
         sync_dma_m2c((void *)sample_src, CONTROL_SAMPLE_BYTES);
-        control_metrics_t m = analyze_control_window(sample_src, CONTROL_SAMPLE_BYTES, ring_offset);
+        control_metrics_t m = analyze_control_window(sample_src, CONTROL_SAMPLE_BYTES,
+                                                     ring_offset, false);
 
         const char *verdict = "STARVED";
         if (m.clip_permille >= 20 || m.p_median > 40) verdict = "CLIPPING";
@@ -3617,7 +3647,7 @@ static void channel_auto_search(void)
         control_metrics_t metrics =
             analyze_control_window(s_control_sample_buf,
                                    sizeof(s_control_sample_buf),
-                                   scan_ring_offset);
+                                   scan_ring_offset, false);
         int quality = signal_strength_score(&metrics, 52u);
         fusion_observation_t scan_fusion = fusion_make_observation(
             metrics.p_median, metrics.q_phase, metrics.clip_permille,
@@ -3990,7 +4020,7 @@ static void analog_agc_task(void *arg)
         control_metrics_t metrics =
             analyze_control_window(s_control_sample_buf,
                                    sizeof(s_control_sample_buf),
-                                   ring_offset);
+                                   ring_offset, true);
 
         int p_median = metrics.p_median;
         int q_phase = metrics.q_phase;
@@ -4012,6 +4042,10 @@ static void analog_agc_task(void *arg)
         s_last_iq_cross_permille = metrics.iq_cross_permille;
         s_last_winding_permille = metrics.winding_permille;
         s_last_strong_winding_permille = metrics.strong_winding_permille;
+        s_last_phase360_changed_permille = metrics.phase360_changed_permille;
+        s_last_phase360_sync_flip_permille = metrics.phase360_sync_flip_permille;
+        s_last_phase360_strong_changed_permille =
+            metrics.phase360_strong_changed_permille;
 
         /* The undocumented reads are observation-only and rate-limited. AUTO
          * uses them only when they return physically plausible values. */
@@ -4834,6 +4868,13 @@ static void console_diag_task(void *arg)
                            s_last_winding_permille / 10, s_last_winding_permille % 10,
                            s_last_strong_winding_permille / 10, s_last_strong_winding_permille % 10,
                            s_last_sync_quality, (unsigned)s_last_sync_width_20m);
+                    printf(" Phase5-360 oracle (read-only): DAC delta=%d.%d%% strong=%d.%d%% sync-tip flip=%d.%d%%\n",
+                           s_last_phase360_changed_permille / 10,
+                           s_last_phase360_changed_permille % 10,
+                           s_last_phase360_strong_changed_permille / 10,
+                           s_last_phase360_strong_changed_permille % 10,
+                           s_last_phase360_sync_flip_permille / 10,
+                           s_last_phase360_sync_flip_permille % 10);
                     printf(" Gain Transitions:           %lu (control window=%u IQ samples / %.1f us)\n",
                            (unsigned long)s_gain_transition_count, CONTROL_SAMPLE_BYTES,
                            (double)CONTROL_SAMPLE_BYTES * 1000000.0 / (double)IQ_RATE_HZ);
