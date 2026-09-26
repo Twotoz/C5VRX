@@ -1,19 +1,9 @@
 #!/usr/bin/env python3
-"""Generate Phase5-360 (Exact Adjacent50) BitScrambler program.
+"""Generate the live Phase5c endpoint Golden program.
 
-Implements Phase5-360 travel resolution on top of Static-A Relative Golden:
-- Dual-purpose 1024x16 LUT:
-    bits 0..4 (addr 0..255)    = Phase5(addr & 255) for Controller endpoint lookup
-    bits 8..13 (addr 0..1023)  = Exact calibrated Golden DAC for (P, C) pair
-    bits 0..5 (addr 256..1023) = Safe 360° DAC (360° winding resolution for |delta| >= 12, Golden fallback for all others)
-- Strict Zero False Alarm Guarantee on 3.58 MHz Chroma Subcarrier:
-    For all pairs with |wrap32(C - P)| < 12 bins (including 100% of the 3.58 MHz color subcarrier),
-    bits 0..5 are byte-identical to Golden DAC fallback. Zero rainbow artifacts!
-- Controller-Worker Pre-Branching across 2 bundles (50 ns, 20 MS/s unique [D, D] output):
-    Controller evaluates middle sample:
-      if in[7] == 1 -> branch to worker_360 (emits 360° DAC from L0..L5)
-      if in[7] == 0 -> fall through to worker_golden (emits Golden DAC from L8..L13)
-    Both workers execute write 16, read 16, and jump back to controller_0.
+The historical filename says 360, but both middle-sample branches currently
+emit the same endpoint LUT bits. Ideal Adjacent50/360 simulations are separate
+from this live two-bundle BitScrambler program; do not claim equivalence.
 """
 
 from pathlib import Path
@@ -48,11 +38,8 @@ def build():
     _, old_lut, _, _ = model.parse(baseline)
     phase = [(old_lut[raw] >> 8) & 31 for raw in range(256)]
 
-    # Zero-collision Dual 1024x16 LUT Partitioning:
-    #   Controller: addresses raw_C in 0..255 -> reads Phase5 from bits 0..4 (cleanly replicated across all 1024 words)
-    #   Worker: addresses (p << 5) | c in 0..1023 -> reads exact calibrated Golden DAC from bits 8..13
-    # Strictly zero false alarms: both worker_golden and worker_360 emit L8..L13, completely eliminating
-    # all false clamps, rainbow artifacts, and phase-to-DAC memory overlap!
+    # Controller reads Phase5 from bits 0..4. Both workers emit Golden DAC
+    # from bits 8..13, irrespective of the retained middle sample.
     safe_360 = {}
     words = []
     for i in range(1024):
@@ -60,11 +47,9 @@ def build():
         c = i & 31
         delta = wrap32(c - p)
         # Phase5c (Correction & Static Squelch):
-        # In analog FM video, any sample transition with |delta| >= 12 bins (> 135° in 25 ns)
-        # represents an impossible video frequency (> 15 MHz).
-        # It is caused strictly by impulse noise, static clicks, or deep multipath fades.
-        # Instead of slamming to black (0) or white (63) rails which causes violent salt-and-pepper sparks,
-        # Phase5c maps corrupted transitions to the neutral Golden blanking pedestal (code 20) with smooth roll-off.
+        # Twelve bins = 135 degrees over the 50 ns endpoint interval,
+        # equivalent to 7.5 MHz. The threshold is empirical squelch,
+        # not proof that all these transitions are impossible video.
         dac = old_lut[i] & 63
         if abs(delta) >= 12:
             safe_360[(p, c)] = dac
@@ -73,7 +58,9 @@ def build():
     head = baseline.split("\nlut ", 1)[0]
     asm = head + "\nlut " + " ".join(map(str, words)) + "\n\n"
 
-    asm += """controller_0:
+    asm += """# Both workers emit L8..L13: middle-sample routing does not alter
+# the live DAC value. True winding correction needs a hardware-validated path.
+controller_0:
     set 26..30 L0..L4,
     set 16..20 L0..L4,
     set 21..25 O26..O30,
@@ -114,7 +101,7 @@ def main():
     _, asm, _, _, words, safe_360 = build()
     TARGET.write_text(asm, encoding="utf-8")
     print(f"  Total LUT words: {len(words)}")
-    print(f"  Safe 360° large-delta pairs: {len(safe_360)} (Strictly zero false alarms on delta < 12)")
+    print(f"  Endpoint squelch pairs: {len(safe_360)} (no live winding correction)")
     print(f"  Output written to: {TARGET}")
 
 
