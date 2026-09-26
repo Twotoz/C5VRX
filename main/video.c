@@ -271,6 +271,7 @@ static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
 static volatile rx_profile_t s_rx_profile = RX_PROFILE_DIRECT_GAIN;
 static direct_gain_controller_t s_direct_gain_controller;
 static volatile direct_gain_state_t s_last_direct_gain_state = DIRECT_GAIN_SEEK;
+static volatile uint8_t s_last_direct_gain_target;
 static volatile int s_last_direct_gain_delta;
 static volatile int s_last_direct_gain_est_dbm = -127;
 static volatile bool s_last_direct_gain_rssi_used;
@@ -1302,12 +1303,28 @@ static void step_frequency_offset_khz_tracked(int delta_khz)
 static void apply_rx_gain_tracked(uint8_t gain)
 {
     gain = profile_gain_clamp(gain);
-    s_current_gain = gain;
     s_shadow_gain = gain;
+
+    /* Global Smooth Slew-Rate Limiter:
+     * When tracking valid video (s_last_p_median >= 8), cap gain step to +4 / -6 steps per tick.
+     * This eliminates luminance stepping, flashes, and DC transient jumps across ALL profiles!
+     * Emergency cuts on clipping (>= 25 permille) and cold-start acquisition bypass slew-limiting. */
+    bool emergency = (s_last_clip_permille >= 25) || (s_last_p_median > 44);
+    bool cold_start = (s_last_p_median == 0) && (s_last_q_phase < 20);
+
+    uint8_t next_gain = gain;
+    if (!emergency && !cold_start && s_current_gain > 0) {
+        int step = (int)gain - (int)s_current_gain;
+        if (step > 4) step = 4;
+        if (step < -6) step = -6;
+        next_gain = profile_gain_clamp(s_current_gain + step);
+    }
+
+    s_current_gain = next_gain;
     s_last_gain_write_us = esp_timer_get_time();
     s_last_phy_write_us = s_last_gain_write_us;
     s_last_phy_write_kind = PHY_WRITE_GAIN;
-    rf_set_rx_gain(true, gain);
+    rf_set_rx_gain(true, next_gain);
     ++s_gain_transition_count;
 }
 
@@ -4146,6 +4163,7 @@ static void analog_agc_task(void *arg)
             };
             target_gain = direct_gain_tick(&s_direct_gain_controller, &dg_obs);
             s_last_direct_gain_state = s_direct_gain_controller.state;
+            s_last_direct_gain_target = s_direct_gain_controller.target_gain;
             s_last_direct_gain_delta = s_direct_gain_controller.last_delta_gain;
             s_last_direct_gain_est_dbm = s_direct_gain_controller.last_estimated_input_dbm;
             s_last_direct_gain_rssi_used = s_direct_gain_controller.last_rssi_used;
@@ -4767,8 +4785,9 @@ static void console_diag_task(void *arg)
                     printf(" Gain Settings:              G_actual=%u, G_shadow_rec=%u (reg=0x%08lx)\n",
                            s_current_gain, s_shadow_gain, (unsigned long)rf_get_rx_gain_reg());
                     if (s_rx_profile == RX_PROFILE_DIRECT_GAIN) {
-                        printf(" Direct Gain State:          %s (delta=%+d, est_RF=%d dBm, RSSI_used=%s)\n",
+                        printf(" Direct Gain State:          %s (target=G%u, delta=%+d, est_RF=%d dBm, RSSI_used=%s)\n",
                                direct_gain_state_name(s_last_direct_gain_state),
+                               (unsigned)s_last_direct_gain_target,
                                s_last_direct_gain_delta,
                                s_last_direct_gain_est_dbm,
                                s_last_direct_gain_rssi_used ? "YES" : "NO");

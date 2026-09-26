@@ -697,6 +697,19 @@ check("Direct Gain emergency clipping cut",
 check("Direct Gain single-write hop execution",
       "dg->settle_ticks = DIRECT_GAIN_SETTLE_TICKS" in direct_gain_c and
       "++dg->total_writes" in direct_gain_c)
+check("Direct Gain smooth slew-rate limiting (+5/-6 steps)",
+      "DIRECT_GAIN_MAX_SLEW_UP   5u" in direct_gain_c and
+      "DIRECT_GAIN_MAX_SLEW_DOWN 6u" in direct_gain_c and
+      "is_tracking" in direct_gain_c)
+
+# Phase5c Static Correction validation
+phase5_360_asm = read(MAIN / "fm_phase5_360.bsasm")
+p360_words = [int(w) for w in phase5_360_asm.split("\nlut ", 1)[1].split("\n\ncontroller_0:", 1)[0].split()]
+# In Phase5c, large delta pairs (|delta| >= 12) must output Golden pedestal 20 (bits 8..13), never rail-slam to 0 or 63!
+p360_large_delta_dacs = [(p360_words[i] >> 8) & 63 for i in range(1024) if abs(((i & 31) - ((i >> 5) & 31) + 16) % 32 - 16) >= 12]
+check("Phase5c static squelch eliminates harsh salt-and-pepper rails",
+      len(p360_large_delta_dacs) == 288 and
+      all(dac == 20 for dac in p360_large_delta_dacs))
 
 # ---- Summary ----
 print(f"\n{'='*50}")

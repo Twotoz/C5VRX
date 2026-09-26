@@ -5,6 +5,8 @@
 #define DIRECT_GAIN_DEADBAND_LO   19
 #define DIRECT_GAIN_DEADBAND_HI   25
 #define DIRECT_GAIN_SETTLE_TICKS  1u
+#define DIRECT_GAIN_MAX_SLEW_UP   5u   /* Max +5 gain steps (~4.1 dB) per tick during active tracking */
+#define DIRECT_GAIN_MAX_SLEW_DOWN 6u   /* Max -6 gain steps (~4.9 dB) per tick during active tracking */
 
 /* Inverse-Q4 Gain Transfer LUT:
  * Precomputed delta-gain steps required to steer P_median from current P to sweet spot P_target (~22).
@@ -192,16 +194,34 @@ uint8_t direct_gain_tick(direct_gain_controller_t *dg,
 
     dg->last_delta_gain = delta;
 
-    /* 5. SINGLE-WRITE HOP EXECUTION (1 Write G22 -> G73) */
+    /* 5. TARGET GAIN ESTIMATION & SMOOTH SLEW-RATE HOP EXECUTION
+     * When tracking an active carrier (p >= 8 or carrier authentic), we cap the
+     * gain step size to +5 / -6 steps per tick. This produces seamless, butter-smooth
+     * AGC ramping with zero video flicker or DC shifts.
+     * When carrier is absent (p == 0, cold start or channel switch), a full 1-hop write
+     * is permitted for instantaneous signal lock! */
     if (delta != 0) {
-        uint8_t target = clamp_gain(dg, (int)dg->current_gain + delta);
-        if (target != dg->current_gain) {
-            dg->current_gain = target;
-            dg->target_gain = target;
+        uint8_t desired_target = clamp_gain(dg, (int)dg->current_gain + delta);
+        dg->target_gain = desired_target;
+
+        int step = (int)desired_target - (int)dg->current_gain;
+        bool is_tracking = (p >= 8) || carrier_authentic || (dg->hold_ticks > 0);
+
+        if (is_tracking) {
+            if (step > (int)DIRECT_GAIN_MAX_SLEW_UP)   step = (int)DIRECT_GAIN_MAX_SLEW_UP;
+            if (step < -(int)DIRECT_GAIN_MAX_SLEW_DOWN) step = -(int)DIRECT_GAIN_MAX_SLEW_DOWN;
+        }
+
+        uint8_t next_gain = clamp_gain(dg, (int)dg->current_gain + step);
+        if (next_gain != dg->current_gain) {
+            dg->current_gain = next_gain;
             dg->settle_ticks = DIRECT_GAIN_SETTLE_TICKS;
             dg->state = DIRECT_GAIN_SETTLE;
             dg->hold_ticks = 0;
             ++dg->total_writes;
+        } else {
+            dg->state = DIRECT_GAIN_HOLD;
+            if (dg->hold_ticks < 65535u) ++dg->hold_ticks;
         }
     } else {
         dg->state = DIRECT_GAIN_HOLD;
