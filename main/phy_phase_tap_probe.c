@@ -100,6 +100,83 @@ static inline uint32_t get_cycle_count(void)
     return c;
 }
 
+typedef uint8_t (*ring_pack_fn_t)(uint32_t w);
+
+typedef struct {
+    const char *name;
+    uint8_t lanes[CAPTURE_WIDTH];
+    ring_pack_fn_t pack_fn;
+} sweep_pass_t;
+
+/* Pass 0: Q_BUS_0_5
+ * Pins 0..5: DIAG[0..5] <-> Dump Q[0..5] (w bits 0..5)
+ * Pins 6..7: DIAG[8..9] <-> Dump Q[8..9] (w bits 8..9) */
+static inline uint8_t pack_pass0(uint32_t w)
+{
+    return (uint8_t)((w & 0x3fu) | (((w >> 8) & 0x03u) << 6));
+}
+
+/* Pass 1: I_BUS_0_5
+ * Pins 0..5: DIAG[10..15] <-> Dump I[0..5] (w bits 10..15)
+ * Pins 6..7: DIAG[8..9]   <-> Dump Q[8..9] (w bits 8..9) */
+static inline uint8_t pack_pass1(uint32_t w)
+{
+    return (uint8_t)(((w >> 10) & 0x3fu) | (((w >> 8) & 0x03u) << 6));
+}
+
+/* Pass 2: IQ_BUS_6_9
+ * Pins 0..3: DIAG[16..19] <-> Dump I[6..9] (w bits 16..19)
+ * Pins 4..5: DIAG[6..7]   <-> Dump Q[6..7] (w bits 6..7)
+ * Pins 6..7: DIAG[8..9]   <-> Dump Q[8..9] (w bits 8..9) */
+static inline uint8_t pack_pass2(uint32_t w)
+{
+    return (uint8_t)(((w >> 16) & 0x0fu) | (((w >> 6) & 0x03u) << 4) | (((w >> 8) & 0x03u) << 6));
+}
+
+/* Pass 3: CTRL_20_25
+ * Pins 0..5: DIAG[20..25] <-> Dump[20..25] (w bits 20..25)
+ * Pins 6..7: DIAG[8..9]   <-> Dump Q[8..9] (w bits 8..9) */
+static inline uint8_t pack_pass3(uint32_t w)
+{
+    return (uint8_t)(((w >> 20) & 0x3fu) | (((w >> 8) & 0x03u) << 6));
+}
+
+/* Pass 4: CTRL_26_31
+ * Pins 0..5: DIAG[26..31] <-> Dump[26..31] (w bits 26..31)
+ * Pins 6..7: DIAG[8..9]   <-> Dump Q[8..9] (w bits 8..9) */
+static inline uint8_t pack_pass4(uint32_t w)
+{
+    return (uint8_t)(((w >> 26) & 0x3fu) | (((w >> 8) & 0x03u) << 6));
+}
+
+static const sweep_pass_t s_sweep_passes[5] = {
+    {
+        .name = "Q_BUS_0_5",
+        .lanes = {0, 1, 2, 3, 4, 5, 8, 9},
+        .pack_fn = pack_pass0,
+    },
+    {
+        .name = "I_BUS_0_5",
+        .lanes = {10, 11, 12, 13, 14, 15, 8, 9},
+        .pack_fn = pack_pass1,
+    },
+    {
+        .name = "IQ_BUS_6_9",
+        .lanes = {16, 17, 18, 19, 6, 7, 8, 9},
+        .pack_fn = pack_pass2,
+    },
+    {
+        .name = "CTRL_20_25",
+        .lanes = {20, 21, 22, 23, 24, 25, 8, 9},
+        .pack_fn = pack_pass3,
+    },
+    {
+        .name = "CTRL_26_31",
+        .lanes = {26, 27, 28, 29, 30, 31, 8, 9},
+        .pack_fn = pack_pass4,
+    },
+};
+
 static void q6_dump_probe_run(void)
 {
     /* Route DIAG[4, 5, 6, 7, 8, 9, 16, 17] to the 8 XIAO GPIO pins.
@@ -198,6 +275,107 @@ static void q6_dump_probe_run(void)
     route_lanes(0, true);
 }
 
+static void all_diag_sweep_run(void)
+{
+    printf("DIAG_SWEEP_SESSION BEGIN total_passes=5\n");
+    for (unsigned p = 0; p < 5; ++p) {
+        const sweep_pass_t *pass = &s_sweep_passes[p];
+
+        /* Route lanes for this pass */
+        for (unsigned bit = 0; bit < CAPTURE_WIDTH; ++bit) {
+            esp_rom_gpio_connect_out_signal(s_pins[bit],
+                                            MODEM_DIAG0_IDX + pass->lanes[bit],
+                                            false, false);
+        }
+        io_fence();
+
+        /* Discard settling samples after matrix remap */
+        for (unsigned i = 0; i < 128; ++i) (void)REG32(GPIO_IN_REG);
+
+        /* Save and disable machine interrupts during the ~100 us hardware dump window */
+        uint32_t saved_mstatus;
+        __asm__ __volatile__("csrrc %0, mstatus, %1"
+                             : "=r"(saved_mstatus)
+                             : "r"(0x8u)
+                             : "memory");
+
+        /* Grant MAC ownership of HP SRAM dump bank (0x40830000) */
+        const uint32_t saved_sram_usage = REG32(HP_SRAM_USAGE);
+        REG32(HP_SRAM_USAGE) = (saved_sram_usage & 0xfffef0ffu) | 0x00010200u;
+        io_fence();
+
+        /* Arm dump engine with DUMP_WORDS in circular pre-trigger mode */
+        uint32_t ctrl = REG32(DUMP_CTRL);
+        ctrl &= ~(CTRL_ENABLE | 0x00080000u | 0x00040000u);
+        ctrl |= CTRL_DUMP_FIRST;
+        ctrl = (ctrl & ~0x0001ffffu) | DUMP_WORDS;
+        REG32(DUMP_CTRL) = ctrl | CTRL_ENABLE;
+        io_fence();
+
+        /* Sample GPIO_IN_REG directly into RTC SRAM (0x50000000) */
+        const uint32_t t_begin = get_cycle_count();
+        for (unsigned i = 0; i < Q6_GPIO_SAMPLES; ++i) {
+            const uint32_t gpio = REG32(GPIO_IN_REG);
+            uint8_t packed = 0;
+            for (unsigned bit = 0; bit < CAPTURE_WIDTH; ++bit) {
+                packed |= ((gpio >> s_pins[bit]) & 1u) << bit;
+            }
+            s_gpio_packed[i] = packed;
+        }
+        const uint32_t t_end = get_cycle_count();
+        io_fence();
+
+        /* Read write pointer at halt and disable dump */
+        const uint32_t stop_ptr = REG32(DUMP_PTR_MODE) & (DUMP_WORDS - 1u);
+        REG32(DUMP_CTRL) = ctrl; /* clear CTRL_ENABLE */
+        io_fence();
+
+        /* Restore CPU ownership of HP SRAM */
+        REG32(HP_SRAM_USAGE) = saved_sram_usage;
+        io_fence();
+
+        /* Restore machine interrupt state */
+        if ((saved_mstatus & 0x8u) != 0u) {
+            __asm__ __volatile__("csrs mstatus, %0" : : "r"(0x8u) : "memory");
+        }
+
+        const uint32_t elapsed_us = (t_end - t_begin) / 240u;
+
+        /* Print header delimiter and metadata for analysis tool */
+        printf("DIAG_SWEEP BEGIN pass=%u name=%s samples=%u dump_words=%u stop_ptr=%" PRIu32 " elapsed_us=%" PRIu32 "\n",
+               p, pass->name, Q6_GPIO_SAMPLES, DUMP_WORDS, stop_ptr, elapsed_us);
+
+        /* Print packed GPIO trace */
+        printf("DIAG_SWEEP_GPIO hex=");
+        for (unsigned i = 0; i < Q6_GPIO_SAMPLES; ++i) {
+            printf("%02x", s_gpio_packed[i]);
+        }
+        printf("\n");
+
+        /* Print post-stop dump ring bytes in 1 KiB chunks */
+        volatile const uint32_t *dump_sram = (volatile const uint32_t *)DUMP_BASE_ADDR;
+        const unsigned num_chunks = DUMP_WORDS / CHUNK_BYTES;
+        for (unsigned c = 0; c < num_chunks; ++c) {
+            printf("DIAG_SWEEP_RING pass=%u chunk=%u hex=", p, c);
+            const unsigned start_idx = c * CHUNK_BYTES;
+            for (unsigned i = 0; i < CHUNK_BYTES; ++i) {
+                const uint32_t w = dump_sram[start_idx + i];
+                const uint8_t packed = pass->pack_fn(w);
+                printf("%02x", packed);
+            }
+            printf("\n");
+        }
+        printf("DIAG_SWEEP END pass=%u\n", p);
+    }
+    printf("DIAG_SWEEP_SESSION COMPLETE passes=5\n");
+
+    /* Also execute baseline Q6 dump format for backwards compatibility */
+    q6_dump_probe_run();
+
+    /* Restore reference IQ routing */
+    route_lanes(0, true);
+}
+
 void phy_phase_tap_probe_run(void)
 {
     const uint32_t saved_fix = REG32(DIAG_FIX_REG);
@@ -235,8 +413,8 @@ void phy_phase_tap_probe_run(void)
     route_lanes(0, true);
     io_fence();
 
-    /* Execute the decisive aligned DIAG[4:5] <-> dump Q[4:5] correlation test. */
-    q6_dump_probe_run();
+    /* Execute the comprehensive 32-lane sweep and Q6 baseline probe. */
+    all_diag_sweep_run();
 
-    printf("PHY_TAP END restored=1 candidate_status=UNVERIFIED\n");
+    printf("PHY_TAP END restored=1 candidate_status=SWEEP_COMPLETE\n");
 }
