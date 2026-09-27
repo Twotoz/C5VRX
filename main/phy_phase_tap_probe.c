@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "esp_attr.h"
 #include "esp_rom_gpio.h"
 #include "esp_timer.h"
 #include "soc/gpio_reg.h"
@@ -90,8 +91,7 @@ static void capture_and_print(unsigned config, unsigned first, bool reference)
 #define CHUNK_BYTES      1024u
 
 static const uint8_t s_q6_lanes[CAPTURE_WIDTH] = {4, 5, 6, 7, 8, 9, 16, 17};
-static uint32_t s_gpio_raw[Q6_GPIO_SAMPLES];
-static uint8_t  s_gpio_packed[Q6_GPIO_SAMPLES];
+static RTC_DATA_ATTR uint8_t s_gpio_packed[Q6_GPIO_SAMPLES];
 
 static inline uint32_t get_cycle_count(void)
 {
@@ -135,10 +135,16 @@ static void q6_dump_probe_run(void)
     REG32(DUMP_CTRL) = ctrl | CTRL_ENABLE;
     io_fence();
 
-    /* Sample GPIO_IN_REG in an unrolled, tight CPU loop (~5 MS/s). */
+    /* Sample GPIO_IN_REG and pack directly into RTC SRAM (0x50000000).
+     * RTC SRAM is unaffected while HP SRAM is MAC-owned. */
     const uint32_t t_begin = get_cycle_count();
     for (unsigned i = 0; i < Q6_GPIO_SAMPLES; ++i) {
-        s_gpio_raw[i] = REG32(GPIO_IN_REG);
+        const uint32_t gpio = REG32(GPIO_IN_REG);
+        uint8_t packed = 0;
+        for (unsigned bit = 0; bit < CAPTURE_WIDTH; ++bit) {
+            packed |= ((gpio >> s_pins[bit]) & 1u) << bit;
+        }
+        s_gpio_packed[i] = packed;
     }
     const uint32_t t_end = get_cycle_count();
     io_fence();
@@ -158,16 +164,6 @@ static void q6_dump_probe_run(void)
     }
 
     const uint32_t elapsed_us = (t_end - t_begin) / 240u;
-
-    /* Pack GPIO bits: bit 0..7 match s_pins / s_q6_lanes. */
-    for (unsigned i = 0; i < Q6_GPIO_SAMPLES; ++i) {
-        const uint32_t gpio = s_gpio_raw[i];
-        uint8_t packed = 0;
-        for (unsigned bit = 0; bit < CAPTURE_WIDTH; ++bit) {
-            packed |= ((gpio >> s_pins[bit]) & 1u) << bit;
-        }
-        s_gpio_packed[i] = packed;
-    }
 
     /* Print header delimiter and metadata for analysis tool. */
     printf("Q6_DUMP BEGIN samples=%u dump_words=%u stop_ptr=%" PRIu32 " elapsed_us=%" PRIu32 "\n",
