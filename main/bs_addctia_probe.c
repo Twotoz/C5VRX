@@ -26,11 +26,17 @@ static unsigned s_mismatches;
 static unsigned s_dac_mismatches;
 static esp_err_t s_err;
 
+static esp_err_t s_rx_new_err = ESP_FAIL;
+static esp_err_t s_rx_prog_err = ESP_FAIL;
+static esp_err_t s_rx_enable_err = ESP_FAIL;
+
 void bs_addctia_probe_report(void)
 {
     printf("BS_ADDCTIA status=%s written=%u mismatches=%u dac_mismatches=%u err=%s\n",
            !s_ran ? "NOT_RUN" : s_pass ? "PASS" : "FAIL",
            (unsigned)s_written, s_mismatches, s_dac_mismatches, esp_err_to_name(s_err));
+    printf("BS_RX_PROBE new=%s prog=%s enable=%s\n",
+           esp_err_to_name(s_rx_new_err), esp_err_to_name(s_rx_prog_err), esp_err_to_name(s_rx_enable_err));
 }
 
 void bs_addctia_probe_run(void)
@@ -57,6 +63,20 @@ void bs_addctia_probe_run(void)
     }
     if (bs) {
         bitscrambler_free(bs);
+    }
+
+    /* Probe BitScrambler RX Core capabilities in ESP32-C5 silicon */
+    bitscrambler_config_t rx_cfg = {
+        .dir = BITSCRAMBLER_DIR_RX,
+        .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO,
+    };
+    bitscrambler_handle_t rx_bs = NULL;
+    s_rx_new_err = bitscrambler_new(&rx_cfg, &rx_bs);
+    if (s_rx_new_err == ESP_OK) {
+        s_rx_prog_err = bitscrambler_load_program(rx_bs, s_addctia_probe);
+        s_rx_enable_err = bitscrambler_enable(rx_bs);
+        bitscrambler_disable(rx_bs);
+        bitscrambler_free(rx_bs);
     }
 
     unsigned mismatches = 0;
