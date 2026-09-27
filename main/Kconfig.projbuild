@@ -1,7 +1,7 @@
 menu "C5VRX diagnostic probes"
     config C5VRX_PHY_PHASE_TAP_PROBE
         bool "Capture bounded MODEM_DIAG lane traces at boot, then start video"
-        default n
+        default y
         help
             Capture all 32 MODEM_DIAG lanes under four previously tested
             selector states on the production IQ GPIOs before video starts.
