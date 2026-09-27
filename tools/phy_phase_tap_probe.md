@@ -89,10 +89,11 @@ Per-lane transition sensitivity analysis revealed the physical nature of the bus
    correlation against aligned modem SRAM dump data. The decisive follow-up experiment is to
    perform the same aligned comparison between `DIAG[4:5]` and dump `Q[4:5]` with the VTX ON.
 3. **Architectural Implications:**
-   Even if confirmed, `Q[4:9]` yields $4\times$ as many discrete Q code values, but does not
-   automatically translate to $4\times$ useful resolution or demodulator gain: I remains 4-bit
-   unless matching bits are found, and the live production path is pinned to 8 data GPIOs
-   for PARLIO RX (currently 4Q + 4I). An aligned `DIAG[4:5]` $\leftrightarrow$ dump `Q[4:5]` test is
-   the proper gating prerequisite before considering any frontend or BitScrambler changes.
+   Als `Q[4:9]` bevestigd wordt, krijg je viermaal zoveel Q-codewaarden als met `Q[6:9]`.
+   Dat is nog geen bewezen viervoudige nuttige resolutie of winst voor Phase5-360: I heeft
+   ook extra precisie nodig, en de huidige live ingang gebruikt acht lijnen voor Q4/I4.
+   De eerstvolgende hardwaretest is dus de uitgelijnde `DIAG[4:5]` ↔ dump-`Q[4:5]`-vergelijking.
+   Daarmee weten we of deze ontdekking echt nieuwe IQ-informatie oplevert.
+
 
 
