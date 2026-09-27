@@ -1,4 +1,14 @@
 menu "C5VRX diagnostic probes"
+    config C5VRX_PHY_PHASE_TAP_PROBE
+        bool "Capture bounded MODEM_DIAG lane traces at boot, then start video"
+        default n
+        help
+            Capture all 32 MODEM_DIAG lanes under four previously tested
+            selector states on the production IQ GPIOs before video starts.
+            Restore all selector registers and the normal IQ routing after
+            capture. CPU snapshots are asynchronous and cannot alone prove a
+            40 MS/s phase tap. This option is for an experimental PR build.
+
     config C5VRX_BS_RELATIVE_WORKER_PROBE
         bool "Run Counter-A relative-mux loopback oracle before starting video"
         default n
@@ -17,12 +27,12 @@ endmenu
 
 menu "C5VRX experimental video demodulators"
     config C5VRX_PHASE5_360_LIVE
-        bool "Use Phase5-360 (Exact Adjacent50) in the live 6-bit video path"
+        bool "Use Phase5-360 research program (Golden DAC output only)"
         default y
         help
-            Enable Phase5-360 travel resolution across the 50 ns interval.
-            Resolves full 360-degree trajectory while maintaining strictly
-            zero false alarms on the 3.58 MHz color subcarrier.
+            Load the two-bundle middle-sample routing experiment. Both worker
+            branches currently output the same Golden DAC bytes. No adjacent
+            winding correction is active in the live firmware.
 
     config C5VRX_RELATIVE_GOLDEN_LIVE
         bool "Use relative-mux Golden in the live 6-bit video path"

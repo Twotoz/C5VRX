@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "bs_relative_worker_probe.h"
 #include "bs_relative_middle_probe.h"
+#include "phy_phase_tap_probe.h"
 
 void app_main(void)
 {
@@ -21,6 +22,9 @@ void app_main(void)
     bs_relative_middle_probe_run();
 #endif
     ESP_ERROR_CHECK(rf_start());
+#if CONFIG_C5VRX_PHY_PHASE_TAP_PROBE
+    phy_phase_tap_probe_run();
+#endif
     ESP_ERROR_CHECK(video_start());
     /* Hardware pipeline is running. Application has nothing more to do. */
 }
