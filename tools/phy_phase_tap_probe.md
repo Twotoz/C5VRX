@@ -92,8 +92,45 @@ Per-lane transition sensitivity analysis revealed the physical nature of the bus
    Als `Q[4:9]` bevestigd wordt, krijg je viermaal zoveel Q-codewaarden als met `Q[6:9]`.
    Dat is nog geen bewezen viervoudige nuttige resolutie of winst voor Phase5-360: I heeft
    ook extra precisie nodig, en de huidige live ingang gebruikt acht lijnen voor Q4/I4.
-   De eerstvolgende hardwaretest is dus de uitgelijnde `DIAG[4:5]` ↔ dump-`Q[4:5]`-vergelijking.
    Daarmee weten we of deze ontdekking echt nieuwe IQ-informatie oplevert.
+
+---
+
+### 4. Hardware Verification Result: Aligned DIAG[4:5] ↔ Dump Q[4:5] Proof
+
+The aligned cross-correlation test was executed on physical ESP32-C5 v1.0 hardware with VTX ON (Channel A1, 5865 MHz).
+Simultaneous GPIO sampling (512 samples @ 4.74 MS/s) and modem SRAM ring capture (8,192 words @ 79.97 MS/s) were locked via FFT cross-correlation on the proven reference lanes (`DIAG[6:9]` and `DIAG[16:17]`):
+
+```text
+============================================================================
+ C5VRX-3 ALIGNED DIAG[4:5] <-> DUMP Q[4:5] CORRELATION REPORT
+============================================================================
+Sampling Alignment Lock:
+  RF/GPIO Timing Ratio (Slope): 16.454 (GPIO rate: 4.74 MS/s)
+  Ring Lock Offset:             7352 (relative to stop_ptr: 7959)
+  Correlation Peak Score:       0.934 (max 1.000)
+  Reference Lanes Mean Match:   96.7%
+----------------------------------------------------------------------------
+Bit    | Signal Name  | Role               | Exact Match  | Verdict        
+----------------------------------------------------------------------------
+bit0   | DIAG[4]      | Candidate Q[4]     | 100.0%       | PROVEN Q-BIT   
+bit1   | DIAG[5]      | Candidate Q[5]     | 100.0%       | PROVEN Q-BIT   
+bit2   | DIAG[6]      | Proven Q[6]        | 100.0%       | PASS (Ref)     
+bit3   | DIAG[7]      | Proven Q[7]        | 100.0%       | PASS (Ref)     
+bit4   | DIAG[8]      | Proven Q[8]        | 100.0%       | PASS (Ref)     
+bit5   | DIAG[9]      | Proven Q[9]        | 100.0%       | PASS (Ref)     
+bit6   | DIAG[16]     | Proven I[6]        |  90.0%       | PASS (Ref)     
+bit7   | DIAG[17]     | Proven I[7]        |  90.0%       | PASS (Ref)     
+============================================================================
+[VERDICT] SUCCESS: DIAG[4] and DIAG[5] are confirmed as dump Q[4] and Q[5]!
+          DIAG[4:9] forms a genuine 6-bit Q baseband bus.
+```
+
+**Key Findings:**
+1. **Definitive Bit Proof:** `DIAG[4]` and `DIAG[5]` achieved a **100.0% bit-exact match** against modem SRAM dump bits `Q[4]` and `Q[5]`. They are unequivocally the lower two bits of a 6-bit Q baseband output.
+2. **Contiguous Q6 Bus Discovered:** Lanes `DIAG[4:9]` form an aligned, contiguous 6-bit Q bus (`Q[4:9]`).
+3. **Next Architectural Question:** Does an equivalent lower bit pair exist for the in-phase bus (e.g. `DIAG[14:15]` for `I[4:5]`), or does the C5 MODEM_DIAG matrix allocate 6 bits for Q and 4/6 bits for I across other lanes? If an 8-pin constraint limits PARLIO input, asymmetrical Q6/I2 or symmetrical Q4/I4 trade-offs can now be explored with proven bit identities.
+
 
 
 

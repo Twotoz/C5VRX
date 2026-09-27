@@ -13,3 +13,4 @@ scratch/
 *_log.txt
 packages/
 release_download/
+*.log
