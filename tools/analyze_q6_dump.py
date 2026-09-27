@@ -91,10 +91,11 @@ def correlate_q6(data: dict) -> dict:
     gpio_rate_hz = (gpio.size / (elapsed_us / 1e6)) if elapsed_us > 0 else 4.5e6
     nominal_slope = 79_970_000.0 / gpio_rate_hz
     N_ring = ring.size
-    N_gpio = min(gpio.size, 1024)
+    N_gpio = min(gpio.size, 1024, int((N_ring - 1) / max(nominal_slope, 1.0)))
+    gpio_slice = gpio[-N_gpio:]
 
     # Convert bipolar bits: 0 -> +1, 1 -> -1
-    gpio_bits = [1 - 2 * ((gpio[:N_gpio] >> b) & 1).astype(np.int8) for b in range(8)]
+    gpio_bits = [1 - 2 * ((gpio_slice >> b) & 1).astype(np.int8) for b in range(8)]
     ring_bits = [1 - 2 * ((ring >> b) & 1).astype(np.int8) for b in range(8)]
     ring_ffts = [np.fft.fft(ring_bits[b].astype(float)) for b in range(8)]
 
@@ -146,7 +147,7 @@ def correlate_q6(data: dict) -> dict:
 
     # Compute per-bit match percentage with optimal alignment
     indices = (best_offset - np.rint(best_slope * np.arange(N_gpio)).astype(int)) % N_ring
-    obs = gpio[:N_gpio][-1::-1]
+    obs = gpio_slice[-1::-1]
     ref = ring[indices]
 
     matches = {}

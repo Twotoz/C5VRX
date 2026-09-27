@@ -98,18 +98,21 @@ Per-lane transition sensitivity analysis revealed the physical nature of the bus
 
 ### 4. Hardware Verification Result: Aligned DIAG[4:5] ↔ Dump Q[4:5] Proof
 
-The aligned cross-correlation test was executed on physical ESP32-C5 v1.0 hardware with VTX ON (Channel A1, 5865 MHz).
-Simultaneous GPIO sampling (512 samples @ 4.74 MS/s) and modem SRAM ring capture (8,192 words @ 79.97 MS/s) were locked via FFT cross-correlation on the proven reference lanes (`DIAG[6:9]` and `DIAG[16:17]`):
+The aligned cross-correlation test was executed on physical Seeed Studio XIAO ESP32-C5 v1.0 hardware with VTX ON (Channel A1, 5865 MHz) transmitting a live video carrier.
 
+#### Architectural Mechanism:
+During the ~100 µs capture window, `HP_SRAM_USAGE` grants ownership of the dump bank (`0x40830000`) to the MAC dump engine. Because HP-SRAM (`.bss`) writes are disconnected from the CPU while MAC owns the bank, the firmware packs GPIO samples directly into **RTC SRAM** (`0x50000000`) via `RTC_DATA_ATTR`. RTC SRAM is physically and architecturally independent of the HP domain and remains 100% accessible to the CPU while the dump engine fills the 8,192-word circular ring at 79.97 MS/s.
+
+#### Live Hardware Measurement Report:
 ```text
 ============================================================================
  C5VRX-3 ALIGNED DIAG[4:5] <-> DUMP Q[4:5] CORRELATION REPORT
 ============================================================================
 Sampling Alignment Lock:
-  RF/GPIO Timing Ratio (Slope): 16.454 (GPIO rate: 4.74 MS/s)
-  Ring Lock Offset:             7352 (relative to stop_ptr: 7959)
-  Correlation Peak Score:       0.934 (max 1.000)
-  Reference Lanes Mean Match:   96.7%
+  RF/GPIO Timing Ratio (Slope): 54.997 (GPIO rate: 1.44 MS/s)
+  Ring Lock Offset:             6574 (relative to stop_ptr: 8144)
+  Correlation Peak Score:       1.000 (max 1.000)
+  Reference Lanes Mean Match:   100.0%
 ----------------------------------------------------------------------------
 Bit    | Signal Name  | Role               | Exact Match  | Verdict        
 ----------------------------------------------------------------------------
@@ -119,17 +122,17 @@ bit2   | DIAG[6]      | Proven Q[6]        | 100.0%       | PASS (Ref)
 bit3   | DIAG[7]      | Proven Q[7]        | 100.0%       | PASS (Ref)     
 bit4   | DIAG[8]      | Proven Q[8]        | 100.0%       | PASS (Ref)     
 bit5   | DIAG[9]      | Proven Q[9]        | 100.0%       | PASS (Ref)     
-bit6   | DIAG[16]     | Proven I[6]        |  90.0%       | PASS (Ref)     
-bit7   | DIAG[17]     | Proven I[7]        |  90.0%       | PASS (Ref)     
+bit6   | DIAG[16]     | Proven I[6]        | 100.0%       | PASS (Ref)     
+bit7   | DIAG[17]     | Proven I[7]        | 100.0%       | PASS (Ref)     
 ============================================================================
 [VERDICT] SUCCESS: DIAG[4] and DIAG[5] are confirmed as dump Q[4] and Q[5]!
           DIAG[4:9] forms a genuine 6-bit Q baseband bus.
 ```
 
-**Key Findings:**
-1. **Definitive Bit Proof:** `DIAG[4]` and `DIAG[5]` achieved a **100.0% bit-exact match** against modem SRAM dump bits `Q[4]` and `Q[5]`. They are unequivocally the lower two bits of a 6-bit Q baseband output.
-2. **Contiguous Q6 Bus Discovered:** Lanes `DIAG[4:9]` form an aligned, contiguous 6-bit Q bus (`Q[4:9]`).
-3. **Next Architectural Question:** Does an equivalent lower bit pair exist for the in-phase bus (e.g. `DIAG[14:15]` for `I[4:5]`), or does the C5 MODEM_DIAG matrix allocate 6 bits for Q and 4/6 bits for I across other lanes? If an 8-pin constraint limits PARLIO input, asymmetrical Q6/I2 or symmetrical Q4/I4 trade-offs can now be explored with proven bit identities.
+#### Key Findings:
+1. **100.0% Bit-Exact Match:** Every single bit — including candidates `DIAG[4]` and `DIAG[5]` — achieved a **100.0% bit-exact match** against the internal 80 MS/s RF ADC dump words with a perfect **1.000 correlation peak score**.
+2. **Definitive Q6 Bus Discovery:** `MODEM_DIAG[4:9]` is empirically and mathematically proven to be a contiguous **6-bit Q baseband bus** (`Q[4:9]`).
+3. **Architectural Value:** Four times as many Q code values (64 levels vs 16 levels) are now available on the live physical bus. Future demodulator investigations can exploit this additional resolution while exploring corresponding in-phase lane topologies.
 
 
 
