@@ -7,7 +7,7 @@ import time
 import serial
 
 
-def capture_probe(port: str = "COM10", baud: int = 115200, timeout_sec: float = 6.0) -> bytes:
+def capture_probe(port: str = "COM10", baud: int = 115200, timeout_sec: float = 10.0) -> bytes:
     print(f"Opening {port} at {baud} baud...")
     s = serial.Serial(port, baud, timeout=0.2)
     s.dtr = True
@@ -60,10 +60,16 @@ def main() -> None:
         f.write(captured)
     print(f"Saved capture to: {out_file}")
 
-    print("\n=== RUNNING ANALYZER ===")
+    print("\n=== RUNNING PHY TAP ANALYZER ===")
     res = subprocess.run([sys.executable, "tools/analyze_phy_phase_tap.py", out_file], text=True)
     if res.returncode != 0:
-        print("Analyzer exited with error.")
+        print("PHY Tap Analyzer exited with error.")
+
+    if b"Q6_DUMP BEGIN" in captured:
+        print("\n=== RUNNING Q6 ALIGNED DUMP ANALYZER ===")
+        res_q6 = subprocess.run([sys.executable, "tools/analyze_q6_dump.py", out_file], text=True)
+        if res_q6.returncode != 0:
+            print("Q6 Analyzer exited with error.")
 
 
 if __name__ == "__main__":
