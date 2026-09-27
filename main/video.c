@@ -1448,26 +1448,10 @@ static void settings_load(void)
     }
     if (s_video_std_mode == VIDEO_STD_MODE_PAL) s_video_std = VIDEO_STD_PAL;
     else if (s_video_std_mode == VIDEO_STD_MODE_NTSC) s_video_std = VIDEO_STD_NTSC;
-    if (settings.agc_mode <= ANALOG_AGC_MANUAL) s_agc_mode = (analog_agc_mode_t)settings.agc_mode;
-    if (s_agc_mode == ANALOG_AGC_MANUAL && settings.manual_gain >= 2u &&
-        settings.manual_gain <= rf_get_arc_gain_table()->max_index) {
-        s_current_gain = profile_gain_clamp(settings.manual_gain);
-    } else {
-        switch (s_rx_profile) {
-        case RX_PROFILE_RANGE_EXP:    s_current_gain = 62u; break;
-        case RX_PROFILE_BLOCKER_EXP:  s_current_gain = 36u; break;
-        case RX_PROFILE_RECOVERY_EXP: s_current_gain = 52u; break;
-        case RX_PROFILE_AUTO_EXP:     s_current_gain = 52u; break;
-        case RX_PROFILE_FUSION_EXP:   s_current_gain = 62u; break;
-        case RX_PROFILE_RANGE_V2_EXP: s_current_gain = 62u; break;
-        case RX_PROFILE_ARC:          s_current_gain = rf_get_arc_survival_gain(); break;
-        case RX_PROFILE_ARC_V3_EXP:   s_current_gain = rf_get_arc_survival_gain(); break;
-        case RX_PROFILE_ARC_V5_AUTOTUNE_EXP: s_current_gain = rf_get_arc_survival_gain(); break;
-        case RX_PROFILE_DIRECT_GAIN:  s_current_gain = rf_get_arc_survival_gain(); break;
-        default:                      s_current_gain = 52u; break;
-        }
-        s_current_gain = profile_gain_clamp(s_current_gain);
-    }
+    /* MAX GAIN ALWAYS: override any saved AGC mode/gain. All RF stages pinned
+     * at the vendor table maximum for peak sensitivity. AGC is disabled. */
+    s_agc_mode = ANALOG_AGC_MANUAL;
+    s_current_gain = rf_get_arc_gain_table()->max_index;
     s_shadow_gain = s_current_gain;
     rf_set_rx_gain(true, s_current_gain);
     s_menu_boot_btn_enabled = settings.menu_boot_btn_enabled != 0;

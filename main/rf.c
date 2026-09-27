@@ -73,16 +73,18 @@ static bool s_analog_bw40 = true;
 #define SELECTOR_MASK   0x01fe0000u
 #define HP_SRAM_USAGE   0x60095004u
 
-/* MODEM_DIAG lane mapping: Q[9:6] on DIAG[6:9], I[9:6] on DIAG[16:19].
+/* MODEM_DIAG lane mapping: Q[6:3] on DIAG[3:6], I[6:3] on DIAG[13:16].
+ * Full ADC is 10 bits: Q[9:0]=DIAG[9:0], I[9:0]=DIAG[19:10].
+ * This selects one step below the top nibble for higher-resolution input.
  * GPIO mapping correlated against physical ESP32-C5 hardware captures.
  * These GPIOs connect to the PARLIO RX data_gpio_nums[] array (same order). */
 static const gpio_num_t s_iq_pins[8] = {
-    GPIO_NUM_1, GPIO_NUM_0, GPIO_NUM_25, GPIO_NUM_7,   /* Q[9:6] */
-    GPIO_NUM_10, GPIO_NUM_5, GPIO_NUM_3, GPIO_NUM_4,   /* I[9:6] */
+    GPIO_NUM_1, GPIO_NUM_0, GPIO_NUM_25, GPIO_NUM_7,   /* Q[6:3] */
+    GPIO_NUM_10, GPIO_NUM_5, GPIO_NUM_3, GPIO_NUM_4,   /* I[6:3] */
 };
 static const uint8_t s_iq_diag[8] = {
-    6u, 7u, 8u, 9u,     /* DIAG[6:9]  = Q[9:6] */
-    16u, 17u, 18u, 19u, /* DIAG[16:19] = I[9:6] */
+    3u, 4u, 5u, 6u,     /* DIAG[3:6]  = Q[6:3] */
+    13u, 14u, 15u, 16u, /* DIAG[13:16] = I[6:3] */
 };
 
 /* Internal vendor symbol -- globally exported by the pinned IDF 6.0.x
@@ -420,16 +422,21 @@ esp_err_t rf_start(void)
     extern void phy_wifi_fbw_sel(uint32_t val);
     phy_wifi_fbw_sel(s_analog_bw40 ? 1u : 0u);
 
-    /* Force high-sensitivity sweet-spot gain (index 52).
-     * Provides sensitive reception of weak carriers out of the box while
-     * active AGC dynamically manages gain tracking and overload protection. */
+    /* Force maximum available RF gain so all RF stages run at peak sensitivity.
+     * Index 52 was the legacy sweet-spot; we now use the table max after
+     * arc_capture_vendor_state() has populated s_arc_gain_table.max_index.
+     * Start at 52 to keep the PHY happy during capture, then slam to max. */
     extern void phy_force_rx_gain(bool enable, uint8_t gain_idx);
-    phy_force_rx_gain(true, 52);
+    phy_force_rx_gain(true, 52u);
 
     /* Vendor PHY initialization has now generated both valid RX gain tables
      * and completed its own calibration. Capture that state read-only before
      * C5VRX freezes receiver ownership. */
     arc_capture_vendor_state();
+
+    /* Now that max_index is known, force gain to absolute maximum. */
+    phy_force_rx_gain(true, s_arc_gain_table.max_index);
+    s_current_gain_val = s_arc_gain_table.max_index;
 
     /* Disable PHY PLL / RXCAL tracking timer if compiled in, so it never
      * recalibrates RF / RX hardware during continuous analog video reception.
