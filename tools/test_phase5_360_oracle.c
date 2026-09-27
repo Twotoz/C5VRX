@@ -30,6 +30,9 @@ int main(void)
                 uint8_t actual = phase5_360_adjacent_dac(p, m, c);
                 uint8_t live = phase5_360_live_dac(p, c);
                 assert(phase5_360_winding(p, m, c) == expected_winding);
+                assert(phase5_360_route_bit(p, m, c) == !!expected_winding);
+                assert(phase5_360_dac_from_route_bit(
+                           p, c, phase5_360_route_bit(p, m, c)) == expected);
                 assert(actual == expected);
                 if (!expected_winding) {
                     ++no_winding;
@@ -45,6 +48,15 @@ int main(void)
     assert(no_winding == 24576 && winding == 8192);
     assert(phase5_360_adjacent_dac(0, 10, 20) !=
            phase5_360_adjacent_dac(0, 20, 20));
+    for (unsigned p = 0; p < 32; ++p)
+        for (unsigned c = 0; c < 32; ++c)
+            for (unsigned raw = 0; raw < 256; ++raw) {
+                uint8_t m = s_phase5_360_raw_phase[raw];
+                uint8_t route = phase5_360_route_bit_raw(p, raw, c);
+                assert(route == !!phase5_360_winding(p, m, c));
+                assert(phase5_360_dac_from_route_bit(p, c, route) ==
+                       phase5_360_adjacent_dac(p, m, c));
+            }
     assert(changed > 0 && sync_flips > 0);
     printf("Phase5-360 exact triplets: 32768; winding: %u; live DAC changes: %u; sync-tip flips: %u\n",
            winding, changed, sync_flips);
