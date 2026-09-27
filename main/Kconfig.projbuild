@@ -23,6 +23,15 @@ menu "C5VRX diagnostic probes"
             Run a finite two-bundle BitScrambler loopback test at boot to prove
             alternating middle-sample and endpoint-sample Phase5 extraction,
             then start the normal RF/video path.
+
+    config C5VRX_BS_ADDCTIA_PROBE
+        bool "Run Counter-A ADDCTIA hardware subtraction loopback probe before starting video"
+        default y
+        help
+            Run a finite BitScrambler loopback test at boot to prove
+            single-cycle Counter-A hardware subtraction (ADDCTIAL + LDCTIAL)
+            and compact 32-entry DAC lookup for Phase5-360, then start the
+            normal RF/video path.
 endmenu
 
 menu "C5VRX experimental video demodulators"

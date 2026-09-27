@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "bs_relative_worker_probe.h"
 #include "bs_relative_middle_probe.h"
+#include "bs_addctia_probe.h"
 #include "phy_phase_tap_probe.h"
 
 void app_main(void)
@@ -20,6 +21,9 @@ void app_main(void)
 #endif
 #if CONFIG_C5VRX_BS_RELATIVE_MIDDLE_PROBE
     bs_relative_middle_probe_run();
+#endif
+#if CONFIG_C5VRX_BS_ADDCTIA_PROBE
+    bs_addctia_probe_run();
 #endif
     ESP_ERROR_CHECK(rf_start());
 #if CONFIG_C5VRX_PHY_PHASE_TAP_PROBE

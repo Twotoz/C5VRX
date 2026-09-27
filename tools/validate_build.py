@@ -31,16 +31,16 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("Golden, FSM capture, relative worker, relative middle, 4-bit, Trajectory, and Phase5-360 BitScrambler programs",
+check("Golden, FSM capture, relative worker, relative middle, addctia probe, 4-bit, Trajectory, and Phase5-360 BitScrambler programs",
       {f.name for f in bsasm_files} == {"fm.bsasm", "fm_relative_golden.bsasm", "fm_phase5_360.bsasm",
                                       "fm_phase5_fsm_capture.bsasm", "bs_relative_worker_probe.bsasm",
-                                      "bs_relative_middle_probe.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
+                                      "bs_relative_middle_probe.bsasm", "bs_addctia_probe.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:
     bsasm = read(bsasm_file)
     check(f"{bsasm_file.name}: cfg eof_on downstream", "cfg eof_on downstream" in bsasm)
-    expected_trailing = 10 if bsasm_file.name in {"bs_relative_worker_probe.bsasm", "bs_relative_middle_probe.bsasm"} else 0
+    expected_trailing = 10 if bsasm_file.name in {"bs_relative_worker_probe.bsasm", "bs_relative_middle_probe.bsasm", "bs_addctia_probe.bsasm"} else 0
     check(f"{bsasm_file.name}: cfg trailing_bytes {expected_trailing}",
           f"cfg trailing_bytes {expected_trailing}" in bsasm)
     check(f"{bsasm_file.name}: cfg prefetch true", "cfg prefetch true" in bsasm)
@@ -55,7 +55,7 @@ c_names = [f.name for f in c_files]
 video_c = read(MAIN / "video.c")
 menu_lifecycle = video_c.split("static void video_set_menu_mode", 1)[1].split("static void menu_cycle_standard_mode", 1)[0]
 
-check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "bs_relative_worker_probe.c", "bs_relative_middle_probe.c", "phy_phase_tap_probe.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "direct_gain.c", "menu_raster.c"},
+check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "bs_relative_worker_probe.c", "bs_relative_middle_probe.c", "bs_addctia_probe.c", "phy_phase_tap_probe.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "direct_gain.c", "menu_raster.c"},
       f"found: {c_names}")
 check("main.c present", "main.c" in c_names)
 check("rf.c present", "rf.c" in c_names)
@@ -656,11 +656,11 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, FSM capture, relative worker, relative middle, 4-bit, Trajectory, and Phase5-360 BitScrambler programs in CMakeLists",
+check("Golden, FSM capture, relative worker, relative middle, addctia probe, 4-bit, Trajectory, and Phase5-360 BitScrambler programs in CMakeLists",
       bs_srcs == ["fm.bsasm", "fm_relative_golden.bsasm", "fm_phase5_360.bsasm",
                   "bs_relative_worker_probe.bsasm", "bs_relative_middle_probe.bsasm",
                   "fm_phase5_fsm_capture.bsasm", "fm4.bsasm",
-                  "fm_traj.bsasm"], f"found: {bs_srcs}")
+                  "fm_traj.bsasm", "bs_addctia_probe.bsasm"], f"found: {bs_srcs}")
 
 # Phase5-360 architecture and simulator validation
 TOOLS_DIR = ROOT / "tools"
