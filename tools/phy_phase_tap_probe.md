@@ -38,3 +38,48 @@ realtime BitScrambler.
 Boot scanning briefly changes modem diagnostic selector registers before
 video starts; the option is intended only for an experimental flash. No CPU
 preprocessing is introduced into the live IQ path.
+
+## Live Hardware Probe Results (ESP32-C5 revision v1.0)
+
+Tested on a Seeed Studio XIAO ESP32-C5 on `COM10` on 2026-09-27 using automated
+serial boot capture (`tools/run_probe_capture.py`) and sensitivity comparison
+(`tools/compare_vtx_on_off.py`) across four diagnostic selector states.
+
+### 1. Carrier Observation (VTX ON, A1 5865 MHz)
+
+- Reference IQ: `unique = 32`, `entropy = 4.31`, `step = 4.84`. Active carrier
+  modulation verified across the full phase circle.
+- Ranked candidates:
+  - `lanes=9..13`: `unique = 32`, `entropy = 3.98`, `step = 5.79` (Rank #1 across all 4 selectors).
+  - `lanes=8..12`: `unique = 20`, `entropy = 3.97`, `step = 6.35`.
+  - `lanes=10..14`: `unique = 32`, `entropy = 3.44`, `step = 5.14`.
+  - `lanes=0..4` / `1..5` / `2..6`: `unique = 31..32`, `entropy = 2.96..3.18`.
+
+### 2. A/B Carrier Elimination (VTX OFF vs. VTX ON)
+
+Turning off the VTX collapsed the reference IQ to `unique = 4..5` (`entropy = 1.11..1.39`).
+All candidate groups with $\ge 16$ observed states disappeared.
+
+Per-lane transition sensitivity analysis revealed the physical nature of the bus:
+
+| Lanes | VTX ON Transitions | VTX OFF Transitions | Sensitivity ($\Delta$) | Physical Bus Function |
+| :--- | :--- | :--- | :--- | :--- |
+| `DIAG[4..7]` | ~240..250 | **0 (Silent)** | +245 (Infinite) | **RF carrier-dependent** |
+| `DIAG[8..9]` | ~290..300 | **0 (Silent)** | +295 (Infinite) | **RF carrier-dependent** (known Q-high) |
+| `DIAG[6..9]` (IQ_REF) | ~295 | **0 (Silent)** | +295 (Infinite) | **RF carrier-dependent** (Q4) |
+| `DIAG[16..19]` (I4) | ~390 | ~180 | +210 (2.2x) | RF carrier-dependent (I4) |
+| `DIAG[10..15]` | ~280 | ~250 | ~0 (1.0x) | **Internal digital clock / BB counter** |
+| `DIAG[0..1]` | ~240 | ~260 | ~0 (1.0x) | Internal digital clock divider |
+| `DIAG[20..31]` (12 lanes) | 0 | 0 | 0 (Static `0x23`) | Unconnected / unused in tested configs |
+
+### 3. Conclusions
+
+1. **No 5-bit Demodulated Phase Tap:** The apparent candidate `lanes 9..13` was a spurious
+   composite artifact mixing 1 carrier bit (`lane 9` = Q[6]) with 4 free-running internal
+   clock/counter bits (`lanes 10..13`). The ESP32-C5 modem diagnostics expose raw ADC
+   samples, not an internal CORDIC/atan2 phase bus.
+2. **Discovery of 6-bit Q (`DIAG[4:9]`):** Lanes 4, 5, 6, 7, 8, 9 form a contiguous 6-bit
+   bus that strictly shuts down to zero transitions when no carrier is present. In addition
+   to the standard 4-bit Q (`DIAG[6:9]`), lanes 4 and 5 provide two additional lower bits
+   of Q precision (`Q[9:4]`), offering potential for higher-resolution baseband captures.
+
