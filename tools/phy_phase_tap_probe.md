@@ -70,16 +70,29 @@ Per-lane transition sensitivity analysis revealed the physical nature of the bus
 | `DIAG[16..19]` (I4) | ~390 | ~180 | +210 (2.2x) | RF carrier-dependent (I4) |
 | `DIAG[10..15]` | ~280 | ~250 | ~0 (1.0x) | **Internal digital clock / BB counter** |
 | `DIAG[0..1]` | ~240 | ~260 | ~0 (1.0x) | Internal digital clock divider |
-| `DIAG[20..31]` (12 lanes) | 0 | 0 | 0 (Static `0x23`) | Unconnected / unused in tested configs |
+| `DIAG[20..31]` (12 lanes) | 0 | 0 | 0 (Static `0x23`) | Inactive in these 4 selector configs (earlier full-modem probes under other conditions saw activity) |
 
-### 3. Conclusions
+### 3. Conclusions and Next Steps
 
-1. **No 5-bit Demodulated Phase Tap:** The apparent candidate `lanes 9..13` was a spurious
-   composite artifact mixing 1 carrier bit (`lane 9` = Q[6]) with 4 free-running internal
-   clock/counter bits (`lanes 10..13`). The ESP32-C5 modem diagnostics expose raw ADC
-   samples, not an internal CORDIC/atan2 phase bus.
-2. **Discovery of 6-bit Q (`DIAG[4:9]`):** Lanes 4, 5, 6, 7, 8, 9 form a contiguous 6-bit
-   bus that strictly shuts down to zero transitions when no carrier is present. In addition
-   to the standard 4-bit Q (`DIAG[6:9]`), lanes 4 and 5 provide two additional lower bits
-   of Q precision (`Q[9:4]`), offering potential for higher-resolution baseband captures.
+1. **Lanes 9..13 Are Not a Convincing Phase Tap in this Configuration:**
+   The apparent candidate `lanes 9..13` was a composite artifact mixing 1 carrier-sensitive bit
+   (`lane 9` = Q[6]) with 4 free-running internal clock/counter bits (`lanes 10..13`) that remain
+   active at ~250 transitions with VTX OFF. Because this boot probe reads lane groups sequentially
+   via asynchronous CPU snapshots, it cannot demonstrate simultaneous phase correlation or rule
+   out unprobed modem selector configurations. However, under the tested states, no standalone
+   demodulated phase bus is evident.
+2. **`DIAG[4:5]` as a Strong Q Candidate (Requires Dump-Q Verification):**
+   The transition shutdown with VTX OFF proves that `DIAG[4:5]` are genuinely RF-carrier
+   dependent in this configuration, making them candidate lower bits for a 6-bit Q bus (`Q[4:9]`).
+   However, transition counts alone do not establish bit identity or ordering. As established in
+   `docs/continuous-iq-findings.md`, `DIAG[6:9]` was previously confirmed as `Q[6:9]` via bit-by-bit
+   correlation against aligned modem SRAM dump data. The decisive follow-up experiment is to
+   perform the same aligned comparison between `DIAG[4:5]` and dump `Q[4:5]` with the VTX ON.
+3. **Architectural Implications:**
+   Even if confirmed, `Q[4:9]` yields $4\times$ as many discrete Q code values, but does not
+   automatically translate to $4\times$ useful resolution or demodulator gain: I remains 4-bit
+   unless matching bits are found, and the live production path is pinned to 8 data GPIOs
+   for PARLIO RX (currently 4Q + 4I). An aligned `DIAG[4:5]` $\leftrightarrow$ dump `Q[4:5]` test is
+   the proper gating prerequisite before considering any frontend or BitScrambler changes.
+
 
