@@ -1080,8 +1080,7 @@ static const char *rx_profile_name(void)
 
 static uint8_t profile_gain_max(void)
 {
-    const arc_gain_table_t *table = rf_get_arc_gain_table();
-    return (table && table->max_index > 0) ? table->max_index : 81u;
+    return 62u;
 }
 
 static uint8_t profile_gain_min(void) __attribute__((unused));
@@ -1100,7 +1099,7 @@ static uint8_t profile_gain_min(void)
 static uint8_t profile_gain_clamp(int gain)
 {
     (void)gain;
-    return profile_gain_max();
+    return 62u;
 }
 
 static unsigned profile_search_probe_ticks(void)
@@ -1427,7 +1426,7 @@ static void settings_load(void)
     /* MAX GAIN ALWAYS: override any saved AGC mode/gain. All RF stages pinned
      * at the vendor table maximum for peak sensitivity. AGC is disabled. */
     s_agc_mode = ANALOG_AGC_MANUAL;
-    s_current_gain = rf_get_arc_gain_table()->max_index;
+    s_current_gain = 62u;
     s_shadow_gain = s_current_gain;
     rf_set_rx_gain(true, s_current_gain);
     s_menu_boot_btn_enabled = settings.menu_boot_btn_enabled != 0;

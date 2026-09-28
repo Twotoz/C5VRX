@@ -434,10 +434,9 @@ esp_err_t rf_start(void)
      * C5VRX freezes receiver ownership. */
     arc_capture_vendor_state();
 
-    /* Now that max_index is known, force gain to absolute maximum. */
-    uint8_t max_gain = s_arc_gain_table.max_index > 0 ? s_arc_gain_table.max_index : 81u;
-    phy_force_rx_gain(true, max_gain);
-    s_current_gain_val = max_gain;
+    /* Force gain to 62u unconditionally. */
+    phy_force_rx_gain(true, 62u);
+    s_current_gain_val = 62u;
 
     /* Disable PHY PLL / RXCAL tracking timer if compiled in, so it never
      * recalibrates RF / RX hardware during continuous analog video reception.
@@ -562,9 +561,8 @@ void rf_set_rx_gain(bool force, uint8_t gain_idx)
 {
     (void)force;
     (void)gain_idx;
-    uint8_t max_gain = s_arc_gain_table.max_index > 0 ? s_arc_gain_table.max_index : 81u;
-    s_current_gain_val = max_gain;
-    phy_force_rx_gain(true, max_gain);
+    s_current_gain_val = 62u;
+    phy_force_rx_gain(true, 62u);
 }
 
 uint32_t rf_get_rx_gain_reg(void)
