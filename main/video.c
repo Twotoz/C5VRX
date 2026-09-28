@@ -143,7 +143,6 @@ BITSCRAMBLER_PROGRAM(s_fm_relative_golden_program, "fm_relative_golden");
 BITSCRAMBLER_PROGRAM(s_fm_phase5_360_program, "fm_phase5_360");
 BITSCRAMBLER_PROGRAM(s_fm_fsm_capture_program, "fm_phase5_fsm_capture");
 BITSCRAMBLER_PROGRAM(s_fm4_program, "fm4");
-BITSCRAMBLER_PROGRAM(s_fm_traj_program, "fm_traj");
 
 /* ----- Fixed production constants ----- */
 #define IQ_RATE_HZ       40000000u   /* MODEM_DIAG / PARLIO RX clock */
@@ -261,6 +260,7 @@ typedef enum {
     RX_PROFILE_ARC_V3_EXP,
     RX_PROFILE_ARC_V5_AUTOTUNE_EXP,
     RX_PROFILE_DIRECT_GAIN,
+    RX_PROFILE_DIRECT_GAIN_V1,
     RX_PROFILE_COUNT,
 } rx_profile_t;
 
@@ -1114,6 +1114,7 @@ static const char *rx_profile_name(void)
     case RX_PROFILE_ARC_V3_EXP:  return "ARC V3 EXP";
     case RX_PROFILE_ARC_V5_AUTOTUNE_EXP: return "ARC V5 AUTOTUNE";
     case RX_PROFILE_DIRECT_GAIN: return "DIRECT GAIN V2";
+    case RX_PROFILE_DIRECT_GAIN_V1: return "DIRECT GAIN V1";
     default:                     return "BALANCED";
     }
 }
@@ -1142,6 +1143,7 @@ static uint8_t profile_gain_max(void)
     case RX_PROFILE_ARC_V3_EXP:
     case RX_PROFILE_ARC_V5_AUTOTUNE_EXP:
     case RX_PROFILE_DIRECT_GAIN: return rf_get_arc_gain_table()->max_index;
+    case RX_PROFILE_DIRECT_GAIN_V1: return rf_get_arc_gain_table()->max_index;
     default:                     return 62u;
     }
 }
@@ -1189,25 +1191,7 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
-    return s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ? "TRAJ V2" : "GOLDEN";
-}
-
-static void cycle_demod_mode(void)
-{
-    s_demod_mode = s_demod_mode == DEMOD_MODE_GOLDEN_PHASE5 ?
-                   DEMOD_MODE_TRAJECTORY_V2 : DEMOD_MODE_GOLDEN_PHASE5;
-    /* TRAJ V2 and 4BIT@80 use different BitScrambler/output contracts.
-     * Selecting TRAJ V2 therefore moves the DAC back to its proven 6-bit path.
-     * The inverse action is handled on the DAC control: selecting 4BIT@80
-     * automatically returns to GOLDEN instead of making 4-bit unreachable. */
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)
-        s_output_mode = VIDEO_OUTPUT_6BIT_40;
-
-    /* Semantic sync interpretation changes with the demod LUT. Do not carry
-     * PAL/NTSC votes or lock age from the previous demodulator across an A/B
-     * switch. receive_generation also makes the controller relearn cleanly. */
-    video_standard_detector_reset();
-    ++s_profile_generation; /* reset Fusion temporal/optimizer state for clean A/B */
+    return "GOLDEN";
 }
 
 static void apply_rf_bandwidth(bool bw40)
@@ -1362,6 +1346,7 @@ static uint8_t apply_rx_gain_tracked(uint8_t gain)
     /* Direct Gain already owns its slew. A second limit would leave its
      * controller state one or more gain indices ahead of the PHY. */
     if (s_rx_profile != RX_PROFILE_DIRECT_GAIN &&
+        s_rx_profile != RX_PROFILE_DIRECT_GAIN_V1 &&
         !emergency && !cold_start && s_current_gain > 0) {
         int step = (int)gain - (int)s_current_gain;
         if (step > 4) step = 4;
@@ -1522,40 +1507,15 @@ static void settings_load(void)
     if (settings.output_mode <= VIDEO_OUTPUT_4BIT_80) s_output_mode = (video_output_mode_t)settings.output_mode;
     /* v3 used this exact byte as zero-initialized reserved storage, so old
      * Range-v2 settings migrate losslessly with the proven GOLDEN demod. */
-    if (legacy_v3) {
-        s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
-    } else if (settings.demod_mode < DEMOD_MODE_COUNT) {
-        s_demod_mode = (demod_mode_t)settings.demod_mode;
-    }
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
     if (settings.video_std_mode <= VIDEO_STD_MODE_PAL) s_video_std_mode = (video_standard_mode_t)settings.video_std_mode;
-    if (settings.rx_profile < RX_PROFILE_COUNT) {
-        s_rx_profile = (rx_profile_t)settings.rx_profile;
-        if (s_rx_profile == RX_PROFILE_ARC || s_rx_profile == RX_PROFILE_BALANCED) {
-            s_rx_profile = RX_PROFILE_DIRECT_GAIN;
-        }
-    } else {
-        s_rx_profile = RX_PROFILE_DIRECT_GAIN;
-    }
-    if (s_rx_profile == RX_PROFILE_RANGE_EXP ||
-        s_rx_profile == RX_PROFILE_FUSION_EXP ||
-        s_rx_profile == RX_PROFILE_ARC ||
-        s_rx_profile == RX_PROFILE_ARC_V3_EXP ||
-        s_rx_profile == RX_PROFILE_ARC_V5_AUTOTUNE_EXP ||
-        s_rx_profile == RX_PROFILE_DIRECT_GAIN) {
-        /* RANGE/FUSION have one deterministic RF shape across reboot: the
-         * proven full-video filter, with no acquisition-time filter or AFC writes. */
-        s_rf_bw_mode = RF_BW_MODE_BW40;
-        s_afc_mode = AFC_MODE_OFF;
-        apply_rf_bandwidth(true);
-    } else if (s_rx_profile == RX_PROFILE_RANGE_V2_EXP) {
-        /* RANGE V2 always boots from the proven full-video shape, then permits
-         * BW/AFC changes only while acquiring/relearning. Persisted menu fields
-         * must not silently turn it into a different controller after reboot. */
-        s_rf_bw_mode = RF_BW_MODE_AUTO;
-        s_afc_mode = AFC_MODE_AUTO;
-        apply_rf_bandwidth(true);
-    }
+    s_rx_profile = settings.rx_profile == RX_PROFILE_DIRECT_GAIN_V1 ?
+                   RX_PROFILE_DIRECT_GAIN_V1 :
+                   settings.rx_profile == RX_PROFILE_ARC_V3_EXP ?
+                   RX_PROFILE_ARC_V3_EXP : RX_PROFILE_DIRECT_GAIN;
+    s_rf_bw_mode = RF_BW_MODE_BW40;
+    s_afc_mode = AFC_MODE_OFF;
+    apply_rf_bandwidth(true);
     if (s_video_std_mode == VIDEO_STD_MODE_PAL) s_video_std = VIDEO_STD_PAL;
     else if (s_video_std_mode == VIDEO_STD_MODE_NTSC) s_video_std = VIDEO_STD_NTSC;
     if (settings.agc_mode <= ANALOG_AGC_MANUAL) s_agc_mode = (analog_agc_mode_t)settings.agc_mode;
@@ -1574,6 +1534,7 @@ static void settings_load(void)
         case RX_PROFILE_ARC_V3_EXP:   s_current_gain = rf_get_arc_survival_gain(); break;
         case RX_PROFILE_ARC_V5_AUTOTUNE_EXP: s_current_gain = rf_get_arc_survival_gain(); break;
         case RX_PROFILE_DIRECT_GAIN:  s_current_gain = rf_get_arc_survival_gain(); break;
+        case RX_PROFILE_DIRECT_GAIN_V1: s_current_gain = rf_get_arc_survival_gain(); break;
         default:                      s_current_gain = 52u; break;
         }
         s_current_gain = profile_gain_clamp(s_current_gain);
@@ -2919,7 +2880,9 @@ static void lab_print_arc_oracle(void)
 
 static void apply_rx_profile(rx_profile_t profile)
 {
-    if (profile >= RX_PROFILE_COUNT) profile = RX_PROFILE_BALANCED;
+    if (profile != RX_PROFILE_DIRECT_GAIN &&
+        profile != RX_PROFILE_DIRECT_GAIN_V1 &&
+        profile != RX_PROFILE_ARC_V3_EXP) profile = RX_PROFILE_DIRECT_GAIN;
 
     /* Leave any previous experimental state first. */
     if (s_profile_fft_forced) {
@@ -3008,6 +2971,7 @@ static void apply_rx_profile(rx_profile_t profile)
         break;
 
     case RX_PROFILE_DIRECT_GAIN:
+    case RX_PROFILE_DIRECT_GAIN_V1:
     case RX_PROFILE_ARC_V3_EXP:
     case RX_PROFILE_ARC_V5_AUTOTUNE_EXP:
         /* Hardware-proven gain-first experiment. Keep the RF shape fixed so
@@ -3040,7 +3004,10 @@ static void apply_rx_profile(rx_profile_t profile)
 
 static void cycle_rx_profile(void)
 {
-    rx_profile_t next = (rx_profile_t)(((unsigned)s_rx_profile + 1u) % RX_PROFILE_COUNT);
+    rx_profile_t next = s_rx_profile == RX_PROFILE_DIRECT_GAIN ?
+                        RX_PROFILE_DIRECT_GAIN_V1 :
+                        s_rx_profile == RX_PROFILE_DIRECT_GAIN_V1 ?
+                        RX_PROFILE_ARC_V3_EXP : RX_PROFILE_DIRECT_GAIN;
     apply_rx_profile(next);
     settings_save();
     printf("[RX PROFILE] -> %s (BW=%s AFC=%s FFT=%s)\n",
@@ -3058,7 +3025,7 @@ static void leave_experimental_profile(void)
         rf_set_fft_scale_force(false, 0);
         s_profile_fft_forced = false;
     }
-    s_rx_profile = RX_PROFILE_RANGE_EXP;
+    s_rx_profile = RX_PROFILE_DIRECT_GAIN;
     ++s_profile_generation;
 }
 
@@ -3399,7 +3366,7 @@ static void menu_draw_rf_page(void)
 {
     char buf[32];
     menu_draw_page_title("RF FRONTEND",
-                         s_rx_profile == RX_PROFILE_ARC ? "DEFAULT" : "EXPERIMENTAL");
+                         s_rx_profile == RX_PROFILE_DIRECT_GAIN ? "DEFAULT" : "A/B");
     menu_ui_value_box(100, 22, 276, "RX PROFILE", rx_profile_name());
     menu_ui_value_box(100, 34, 130, "BANDWIDTH", rf_bw_mode_name());
     menu_ui_value_box(238, 34, 138, "AGC", agc_mode_name());
@@ -3428,8 +3395,7 @@ static void menu_draw_afc_page(void)
 static void menu_draw_video_page(void)
 {
     char detected[24];
-    bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80 ||
-                        s_demod_mode == DEMOD_MODE_TRAJECTORY_V2;
+    bool experimental = s_output_mode == VIDEO_OUTPUT_4BIT_80;
     menu_draw_page_title("VIDEO OUTPUT", experimental ? "EXPERIMENTAL" : "DEFAULT");
     menu_ui_value_box(100, 22, 130, "DAC", output_mode_name());
     menu_ui_value_box(238, 22, 138, "DEMOD", demod_mode_name());
@@ -3443,7 +3409,7 @@ static void menu_draw_video_page(void)
         snprintf(detected, sizeof(detected), "SEARCHING");
     }
     menu_ui_value_box(238, 34, 138, "DETECTED", detected);
-    menu_ui_text("LONG:DAC  2S:DEMOD - APPLIES ON EXIT", 100, 47, UI_MUTED);
+    menu_ui_text("LONG:DAC - APPLIES ON EXIT", 100, 47, UI_MUTED);
 }
 
 static void menu_draw_exit_page(void)
@@ -3483,9 +3449,7 @@ static void quiet_tx_interrupts(void)
 static void start_flight_demodulator(void)
 {
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
-    if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
-        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_traj_program));
-    } else if (s_output_mode == VIDEO_OUTPUT_4BIT_80) {
+    if (s_output_mode == VIDEO_OUTPUT_4BIT_80) {
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm4_program));
     } else {
 #if CONFIG_C5VRX_PHASE5_360_LIVE
@@ -3860,13 +3824,13 @@ static void open_recovery_menu(void)
     s_video_std_mode = VIDEO_STD_MODE_AUTO;
     s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
     s_output_mode = VIDEO_OUTPUT_6BIT_40;
-    apply_rx_profile(RX_PROFILE_ARC);
+    apply_rx_profile(RX_PROFILE_DIRECT_GAIN);
     video_standard_detector_reset();
     s_menu_cursor = 0;
     s_menu_timeout_ticks = 0;
     settings_save();
     video_set_menu_mode(true);
-    printf("[RECOVERY] GOLDEN + 6BIT@40 + ARC restored; menu %s\n",
+    printf("[RECOVERY] GOLDEN + 6BIT@40 + DIRECT GAIN V2 restored; menu %s\n",
            s_menu_active ? "opened" : "unavailable");
 }
 
@@ -3927,18 +3891,8 @@ static void handle_button_long_click(void)
         case 4: /* VIDEO OUTPUT */
             s_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
                             VIDEO_OUTPUT_4BIT_80 : VIDEO_OUTPUT_6BIT_40;
-            if (s_output_mode == VIDEO_OUTPUT_4BIT_80 &&
-                s_demod_mode == DEMOD_MODE_TRAJECTORY_V2) {
-                /* 4BIT@80 has its own fm4 BitScrambler contract. Keep the
-                 * combination valid by returning to GOLDEN automatically. */
-                s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
-                video_standard_detector_reset();
-                ++s_profile_generation;
-                printf("[MENU: OUTPUT] -> 4BIT@80 (EXPERIMENTAL); DEMOD -> GOLDEN\n");
-            } else {
-                printf("[MENU: OUTPUT] -> %s%s\n", output_mode_name(),
-                       s_output_mode == VIDEO_OUTPUT_4BIT_80 ? " (EXPERIMENTAL)" : "");
-            }
+            printf("[MENU: OUTPUT] -> %s%s\n", output_mode_name(),
+                   s_output_mode == VIDEO_OUTPUT_4BIT_80 ? " (EXPERIMENTAL)" : "");
             settings_save();
             break;
         case 5: /* SAVE & EXIT */
@@ -3980,7 +3934,6 @@ static void analog_agc_task(void *arg)
     bool btn_long_fired = false;
     bool btn_scan_fired = false;
     bool btn_profile_fired = false;
-    bool btn_demod_fired = false;
     bool btn_recovery_fired = false;
     bool was_locked = false;
     range_control_t range_controller;
@@ -4035,7 +3988,6 @@ static void analog_agc_task(void *arg)
             btn_long_fired = false;
             btn_scan_fired = false;
             btn_profile_fired = false;
-            btn_demod_fired = false;
             btn_recovery_fired = false;
         } else {
             int btn_level = gpio_get_level(BOOT_BTN_GPIO);
@@ -4062,18 +4014,6 @@ static void analog_agc_task(void *arg)
                         menu_render_menu();
                         s_menu_timeout_ticks = 0;
                     }
-                } else if (s_menu_active && s_menu_cursor == 4) {
-                    if (btn_ticks >= 40 && !btn_demod_fired) {
-                        btn_demod_fired = true;
-                        btn_long_fired = true;
-                        cycle_demod_mode();
-                        settings_save();
-                        printf("[MENU: DEMOD] -> %s%s\n", demod_mode_name(),
-                               s_demod_mode == DEMOD_MODE_TRAJECTORY_V2 ?
-                               " (6BIT@40 forced)" : "");
-                        menu_render_menu();
-                        s_menu_timeout_ticks = 0;
-                    }
                 } else if (btn_ticks >= 12 && !btn_long_fired) {
                     btn_long_fired = true;
                     handle_button_long_click();
@@ -4091,12 +4031,6 @@ static void analog_agc_task(void *arg)
                     } else if (!btn_profile_fired && btn_ticks >= 2) {
                         handle_button_short_click();
                     }
-                } else if (s_menu_active && s_menu_cursor == 4) {
-                    if (!btn_demod_fired && btn_ticks >= 12) {
-                        handle_button_long_click(); /* normal DAC-output action */
-                    } else if (!btn_demod_fired && btn_ticks >= 2) {
-                        handle_button_short_click();
-                    }
                 } else if (!btn_long_fired && btn_ticks >= 2) {
                     handle_button_short_click();
                 }
@@ -4104,7 +4038,6 @@ static void analog_agc_task(void *arg)
                 btn_long_fired = false;
                 btn_scan_fired = false;
                 btn_profile_fired = false;
-                btn_demod_fired = false;
                 btn_recovery_fired = false;
             }
         }
@@ -4350,6 +4283,30 @@ static void analog_agc_task(void *arg)
                 sampled_gain_epoch == s_gain_transition_count)
                 direct_gain_v2_slow_publish(&slow);
             /* Fast observer owns all V2 decisions and PHY gain writes. */
+            settle_ticks = 0;
+            goto control_tail;
+        }
+
+        if (s_rx_profile == RX_PROFILE_DIRECT_GAIN_V1 &&
+            s_agc_mode == ANALOG_AGC_ACTIVE) {
+            int rssi_val = -127;
+            bool rssi_ok = rf_try_get_wideband_rssi_dbm(&rssi_val);
+            direct_gain_observation_t dg_obs = {
+                .p_median = p_median, .q_phase = q_phase,
+                .clip_permille = clip_permille,
+                .origin_permille = origin_permille,
+                .winding_permille = winding_permille,
+                .rssi_dbm = rssi_ok ? rssi_val : -127,
+                .rssi_valid = rssi_ok,
+                .survival_gain = rf_get_arc_survival_gain(),
+            };
+            target_gain = direct_gain_tick(&s_direct_gain_controller, &dg_obs);
+            s_shadow_gain = target_gain;
+            s_agc_state = s_direct_gain_controller.state == DIRECT_GAIN_HOLD ?
+                          AGC_STATE_TRACK : AGC_STATE_LEARN;
+            if (target_gain != s_current_gain)
+                direct_gain_sync_applied(&s_direct_gain_controller,
+                                         apply_rx_gain_tracked(target_gain));
             settle_ticks = 0;
             goto control_tail;
         }
@@ -4799,14 +4756,14 @@ static void console_diag_task(void *arg)
                     apply_rx_profile(RX_PROFILE_DIRECT_GAIN);
                     settings_save();
                     printf("[RX PROFILE] -> DIRECT GAIN V2 (physical tuple fast observer)\n");
+                } else if (c == 'I') {
+                    apply_rx_profile(RX_PROFILE_DIRECT_GAIN_V1);
+                    settings_save();
+                    printf("[RX PROFILE] -> DIRECT GAIN V1 (50 ms controller)\n");
                 } else if (c == 'Y') {
                     apply_rx_profile(RX_PROFILE_ARC_V3_EXP);
                     settings_save();
                     printf("[RX PROFILE] -> ARC V3 EXP (gain-first raw-Q4 controller)\n");
-                } else if (c == 'Z') {
-                    apply_rx_profile(RX_PROFILE_ARC_V5_AUTOTUNE_EXP);
-                    settings_save();
-                    printf("[RX PROFILE] -> ARC V5 AUTOTUNE (predictive V3 + persistent self-calibration)\n");
                 } else if (c == 'X') {
                     cycle_rx_profile();
                 } else if (c == 't') {
@@ -4944,7 +4901,7 @@ static void console_diag_task(void *arg)
                            (s_afc_mode == AFC_MODE_HOLD) ? "HOLD (Offset Frozen)" : "OFF (0 kHz)");
                     printf(" RX Profile:                 %s%s\n",
                            rx_profile_name(),
-                           (s_rx_profile == RX_PROFILE_DIRECT_GAIN || s_rx_profile == RX_PROFILE_ARC_V3_EXP || s_rx_profile == RX_PROFILE_ARC) ? " [DEFAULT]" : " [EXPERIMENTAL]");
+                           s_rx_profile == RX_PROFILE_DIRECT_GAIN ? " [DEFAULT]" : " [A/B]");
                     printf(" RF Bandwidth:               mode=%s active=%s\n",
                            rf_bw_mode_name(), s_current_bw40 ? "BW40" : "BW20");
                     printf(" PHY Environment:            NF=%s%d dBm RSSI=%s%d dBm FFT_Q4=%s best=%d\n",
@@ -5075,9 +5032,9 @@ static void console_diag_task(void *arg)
                     printf("  'U':         ARC V3 RX AUTO LAB (gain -> BW -> center -> repeated A/B proof)\n");
                     printf("  'S':         PRE-Q4 self-noise A/B (live TX vs DAC/PARLIO electrically quiet)\n");
                     printf("  'R':         Run RSSI & Inverse-Q4 Oracle Probe (G15..G81 sweep)\n");
-                    printf("  'D':         Select DIRECT GAIN V2 profile (physical tuple fast observer)\n");
+                    printf("  'D'/'I'/'Y': Direct Gain V2 / Direct Gain V1 / ARC V3\n");
                     printf("  'K':         Erase stored PHY calibration and reboot for a fresh vendor calibration\n");
-                    printf("  'X':         Cycle RX profile (Balanced/Range/Blocker/Recovery/Auto/ARC/Fusion/Range V2/Direct Gain)\n");
+                    printf("  'X':         Cycle RX profile (V2/V1/ARC V3)\n");
                     printf("  'p'/'r':     Machine-readable PHY/Q4 snapshot / reset lag counters\n");
                     printf("  't'/'q':     Vendor timer inventory / quiet unsolicited lock message\n");
                     printf("  'l':         Mark a visible lag/freeze for correlation\n");

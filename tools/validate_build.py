@@ -31,7 +31,7 @@ def read(path):
 
 # ---- BitScrambler checks ----
 bsasm_files = list(MAIN.glob("*.bsasm"))
-check("Golden, FSM capture, relative worker, relative middle, addctia probe, 4-bit, Trajectory, and Phase5-360 BitScrambler programs",
+check("BitScrambler source artifacts, including historical Trajectory, remain available",
       {f.name for f in bsasm_files} == {"fm.bsasm", "fm_relative_golden.bsasm", "fm_phase5_360.bsasm",
                                       "fm_phase5_fsm_capture.bsasm", "bs_relative_worker_probe.bsasm",
                                       "bs_relative_middle_probe.bsasm", "bs_addctia_probe.bsasm", "fm4.bsasm", "fm_traj.bsasm"},
@@ -127,21 +127,19 @@ check("three-second BOOT recovery cannot be blocked by persisted menu state",
       "s_menu_boot_btn_enabled = true;" in all_c and
       "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;" in all_c and
       "s_output_mode = VIDEO_OUTPUT_6BIT_40;" in all_c and
-      "apply_rx_profile(RX_PROFILE_ARC);" in all_c and
-      "[RECOVERY] GOLDEN + 6BIT@40 + ARC restored" in all_c)
+      "apply_rx_profile(RX_PROFILE_DIRECT_GAIN);" in all_c and
+      "[RECOVERY] GOLDEN + 6BIT@40 + DIRECT GAIN V2 restored" in all_c)
 check("experimental BW auto and 4-bit@80 remain opt-in",
       "AUTO EXP" in all_c and "VIDEO_OUTPUT_4BIT_80" in all_c and
       "DAC4_RATE_HZ     80000000u" in all_c)
 check("4BIT@80 remains reachable with a valid GOLDEN pairing",
       's_output_mode = s_output_mode == VIDEO_OUTPUT_6BIT_40 ?' in all_c and
-      "s_demod_mode == DEMOD_MODE_TRAJECTORY_V2" in all_c and
       "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;" in all_c and
-      "DEMOD -> GOLDEN" in all_c and
-      "selecting 4BIT@80" in all_c)
-check("TRAJ V2 keeps its required 6BIT@40 pairing",
-      "if (s_demod_mode == DEMOD_MODE_TRAJECTORY_V2)" in all_c and
-      "s_output_mode = VIDEO_OUTPUT_6BIT_40;" in all_c and
-      "start_flight_demodulator" in all_c)
+      "s_fm4_program" in all_c)
+check("TRAJ V2 is absent from the live demod selector",
+      "cycle_demod_mode" not in all_c and
+      "LONG:DAC - APPLIES ON EXIT" in all_c and
+      "bitscrambler_load_program(s_flight_bs, s_fm_traj_program)" not in all_c)
 check("menu lifecycle does not double-disable BitScrambler",
       menu_lifecycle.count("bitscrambler_disable(s_flight_bs)") == 1)
 check("large menu descriptor chain is transient DMA heap, not static BSS",
@@ -297,16 +295,15 @@ check("Trajectory v2 live loop stays two-bundle and quiet 20M->40M",
       "write 16" in traj_asm and
       "cfg eof_on downstream" in traj_asm and
       "cfg trailing_bytes 0" in traj_asm)
-check("Trajectory v2 is opt-in and Golden remains boot default",
+check("Trajectory v2 is excluded from live firmware and Golden remains default",
       "DEMOD_MODE_GOLDEN_PHASE5 = 0" in all_c and
       "DEMOD_MODE_TRAJECTORY_V2 = 1" in all_c and
       "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5" in all_c and
-      "s_fm_traj_program" in all_c)
-check("Trajectory v2 initial hardware A/B keeps the 6BIT@40 contract",
-      "s_demod_mode == DEMOD_MODE_TRAJECTORY_V2" in all_c and
-      "s_output_mode = VIDEO_OUTPUT_6BIT_40" in all_c and
-      "Selecting TRAJ V2 therefore moves the DAC back" in all_c and
-      "DEMOD -> GOLDEN" in all_c)
+      "s_fm_traj_program" not in all_c)
+check("Trajectory v2 remains a research artifact outside live selection",
+      "DEMOD_MODE_TRAJECTORY_V2 = 1" in all_c and
+      "cycle_demod_mode" not in all_c and
+      "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;" in all_c)
 check("Trajectory v2 supervisor mirrors two-stage token LUT and uncertainty",
       "trajectory_v2_stage1_address" in all_c and
       "trajectory_v2_stage2_address" in all_c and
@@ -325,16 +322,15 @@ check("Trajectory v2 live two-stage address contract is mirrored everywhere",
       "middle raw-I sign" in traj_gen and
       "middle_raw >> 7" in read(ROOT / "tools/range_demod_bench.py") and
       "c5vrx_trajectory_v2_token" in read(MAIN / "trajectory_v2_lut.h"))
-check("demod A/B switch resets semantic lock state",
-      "cycle_demod_mode" in all_c and
-      "video_standard_detector_reset();" in all_c and
-      "receive_generation also makes the controller relearn cleanly" in all_c)
-check("demod mode persists, migrates v3 and defaults safely to Golden",
+check("live demod is fixed Golden with no menu switch",
+      'return "GOLDEN";' in all_c and
+      "cycle_demod_mode" not in all_c and
+      "2S:DEMOD" not in all_c)
+check("stored legacy demod choice migrates safely to Golden",
       "SETTINGS_VERSION 4u" in all_c and
       ".demod_mode = (uint8_t)s_demod_mode" in all_c and
       "legacy_v3 = settings.version == 3u" in all_c and
       "sizeof(persisted_settings_t) == 14u" in all_c and
-      "settings.demod_mode < DEMOD_MODE_COUNT" in all_c and
       "s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5" in all_c)
 check("Trajectory-only uncertainty does not contaminate Golden A/B",
       "active_demod_shadow" in all_c and
@@ -346,13 +342,13 @@ check("PLL-lite remains observation-only and risk-gated",
       "pll_lite_hold_permille" in fusion_header and
       "catastrophic_risk" in fusion_header)
 
-check("Fusion/Range supervisor remains independent from selectable realtime demod",
+check("Fusion/Range supervisor remains independent from Golden live demod",
       "RX_PROFILE_FUSION_EXP" in all_c and
       "RX_PROFILE_RANGE_V2_EXP" in all_c and
       "fusion_optimizer_tick" in all_c and
       "fusion_make_observation" in all_c and
       'target_bitscrambler_add_src("fm.bsasm")' in read(MAIN / "CMakeLists.txt") and
-      'target_bitscrambler_add_src("fm_traj.bsasm")' in read(MAIN / "CMakeLists.txt"))
+      'target_bitscrambler_add_src("fm_traj.bsasm")' not in read(MAIN / "CMakeLists.txt"))
 check("lag correlation covers any tracked PHY write",
       "near_phy_event_count" in all_c and
       "s_last_phy_write_us" in all_c and
@@ -377,36 +373,26 @@ check("unsafe undocumented gain/filter ROM controls remain out of production",
           "phy_rxiq_set_reg(",
       )))
 
-check("ARC is the production default and legacy RX profiles remain explicit",
-      "RX_PROFILE_BALANCED = 0" in all_c and
-      "RX_PROFILE_RANGE_EXP" in all_c and
-      "RX_PROFILE_BLOCKER_EXP" in all_c and
-      "RX_PROFILE_RECOVERY_EXP" in all_c and
-      "RX_PROFILE_AUTO_EXP" in all_c and
-      "RX_PROFILE_ARC" in all_c and
-      "RX_PROFILE_FUSION_EXP" in all_c and
-      "RX_PROFILE_RANGE_V2_EXP" in all_c and
+check("only V2, V1 and ARC V3 are selectable automatic gain profiles",
+      "RX_PROFILE_DIRECT_GAIN_V1" in all_c and
       "RX_PROFILE_ARC_V3_EXP" in all_c and
-      "s_rx_profile = RX_PROFILE_ARC" in all_c and
-      "s_rf_bw_mode = RF_BW_MODE_BW40" in all_c)
-check("Range v2 combines Fusion with acquisition-only BW/AFC and full overload headroom",
-      "RX_PROFILE_RANGE_V2_EXP" in all_c and
-      'return "RANGE V2"' in all_c and
-      "s_rf_bw_mode = RF_BW_MODE_AUTO" in all_c and
-      "s_last_fusion_risk >= 450" in all_c and
-      "goto profile_post_gain" in all_c and
-      "Persisted menu fields" in all_c and
-      "fusion_optimizer_set_gain_floor" in fusion_optimizer and
-      "RX_PROFILE_RANGE_V2_EXP:return 2u" in all_c)
+      "s_rx_profile == RX_PROFILE_DIRECT_GAIN ?" in all_c and
+      "RX_PROFILE_DIRECT_GAIN_V1 :" in all_c and
+      "RX_PROFILE_ARC_V3_EXP : RX_PROFILE_DIRECT_GAIN" in all_c and
+      "apply_rx_profile(RX_PROFILE_ARC_V5_AUTOTUNE_EXP);" not in all_c)
+check("stored legacy gain profiles migrate to default V2",
+      "settings.rx_profile == RX_PROFILE_DIRECT_GAIN_V1" in all_c and
+      "settings.rx_profile == RX_PROFILE_ARC_V3_EXP" in all_c and
+      "RX_PROFILE_ARC_V3_EXP : RX_PROFILE_DIRECT_GAIN" in all_c)
 
 check("RF menu preserves BW control and adds two-second profile selector",
       "LONG:BW  2S:PROFILE" in all_c and
       "btn_ticks >= 40" in all_c and
       "cycle_rx_profile();" in all_c)
-check("VIDEO menu exposes explicit two-second demod selector",
-      "LONG:DAC  2S:DEMOD" in all_c and
-      "cycle_demod_mode();" in all_c and
-      "btn_demod_fired" in all_c)
+check("VIDEO menu has only the Golden live demodulator",
+      "LONG:DAC - APPLIES ON EXIT" in all_c and
+      "cycle_demod_mode();" not in all_c and
+      "btn_demod_fired" not in all_c)
 check("experimental PHY environment reads stay out of the range default",
       "s_rx_profile == RX_PROFILE_AUTO_EXP && ++phy_metric_ticks >= 5" in all_c and
       "rf_try_get_noise_floor_dbm" in all_c and
@@ -468,10 +454,10 @@ check("ARC V3 preserves zero-write Q4 lock and overload protection",
       "arc->severe_ticks >= 2u" in arc_v3 and
       "step_gain(arc, -4)" in arc_v3)
 arc_v5 = read(MAIN / "arc_v5_autotune.c") + read(MAIN / "arc_v5_autotune.h")
-check("ARC V5 AUTOTUNE is an explicit predictive profile over ARC V3",
+check("ARC V5 research implementation is not selectable",
       "RX_PROFILE_ARC_V5_AUTOTUNE_EXP" in video_c and
       'return "ARC V5 AUTOTUNE"' in video_c and
-      "} else if (c == 'Z') {" in video_c and
+      "} else if (c == 'Z') {" not in video_c and
       "arc_v5_autotune_tick" in video_c and
       "arc_v3_controller_tick" in arc_v5)
 check("ARC V5 persistence is confidence-gated and versioned",
@@ -621,7 +607,7 @@ check("AGENTS documents release, PR-build and trusted Pages mirror flow",
       "Debugging a PR build missing from the web flasher" in agents and
       "pull_request workflow is the sole owner" in agents and
       'branches: [main, "feat/**", "fix/**", "codex/**"]' in agents and
-      "selecting `4BIT@80` while" in agents)
+      "TRAJ V2 remains a research artifact" in agents)
 
 check("gain transient classifier present",
       "gain_quality_drop_count" in all_c and
@@ -656,11 +642,11 @@ check("no periodic telemetry or timer tasks in production",
 # Default + experimental BS programs
 cmake_main = read(MAIN / "CMakeLists.txt")
 bs_srcs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', cmake_main)
-check("Golden, FSM capture, relative worker, relative middle, addctia probe, 4-bit, Trajectory, and Phase5-360 BitScrambler programs in CMakeLists",
+check("only selectable and diagnostic BitScrambler programs are in CMakeLists",
       bs_srcs == ["fm.bsasm", "fm_relative_golden.bsasm", "fm_phase5_360.bsasm",
                   "bs_relative_worker_probe.bsasm", "bs_relative_middle_probe.bsasm",
                   "fm_phase5_fsm_capture.bsasm", "fm4.bsasm",
-                  "fm_traj.bsasm", "bs_addctia_probe.bsasm"], f"found: {bs_srcs}")
+                  "bs_addctia_probe.bsasm"], f"found: {bs_srcs}")
 
 # Phase5-360 architecture and simulator validation
 TOOLS_DIR = ROOT / "tools"

@@ -31,11 +31,11 @@
 
 The current experimental range work measures semantic CVBS sync and the exact-adjacent winding loss hidden by the 50 ns endpoint discriminator. See `docs/range-demod-quality-v2.md` for the measurement model and hardware validation rules.
 
-The production receive profile now uses ARC: it reconstructs the valid
-ESP32-C5 vendor gain table at boot, starts at the highest RF stage with bounded
-downstream gain, fits BB/fine gain to raw Q4 evidence during acquisition, and
-performs zero PHY writes while clean video is locked. See
-`docs/arc-receive-chain.md` for the recovered PHY ABI and state model.
+The default automatic gain profile is Direct Gain V2. It decodes the valid
+ESP32-C5 vendor RF/BB/Fine table, makes fast decisions from completed
+IQ snapshots and holds a clean signal without gain writes. Direct Gain
+V1 and ARC V3 remain selectable for A/B testing. See
+docs/direct-gain-v2.md for the model and hardware test limits.
 
 Pre-Q4 receiver characterization is documented in `docs/pre-q4-lab.md`. The
 lab can isolate TX/DAC self-noise, sweep the complete highest RF-stage portion
@@ -46,7 +46,7 @@ production.
 Hardware walk tests now show that useful generated gain spans almost the full
 vendor table: roughly G14-G18 at extreme close range, G35-G56 through
 close/medium conditions, and G77-G81 at the weakest tested range. The
-gain-first `ARC V3 EXP` profile (now standard and default on boot) uses raw-Q4 occupancy/coherence, temporal
+gain-first ARC V3 A/B profile uses raw-Q4 occupancy/coherence, temporal
 median filtering and asymmetric hysteresis to follow that changing operating
 region without the old G62 starvation trap. In the latest close -> far -> close
 test, the gain trajectory moved from about G16 to G81 and back toward G39, and

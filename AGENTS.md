@@ -68,11 +68,9 @@ requirements by themselves**.
 - Keep USB/debug outside realtime pacing.
 - Do not silently change the tested XIAO D4..D9 DAC pin order or the physical
   8.2k/3.9k/2k/1k/470R/240R plus 200R network.
-- Keep live output compatibility explicit: GOLDEN supports both `6BIT@40` and
-  experimental `4BIT@80`; TRAJ V2 currently supports only `6BIT@40`.
-  Selecting TRAJ V2 must auto-select `6BIT@40`; selecting `4BIT@80` while
-  TRAJ V2 is selected must auto-return the demodulator to GOLDEN rather than
-  making the 4-bit mode unreachable.
+- Keep live output compatibility explicit: GOLDEN is the selectable live
+  demodulator and supports both `6BIT@40` and experimental `4BIT@80`.
+  TRAJ V2 remains a research artifact and must not appear in the live menu.
 - The standalone menu raster is always emitted through the byte-oriented
   `6BIT@40` TX geometry. On menu exit, recreate the live TX unit for the
   selected output mode before restarting the flight BitScrambler.

@@ -36,3 +36,19 @@ RF/BB boundary crossings, LOCK time, P/Q/origin/clip, transport faults and
 time-aligned visible static/desync. A clean locked picture should cause no
 gain writes. Fine-only corrections and boundary hops should be compared
 separately before tuning the route cost or settle interval.
+
+## First live check and profile cleanup
+
+The first PR #96 image was flashed to the XIAO ESP32-C5 on COM10 with
+bootloader, partition table and application SHA verification. It booted in
+profile 10, Direct Gain V2. The operator reported that the live picture
+"werkt echt top" and requested V2 as the automatic default. This is positive
+live video evidence, but no time-aligned gain-write/static trace was captured
+with the carrier on: a later ten-row USB snapshot captured P=1/Q=0 at G62,
+indicating the VTX was off or no carrier was present during that capture.
+
+The follow-up firmware retains only Direct Gain V2, Direct Gain V1 and ARC V3
+as selectable automatic gain profiles. Previously stored legacy gain choices
+migrate to V2. GOLDEN is the sole selectable live demodulator; previously
+stored TRAJ V2 choices migrate to GOLDEN. Historical experimental code stays
+available for research, but is not reachable through the profile selector.
