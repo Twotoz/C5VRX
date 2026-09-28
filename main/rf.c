@@ -435,8 +435,9 @@ esp_err_t rf_start(void)
     arc_capture_vendor_state();
 
     /* Now that max_index is known, force gain to absolute maximum. */
-    phy_force_rx_gain(true, s_arc_gain_table.max_index);
-    s_current_gain_val = s_arc_gain_table.max_index;
+    uint8_t max_gain = s_arc_gain_table.max_index > 0 ? s_arc_gain_table.max_index : 81u;
+    phy_force_rx_gain(true, max_gain);
+    s_current_gain_val = max_gain;
 
     /* Disable PHY PLL / RXCAL tracking timer if compiled in, so it never
      * recalibrates RF / RX hardware during continuous analog video reception.
@@ -559,10 +560,11 @@ bool rf_get_analog_bandwidth(void)
 
 void rf_set_rx_gain(bool force, uint8_t gain_idx)
 {
-    if (force) {
-        s_current_gain_val = gain_idx;
-    }
-    phy_force_rx_gain(force, gain_idx);
+    (void)force;
+    (void)gain_idx;
+    uint8_t max_gain = s_arc_gain_table.max_index > 0 ? s_arc_gain_table.max_index : 81u;
+    s_current_gain_val = max_gain;
+    phy_force_rx_gain(true, max_gain);
 }
 
 uint32_t rf_get_rx_gain_reg(void)
