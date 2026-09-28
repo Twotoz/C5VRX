@@ -1078,12 +1078,6 @@ static const char *rx_profile_name(void)
     }
 }
 
-static uint8_t profile_gain_max(void)
-{
-    return 62u;
-}
-
-static uint8_t profile_gain_min(void) __attribute__((unused));
 static uint8_t profile_gain_min(void)
 {
     switch (s_rx_profile) {
@@ -1096,10 +1090,29 @@ static uint8_t profile_gain_min(void)
     }
 }
 
+static uint8_t profile_gain_max(void)
+{
+    /* MANUAL is allowed to reproduce the vendor states used by Direct Gain.
+     * The legacy LAB_GAIN_MAX=62 still bounds the old automatic sweep. */
+    if (s_agc_mode == ANALOG_AGC_MANUAL)
+        return rf_get_arc_gain_table()->max_index;
+    switch (s_rx_profile) {
+    case RX_PROFILE_BLOCKER_EXP: return 48u;
+    case RX_PROFILE_ARC:
+    case RX_PROFILE_ARC_V3_EXP:
+    case RX_PROFILE_ARC_V5_AUTOTUNE_EXP:
+    case RX_PROFILE_DIRECT_GAIN: return rf_get_arc_gain_table()->max_index;
+    default:                     return 62u;
+    }
+}
+
 static uint8_t profile_gain_clamp(int gain)
 {
-    (void)gain;
-    return 62u;
+    int lo = profile_gain_min();
+    int hi = profile_gain_max();
+    if (gain < lo) gain = lo;
+    if (gain > hi) gain = hi;
+    return (uint8_t)gain;
 }
 
 static unsigned profile_search_probe_ticks(void)
@@ -1296,16 +1309,28 @@ static void step_frequency_offset_khz_tracked(int delta_khz)
 
 static uint8_t apply_rx_gain_tracked(uint8_t gain)
 {
-    (void)gain;
-    uint8_t next_gain = profile_gain_max();
-    s_shadow_gain = next_gain;
+    gain = profile_gain_clamp(gain);
+    s_shadow_gain = gain;
 
-    if (s_rx_profile != RX_PROFILE_DIRECT_GAIN) {
-        /* Pinned to max always */
-        next_gain = profile_gain_max();
+    /* Global Smooth Slew-Rate Limiter:
+     * When tracking valid video (s_last_p_median >= 8), cap gain step to +4 / -6 steps per tick.
+     * This eliminates luminance stepping, flashes, and DC transient jumps across ALL profiles!
+     * Emergency cuts on clipping (>= 25 permille) and cold-start acquisition bypass slew-limiting. */
+    bool emergency = (s_last_clip_permille >= 25) || (s_last_p_median > 44);
+    bool cold_start = (s_last_p_median == 0) && (s_last_q_phase < 20);
+
+    uint8_t next_gain = gain;
+    /* Direct Gain already owns its slew. A second limit would leave its
+     * controller state one or more gain indices ahead of the PHY. */
+    if (s_rx_profile != RX_PROFILE_DIRECT_GAIN &&
+        !emergency && !cold_start && s_current_gain > 0) {
+        int step = (int)gain - (int)s_current_gain;
+        if (step > 4) step = 4;
+        if (step < -6) step = -6;
+        next_gain = profile_gain_clamp(s_current_gain + step);
     }
 
-    if (next_gain == s_current_gain && s_current_gain > 0) return s_current_gain;
+    if (next_gain == s_current_gain) return s_current_gain;
     s_current_gain = next_gain;
     s_last_gain_write_us = esp_timer_get_time();
     s_last_phy_write_us = s_last_gain_write_us;
@@ -1423,10 +1448,26 @@ static void settings_load(void)
     }
     if (s_video_std_mode == VIDEO_STD_MODE_PAL) s_video_std = VIDEO_STD_PAL;
     else if (s_video_std_mode == VIDEO_STD_MODE_NTSC) s_video_std = VIDEO_STD_NTSC;
-    /* MAX GAIN ALWAYS: override any saved AGC mode/gain. All RF stages pinned
-     * at the vendor table maximum for peak sensitivity. AGC is disabled. */
-    s_agc_mode = ANALOG_AGC_MANUAL;
-    s_current_gain = 62u;
+    if (settings.agc_mode <= ANALOG_AGC_MANUAL) s_agc_mode = (analog_agc_mode_t)settings.agc_mode;
+    if (s_agc_mode == ANALOG_AGC_MANUAL && settings.manual_gain >= 2u &&
+        settings.manual_gain <= rf_get_arc_gain_table()->max_index) {
+        s_current_gain = profile_gain_clamp(settings.manual_gain);
+    } else {
+        switch (s_rx_profile) {
+        case RX_PROFILE_RANGE_EXP:    s_current_gain = 62u; break;
+        case RX_PROFILE_BLOCKER_EXP:  s_current_gain = 36u; break;
+        case RX_PROFILE_RECOVERY_EXP: s_current_gain = 52u; break;
+        case RX_PROFILE_AUTO_EXP:     s_current_gain = 52u; break;
+        case RX_PROFILE_FUSION_EXP:   s_current_gain = 62u; break;
+        case RX_PROFILE_RANGE_V2_EXP: s_current_gain = 62u; break;
+        case RX_PROFILE_ARC:          s_current_gain = rf_get_arc_survival_gain(); break;
+        case RX_PROFILE_ARC_V3_EXP:   s_current_gain = rf_get_arc_survival_gain(); break;
+        case RX_PROFILE_ARC_V5_AUTOTUNE_EXP: s_current_gain = rf_get_arc_survival_gain(); break;
+        case RX_PROFILE_DIRECT_GAIN:  s_current_gain = rf_get_arc_survival_gain(); break;
+        default:                      s_current_gain = 52u; break;
+        }
+        s_current_gain = profile_gain_clamp(s_current_gain);
+    }
     s_shadow_gain = s_current_gain;
     rf_set_rx_gain(true, s_current_gain);
     s_menu_boot_btn_enabled = settings.menu_boot_btn_enabled != 0;
@@ -2780,34 +2821,43 @@ static void apply_rx_profile(rx_profile_t profile)
 
     s_rx_profile = profile;
     ++s_profile_generation;
-    s_agc_state = AGC_STATE_TRACK;
-    s_agc_mode = ANALOG_AGC_MANUAL;
-    apply_rx_gain_tracked(profile_gain_max());
+    s_agc_state = AGC_STATE_SEARCH;
 
     switch (profile) {
     case RX_PROFILE_RANGE_EXP:
-    case RX_PROFILE_BLOCKER_EXP:
-    case RX_PROFILE_FUSION_EXP:
-    case RX_PROFILE_ARC:
-    case RX_PROFILE_DIRECT_GAIN:
-    case RX_PROFILE_ARC_V3_EXP:
-    case RX_PROFILE_ARC_V5_AUTOTUNE_EXP:
+        s_agc_mode = ANALOG_AGC_ACTIVE;
         s_rf_bw_mode = RF_BW_MODE_BW40;
         apply_rf_bandwidth(true);
         s_afc_mode = AFC_MODE_OFF;
         if (rf_get_frequency_offset_khz() != 0) apply_frequency_offset_khz_tracked(0);
+        apply_rx_gain_tracked(62u);
+        break;
+
+    case RX_PROFILE_BLOCKER_EXP:
+        s_agc_mode = ANALOG_AGC_ACTIVE;
+        s_rf_bw_mode = RF_BW_MODE_BW40;
+        apply_rf_bandwidth(true);
+        s_afc_mode = AFC_MODE_OFF;
+        if (rf_get_frequency_offset_khz() != 0) apply_frequency_offset_khz_tracked(0);
+        apply_rx_gain_tracked(36u);
         break;
 
     case RX_PROFILE_RECOVERY_EXP:
+        s_agc_mode = ANALOG_AGC_ACTIVE;
         s_rf_bw_mode = RF_BW_MODE_BW40;
         apply_rf_bandwidth(true);
         s_afc_mode = AFC_MODE_AUTO;
+        apply_rx_gain_tracked(52u);
         break;
 
     case RX_PROFILE_AUTO_EXP:
+        s_agc_mode = ANALOG_AGC_ACTIVE;
         s_rf_bw_mode = RF_BW_MODE_AUTO;
         apply_rf_bandwidth(true);
         s_afc_mode = AFC_MODE_AUTO;
+        apply_rx_gain_tracked(52u);
+        /* FFT is only promoted after this exact boot has measured a material
+         * raw-Q4 benefit with the bounded F probe. */
         if (s_fft_q4_effect_known && s_fft_q4_effective) {
             s_last_phy_write_us = esp_timer_get_time();
             s_last_phy_write_kind = PHY_WRITE_FFT;
@@ -2816,20 +2866,62 @@ static void apply_rx_profile(rx_profile_t profile)
         }
         break;
 
+    case RX_PROFILE_FUSION_EXP:
+        s_agc_mode = ANALOG_AGC_ACTIVE;
+        s_rf_bw_mode = RF_BW_MODE_BW40;
+        apply_rf_bandwidth(true);
+        s_afc_mode = AFC_MODE_OFF;
+        if (rf_get_frequency_offset_khz() != 0) apply_frequency_offset_khz_tracked(0);
+        apply_rx_gain_tracked(62u);
+        break;
+
     case RX_PROFILE_RANGE_V2_EXP:
+        /* Fusion learner plus acquisition-only gearbox/AFC. Both are already
+         * hard-frozen in TRACK, so clean video remains a zero-PHY-write zone. */
+        s_agc_mode = ANALOG_AGC_ACTIVE;
         s_rf_bw_mode = RF_BW_MODE_AUTO;
         apply_rf_bandwidth(true);
         s_afc_mode = AFC_MODE_AUTO;
+        apply_rx_gain_tracked(62u);
+        break;
+
+    case RX_PROFILE_ARC:
+        /* ARC uses only indices from the vendor-generated table. Start at the
+         * first entry of the highest RF stage: maximum front-end sensitivity
+         * without blindly maximizing downstream BB/fine gain. */
+        s_agc_mode = ANALOG_AGC_ACTIVE;
+        s_rf_bw_mode = RF_BW_MODE_BW40;
+        apply_rf_bandwidth(true);
+        s_afc_mode = AFC_MODE_OFF;
+        if (rf_get_frequency_offset_khz() != 0) apply_frequency_offset_khz_tracked(0);
+        apply_rx_gain_tracked(rf_get_arc_survival_gain());
+        break;
+
+    case RX_PROFILE_DIRECT_GAIN:
+    case RX_PROFILE_ARC_V3_EXP:
+    case RX_PROFILE_ARC_V5_AUTOTUNE_EXP:
+        /* Hardware-proven gain-first experiment. Keep the RF shape fixed so
+         * gain placement is the only moving actuator: BW40, offset 0. Q4
+         * starvation may climb above the old G62 survival entry; overload may
+         * descend below it. Semantic sync is not a gain-up prerequisite. */
+        s_agc_mode = ANALOG_AGC_ACTIVE;
+        s_rf_bw_mode = RF_BW_MODE_BW40;
+        apply_rf_bandwidth(true);
+        s_afc_mode = AFC_MODE_OFF;
+        if (rf_get_frequency_offset_khz() != 0) apply_frequency_offset_khz_tracked(0);
+        apply_rx_gain_tracked(rf_get_arc_survival_gain());
         break;
 
     case RX_PROFILE_BALANCED:
     default:
         s_noise_floor_valid = false;
         s_phy_rssi_valid = false;
+        s_agc_mode = ANALOG_AGC_ACTIVE;
         s_rf_bw_mode = RF_BW_MODE_BW40;
         apply_rf_bandwidth(true);
         s_afc_mode = AFC_MODE_OFF;
         if (rf_get_frequency_offset_khz() != 0) apply_frequency_offset_khz_tracked(0);
+        apply_rx_gain_tracked(52u);
         break;
     }
 
@@ -2848,7 +2940,6 @@ static void cycle_rx_profile(void)
            s_profile_fft_forced ? "FORCED" : "AUTO");
 }
 
-static void leave_experimental_profile(void) __attribute__((unused));
 static void leave_experimental_profile(void)
 {
     if (s_profile_fft_forced) {
@@ -4084,13 +4175,6 @@ static void analog_agc_task(void *arg)
         s_last_fusion_stability = fusion_tm.stability;
         s_last_fusion_fast_samples = fusion_tm.samples;
 
-        /* ALL RF GAINS ON MAX, ALWAYS: force MANUAL mode and pin gain to maximum */
-        s_agc_mode = ANALOG_AGC_MANUAL;
-        s_current_gain = profile_gain_max();
-        s_shadow_gain = s_current_gain;
-        s_agc_state = AGC_STATE_TRACK;
-        goto control_tail;
-
         if ((s_rx_profile == RX_PROFILE_FUSION_EXP ||
              s_rx_profile == RX_PROFILE_RANGE_V2_EXP) &&
             s_agc_mode == ANALOG_AGC_ACTIVE) {
@@ -4635,21 +4719,49 @@ static void console_diag_task(void *arg)
                     s_lab_quiet = !s_lab_quiet;
                     printf("C5VRX_LAB_QUIET enabled=%u\n", s_lab_quiet ? 1u : 0u);
                 } else if (c == '+' || c == 'k') {
+                    leave_experimental_profile();
                     s_agc_mode = ANALOG_AGC_MANUAL;
-                    s_current_gain = profile_gain_max();
-                    rf_set_rx_gain(true, s_current_gain);
-                    printf("[MANUAL GAIN] = %u (LOCKED TO MAX ALWAYS)\n", s_current_gain);
+                    uint8_t manual_max = rf_get_arc_gain_table()->max_index;
+                    if (s_current_gain < manual_max) {
+                        s_current_gain = s_current_gain <= manual_max - LAB_GAIN_STEP ?
+                                         (uint8_t)(s_current_gain + LAB_GAIN_STEP) : manual_max;
+                        s_last_gain_write_us = esp_timer_get_time();
+                        s_last_phy_write_us = s_last_gain_write_us;
+                        s_last_phy_write_kind = PHY_WRITE_GAIN;
+                        rf_set_rx_gain(true, s_current_gain);
+                        ++s_gain_transition_count;
+                    }
+                    settings_save();
+                    printf("[MANUAL GAIN] = %u (reg=0x%08lx)\n", s_current_gain, (unsigned long)rf_get_rx_gain_reg());
                 } else if (c == '-' || c == 'j') {
+                    leave_experimental_profile();
                     s_agc_mode = ANALOG_AGC_MANUAL;
                     if (s_current_gain > LAB_GAIN_MIN) {
-                        s_current_gain = profile_gain_max();
+                        s_current_gain = s_current_gain >= LAB_GAIN_MIN + LAB_GAIN_STEP ?
+                                         (uint8_t)(s_current_gain - LAB_GAIN_STEP) : LAB_GAIN_MIN;
+                        s_last_gain_write_us = esp_timer_get_time();
+                        s_last_phy_write_us = s_last_gain_write_us;
+                        s_last_phy_write_kind = PHY_WRITE_GAIN;
                         rf_set_rx_gain(true, s_current_gain);
+                        ++s_gain_transition_count;
                     }
-                    printf("[MANUAL GAIN] = %u (LOCKED TO MAX ALWAYS)\n", s_current_gain);
-                } else if (c == 'a' || c == 's' || c == 'm') {
+                    settings_save();
+                    printf("[MANUAL GAIN] = %u (reg=0x%08lx)\n", s_current_gain, (unsigned long)rf_get_rx_gain_reg());
+                } else if (c == 'a') {
+                    leave_experimental_profile();
+                    s_agc_mode = ANALOG_AGC_ACTIVE;
+                    settings_save();
+                    printf("[AGC MODE] -> ACTIVE (Self-Calibrating Adaptive Gain Controller ACTIVE)\n");
+                } else if (c == 's') {
+                    leave_experimental_profile();
+                    s_agc_mode = ANALOG_AGC_SHADOW;
+                    settings_save();
+                    printf("[AGC MODE] -> SHADOW (Dry-run: RF gain frozen at %u, computing recommendations)\n", s_current_gain);
+                } else if (c == 'm') {
+                    leave_experimental_profile();
                     s_agc_mode = ANALOG_AGC_MANUAL;
-                    s_current_gain = profile_gain_max();
-                    printf("[AGC MODE] -> MANUAL (Gain locked to MAX %u always)\n", s_current_gain);
+                    settings_save();
+                    printf("[AGC MODE] -> MANUAL (Fixed gain=%u)\n", s_current_gain);
                 } else if (c == 'c') {
                     rf_cycle_channel_in_band();
                     const fpv_channel_t *ch = rf_get_current_channel();

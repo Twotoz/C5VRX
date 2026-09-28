@@ -422,21 +422,16 @@ esp_err_t rf_start(void)
     extern void phy_wifi_fbw_sel(uint32_t val);
     phy_wifi_fbw_sel(s_analog_bw40 ? 1u : 0u);
 
-    /* Force maximum available RF gain so all RF stages run at peak sensitivity.
-     * Index 52 was the legacy sweet-spot; we now use the table max after
-     * arc_capture_vendor_state() has populated s_arc_gain_table.max_index.
-     * Start at 52 to keep the PHY happy during capture, then slam to max. */
+    /* Force high-sensitivity sweet-spot gain (index 52).
+     * Provides sensitive reception of weak carriers out of the box while
+     * active AGC dynamically manages gain tracking and overload protection. */
     extern void phy_force_rx_gain(bool enable, uint8_t gain_idx);
-    phy_force_rx_gain(true, 52u);
+    phy_force_rx_gain(true, 52);
 
     /* Vendor PHY initialization has now generated both valid RX gain tables
      * and completed its own calibration. Capture that state read-only before
      * C5VRX freezes receiver ownership. */
     arc_capture_vendor_state();
-
-    /* Force gain to 62u unconditionally. */
-    phy_force_rx_gain(true, 62u);
-    s_current_gain_val = 62u;
 
     /* Disable PHY PLL / RXCAL tracking timer if compiled in, so it never
      * recalibrates RF / RX hardware during continuous analog video reception.
@@ -559,10 +554,10 @@ bool rf_get_analog_bandwidth(void)
 
 void rf_set_rx_gain(bool force, uint8_t gain_idx)
 {
-    (void)force;
-    (void)gain_idx;
-    s_current_gain_val = 62u;
-    phy_force_rx_gain(true, 62u);
+    if (force) {
+        s_current_gain_val = gain_idx;
+    }
+    phy_force_rx_gain(force, gain_idx);
 }
 
 uint32_t rf_get_rx_gain_reg(void)
