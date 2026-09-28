@@ -40,6 +40,7 @@
 #include "arc_v3_controller.h"
 #include "arc_v5_autotune.h"
 #include "direct_gain.h"
+#include "direct_gain_v2.h"
 #include "rx_auto_lab.h"
 #include "trajectory_v2_lut.h"
 #include "hal/parlio_ll.h"
@@ -270,11 +271,12 @@ static video_output_mode_t s_tx_unit_mode = VIDEO_OUTPUT_6BIT_40;
 static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
 static volatile rx_profile_t s_rx_profile = RX_PROFILE_DIRECT_GAIN;
 static direct_gain_controller_t s_direct_gain_controller;
+static direct_gain_v2_t s_direct_gain_v2;
+static volatile uint32_t s_gain_transition_count = 0;
+static volatile uint32_t s_direct_gain_v2_write_seq;
 static volatile direct_gain_state_t s_last_direct_gain_state = DIRECT_GAIN_SEEK;
 static volatile uint8_t s_last_direct_gain_target;
 static volatile int s_last_direct_gain_delta;
-static volatile int s_last_direct_gain_est_dbm = -127;
-static volatile bool s_last_direct_gain_rssi_used;
 static volatile uint32_t s_last_direct_gain_total_writes;
 static volatile uint32_t s_last_direct_gain_hold_cycles;
 static volatile arc_v3_state_t s_last_arc_v3_state = ARC_V3_ACQUIRE;
@@ -952,6 +954,39 @@ static control_metrics_t analyze_control_window(const uint8_t *sample, size_t by
  * reads completed DMA data; the 40 MS/s hardware path never waits on it. */
 static volatile uint32_t s_fusion_temporal_seq;
 static fusion_temporal_metrics_t s_fusion_temporal_shared;
+typedef struct {
+    direct_gain_v2_observation_t observation;
+    uint32_t profile_generation;
+    uint8_t gain;
+} direct_gain_v2_slow_snapshot_t;
+static volatile uint32_t s_direct_gain_v2_slow_seq;
+static direct_gain_v2_slow_snapshot_t s_direct_gain_v2_slow_shared;
+
+static void direct_gain_v2_slow_publish(const direct_gain_v2_slow_snapshot_t *s)
+{
+    ++s_direct_gain_v2_slow_seq;
+    __sync_synchronize();
+    s_direct_gain_v2_slow_shared = *s;
+    __sync_synchronize();
+    ++s_direct_gain_v2_slow_seq;
+}
+
+static bool direct_gain_v2_slow_read(direct_gain_v2_slow_snapshot_t *out,
+                                     uint32_t *sequence)
+{
+    for (unsigned retry = 0; retry < 4u; ++retry) {
+        uint32_t before = s_direct_gain_v2_slow_seq;
+        if (!before || (before & 1u)) continue;
+        __sync_synchronize();
+        *out = s_direct_gain_v2_slow_shared;
+        __sync_synchronize();
+        if (before == s_direct_gain_v2_slow_seq) {
+            *sequence = before;
+            return true;
+        }
+    }
+    return false;
+}
 
 static fusion_temporal_metrics_t fusion_temporal_read_shared(void)
 {
@@ -977,10 +1012,13 @@ static void fusion_temporal_publish(const fusion_temporal_metrics_t *m)
     ++s_fusion_temporal_seq;
 }
 
+static void direct_gain_v2_fast_tick(const control_metrics_t *metrics,
+                                     const fusion_temporal_metrics_t *temporal);
+
 /* Distributed observation closes a major blind spot in the old controller:
  * one 102 us descriptor every 50 ms observed only ~0.2% of RF time. This task
- * spreads similarly small CPU reads across the interval. It never writes PHY
- * state and never participates in DMA pacing. */
+ * spreads similarly small CPU reads across the interval. Direct Gain V2 uses
+ * this task as its sole gain writer; it never participates in DMA pacing. */
 static void fusion_observer_task(void *arg)
 {
     (void)arg;
@@ -997,12 +1035,14 @@ static void fusion_observer_task(void *arg)
             fusion_temporal_reset(&temporal);
         }
 
+        uint32_t gain_epoch = s_gain_transition_count;
         uint8_t *src = get_completed_rx_sample_window(sizeof(sample));
         size_t ring_offset =
             (src >= s_raw_ring && src < s_raw_ring + sizeof(s_raw_ring)) ?
             (size_t)(src - s_raw_ring) : 0u;
         sync_dma_m2c((void *)src, sizeof(sample));
         memcpy(sample, src, sizeof(sample));
+        if (gain_epoch != s_gain_transition_count) continue;
 
         control_metrics_t metrics =
             analyze_control_window(sample, sizeof(sample), ring_offset);
@@ -1014,6 +1054,7 @@ static void fusion_observer_task(void *arg)
             active_demod_shadow(metrics.fusion_shadow));
         fusion_temporal_metrics_t tm = fusion_temporal_update(&temporal, &obs);
         fusion_temporal_publish(&tm);
+        direct_gain_v2_fast_tick(&metrics, &tm);
     }
 }
 
@@ -1072,7 +1113,7 @@ static const char *rx_profile_name(void)
     case RX_PROFILE_RANGE_V2_EXP:return "RANGE V2";
     case RX_PROFILE_ARC_V3_EXP:  return "ARC V3 EXP";
     case RX_PROFILE_ARC_V5_AUTOTUNE_EXP: return "ARC V5 AUTOTUNE";
-    case RX_PROFILE_DIRECT_GAIN: return "DIRECT GAIN";
+    case RX_PROFILE_DIRECT_GAIN: return "DIRECT GAIN V2";
     default:                     return "BALANCED";
     }
 }
@@ -1228,7 +1269,6 @@ static volatile int s_last_fusion_recovery = 0;
 static volatile int s_last_fusion_stability = 0;
 static volatile uint32_t s_last_fusion_fast_samples = 0;
 
-static volatile uint32_t s_gain_transition_count = 0;
 static volatile int s_cfo_khz = 0;              /* Carrier Frequency Offset in kHz */
 static volatile bool s_channel_scan_active;
 static volatile unsigned s_channel_scan_progress;
@@ -1337,6 +1377,77 @@ static uint8_t apply_rx_gain_tracked(uint8_t gain)
     rf_set_rx_gain(true, next_gain);
     ++s_gain_transition_count;
     return next_gain;
+}
+
+/* Direct Gain V2 is the sole gain writer for its profile. It executes in the
+ * already-existing ~6 ms observer task, after a completed DMA copy.
+ * The 50 ms task observes and reports but never makes a V2 gain decision. */
+static void direct_gain_v2_fast_tick(const control_metrics_t *metrics,
+                                     const fusion_temporal_metrics_t *temporal)
+{
+    static uint32_t seen_profile_generation = UINT32_MAX;
+    static uint32_t seen_arc_generation = UINT32_MAX;
+    static uint32_t seen_slow_sequence;
+    static bool was_active;
+    bool active = s_rx_profile == RX_PROFILE_DIRECT_GAIN &&
+                  s_agc_mode == ANALOG_AGC_ACTIVE && !s_menu_active &&
+                  !s_gain_sweep.active;
+    if (!active) { was_active = false; return; }
+
+    uint32_t profile_generation = s_profile_generation;
+    uint32_t arc_generation = rf_get_arc_generation();
+    if (!was_active || seen_profile_generation != profile_generation ||
+        seen_arc_generation != arc_generation) {
+        direct_gain_v2_reset(&s_direct_gain_v2, rf_get_arc_gain_table(),
+                             s_current_gain, rf_get_arc_survival_gain());
+        seen_profile_generation = profile_generation;
+        seen_arc_generation = arc_generation;
+        was_active = true;
+        seen_slow_sequence = s_direct_gain_v2_slow_seq;
+    }
+
+    direct_gain_v2_slow_snapshot_t slow;
+    uint32_t slow_sequence;
+    if (direct_gain_v2_slow_read(&slow, &slow_sequence) &&
+        slow_sequence != seen_slow_sequence) {
+        seen_slow_sequence = slow_sequence;
+        if (slow.profile_generation == profile_generation)
+            direct_gain_v2_learn_settled(&s_direct_gain_v2,
+                                         &slow.observation, slow.gain);
+    }
+
+    uint64_t now_us = (uint64_t)esp_timer_get_time();
+    direct_gain_v2_observation_t observation = {
+        .p = metrics->p_median,
+        .q = metrics->q_phase,
+        .origin_pm = metrics->origin_permille,
+        .clip_pm = metrics->clip_permille,
+        .fade_score = temporal->fade_score,
+        .observed_us = now_us,
+    };
+    uint8_t target = direct_gain_v2_tick(&s_direct_gain_v2, &observation);
+    if (profile_generation != s_profile_generation ||
+        s_agc_mode != ANALOG_AGC_ACTIVE || s_rx_profile != RX_PROFILE_DIRECT_GAIN)
+        return;
+
+    s_shadow_gain = target;
+    s_agc_state = s_direct_gain_v2.state == DIRECT_GAIN_V2_LOCK ?
+                  AGC_STATE_TRACK : AGC_STATE_LEARN;
+    s_last_direct_gain_state = s_direct_gain_v2.state == DIRECT_GAIN_V2_LOCK ?
+                               DIRECT_GAIN_HOLD : DIRECT_GAIN_SEEK;
+    s_last_direct_gain_target = s_direct_gain_v2.target_gain;
+    s_last_direct_gain_delta = (int)target - (int)s_current_gain;
+    s_last_direct_gain_total_writes = s_direct_gain_v2.writes;
+    s_last_direct_gain_hold_cycles = s_direct_gain_v2.locks;
+    if (target != s_current_gain) {
+        ++s_direct_gain_v2_write_seq;
+        __sync_synchronize();
+        uint8_t applied = apply_rx_gain_tracked(target);
+        direct_gain_v2_sync_applied(&s_direct_gain_v2, applied,
+                                    (uint64_t)esp_timer_get_time());
+        __sync_synchronize();
+        ++s_direct_gain_v2_write_seq;
+    }
 }
 
 static int signal_strength_score(const control_metrics_t *m, uint8_t gain)
@@ -4054,6 +4165,9 @@ static void analog_agc_task(void *arg)
 
         /* A complete finished descriptor gives 102.3 us of Q4/I4 rather than
          * the old 6.4 us peek, while averaging only ~82 kB/s of CPU reads. */
+        uint32_t sampled_gain_epoch = s_gain_transition_count;
+        uint32_t sampled_v2_write_seq = s_direct_gain_v2_write_seq;
+        uint8_t sampled_gain = s_current_gain;
         uint8_t *sample_src = get_completed_rx_sample_window(CONTROL_SAMPLE_BYTES);
         size_t ring_offset = (sample_src >= s_raw_ring && sample_src < s_raw_ring + sizeof(s_raw_ring))
                            ? (size_t)(sample_src - s_raw_ring) : 0u;
@@ -4222,34 +4336,20 @@ static void analog_agc_task(void *arg)
 
         if (s_rx_profile == RX_PROFILE_DIRECT_GAIN &&
             s_agc_mode == ANALOG_AGC_ACTIVE) {
-            int rssi_val = -127;
-            bool rssi_ok = rf_try_get_wideband_rssi_dbm(&rssi_val);
-            direct_gain_observation_t dg_obs = {
-                .p_median = p_median,
-                .q_phase = q_phase,
-                .clip_permille = clip_permille,
-                .origin_permille = origin_permille,
-                .winding_permille = winding_permille,
-                .rssi_dbm = rssi_ok ? rssi_val : -127,
-                .rssi_valid = rssi_ok,
-                .survival_gain = rf_get_arc_survival_gain(),
+            direct_gain_v2_slow_snapshot_t slow = {
+                .observation = {
+                    .p = p_median, .q = q_phase,
+                    .origin_pm = origin_permille, .clip_pm = clip_permille,
+                    .observed_us = (uint64_t)esp_timer_get_time(),
+                },
+                .profile_generation = s_profile_generation,
+                .gain = sampled_gain,
             };
-            target_gain = direct_gain_tick(&s_direct_gain_controller, &dg_obs);
-            s_last_direct_gain_state = s_direct_gain_controller.state;
-            s_last_direct_gain_target = s_direct_gain_controller.target_gain;
-            s_last_direct_gain_delta = s_direct_gain_controller.last_delta_gain;
-            s_last_direct_gain_est_dbm = s_direct_gain_controller.last_estimated_input_dbm;
-            s_last_direct_gain_rssi_used = s_direct_gain_controller.last_rssi_used;
-            s_last_direct_gain_total_writes = s_direct_gain_controller.total_writes;
-            s_last_direct_gain_hold_cycles = s_direct_gain_controller.hold_cycles;
-
-            s_shadow_gain = target_gain;
-            s_agc_state = s_direct_gain_controller.state == DIRECT_GAIN_HOLD ?
-                          AGC_STATE_TRACK : AGC_STATE_LEARN;
-            if (target_gain != s_current_gain)
-                direct_gain_sync_applied(&s_direct_gain_controller,
-                                         apply_rx_gain_tracked(target_gain));
-            /* Direct Gain owns decision settling. BW40 and 0 kHz remain fixed. */
+            if (!(sampled_v2_write_seq & 1u) &&
+                sampled_v2_write_seq == s_direct_gain_v2_write_seq &&
+                sampled_gain_epoch == s_gain_transition_count)
+                direct_gain_v2_slow_publish(&slow);
+            /* Fast observer owns all V2 decisions and PHY gain writes. */
             settle_ticks = 0;
             goto control_tail;
         }
@@ -4698,7 +4798,7 @@ static void console_diag_task(void *arg)
                 } else if (c == 'D') {
                     apply_rx_profile(RX_PROFILE_DIRECT_GAIN);
                     settings_save();
-                    printf("[RX PROFILE] -> DIRECT GAIN (Feed-Forward with temporal confirmation)\n");
+                    printf("[RX PROFILE] -> DIRECT GAIN V2 (physical tuple fast observer)\n");
                 } else if (c == 'Y') {
                     apply_rx_profile(RX_PROFILE_ARC_V3_EXP);
                     settings_save();
@@ -4861,13 +4961,12 @@ static void console_diag_task(void *arg)
                     printf(" Gain Settings:              G_actual=%u, G_shadow_rec=%u (reg=0x%08lx)\n",
                            s_current_gain, s_shadow_gain, (unsigned long)rf_get_rx_gain_reg());
                     if (s_rx_profile == RX_PROFILE_DIRECT_GAIN) {
-                        printf(" Direct Gain State:          %s (target=G%u, delta=%+d, est_RF=%d dBm, RSSI_used=%s)\n",
+                        printf(" Direct Gain V2 State:       %s (target=G%u, delta=%+d, floor=G%u)\n",
                                direct_gain_state_name(s_last_direct_gain_state),
                                (unsigned)s_last_direct_gain_target,
                                s_last_direct_gain_delta,
-                               s_last_direct_gain_est_dbm,
-                               s_last_direct_gain_rssi_used ? "YES" : "NO");
-                        printf(" Direct Gain Telemetry:      writes=%" PRIu32 ", hold_cycles=%" PRIu32 "\n",
+                               (unsigned)DIRECT_GAIN_V2_FLOOR);
+                        printf(" Direct Gain V2 Telemetry:   writes=%" PRIu32 ", lock_samples=%" PRIu32 "\n",
                                s_last_direct_gain_total_writes,
                                s_last_direct_gain_hold_cycles);
                     }
@@ -4976,7 +5075,7 @@ static void console_diag_task(void *arg)
                     printf("  'U':         ARC V3 RX AUTO LAB (gain -> BW -> center -> repeated A/B proof)\n");
                     printf("  'S':         PRE-Q4 self-noise A/B (live TX vs DAC/PARLIO electrically quiet)\n");
                     printf("  'R':         Run RSSI & Inverse-Q4 Oracle Probe (G15..G81 sweep)\n");
-                    printf("  'D':         Select DIRECT GAIN profile (Feed-Forward)\n");
+                    printf("  'D':         Select DIRECT GAIN V2 profile (physical tuple fast observer)\n");
                     printf("  'K':         Erase stored PHY calibration and reboot for a fresh vendor calibration\n");
                     printf("  'X':         Cycle RX profile (Balanced/Range/Blocker/Recovery/Auto/ARC/Fusion/Range V2/Direct Gain)\n");
                     printf("  'p'/'r':     Machine-readable PHY/Q4 snapshot / reset lag counters\n");

@@ -12,6 +12,7 @@ idf_component_register(
         "rf.c"
         "video.c"
         "direct_gain.c"
+        "direct_gain_v2.c"
         "menu_raster.c"
     INCLUDE_DIRS "."
     REQUIRES

@@ -55,7 +55,7 @@ c_names = [f.name for f in c_files]
 video_c = read(MAIN / "video.c")
 menu_lifecycle = video_c.split("static void video_set_menu_mode", 1)[1].split("static void menu_cycle_standard_mode", 1)[0]
 
-check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "bs_relative_worker_probe.c", "bs_relative_middle_probe.c", "bs_addctia_probe.c", "phy_phase_tap_probe.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "direct_gain.c", "menu_raster.c"},
+check("production receiver and dedicated menu/auto-lab modules", set(c_names) == {"main.c", "bs_relative_worker_probe.c", "bs_relative_middle_probe.c", "bs_addctia_probe.c", "phy_phase_tap_probe.c", "arc_phy.c", "arc_v3_controller.c", "arc_v5_autotune.c", "rx_auto_lab.c", "rf.c", "video.c", "direct_gain.c", "direct_gain_v2.c", "menu_raster.c"},
       f"found: {c_names}")
 check("main.c present", "main.c" in c_names)
 check("rf.c present", "rf.c" in c_names)
@@ -674,52 +674,37 @@ import sim_phase5_360
 check("Phase5-360 mathematical simulation passes all checks",
       sim_phase5_360.run_all_simulations())
 
-# Direct Gain Feed-Forward & Inverse-Q4 Architecture validation
-direct_gain_h = read(MAIN / "direct_gain.h")
-direct_gain_c = read(MAIN / "direct_gain.c")
-
-check("Direct Gain headers and source present",
-      (MAIN / "direct_gain.h").exists() and (MAIN / "direct_gain.c").exists())
-check("Direct Gain profile declared and active in video.c",
-      "RX_PROFILE_DIRECT_GAIN" in video_c and
-      'case RX_PROFILE_DIRECT_GAIN: return "DIRECT GAIN";' in video_c)
+# Direct Gain V2 is the active, single-owner physical actuator in this profile.
+direct_gain_v2_h = read(MAIN / "direct_gain_v2.h")
+direct_gain_v2_c = read(MAIN / "direct_gain_v2.c")
+check("Direct Gain V2 module and default profile present",
+      'static volatile rx_profile_t s_rx_profile = RX_PROFILE_DIRECT_GAIN;' in video_c and
+      'direct_gain_v2_fast_tick(&metrics, &tm)' in video_c and
+      'direct_gain_v2.c' in read(MAIN / "CMakeLists.txt"))
 check("Manual gain mode declared before profile_gain_max uses it",
       video_c.index("static volatile analog_agc_mode_t s_agc_mode") <
       video_c.index("static uint8_t profile_gain_max(void)"))
-check("Direct Gain deadband sweet spot [19..25] in Inverse-Q4 LUT",
-      "DIRECT_GAIN_DEADBAND_LO   19" in direct_gain_c and
-      "DIRECT_GAIN_DEADBAND_HI   25" in direct_gain_c and
-      "DIRECT_GAIN_TARGET_P      22" in direct_gain_c)
-check("Direct Gain one-tick decision settling (~50 ms)",
-      "DIRECT_GAIN_SETTLE_TICKS  1u" in direct_gain_c)
-check("Direct Gain quality separation (multipath never triggers gain drive)",
-      "obs->clip_permille < 20" in direct_gain_c and
-      "dg->state = DIRECT_GAIN_HOLD" in direct_gain_c)
-check("Direct Gain emergency power/outer-bin cut",
-      "cut = -14" in direct_gain_c and "cut = -8" in direct_gain_c and
-      "obs->clip_permille >= 80 && p > 35" in direct_gain_c)
-check("Direct Gain single-write hop execution",
-      "dg->settle_ticks = DIRECT_GAIN_SETTLE_TICKS" in direct_gain_c and
-      "++dg->total_writes" in direct_gain_c)
-check("Direct Gain single slew authority (+4/-6 steps)",
-      "DIRECT_GAIN_MAX_SLEW_UP   4u" in direct_gain_c and
-      "DIRECT_GAIN_MAX_SLEW_DOWN 6u" in direct_gain_c and
-      "is_tracking" in direct_gain_c and
-      "s_rx_profile != RX_PROFILE_DIRECT_GAIN" in video_c and
-      "direct_gain_sync_applied(&s_direct_gain_controller" in video_c)
-
-check("Direct Gain no-carrier precedes power feedback and RSSI cannot steer PHY",
-      direct_gain_c.index("if (obs->q_phase < 18") <
-      direct_gain_c.index("if (dg->settle_ticks > 0)") and
-      "int rssi_target" not in direct_gain_c)
+check("Direct Gain V2 decodes each physical vendor state",
+      'arc_gain_tuple_decode(&v2->table' in direct_gain_v2_c and
+      'rf_stage' in direct_gain_v2_c and 'bb_code' in direct_gain_v2_c and
+      'fine_code' in direct_gain_v2_h + direct_gain_v2_c)
+check("Direct Gain V2 owns fast gain writes and slow path has none",
+      'direct_gain_v2_tick(&s_direct_gain_v2' in video_c and
+      'direct_gain_v2_sync_applied(&s_direct_gain_v2' in video_c and
+      'Fast observer owns all V2 decisions and PHY gain writes.' in video_c and
+      's_rx_profile != RX_PROFILE_DIRECT_GAIN' in video_c)
+check("Direct Gain V2 protects fresh IQ and clean zero-write lock",
+      'V2_FRESH_US 12000u' in direct_gain_v2_c and
+      'o->observed_us <= v2->write_us' in direct_gain_v2_c and
+      'if (useful(o))' in direct_gain_v2_c and
+      'DIRECT_GAIN_V2_FLOOR 20u' in direct_gain_v2_h)
+check("Direct Gain V2 learns exact physical edges",
+      'e->from == from && e->to == to' in direct_gain_v2_c and
+      'e->count >= 3' in direct_gain_v2_c)
 check("RSSI probe owns every AGC/BW/AFC write during its measurement",
       "s_rssi_probe_active = true;" in video_c and
       "if (s_rssi_probe_active) continue;" in video_c and
       "s_rssi_probe_active = false;" in video_c)
-check("Direct Gain confirms ordinary direction before writing",
-      "pending_direction" in direct_gain_c and
-      direct_gain_c.index("if (p > 44)") <
-      direct_gain_c.index("int8_t direction = delta > 0"))
 
 # Phase5c Static Correction validation
 phase5_360_asm = read(MAIN / "fm_phase5_360.bsasm")
