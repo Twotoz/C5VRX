@@ -3,17 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>C5VRX Firmware Flasher</title>
+  <title>C5VRX · Firmware Flasher</title>
+  <meta name="description" content="Connect your XIAO ESP32-C5 and flash C5VRX firmware straight from your browser. Browse releases, experimental PR builds, and local binaries.">
   <link rel="icon" type="image/jpeg" href="assets/c5vrx-logo.jpg">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <a class="skip-link" href="#flasher">Skip to firmware flasher</a>
   <header class="topbar">
-    <div class="brand">
-      <img src="assets/c5vrx-logo.jpg" alt="C5VRX" class="logo">
-    </div>
+    <a class="brand" href="https://twotoz.github.io/C5VRX/" aria-label="C5VRX home">
+      <img src="assets/c5vrx-logo.jpg" alt="C5VRX" class="logo" width="160" height="42">
+    </a>
 
-    <div class="top-actions">
+    <nav class="top-actions" aria-label="Project links and device connection">
       <a href="https://discord.gg/3YNgJRHmzD" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" title="Join C5VRX Discord">
         <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
@@ -30,26 +32,35 @@
         <span class="indicator indicator-off" id="portIndicator"></span>
         <span id="btnConnectText">Connect Device</span>
       </button>
-    </div>
+    </nav>
   </header>
 
-  <div id="unsupportedWarning" class="alert alert-danger" style="display: none;">
-    <strong>Browser Unsupported:</strong> Web Serial API is not available. Please use <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, or <strong>Brave</strong> on Desktop.
-  </div>
+  <main class="container" id="flasher">
+    <section class="intro" aria-labelledby="pageTitle">
+      <div>
+        <p class="eyebrow"><span class="signal-dot" aria-hidden="true"></span> C5VRX / WEB FLASHER</p>
+        <h1 id="pageTitle">Ready for your next flight.</h1>
+        <p class="intro-copy">The latest firmware. Straight to your receiver.<br>Connect your XIAO ESP32-C5 via USB to get started.</p>
+      </div>
+      <div class="platform-note"><span class="platform-label">BUILT FOR</span><strong>XIAO ESP32-C5</strong><span>5.8 GHz analog FPV receiver</span></div>
+    </section>
 
-  <main class="container">
+    <div id="unsupportedWarning" class="alert alert-danger" role="status" style="display: none;">
+      <strong>Browse here, flash on desktop.</strong> USB flashing needs Web Serial. Open this page in Chrome, Edge, or Brave on a supported desktop, then connect your receiver.
+    </div>
+
     <div class="grid">
       <!-- Left Column: Firmware Selection -->
       <div class="card">
         <div class="card-header">
-          <h2>1. Firmware Selection</h2>
+          <h2><span class="step-number" aria-hidden="true">01</span> Choose firmware</h2>
           <span class="badge" id="sourceBadge">GitHub</span>
         </div>
         <div class="card-body">
-          <div class="segmented-control">
-            <button id="tabGithub" class="tab-btn active">Releases</button>
-            <button id="tabPr" class="tab-btn tab-btn-pr">PR Builds</button>
-            <button id="tabLocal" class="tab-btn">Local File</button>
+          <div class="segmented-control" role="group" aria-label="Firmware source">
+            <button id="tabGithub" aria-pressed="true" class="tab-btn active">Releases</button>
+            <button id="tabPr" aria-pressed="false" class="tab-btn tab-btn-pr">PR Builds</button>
+            <button id="tabLocal" aria-pressed="false" class="tab-btn">Local File</button>
           </div>
 
           <!-- GitHub Source Pane -->
@@ -146,8 +157,8 @@
             <div class="dropzone" id="dropzone">
               <p>Drag & Drop firmware binary (<strong>.bin</strong>) here</p>
               <span class="text-muted">or</span>
-              <input type="file" id="inputLocalFile" accept=".bin" class="file-input">
-              <label for="inputLocalFile" class="btn btn-secondary">Browse File</label>
+              <button type="button" id="btnBrowseFile" class="btn btn-secondary">Browse File</button>
+              <input type="file" id="inputLocalFile" accept=".bin" class="file-input" tabindex="-1">
             </div>
 
             <div id="localFileDetails" class="info-box" style="display: none; margin-top: 12px;">
@@ -196,7 +207,7 @@
       <!-- Right Column: Target Device & Instructions -->
       <div class="card">
         <div class="card-header">
-          <h2>2. Target Device & Log</h2>
+          <h2><span class="step-number" aria-hidden="true">02</span> Device & activity</h2>
           <span class="badge badge-secondary" id="chipBadge">No Device</span>
         </div>
         <div class="card-body">
@@ -221,7 +232,7 @@
 
           <!-- Quick Hardware Guide -->
           <div class="guide-box">
-            <h4>XIAO ESP32-C5 Connection Guide:</h4>
+            <h4>Connect in a few seconds</h4>
             <ol>
               <li>Plug your Seeed Studio XIAO ESP32-C5 into your PC via USB.</li>
               <li>Click <strong>Connect Device</strong> above and select the USB Serial port.</li>
@@ -230,7 +241,7 @@
           </div>
 
           <!-- Progress Bar -->
-          <div class="progress-container" id="progressContainer" style="display: none;">
+          <div class="progress-container" aria-live="polite" id="progressContainer" style="display: none;">
             <div class="progress-labels">
               <span id="progressStatusText">Flashing...</span>
               <span id="progressPercentText">0%</span>
@@ -245,7 +256,7 @@
             <span>Terminal Output</span>
             <button id="btnClearConsole" class="btn btn-secondary btn-sm">Clear</button>
           </div>
-          <pre id="consoleOutput" class="console"></pre>
+          <pre id="consoleOutput" class="console" tabindex="0" aria-label="Device terminal output"></pre>
         </div>
       </div>
     </div>

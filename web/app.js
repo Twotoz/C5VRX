@@ -131,6 +131,9 @@ function checkSerialSupport() {
 // Tab Switching
 function activateSource(source) {
   activeSource = source;
+  for (const [button, name] of [[tabGithub, 'github'], [tabPr, 'pr'], [tabLocal, 'local']]) {
+    button.setAttribute('aria-pressed', String(source === name));
+  }
 
   tabGithub.classList.toggle('active', source === 'github');
   tabPr.classList.toggle('active', source === 'pr');
@@ -167,7 +170,10 @@ tabPr.addEventListener('click', () => activateSource('pr'));
 tabLocal.addEventListener('click', () => activateSource('local'));
 
 // Drag & drop file handling
-dropzone.addEventListener('click', () => inputLocalFile.click());
+dropzone.addEventListener('click', (event) => {
+  // The file input click bubbles too; never open the picker recursively.
+  if (event.target !== inputLocalFile) inputLocalFile.click();
+});
 dropzone.addEventListener('dragover', (e) => {
   e.preventDefault();
   dropzone.classList.add('dragover');
