@@ -59,6 +59,12 @@ void c5v4_level_hw_prepare(void)
     for (unsigned i = 0; i < 1024; ++i)
         if (read_entry(i) != original[i]) ok = false;
     ready = ok;
+    if (ok) {
+        /* Seed from the loaded even plane (M may select CVBS150). */
+        uint8_t loaded[256];
+        for (unsigned i = 0; i < 256; ++i) loaded[i] = (uint8_t)(original[i] & 63u);
+        c5v4_level_seed(&servo, loaded);
+    }
     if (!ok) ++faults;
     printf("C5V4_LEVEL startup_probe=%s live_arbitration=unproven\n", ok ? "pass" : "refused");
 }
