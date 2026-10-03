@@ -11,7 +11,7 @@ C5VRX by Twotoz (Leon Beekveldt) and contributors. Review base: main `e15c6ee` (
 
 5. **BOOT handler reported a menu success even when allocation failed.** It now prints `unavailable` when the menu did not open. T also reports the BOOT enable flag, resolved PAL/NTSC mode, descriptor allocation and available AHB-DMA heap. This is diagnosis of the alpha tester report, not a demonstrated fix of the menu allocation or CVBS waveform.
 
-The concurrent open [PR161](https://github.com/Twotoz/C5VRX/pull/161) independently covers stale CVBS level-evidence chains and voltage-ordered DAC slew. Its code is not duplicated in this PR.
+6. **CVBS level evidence could survive long pauses, and DAC slew followed binary code rather than loaded voltage.** The changes originally proposed in [PR161](https://github.com/Twotoz/C5VRX/pull/161) are included here: gaps over 200 ms restart the three-window evidence chain, duplicate/backward timestamps cannot vote, cadence arithmetic refuses underflow, and slew follows adjacent calibrated voltages even with a nonmonotonic measured ladder. The opt-in lab stays off by default. Its 4,096 start/target regression pairs include permuted code order and duplicate voltages. [ISSUE_AUDIT.md](ISSUE_AUDIT.md) retains the original donor audit and per-issue rationale.
 
 The suspected fixed-ultrafine last-resort downshift was disproved: the existing central `set_lane()` already refuses all lane changes in fixed mode. A regression against the unchanged controller confirmed this; no redundant fix is included.
 

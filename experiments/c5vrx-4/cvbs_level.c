@@ -26,6 +26,19 @@ void c5v4_level_init(c5v4_level_t *s)
     memset(s, 0, sizeof(*s));
     memcpy(s->codes, c5v4_dac_codes, sizeof(s->codes));
 }
+uint8_t c5v4_level_slew(uint8_t current, uint8_t target, const uint32_t uv[64])
+{
+    if (uv[current] == uv[target]) return target;
+    uint8_t next = target;
+    for (unsigned c = 0; c < 64; ++c) {
+        if (uv[target] > uv[current]) {
+            if (uv[c] > uv[current] && uv[c] < uv[next]) next = (uint8_t)c;
+        } else {
+            if (uv[c] < uv[current] && uv[c] > uv[next]) next = (uint8_t)c;
+        }
+    }
+    return next;
+}
 uint16_t c5v4_level_word(uint16_t original, unsigned code)
 {
     return (uint16_t)((original & ~63u) | (code & 63u));
@@ -35,12 +48,21 @@ bool c5v4_level_observe(c5v4_level_t *s, const c5v4_cvbs_stats_t *v,
 {
     if (!s->context_valid || s->context != context) {
         s->context = context; s->context_valid = true; s->good = 0;
+        s->observed_valid = false;
     }
+    /* Normal supervision is 50 ms. More than four intervals breaks the
+     * consecutive-evidence chain; duplicate/backward timestamps cannot vote.
+     * These are evidence times, not a claim of tagged DMA sample identity. */
+    bool ordered = !s->observed_valid || now > s->observed_us;
+    if (s->observed_valid &&
+        (!ordered || now - s->observed_us > 200000)) s->good = 0;
+    s->observed_us = now;
+    s->observed_valid = true;
     /* Phase level evidence must agree across three fresh consecutive windows.
      * Reject origin collapse, folding/overload and distorted pulse plateaus.
      * 12 bins is the existing observer floor; never chase arbitrarily small sync.
      * Nominal gain range is about 0.32..3.2x the initial 0.15 V/MHz transfer. */
-    bool valid = fresh && v && v->levels_valid && v->repeated &&
+    bool valid = ordered && fresh && v && v->levels_valid && v->repeated &&
         v->span_bins >= 12 && v->span_bins <= 120 &&
         v->sync_mad_bins <= 4 && v->blank_mad_bins <= 4 &&
         v->origin_pm <= 350 && v->ambiguous_pm <= 100 && v->clip_pm <= 200 &&
@@ -50,7 +72,8 @@ bool c5v4_level_observe(c5v4_level_t *s, const c5v4_cvbs_stats_t *v,
                    magnitude(v->span_bins - s->span) > 4)) s->good = 0;
     s->blank = v->blank_bins; s->span = v->span_bins;
     if (s->good < 3) ++s->good;
-    if (s->good < 3 || (s->updates && now - s->last_us < 100000)) return false;
+    if (s->good < 3 || (s->updates &&
+        (now <= s->last_us || now - s->last_us < 100000))) return false;
     bool changed = false;
     for (unsigned i = 0; i < 256; ++i) {
         /* Fixed black and sync separation, BEFORE clipping to the loaded DAC.
@@ -58,10 +81,9 @@ bool c5v4_level_observe(c5v4_level_t *s, const c5v4_cvbs_stats_t *v,
         int64_t uv = (i >> 6) == 3 ? 300000 :
             300000 + (int64_t)(delta(i) - s->blank) * 300000 / s->span;
         uint8_t target = nearest(uv), current = s->codes[i];
-        /* Limit each intermediate table change to one DAC code per 100 ms.
+        /* Step by loaded voltage, including nonmonotonic measured ladders.
          * This is a gradual sequential update, not an atomic bank switch. */
-        if (target > current) ++current;
-        else if (target < current) --current;
+        current = c5v4_level_slew(current, target, c5v4_dac_uv);
         if (s->codes[i] != current) { s->codes[i] = current; changed = true; }
     }
     if (changed) { ++s->updates; s->last_us = now; }

@@ -43,6 +43,9 @@ transition; stationarity remains a refusal heuristic, not an analog-state proof.
 
 ## Issues and remaining gates
 
+See [ISSUE_AUDIT.md](ISSUE_AUDIT.md) for the complete 2026-10-03 open/closed
+issue inventory and the subsequent CVBS evidence-age/calibrated-slew fixes.
+
 | Issue | Software disposition / remaining proof |
 |---|---|
 | #144 | Unwrap75 and exact routing/oracle retained; adjacent-step bound remains |
@@ -115,3 +118,13 @@ level servo, with stopped-engine LUT16 addressing probe and bounded DAC-only
 live writes. CVBS_LEVEL.md records its implementation, refusal conditions,
 physical-source ambiguity and required bench acceptance. This does not establish
 the cause of the observed amplitude fall or recover RF information.
+
+## Combined follow-up (PR162 supersedes PR161)
+
+PR161's CVBS evidence-age and calibrated-voltage slew changes are included in
+the same follow-up as PR162's DMA snapshot validity, gain context checks,
+scanner ownership, level-lab teardown and truthful menu/heap diagnostics.
+BUG_AUDIT.md records confirmed code defects, the alpha movement/menu report
+and unresolved physical acceptance. ISSUE_AUDIT.md preserves the complete
+original issue classification. Full local verify.py now runs 21 C regressions.
+No H/V sync flywheel/regeneration is added. Only this directory changes.
