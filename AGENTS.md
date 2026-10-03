@@ -264,8 +264,9 @@ middle sample participates in production output.
 
 Control research also belongs to this lineage: fixed/manual gain, adaptive
 active/shadow modes, Range/ARC V2-V5, Direct Gain V1-V5, native packet AGC,
-paced native hold windows, field-locked VBI native releases (C5VRX-4
-`experiments/c5vrx-4/docs/native-agc-vbi.md`, host-tested only), IQ/DC
+paced native hold windows, field-locked VBI gain timing for native releases
+and Direct Gain V5 writes (C5VRX-4 `experiments/c5vrx-4/docs/native-agc-vbi.md`,
+build/host-tested only), IQ/DC
 calibration, finer-lane selection, bandwidth, AFC/frequency sweeps, PHY patch/timer/FFT probes, fusion/PLL-lite observers and
 TX/DAC self-noise comparisons. These are gain/source/control investigations;
 they do not constitute CPU replacement of the live hardware demodulator. Read

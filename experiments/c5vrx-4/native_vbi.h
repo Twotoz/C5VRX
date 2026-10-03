@@ -86,6 +86,9 @@ void nv_demand_released(nv_demand_t *demand, uint64_t release_us);
 enum { NV_HOLD = 0, NV_VBI = 1, NV_NOW = 2 };
 /* NV_VBI: re-acquire in the next blank VBI lines (carrier lost, overload, or
  * the held level moved more than 3 dB from the learned hardware level), each
- * for two consecutive windows. NV_NOW: severe saturation; the held picture is
- * already destroyed, so do not wait for the VBI (PR154 overload rearm). */
+ * for two consecutive windows. NV_NOW: severe saturation or a deep fade
+ * (>6 dB down, many near-origin samples); the held picture is already
+ * breaking up, so do not wait for the VBI (PR154 overload rearm). Ordinary
+ * +-3 dB drift is requested long before it can produce static: FM output is
+ * amplitude-independent until clipping or near-origin phase noise. */
 int nv_demand_update(nv_demand_t *demand, const nv_level_t *level, uint64_t now_us);

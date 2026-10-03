@@ -8,14 +8,17 @@ void c5vrx4_start(void);
 void c5vrx4_suspend(void);
 void c5vrx4_resume(void);
 bool c5vrx4_console(int key);
-/* Native AGC only: analog field-locked release scheduling (native_vbi.h).
- * The caller supplies broad-pulse detections and level observations from
- * completed RX windows; the gate falls back to periodic pacing unlocked. */
+/* Analog field lock shared by both gain owners (native_vbi.h). The caller
+ * supplies broad-pulse detections and level observations from completed RX
+ * windows. Native: the gate re-acquires only in the VBI (periodic pace
+ * unlocked). Direct Gain: c5vrx4_vbi_slot() times ordinary gain/lane writes
+ * into the VBI; it returns false unlocked, disabled or under native AGC. */
 #include "native_vbi.h"
 uint32_t c5vrx4_native_generation(void);
-bool c5vrx4_native_vbi_wanted(void);
-void c5vrx4_native_observe(uint32_t generation, bool broad, uint64_t event_us,
-                           const nv_level_t *level, uint64_t now_us);
+bool c5vrx4_vbi_wanted(void);
+void c5vrx4_vbi_observe(uint32_t generation, uint32_t rx_context, bool broad,
+                        uint64_t event_us, const nv_level_t *level, uint64_t now_us);
+bool c5vrx4_vbi_slot(uint64_t now_us, uint64_t not_before_us, uint64_t *slot_us);
 bool c5vrx4_history_enabled(void);
 /* Fixed-lane comparison: ultrafine is opt-in; protected V5 lanes are default. */
 bool c5vrx4_ultrafine_forced(void);

@@ -174,6 +174,13 @@ static void check_demand(void)
     assert(nv_demand_update(&d, &strong, 5009) == NV_HOLD);
     assert(nv_demand_update(&d, &strong, 5010) == NV_VBI);
     assert(d.demands == 5u);
+    /* Deep fade (>6 dB down, near-origin samples) is urgent; a mild one is not. */
+    nv_level_t faded = lvl(1, 8, 0, 500, 40), mild = lvl(3, 20, 0, 300, 60);
+    assert(nv_demand_update(&d, &faded, 5011) == NV_HOLD);
+    assert(nv_demand_update(&d, &faded, 5012) == NV_NOW);
+    assert(nv_demand_update(&d, &mild, 5013) == NV_HOLD);
+    assert(nv_demand_update(&d, &mild, 5014) == NV_VBI);
+    d.demands -= 2u;
     /* A new release relearns; loss still counts before the baseline. */
     nv_demand_released(&d, 6000);
     assert(d.demands == 5u && d.base_count == 0u);

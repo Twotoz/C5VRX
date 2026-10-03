@@ -156,8 +156,13 @@ static bool vote(nv_demand_t *demand, bool bad)
 int nv_demand_update(nv_demand_t *demand, const nv_level_t *level, uint64_t now_us)
 {
     if (!level || now_us < demand->settle_until_us) return NV_HOLD;
-    /* Direct Gain V3's saturation definition. */
-    if (level->clip_pm >= 100u || level->p95 >= 95u) {
+    /* Direct Gain V3's saturation definition, or a deep fade: >6 dB below
+     * the learned hardware level with many near-origin samples. Either way
+     * the held picture is already breaking up; waiting for the VBI would
+     * only lengthen the static. */
+    bool deep_fade = demand->base_count >= 3u && 4u * level->p50 < demand->base_p50 &&
+                     level->origin_pm >= 350u;
+    if (level->clip_pm >= 100u || level->p95 >= 95u || deep_fade) {
         if (++demand->severe >= 2u) {
             demand->severe = 0;
             demand->bad = 0;

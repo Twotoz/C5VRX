@@ -1,12 +1,14 @@
-# Native AGC for analog video: field-locked VBI releases
+# Analog field-locked gain timing: native AGC and Direct Gain V5
 
 C5VRX by Twotoz and the contributors. This work extends Leon Beekveldt's native AGC research:
 [native-agc-v2.md](native-agc-v2.md) (packet-AGC restart mechanism),
 [native-agc-paced.md](native-agc-paced.md) (the `7030[29]` gate and 1 ms pace) and
 [native-agc-analog-patch.md](native-agc-analog-patch.md) (PR154: acquire, then
 event-driven BB hold; release in a measured blanking interval; immediate
-overload rearm). C5VRX-4 only, native opt-in (`N`); Direct Gain V5 stays the
-default owner and never starts this code.
+overload rearm). C5VRX-4 only. Direct Gain V5 stays the default owner; it
+uses the same field lock to time its ordinary writes (below). Native AGC
+stays opt-in (`N`): AGENTS.md forbids making it the default without a new
+hardware comparison that beats V4.
 
 ## Problem
 
@@ -52,21 +54,50 @@ Firmware never computes, forces or strobes a gain index. Only the existing
 alone (without `phy_enable_agc`'s `702C[23]` strobe) produces exactly one
 acquisition is still unverified on hardware.
 
+## Direct Gain V5 (default owner)
+
+Every gain or lane step is a transient: the gain-dependent DC/IQ offset and
+the analog settling move the IQ centre and level, and the six sequential lane
+routing writes briefly mix two bit slices. Before this change V5 wrote such
+steps immediately, at any picture position, at up to a 200 us cadence.
+
+With field lock, an ordinary V5 decision (tracking step or finer-lane
+upgrade) is held and written at the next VBI slot (same 615 us offset, at
+least 600 us ahead, <=400 us busy wait in the observer). No new decision is
+taken while one is pending, so the controller never judges pre-write windows
+as a write without effect. A missed slot moves to the next field, never into
+the picture. A changed profile/PHY/gain epoch/table drops it; an overload
+emergency supersedes it.
+
+Writes stay immediate when the picture is already breaking up: sentinel
+overload, lane fold escape, clip >= 20 pm, p95 >= 80, origin >= 350 pm or
+coherence < 30, and always without lock (no video, cold start after a
+channel change). Ordinary steps therefore wait at most one field
+(20/16.7 ms); FM output is amplitude-independent until clipping or
+near-origin phase noise, so a small drift does not produce static during
+that wait. The level difference between two gains remains: it becomes a
+clean step between fields instead of a transient in the picture.
+
 ## Controls
 
-`|` toggles field-locked releases / periodic pace (RAM only, default on).
-`~` still toggles paced / continuous native AGC. `T` prints
-`C5VRX4_NATIVE_VBI`: mode (`vbi_hold`, `pace_fallback`, `off`), standard,
-broad-pulse events/matches, releases, urgent releases, late skips, demands
-and the learned centre.
+`|` toggles field-locked timing for either owner (RAM only, default on):
+native VBI releases vs periodic pace, or V5 VBI writes vs immediate writes.
+`~` still toggles paced / continuous native AGC. `T` prints `C5VRX4_VBI`
+(owner, mode, standard, broad-pulse events/matches; native releases, urgent
+releases, late skips, demands, learned centre) and, under V5,
+`C5VRX4_V5_VBI` (deferred, applied in VBI, rescheduled, immediate urgent,
+immediate unlocked, dropped).
 
 ## Evidence boundary
 
 Host tests only: synthetic PAL/NTSC CVBS FM through the Q4/I4 phase LUT,
 including dark/busy/bright-object scenes, noise, false events, lock expiry,
-the gate ISR sequence and hysteresis. No RF capture, picture comparison or
+the gate ISR sequence, hysteresis, deep-fade/overload urgency and the
+register-free V5 slot service. The V5 deferral in `video.c` is covered only
+by the firmware build. No RF capture, picture comparison or
 range measurement has been made. Bench acceptance: native boot, `T` shows
-`mode=vbi_hold` with the correct standard. A/B `|` on the same channel for
+`mode=vbi_hold` (native) or `mode=gain_writes_in_vbi` with rising
+`applied_in_vbi` (V5) and the correct standard. A/B `|` on the same channel for
 dashes/noise, check that no rolling or vertical-sync loss appears in the
 goggles, and check fade and overload recovery and NO_CARRIER return to high
 gain, for PAL and NTSC.

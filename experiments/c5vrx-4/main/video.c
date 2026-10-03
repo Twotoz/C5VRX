@@ -1660,6 +1660,51 @@ static void direct_gain_v5_bw_gear(const dg3_observation_t *o)
 /* Observe four separated 64-byte regions in the latest completed descriptor.
  * This task never touches a descriptor still owned by the RX DMA engine and
  * never participates in the 40 MS/s video clock. Only this task writes gain. */
+#ifdef C5VRX4_EXPERIMENT
+/* Direct Gain V5 ordinary writes wait for the next blank VBI lines of the
+ * received field (native_vbi.h), so a gain/lane step's DC/level transient
+ * and settling never land in the picture. Emergencies stay immediate. */
+#define V5_VBI_LEAD_US  600u   /* observer wakes every ~200 us */
+#define V5_VBI_WAIT_US  400u   /* busy-wait at most this long for the slot */
+#define V5_VBI_LATE_US  150u
+typedef struct {
+    bool active;
+    uint8_t target;
+    uint32_t profile, phy, gain_epoch, arc;
+    uint64_t slot_us;
+} v5_vbi_write_t;
+static v5_vbi_write_t s_v5_vbi;
+static uint32_t s_v5_vbi_deferred, s_v5_vbi_applied, s_v5_vbi_rescheduled,
+                s_v5_vbi_immediate, s_v5_vbi_dropped, s_v5_vbi_unlocked;
+
+static void v5_vbi_drop(void)
+{
+    if (s_v5_vbi.active) ++s_v5_vbi_dropped;
+    s_v5_vbi.active = false;
+}
+
+/* Emergency or not: overload/fold/deep weak and loss must not wait for the
+ * VBI; the picture is already breaking up and a field is up to 20 ms. */
+static bool v5_vbi_urgent(const dg3_observation_t *o, uint8_t lane)
+{
+    return lane < rf_get_iq_lanes() || o->clip_pm >= 20u || o->p95 >= 80u ||
+           o->origin_pm >= 350u || o->coherence < 30u;
+}
+
+static void v5_vbi_print(void)
+{
+    uint64_t slot;
+    bool locked = c5vrx4_vbi_slot((uint64_t)esp_timer_get_time(),
+                                  (uint64_t)esp_timer_get_time(), &slot);
+    printf("C5VRX4_V5_VBI locked=%u pending=%u deferred=%" PRIu32 " applied_in_vbi=%" PRIu32
+           " rescheduled=%" PRIu32 " immediate_urgent=%" PRIu32
+           " immediate_unlocked=%" PRIu32 " dropped=%" PRIu32 " lead_us=%u\n",
+           locked, s_v5_vbi.active, s_v5_vbi_deferred, s_v5_vbi_applied,
+           s_v5_vbi_rescheduled, s_v5_vbi_immediate, s_v5_vbi_unlocked,
+           s_v5_vbi_dropped, V5_VBI_LEAD_US);
+}
+#endif
+
 static void direct_gain_v3_observer_task(void *arg)
 {
     (void)arg;
@@ -1675,6 +1720,9 @@ static void direct_gain_v3_observer_task(void *arg)
                       !s_rssi_probe_active;
         if (!active) {
             was_active = false;
+#ifdef C5VRX4_EXPERIMENT
+            v5_vbi_drop();
+#endif
             /* Never clear state 1 while the sentinel owns publication. */
             if (__sync_bool_compare_and_swap(&s_v3_fast_overload_state, 2u, 1u))
                 __sync_lock_release(&s_v3_fast_overload_state);
@@ -1720,6 +1768,9 @@ static void direct_gain_v3_observer_task(void *arg)
             rx_control_epoch_t current = {profile, phy, s_gain_transition_count};
             if (!rx_control_observation_current(epoch, current, overload.observed_us,
                                                  (uint64_t)esp_timer_get_time())) continue;
+#ifdef C5VRX4_EXPERIMENT
+            v5_vbi_drop(); /* The emergency decision supersedes it. */
+#endif
             uint8_t emergency = direct_gain_v3_tick(&s_direct_gain_v3,
                                                     &overload);
             s_direct_gain_v3.lane = c5vrx4_lane_target(rf_get_iq_lanes(),
@@ -1728,6 +1779,37 @@ static void direct_gain_v3_observer_task(void *arg)
             continue;
         }
 
+#ifdef C5VRX4_EXPERIMENT
+        if (s_v5_vbi.active) {
+            /* No new decisions until the pending one is written: the
+             * controller already assumed it, and pre-write windows would
+             * look like a write without effect. */
+            if (s_v5_vbi.profile != s_profile_generation || s_v5_vbi.phy != phy_rx_lab_generation() ||
+                s_v5_vbi.gain_epoch != s_gain_transition_count ||
+                s_v5_vbi.arc != rf_get_arc_generation()) {
+                v5_vbi_drop(); /* State mismatch resets the controller next pass. */
+                continue;
+            }
+            uint64_t now = (uint64_t)esp_timer_get_time();
+            if (now + V5_VBI_WAIT_US < s_v5_vbi.slot_us) continue;
+            if (now > s_v5_vbi.slot_us + V5_VBI_LATE_US) {
+                /* Missed (preempted): never write inside the picture. */
+                uint64_t slot;
+                if (c5vrx4_vbi_slot(now, now + V5_VBI_LEAD_US, &slot)) {
+                    s_v5_vbi.slot_us = slot;
+                    ++s_v5_vbi_rescheduled;
+                    continue;
+                }
+                ++s_v5_vbi_unlocked; /* Lock lost: write now. */
+            } else {
+                if (now < s_v5_vbi.slot_us) esp_rom_delay_us((uint32_t)(s_v5_vbi.slot_us - now));
+                ++s_v5_vbi_applied;
+            }
+            s_v5_vbi.active = false;
+            direct_gain_v3_apply_target(s_v5_vbi.target, s_v5_vbi.profile, s_v5_vbi.phy);
+            continue;
+        }
+#endif
         if (!c5vrx4_lane_window_ready((uint64_t)esp_timer_get_time())) continue;
         uint32_t gain_epoch = s_gain_transition_count;
         int block_idx = -1;
@@ -1752,6 +1834,26 @@ static void direct_gain_v3_observer_task(void *arg)
         uint8_t target = direct_gain_v3_tick(&s_direct_gain_v3, &observation);
         s_direct_gain_v3.lane = c5vrx4_lane_target(rf_get_iq_lanes(),
             s_direct_gain_v3.lane, sample, sizeof(sample), observation.observed_us);
+#ifdef C5VRX4_EXPERIMENT
+        bool change = target != s_current_gain || s_direct_gain_v3.lane != rf_get_iq_lanes();
+        if (change) {
+            uint64_t now = (uint64_t)esp_timer_get_time(), slot;
+            if (v5_vbi_urgent(&observation, s_direct_gain_v3.lane)) {
+                ++s_v5_vbi_immediate;
+            } else if (c5vrx4_vbi_slot(now, now + V5_VBI_LEAD_US, &slot)) {
+                s_v5_vbi = (v5_vbi_write_t){true, target, profile, phy, gain_epoch, arc, slot};
+                ++s_v5_vbi_deferred;
+                change = false;
+            } else {
+                ++s_v5_vbi_unlocked;
+            }
+            if (!change) {
+                direct_gain_v5_dc_observe(sample, sizeof(sample), &observation);
+                direct_gain_v5_bw_gear(&observation);
+                continue;
+            }
+        }
+#endif
         direct_gain_v3_apply_target(target, profile, phy);
         direct_gain_v5_dc_observe(sample, sizeof(sample), &observation);
         direct_gain_v5_bw_gear(&observation);
@@ -5565,19 +5667,24 @@ control_tail: {
 }
 
 #ifdef C5VRX4_EXPERIMENT
-/* Native AGC only: find the analog field timing and the held level in
- * completed RX windows so the native gate re-acquires inside the blank VBI
- * lines instead of at random picture positions (native_vbi.h). Read-only:
- * no PHY/gain writes, no DMA pacing; a stale or lapped window is dropped. */
+/* Find the analog field timing (and, for native AGC, the held level) in
+ * completed RX windows, so gain changes land in the blank VBI lines instead
+ * of at random picture positions (native_vbi.h). Read-only: no PHY/gain
+ * writes, no DMA pacing; a stale or lapped window is dropped. */
 static void native_vbi_task(void *arg)
 {
     (void)arg;
     const size_t bytes = 4092u;
     for (;;) {
-        /* Dithered 1..3 ms: a fixed 2 ms period would sample the same ten
-         * phases of every PAL field and could miss the broad pulses forever. */
-        vTaskDelay(pdMS_TO_TICKS(1u + esp_random() % 3u));
-        if (!c5vrx4_native_vbi_wanted() || s_menu_active || s_channel_scan_active ||
+        /* Dithered: a fixed 2 ms period would sample the same ten phases of
+         * every PAL field and could miss the broad pulses forever. Once
+         * locked, a detection every few hundred ms keeps the lock. */
+        uint64_t probe;
+        bool locked = !rf_native_agc_active() &&
+            c5vrx4_vbi_slot((uint64_t)esp_timer_get_time(),
+                            (uint64_t)esp_timer_get_time(), &probe);
+        vTaskDelay(pdMS_TO_TICKS(locked ? 4u + esp_random() % 9u : 1u + esp_random() % 3u));
+        if (!c5vrx4_vbi_wanted() || s_menu_active || s_channel_scan_active ||
             s_gain_sweep.active || phy_rx_lab_busy() || s_pre_q4_probe_active ||
             s_rssi_probe_active || s_rx_dma_ch < 0 || s_rx_dma_ch >= 3) continue;
         uint32_t generation = c5vrx4_native_generation();
@@ -5601,8 +5708,8 @@ static void native_vbi_task(void *arg)
             rx_snapshot_gap_bytes(s_rx_dscr_len, s_rx_dscr_count, idx, active) / 40u;
         uint64_t event = sample_end - (s_rx_dscr_len[idx] - window.centroid_bytes) / 40u;
         nv_level_t level = {o.p50, o.p95, o.clip_pm, o.origin_pm, o.coherence};
-        c5vrx4_native_observe(generation, window.broad, event, &level,
-                              (uint64_t)esp_timer_get_time());
+        c5vrx4_vbi_observe(generation, (uint32_t)rf_get_channel_index(), window.broad,
+                           event, &level, (uint64_t)esp_timer_get_time());
     }
 }
 
@@ -5692,6 +5799,9 @@ static void console_diag_task(void *arg)
 #ifdef C5VRX4_EXPERIMENT
                 if (c == 'T') {
                     c5v4_level_hw_print();
+#if CONFIG_C5VRX_DIRECT_GAIN_V3_EXPERIMENT
+                    v5_vbi_print();
+#endif
                     printf("C5VRX4_MENU active=%u boot_button_enabled=%u "
                            "standard=%s descriptor_bytes=%u free=%u largest=%u\n",
                            s_menu_active, s_menu_boot_btn_enabled,
@@ -6300,11 +6410,11 @@ esp_err_t video_start(void)
 #endif
 
 #ifdef C5VRX4_EXPERIMENT
-    /* Opt-in native AGC: analog field-locked gate scheduling. Never created
-     * under the default Direct Gain V5 owner. */
-    if (rf_native_agc_active() &&
-        xTaskCreate(native_vbi_task, "native_vbi", 3072, NULL, 2, NULL) != pdPASS)
-        ESP_LOGW(TAG, "native VBI scheduler unavailable; periodic native pace kept");
+    /* Analog field lock for both gain owners: native VBI-only re-acquisition
+     * and Direct Gain V5 VBI-timed ordinary writes. Without it both owners
+     * keep their previous immediate/periodic behaviour. */
+    if (xTaskCreate(native_vbi_task, "native_vbi", 3072, NULL, 2, NULL) != pdPASS)
+        ESP_LOGW(TAG, "VBI field lock unavailable; gain changes stay immediate");
 #endif
 
     /* Start interactive console for on-demand diagnostics (zero periodic CPU/bus traffic) */

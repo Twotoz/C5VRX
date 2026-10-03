@@ -56,7 +56,7 @@ of merging. Current main's existing alpha workflow/flasher can build this projec
 | `N` | Direct Gain / native AGC, reboot |
 | `H`, `{}`, `[]`, `W`, `B`, `A`, `:`, `L` | PR154 shared PHY diagnostics/labs |
 | `(`, `)` | Explicit native-only BB hold / 100-cycle reversible lab |
-| `\|` | Native only: analog field-locked VBI releases / periodic pace (RAM, default field-locked; [docs](docs/native-agc-vbi.md)) |
+| `\|` | Field-locked VBI gain timing on/off (RAM, default on): native releases vs pace, V5 writes vs immediate ([docs](docs/native-agc-vbi.md)) |
 
 The lane comparison uses the new NVS key `c5vrx4/force_ultra_v2`; the old
 PR146 `force_ultra` setting does not silently force the integrated default.

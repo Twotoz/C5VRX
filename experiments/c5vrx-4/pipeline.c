@@ -38,7 +38,7 @@ static uint32_t s_opens, s_faults, s_late_max, s_open_max;
 static bool s_vbi_enabled = true, s_vbi, s_vbi_urgent;
 static uint64_t s_vbi_target, s_vbi_last_release, s_epoch_us;
 static uint32_t s_vbi_releases, s_vbi_late, s_vbi_urgent_releases, s_generation;
-static uint32_t s_observed_generation = UINT32_MAX, s_seen_releases;
+static uint32_t s_observed_context = UINT32_MAX, s_seen_releases;
 static nv_lock_t s_nv_lock;
 static nv_demand_t s_nv_demand;
 static bool s_history_loaded, s_history = false;
@@ -244,18 +244,25 @@ static void print_state(void)
            rf_native_agc_active() ? "native" : "direct_gain_v5",
            running, open, PERIOD_US, WINDOW_US, opens, late, duration, faults,
             control);
-    if (rf_native_agc_active() && s_transition_lock) {
-        /* Serialized with the sampler task, which owns lock/demand state. */
+    if (s_transition_lock) {
+        /* Copy under the sampler's lock; never hold it across printf (the
+         * Direct Gain observer asks it for VBI slots). */
         xSemaphoreTakeRecursive(s_transition_lock, portMAX_DELAY);
         int standard = nv_lock_standard(&s_nv_lock, (uint64_t)esp_timer_get_time());
-        printf("C5VRX4_NATIVE_VBI enabled=%u mode=%s standard=%s events=%" PRIu32
-               " matches=%" PRIu32 " releases=%" PRIu32 " urgent=%" PRIu32 " late_skipped=%" PRIu32
-               " demands=%" PRIu32 " base_p50=%u release_after_us=%u key=|\n",
-               s_vbi_enabled, vbi ? "vbi_hold" : (running ? "pace_fallback" : "off"),
-               standard == NV_PAL ? "PAL" : standard == NV_NTSC ? "NTSC" : "none",
-               s_nv_lock.events, s_nv_lock.matches, vbi_releases, vbi_urgent, vbi_late,
-               s_nv_demand.demands, s_nv_demand.base_p50, NV_RELEASE_AFTER_US);
+        nv_lock_t lock = s_nv_lock;
+        nv_demand_t demand = s_nv_demand;
         xSemaphoreGiveRecursive(s_transition_lock);
+        const char *mode = !s_vbi_enabled ? "off" :
+            !rf_native_agc_active() ? (standard == NV_NONE ? "immediate_unlocked" : "gain_writes_in_vbi") :
+            vbi ? "vbi_hold" : (running ? "pace_fallback" : "off");
+        printf("C5VRX4_VBI owner=%s enabled=%u mode=%s standard=%s events=%" PRIu32
+               " matches=%" PRIu32 " native_releases=%" PRIu32 " native_urgent=%" PRIu32
+               " native_late_skipped=%" PRIu32 " native_demands=%" PRIu32
+               " native_base_p50=%u release_after_us=%u key=|\n",
+               rf_native_agc_active() ? "native" : "direct_gain_v5", s_vbi_enabled, mode,
+               standard == NV_PAL ? "PAL" : standard == NV_NTSC ? "NTSC" : "none",
+               lock.events, lock.matches, vbi_releases, vbi_urgent, vbi_late,
+               demand.demands, demand.base_p50, NV_RELEASE_AFTER_US);
     }
     printf("C5VRX4_CVBS transfer=%s reference_mv=%u volts_per_mhz=%s "
            "calibration=%s load_ohms=75 level_lab=%u "
@@ -276,6 +283,9 @@ void c5vrx4_start(void)
     /* V5 owns gain in the default build: do not allocate/start a native gate
      * or touch its control/profile registers in this mode. */
     if (!rf_native_agc_active()) {
+        /* Only the shared field lock (Direct Gain VBI write timing). */
+        s_transition_lock = xSemaphoreCreateRecursiveMutex();
+        ESP_ERROR_CHECK(s_transition_lock ? ESP_OK : ESP_ERR_NO_MEM);
         print_state();
         return;
     }
@@ -370,7 +380,8 @@ bool c5vrx4_console(int key)
     }
     if (!s_transition_lock) return false;
     if (key == '|') {
-        /* RAM-only A/B: field-locked VBI releases vs the periodic pace. */
+        /* RAM-only A/B. Native: field-locked releases vs periodic pace.
+         * Direct Gain: ordinary gain/lane writes in the VBI vs immediately. */
         c5vrx4_suspend();
         s_vbi_enabled = !s_vbi_enabled;
         c5vrx4_resume();
@@ -399,23 +410,36 @@ uint32_t c5vrx4_native_generation(void)
     return generation;
 }
 
-bool c5vrx4_native_vbi_wanted(void)
+bool c5vrx4_vbi_wanted(void)
 {
-    if (!rf_native_agc_active() || !s_transition_lock) return false;
+    if (!s_transition_lock) return false;
     portENTER_CRITICAL(&s_lock);
-    bool wanted = s_running && s_requested && s_vbi_enabled;
+    bool wanted = s_vbi_enabled &&
+                  (!rf_native_agc_active() || (s_running && s_requested));
     portEXIT_CRITICAL(&s_lock);
     return wanted;
 }
 
-void c5vrx4_native_observe(uint32_t generation, bool broad, uint64_t event_us,
-                           const nv_level_t *level, uint64_t now_us)
+bool c5vrx4_vbi_slot(uint64_t now_us, uint64_t not_before_us, uint64_t *slot_us)
 {
-    if (!rf_native_agc_active() || !s_transition_lock) return;
-    /* A retune holds this lock from suspend to resume. */
+    if (!s_transition_lock || !slot_us || rf_native_agc_active()) return false;
+    xSemaphoreTakeRecursive(s_transition_lock, portMAX_DELAY);
+    bool ok = s_vbi_enabled &&
+              nv_lock_next_release(&s_nv_lock, now_us, not_before_us, slot_us);
+    xSemaphoreGiveRecursive(s_transition_lock);
+    return ok;
+}
+
+void c5vrx4_vbi_observe(uint32_t generation, uint32_t rx_context, bool broad,
+                        uint64_t event_us, const nv_level_t *level, uint64_t now_us)
+{
+    if (!s_transition_lock) return;
+    /* A native retune holds this lock from suspend to resume. */
     xSemaphoreTakeRecursive(s_transition_lock, portMAX_DELAY);
     portENTER_CRITICAL(&s_lock);
-    bool current = generation == s_generation && s_running && s_requested && s_vbi_enabled;
+    bool native = rf_native_agc_active();
+    bool current = s_vbi_enabled &&
+        (!native || (generation == s_generation && s_running && s_requested));
     uint32_t releases = s_vbi_releases;
     uint64_t released_at = s_vbi_last_release + s_epoch_us;
     bool was_vbi = s_vbi;
@@ -424,13 +448,19 @@ void c5vrx4_native_observe(uint32_t generation, bool broad, uint64_t event_us,
         xSemaphoreGiveRecursive(s_transition_lock);
         return;
     }
-    if (s_observed_generation != generation) {
-        s_observed_generation = generation;
+    /* New channel or native retune: field timing and trapped level are stale. */
+    uint32_t context = generation ^ (rx_context * 2654435761u);
+    if (s_observed_context != context) {
+        s_observed_context = context;
         s_seen_releases = releases;
         nv_lock_reset(&s_nv_lock);
         nv_demand_reset(&s_nv_demand);
     }
     if (broad) nv_lock_feed(&s_nv_lock, event_us);
+    if (!native) {
+        xSemaphoreGiveRecursive(s_transition_lock);
+        return;
+    }
     if (releases != s_seen_releases) {
         s_seen_releases = releases;
         nv_demand_released(&s_nv_demand, released_at);

@@ -56,6 +56,26 @@ int main(void)
     /* Cover all shared lab keys: the hook passes them to the shared console. */
     const char *keys="{}[]HBWA:LlQ";
     for (const char *k=keys;*k;++k) assert(!c5vrx4_console(*k));
+    /* Direct Gain owner: the shared field lock only times ordinary gain
+     * writes into the VBI. No timer, gate or register access. */
+    assert(c5vrx4_vbi_wanted());
+    uint64_t slot;
+    assert(!c5vrx4_vbi_slot(900000u, 903000u, &slot));
+    nv_level_t v5 = {20, 40, 0, 50, 90};
+    for (unsigned k = 0; k < 4u; ++k)
+        c5vrx4_vbi_observe(0u, 3u, true, 800080u + k * 20000u, &v5, 800100u + k * 20000u);
+    assert(c5vrx4_vbi_slot(900000u, 900600u, &slot));
+    assert(slot >= 900600u && (slot - 800080u) % 20000u == NV_RELEASE_AFTER_US);
+    /* A new channel forgets the old field timing. */
+    c5vrx4_vbi_observe(0u, 4u, false, 0u, &v5, 900100u);
+    assert(!c5vrx4_vbi_slot(900200u, 900800u, &slot));
+    for (unsigned k = 0; k < 4u; ++k)
+        c5vrx4_vbi_observe(0u, 4u, true, 910080u + k * 16683u, &v5, 910100u + k * 16683u);
+    assert(c5vrx4_vbi_slot(990000u, 990600u, &slot));
+    assert(c5vrx4_console('|') && !s_vbi_enabled && !c5vrx4_vbi_wanted() &&
+           !c5vrx4_vbi_slot(990000u, 990600u, &slot));
+    assert(c5vrx4_console('|') && s_vbi_enabled);
+    assert(!s_vbi && !s_vbi_target && !s_vbi_urgent && !s_vbi_releases);
     assert(!timer_calls && !memcmp(before,m,sizeof(before)));
     native=true;
     c5vrx4_start(); assert(s_running && s_open && timer_calls);
@@ -70,21 +90,22 @@ int main(void)
 
     /* Analog field lock: hold between releases, release only in the VBI. */
     uint64_t epoch = s_epoch_us;
-    assert(c5vrx4_native_vbi_wanted());
+    assert(c5vrx4_vbi_wanted());
     uint32_t generation = c5vrx4_native_generation();
     nv_level_t ok = {7, 30, 5, 100, 80}, weak = {2, 10, 0, 300, 60};
     for (unsigned k = 0; k < 4u; ++k)   /* broad pulses every PAL field */
-        c5vrx4_native_observe(generation, true, epoch + 50000u + k * 20000u, &ok,
+        c5vrx4_vbi_observe(generation, 7u, true, epoch + 50000u + k * 20000u, &ok,
                               epoch + 50100u + k * 20000u);
     assert(s_vbi && !s_vbi_target);
+    { uint64_t slot; assert(!c5vrx4_vbi_slot(epoch + 120000u, epoch + 123000u, &slot)); }
     /* Learn the hardware level, then two weak windows demand one release. */
     uint64_t now = epoch + 120000u;
     for (unsigned k = 0; k < 3u; ++k)
-        c5vrx4_native_observe(generation, false, 0, &ok, now + k);
+        c5vrx4_vbi_observe(generation, 7u, false, 0, &ok, now + k);
     assert(!s_vbi_target);
-    c5vrx4_native_observe(generation, false, 0, &weak, now + 10u);
+    c5vrx4_vbi_observe(generation, 7u, false, 0, &weak, now + 10u);
     assert(!s_vbi_target);
-    c5vrx4_native_observe(generation, false, 0, &weak, now + 11u);
+    c5vrx4_vbi_observe(generation, 7u, false, 0, &weak, now + 11u);
     assert(s_vbi_target);
     uint64_t target = s_vbi_target;
     /* 3 ms lead; release lands NV_RELEASE_AFTER_US after the field event. */
@@ -120,10 +141,10 @@ int main(void)
     nv_level_t saturated = {40, 105, 300, 0, 90};
     uint64_t later = epoch + target + 40000u;
     for (unsigned k = 0; k < 3u; ++k)
-        c5vrx4_native_observe(generation, false, 0, &ok, later + k);
-    c5vrx4_native_observe(generation, false, 0, &saturated, later + 10u);
+        c5vrx4_vbi_observe(generation, 7u, false, 0, &ok, later + k);
+    c5vrx4_vbi_observe(generation, 7u, false, 0, &saturated, later + 10u);
     assert(!s_vbi_urgent);
-    c5vrx4_native_observe(generation, false, 0, &saturated, later + 11u);
+    c5vrx4_vbi_observe(generation, 7u, false, 0, &saturated, later + 11u);
     assert(s_vbi_urgent);
     c.count_value = c.alarm_value = later - epoch + 500u;
     gate_alarm(s_timer, &c, NULL);
@@ -132,9 +153,9 @@ int main(void)
     gate_alarm(s_timer, &c, NULL);
     assert(!s_open && (AGC_CTRL & AGC_HOLD));
     /* Lock expiry returns to the periodic pace; | toggles the analog mode. */
-    c5vrx4_native_observe(generation, false, 0, &ok, epoch + 2000000u);
+    c5vrx4_vbi_observe(generation, 7u, false, 0, &ok, epoch + 2000000u);
     assert(!s_vbi);
-    assert(c5vrx4_console('|') && !s_vbi_enabled && !c5vrx4_native_vbi_wanted());
+    assert(c5vrx4_console('|') && !s_vbi_enabled && !c5vrx4_vbi_wanted());
     assert(c5vrx4_native_generation() != generation);
     assert(c5vrx4_console('|') && s_vbi_enabled);
     c5vrx4_suspend();
