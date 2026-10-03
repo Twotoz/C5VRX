@@ -168,6 +168,23 @@ BITSCRAMBLER_PROGRAM(s_c5vrx4_legacy_static_program, "c5vrx4_phase8_static_legac
 BITSCRAMBLER_PROGRAM(s_c5vrx4_legacy_history_program, "c5vrx4_phase8_history_legacy");
 BITSCRAMBLER_PROGRAM(s_c5vrx4_static_program, "c5vrx4_phase8_static");
 BITSCRAMBLER_PROGRAM(s_c5vrx4_history_program, "c5vrx4_phase8_history");
+BITSCRAMBLER_PROGRAM(s_c5vrx4_cvbs150_static_program, "c5vrx4_phase8_static_cvbs150");
+BITSCRAMBLER_PROGRAM(s_c5vrx4_cvbs150_history_program, "c5vrx4_phase8_history_cvbs150");
+
+/* M-selected output transfer (generate_phase8.py): HR100 default,
+ * LEGACY_FULL or CVBS150; STATIC/HISTORY decode is independent of it. */
+static const void *c5vrx4_selected_program(void)
+{
+    bool history = c5vrx4_history_enabled();
+    switch (c5vrx4_cvbs_mode()) {
+    case C5VRX4_CVBS_LEGACY:
+        return history ? s_c5vrx4_legacy_history_program : s_c5vrx4_legacy_static_program;
+    case C5VRX4_CVBS_150:
+        return history ? s_c5vrx4_cvbs150_history_program : s_c5vrx4_cvbs150_static_program;
+    default:
+        return history ? s_c5vrx4_history_program : s_c5vrx4_static_program;
+    }
+}
 #endif
 
 /* ----- Fixed production constants ----- */
@@ -770,7 +787,7 @@ static int video_semantic_observe(const uint8_t *raw, size_t bytes, size_t ring_
     (void)ring_offset;
     c5v4_cvbs_stats_t stats;
     c5v4_cvbs_analyze(raw, bytes, c5vrx4_history_enabled(),
-                      c5vrx4_cvbs_legacy_enabled(), &stats);
+                      c5vrx4_cvbs_mode(), &stats);
     s_level_stats = stats;
     unsigned period = stats.period_raw;
     int quality = stats.levels_valid && stats.repeated ? 90 : 0;
@@ -4194,9 +4211,7 @@ static void start_flight_demodulator(void)
 #ifdef C5VRX4_EXPERIMENT
     ESP_ERROR_CHECK(s_output_mode == VIDEO_OUTPUT_6BIT_40 ? ESP_OK : ESP_ERR_INVALID_STATE);
     ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs,
-                      c5vrx4_cvbs_legacy_enabled() ?
-                      (c5vrx4_history_enabled() ? s_c5vrx4_legacy_history_program : s_c5vrx4_legacy_static_program) :
-                      (c5vrx4_history_enabled() ? s_c5vrx4_history_program : s_c5vrx4_static_program)));
+                      c5vrx4_selected_program()));
 #elif CONFIG_C5VRX_PHASE8_HR_LIVE_TEST
     ESP_ERROR_CHECK(s_output_mode == VIDEO_OUTPUT_6BIT_40 ?
                     ESP_OK : ESP_ERR_INVALID_STATE);
@@ -4224,9 +4239,7 @@ static void start_flight_demodulator(void)
     if (c5vrx4_level_enabled() && !c5v4_level_hw_ready()) {
         /* A failed addressing probe is repaired from the pristine binary. */
         ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs,
-            c5vrx4_cvbs_legacy_enabled() ?
-            (c5vrx4_history_enabled() ? s_c5vrx4_legacy_history_program : s_c5vrx4_legacy_static_program) :
-            (c5vrx4_history_enabled() ? s_c5vrx4_history_program : s_c5vrx4_static_program)));
+            c5vrx4_selected_program()));
     }
 #endif
     ESP_ERROR_CHECK(bitscrambler_reset(s_flight_bs));
@@ -5751,7 +5764,7 @@ static void cvbs_capture_task(void *arg)
             c5v4_cvbs_stats_t stats;
             int64_t processing = esp_timer_get_time();
             c5v4_cvbs_analyze(raw, CONTROL_SAMPLE_BYTES, c5vrx4_history_enabled(),
-                              c5vrx4_cvbs_legacy_enabled(), &stats);
+                              c5vrx4_cvbs_mode(), &stats);
             unsigned work_us = (unsigned)(esp_timer_get_time() - processing);
             printf("C5V4_CVBS snapshot=%u semantic_estimate=1 valid=%d mode=%s "
                    "period_raw=%u pulses=%u repeated=%u sync_bins=%d blank_bins=%d span_bins=%d "
@@ -5759,7 +5772,7 @@ static void cvbs_capture_task(void *arg)
                    "nominal_depth_mv=%d proposal_q10=%u origin_pm=%u ambiguous_pm=%u "
                    "clip_pm=%u mean_i_mcell=%d mean_q_mcell=%d lane=%u copy_us=%u work_us=%u "
                    "actuator=none\n", capture, stats.levels_valid,
-                   c5vrx4_cvbs_legacy_enabled() ? "legacy" : "CVBS150",
+                   c5vrx4_cvbs_mode_name(),
                    stats.period_raw, stats.pulses, stats.repeated, stats.sync_bins,
                    stats.blank_bins, stats.span_bins, stats.sync_mad_bins, stats.blank_mad_bins,
                    stats.sync_mv, stats.blank_mv, stats.sync_depth_mv, stats.suggested_scale_q10,

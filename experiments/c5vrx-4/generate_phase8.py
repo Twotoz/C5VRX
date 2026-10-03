@@ -105,8 +105,18 @@ def transfer_delta(index):
 # Values describe the existing network under one 75-ohm AV load, not an
 # unloaded DAC or a double-terminated scope. Override with measured values.
 CALIBRATION = HERE / "dac_calibration.json"
-VOLTS_PER_MHZ = 0.15
-BLANK_VOLTS = 0.300
+# Transfers, selected per boot with M (NVS c5vrx4/cvbs_legacy):
+#   0 HR100 (default): 0.420 V blanking, 0.100 V/MHz. Nominal sync (-2 MHz)
+#     sits at 0.220 V, so the sync tip only clips after a 2.2-MHz downward
+#     blank shift (VTX CFO/drift with AFC off, APL-dependent centre of an
+#     AC-coupled VTX, gain-dependent level). White (+4.667 MHz) is 0.887 V;
+#     the top clips at about +5.97 MHz. Goggle inputs are AC-coupled and
+#     clamp on sync/porch: DC position is free, clipping is not.
+#   1 LEGACY_FULL: the full +/-6.667 MHz detector range over the DAC.
+#   2 CVBS150: 0.300 V blanking, 0.150 V/MHz. Standard amplitude but sync at
+#     the 0-V DAC floor: any downward shift clips sync depth (-2 MHz: none).
+TRANSFERS = {"hr100": (0.420, 0.100), "cvbs150": (0.300, 0.150)}
+VOLTS_PER_MHZ, BLANK_VOLTS = 0.100, 0.420
 
 
 def voltages():
@@ -127,23 +137,25 @@ def voltages():
     return values
 
 
-def dac_codes(legacy=False):
+def dac_codes(legacy=False, transfer="hr100"):
     voltage = voltages()
+    if legacy is True: transfer = "legacy"
     def target(index):
         delta = transfer_delta(index)
-        if legacy:
+        if transfer == "legacy":
             return max(voltage) * max(0, min(1, (delta + 128) / 255))
         # delta is in Phase8 bins over the *75 ns* interval. +/-winding
         # classification remains intact; only the final volts/Hz changes.
-        return BLANK_VOLTS + delta / (256 * SPAN_S) / 1e6 * VOLTS_PER_MHZ
+        blank, slope = TRANSFERS[transfer]
+        return blank + delta / (256 * SPAN_S) / 1e6 * slope
     return [min(range(64), key=lambda code: abs(voltage[code] -
                 max(min(voltage), min(max(voltage), target(index)))))
             for index in range(256)]
 
 
-def words_for(history, legacy=False):
+def words_for(history, legacy=False, transfer="hr100"):
     phases = decoder(history)
-    dac = dac_codes(legacy)
+    dac = dac_codes(legacy, transfer)
     words = []
     for bank in range(4):
         for index in range(256):
@@ -157,10 +169,15 @@ def words_for(history, legacy=False):
     return words
 
 
-def build(history, legacy=False):
-    words = words_for(history, legacy)
-    mode = ('history' if history else 'static') + (' legacy' if legacy else ' CVBS150')
+NAMES = {"hr100": " HR100", "legacy": " legacy", "cvbs150": " CVBS150"}
+
+
+def build(history, legacy=False, transfer="hr100"):
+    if legacy is True: transfer = "legacy"
+    words = words_for(history, False, transfer)
+    mode = ('history' if history else 'static') + NAMES[transfer]
     return f"""# C5VRX-4: unwrapped Phase8 {mode}, 75 ns endpoint difference.
+# HR100 default: 0.420 V blanking, 0.100 V/MHz, 2.2 MHz sync headroom.
 # CVBS150: 0.300 V blanking, 0.150 V/MHz, saturating loaded DAC.
 # Legacy comparison retains the previous full-range amplitude transfer.
 # Three bundles consume 3 IQ bytes and emit [D,D,D] at 40 MHz.
@@ -222,10 +239,10 @@ decode_next:
 
 def generate():
     for history in (False, True):
-        for legacy in (False, True):
-            name = ('history' if history else 'static') + ('_legacy' if legacy else '')
+        for transfer, suffix in (("hr100", ""), ("legacy", "_legacy"), ("cvbs150", "_cvbs150")):
+            name = ('history' if history else 'static') + suffix
             path = HERE / f'c5vrx4_phase8_{name}.bsasm'
-            path.write_text(build(history, legacy), encoding='utf-8')
+            path.write_text(build(history, False, transfer), encoding='utf-8')
             print(f'Generated {path.name}: three bundles, trajectory unwrap, fixed CVBS scale')
     voltage = voltages()
     def array(name, values, ctype):
@@ -237,6 +254,7 @@ def generate():
     header += array('c5v4_trajectory', [trajectory_class(i) for i in range(256)], 'uint8_t')
     header += array('c5v4_dac_codes', dac_codes(), 'uint8_t')
     header += array('c5v4_dac_legacy_codes', dac_codes(True), 'uint8_t')
+    header += array('c5v4_dac_cvbs150_codes', dac_codes(False, "cvbs150"), 'uint8_t')
     header += array('c5v4_dac_uv', [round(v*1e6) for v in voltage], 'uint32_t')
     header += '#define C5V4_DAC_MEASURED ' + str(int(CALIBRATION.exists())) + '\n'
     (HERE / 'cvbs_tables.h').write_text(header)
