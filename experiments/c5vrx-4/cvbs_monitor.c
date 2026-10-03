@@ -59,12 +59,12 @@ void c5v4_cvbs_analyze(const uint8_t *raw,size_t n,bool history,unsigned transfe
                        c5v4_cvbs_stats_t *out)
 {
     memset(out,0,sizeof(*out));
-    if(!raw || n<3000 || n>4092) return;
+    if(!raw || n<3000 || n>8190) return;
     /* C5 TX phase/stream alignment is not tagged in a frozen DMA snapshot.
      * Use one local stride-3 alignment and discard warmup. This is a semantic
      * estimator, not a claim of byte-exact output or measured connector volts. */
-    int16_t delta[1364];
-    uint8_t code[1364];
+    int16_t delta[2730];
+    uint8_t code[2730];
     uint16_t hist[768]={0};
     size_t count=0;
     unsigned previous=decode(raw[0],0,history), ambiguous=0,origin=0,clip=0;

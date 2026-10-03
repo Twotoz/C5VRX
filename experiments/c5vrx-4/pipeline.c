@@ -36,7 +36,7 @@ static bool s_level_loaded, s_level;
 bool c5vrx4_level_enabled(void)
 {
     if (!s_level_loaded) {
-        nvs_handle_t h; uint8_t enabled = 0;
+        nvs_handle_t h; uint8_t enabled = 1;
         if (nvs_open("c5vrx4", NVS_READONLY, &h) == ESP_OK) {
             (void)nvs_get_u8(h, "level_lab", &enabled); nvs_close(h);
         }

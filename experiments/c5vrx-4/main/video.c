@@ -32,6 +32,7 @@
 #include "c5vrx4.h"
 #include "cvbs_monitor.h"
 #include "cvbs_level_hw.h"
+#include "cvbs_snapshot.h"
 #endif
 #include "rf.h"
 #include "phy_rx_lab.h"
@@ -266,6 +267,10 @@ static unsigned s_menu_node_capacity;
 /* AGC sampling and channel scan are serialized in analog_agc_task, so they
  * share one descriptor-sized CPU snapshot instead of reserving 8 KiB. */
 static uint8_t s_control_sample_buf[CONTROL_SAMPLE_BYTES];
+#ifdef C5VRX4_EXPERIMENT
+static TaskHandle_t s_level_task;
+static unsigned s_level_work_us;
+#endif
 static unsigned s_menu_node_count;
 static volatile bool s_menu_active;
 static volatile bool s_menu_boot_btn_enabled = true;
@@ -804,14 +809,12 @@ static void video_standard_vote(video_standard_t standard, uint16_t period)
 /* Frozen stride-3 Phase8/winding estimate: ~63 unique samples per H-sync,
  * ~847.4/853.3 per NTSC/PAL line. Exact live alignment/history is not tagged.
  * Standard voting retains its historical period-in-20M-units interface. */
-static c5v4_cvbs_stats_t s_level_stats;
 static int video_semantic_observe(const uint8_t *raw, size_t bytes, size_t ring_offset)
 {
     (void)ring_offset;
     c5v4_cvbs_stats_t stats;
     c5v4_cvbs_analyze(raw, bytes, c5vrx4_history_enabled(),
                       c5vrx4_cvbs_mode(), &stats);
-    s_level_stats = stats;
     unsigned period = stats.period_raw;
     int quality = stats.levels_valid && stats.repeated ? 90 : 0;
     s_last_sync_width_20m = 0; /* No fabricated Phase5-width measurement. */
@@ -1996,6 +1999,9 @@ static void poll_transport_faults(void)
 
     ++s_hw_counters.checks;
     record_transport_event(flags);
+#ifdef C5VRX4_EXPERIMENT
+    if (flags && !s_menu_active) c5v4_level_hw_transport_fault();
+#endif
 }
 
 static hw_transport_counters_t lab_counter_snapshot(void)
@@ -4742,6 +4748,74 @@ static void handle_button_long_click(void)
 }
 
 
+#ifdef C5VRX4_EXPERIMENT
+/* A separate 20-ms supervisor leaves the 50-ms button/menu/AFC timers intact.
+ * It copies 204.75 us of completed IQ, never the descriptor currently written.
+ * This is control-plane gain/offset correction; live pixels stay in hardware. */
+static bool copy_level_snapshot(uint8_t *raw)
+{
+    if (s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 4) return false;
+    int64_t start = esp_timer_get_time();
+    uint32_t before = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
+    int active = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, before);
+    if (active < 0) return false;
+    /* Verify this is the contiguous circular raw ring before using geometry. */
+    size_t total = 0;
+    for (int k = 0; k < s_rx_dscr_count; ++k) {
+        if (!s_rx_dscr_nodes[k].length || total > sizeof(s_raw_ring) ||
+            s_rx_dscr_nodes[k].buffer != s_raw_ring + total ||
+            s_rx_dscr_nodes[k].length > sizeof(s_raw_ring)-total) return false;
+        total += s_rx_dscr_nodes[k].length;
+    }
+    if (total != sizeof(s_raw_ring)) return false;
+    size_t end = (size_t)(s_rx_dscr_nodes[active].buffer - s_raw_ring);
+    c5v4_snapshot_plan_t plan;
+    if (!c5v4_snapshot_plan(total, end, s_rx_dscr_nodes[active].length,
+                            C5V4_LEVEL_SAMPLE_BYTES, &plan)) return false;
+    sync_dma_m2c(s_raw_ring + plan.offset, plan.first);
+    memcpy(raw, s_raw_ring + plan.offset, plan.first);
+    size_t rest = C5V4_LEVEL_SAMPLE_BYTES - plan.first;
+    if (rest) { sync_dma_m2c(s_raw_ring, rest); memcpy(raw+plan.first, s_raw_ring, rest); }
+    uint32_t after = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
+    return c5v4_snapshot_current(before, after,
+        (uint64_t)(esp_timer_get_time()-start), plan.safe_bytes, IQ_RATE_HZ);
+}
+static void cvbs_level_task(void *arg)
+{
+    uint8_t *raw = arg;
+    TickType_t wake = xTaskGetTickCount();
+    for (;;) {
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(20));
+        if (!c5vrx4_level_enabled() || !c5v4_level_hw_ready() || s_menu_active ||
+            s_rssi_probe_active || s_gain_sweep.active || s_pre_q4_probe_active ||
+            phy_rx_lab_busy() || rf_native_agc_active()) {
+            c5v4_level_hw_invalidate(); continue;
+        }
+        rx_control_epoch_t epoch = {s_profile_generation, phy_rx_lab_generation(), s_gain_transition_count};
+        unsigned lane = rf_get_iq_lanes();
+        int64_t start = esp_timer_get_time();
+        /* Include the 205-us window history plus lane/gain/PHY settling. */
+        if ((s_last_gain_write_us && start-s_last_gain_write_us < 500) ||
+            (s_last_phy_write_us && start-s_last_phy_write_us < 500) ||
+            !copy_level_snapshot(raw)) { c5v4_level_hw_invalidate(); continue; }
+        c5v4_cvbs_stats_t stats;
+        c5v4_cvbs_analyze(raw, C5V4_LEVEL_SAMPLE_BYTES, c5vrx4_history_enabled(),
+                         c5vrx4_cvbs_mode(), &stats);
+        s_level_work_us = (unsigned)(esp_timer_get_time()-start);
+        if (!phy_rx_lab_try_actuator(epoch.phy)) { c5v4_level_hw_invalidate(); continue; }
+        bool fresh = !s_menu_active && !s_rssi_probe_active && !s_gain_sweep.active &&
+            !s_pre_q4_probe_active && !phy_rx_lab_busy() && !rf_native_agc_active() &&
+            lane == rf_get_iq_lanes() && esp_timer_get_time()-start < 10000 &&
+            rx_control_epoch_equal(epoch, (rx_control_epoch_t){s_profile_generation,
+                phy_rx_lab_generation(), s_gain_transition_count});
+        c5v4_level_hw_observe(&stats, fresh,
+            epoch.profile ^ (epoch.phy * 2654435761u) ^
+            (epoch.gain * 2246822519u) ^ (lane << 28), (uint64_t)esp_timer_get_time());
+        phy_rx_lab_end_actuator();
+    }
+}
+#endif
+
 static void analog_agc_task(void *arg)
 {
     (void)arg;
@@ -5501,20 +5575,6 @@ profile_post_gain:
         }
 
 afc_control:
-#ifdef C5VRX4_EXPERIMENT
-        /* Consume only the pre-actuation snapshot if PHY/gain/lane are still
-         * current under actuator ownership. No CPU output or raw-ring writes. */
-        if (c5vrx4_level_enabled() && phy_rx_lab_try_actuator(afc_epoch.phy)) {
-            bool level_fresh = afc_window_ok && fresh_sync && settle_ticks == 0 && !s_menu_active &&
-                !phy_rx_lab_busy() && sample_lane == rf_get_iq_lanes() &&
-                rx_control_epoch_equal(sample_epoch, (rx_control_epoch_t){
-                    s_profile_generation, phy_rx_lab_generation(), s_gain_transition_count});
-            c5v4_level_hw_observe(&s_level_stats, level_fresh,
-                afc_ctx ^ (sample_lane << 28) ^ (s_gain_transition_count * 2246822519u),
-                (uint64_t)esp_timer_get_time());
-            phy_rx_lab_end_actuator();
-        } else if (c5vrx4_level_enabled()) c5v4_level_hw_invalidate();
-#endif
         if (s_afc_mode == AFC_MODE_AUTO) {
             /* Burst-confirmed video AFC TRACK never retunes. Gain HOLD is
              * independent: an annulus alone must not prevent acquisition. */
@@ -5646,10 +5706,15 @@ static void console_diag_task(void *arg)
             int c = byte;
             if (c != EOF && c > 0) {
 #ifdef C5VRX4_EXPERIMENT
-                if (c == 'T') c5v4_level_hw_print();
+                if (c == 'T') {
+                    c5v4_level_hw_print();
+                    printf("C5V4_LEVEL_TASK work_us=%u stack_free=%u heap_free=%u snapshot_bytes=8190\n",
+                        s_level_work_us, s_level_task ? (unsigned)uxTaskGetStackHighWaterMark(s_level_task) : 0u,
+                        (unsigned)esp_get_free_heap_size());
+                }
                 if (c == 'J') {
                     if (__sync_bool_compare_and_swap(&s_cvbs_capture_running, 0u, 1u) &&
-                        xTaskCreate(cvbs_capture_task, "cvbs_capture", 12288, NULL, 1, NULL) != pdPASS) {
+                        xTaskCreate(cvbs_capture_task, "cvbs_capture", 16384, NULL, 1, NULL) != pdPASS) {
                         __sync_lock_release(&s_cvbs_capture_running);
                         printf("C5V4_CVBS refused=task_memory\n");
                     }
@@ -6256,6 +6321,16 @@ esp_err_t video_start(void)
     if (xTaskCreate(analog_agc_task, "analog_agc", 16384, NULL, 3, NULL) != pdPASS)
         return ESP_ERR_NO_MEM;
 
+
+#ifdef C5VRX4_EXPERIMENT
+    if (c5vrx4_level_enabled()) {
+        uint8_t *level_raw = malloc(C5V4_LEVEL_SAMPLE_BYTES);
+        if (!level_raw) return ESP_ERR_NO_MEM;
+        if (xTaskCreate(cvbs_level_task, "cvbs_level", 16384, level_raw, 2, &s_level_task) != pdPASS) {
+            free(level_raw); return ESP_ERR_NO_MEM;
+        }
+    }
+#endif
 
     /* Print startup stamp (visible on serial monitor at boot). */
 #ifdef C5VRX4_EXPERIMENT

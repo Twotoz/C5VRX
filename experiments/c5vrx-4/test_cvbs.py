@@ -19,10 +19,10 @@ class Stats(ct.Structure):
     _fields_ = FIELDS
 
 
-def make_raw(period=2542, radius=4, sigma=0, offset=0, depth=1, dc=0, seed=0):
+def make_raw(period=2542, radius=4, sigma=0, offset=0, depth=1, dc=0, seed=0, n=4092, shift=45):
     rng=random.Random(seed);angle=0;raw=[]
-    for k in range(4092):
-        in_sync=(k-45)%period<188
+    for k in range(n):
+        in_sync=(k-shift)%period<188
         # Full sync separation 2 MHz = 38.4 Phase8 bins over 75 ns.
         frequency=-2e6*depth if in_sync else 0
         angle+=2*math.pi*frequency/40e6
@@ -94,6 +94,14 @@ def main():
         def inspect(raw,history=False,transfer=0):
             out=Stats();buf=ct.create_string_buffer(raw)
             analyze(buf,len(raw),history,transfer,ct.byref(out));return out
+        # Longer observer snapshots contain at least two complete H-syncs at
+        # every ring/line alignment, including a reduced phase separation.
+        for period in (2542,2560):
+            for shift in range(0,period,97):
+                for depth in (1,.6):
+                    s=inspect(make_raw(period=period,n=8190,shift=shift,depth=depth))
+                    assert s.levels_valid and s.pulses>=2 and s.repeated, (period,shift,depth)
+                    assert abs(s.period_raw-period)<=6
         for period in (2542,2560):
             for history in (False,True):
                 for phase_offset in (0,100e3,-100e3):

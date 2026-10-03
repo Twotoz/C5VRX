@@ -49,7 +49,8 @@ calibration. Do not calibrate against an unloaded output either.
 
 `M` cycles STD150 -> CVBS150 -> LEGACY_FULL. Mode 0 is STD150, 1 remains
 legacy, and 2 remains the original floor-referenced CVBS150 comparison.
-The opt-in `u` servo remains off and has its own experimental mapping.
+The sync-referenced `u` servo is now enabled by default and refines this baseline
+when valid sync is measured; disable it for a fixed-transfer M comparison.
 
 ## Original CVBS150 change
 
@@ -93,7 +94,7 @@ measured by this model.
 - `Z`: retains the fixed-ultrafine / baseline-lane reboot comparison.
 
 The mapping is selected at boot and every normal live restart/menu exit.
-Default has no live LUT writes; the opt-in `u` lab is documented in CVBS_LEVEL.md. The pinned IDF 6.0.2 `bitscrambler_load_lut()`
+Bounded DAC-only live LUT16 writes are enabled by default; see CVBS_LEVEL.md. The pinned IDF 6.0.2 `bitscrambler_load_lut()`
 changes the active LUT width to 32 bits while loading; `load_program()` halts
 execution. Neither is a safe seamless in-flight gain actuator for this LUT16
 program. Do not turn the diagnostic gain proposal into a live call to either.
@@ -150,7 +151,8 @@ HDZero picture/recording, PAL/NTSC, colour/detail, menu exit, native/V5 and
 power cycle. Observe FIFO faults and J copy/work timing. No measured range
 improvement, PAL/NTSC compliance or HDZero fix is claimed until then.
 
-**Default disabled:** the experimental `u` output gain/offset servo.
+**Default enabled:** sync-referenced `u` output gain/offset regulation; explicit
+opt-out, noise/loss hold, addressing refusal and fault latch are retained.
 **Not implemented:** automatic IQ DC correction,
 and H/V sync regeneration/coasting. These require a safe hardware actuator,
 verified IQ-centering evidence and full field/burst timing respectively. The

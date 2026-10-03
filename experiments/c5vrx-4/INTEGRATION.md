@@ -73,8 +73,8 @@ gain intentionally remains manual; select active Direct Gain for this test.
   filter overrides are not promoted to defaults merely because a branch exists.
 - Simultaneous RX/TX BitScrambler, >40 MB/s live transport and CPU flywheel
   sample repair remain excluded by the recorded hardware/throughput findings.
-- Default has no automatic live LUT AGC; the opt-in `u` lab is pending hardware
-  acceptance. No endpoint-only IQ DC correction, H/V regeneration or
+- PR164 enables bounded sync-referenced output regulation by default at Leon's
+  request; concurrent LUT/FIFO/goggle acceptance remains pending. No endpoint-only IQ DC correction, H/V regeneration or
   frame buffering is inserted. Missing RF/phase information cannot be restored
   by output scaling alone.
 
@@ -110,8 +110,20 @@ an explicit operator decision after reviewing this concrete PR and its evidence.
 
 ## Output-amplitude follow-up
 
-The distance-dependent voltage report motivates the opt-in `u` sync/black
+The distance-dependent voltage report motivates the default-on `u` sync/black
 level servo, with stopped-engine LUT16 addressing probe and bounded DAC-only
 live writes. CVBS_LEVEL.md records its implementation, refusal conditions,
 physical-source ambiguity and required bench acceptance. This does not establish
 the cause of the observed amplitude fall or recover RF information.
+
+## PR164 default-on follow-up (2026-10-04)
+
+Extends Leon's weak-signal amplitude report and the existing level lab: a separate
+20-ms supervisor copies 8190 completed IQ bytes, requires three consistent
+period/plateau snapshots and targets 286/300-mV sync with bounded two-code slew.
+Default-on is explicitly operator-authorized; explicit off settings remain off.
+RF gain ownership and AFC defaults are unchanged. Host tests cover half-depth
+fades, loss/stale hold, NTSC/PAL targets, all line alignments and ring-wrap/deadline
+refusal. It needs 8190 heap bytes plus a 16-KiB stack. LUT readback and transport
+faults after updates latch off until reboot. Physical arbitration, response time,
+colour/white clipping and goggle/FIFO/heap acceptance remain unproven.

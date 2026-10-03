@@ -53,7 +53,7 @@ of merging. Current main's existing alpha workflow/flasher can build this projec
 |---|---|
 | `T` | Detector, mapping, lane geometry and gain-owner status |
 | `J` | AFC state plus eight bounded sync/IQ snapshots; no actuator |
-| `u` | Experimental automatic sync/black level servo, opt-in/reboot; fixed mapping required |
+| `u` | Toggle default-on sync/black level regulation, reboot; fixed mapping required |
 | `M` | Cycle STD150 (default) / CVBS150 / previous full-span transfer, reboot |
 | `Z` | Protected adaptive V5 / fixed ultrafine comparison, reboot |
 | `h` | STATIC / bounded HISTORY phase decode, reboot |
@@ -83,8 +83,9 @@ this directory's C regressions, AFC cases, Phase8/routing tests and exhaustive
 required; this verification does not need NumPy, network access or hardware.
 Generated tables must match checked-in artifacts. No binaries are committed.
 The supervisory task stack is 16 KiB to accommodate the bounded snapshot
-analyzer; startup refuses allocation failure. Heap/stack margin under menu and
-concurrent J capture still needs hardware observation.
+analyzer; startup refuses allocation failure. The separate 20-ms level worker uses another 16-KiB stack and an 8190-byte heap
+snapshot; J capture also has a 16-KiB stack. Heap/stack margin under menu and
+concurrent capture still needs hardware observation; T reports level-worker margins.
 
 [INTEGRATION.md](INTEGRATION.md) records PR/issue disposition and acceptance.
 [INTEGRATION_SOURCES.json](INTEGRATION_SOURCES.json) pins donor revisions.
@@ -96,7 +97,10 @@ Earlier research files are donor records; this README defines current defaults.
 This is an unmerged test build. Host tests and compiler success do not establish
 sample-gapless transport, improved sensitivity/range, PAL/NTSC compliance or
 HDZero acceptance. Fixed scaling does not recover phase information lost to
-clipping, origin collapse or RF noise. Automatic video level regulation is available only in the `u` lab; it is off
-by default pending LUT arbitration/FIFO and HDZero bench acceptance. It corrects
-output gain and offset, not IQ DC. H/V regeneration/coasting and CPU raw-ring
-sync repair remain absent. See [CVBS_LEVEL.md](CVBS_LEVEL.md) for operation and limits.
+clipping, origin collapse or RF noise. Automatic sync-referenced video level regulation is enabled by default at Leon's
+request. It targets 286/300-mV NTSC/PAL sync depth, rejects noisy/stale evidence,
+holds through signal loss and latches off on write/transport faults. Three valid
+20-ms snapshots qualify bounded updates. Concurrent LUT arbitration and goggle
+acceptance remain physical gates. It corrects output gain/offset, not IQ DC.
+H/V regeneration/coasting and CPU raw-ring sync repair remain absent.
+See [CVBS_LEVEL.md](CVBS_LEVEL.md) for controls, evidence and limits.

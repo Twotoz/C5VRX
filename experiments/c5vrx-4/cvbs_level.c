@@ -3,6 +3,8 @@
 #include "cvbs_tables.h"
 #include <string.h>
 static int magnitude(int v) { return v < 0 ? -v : v; }
+static int middle(int a, int b, int c)
+{ return a > b ? (b > c ? b : a > c ? c : a) : (a > c ? a : b > c ? c : b); }
 static int delta(unsigned i)
 {
     int d = (int)(i & 63) * 4 + 2 - 128;
@@ -44,28 +46,48 @@ bool c5v4_level_observe(c5v4_level_t *s, const c5v4_cvbs_stats_t *v,
      * Reject origin collapse, folding/overload and distorted pulse plateaus.
      * 12 bins is the existing observer floor; never chase arbitrarily small sync.
      * Nominal gain range is about 0.32..3.2x the initial 0.15 V/MHz transfer. */
-    bool valid = fresh && v && v->levels_valid && v->repeated &&
+    bool valid = fresh && v && v->levels_valid && v->repeated && v->pulses >= 2 &&
         v->span_bins >= 12 && v->span_bins <= 120 &&
         v->sync_mad_bins <= 4 && v->blank_mad_bins <= 4 &&
+        v->sync_mad_bins * 8 <= v->span_bins && v->blank_mad_bins * 8 <= v->span_bins &&
         v->origin_pm <= 350 && v->ambiguous_pm <= 100 && v->clip_pm <= 200 &&
         v->period_raw >= 2529 && v->period_raw <= 2574;
     if (!valid) { s->good = 0; ++s->refusals; return false; }
+    /* Distinct, regularly spaced evidence only: a repeated capture cannot
+     * qualify the loop, and a long outage must reacquire before writing. */
+    if (s->good && now <= s->evidence_us + C5V4_LEVEL_PERIOD_US / 2) return false;
+    if (s->good && now - s->evidence_us > 100000) s->good = 0;
+    unsigned depth = v->period_raw <= 2550 ? 286000u : 300000u;
+    if (s->good && s->evidence_depth != depth) s->good = 0;
+    s->evidence_depth = depth;
     if (s->good && (magnitude(v->blank_bins - s->blank) > 4 ||
                    magnitude(v->span_bins - s->span) > 4)) s->good = 0;
     s->blank = v->blank_bins; s->span = v->span_bins;
+    if (!s->good) s->evidence_slot = 0;
+    unsigned slot = s->evidence_slot++ % 3;
+    s->evidence_blank[slot] = s->blank; s->evidence_span[slot] = s->span;
+    s->evidence_us = now;
     if (s->good < 3) ++s->good;
-    if (s->good < 3 || (s->updates && now - s->last_us < 100000)) return false;
+    if (s->good < 3 || (s->updates && now - s->last_us < C5V4_LEVEL_PERIOD_US)) return false;
+    int blank = middle(s->evidence_blank[0], s->evidence_blank[1], s->evidence_blank[2]);
+    int span = middle(s->evidence_span[0], s->evidence_span[1], s->evidence_span[2]);
+    s->target_depth_mv = depth / 1000u;
     bool changed = false;
     for (unsigned i = 0; i < 256; ++i) {
         /* Fixed black and sync separation, BEFORE clipping to the loaded DAC.
          * Ambiguous trajectories become the black reference, never a rail. */
-        int64_t uv = (i >> 6) == 3 ? 300000 :
-            300000 + (int64_t)(delta(i) - s->blank) * 300000 / s->span;
+        int64_t uv = (i >> 6) == 3 ? 10000 + depth :
+            10000 + depth + (int64_t)(delta(i) - blank) * depth / span;
         uint8_t target = nearest(uv), current = s->codes[i];
-        /* Limit each intermediate table change to one DAC code per 100 ms.
-         * This is a gradual sequential update, not an atomic bank switch. */
-        if (target > current) ++current;
-        else if (target < current) --current;
+        /* Two codes per 20 ms; bound the number of changed entries in hardware.
+         * A small voltage deadband avoids one-code oscillation at plateaus. */
+        int64_t error = (int64_t)c5v4_dac_uv[target] - c5v4_dac_uv[current];
+        if (error > 8000 || error < -8000) {
+            unsigned distance = target > current ? target-current : current-target;
+            unsigned step = distance < C5V4_LEVEL_STEP_CODES ? distance : C5V4_LEVEL_STEP_CODES;
+            if (target > current) current += step;
+            else current -= step;
+        }
         if (s->codes[i] != current) { s->codes[i] = current; changed = true; }
     }
     if (changed) { ++s->updates; s->last_us = now; }
