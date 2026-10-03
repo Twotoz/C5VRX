@@ -55,7 +55,7 @@ static bool low_at(const int16_t *v,size_t k,size_t count,int threshold)
     return low>=3;
 }
 
-void c5v4_cvbs_analyze(const uint8_t *raw,size_t n,bool history,bool legacy,
+void c5v4_cvbs_analyze(const uint8_t *raw,size_t n,bool history,unsigned transfer,
                        c5v4_cvbs_stats_t *out)
 {
     memset(out,0,sizeof(*out));
@@ -90,7 +90,8 @@ void c5v4_cvbs_analyze(const uint8_t *raw,size_t n,bool history,bool legacy,
         if(k<12) continue;
         int d=delta_for(idx);
         delta[count]=(int16_t)d;
-        code[count]=(legacy?c5v4_dac_legacy_codes:c5v4_dac_codes)[idx];
+        code[count]=(transfer==1u?c5v4_dac_legacy_codes:
+                     transfer==2u?c5v4_dac_cvbs150_codes:c5v4_dac_codes)[idx];
         ++hist[d+384]; ambiguous+=cls==3; ++count;
     }
     out->pairs=(unsigned)count;out->ambiguous_pm=ambiguous*1000/(unsigned)count;

@@ -5,14 +5,36 @@ resistor-DAC and sync investigations. This build combines PR #146's detector
 and fixed-ultrafine comparison, PR #154's PHY ownership/range-race fixes,
 and main's versioned alpha/PR publication. No Phase5 rollback is included.
 
-## Implemented live change
+## Default changed to HR100 (sync headroom)
+
+CVBS150 places nominal sync (-2 MHz from the tuned centre) exactly on the 0-V
+DAC floor. Any downward shift of the blanking frequency therefore clips the
+sync tip and shrinks sync depth: a VTX frequency error (AUTO AFC defaults
+off), drift, an APL-dependent carrier centre if the VTX AC-couples its video,
+or gain/RF-level-dependent estimator shifts. Synthetic Q4 snapshots
+(`test_cvbs.py`) show nominal sync depth for CVBS150 of 312 mV at 0 MHz, 124 mV
+at -1 MHz and 31 mV at -2 MHz (sync gone). This mechanism matches the reported
+static and desync on camera movement and gain changes, but is not yet a
+measured hardware cause. Goggle inputs are AC-coupled and clamp on
+sync/porch, so DC position is free while clipping is not.
+
+HR100 is the new default: 0.420 V blanking and 0.100 V/MHz. Nominal sync is at
+0.220 V, white (+4.667 MHz) at 0.887 V. The floor clips only below about
+-4.2 MHz (2.2 MHz under nominal sync) and the top above about +5.97 MHz.
+Synthetic sync depth stays 190-235 mV from -2 to +1 MHz. The cost is
+two-thirds of standard amplitude (decoder AGC normally restores it) and
+coarser DAC use than CVBS150. `M` cycles HR100 -> CVBS150 -> LEGACY_FULL;
+the NVS value 1 still selects legacy, so existing legacy users are unchanged.
+The CVBS150 programs are byte-identical to the previous default.
+
+## Original CVBS150 change
 
 The detector's phase range no longer sets the video-output slope. STATIC and
 HISTORY retain their original phase decode, quadrant trajectory decisions,
 counter/parity routing, 3 bundles, IQ40M, and [D,D,D] DAC40M / unique13.333M.
 Only the low six DAC bits of the two even LUT planes change.
 
-The default CVBS150 transfer uses:
+The CVBS150 transfer (default until HR100) uses:
 
     frequency_hz = delta_bins / (256 * 75e-9)
     target_volts = 0.300 + frequency_hz / 1e6 * 0.150
@@ -36,8 +58,9 @@ measured by this model.
 
 ## Controls
 
-- `M`: toggle CVBS150 / LEGACY_FULL and reboot. Default CVBS150. NVS key
-  `c5vrx4/cvbs_legacy` is independent of HISTORY and gain selection.
+- `M`: cycle HR100 / CVBS150 / LEGACY_FULL and reboot. Default HR100. NVS
+  key `c5vrx4/cvbs_legacy` (0 HR100, 1 legacy, 2 CVBS150) is independent of
+  HISTORY and gain selection.
 - `J`: eight bounded snapshots, 50 ms apart, on a temporary low-priority task.
   No permanent observer and no PHY, gain, LUT, DAC or ring writes.
 - `T`: report transfer, nominal/measured calibration, lane and gain ownership.
