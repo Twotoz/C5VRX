@@ -4785,7 +4785,7 @@ static void cvbs_level_task(void *arg)
 {
     uint8_t *raw = arg;
     TickType_t wake = xTaskGetTickCount();
-    TickType_t last_capture_tick = 0;
+    int64_t last_capture_us = 0;
     bool have_capture = false;
     for (;;) {
         vTaskDelayUntil(&wake, pdMS_TO_TICKS(5));
@@ -4800,8 +4800,10 @@ static void cvbs_level_task(void *arg)
             (epoch.gain * 2246822519u) ^ (lane << 28);
         int64_t start = esp_timer_get_time();
         unsigned period = c5v4_level_hw_period(context, (uint64_t)start);
-        TickType_t capture_tick = xTaskGetTickCount();
-        if (have_capture && capture_tick-last_capture_tick < pdMS_TO_TICKS(period/1000)) continue;
+        /* Microseconds, half a fast period of tolerance: whole-tick counts
+         * with a 5-ms wake turned one tick of jitter into a 10/25-ms cadence. */
+        if (have_capture && start - last_capture_us <
+            (int64_t)period - (int64_t)C5V4_LEVEL_FAST_US / 2) continue;
         rf_iq_lane_stats_t lane_stats;
         rf_get_iq_lane_stats(&lane_stats);
         bool settling = false;
@@ -4812,7 +4814,7 @@ static void cvbs_level_task(void *arg)
         if (!c5v4_level_source_ready((uint64_t)start, s_last_gain_write_us,
                 s_last_phy_write_us, lane_stats.last_switch_us, settling) ||
             !copy_level_snapshot(raw)) { c5v4_level_hw_invalidate(); continue; }
-        last_capture_tick = capture_tick; have_capture = true;
+        last_capture_us = start; have_capture = true;
         c5v4_cvbs_stats_t stats;
         c5v4_cvbs_analyze(raw, C5V4_LEVEL_SAMPLE_BYTES, c5vrx4_history_enabled(),
                          c5vrx4_cvbs_mode(), &stats);

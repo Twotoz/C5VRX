@@ -105,6 +105,7 @@ def transfer_delta(index):
 # Values describe the existing network under one 75-ohm AV load, not an
 # unloaded DAC or a double-terminated scope. Override with measured values.
 CALIBRATION = HERE / "dac_calibration.json"
+LEVEL_SLEW_VOLTS = 0.032  # C5V4_LEVEL_STEP_UV in cvbs_level.h
 # Mode 0 (including existing default settings) now uses standard amplitude.
 # 0 STD150: 0.310 V blanking, 0.150 V/MHz -> 0.010 V nominal sync,
 #           1.010 V nominal white. Only ~10 mV offset margin, not 2.2 MHz.
@@ -129,6 +130,14 @@ def voltages():
         not math.isfinite(v) or not 0 <= v <= 3.3 for v in values) or
         abs(values[0]) > 0.05 or max(values) < 0.95):
         raise ValueError("Need 64 finite loaded voltages, sync near zero and >=0.95 V headroom")
+    # The default-on level servo moves each entry at most 32 mV per update and
+    # deliberately holds at a wider ladder gap (CVBS_LEVEL.md). Refuse such a
+    # table here rather than ship a servo that silently stalls across it.
+    ladder = sorted(values)
+    gap = max(b - a for a, b in zip(ladder, ladder[1:]))
+    if gap > LEVEL_SLEW_VOLTS:
+        raise ValueError(f"DAC ladder gap {gap * 1000:.1f} mV exceeds the "
+                         f"{LEVEL_SLEW_VOLTS * 1000:.0f}-mV level-servo slew bound")
     return values
 
 

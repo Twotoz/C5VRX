@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Source/LUT and compiled snapshot-estimator regressions; no RF range claim."""
 import ctypes as ct
+import json
 import math
 from pathlib import Path
 import random
@@ -85,6 +86,15 @@ def main():
             gen.voltages()
         except ValueError: pass
         else: raise AssertionError('unqualified load accepted')
+        # A ladder gap wider than the servo's 32-mV slew would stall it.
+        gapped=[min(1.0,c*0.015+(0.05 if c>=32 else 0)) for c in range(64)]
+        gen.CALIBRATION.write_text(json.dumps({"load_ohms":75,"volts_by_code":gapped}))
+        try:
+            gen.voltages()
+        except ValueError as e: assert 'slew bound' in str(e)
+        else: raise AssertionError('servo-stalling ladder gap accepted')
+        assert max(b-a for a,b in zip(sorted(volts),sorted(volts)[1:]))<=gen.LEVEL_SLEW_VOLTS
+        assert f"C5V4_LEVEL_STEP_UV {round(gen.LEVEL_SLEW_VOLTS*1e6)}u" in (HERE/'cvbs_level.h').read_text()
         gen.CALIBRATION=original
         lib=temp/'monitor.so'
         subprocess.run(['gcc','-std=c11','-O2','-Wall','-Wextra','-Werror','-shared','-fPIC',
