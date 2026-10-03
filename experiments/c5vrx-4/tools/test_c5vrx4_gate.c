@@ -40,6 +40,8 @@ void nvs_close(nvs_handle_t h) { (void)h; }
 const char *esp_err_to_name(esp_err_t e) { (void)e; return "host"; }
 void esp_restart(void) { assert(!"unexpected reboot"); }
 void vTaskDelay(unsigned ticks) { (void)ticks; }
+static int64_t clock_us = 1000000;
+int64_t esp_timer_get_time(void) { return clock_us; }
 #include "../pipeline.c"
 int main(void)
 {
@@ -65,6 +67,76 @@ int main(void)
     assert(!s_open && (AGC_CTRL&AGC_HOLD) && alarm_at==PERIOD_US);
     assert(c5vrx4_console('~') && !s_running && !(AGC_CTRL&AGC_HOLD));
     assert(c5vrx4_console('~') && s_running);
+
+    /* Analog field lock: hold between releases, release only in the VBI. */
+    uint64_t epoch = s_epoch_us;
+    assert(c5vrx4_native_vbi_wanted());
+    uint32_t generation = c5vrx4_native_generation();
+    nv_level_t ok = {7, 30, 5, 100, 80}, weak = {2, 10, 0, 300, 60};
+    for (unsigned k = 0; k < 4u; ++k)   /* broad pulses every PAL field */
+        c5vrx4_native_observe(generation, true, epoch + 50000u + k * 20000u, &ok,
+                              epoch + 50100u + k * 20000u);
+    assert(s_vbi && !s_vbi_target);
+    /* Learn the hardware level, then two weak windows demand one release. */
+    uint64_t now = epoch + 120000u;
+    for (unsigned k = 0; k < 3u; ++k)
+        c5vrx4_native_observe(generation, false, 0, &ok, now + k);
+    assert(!s_vbi_target);
+    c5vrx4_native_observe(generation, false, 0, &weak, now + 10u);
+    assert(!s_vbi_target);
+    c5vrx4_native_observe(generation, false, 0, &weak, now + 11u);
+    assert(s_vbi_target);
+    uint64_t target = s_vbi_target;
+    /* 3 ms lead; release lands NV_RELEASE_AFTER_US after the field event. */
+    assert(target >= 120011u + VBI_LEAD_US &&
+           (target - 50000u) % 20000u >= NV_RELEASE_AFTER_US - 1u &&
+           (target - 50000u) % 20000u <= NV_RELEASE_AFTER_US + 1u);
+    /* Close the current pace window: VBI mode holds and polls. */
+    s_open = true;
+    gptimer_alarm_event_data_t c = {.count_value = target - 2500u, .alarm_value = target - 2500u};
+    gate_alarm(s_timer, &c, NULL);
+    assert(!s_open && (AGC_CTRL & AGC_HOLD) && alarm_at == target - 1500u);
+    c.count_value = c.alarm_value = target - 1500u;
+    gate_alarm(s_timer, &c, NULL);
+    assert(!s_open && (AGC_CTRL & AGC_HOLD) && alarm_at == target - 500u);
+    c.count_value = c.alarm_value = target - 500u;
+    gate_alarm(s_timer, &c, NULL);
+    assert(!s_open && (AGC_CTRL & AGC_HOLD) && alarm_at == target);
+    uint32_t releases = s_vbi_releases;
+    c.count_value = c.alarm_value = target;
+    gate_alarm(s_timer, &c, NULL);
+    assert(s_open && !(AGC_CTRL & AGC_HOLD) && alarm_at == target + WINDOW_US &&
+           s_vbi_releases == releases + 1u && !s_vbi_target);
+    c.count_value = c.alarm_value = target + WINDOW_US;
+    gate_alarm(s_timer, &c, NULL);
+    assert(!s_open && (AGC_CTRL & AGC_HOLD) && alarm_at == target + WINDOW_US + VBI_POLL_US);
+    /* A late interrupt skips the release instead of opening in the picture. */
+    s_vbi_target = target + 20000u;
+    c.count_value = target + 20000u + VBI_LATE_US + 1u;
+    c.alarm_value = target + 20000u;
+    gate_alarm(s_timer, &c, NULL);
+    assert(!s_open && (AGC_CTRL & AGC_HOLD) && s_vbi_late == 1u && !s_vbi_target);
+    /* Severe saturation while held opens at the next poll, outside the VBI. */
+    nv_level_t saturated = {40, 105, 300, 0, 90};
+    uint64_t later = epoch + target + 40000u;
+    for (unsigned k = 0; k < 3u; ++k)
+        c5vrx4_native_observe(generation, false, 0, &ok, later + k);
+    c5vrx4_native_observe(generation, false, 0, &saturated, later + 10u);
+    assert(!s_vbi_urgent);
+    c5vrx4_native_observe(generation, false, 0, &saturated, later + 11u);
+    assert(s_vbi_urgent);
+    c.count_value = c.alarm_value = later - epoch + 500u;
+    gate_alarm(s_timer, &c, NULL);
+    assert(s_open && !(AGC_CTRL & AGC_HOLD) && !s_vbi_urgent && s_vbi_urgent_releases == 1u);
+    c.count_value = c.alarm_value = later - epoch + 500u + WINDOW_US;
+    gate_alarm(s_timer, &c, NULL);
+    assert(!s_open && (AGC_CTRL & AGC_HOLD));
+    /* Lock expiry returns to the periodic pace; | toggles the analog mode. */
+    c5vrx4_native_observe(generation, false, 0, &ok, epoch + 2000000u);
+    assert(!s_vbi);
+    assert(c5vrx4_console('|') && !s_vbi_enabled && !c5vrx4_native_vbi_wanted());
+    assert(c5vrx4_native_generation() != generation);
+    assert(c5vrx4_console('|') && s_vbi_enabled);
     c5vrx4_suspend();
     munmap(m,0x10000);
     puts("C5VRX-4 Direct Gain LOCK / native gate isolation passed");

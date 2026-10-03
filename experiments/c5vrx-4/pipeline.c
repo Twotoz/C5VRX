@@ -11,16 +11,23 @@
 #include "esp_attr.h"
 #include "esp_err.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "rf.h"
 #include "cvbs_tables.h"
+#include "native_vbi.h"
 
 #define AGC_CTRL (*(volatile uint32_t *)0x600a7030u)
 #define AGC_HOLD (1u << 29)
 #define PERIOD_US 1000u
 #define WINDOW_US 20u
+/* Field-locked mode: the gate stays held and opens once, in the blank VBI
+ * lines, only when native_vbi.c asks for a re-acquisition. */
+#define VBI_POLL_US 1000u
+#define VBI_LATE_US 150u
+#define VBI_LEAD_US 3000u
 static gptimer_handle_t s_timer;
 static SemaphoreHandle_t s_transition_lock;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -28,6 +35,12 @@ static bool s_requested = true, s_running, s_open;
 static unsigned s_suspend_depth;
 static uint64_t s_next_open, s_opened_at;
 static uint32_t s_opens, s_faults, s_late_max, s_open_max;
+static bool s_vbi_enabled = true, s_vbi, s_vbi_urgent;
+static uint64_t s_vbi_target, s_vbi_last_release, s_epoch_us;
+static uint32_t s_vbi_releases, s_vbi_late, s_vbi_urgent_releases, s_generation;
+static uint32_t s_observed_generation = UINT32_MAX, s_seen_releases;
+static nv_lock_t s_nv_lock;
+static nv_demand_t s_nv_demand;
 static bool s_history_loaded, s_history = false;
 static bool s_cvbs_loaded, s_cvbs_legacy;
 static bool s_level_loaded, s_level;
@@ -91,6 +104,12 @@ bool c5vrx4_history_enabled(void)
     return s_history;
 }
 
+static uint64_t IRAM_ATTR vbi_next_alarm(uint64_t now)
+{
+    uint64_t poll = now + VBI_POLL_US;
+    return s_vbi_target > now && s_vbi_target < poll ? s_vbi_target : poll;
+}
+
 static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
                                 const gptimer_alarm_event_data_t *event,
                                 void *context)
@@ -114,13 +133,28 @@ static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
         /* A late callback skips missed periods, never emits a catch-up burst. */
         if (s_next_open <= now)
             s_next_open += ((now - s_next_open) / PERIOD_US + 1) * PERIOD_US;
-        next = s_next_open;
+        next = s_vbi ? vbi_next_alarm(now) : s_next_open;
+    } else if (s_vbi && !s_vbi_urgent && !(s_vbi_target && now + 1u >= s_vbi_target)) {
+        next = vbi_next_alarm(now);
+    } else if (s_vbi && !s_vbi_urgent && now > s_vbi_target + VBI_LATE_US) {
+        /* Too late for the blank lines: never release inside the picture. */
+        ++s_vbi_late;
+        s_vbi_target = 0;
+        next = now + VBI_POLL_US;
     } else {
         AGC_CTRL &= ~AGC_HOLD;
         s_open = true;
         s_opened_at = now;
         ++s_opens;
-        s_next_open += PERIOD_US;
+        if (s_vbi) {
+            if (s_vbi_urgent) ++s_vbi_urgent_releases;
+            s_vbi_urgent = false;
+            s_vbi_target = 0;
+            s_vbi_last_release = now;
+            ++s_vbi_releases;
+        } else {
+            s_next_open += PERIOD_US;
+        }
         next = now + WINDOW_US;
     }
     gptimer_alarm_config_t alarm = {.alarm_count = next};
@@ -142,6 +176,11 @@ void c5vrx4_suspend(void)
     portENTER_CRITICAL(&s_lock);
     ++s_suspend_depth;
     s_running = false;
+    /* Retune/lab: the received field timing and trapped level are stale. */
+    s_vbi = false;
+    s_vbi_urgent = false;
+    s_vbi_target = 0;
+    ++s_generation;
     AGC_CTRL &= ~AGC_HOLD;
     portEXIT_CRITICAL(&s_lock);
     if (s_timer) (void)gptimer_stop(s_timer);
@@ -169,6 +208,12 @@ void c5vrx4_resume(void)
     ESP_ERROR_CHECK(gptimer_set_alarm_action(s_timer, &alarm));
     portENTER_CRITICAL(&s_lock);
     AGC_CTRL &= ~AGC_HOLD;
+    /* Timer count 0 == this esp_timer time (both 1 MHz, same crystal). */
+    s_epoch_us = (uint64_t)esp_timer_get_time();
+    s_vbi = false;
+    s_vbi_urgent = false;
+    s_vbi_target = 0;
+    ++s_generation;
     s_running = s_open = true;
     s_opened_at = 0;
     s_next_open = PERIOD_US;
@@ -186,6 +231,9 @@ static void print_state(void)
     uint32_t opens = s_opens, faults = s_faults;
     uint32_t late = s_late_max, duration = s_open_max;
     uint32_t control = AGC_CTRL;
+    bool vbi = s_vbi;
+    uint32_t vbi_releases = s_vbi_releases, vbi_late = s_vbi_late;
+    uint32_t vbi_urgent = s_vbi_urgent_releases;
     portEXIT_CRITICAL(&s_lock);
     printf("C5VRX4 pipeline=unwrap75_%s span_ns=75 phase_bits=8 winding=quadrant3 bound_step_bins=63 dac_delta_bits=6 iq_bits=4+4 "
            "iq_hz=40000000 dac_hz=40000000 unique_hz=13333333 "
@@ -196,6 +244,19 @@ static void print_state(void)
            rf_native_agc_active() ? "native" : "direct_gain_v5",
            running, open, PERIOD_US, WINDOW_US, opens, late, duration, faults,
             control);
+    if (rf_native_agc_active() && s_transition_lock) {
+        /* Serialized with the sampler task, which owns lock/demand state. */
+        xSemaphoreTakeRecursive(s_transition_lock, portMAX_DELAY);
+        int standard = nv_lock_standard(&s_nv_lock, (uint64_t)esp_timer_get_time());
+        printf("C5VRX4_NATIVE_VBI enabled=%u mode=%s standard=%s events=%" PRIu32
+               " matches=%" PRIu32 " releases=%" PRIu32 " urgent=%" PRIu32 " late_skipped=%" PRIu32
+               " demands=%" PRIu32 " base_p50=%u release_after_us=%u key=|\n",
+               s_vbi_enabled, vbi ? "vbi_hold" : (running ? "pace_fallback" : "off"),
+               standard == NV_PAL ? "PAL" : standard == NV_NTSC ? "NTSC" : "none",
+               s_nv_lock.events, s_nv_lock.matches, vbi_releases, vbi_urgent, vbi_late,
+               s_nv_demand.demands, s_nv_demand.base_p50, NV_RELEASE_AFTER_US);
+        xSemaphoreGiveRecursive(s_transition_lock);
+    }
     printf("C5VRX4_CVBS transfer=%s reference_mv=%u volts_per_mhz=%s "
            "calibration=%s load_ohms=75 level_lab=%u "
            "sync_repair=0 keys=M_AB_reboot,J_snapshot\n",
@@ -308,6 +369,14 @@ bool c5vrx4_console(int key)
         return true;
     }
     if (!s_transition_lock) return false;
+    if (key == '|') {
+        /* RAM-only A/B: field-locked VBI releases vs the periodic pace. */
+        c5vrx4_suspend();
+        s_vbi_enabled = !s_vbi_enabled;
+        c5vrx4_resume();
+        print_state();
+        return true;
+    }
     if (key == '~') {
         c5vrx4_suspend();
         if (s_requested) {
@@ -320,4 +389,69 @@ bool c5vrx4_console(int key)
         return true;
     }
     return false;
+}
+
+uint32_t c5vrx4_native_generation(void)
+{
+    portENTER_CRITICAL(&s_lock);
+    uint32_t generation = s_generation;
+    portEXIT_CRITICAL(&s_lock);
+    return generation;
+}
+
+bool c5vrx4_native_vbi_wanted(void)
+{
+    if (!rf_native_agc_active() || !s_transition_lock) return false;
+    portENTER_CRITICAL(&s_lock);
+    bool wanted = s_running && s_requested && s_vbi_enabled;
+    portEXIT_CRITICAL(&s_lock);
+    return wanted;
+}
+
+void c5vrx4_native_observe(uint32_t generation, bool broad, uint64_t event_us,
+                           const nv_level_t *level, uint64_t now_us)
+{
+    if (!rf_native_agc_active() || !s_transition_lock) return;
+    /* A retune holds this lock from suspend to resume. */
+    xSemaphoreTakeRecursive(s_transition_lock, portMAX_DELAY);
+    portENTER_CRITICAL(&s_lock);
+    bool current = generation == s_generation && s_running && s_requested && s_vbi_enabled;
+    uint32_t releases = s_vbi_releases;
+    uint64_t released_at = s_vbi_last_release + s_epoch_us;
+    bool was_vbi = s_vbi;
+    portEXIT_CRITICAL(&s_lock);
+    if (!current) {
+        xSemaphoreGiveRecursive(s_transition_lock);
+        return;
+    }
+    if (s_observed_generation != generation) {
+        s_observed_generation = generation;
+        s_seen_releases = releases;
+        nv_lock_reset(&s_nv_lock);
+        nv_demand_reset(&s_nv_demand);
+    }
+    if (broad) nv_lock_feed(&s_nv_lock, event_us);
+    if (releases != s_seen_releases) {
+        s_seen_releases = releases;
+        nv_demand_released(&s_nv_demand, released_at);
+    }
+    bool locked = nv_lock_standard(&s_nv_lock, now_us) != NV_NONE;
+    /* Entering field lock learns the level the pace windows left behind. */
+    if (locked && !was_vbi) nv_demand_reset(&s_nv_demand);
+    int need = locked ? nv_demand_update(&s_nv_demand, level, now_us) : NV_HOLD;
+    uint64_t release = 0;
+    if (need == NV_VBI &&
+        !nv_lock_next_release(&s_nv_lock, now_us, now_us + VBI_LEAD_US, &release))
+        need = NV_HOLD;
+    portENTER_CRITICAL(&s_lock);
+    if (generation == s_generation && s_running) {
+        if (locked != s_vbi) { s_vbi_target = 0; s_vbi_urgent = false; }
+        s_vbi = locked;
+        /* Urgent: the ISR opens at its next poll (<=1 ms). */
+        if (need == NV_NOW) s_vbi_urgent = true;
+        else if (need == NV_VBI && !s_vbi_target && release > s_epoch_us)
+            s_vbi_target = release - s_epoch_us;
+    }
+    portEXIT_CRITICAL(&s_lock);
+    xSemaphoreGiveRecursive(s_transition_lock);
 }

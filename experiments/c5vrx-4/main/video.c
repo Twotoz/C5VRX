@@ -84,6 +84,7 @@
 #include "nvs.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
+#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -5564,6 +5565,47 @@ control_tail: {
 }
 
 #ifdef C5VRX4_EXPERIMENT
+/* Native AGC only: find the analog field timing and the held level in
+ * completed RX windows so the native gate re-acquires inside the blank VBI
+ * lines instead of at random picture positions (native_vbi.h). Read-only:
+ * no PHY/gain writes, no DMA pacing; a stale or lapped window is dropped. */
+static void native_vbi_task(void *arg)
+{
+    (void)arg;
+    const size_t bytes = 4092u;
+    for (;;) {
+        /* Dithered 1..3 ms: a fixed 2 ms period would sample the same ten
+         * phases of every PAL field and could miss the broad pulses forever. */
+        vTaskDelay(pdMS_TO_TICKS(1u + esp_random() % 3u));
+        if (!c5vrx4_native_vbi_wanted() || s_menu_active || s_channel_scan_active ||
+            s_gain_sweep.active || phy_rx_lab_busy() || s_pre_q4_probe_active ||
+            s_rssi_probe_active || s_rx_dma_ch < 0 || s_rx_dma_ch >= 3) continue;
+        uint32_t generation = c5vrx4_native_generation();
+        int64_t start = esp_timer_get_time();
+        uint32_t before = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
+        int64_t read_us = esp_timer_get_time();
+        int active = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, before);
+        int idx = rx_snapshot_pick(s_rx_dscr_len, s_rx_dscr_count, active, bytes);
+        if (idx < 0) continue;
+        const uint8_t *src = s_rx_dscr_nodes[idx].buffer;
+        if (!src || src < s_raw_ring || src + bytes > s_raw_ring + sizeof(s_raw_ring)) continue;
+        sync_dma_m2c((void *)src, bytes);
+        nv_window_t window = nv_window_analyze(src, bytes, c5vrx_phase8_gain_lut);
+        dg3_observation_t o = direct_gain_v3_measure(src, 2048u, c5vrx_phase8_gain_lut,
+                                                     (uint64_t)read_us);
+        if (!completed_rx_copy_safe(active, idx, start)) continue;
+        /* GDMA position inside the active node is unknown: take its middle
+         * (+-51 us). The VBI target keeps >=150 us margin for this. */
+        uint64_t active_start = (uint64_t)read_us - s_rx_dscr_len[active] / 80u;
+        uint64_t sample_end = active_start -
+            rx_snapshot_gap_bytes(s_rx_dscr_len, s_rx_dscr_count, idx, active) / 40u;
+        uint64_t event = sample_end - (s_rx_dscr_len[idx] - window.centroid_bytes) / 40u;
+        nv_level_t level = {o.p50, o.p95, o.clip_pm, o.origin_pm, o.coherence};
+        c5vrx4_native_observe(generation, window.broad, event, &level,
+                              (uint64_t)esp_timer_get_time());
+    }
+}
+
 static volatile uint32_t s_cvbs_capture_running;
 static void cvbs_capture_task(void *arg)
 {
@@ -6255,6 +6297,14 @@ esp_err_t video_start(void)
     ESP_ERROR_CHECK(esp_timer_create(&v3_timer_args,
                                      &s_v3_sentinel_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(s_v3_sentinel_timer, 200));
+#endif
+
+#ifdef C5VRX4_EXPERIMENT
+    /* Opt-in native AGC: analog field-locked gate scheduling. Never created
+     * under the default Direct Gain V5 owner. */
+    if (rf_native_agc_active() &&
+        xTaskCreate(native_vbi_task, "native_vbi", 3072, NULL, 2, NULL) != pdPASS)
+        ESP_LOGW(TAG, "native VBI scheduler unavailable; periodic native pace kept");
 #endif
 
     /* Start interactive console for on-demand diagnostics (zero periodic CPU/bus traffic) */

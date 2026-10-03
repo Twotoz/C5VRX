@@ -44,7 +44,8 @@ def main():
         ("cvbs_level", ["-I.", "cvbs_level.c"]),
         ("afc_state", []), ("afc_v2", ["-lm"]), ("afc_v2_ctrl", ["-lm"]),
         ("integration", ["-DC5VRX4_EXPERIMENT=1", "-I.", "-Itools/phy_lab_stubs", "main/direct_gain_v3.c", "main/arc_phy.c"]),
-        ("c5vrx4_gate", ["-pthread", "-I.", "-Itools/phy_lab_stubs"]),
+        ("c5vrx4_gate", ["-pthread", "-I.", "-Itools/phy_lab_stubs", "native_vbi.c"]),
+        ("native_vbi", ["-I.", "native_vbi.c", "-lm"]),
     ]
     with tempfile.TemporaryDirectory(prefix="c5vrx4-verify-") as td:
         for name, extra in cases:
@@ -65,7 +66,7 @@ def main():
     for name in ("test_unwrap.py", "test_cvbs.py", "tools/test_phase8_hr_live.py",
                  "tools/test_fm_hc.py", "tools/check_golden_two_slot.py"):
         run([sys.executable, name])
-    print("PASS: isolated C5VRX-4 integration, 21 C regressions, exhaustive unwrap and source-driven DSP tests")
+    print("PASS: isolated C5VRX-4 integration, 22 C regressions, exhaustive unwrap and source-driven DSP tests")
 
 if __name__ == "__main__":
     main()
