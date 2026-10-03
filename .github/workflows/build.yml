@@ -199,6 +199,9 @@ jobs:
           python3 tools/p8env_sweep.py --self-test
           python3 tools/test_fm_hc.py
           python3 tools/check_golden_two_slot.py
+          gcc -std=c11 -Wall -Wextra -Werror -Imain tools/test_cvbs_level.c main/cvbs_level.c -o /tmp/test_cvbs_level
+          /tmp/test_cvbs_level
+          python3 tools/test_cvbs_level.py
 
   build:
     name: Build Production Firmware (ESP32-C5)

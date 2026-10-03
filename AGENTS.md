@@ -341,6 +341,18 @@ silently merge an experiment's assumptions into the production contract.
    update this ledger and its linked evidence. Credit Leon Beekveldt (Twotoz)
    and the relevant C5VRX contributors for the prior research being extended.
 
+### C5VRX-3 Golden voltage level port
+
+Root `main/cvbs_level*.c` adapts C5VRX-4 PR #162's voltage-ordered slew and
+consecutive-window evidence to the original Golden DAC transfer. Lowercase `u`
+is an off-by-default persisted lab option that selects `fm.bsasm` at 6BIT@40;
+it does not patch the Phase8 Counter-A arithmetic output. No sync regeneration
+or RF gain actuator is added. Nominal ladder inversion, guarded raw snapshots
+and a stopped LUT16 addressing probe are host/build evidence; live arbitration
+and physical levels remain unproven. See `docs/c5vrx3-cvbs-level.md` and
+`tools/test_cvbs_level.*`. Preserve the Leon Beekveldt/Twotoz/contributor
+research provenance and the difference between C5VRX-3 and C5VRX-4 pipelines.
+
 ## Design flexibility and optimization priority
 
 C5VRX is intentionally flexible. Historical implementations, names, data

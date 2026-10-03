@@ -47,6 +47,7 @@
 #include "direct_gain_v3.h"
 #include "analog_video_detect.h"
 #include "phase8_gain_lut.h"
+#include "cvbs_level_hw.h"
 #include "fm_hc_lut.h"
 #include "phase8_envelope.h"
 #include "rx_auto_lab.h"
@@ -282,6 +283,9 @@ static volatile bool s_current_bw40 = true;
 static volatile video_output_mode_t s_output_mode = VIDEO_OUTPUT_6BIT_40;
 static video_output_mode_t s_tx_unit_mode = VIDEO_OUTPUT_6BIT_40;
 static volatile demod_mode_t s_demod_mode = DEMOD_MODE_GOLDEN_PHASE5;
+/* Root-only opt-in. Stored separately from the existing settings ABI. */
+static bool s_cvbs_level_enabled;
+static uint8_t *s_cvbs_level_raw;
 static volatile rx_profile_t s_rx_profile = RX_PROFILE_DIRECT_GAIN;
 static direct_gain_controller_t s_direct_gain_controller;
 static direct_gain_v2_t s_direct_gain_v2;
@@ -1229,6 +1233,7 @@ static const char *output_mode_name(void)
 
 static const char *demod_mode_name(void)
 {
+    if (s_cvbs_level_enabled) return "GOLDEN LEVEL LAB";
 #ifdef C5VRX4_EXPERIMENT
     return "C5V4 SPAN75";
 #endif
@@ -3957,7 +3962,17 @@ static void quiet_tx_interrupts(void)
 
 static void start_flight_demodulator(void)
 {
+    if (s_cvbs_level_enabled) s_output_mode = VIDEO_OUTPUT_6BIT_40;
+    cvbs_level_hw_lock();
+    cvbs_level_hw_stop();
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
+    if (s_cvbs_level_enabled) {
+        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_program));
+        if (!cvbs_level_hw_prepare()) {
+            /* A failed addressing probe may touch neighbours: reload pristine. */
+            ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_fm_program));
+        }
+    } else {
 #ifdef C5VRX4_EXPERIMENT
     ESP_ERROR_CHECK(s_output_mode == VIDEO_OUTPUT_6BIT_40 ? ESP_OK : ESP_ERR_INVALID_STATE);
     ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, s_c5vrx4_program));
@@ -3983,8 +3998,10 @@ static void start_flight_demodulator(void)
 #endif
     }
 #endif
+    }
     ESP_ERROR_CHECK(bitscrambler_reset(s_flight_bs));
     ESP_ERROR_CHECK(bitscrambler_start(s_flight_bs));
+    cvbs_level_hw_unlock();
 }
 
 /* Restore the exact live topology used after leaving the standalone menu.
@@ -4073,6 +4090,7 @@ static void lab_run_tx_self_noise_probe(void)
            s_current_gain, LAB_PREQ4_SETTLE_MS, output_mode_name());
     lab_print_row("PREQ4_TX_ACTIVE", NULL);
 
+    cvbs_level_hw_stop();
     ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
     ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
     ESP_ERROR_CHECK(parlio_del_tx_unit(s_tx));
@@ -4174,6 +4192,7 @@ static void video_set_menu_mode(bool active)
             return;
         }
 
+        cvbs_level_hw_stop();
         ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
         /* Live -> menu: stop the live producer once. */
         ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
@@ -4184,6 +4203,7 @@ static void video_set_menu_mode(bool active)
         }
         start_menu_tx();
     } else {
+        cvbs_level_hw_stop();
         ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
         /* Menu -> live: the BitScrambler is already disabled; do not disable twice. */
         if (s_tx_unit_mode != s_output_mode) {
@@ -4224,7 +4244,10 @@ static void video_set_menu_mode(bool active)
 
 static void menu_cycle_standard_mode(void)
 {
-    if (s_menu_active) ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
+    if (s_menu_active) {
+        cvbs_level_hw_stop();
+        ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
+    }
     if (s_video_std_mode == VIDEO_STD_MODE_AUTO) {
         s_video_std_mode = VIDEO_STD_MODE_NTSC;
         s_video_std = VIDEO_STD_NTSC;
@@ -4535,6 +4558,10 @@ static void handle_button_long_click(void)
             settings_save();
             break;
         case 4: /* VIDEO OUTPUT */
+            if (s_cvbs_level_enabled) {
+                printf("[MENU: OUTPUT] 6BIT@40 fixed for CVBS level lab\n");
+                break;
+            }
 #ifdef C5VRX4_EXPERIMENT
             printf("[MENU: OUTPUT] 6BIT@40 fixed for C5V4 SPAN75\n");
 #elif CONFIG_C5VRX_PHASE8_HR_LIVE_TEST
@@ -4560,6 +4587,60 @@ static void handle_button_long_click(void)
     }
 }
 
+
+/* New control-only reader: immutable 8192-byte recent window, pointer progress
+ * AND no-lap deadline. No CPU work in the sample-paced video path. */
+static void cvbs_level_tick(void)
+{
+    if (!s_cvbs_level_enabled || !s_cvbs_level_raw) return;
+    cvbs_level_stats_t stats = {0};
+    uint64_t now = (uint64_t)esp_timer_get_time();
+    static uint32_t tag, previous_receive, previous_profile;
+    static int64_t previous_gain, previous_phy;
+    uint32_t context = s_receive_generation, profile = s_profile_generation;
+    int64_t gain_stamp = s_last_gain_write_us, phy_stamp = s_last_phy_write_us;
+    if (context != previous_receive || profile != previous_profile ||
+        gain_stamp != previous_gain || phy_stamp != previous_phy) {
+        ++tag; previous_receive = context; previous_profile = profile;
+        previous_gain = gain_stamp; previous_phy = phy_stamp;
+    }
+    bool fresh = !s_menu_active && !s_channel_scan_active && !s_pre_q4_probe_active &&
+        !s_rssi_probe_active && !s_gain_sweep.active && !rf_native_agc_active() &&
+        now > (uint64_t)gain_stamp + 2000 && now > (uint64_t)phy_stamp + 2000;
+    if (!fresh || s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 3) goto done;
+    int active = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
+        AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val);
+    if (active < 0) { fresh = false; goto done; }
+    uint8_t *buf = s_rx_dscr_nodes[active].buffer;
+    if (buf < s_raw_ring || buf >= s_raw_ring + sizeof(s_raw_ring)) {
+        fresh = false; goto done;
+    }
+    size_t end = (size_t)(buf - s_raw_ring) & ~(size_t)1u;
+    size_t pos = (end + sizeof(s_raw_ring) - 8192u) % sizeof(s_raw_ring);
+    size_t first = sizeof(s_raw_ring) - pos;
+    if (first > 8192u) first = 8192u;
+    uint64_t start = (uint64_t)esp_timer_get_time();
+    sync_dma_m2c(s_raw_ring, sizeof(s_raw_ring));
+    memcpy(s_cvbs_level_raw, s_raw_ring + pos, first);
+    memcpy(s_cvbs_level_raw + first, s_raw_ring, 8192u - first);
+    int after = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
+        AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val);
+    uint64_t elapsed = (uint64_t)esp_timer_get_time() - start;
+    /* Worst case: current descriptor has no remaining safe time. */
+    size_t safe = sizeof(s_raw_ring) - 8192u - s_rx_dscr_nodes[active].length;
+    fresh = after >= 0 && elapsed < safe * 1000000ULL / IQ_RATE_HZ;
+    if (fresh) {
+        size_t advanced = (s_rx_dscr_nodes[after].buffer - buf + sizeof(s_raw_ring)) % sizeof(s_raw_ring);
+        fresh = advanced < safe;
+    }
+    if (fresh) cvbs_level_hw_analyze(s_cvbs_level_raw, 8192, &stats);
+done:
+    /* Gain can change in its independent fast task while copying/analyzing.
+     * Timestamp equality also resets evidence if the same gain is revisited. */
+    fresh = fresh && context == s_receive_generation && profile == s_profile_generation &&
+        gain_stamp == s_last_gain_write_us && phy_stamp == s_last_phy_write_us;
+    cvbs_level_hw_observe(&stats, fresh, tag, now);
+}
 
 static void analog_agc_task(void *arg)
 {
@@ -4609,6 +4690,8 @@ static void analog_agc_task(void *arg)
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(50));
 
+        cvbs_level_tick();
+
         /* The RSSI oracle owns gain/BW/AFC for this interval. Manual AGC
          * alone would still allow the AUTO gearbox and AFC below to write. */
         if (s_rssi_probe_active) continue;
@@ -4616,7 +4699,20 @@ static void analog_agc_task(void *arg)
         int command;
         for (unsigned commands = 0; commands < 16 &&
              xQueueReceive(s_menu_commands, &command, 0) == pdTRUE; ++commands) {
-            if (command == 'o') {
+            if (command == 'u') {
+#ifndef C5VRX4_EXPERIMENT
+                nvs_handle_t h;
+                esp_err_t err = nvs_open("c5vrx", NVS_READWRITE, &h);
+                if (err == ESP_OK) {
+                    err = nvs_set_u8(h, "level_lab", s_cvbs_level_enabled ? 0u : 1u);
+                    if (err == ESP_OK) err = nvs_commit(h);
+                    nvs_close(h);
+                }
+                printf("C5V3_LEVEL next=%u reboot=%u experimental=1 demod=Golden\n",
+                       !s_cvbs_level_enabled, err == ESP_OK);
+                if (err == ESP_OK) { vTaskDelay(pdMS_TO_TICKS(150)); esp_restart(); }
+#endif
+            } else if (command == 'o') {
                 if (MENU_RUNTIME_ENABLED) video_set_menu_mode(!s_menu_active);
                 else printf("[MENU] Temporarily disabled; live video unchanged\n");
             } else if (command == 'v' || command == 'V') {
@@ -5346,7 +5442,13 @@ static void console_diag_task(void *arg)
                     continue;
                 }
 
-                if (c == 'l' || c == 'L') {
+                if (c == 'u') {
+#ifndef C5VRX4_EXPERIMENT
+                    int command = 'u';
+                    if (xQueueSend(s_menu_commands, &command, 0) != pdTRUE)
+                        printf("C5V3_LEVEL command_queue_full=1\n");
+#endif
+                } else if (c == 'l' || c == 'L') {
                     int64_t now = esp_timer_get_time();
                     s_last_user_lag_mark_us = now;
                     ++s_hw_counters.user_lag_mark_count;
@@ -5380,6 +5482,7 @@ static void console_diag_task(void *arg)
                 } else if (c == 'N') {
                     lab_toggle_native_agc_boot();
                 } else if (c == 'T') {
+                    cvbs_level_hw_print(s_cvbs_level_enabled);
                     rf_dump_agc_regs();
                 } else if (c == 'Q') {
                     lab_dump_raw_probe();
@@ -5728,6 +5831,7 @@ static void console_diag_task(void *arg)
 #endif
                     printf("  'K':         Erase stored PHY calibration and reboot for a fresh vendor calibration\n");
                     printf("  'X':         Cycle RX profile (V2/V1/ARC V3)\n");
+                    printf("  'u': CVBS voltage level lab via Golden (toggle/reboot)\n");
                     printf("  'p'/'r':     Machine-readable PHY/Q4 snapshot / reset lag counters\n");
                     printf("  't'/'q':     Vendor timer inventory / quiet unsolicited lock message\n");
                     printf("  'l':         Mark a visible lag/freeze for correlation\n");
@@ -5790,6 +5894,28 @@ esp_err_t video_start(void)
     sync_dma_c2m(s_raw_ring, sizeof(s_raw_ring));
 
     esp_err_t err;
+
+#ifndef C5VRX4_EXPERIMENT
+    {
+        nvs_handle_t h;
+        uint8_t enabled = 0;
+        if (nvs_open("c5vrx", NVS_READONLY, &h) == ESP_OK) {
+            (void)nvs_get_u8(h, "level_lab", &enabled);
+            nvs_close(h);
+        }
+        s_cvbs_level_enabled = enabled == 1u;
+        if (s_cvbs_level_enabled) {
+            s_cvbs_level_raw = heap_caps_malloc(8192, MALLOC_CAP_INTERNAL);
+            if (!s_cvbs_level_raw) {
+                s_cvbs_level_enabled = false;
+                printf("C5V3_LEVEL no_memory=1 action=normal_demodulator\n");
+            } else {
+                s_output_mode = VIDEO_OUTPUT_6BIT_40;
+                ESP_LOGW(TAG, "CVBS level lab: Golden 6BIT@40, nominal DAC; u disables/reboots");
+            }
+        }
+    }
+#endif
 
     if ((err = prepare_rx()) != ESP_OK) return err;
     if ((err = prepare_tx()) != ESP_OK) return err;

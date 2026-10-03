@@ -343,3 +343,7 @@ C5VRX/
 C5VRX is open-source software licensed under the **GNU General Public License v3.0 only** (`GPL-3.0-only`).
 
 See [LICENSE](LICENSE) for full licensing terms. The C5VRX name and logos have separate terms; see [assets/BRANDING.md](assets/BRANDING.md).
+
+The C5VRX-3 [experimental CVBS voltage level lab](docs/c5vrx3-cvbs-level.md)
+ports the C5VRX-4 voltage-domain controller to the Golden path (`u`, off by default).
+See its evidence and hardware limitations before comparing builds.
