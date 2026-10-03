@@ -51,3 +51,6 @@ CONFIG_PM_ENABLE=n
 
 
 
+# Production CVBS uses the v3.18.1 Golden DAC transfer. Full-range Phase8
+# compresses normal video amplitude; retain it only as a menuconfig experiment.
+# CONFIG_C5VRX_PHASE8_HR_LIVE_TEST is not set

@@ -3,6 +3,11 @@
 Goal: the weakest RF input at which the goggle still shows a usable picture.
 Every 6 dB is roughly 2x the distance.
 
+Production output now uses Golden's v3.18.1 CVBS transfer following the
+[HDZero AV-in amplitude regression](hdzero-cvbs-output.md). Phase8 discussions
+below describe the opt-in experiment; Direct Gain V5 still uses Phase8 in its
+control observer independently of the selected live demodulator.
+
 ## dB budget
 
 | Link | Sets | State | Achievable |

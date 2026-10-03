@@ -20,10 +20,18 @@
 
 ## Current firmware
 
-The `main` build defaults to the live adjacent Phase8 demodulator and
-**Direct Gain V5** (Direct Gain V4 below plus a 200 us observer and anti-hunt damping), the default and recommended gain controller. Phase8 maps
-the full signed adjacent phase delta (-128 through +127) to the 6-bit DAC. A
-transition across the +/-180 degree phase boundary can still alias.
+The `main` build defaults to the **Golden Phase5 demodulator**, with the
+same CVBS DAC transfer as v3.18.1, and **Direct Gain V5** (Direct Gain V4 below
+plus a 200 us observer and anti-hunt damping). This restores the output swing
+lost when full-range Phase8 became the default; the smaller signal was reported
+to prevent HDZero Goggles AV-in from displaying/recording video.
+
+Full-range Phase8 remains a `menuconfig` experiment
+(`CONFIG_C5VRX_PHASE8_HR_LIVE_TEST=y`). It maps -128..+127 phase bins across the
+64 DAC levels, compressing normal video amplitude by approximately 3x compared
+with Golden. A transition across +/-180 degrees can still alias. See
+[CVBS output regression](docs/hdzero-cvbs-output.md) for evidence and the
+required hardware check.
 
 Direct Gain V4 is the Direct Gain V3 core (centered Q4 amplitude and Phase8
 coherence, physical RF/BB/Fine tuples, zero-write hold while healthy) with two
@@ -202,7 +210,7 @@ Connect a 6-bit binary-weighted resistor DAC ladder to the XIAO pins, meeting at
 ### Output network and controls
 1. **Video level**: The reference circuit uses a 200 ohm shunt at `VIDEO`; the connected display or goggles may add their own 75 ohm termination. Check the resulting level with the load you use.
 2. **Output filter**: The reference circuit uses a 470 pF ceramic capacitor from `VIDEO` to `GND`. Check image sharpness with your display and termination.
-3. **BOOT button**: A short click switches channel. A long press opens the menu when enabled; short clicks move through menu choices and a long press applies one. On the CHANNEL page, a long press scans the available channels and selects the strongest coherent carrier. If Safe Flight mode blocks the menu, hold BOOT for three seconds to restore the default Phase8/6BIT@40/Direct Gain profile and open the recovery menu.
+3. **BOOT button**: A short click switches channel. A long press opens the menu when enabled; short clicks move through menu choices and a long press applies one. On the CHANNEL page, a long press scans the available channels and selects the strongest coherent carrier. If Safe Flight mode blocks the menu, hold BOOT for three seconds to restore the default Golden/6BIT@40/Direct Gain profile and open the recovery menu.
 4. **Persistent settings**: Channel, RF bandwidth, AFC, video-standard/output, AGC/gain, and the BOOT-menu preference are saved and restored after restart.
 
 ---

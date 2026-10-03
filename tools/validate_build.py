@@ -750,6 +750,20 @@ check("Live middle-sample branch remains endpoint Golden, not ideal 360",
               ((c - m + 16) % 32 - 16)) !=
              ((c - p + 16) % 32 - 16)) == 8192)
 
+# HDZero AV-in regression: production must retain the v3.18.1 DAC transfer.
+# This fingerprint is a release reference, not a newly regenerated expectation.
+import hashlib
+kconfig = read(MAIN / "Kconfig.projbuild")
+phase8_option = kconfig.split("config C5VRX_PHASE8_HR_LIVE_TEST", 1)[1].split("config ", 1)[0]
+phase5_option = kconfig.split("config C5VRX_PHASE5_360_LIVE", 1)[1].split("config ", 1)[0]
+check("Production keeps compressed-swing Phase8 opt-in",
+      re.search(r"(?m)^\s*default n\s*$", phase8_option) is not None and
+      "# CONFIG_C5VRX_PHASE8_HR_LIVE_TEST is not set" in read(ROOT / "sdkconfig.defaults") and
+      re.search(r"(?m)^\s*default y\s*$", phase5_option) is not None)
+check("Golden DAC transfer retains all v3.18.1 endpoint codes",
+      hashlib.sha256(bytes(word & 63 for word in golden_words)).hexdigest() ==
+      "4ad736fd12741fc1249d393b28c0771a2c0cc09f963cc8e46335b65d55c0d587")
+
 # ---- Summary ----
 print(f"\n{'='*50}")
 print(f"C5VRX-3 build validation: {len(passes)} passed, {len(failures)} failed")

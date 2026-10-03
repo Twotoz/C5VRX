@@ -406,6 +406,11 @@ requirements by themselves**.
 - Keep USB/debug outside realtime pacing.
 - Do not silently change the tested XIAO D4..D9 DAC pin order or the physical
   8.2k/3.9k/2k/1k/470R/240R plus 200R network.
+- Production must keep `CONFIG_C5VRX_PHASE8_HR_LIVE_TEST` disabled. Golden
+  retains the v3.18.1 CVBS transfer; full-range Phase8 compresses ordinary video
+  swing by approximately 3x and HDZero AV-in lock/recording regressed. Keep it
+  opt-in until an amplitude-correct replacement passes loaded scope and goggle
+  tests. See `docs/hdzero-cvbs-output.md`.
 - Keep live output compatibility explicit: GOLDEN is the selectable live
   demodulator and supports both `6BIT@40` and experimental `4BIT@80`.
   TRAJ V2 remains a research artifact and must not appear in the live menu.
