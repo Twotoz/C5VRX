@@ -1,6 +1,6 @@
 # Experimental automatic CVBS level regulation
 
-C5VRX by Twotoz and contributors. This follows Leon Beekveldt's report that
+C5VRX by Twotoz and contributors. This follows Twotoz's report that
 output amplitude falls with distance. That report is not yet a measured transfer
 curve or proof that RF amplitude directly changes the ideal FM deviation.
 

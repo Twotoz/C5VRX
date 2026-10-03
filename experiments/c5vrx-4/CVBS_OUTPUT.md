@@ -1,6 +1,6 @@
 # Unwrap75 CVBS output conditioning
 
-Extends Leon Beekveldt (Twotoz) and the C5VRX contributors' Phase8/Unwrap75,
+Extends Twotoz and the C5VRX contributors' Phase8/Unwrap75,
 resistor-DAC and sync investigations. This build combines PR #146's detector
 and fixed-ultrafine comparison, PR #154's PHY ownership/range-race fixes,
 and main's versioned alpha/PR publication. No Phase5 rollback is included.
