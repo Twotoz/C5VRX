@@ -81,4 +81,3 @@ GitHub REST `issues?state=all&per_page=100`, pages 1 and 2, yielded 49 issues (1
 ## Validation
 
 Run `python3 experiments/c5vrx-4/verify.py`: 21 C regressions, exhaustive 524,386,048 bounded unwrap trajectories and generated/source DSP checks. New tests cover the short-tail 205-us horizon, same-pointer lap, invalid pointers and backwards time. Exact-head ESP-IDF 6.0.2 build runs in C5VRX-4 PR CI. Physical tests above remain pending. Merge only after Leon approves.
-
