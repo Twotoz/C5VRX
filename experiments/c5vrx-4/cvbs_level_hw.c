@@ -71,6 +71,13 @@ void c5v4_level_hw_prepare(void)
 }
 bool c5v4_level_hw_ready(void)
 { c5v4_level_hw_lock(); bool value=ready; c5v4_level_hw_unlock(); return value; }
+unsigned c5v4_level_hw_period(uint32_t context, uint64_t now)
+{
+    c5v4_level_hw_lock();
+    unsigned period = c5v4_level_period(&servo, context, now);
+    c5v4_level_hw_unlock();
+    return period;
+}
 void c5v4_level_hw_observe(const c5v4_cvbs_stats_t *stats, bool fresh,
                          uint32_t context, uint64_t now)
 {
@@ -113,7 +120,7 @@ void c5v4_level_hw_print(void)
     c5v4_level_hw_lock();
     printf("C5V4_LEVEL requested=%u ready=%u experimental=1 updates=%lu writes=%lu faults=%lu "
            "good=%u refused=%u span_bins=%d blank_bins=%d target_sync_mv=10 target_depth_mv=%u "
-           "period_us=20000 slew_codes=2 blocked=%u loss=hold sync_regeneration=0 atomic_update=0\n",
+           "period_us=20000 recovery_period_us=5000 recovery_us=100000 slew_uv=32000 blocked=%u loss=hold sync_regeneration=0 atomic_update=0\n",
            c5vrx4_level_enabled(), ready, (unsigned long)servo.updates,
            (unsigned long)writes, (unsigned long)faults, servo.good, servo.refusals,
            servo.span, servo.blank, servo.target_depth_mv, blocked);

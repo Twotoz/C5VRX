@@ -16,8 +16,8 @@ static void converge(c5v4_level_t *s, c5v4_cvbs_stats_t *v, uint32_t ctx)
         uint8_t before[256]; memcpy(before,s->codes,256);
         c5v4_level_observe(s,v,true,ctx,(uint64_t)(k+1)*100000);
         for(unsigned j=0;j<256;++j) {
-            int difference=(int)s->codes[j]-before[j];
-            assert(difference>=-2 && difference<=2);
+            int difference=(int)c5v4_dac_uv[s->codes[j]]-c5v4_dac_uv[before[j]];
+            assert(difference>=-32000 && difference<=32000);
         }
     }
 }
@@ -30,7 +30,7 @@ static int mv(const c5v4_level_t *s,int d)
 static void check_seed_from_loaded_table(void)
 {
     /* M may load LEGACY_FULL while c5v4_dac_codes is STD150. The servo must slew
-     * from the loaded entries: its first update stays within one code. */
+     * from the loaded entries: its first update stays within 32 mV. */
     unsigned far = 0;
     for (unsigned i = 0; i < 256; ++i) {
         int d = (int)c5v4_dac_codes[i] - c5v4_dac_legacy_codes[i];
@@ -46,8 +46,8 @@ static void check_seed_from_loaded_table(void)
         changed = c5v4_level_observe(&s, &v, true, 1, (uint64_t)(k + 1) * 100000);
     assert(changed);
     for (unsigned i = 0; i < 256; ++i) {
-        int d = (int)s.codes[i] - c5v4_dac_legacy_codes[i];
-        assert(d >= -2 && d <= 2);
+        int d = (int)c5v4_dac_uv[s.codes[i]] - c5v4_dac_uv[c5v4_dac_legacy_codes[i]];
+        assert(d >= -32000 && d <= 32000);
     }
 }
 static void check_fade_and_rate(void)
@@ -62,7 +62,8 @@ static void check_fade_and_rate(void)
         uint8_t before[256];memcpy(before,s.codes,256);
         accepted+=c5v4_level_observe(&s,&v,true,1,now);
         for(unsigned k=0;k<256;++k) {
-            int d=(int)s.codes[k]-before[k];assert(d>=-2&&d<=2);
+            int d=(int)c5v4_dac_uv[s.codes[k]]-c5v4_dac_uv[before[k]];
+            assert(d>=-32000&&d<=32000);
         }
     }
     assert(accepted && mv(&s,2)-mv(&s,-16)>=265);
@@ -80,10 +81,66 @@ static void check_fade_and_rate(void)
     assert(s.target_depth_mv==286);
     assert(mv(&s,2)-mv(&s,-36)>=250 && mv(&s,2)-mv(&s,-36)<=320);
 }
+static void check_gain_step(void)
+{
+    c5v4_level_t s; c5v4_level_init(&s);
+    c5v4_cvbs_stats_t v=signal(40,2);
+    uint64_t now=1000;
+    for (unsigned k=0;k<80;++k,now+=20000) c5v4_level_observe(&s,&v,true,1,now);
+    assert(c5v4_level_period(&s,1,now)==20000);
+    /* A different RF tuple changes both recovered offset and separation.
+     * New epoch requires three new windows, then reacquires within 75 ms. */
+    v=signal(20,18);
+    uint8_t held[256];memcpy(held,s.codes,256);
+    assert(c5v4_level_period(&s,2,now)==5000);
+    assert(!c5v4_level_observe(&s,&v,true,2,now));
+    assert(!c5v4_level_observe(&s,&v,true,2,now+5000));
+    assert(!memcmp(held,s.codes,256));
+    for (unsigned k=2;k<=15;++k) c5v4_level_observe(&s,&v,true,2,now+k*5000);
+    assert(mv(&s,18)>=285 && mv(&s,18)<=335);
+    assert(mv(&s,-2)<=35);
+    assert(mv(&s,18)-mv(&s,-2)>=270);
+    assert(c5v4_level_period(&s,2,now+100000)==20000);
+    /* A second switch cannot reuse old-context evidence or a replay, even
+     * after an invalid/noise snapshot cleared qualification. */
+    memcpy(held,s.codes,256);
+    assert(!c5v4_level_observe(&s,&v,false,3,now+110000));
+    assert(!c5v4_level_observe(&s,&v,true,3,now+70000));
+    assert(s.good==0 && !memcmp(held,s.codes,256));
+    assert(!c5v4_level_observe(&s,&v,true,3,now+115000));
+    assert(s.good==1);
+    v.sync_mad_bins=4;
+    assert(!c5v4_level_observe(&s,&v,true,3,now+120000));
+    assert(s.good==0 && !memcmp(held,s.codes,256));
+}
+static void check_electrical_slew(void)
+{
+    /* Every start/target, including a measured table in nonnumeric order.
+     * DAC carry transitions must obey volts, and make progress toward goal. */
+    uint32_t volts[64];
+    for (unsigned c=0;c<64;++c) volts[c]=c5v4_dac_uv[(c*17)%64];
+    for (unsigned from=0;from<64;++from) for (unsigned target=0;target<64;++target) {
+        uint8_t code=from;
+        for (unsigned k=0;k<64 && code!=target;++k) {
+            uint8_t next=c5v4_level_slew(code,target,volts);
+            int step=(int)volts[next]-(int)volts[code];
+            int before=(int)volts[code]-(int)volts[target];
+            int after=(int)volts[next]-(int)volts[target];
+            if(before<0)before=-before;
+            if(after<0)after=-after;
+            assert(step>=-32000 && step<=32000);
+            assert(after<before || before<=8000);
+            code=next;
+        }
+        assert(code==target);
+    }
+}
 int main(void)
 {
     check_seed_from_loaded_table();
     check_fade_and_rate();
+    check_gain_step();
+    check_electrical_slew();
     for (int span=16;span<=80;span+=16) {
         for(int blank=-14;blank<=18;blank+=16) {
             c5v4_level_t s; c5v4_level_init(&s);
@@ -116,5 +173,5 @@ int main(void)
         uint16_t word=c5v4_level_word((uint16_t)((upper<<6)|32),code);
         assert((word>>6)==upper && (word&63)==code);
     }
-    puts("PASS CVBS servo: amplitude/CFO sweeps, convergence, slew, loss hold, epoch and upper-bit preservation");
+    puts("PASS CVBS servo: amplitude/CFO sweeps, convergence, electrical slew, fast gain-step recovery, loss hold, epoch and upper-bit preservation");
 }

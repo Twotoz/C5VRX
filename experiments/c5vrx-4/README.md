@@ -83,7 +83,7 @@ this directory's C regressions, AFC cases, Phase8/routing tests and exhaustive
 required; this verification does not need NumPy, network access or hardware.
 Generated tables must match checked-in artifacts. No binaries are committed.
 The supervisory task stack is 16 KiB to accommodate the bounded snapshot
-analyzer; startup refuses allocation failure. The separate 20-ms level worker uses another 16-KiB stack and an 8190-byte heap
+analyzer; startup refuses allocation failure. The separate adaptive 5/20-ms level worker uses another 16-KiB stack and an 8190-byte heap
 snapshot; J capture also has a 16-KiB stack. Heap/stack margin under menu and
 concurrent capture still needs hardware observation; T reports level-worker margins.
 
@@ -100,7 +100,9 @@ HDZero acceptance. Fixed scaling does not recover phase information lost to
 clipping, origin collapse or RF noise. Automatic sync-referenced video level regulation is enabled by default at Leon's
 request. It targets 286/300-mV NTSC/PAL sync depth, rejects noisy/stale evidence,
 holds through signal loss and latches off on write/transport faults. Three valid
-20-ms snapshots qualify bounded updates. Concurrent LUT arbitration and goggle
+snapshots qualify bounded updates; recovery runs at 5 ms for 100 ms, then
+returns to 20 ms. RF settling and lane history are excluded; each DAC entry
+slews by at most 32 mV according to the loaded voltage table. Concurrent LUT arbitration and goggle
 acceptance remain physical gates. It corrects output gain/offset, not IQ DC.
 H/V regeneration/coasting and CPU raw-ring sync repair remain absent.
 See [CVBS_LEVEL.md](CVBS_LEVEL.md) for controls, evidence and limits.

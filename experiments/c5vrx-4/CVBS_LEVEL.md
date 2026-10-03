@@ -24,13 +24,17 @@ https://ez.analog.com/cfs-file/__key/communityserver-discussions-components-file
 Nominal sync depth is 286 mV NTSC / 300 mV PAL; porch-to-white is 714/700 mV:
 https://www.analog.com/en/resources/technical-articles/understanding-analog-video-signals.html
 
-A separate low-priority task wakes nominally every 20 ms. It copies the last
+A separate low-priority task wakes every 5 ms, with normal captures/updates at
+20 ms and a 100-ms recovery interval at 5 ms after a context or level change. It copies the last
 8190 completed raw bytes (204.75 us, more than three line periods) ending at the
 start of the active descriptor, including across a ring wrap. Contiguous ring
 geometry, active-descriptor stability, <=50-us copy time and a conservative
 reuse deadline are checked. Raw source/stream state are never changed. Profile,
 PHY, gain and lane must still match under actuator ownership; a 500-us post-write
-exclusion covers both snapshot history and settling. Work over 10 ms is refused.
+exclusion covers snapshot history and settling; the lane routing timestamp is
+checked independently. Direct Gain SETTLE must finish its multi-window stability
+check before level evidence is accepted. Work older than the active 5/20-ms
+period is refused.
 This leaves the existing 50-ms button/menu/AFC timers and the fast RF-gain
 observer unchanged. Extra runtime storage is 8190 heap bytes plus a 16-KiB task
 stack; allocation failure refuses startup rather than silently omitting it.
@@ -58,7 +62,11 @@ settling and stale/replayed captures. Span remains bounded 12..120 Phase8 bins
 Invalid evidence holds the last mapping and clears qualification. A gap over
 100 ms or a standard change also requires three new valid snapshots. A small
 voltage deadband limits one-code hunting. Every update moves each entry by at
-most two DAC codes, no more often than 20 ms. It now settles over tens to hundreds
+most 32 mV in the loaded voltage table, toward its electrical target. Numeric
+code distance is not used as a voltage bound: resistor carries have unequal
+steps, and measured tables may have a different ordering. A calibration with
+a voltage gap over 32 mV may hold at that gap; it cannot bypass the voltage
+bound. Updates occur no faster than the active 5/20-ms period. It now settles over tens to hundreds
 of milliseconds in host fade tests rather than the old seconds-long lab; this
 is not a measured hard real-time latency guarantee or line-by-line fast-fade repair.
 
@@ -109,9 +117,40 @@ transient seam never occurs.
    with regulation off. Any new underflow, timing seam or decoder damage blocks
    promotion. Readback success alone is insufficient.
 4. Remove signal, inject noise and retune/change lanes: no noise-driven update;
-   last map holds until three fresh consistent windows reacquire. Verify menu,
+   last map holds until three fresh consistent windows reacquire (5-ms recovery cadence). Verify menu,
    restart and labs reload a clean baseline with no table race.
 
 H/V sync regeneration/coasting is not implemented. This lab may preserve AV lock
 when phase modulation shrinks but cannot guarantee a goggle stays locked once
 sync/phase information is unrecoverable.
+
+## RF-gain and DAC-transition follow-up
+
+Ideal FM is recovered from phase/frequency, so an RF amplitude change does not
+justify multiplying video by an inverse RF gain ratio. Real receivers have gain
+settling, DC/phase errors, clipping and quantization; the cause of Leon's C5
+voltage/static observation still needs simultaneous IQ/DAC measurements.
+Manufacturer reference for gain-dependent internal DC balance (a different VGA,
+not proof of C5 behavior):
+https://www.analog.com/media/en/technical-documentation/data-sheets/AD8367.pdf
+FM instantaneous-frequency recovery:
+https://www.mathworks.com/help/signal/ref/demod.html
+
+The concrete software problem was that every gain epoch cleared qualification,
+then needed three 20-ms captures plus slow correction. The new path keeps the
+last mapping during RF settling, rejects snapshots including lane handover,
+and qualifies three new windows at a nominal 5-ms cadence once the source is
+stable. A 100-ms recovery interval accelerates offset and depth correction;
+steady supervision returns to 20 ms. An abrupt valid plateau/depth change or
+reacquisition opens the same recovery interval. Repeated gain changes must
+requalify; there is no cached correction based solely on RF tuple or IQ radius.
+Replayed timestamps are refused even after invalidation/context change.
+
+Host tests cover simultaneous offset + halved-depth gain steps (reference levels
+within tolerance by 75 ms after the first valid settled capture), repeated
+contexts, noise/refusal and all 4096 start/target code combinations on a permuted
+voltage table. This is simulated controller response, not measured latency.
+The unchanged 8-wire routing remains sequential, and LUT updates remain
+sequential. The initial physical RF transition can still corrupt phase; this
+change cannot guarantee zero static during that interval. Bench-test gain
+sweeps, controller work time/stack, FIFO continuity and loaded connector levels.

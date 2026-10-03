@@ -36,12 +36,36 @@ uint16_t c5v4_level_word(uint16_t original, unsigned code)
 {
     return (uint16_t)((original & ~63u) | (code & 63u));
 }
-bool c5v4_level_observe(c5v4_level_t *s, const c5v4_cvbs_stats_t *v,
-                      bool fresh, uint32_t context, uint64_t now)
+unsigned c5v4_level_period(c5v4_level_t *s, uint32_t context, uint64_t now)
 {
     if (!s->context_valid || s->context != context) {
         s->context = context; s->context_valid = true; s->good = 0;
+        s->recovery_until_us = now + C5V4_LEVEL_RECOVERY_US;
     }
+    return now < s->recovery_until_us ? C5V4_LEVEL_FAST_US : C5V4_LEVEL_PERIOD_US;
+}
+uint8_t c5v4_level_slew(uint8_t current, uint8_t target, const uint32_t volts[64])
+{
+    uint8_t best = current;
+    int64_t goal = volts[target], from = volts[current];
+    int64_t distance = goal - from;
+    if (distance < 0) distance = -distance;
+    if (distance <= 8000) return current;
+    for (unsigned c = 0; c < 64; ++c) {
+        int64_t step = (int64_t)volts[c] - from;
+        if ((goal > from && step < 0) || (goal < from && step > 0)) continue;
+        if (step < 0) step = -step;
+        if (step > C5V4_LEVEL_STEP_UV) continue;
+        int64_t error = (int64_t)volts[c] - goal;
+        if (error < 0) error = -error;
+        if (error < distance) { distance = error; best = (uint8_t)c; }
+    }
+    return best;
+}
+bool c5v4_level_observe(c5v4_level_t *s, const c5v4_cvbs_stats_t *v,
+                      bool fresh, uint32_t context, uint64_t now)
+{
+    unsigned period = c5v4_level_period(s, context, now);
     /* Phase level evidence must agree across three fresh consecutive windows.
      * Reject origin collapse, folding/overload and distorted pulse plateaus.
      * 12 bins is the existing observer floor; never chase arbitrarily small sync.
@@ -53,22 +77,30 @@ bool c5v4_level_observe(c5v4_level_t *s, const c5v4_cvbs_stats_t *v,
         v->origin_pm <= 350 && v->ambiguous_pm <= 100 && v->clip_pm <= 200 &&
         v->period_raw >= 2529 && v->period_raw <= 2574;
     if (!valid) { s->good = 0; ++s->refusals; return false; }
+    /* Even invalidation/context changes must not make a replay fresh. */
+    if (s->evidence_valid && (now <= s->evidence_us ||
+        now - s->evidence_us < period / 2)) return false;
     /* Distinct, regularly spaced evidence only: a repeated capture cannot
      * qualify the loop, and a long outage must reacquire before writing. */
-    if (s->good && now <= s->evidence_us + C5V4_LEVEL_PERIOD_US / 2) return false;
     if (s->good && now - s->evidence_us > 100000) s->good = 0;
     unsigned depth = v->period_raw <= 2550 ? 286000u : 300000u;
     if (s->good && s->evidence_depth != depth) s->good = 0;
     s->evidence_depth = depth;
     if (s->good && (magnitude(v->blank_bins - s->blank) > 4 ||
-                   magnitude(v->span_bins - s->span) > 4)) s->good = 0;
+                   magnitude(v->span_bins - s->span) > 4)) {
+        s->good = 0;
+    }
+    if (!s->good) {
+        s->recovery_until_us = now + C5V4_LEVEL_RECOVERY_US;
+        period = C5V4_LEVEL_FAST_US;
+    }
     s->blank = v->blank_bins; s->span = v->span_bins;
     if (!s->good) s->evidence_slot = 0;
     unsigned slot = s->evidence_slot++ % 3;
     s->evidence_blank[slot] = s->blank; s->evidence_span[slot] = s->span;
-    s->evidence_us = now;
+    s->evidence_us = now; s->evidence_valid = true;
     if (s->good < 3) ++s->good;
-    if (s->good < 3 || (s->updates && now - s->last_us < C5V4_LEVEL_PERIOD_US)) return false;
+    if (s->good < 3 || (s->updates && now - s->last_us < period)) return false;
     int blank = middle(s->evidence_blank[0], s->evidence_blank[1], s->evidence_blank[2]);
     int span = middle(s->evidence_span[0], s->evidence_span[1], s->evidence_span[2]);
     s->target_depth_mv = depth / 1000u;
@@ -78,16 +110,10 @@ bool c5v4_level_observe(c5v4_level_t *s, const c5v4_cvbs_stats_t *v,
          * Ambiguous trajectories become the black reference, never a rail. */
         int64_t uv = (i >> 6) == 3 ? 10000 + depth :
             10000 + depth + (int64_t)(delta(i) - blank) * depth / span;
-        uint8_t target = nearest(uv), current = s->codes[i];
-        /* Two codes per 20 ms; bound the number of changed entries in hardware.
-         * A small voltage deadband avoids one-code oscillation at plateaus. */
-        int64_t error = (int64_t)c5v4_dac_uv[target] - c5v4_dac_uv[current];
-        if (error > 8000 || error < -8000) {
-            unsigned distance = target > current ? target-current : current-target;
-            unsigned step = distance < C5V4_LEVEL_STEP_CODES ? distance : C5V4_LEVEL_STEP_CODES;
-            if (target > current) current += step;
-            else current -= step;
-        }
+        uint8_t target = nearest(uv);
+        /* Numeric code distance is not a voltage bound at resistor carries or
+         * with measured calibration. Always move electrically toward target. */
+        uint8_t current = c5v4_level_slew(s->codes[i], target, c5v4_dac_uv);
         if (s->codes[i] != current) { s->codes[i] = current; changed = true; }
     }
     if (changed) { ++s->updates; s->last_us = now; }

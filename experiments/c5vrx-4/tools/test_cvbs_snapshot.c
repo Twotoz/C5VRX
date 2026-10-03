@@ -22,6 +22,16 @@ int main(void)
         assert(!c5v4_snapshot_current(end,end,51,p.safe_bytes,40000000));
         assert(!c5v4_snapshot_current(end,end,1000,p.safe_bytes,40000000));
     }
+    /* Lane-only switches were missing from the gain/PHY timestamp guard. */
+    assert(c5v4_level_source_ready(10000,0,0,0,false));
+    for (unsigned age=0;age<500;++age) {
+        assert(!c5v4_level_source_ready(10000,10000-age,0,0,false));
+        assert(!c5v4_level_source_ready(10000,0,10000-age,0,false));
+        assert(!c5v4_level_source_ready(10000,0,0,10000-age,false));
+    }
+    assert(c5v4_level_source_ready(10000,9500,9500,9500,false));
+    assert(!c5v4_level_source_ready(10000,9500,9500,9500,true));
+    assert(!c5v4_level_source_ready(10000,0,0,10001,false));
     c5v4_snapshot_plan_t p;
     assert(!c5v4_snapshot_plan(8192,0,4092,8190,&p));
     assert(!c5v4_snapshot_plan(32768,32768,32,8190,&p));

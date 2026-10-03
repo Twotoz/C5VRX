@@ -21,3 +21,12 @@ static inline bool c5v4_snapshot_current(uint32_t before, uint32_t after,
     return rate && before == after && elapsed_us <= 50 &&
         elapsed_us * rate < (uint64_t)safe_bytes * 1000000u;
 }
+/* 205 us of IQ plus <=103 us completed-descriptor age; leave settling margin.
+ * Lane routing has its own timestamp: it is not an RF gain write. */
+static inline bool c5v4_level_source_ready(uint64_t now, uint64_t gain_us,
+    uint64_t phy_us, uint64_t lane_us, bool gain_settling)
+{
+    return !gain_settling && (!gain_us || (now >= gain_us && now-gain_us >= 500)) &&
+        (!phy_us || (now >= phy_us && now-phy_us >= 500)) &&
+        (!lane_us || (now >= lane_us && now-lane_us >= 500));
+}

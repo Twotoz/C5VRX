@@ -32,6 +32,7 @@
 #include "c5vrx4.h"
 #include "cvbs_monitor.h"
 #include "cvbs_level_hw.h"
+#include "cvbs_level.h"
 #include "cvbs_snapshot.h"
 #endif
 #include "rf.h"
@@ -4749,7 +4750,7 @@ static void handle_button_long_click(void)
 
 
 #ifdef C5VRX4_EXPERIMENT
-/* A separate 20-ms supervisor leaves the 50-ms button/menu/AFC timers intact.
+/* A separate adaptive 5/20-ms supervisor leaves the 50-ms button/menu/AFC timers intact.
  * It copies 204.75 us of completed IQ, never the descriptor currently written.
  * This is control-plane gain/offset correction; live pixels stay in hardware. */
 static bool copy_level_snapshot(uint8_t *raw)
@@ -4784,8 +4785,10 @@ static void cvbs_level_task(void *arg)
 {
     uint8_t *raw = arg;
     TickType_t wake = xTaskGetTickCount();
+    TickType_t last_capture_tick = 0;
+    bool have_capture = false;
     for (;;) {
-        vTaskDelayUntil(&wake, pdMS_TO_TICKS(20));
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(5));
         if (!c5vrx4_level_enabled() || !c5v4_level_hw_ready() || s_menu_active ||
             s_rssi_probe_active || s_gain_sweep.active || s_pre_q4_probe_active ||
             phy_rx_lab_busy() || rf_native_agc_active()) {
@@ -4793,11 +4796,23 @@ static void cvbs_level_task(void *arg)
         }
         rx_control_epoch_t epoch = {s_profile_generation, phy_rx_lab_generation(), s_gain_transition_count};
         unsigned lane = rf_get_iq_lanes();
+        uint32_t context = epoch.profile ^ (epoch.phy * 2654435761u) ^
+            (epoch.gain * 2246822519u) ^ (lane << 28);
         int64_t start = esp_timer_get_time();
-        /* Include the 205-us window history plus lane/gain/PHY settling. */
-        if ((s_last_gain_write_us && start-s_last_gain_write_us < 500) ||
-            (s_last_phy_write_us && start-s_last_phy_write_us < 500) ||
+        unsigned period = c5v4_level_hw_period(context, (uint64_t)start);
+        TickType_t capture_tick = xTaskGetTickCount();
+        if (have_capture && capture_tick-last_capture_tick < pdMS_TO_TICKS(period/1000)) continue;
+        rf_iq_lane_stats_t lane_stats;
+        rf_get_iq_lane_stats(&lane_stats);
+        bool settling = false;
+#if CONFIG_C5VRX_DIRECT_GAIN_V3_EXPERIMENT
+        settling = s_rx_profile == RX_PROFILE_DIRECT_GAIN &&
+            s_agc_mode == ANALOG_AGC_ACTIVE && s_direct_gain_v3.state == DG3_SETTLE;
+#endif
+        if (!c5v4_level_source_ready((uint64_t)start, s_last_gain_write_us,
+                s_last_phy_write_us, lane_stats.last_switch_us, settling) ||
             !copy_level_snapshot(raw)) { c5v4_level_hw_invalidate(); continue; }
+        last_capture_tick = capture_tick; have_capture = true;
         c5v4_cvbs_stats_t stats;
         c5v4_cvbs_analyze(raw, C5V4_LEVEL_SAMPLE_BYTES, c5vrx4_history_enabled(),
                          c5vrx4_cvbs_mode(), &stats);
@@ -4805,12 +4820,10 @@ static void cvbs_level_task(void *arg)
         if (!phy_rx_lab_try_actuator(epoch.phy)) { c5v4_level_hw_invalidate(); continue; }
         bool fresh = !s_menu_active && !s_rssi_probe_active && !s_gain_sweep.active &&
             !s_pre_q4_probe_active && !phy_rx_lab_busy() && !rf_native_agc_active() &&
-            lane == rf_get_iq_lanes() && esp_timer_get_time()-start < 10000 &&
+            lane == rf_get_iq_lanes() && esp_timer_get_time()-start < period &&
             rx_control_epoch_equal(epoch, (rx_control_epoch_t){s_profile_generation,
                 phy_rx_lab_generation(), s_gain_transition_count});
-        c5v4_level_hw_observe(&stats, fresh,
-            epoch.profile ^ (epoch.phy * 2654435761u) ^
-            (epoch.gain * 2246822519u) ^ (lane << 28), (uint64_t)esp_timer_get_time());
+        c5v4_level_hw_observe(&stats, fresh, context, (uint64_t)esp_timer_get_time());
         phy_rx_lab_end_actuator();
     }
 }
