@@ -1,6 +1,6 @@
 # Native C5 AGC for continuous PAL/NTSC: binary audit and patch prototype
 
-C5VRX by Twotoz and the contributors; extends Leon Beekveldt's prior receiver
+C5VRX by Twotoz and the contributors; extends Twotoz's prior receiver
 research and the existing #139 sample-and-hold proposal. This work belongs to
 PR #154. It is a software/binary investigation and bounded lab implementation,
 not a hardware-proven replacement analog AGC or a measured range improvement.

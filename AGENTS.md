@@ -99,7 +99,7 @@ findings that explain its failure.
 
 ## C5VRX-1 through C5VRX-4: research provenance and pipeline ledger
 
-**Leon Beekveldt (Twotoz) has investigated these C5VRX pipeline methods,
+**Twotoz has investigated these C5VRX pipeline methods,
 data sources, CPU/hardware processing routes and receiver experiments.**
 This is the project's accumulated research programme, with contributions and
 assistance recorded in the source/history. Preserve that provenance when using
@@ -208,7 +208,7 @@ Preserve the attribution and exact scope of
 [espressif/esp-idf#19091](https://github.com/espressif/esp-idf/issues/19091)
 when describing or adapting C5VRX's continuous-stream work:
 
-- **16 September 2026:** Leon Beekveldt (Twotoz) reported that steady-state
+- **16 September 2026:** Twotoz reported that steady-state
   eight-bit PARLIO TX / GDMA loops with BitScrambler emitted a real EOF boundary
   on every ring wrap. A live-hardware A/B test cleared cyclic `suc_eof` and
   eliminated the observed wrap-related video artifacts.
@@ -338,7 +338,7 @@ silently merge an experiment's assumptions into the production contract.
    hardware setup. A new architecture may revisit them with new evidence;
    previously tried does not mean universally impossible or forbidden.
 5. When new work changes a result or creates another source/processing route,
-   update this ledger and its linked evidence. Credit Leon Beekveldt (Twotoz)
+   update this ledger and its linked evidence. Credit Twotoz
    and the relevant C5VRX contributors for the prior research being extended.
 
 ## Design flexibility and optimization priority

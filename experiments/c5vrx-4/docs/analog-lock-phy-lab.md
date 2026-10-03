@@ -1,6 +1,6 @@
 # Analog Lock and C5 receive-state lab (#150–153)
 
-C5VRX by Leon Beekveldt (Twotoz) and the C5VRX contributors.
+C5VRX by Twotoz and the C5VRX contributors.
 [Source](https://github.com/Twotoz/C5VRX),
 [official website and Discord invite](https://twotoz.github.io/C5VRX/).
 
