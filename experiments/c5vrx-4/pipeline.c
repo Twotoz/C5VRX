@@ -51,13 +51,13 @@ unsigned c5vrx4_cvbs_mode(void)
 {
     if (!s_cvbs_loaded) {
         nvs_handle_t handle;
-        uint8_t mode = C5VRX4_CVBS_HR100;
+        uint8_t mode = C5VRX4_CVBS_STD150;
         if (nvs_open("c5vrx4", NVS_READONLY, &handle) == ESP_OK) {
             /* Historical key: 1 still means LEGACY_FULL. */
             (void)nvs_get_u8(handle, "cvbs_legacy", &mode);
             nvs_close(handle);
         }
-        s_cvbs_mode = mode <= C5VRX4_CVBS_150 ? mode : C5VRX4_CVBS_HR100;
+        s_cvbs_mode = mode <= C5VRX4_CVBS_150 ? mode : C5VRX4_CVBS_STD150;
         s_cvbs_loaded = true;
     }
     return s_cvbs_mode;
@@ -70,7 +70,7 @@ bool c5vrx4_cvbs_legacy_enabled(void)
 
 const char *c5vrx4_cvbs_mode_name(void)
 {
-    static const char *const names[] = {"HR100", "LEGACY_FULL", "CVBS150"};
+    static const char *const names[] = {"STD150", "LEGACY_FULL", "CVBS150"};
     return names[c5vrx4_cvbs_mode()];
 }
 
@@ -209,8 +209,8 @@ static void print_state(void)
            rf_native_agc_active() ? "native" : "direct_gain_v5",
            running, open, PERIOD_US, WINDOW_US, opens, late, duration, faults,
             control);
-    static const char *const slopes[] = {"0.100", "full_span", "0.150"};
-    static const unsigned blanks[] = {420u, 0u, 300u};
+    static const char *const slopes[] = {"0.150", "full_span", "0.150"};
+    static const unsigned blanks[] = {310u, 0u, 300u};
     unsigned mode = c5vrx4_cvbs_mode();
     printf("C5VRX4_CVBS transfer=%s reference_mv=%u volts_per_mhz=%s "
            "calibration=%s load_ohms=75 level_lab=%u "
@@ -265,10 +265,10 @@ bool c5vrx4_console(int key)
         return true;
     }
     if (key == 'M') {
-        /* HR100 -> CVBS150 -> LEGACY_FULL -> HR100. */
-        static const uint8_t next_mode[] = {C5VRX4_CVBS_150, C5VRX4_CVBS_HR100,
+        /* STD150 -> CVBS150 -> LEGACY_FULL -> STD150. */
+        static const uint8_t next_mode[] = {C5VRX4_CVBS_150, C5VRX4_CVBS_STD150,
                                             C5VRX4_CVBS_LEGACY};
-        static const char *const next_name[] = {"CVBS150", "HR100", "LEGACY_FULL"};
+        static const char *const next_name[] = {"CVBS150", "STD150", "LEGACY_FULL"};
         nvs_handle_t handle;
         unsigned mode = c5vrx4_cvbs_mode();
         esp_err_t err = nvs_open("c5vrx4", NVS_READWRITE, &handle);

@@ -20,7 +20,7 @@ on the existing safe completed-descriptor copy. For recovered phase delta d:
 `target_uV = 300000 + (d - black_bins) * 300000 / (black_bins - sync_bins)`
 
 Thus black targets 0.300 V and sync targets 0 V under the selected nominal or
-measured single-75-ohm DAC table. Unlike the HR100 default transfer, these
+measured single-75-ohm DAC table. Unlike the previous HR100 transfer, these
 targets leave no headroom below sync: until the slow servo catches up, a
 downward blank shift clips the sync tip. Turn the lab off (`u`) when
 investigating desync or static. Video scales by the same factor and saturates

@@ -10,7 +10,7 @@ typedef struct {
     uint8_t codes[256];
 } c5v4_level_t;
 void c5v4_level_init(c5v4_level_t *state);
-/* Start slewing from the DAC codes actually loaded (HR100 or CVBS150), not
+/* Start slewing from the DAC codes actually loaded (STD150 or CVBS150), not
  * from the default table: the first update must stay one step away. */
 void c5v4_level_seed(c5v4_level_t *state, const uint8_t codes[256]);
 /* False freezes the last applied mapping, including through signal loss. */

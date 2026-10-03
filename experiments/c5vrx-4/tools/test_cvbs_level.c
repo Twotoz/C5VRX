@@ -29,24 +29,24 @@ static int mv(const c5v4_level_t *s,int d)
 }
 static void check_seed_from_loaded_table(void)
 {
-    /* M may load CVBS150 while c5v4_dac_codes is HR100. The servo must slew
+    /* M may load LEGACY_FULL while c5v4_dac_codes is STD150. The servo must slew
      * from the loaded entries: its first update stays within one code. */
     unsigned far = 0;
     for (unsigned i = 0; i < 256; ++i) {
-        int d = (int)c5v4_dac_codes[i] - c5v4_dac_cvbs150_codes[i];
+        int d = (int)c5v4_dac_codes[i] - c5v4_dac_legacy_codes[i];
         if (d > 1 || d < -1) ++far;
     }
     assert(far); /* Seeding from the default table would jump. */
     c5v4_level_t s; c5v4_level_init(&s);
-    c5v4_level_seed(&s, c5v4_dac_cvbs150_codes);
-    assert(!memcmp(s.codes, c5v4_dac_cvbs150_codes, 256));
+    c5v4_level_seed(&s, c5v4_dac_legacy_codes);
+    assert(!memcmp(s.codes, c5v4_dac_legacy_codes, 256));
     c5v4_cvbs_stats_t v = signal(30, 4);
     bool changed = false;
     for (unsigned k = 0; k < 3u && !changed; ++k)
         changed = c5v4_level_observe(&s, &v, true, 1, (uint64_t)(k + 1) * 100000);
     assert(changed);
     for (unsigned i = 0; i < 256; ++i) {
-        int d = (int)s.codes[i] - c5v4_dac_cvbs150_codes[i];
+        int d = (int)s.codes[i] - c5v4_dac_legacy_codes[i];
         assert(d >= -1 && d <= 1);
     }
 }

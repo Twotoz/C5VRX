@@ -12,6 +12,6 @@ typedef struct {
     unsigned suggested_scale_q10;
     bool levels_valid;
 } c5v4_cvbs_stats_t;
-/* transfer: 0 HR100, 1 LEGACY_FULL, 2 CVBS150 (nominal-voltage estimates). */
+/* transfer: 0 STD150, 1 LEGACY_FULL, 2 CVBS150 (nominal-voltage estimates). */
 void c5v4_cvbs_analyze(const uint8_t *raw, size_t n, bool history, unsigned transfer,
                        c5v4_cvbs_stats_t *out);

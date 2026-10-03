@@ -43,6 +43,8 @@ void vTaskDelay(unsigned ticks) { (void)ticks; }
 #include "../pipeline.c"
 int main(void)
 {
+    assert(c5vrx4_cvbs_mode() == C5VRX4_CVBS_STD150);
+    assert(!strcmp(c5vrx4_cvbs_mode_name(), "STD150"));
     void *m=mmap((void *)0x600A0000,0x10000,PROT_READ|PROT_WRITE,
                  MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0);
     assert(m!=MAP_FAILED);

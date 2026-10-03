@@ -29,11 +29,12 @@ of merging. Current main's existing alpha workflow/flasher can build this projec
 - Severe coarse-lane clipping (>=50%, P95>=95) sends active Direct Gain to G20,
   its existing controller floor. Moderate overload uses staged RF/BB cuts.
   Finer-lane saturation first escapes to coarse. No native/manual gain writes.
-- Fixed nominal loaded CVBS transfer HR100 (default): 0.420-V blanking +
-  0.100 V/MHz, nearest DAC code with saturation. Nominal sync sits 0.22 V above
-  the DAC floor, so a downward blank shift up to 2.2 MHz cannot clip it.
-  CVBS150 (0.300 V + 0.150 V/MHz, sync on the 0-V floor) and the previous
-  full-span transfer remain M comparisons. See CVBS_OUTPUT.md.
+- Fixed nominal loaded CVBS transfer STD150 (default): 0.310-V blanking +
+  0.150 V/MHz, nearest DAC code with saturation. Assumed nominal sync/white
+  targets are 0.010/1.010 V: 0.300 V sync depth and 1.000 V sync-to-white
+  under one 75-ohm load. Replaces HR100's undersized output; full amplitude
+  leaves only small rail margin, not broad CFO tolerance. CVBS150 and legacy
+  remain M comparisons. See CVBS_OUTPUT.md for sources and physical limits.
 - Slow sync supervision uses the same stride-3 Phase8/winding transfer estimate,
   instead of the old Phase5 shadow. Snapshot alignment remains approximate.
 - AFC V2 measures burst-confirmed sync and burst-free porch, with both endpoints
@@ -53,7 +54,7 @@ of merging. Current main's existing alpha workflow/flasher can build this projec
 | `T` | Detector, mapping, lane geometry and gain-owner status |
 | `J` | AFC state plus eight bounded sync/IQ snapshots; no actuator |
 | `u` | Experimental automatic sync/black level servo, opt-in/reboot; fixed mapping required |
-| `M` | Cycle HR100 (default) / CVBS150 / previous full-span transfer, reboot |
+| `M` | Cycle STD150 (default) / CVBS150 / previous full-span transfer, reboot |
 | `Z` | Protected adaptive V5 / fixed ultrafine comparison, reboot |
 | `h` | STATIC / bounded HISTORY phase decode, reboot |
 | `N` | Direct Gain / native AGC, reboot |

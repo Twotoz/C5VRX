@@ -36,7 +36,7 @@ def make_raw(period=2542, radius=4, sigma=0, offset=0, depth=1, dc=0, seed=0):
 def main():
     volts=gen.voltages()
     assert 0.95<max(volts)<1.15
-    transfers=(('hr100',''),('legacy','_legacy'),('cvbs150','_cvbs150'))
+    transfers=(('std150',''),('legacy','_legacy'),('cvbs150','_cvbs150'))
     for history in (False,True):
         fixed=gen.words_for(history)
         mode='history' if history else 'static'
@@ -50,9 +50,8 @@ def main():
             assert body==gen.build(history,False,transfer).split('accumulate:',1)[1]
             path=HERE/f'c5vrx4_phase8_{mode}{suffix}.bsasm'
             assert path.read_text()==gen.build(history,False,transfer)
-    # One Phase8 bin over 75 ns is 52.083 kHz: 1/192 V at 0.100 V/MHz,
-    # 1/128 V at 0.150 V/MHz.
-    for transfer,blank,per_bin in (('hr100',.42,1/192),('cvbs150',.3,1/128)):
+    # One Phase8 bin over 75 ns is 52.083 kHz: 1/128 V at 0.150 V/MHz.
+    for transfer,blank,per_bin in (('std150',.31,1/128),('cvbs150',.3,1/128)):
         codes=gen.dac_codes(False,transfer)
         for index in range(256):
             delta=gen.transfer_delta(index)
@@ -65,12 +64,17 @@ def main():
     hr,c150=gen.dac_codes(),gen.dac_codes(False,'cvbs150')
     assert all(c150[i]==63 for i in range(256) if gen.transfer_delta(i)>150)
     assert all(c150[i]==0 for i in range(256) if gen.transfer_delta(i)<-60)
-    assert all(hr[i]==63 for i in range(256) if gen.transfer_delta(i)>118)
-    assert all(hr[i]==0 for i in range(256) if gen.transfer_delta(i)<-84)
-    # HR100 headroom: nominal sync (-2 MHz = -38 bins) stays clear of the
-    # DAC floor for a 2-MHz downward shift (-77 bins); CVBS150 does not.
-    floor=lambda codes,d: min(volts[codes[i]] for i in range(192) if gen.transfer_delta(i)>=d)
-    assert floor(hr,-78)>0.0 and floor(c150,-78)==0.0
+    # Standard loaded amplitude: target endpoints round within one DAC step.
+    def output_at(hz):
+        d=hz*256*gen.SPAN_S
+        i=min(range(192),key=lambda i:abs(gen.transfer_delta(i)-d))
+        return volts[hr[i]]
+    sync,blank,white=map(output_at,(-2e6,0,4.6666666667e6))
+    assert .27 <= blank-sync <= .33, (sync,blank,white)
+    assert .95 <= white-sync <= 1.05, (sync,blank,white)
+    assert .65 <= white-blank <= .75, (sync,blank,white)
+    # Full amplitude leaves little CFO margin on the ~1.02 V passive DAC.
+    assert output_at(-4e6)==0
     # Invalid scope calibration fails instead of producing arbitrary firmware.
     original=gen.CALIBRATION
     with tempfile.TemporaryDirectory() as tmp:
@@ -100,18 +104,16 @@ def main():
                     assert raw==before
                     assert new.levels_valid, (period,history,phase_offset,new.pulses,new.repeated)
                     assert abs(new.period_raw-period)<=6
-                    assert 160<=new.sync_depth_mv<=270, new.sync_depth_mv
+                    assert 240<=new.sync_depth_mv<=400, new.sync_depth_mv
                     assert 240<=c150.sync_depth_mv<=400, c150.sync_depth_mv
-                    assert old.sync_depth_mv<new.sync_depth_mv*.9
+                    assert old.sync_depth_mv<new.sync_depth_mv*.7
                     assert 768<=new.suggested_scale_q10<=1536
-        # Carrier/blank shifted down 1.5 MHz (CFO, drift or an APL-dependent
-        # centre): CVBS150 crushes sync against 0 V, HR100 keeps its depth.
+        # CFO remains a separate problem: do not claim broad headroom at 1 V.
         for history in (False,True):
             shifted=make_raw(offset=-1.5e6)
-            hr_s,c150_s=inspect(shifted,history),inspect(shifted,history,2)
-            assert hr_s.levels_valid and c150_s.levels_valid
-            assert hr_s.sync_mv>0 and 160<=hr_s.sync_depth_mv<=270, hr_s.sync_depth_mv
-            assert c150_s.sync_mv==0 and c150_s.sync_depth_mv<120, c150_s.sync_depth_mv
+            std_s=inspect(shifted,history)
+            assert std_s.levels_valid and std_s.sync_mv==0
+            assert std_s.sync_depth_mv<150, std_s.sync_depth_mv
         # Smaller phase separation must be visible as smaller sync span,
         # rather than silently applied as an unbounded output gain change.
         weak=inspect(make_raw(depth=.5));strong=inspect(make_raw())
@@ -131,7 +133,7 @@ def main():
         # Check diagnostics expose offset dominance; it is not auto-subtracted.
         shifted=inspect(make_raw(radius=1,dc=3))
         assert shifted.mean_i_mcell>2000 and not shifted.levels_valid
-    print('PASS: HR100/CVBS150/legacy transfers, saturation and sync headroom, unchanged '
+    print('PASS: STD150/CVBS150/legacy transfers, standard amplitude and explicit CFO limits, unchanged '
           'Phase8/winding/routes, PAL/NTSC/CFO snapshots, shrink telemetry and 100 noise refusals')
 
 if __name__=='__main__': main()
