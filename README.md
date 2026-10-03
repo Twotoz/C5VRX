@@ -199,6 +199,12 @@ Connect a 6-bit binary-weighted resistor DAC ladder to the XIAO pins, meeting at
 | **D9** | GPIO 9  | Bit 5 (MSB) | 240 Ω |
 | **GND** | GND | Ground | Ground reference |
 
+### Wiring diagram
+
+![XIAO ESP32-C5 wiring diagram with the 6-bit resistor DAC and CVBS output](assets/wiring.svg)
+
+Wiring diagram by [codingard](https://github.com/codingard).
+
 ### Output network and controls
 1. **Video level**: The reference circuit uses a 200 ohm shunt at `VIDEO`; the connected display or goggles may add their own 75 ohm termination. Check the resulting level with the load you use.
 2. **Output filter**: The reference circuit uses a 470 pF ceramic capacitor from `VIDEO` to `GND`. Check image sharpness with your display and termination.
