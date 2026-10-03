@@ -4651,7 +4651,7 @@ static void handle_button_long_click(void)
         s_menu_cursor = 0;
         s_menu_timeout_ticks = 0;
         video_set_menu_mode(true);
-        printf("[BTN: LONG] Menu Opened!\n");
+        printf("[BTN: LONG] Menu %s\n", s_menu_active ? "opened" : "unavailable");
     } else {
         switch (s_menu_cursor) {
         case 0: /* BAND */
@@ -5629,7 +5629,16 @@ static void console_diag_task(void *arg)
                     continue;
                 }
 #ifdef C5VRX4_EXPERIMENT
-                if (c == 'T') c5v4_level_hw_print();
+                if (c == 'T') {
+                    c5v4_level_hw_print();
+                    printf("C5VRX4_MENU active=%u boot_button_enabled=%u "
+                           "standard=%s descriptor_bytes=%u free=%u largest=%u\n",
+                           s_menu_active, s_menu_boot_btn_enabled,
+                           video_standard_name(resolved_menu_standard()),
+                           (unsigned)(MENU_MAX_NODES * sizeof(*s_menu_nodes)),
+                           (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL),
+                           (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL));
+                }
                 if (c == 'J') {
                     if (__sync_bool_compare_and_swap(&s_cvbs_capture_running, 0u, 1u) &&
                         xTaskCreate(cvbs_capture_task, "cvbs_capture", 12288, NULL, 1, NULL) != pdPASS) {

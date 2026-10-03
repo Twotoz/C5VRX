@@ -9,9 +9,15 @@ C5VRX by Twotoz (Leon Beekveldt) and contributors. Review base: main `e15c6ee` (
 3. **Gain decisions lacked a second context check after processing/acquiring the actuator.** Ordinary V5 observations now recheck gain/profile/PHY/table generations before ticking. The actuator rechecks profile/mode/menu/scan after ownership acquisition. Scan also refuses conflicting USB commands; T diagnostics remain available. Menu already excluded ordinary gain observation, but USB lives in another task.
 4. **Level-lab updates were stopped after TX had already been disabled.** Menu entry and self-noise teardown now drain/refuse level writes before disabling PARLIO/BitScrambler. The existing recursive LUT mutex serializes the stop against a current update. No new running LUT-write policy is enabled.
 
+5. **BOOT handler reported a menu success even when allocation failed.** It now prints `unavailable` when the menu did not open. T also reports the BOOT enable flag, resolved PAL/NTSC mode, descriptor allocation and available AHB-DMA heap. This is diagnosis of the alpha tester report, not a demonstrated fix of the menu allocation or CVBS waveform.
+
 The concurrent open [PR161](https://github.com/Twotoz/C5VRX/pull/161) independently covers stale CVBS level-evidence chains and voltage-ordered DAC slew. Its code is not duplicated in this PR.
 
 The suspected fixed-ultrafine last-resort downshift was disproved: the existing central `set_lane()` already refuses all lane changes in fixed mode. A regression against the unchanged controller confirmed this; no redundant fix is included.
+
+## Alpha tester report: movement static/desync and menu unavailable
+
+The tester reported C5VRX-4 alpha; the exact alpha version, gain ownership, lane/level/history flags and logs have not been supplied. No active H/V sync flywheel or regeneration exists in this build. STATIC is default; HISTORY and u level lab are opt-in. Menu is a separate synthetic raster used only while the menu owns TX, not a live sync repair. Possible causes requiring evidence include dynamic gain/lanes, RF/multipath and capture/transport faults. Menu allocation can fail or the persisted BOOT toggle can refuse ordinary long presses. Read T, the BOOT log, and `menu unavailable` heap diagnostics; holding BOOT for three seconds or serial o bypasses the ordinary BOOT enable flag. Avoid assigning the report to a flywheel or claiming it fixed without exact-build hardware reproduction.
 
 ## Remaining evidence gaps / possible bugs
 
