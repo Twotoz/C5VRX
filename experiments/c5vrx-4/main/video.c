@@ -260,10 +260,16 @@ static inline void sync_dma_m2c(const void *addr, size_t size)
 /* Timing and descriptors are immutable while running; only text pixels change.
  * This raster is never linked to the RF ring. */
 static DMA_ATTR __attribute__((aligned(64))) menu_raster_t s_menu_raster;
-/* The two-field PAL/NTSC scatter chain is below 20 KiB. Descriptors are needed
- * only while the standalone menu owns TX, so allocate the bounded maximum from
- * internal AHB-DMA descriptor memory and return it on exit. */
-static dma_descriptor_t *s_menu_nodes;
+/* The two-field scatter chain needs 1,499 (NTSC, 18 KiB) or 1,811 (PAL,
+ * 21.7 KiB) descriptors, only while the standalone menu owns TX. GDMA follows
+ * each descriptor's next pointer, so the chain need not be contiguous: it is
+ * allocated as 1.5-KiB chunks of internal AHB-DMA descriptor memory, only as
+ * many as the active raster counts. A single 22-KiB block failed whenever the
+ * heap was fragmented (menu "unavailable" after scans/labs/captures). */
+#define MENU_NODE_CHUNK  128u   /* 128 x 12 B = 1,536 B, a cache-line multiple */
+#define MENU_NODE_CHUNKS ((MENU_MAX_NODES + MENU_NODE_CHUNK - 1u) / MENU_NODE_CHUNK)
+static dma_descriptor_t *s_menu_chunks[MENU_NODE_CHUNKS];
+static unsigned s_menu_chunk_count;
 static unsigned s_menu_node_capacity;
 /* AGC sampling and channel scan are serialized in analog_agc_task, so they
  * share one descriptor-sized CPU snapshot instead of reserving 8 KiB. */
@@ -3861,28 +3867,51 @@ static bool menu_count_segment(void *ctx, const uint8_t *data, unsigned length)
     return true;
 }
 
+static dma_descriptor_t *menu_node(unsigned index)
+{
+    return &s_menu_chunks[index / MENU_NODE_CHUNK][index % MENU_NODE_CHUNK];
+}
+
 static bool menu_append_segment(void *ctx, const uint8_t *data, unsigned length)
 {
     (void)ctx;
-    if (!s_menu_nodes || s_menu_node_count >= s_menu_node_capacity ||
+    if (s_menu_node_count >= s_menu_node_capacity ||
         length > 4092 || ((uintptr_t)data & 3) || (length & 3)) return false;
-    dma_descriptor_t *node = &s_menu_nodes[s_menu_node_count++];
+    dma_descriptor_t *node = menu_node(s_menu_node_count++);
     memset(node, 0, sizeof(*node));
     node->dw0.size = length;
     node->dw0.length = length;
     node->dw0.owner = 1;
     node->buffer = (void *)data;
-    node->next = &s_menu_nodes[s_menu_node_count];
-    return true;
+    return true; /* Linked after the whole chain is known. */
 }
 
 static void menu_free_nodes(void)
 {
-    if (!s_menu_nodes) return;
-    heap_caps_free(s_menu_nodes);
-    s_menu_nodes = NULL;
+    for (unsigned k = 0; k < s_menu_chunk_count; ++k) {
+        heap_caps_free(s_menu_chunks[k]);
+        s_menu_chunks[k] = NULL;
+    }
+    s_menu_chunk_count = 0;
     s_menu_node_capacity = 0;
     s_menu_node_count = 0;
+}
+
+/* Grow only: chunks still referenced by a running menu chain are never
+ * freed here, and a failed growth keeps the previous (smaller) chain. */
+static esp_err_t menu_reserve_nodes(unsigned nodes)
+{
+    unsigned chunks = (nodes + MENU_NODE_CHUNK - 1u) / MENU_NODE_CHUNK;
+    if (chunks > MENU_NODE_CHUNKS) return ESP_ERR_INVALID_SIZE;
+    while (s_menu_chunk_count < chunks) {
+        dma_descriptor_t *chunk = (dma_descriptor_t *)heap_caps_aligned_alloc(
+            64u, MENU_NODE_CHUNK * sizeof(dma_descriptor_t),
+            MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
+        if (!chunk) return ESP_ERR_NO_MEM;
+        s_menu_chunks[s_menu_chunk_count++] = chunk;
+        s_menu_node_capacity += MENU_NODE_CHUNK;
+    }
+    return ESP_OK;
 }
 
 static void menu_render_menu(void);
@@ -3891,26 +3920,16 @@ static esp_err_t menu_init_buffers(void)
 {
     menu_raster_init(&s_menu_raster, s_video_std);
 
-    /* Count first and verify the generated chain against the fixed compact
-     * maximum. Reserving the full two-field maximum also makes PAL/NTSC
-     * switching allocation-free while menu DMA owns the raster. */
+    /* Count the active raster first; reserve only that many descriptors.
+     * The chain may grow on an NTSC -> PAL switch inside the menu. */
     unsigned required_nodes = 0;
     if (!menu_raster_emit(&s_menu_raster, s_video_std,
                           menu_count_segment, &required_nodes) ||
         required_nodes == 0 || required_nodes > MENU_MAX_NODES) {
         return ESP_ERR_INVALID_SIZE;
     }
-
-    if (s_menu_node_capacity < MENU_MAX_NODES) {
-        menu_free_nodes();
-        size_t bytes = MENU_MAX_NODES * sizeof(*s_menu_nodes);
-        size_t alloc_bytes = (bytes + 63u) & ~(size_t)63u;
-        s_menu_nodes = (dma_descriptor_t *)heap_caps_aligned_alloc(
-            64u, alloc_bytes,
-            MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
-        if (!s_menu_nodes) return ESP_ERR_NO_MEM;
-        s_menu_node_capacity = MENU_MAX_NODES;
-    }
+    esp_err_t err = menu_reserve_nodes(required_nodes);
+    if (err != ESP_OK) return err;
 
     s_menu_node_count = 0;
     if (!menu_raster_emit(&s_menu_raster, s_video_std,
@@ -3918,10 +3937,12 @@ static esp_err_t menu_init_buffers(void)
         s_menu_node_count != required_nodes) {
         return ESP_ERR_INVALID_SIZE;
     }
-    s_menu_nodes[s_menu_node_count - 1].next = s_menu_nodes;
+    for (unsigned i = 0; i < s_menu_node_count; ++i)
+        menu_node(i)->next = menu_node((i + 1u) % s_menu_node_count);
     menu_render_menu();
     sync_dma_c2m(&s_menu_raster, sizeof(s_menu_raster));
-    sync_dma_c2m(s_menu_nodes, s_menu_node_count * sizeof(*s_menu_nodes));
+    for (unsigned k = 0; k < s_menu_chunk_count; ++k)
+        sync_dma_c2m(s_menu_chunks[k], MENU_NODE_CHUNK * sizeof(dma_descriptor_t));
     return ESP_OK;
 }
 
@@ -4329,7 +4350,7 @@ static void start_menu_tx(void)
     parlio_ll_tx_set_eof_condition(&PARL_IO, PARLIO_LL_TX_EOF_COND_DATA_LEN);
     parlio_ll_tx_set_trans_bit_len(&PARL_IO, 1);
     __asm__ __volatile__("fence rw, rw" ::: "memory");
-    AHB_DMA.out_link_addr[s_tx_dma_ch].val = (uint32_t)s_menu_nodes;
+    AHB_DMA.out_link_addr[s_tx_dma_ch].val = (uint32_t)menu_node(0);
     AHB_DMA.channel[s_tx_dma_ch].out.out_link.outlink_start_chn = 1;
     int64_t deadline = esp_timer_get_time() + 1000;
     while (!parlio_ll_tx_is_ready(&PARL_IO)) {
@@ -4351,10 +4372,12 @@ static void video_set_menu_mode(bool active)
         s_video_std = resolved_menu_standard();
         esp_err_t menu_err = menu_init_buffers();
         if (menu_err != ESP_OK) {
-            ESP_LOGE(TAG, "menu unavailable: %s (free=%u largest=%u)",
+            ESP_LOGE(TAG, "menu unavailable: %s (dma_desc free=%u largest=%u, need %u x %u B chunks)",
                      esp_err_to_name(menu_err),
-                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                     (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL),
+                     (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL),
+                     (unsigned)MENU_NODE_CHUNKS,
+                     (unsigned)(MENU_NODE_CHUNK * sizeof(dma_descriptor_t)));
             menu_free_nodes();
             return;
         }
@@ -4412,6 +4435,8 @@ static void video_set_menu_mode(bool active)
 
 static void menu_cycle_standard_mode(void)
 {
+    const video_standard_mode_t previous_mode = s_video_std_mode;
+    const video_standard_t previous_std = s_video_std;
     if (s_menu_active) ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
     if (s_video_std_mode == VIDEO_STD_MODE_AUTO) {
         s_video_std_mode = VIDEO_STD_MODE_NTSC;
@@ -4424,7 +4449,19 @@ static void menu_cycle_standard_mode(void)
         s_video_std = resolved_menu_standard();
     }
     if (s_menu_active) {
-        ESP_ERROR_CHECK(menu_init_buffers());
+        esp_err_t err = menu_init_buffers();
+        if (err != ESP_OK) {
+            /* PAL needs ~312 more descriptors than NTSC. If they cannot be
+             * allocated, keep the previous standard: its chain still fits
+             * (capacity only grows) instead of rebooting. */
+            printf("[MENU] %s unavailable: %s (free=%u largest=%u); standard kept\n",
+                   video_standard_name(s_video_std), esp_err_to_name(err),
+                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL),
+                   (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL));
+            s_video_std_mode = previous_mode;
+            s_video_std = previous_std;
+            ESP_ERROR_CHECK(menu_init_buffers());
+        }
         start_menu_tx();
     }
     settings_save();
@@ -5726,6 +5763,16 @@ static void console_diag_task(void *arg)
                     printf("C5V4_LEVEL_TASK work_us=%u stack_free=%u heap_free=%u snapshot_bytes=8190\n",
                         s_level_work_us, s_level_task ? (unsigned)uxTaskGetStackHighWaterMark(s_level_task) : 0u,
                         (unsigned)esp_get_free_heap_size());
+                    printf("C5VRX4_MENU active=%u boot_button_enabled=%u "
+                           "standard=%s descriptor_bytes_max=%u chunk_bytes=%u "
+                           "allocated_chunks=%u free=%u largest=%u\n",
+                           s_menu_active, s_menu_boot_btn_enabled,
+                           video_standard_name(resolved_menu_standard()),
+                           (unsigned)(MENU_MAX_NODES * sizeof(dma_descriptor_t)),
+                           (unsigned)(MENU_NODE_CHUNK * sizeof(dma_descriptor_t)),
+                           s_menu_chunk_count,
+                           (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL),
+                           (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL));
                 }
                 if (c == 'J') {
                     if (__sync_bool_compare_and_swap(&s_cvbs_capture_running, 0u, 1u) &&
