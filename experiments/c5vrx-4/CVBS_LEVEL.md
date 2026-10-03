@@ -25,21 +25,27 @@ at the physical DAC limits; colour amplitude is also scaled. Ambiguous winding
 maps to black. This is output gain/offset normalization, not RF AGC, RF sensitivity
 recovery or I/Q DC subtraction.
 
-Three consecutive consistent fresh windows are required. Reject origin collapse,
+Three consecutive consistent fresh windows are required. Duplicate/backward
+observation times cannot vote; gaps over 200 ms reset the chain and require
+three new windows. This bounds evidence age at the normal 50-ms supervisor
+cadence, without claiming tagged physical sample identity. Reject origin collapse,
 clipping, ambiguous trajectories, noisy plateaus, changed profile/PHY/gain/lane,
 unsettled windows and missing repeated line timing. Span is bounded 12..120
 Phase8 bins: about 0.32..3.2 times the initial voltage slope. Noise cannot request
 unbounded gain. On invalid data, hold the last applied mapping and reacquire;
 losing actuator ownership also clears consecutive evidence. No sync is invented.
 
-At most once per 100 ms, each of the 256 target entries advances by one DAC code.
+At most once per 100 ms, each of the 256 target entries advances by one adjacent
+loaded voltage toward its target. Measured nonmonotonic code order is supported;
+equal-voltage codes can move directly to the selected target.
 Consequently initial convergence can take several seconds; this is deliberately
 a conservative lab, not fast fade compensation. The DAC ladder is not perfectly
 linear or necessarily monotonic with binary code. Host convergence tests use the
 loaded electrical table. Dynamic settling, gain pumping and camera colour still
 need measurements. There are two identical even planes: writes are sequential,
 not a coherent/atomic bank swap. Intermediate transfers differ by at most one
-code at a given entry, but one code is not a proven invisible video change.
+adjacent calibrated voltage at a given entry, which is not a proven invisible
+video change or a fixed millivolt bound.
 
 ## Hardware access and refusal
 

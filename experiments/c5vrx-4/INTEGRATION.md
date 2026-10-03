@@ -43,6 +43,9 @@ transition; stationarity remains a refusal heuristic, not an analog-state proof.
 
 ## Issues and remaining gates
 
+See [ISSUE_AUDIT.md](ISSUE_AUDIT.md) for the complete 2026-10-03 open/closed
+issue inventory and the subsequent CVBS evidence-age/calibrated-slew fixes.
+
 | Issue | Software disposition / remaining proof |
 |---|---|
 | #144 | Unwrap75 and exact routing/oracle retained; adjacent-step bound remains |
