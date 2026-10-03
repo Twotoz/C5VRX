@@ -4977,6 +4977,7 @@ static void analog_agc_task(void *arg)
             }
         }
 
+        int64_t control_now_us = esp_timer_get_time();
         rx_control_epoch_t afc_epoch = {s_profile_generation,
             phy_rx_lab_generation(), s_gain_transition_count};
         uint32_t afc_ctx = afc_context((unsigned)s_afc_mode,
