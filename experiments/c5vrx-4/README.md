@@ -83,6 +83,7 @@ analyzer; startup refuses allocation failure. Heap/stack margin under menu and
 concurrent J capture still needs hardware observation.
 
 [INTEGRATION.md](INTEGRATION.md) records PR/issue disposition and acceptance.
+[BUG_AUDIT.md](BUG_AUDIT.md) records the complete issue inventory, snapshot/control fixes and remaining hardware acceptance gaps.
 [INTEGRATION_SOURCES.json](INTEGRATION_SOURCES.json) pins donor revisions.
 [CVBS_OUTPUT.md](CVBS_OUTPUT.md) explains the loaded transfer and scope model.
 Earlier research files are donor records; this README defines current defaults.

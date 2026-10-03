@@ -36,6 +36,7 @@
 #include "rf.h"
 #include "phy_rx_lab.h"
 #include "rx_control_epoch.h"
+#include "rx_snapshot.h"
 #include "menu_font.h"
 #include "menu_raster.h"
 #include "range_control.h"
@@ -608,6 +609,17 @@ static int patch_descriptors_clear_eof(int dma_ch, bool is_rx)
 
 /* Capture validity, not merely a pointer to the previous DMA descriptor.
  * Never accept a copy that could have been lapped while this task was preempted. */
+static bool completed_rx_copy_safe(int active, int idx, int64_t start)
+{
+    int after = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
+        AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val);
+    uint64_t safe_bytes = 0;
+    for (int k = 0; k < s_rx_dscr_count; ++k)
+        if (k != active && k != idx) safe_bytes += s_rx_dscr_nodes[k].length;
+    return rx_snapshot_safe(active, idx, after, s_rx_dscr_count, safe_bytes,
+        IQ_RATE_HZ, (uint64_t)start, (uint64_t)esp_timer_get_time());
+}
+
 static bool copy_completed_rx_window(uint8_t *dst, size_t bytes, size_t *ring_offset)
 {
     if (s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 3) return false;
@@ -621,50 +633,13 @@ static bool copy_completed_rx_window(uint8_t *dst, size_t bytes, size_t *ring_of
         src + bytes > s_raw_ring + sizeof(s_raw_ring)) return false;
     sync_dma_m2c(src, bytes);
     memcpy(dst, src, bytes);
-    int after = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
-        AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val);
     /* Last descriptor can be shorter than 4092 bytes. Sum the actual nodes
      * DMA must cross before it can reuse this buffer, starting with zero
      * remaining time in the descriptor active at the first read. */
-    uint64_t safe_bytes = 0;
-    for (int k = 0; k < s_rx_dscr_count; ++k)
-        if (k != active && k != idx) safe_bytes += s_rx_dscr_nodes[k].length;
-    uint64_t safe_us = safe_bytes * 1000000ULL / IQ_RATE_HZ;
-    int advance = after < 0 ? s_rx_dscr_count :
-                  (after - active + s_rx_dscr_count) % s_rx_dscr_count;
-    bool ok = after >= 0 && after != idx && advance < s_rx_dscr_count - 1 &&
-              (uint64_t)(esp_timer_get_time() - start) < safe_us;
+    bool ok = completed_rx_copy_safe(active, idx, start);
     if (ok && ring_offset) *ring_offset = (size_t)(src - s_raw_ring);
     return ok;
 }
-
-/* Pick a descriptor that RX has already completed, rather than sampling a
- * fixed address that GDMA may be overwriting at the same instant. The control
- * loop now consumes one complete 4092-byte descriptor per 50 ms evaluation. */
-static uint8_t *get_completed_rx_sample_window(size_t bytes)
-{
-    if (s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 2) {
-        return s_raw_ring;
-    }
-
-    uint32_t current_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
-    int current_idx = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, current_addr);
-    if (current_idx < 0) {
-        return s_raw_ring;
-    }
-
-    for (int back = 1; back < s_rx_dscr_count; ++back) {
-        int idx = (current_idx - back + s_rx_dscr_count) % s_rx_dscr_count;
-        uint8_t *buf = s_rx_dscr_nodes[idx].buffer;
-        uint32_t len = s_rx_dscr_nodes[idx].length;
-        if (buf && len >= bytes &&
-            buf >= s_raw_ring && (buf + bytes) <= (s_raw_ring + sizeof(s_raw_ring))) {
-            return buf;
-        }
-    }
-    return s_raw_ring;
-}
-
 
 /* Exact Phase5 state decode mirrored from the embedded fm.bsasm LUT.  The
  * detector is observation-only: the realtime BitScrambler remains the sole
@@ -1046,12 +1021,8 @@ static void fusion_observer_task(void *arg)
         }
 
         uint32_t gain_epoch = s_gain_transition_count;
-        uint8_t *src = get_completed_rx_sample_window(sizeof(sample));
-        size_t ring_offset =
-            (src >= s_raw_ring && src < s_raw_ring + sizeof(s_raw_ring)) ?
-            (size_t)(src - s_raw_ring) : 0u;
-        sync_dma_m2c((void *)src, sizeof(sample));
-        memcpy(sample, src, sizeof(sample));
+        size_t ring_offset = 0;
+        if (!copy_completed_rx_window(sample, sizeof(sample), &ring_offset)) continue;
         if (gain_epoch != s_gain_transition_count) continue;
 
         control_metrics_t metrics =
@@ -1491,7 +1462,7 @@ static bool rx_probe_copy_completed_idx(uint8_t sample[RX_PROBE_REGIONS * RX_PRO
                                         int *out_idx)
 {
     static const size_t offset[RX_PROBE_REGIONS] = {512u, 1536u, 2560u, 4028u};
-    if (s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 2)
+    if (s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 3)
         return false;
     int64_t copy_start_us = esp_timer_get_time();
     uint32_t active_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
@@ -1508,11 +1479,9 @@ static bool rx_probe_copy_completed_idx(uint8_t sample[RX_PROBE_REGIONS * RX_PRO
         memcpy(sample + i * RX_PROBE_REGION_BYTES, src + offset[i],
                RX_PROBE_REGION_BYTES);
     }
-    if (esp_timer_get_time() - copy_start_us > 300) return false;
-    active_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
+    if (!completed_rx_copy_safe(active_idx, sample_idx, copy_start_us)) return false;
     if (out_idx) *out_idx = sample_idx;
-    return find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
-                           active_addr) != sample_idx;
+    return true;
 }
 
 static bool rx_probe_copy_completed(uint8_t sample[RX_PROBE_REGIONS * RX_PROBE_REGION_BYTES])
@@ -1528,6 +1497,13 @@ static void direct_gain_v3_apply_target(uint8_t target, uint32_t profile, uint32
         s_agc_mode != ANALOG_AGC_ACTIVE ||
         s_rx_profile != RX_PROFILE_DIRECT_GAIN) return;
     if (!phy_rx_lab_try_actuator(phy)) return;
+    /* Profile/menu state may have changed while actuator ownership was
+     * acquired. Never commit the decision in that new control context. */
+    if (profile != s_profile_generation || s_agc_mode != ANALOG_AGC_ACTIVE ||
+        s_rx_profile != RX_PROFILE_DIRECT_GAIN || s_menu_active || s_channel_scan_active) {
+        phy_rx_lab_end_actuator();
+        return;
+    }
     s_shadow_gain = target;
     s_agc_state = s_direct_gain_v3.state == DG3_HOLD ?
                   AGC_STATE_TRACK : AGC_STATE_LEARN;
@@ -1576,7 +1552,7 @@ static void direct_gain_v3_sentinel_task(void *arg)
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         bool active = s_rx_profile == RX_PROFILE_DIRECT_GAIN &&
-                      s_agc_mode == ANALOG_AGC_ACTIVE && !s_menu_active &&
+                      s_agc_mode == ANALOG_AGC_ACTIVE && !s_menu_active && !s_channel_scan_active &&
                       !s_gain_sweep.active && !phy_rx_lab_busy() && !s_pre_q4_probe_active &&
                       !s_rssi_probe_active;
         if (!active || s_v3_fast_overload_state != 0u ||
@@ -1585,7 +1561,8 @@ static void direct_gain_v3_sentinel_task(void *arg)
 
         rx_control_epoch_t epoch = {s_profile_generation, phy_rx_lab_generation(),
                                     s_gain_transition_count};
-        uint32_t gain_epoch = epoch.gain;
+        int64_t copy_start_us = esp_timer_get_time();
+        unsigned sample_lane = rf_get_iq_lanes();
         uint32_t active_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
         int active_idx = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
                                          active_addr);
@@ -1598,10 +1575,7 @@ static void direct_gain_v3_sentinel_task(void *arg)
                                   s_raw_ring + sizeof(s_raw_ring)) continue;
         sync_dma_m2c(src + offset, sizeof(sample));
         memcpy(sample, src + offset, sizeof(sample));
-        active_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
-        if (find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
-                            active_addr) == sample_idx ||
-            gain_epoch != s_gain_transition_count) continue;
+        if (!completed_rx_copy_safe(active_idx, sample_idx, copy_start_us)) continue;
 
         dg3_observation_t observation = direct_gain_v3_measure(
             sample, sizeof(sample), c5vrx_phase8_gain_lut,
@@ -1609,7 +1583,8 @@ static void direct_gain_v3_sentinel_task(void *arg)
         if (observation.clip_pm < 125u && observation.p95 < 95u) continue;
         rx_control_epoch_t current = {s_profile_generation, phy_rx_lab_generation(),
                                       s_gain_transition_count};
-        if (!rx_control_epoch_equal(epoch, current) || phy_rx_lab_busy()) continue;
+        if (!rx_control_epoch_equal(epoch, current) || phy_rx_lab_busy() ||
+            sample_lane != rf_get_iq_lanes()) continue;
         if (!__sync_bool_compare_and_swap(&s_v3_fast_overload_state, 0u, 1u))
             continue;
         s_v3_fast_overload_observation = observation;
@@ -1693,7 +1668,7 @@ static void direct_gain_v3_observer_task(void *arg)
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
         bool active = s_rx_profile == RX_PROFILE_DIRECT_GAIN &&
-                      s_agc_mode == ANALOG_AGC_ACTIVE && !s_menu_active &&
+                      s_agc_mode == ANALOG_AGC_ACTIVE && !s_menu_active && !s_channel_scan_active &&
                       !s_gain_sweep.active && !phy_rx_lab_busy() && !s_pre_q4_probe_active &&
                       !s_rssi_probe_active;
         if (!active) {
@@ -1769,7 +1744,9 @@ static void direct_gain_v3_observer_task(void *arg)
         s_v3_origin_pm = observation.origin_pm;
         s_v3_clip_pm = observation.clip_pm;
         s_v3_coherence = observation.coherence;
-        if (phy != phy_rx_lab_generation() || phy_rx_lab_busy()) continue;
+        if (phy != phy_rx_lab_generation() || phy_rx_lab_busy() ||
+            profile != s_profile_generation || gain_epoch != s_gain_transition_count ||
+            arc != rf_get_arc_generation()) continue;
         uint8_t target = direct_gain_v3_tick(&s_direct_gain_v3, &observation);
         s_direct_gain_v3.lane = c5vrx4_lane_target(rf_get_iq_lanes(),
             s_direct_gain_v3.lane, sample, sizeof(sample), observation.observed_us);
@@ -2837,11 +2814,12 @@ static void lab_run_rssi_gain_probe(void)
         int rssi_val = -127;
         bool rssi_ok = rf_try_get_wideband_rssi_dbm(&rssi_val);
 
-        uint8_t *sample_src = get_completed_rx_sample_window(CONTROL_SAMPLE_BYTES);
-        size_t ring_offset = (sample_src >= s_raw_ring && sample_src < s_raw_ring + sizeof(s_raw_ring))
-                           ? (size_t)(sample_src - s_raw_ring) : 0u;
-        sync_dma_m2c((void *)sample_src, CONTROL_SAMPLE_BYTES);
-        memcpy(s_control_sample_buf, sample_src, CONTROL_SAMPLE_BYTES);
+        size_t ring_offset = 0;
+        if (!copy_completed_rx_window(s_control_sample_buf,
+                CONTROL_SAMPLE_BYTES, &ring_offset)) {
+            printf("C5VRX_RSSI_PROBE gain=%u refused=stale_dma_copy\n", g);
+            continue;
+        }
         control_metrics_t m = analyze_control_window(s_control_sample_buf,
                                                      CONTROL_SAMPLE_BYTES, ring_offset);
         centered_q4_metrics_t center = measure_centered_q4(s_control_sample_buf,
@@ -4235,10 +4213,10 @@ static void lab_run_tx_self_noise_probe(void)
            s_current_gain, LAB_PREQ4_SETTLE_MS, output_mode_name());
     lab_print_row("PREQ4_TX_ACTIVE", NULL);
 
-    ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
-    #ifdef C5VRX4_EXPERIMENT
+#ifdef C5VRX4_EXPERIMENT
     c5v4_level_hw_stop();
 #endif
+    ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
     ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
     ESP_ERROR_CHECK(parlio_del_tx_unit(s_tx));
     s_tx = NULL;
@@ -4339,12 +4317,12 @@ static void video_set_menu_mode(bool active)
             return;
         }
 
-        ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
         /* Live -> menu: stop the live producer once. */
-        #ifdef C5VRX4_EXPERIMENT
-    c5v4_level_hw_stop();
+#ifdef C5VRX4_EXPERIMENT
+        c5v4_level_hw_stop();
 #endif
-    ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+        ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
+        ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
 
         /* Menu raster is byte-oriented 6-bit@40 even if live output was 4-bit@80. */
         if (s_tx_unit_mode != VIDEO_OUTPUT_6BIT_40) {
@@ -4422,12 +4400,16 @@ static void init_boot_button(void)
     gpio_config(&cfg);
 }
 
-/* Copy the endpoint bytes (odd ring byte of each pair, as Phase8 reads
- * them) of the most recent `n` RX-completed pairs, unwrapping the ring. */
+/* Scanner uses an independent 50 ns Phase8 estimator, not the stride-3
+ * live output. Copy completed odd endpoints with a DMA overwrite deadline. */
 static bool copy_recent_endpoints(uint8_t *dst, size_t n)
 {
     if (s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 2 ||
-        2u * n > sizeof(s_raw_ring) / 2u) return false;
+        !dst || !n || n > sizeof(s_raw_ring) / 4u) return false;
+    uint64_t start = (uint64_t)esp_timer_get_time();
+    rx_control_epoch_t epoch = {s_profile_generation, phy_rx_lab_generation(),
+                                s_gain_transition_count};
+    unsigned lane = rf_get_iq_lanes();
     int idx = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
                               AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val);
     if (idx < 0) return false;
@@ -4435,12 +4417,22 @@ static bool copy_recent_endpoints(uint8_t *dst, size_t n)
     if (buf < s_raw_ring || buf >= s_raw_ring + sizeof(s_raw_ring)) return false;
     size_t end = (size_t)(buf - s_raw_ring) & ~(size_t)1u;
     size_t pos = (end + sizeof(s_raw_ring) - 2u * n) % sizeof(s_raw_ring);
+    /* Do not count the unfinished active descriptor as available time.
+     * The copy can span several nodes, including the short ring tail. */
+    size_t active_bytes = s_rx_dscr_nodes[idx].length;
+    if (active_bytes >= sizeof(s_raw_ring) - 2u * n) return false;
+    uint64_t safe_us = (sizeof(s_raw_ring) - 2u * n - active_bytes) *
+                       1000000ULL / IQ_RATE_HZ;
     sync_dma_m2c(s_raw_ring, sizeof(s_raw_ring));
     for (size_t k = 0; k < n; ++k) {
         dst[k] = s_raw_ring[pos + 1u];
         pos = (pos + 2u) % sizeof(s_raw_ring);
     }
-    return true;
+    rx_control_epoch_t current = {s_profile_generation, phy_rx_lab_generation(),
+                                  s_gain_transition_count};
+    return (uint64_t)esp_timer_get_time() - start < safe_us &&
+           rx_control_epoch_equal(epoch, current) && lane == rf_get_iq_lanes() &&
+           !phy_rx_lab_busy();
 }
 
 /* Issue #128: median analog-video confidence of three windows of ~4096
@@ -4495,12 +4487,9 @@ static void channel_auto_search(void)
     for (size_t channel = 0; channel < channel_count; ++channel) {
         if (rf_set_channel(channel) != ESP_OK) continue;
         vTaskDelay(pdMS_TO_TICKS(90));
-        uint8_t *src = get_completed_rx_sample_window(CONTROL_SAMPLE_BYTES);
-        size_t scan_ring_offset =
-            (src >= s_raw_ring && src < s_raw_ring + sizeof(s_raw_ring)) ?
-            (size_t)(src - s_raw_ring) : 0u;
-        sync_dma_m2c(src, CONTROL_SAMPLE_BYTES);
-        memcpy(s_control_sample_buf, src, sizeof(s_control_sample_buf));
+        size_t scan_ring_offset = 0;
+        if (!copy_completed_rx_window(s_control_sample_buf,
+                sizeof(s_control_sample_buf), &scan_ring_offset)) continue;
         control_metrics_t metrics =
             analyze_control_window(s_control_sample_buf,
                                    sizeof(s_control_sample_buf),
@@ -5632,6 +5621,13 @@ static void console_diag_task(void *arg)
             if (usb_serial_jtag_ll_read_rxfifo(&byte, 1) == 0) break;
             int c = byte;
             if (c != EOF && c > 0) {
+                /* Scanning runs in the menu/control task, USB in a separate
+                 * task. Refuse mutations that could change a candidate's
+                 * channel/gain/profile or tear down its RX/TX topology. */
+                if (s_channel_scan_active && c < 128 && !strchr("T\r\n", c)) {
+                    printf("C5VRX4_SCAN_BUSY command=0x%02x action=ignored\n", (unsigned)c);
+                    continue;
+                }
 #ifdef C5VRX4_EXPERIMENT
                 if (c == 'T') c5v4_level_hw_print();
                 if (c == 'J') {

@@ -36,6 +36,7 @@ def main():
         ("direct_gain_v2", ["main/direct_gain_v2.c", "main/arc_phy.c"]),
         ("direct_gain_v3", ["main/direct_gain_v3.c", "main/arc_phy.c"]),
         ("rx_control_epoch", ["main/direct_gain_v3.c", "main/arc_phy.c"]),
+        ("rx_snapshot", []),
         ("rx_auto_lab", ["main/rx_auto_lab.c"]),
         ("arc_v3", ["main/arc_v3_controller.c"]),
         ("arc_v5_autotune", ["main/arc_v5_autotune.c", "main/arc_v3_controller.c"]),
@@ -64,7 +65,7 @@ def main():
     for name in ("test_unwrap.py", "test_cvbs.py", "tools/test_phase8_hr_live.py",
                  "tools/test_fm_hc.py", "tools/check_golden_two_slot.py"):
         run([sys.executable, name])
-    print("PASS: isolated C5VRX-4 integration, 20 C regressions, exhaustive unwrap and source-driven DSP tests")
+    print("PASS: isolated C5VRX-4 integration, 21 C regressions, exhaustive unwrap and source-driven DSP tests")
 
 if __name__ == "__main__":
     main()
