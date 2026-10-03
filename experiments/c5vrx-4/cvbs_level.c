@@ -39,6 +39,10 @@ uint8_t c5v4_level_slew(uint8_t current, uint8_t target, const uint32_t uv[64])
     }
     return next;
 }
+void c5v4_level_seed(c5v4_level_t *s, const uint8_t codes[256])
+{
+    for (unsigned i = 0; i < 256; ++i) s->codes[i] = codes[i] & 63u;
+}
 uint16_t c5v4_level_word(uint16_t original, unsigned code)
 {
     return (uint16_t)((original & ~63u) | (code & 63u));
