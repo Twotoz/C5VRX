@@ -49,6 +49,7 @@ of merging. Current main's existing alpha workflow/flasher can build this projec
 |---|---|
 | `T` | Detector, mapping, lane geometry and gain-owner status |
 | `J` | AFC state plus eight bounded sync/IQ snapshots; no actuator |
+| `u` | Experimental automatic sync/black level servo, opt-in/reboot; fixed mapping required |
 | `M` | Fixed CVBS150 / previous full-span transfer, reboot |
 | `Z` | Protected adaptive V5 / fixed ultrafine comparison, reboot |
 | `h` | STATIC / bounded HISTORY phase decode, reboot |
@@ -91,5 +92,7 @@ Earlier research files are donor records; this README defines current defaults.
 This is an unmerged test build. Host tests and compiler success do not establish
 sample-gapless transport, improved sensitivity/range, PAL/NTSC compliance or
 HDZero acceptance. Fixed scaling does not recover phase information lost to
-clipping, origin collapse or RF noise. Automatic live video AGC, IQ DC subtraction,
-H/V regeneration/coasting and CPU raw-ring sync repair are not enabled.
+clipping, origin collapse or RF noise. Automatic video level regulation is available only in the `u` lab; it is off
+by default pending LUT arbitration/FIFO and HDZero bench acceptance. It corrects
+output gain and offset, not IQ DC. H/V regeneration/coasting and CPU raw-ring
+sync repair remain absent. See [CVBS_LEVEL.md](CVBS_LEVEL.md) for operation and limits.

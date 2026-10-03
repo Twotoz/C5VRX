@@ -73,7 +73,8 @@ gain intentionally remains manual; select active Direct Gain for this test.
   filter overrides are not promoted to defaults merely because a branch exists.
 - Simultaneous RX/TX BitScrambler, >40 MB/s live transport and CPU flywheel
   sample repair remain excluded by the recorded hardware/throughput findings.
-- No automatic live LUT AGC, endpoint-only DC correction, H/V regeneration or
+- Default has no automatic live LUT AGC; the opt-in `u` lab is pending hardware
+  acceptance. No endpoint-only IQ DC correction, H/V regeneration or
   frame buffering is inserted. Missing RF/phase information cannot be restored
   by output scaling alone.
 
@@ -106,3 +107,11 @@ calling range or HDZero acceptance complete, bench-test:
 
 No issue is declared closed from software integration alone. Main merge remains
 an explicit operator decision after reviewing this concrete PR and its evidence.
+
+## Output-amplitude follow-up
+
+The distance-dependent voltage report motivates the opt-in `u` sync/black
+level servo, with stopped-engine LUT16 addressing probe and bounded DAC-only
+live writes. CVBS_LEVEL.md records its implementation, refusal conditions,
+physical-source ambiguity and required bench acceptance. This does not establish
+the cause of the observed amplitude fall or recover RF information.

@@ -12,7 +12,7 @@ video. The 524,386,048-case oracle assumes each adjacent phase step is within
 
 Final voltage is mapped after winding resolution and saturates. Detector span,
 RF amplitude and loaded DAC voltage are separate quantities. STATIC/HISTORY
-and fixed/legacy voltage choices are boot-selected programs; no running LUT
+and fixed/legacy voltage choices are boot-selected programs; default has no running LUT
 reload temporarily changes its width. Unknown trajectory maps to blank reference.
 
 The supervisor owns gain, channel/BW/offset and diagnostics. Direct Gain V5
@@ -45,3 +45,6 @@ All firmware source dependencies are inside this directory. Repository C5VRX-3
 main, root configuration, website and workflow files are unchanged. The existing
 alpha workflow invokes this project; configure-time verification enforces local
 host regressions and generated consistency without adding a shared workflow.
+
+The opt-in `u` level lab adds a bounded sync/black servo after winding, using
+DAC-only LUT16 writes. See CVBS_LEVEL.md; live arbitration is not yet proven.

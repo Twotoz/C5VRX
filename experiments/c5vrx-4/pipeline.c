@@ -30,6 +30,20 @@ static uint64_t s_next_open, s_opened_at;
 static uint32_t s_opens, s_faults, s_late_max, s_open_max;
 static bool s_history_loaded, s_history = false;
 static bool s_cvbs_loaded, s_cvbs_legacy;
+static bool s_level_loaded, s_level;
+
+bool c5vrx4_level_enabled(void)
+{
+    if (!s_level_loaded) {
+        nvs_handle_t h; uint8_t enabled = 0;
+        if (nvs_open("c5vrx4", NVS_READONLY, &h) == ESP_OK) {
+            (void)nvs_get_u8(h, "level_lab", &enabled); nvs_close(h);
+        }
+        s_level = enabled == 1; s_level_loaded = true;
+    }
+    return s_level;
+}
+
 static bool s_ultrafine_loaded, s_ultrafine = false;
 
 bool c5vrx4_cvbs_legacy_enabled(void)
@@ -183,12 +197,12 @@ static void print_state(void)
            running, open, PERIOD_US, WINDOW_US, opens, late, duration, faults,
             control);
     printf("C5VRX4_CVBS transfer=%s reference_mv=%u volts_per_mhz=%s "
-           "calibration=%s load_ohms=75 live_lut_writes=0 "
+           "calibration=%s load_ohms=75 level_lab=%u "
            "sync_repair=0 keys=M_AB_reboot,J_snapshot\n",
            c5vrx4_cvbs_legacy_enabled() ? "LEGACY_FULL" : "CVBS150",
            (unsigned)(c5vrx4_cvbs_legacy_enabled() ? c5v4_dac_uv[c5v4_dac_legacy_codes[32]] / 1000u : 300u),
            c5vrx4_cvbs_legacy_enabled() ? "full_span" : "0.150",
-           C5V4_DAC_MEASURED ? "measured" : "nominal");
+           C5V4_DAC_MEASURED ? "measured" : "nominal", c5vrx4_level_enabled());
     printf("C5VRX4_LANES policy=%s lane=%u adc_step=%u window_codes=%u "
            "fold_guard=%s\n", c5vrx4_ultrafine_forced() ? "fixed_ultrafine" : "protected_v5",
            rf_get_iq_lanes(), 64u >> rf_get_iq_lanes(),
@@ -219,6 +233,20 @@ void c5vrx4_start(void)
 
 bool c5vrx4_console(int key)
 {
+    if (key == 'u') {
+        nvs_handle_t handle;
+        bool enabled = !c5vrx4_level_enabled();
+        esp_err_t err = nvs_open("c5vrx4", NVS_READWRITE, &handle);
+        if (err == ESP_OK) {
+            err = nvs_set_u8(handle, "level_lab", enabled ? 1 : 0);
+            if (err == ESP_OK) err = nvs_commit(handle);
+            nvs_close(handle);
+        }
+        printf("C5VRX4 level_lab_next=%u err=%s action=%s\n", enabled,
+               esp_err_to_name(err), err == ESP_OK ? "reboot" : "unchanged");
+        if (err == ESP_OK) { fflush(stdout); vTaskDelay(pdMS_TO_TICKS(120)); esp_restart(); }
+        return true;
+    }
     if (key == 'M') {
         nvs_handle_t handle;
         bool enabled = !c5vrx4_cvbs_legacy_enabled();

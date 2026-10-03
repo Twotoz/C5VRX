@@ -31,6 +31,7 @@
 #ifdef C5VRX4_EXPERIMENT
 #include "c5vrx4.h"
 #include "cvbs_monitor.h"
+#include "cvbs_level_hw.h"
 #endif
 #include "rf.h"
 #include "phy_rx_lab.h"
@@ -786,12 +787,14 @@ static void video_standard_vote(video_standard_t standard, uint16_t period)
 /* Frozen stride-3 Phase8/winding estimate: ~63 unique samples per H-sync,
  * ~847.4/853.3 per NTSC/PAL line. Exact live alignment/history is not tagged.
  * Standard voting retains its historical period-in-20M-units interface. */
+static c5v4_cvbs_stats_t s_level_stats;
 static int video_semantic_observe(const uint8_t *raw, size_t bytes, size_t ring_offset)
 {
     (void)ring_offset;
     c5v4_cvbs_stats_t stats;
     c5v4_cvbs_analyze(raw, bytes, c5vrx4_history_enabled(),
                       c5vrx4_cvbs_legacy_enabled(), &stats);
+    s_level_stats = stats;
     unsigned period = stats.period_raw;
     int quality = stats.levels_valid && stats.repeated ? 90 : 0;
     s_last_sync_width_20m = 0; /* No fabricated Phase5-width measurement. */
@@ -4097,6 +4100,9 @@ static void quiet_tx_interrupts(void)
 
 static void start_flight_demodulator(void)
 {
+#ifdef C5VRX4_EXPERIMENT
+    c5v4_level_hw_lock();
+#endif
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
 #ifdef C5VRX4_EXPERIMENT
     ESP_ERROR_CHECK(s_output_mode == VIDEO_OUTPUT_6BIT_40 ? ESP_OK : ESP_ERR_INVALID_STATE);
@@ -4126,8 +4132,21 @@ static void start_flight_demodulator(void)
 #endif
     }
 #endif
+#ifdef C5VRX4_EXPERIMENT
+    c5v4_level_hw_prepare();
+    if (c5vrx4_level_enabled() && !c5v4_level_hw_ready()) {
+        /* A failed addressing probe is repaired from the pristine binary. */
+        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs,
+            c5vrx4_cvbs_legacy_enabled() ?
+            (c5vrx4_history_enabled() ? s_c5vrx4_legacy_history_program : s_c5vrx4_legacy_static_program) :
+            (c5vrx4_history_enabled() ? s_c5vrx4_history_program : s_c5vrx4_static_program)));
+    }
+#endif
     ESP_ERROR_CHECK(bitscrambler_reset(s_flight_bs));
     ESP_ERROR_CHECK(bitscrambler_start(s_flight_bs));
+#ifdef C5VRX4_EXPERIMENT
+    c5v4_level_hw_unlock();
+#endif
 }
 
 /* Restore the exact live topology used after leaving the standalone menu.
@@ -4217,6 +4236,9 @@ static void lab_run_tx_self_noise_probe(void)
     lab_print_row("PREQ4_TX_ACTIVE", NULL);
 
     ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
+    #ifdef C5VRX4_EXPERIMENT
+    c5v4_level_hw_stop();
+#endif
     ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
     ESP_ERROR_CHECK(parlio_del_tx_unit(s_tx));
     s_tx = NULL;
@@ -4319,7 +4341,10 @@ static void video_set_menu_mode(bool active)
 
         ESP_ERROR_CHECK(parlio_tx_unit_disable(s_tx));
         /* Live -> menu: stop the live producer once. */
-        ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
+        #ifdef C5VRX4_EXPERIMENT
+    c5v4_level_hw_stop();
+#endif
+    ESP_ERROR_CHECK(bitscrambler_disable(s_flight_bs));
 
         /* Menu raster is byte-oriented 6-bit@40 even if live output was 4-bit@80. */
         if (s_tx_unit_mode != VIDEO_OUTPUT_6BIT_40) {
@@ -5463,6 +5488,20 @@ profile_post_gain:
         }
 
 afc_control:
+#ifdef C5VRX4_EXPERIMENT
+        /* Consume only the pre-actuation snapshot if PHY/gain/lane are still
+         * current under actuator ownership. No CPU output or raw-ring writes. */
+        if (c5vrx4_level_enabled() && phy_rx_lab_try_actuator(afc_epoch.phy)) {
+            bool level_fresh = afc_window_ok && fresh_sync && settle_ticks == 0 && !s_menu_active &&
+                !phy_rx_lab_busy() && sample_lane == rf_get_iq_lanes() &&
+                rx_control_epoch_equal(sample_epoch, (rx_control_epoch_t){
+                    s_profile_generation, phy_rx_lab_generation(), s_gain_transition_count});
+            c5v4_level_hw_observe(&s_level_stats, level_fresh,
+                afc_ctx ^ (sample_lane << 28) ^ (s_gain_transition_count * 2246822519u),
+                (uint64_t)esp_timer_get_time());
+            phy_rx_lab_end_actuator();
+        } else if (c5vrx4_level_enabled()) c5v4_level_hw_invalidate();
+#endif
         if (s_afc_mode == AFC_MODE_AUTO) {
             /* Burst-confirmed video AFC TRACK never retunes. Gain HOLD is
              * independent: an annulus alone must not prevent acquisition. */
@@ -5594,6 +5633,7 @@ static void console_diag_task(void *arg)
             int c = byte;
             if (c != EOF && c > 0) {
 #ifdef C5VRX4_EXPERIMENT
+                if (c == 'T') c5v4_level_hw_print();
                 if (c == 'J') {
                     if (__sync_bool_compare_and_swap(&s_cvbs_capture_running, 0u, 1u) &&
                         xTaskCreate(cvbs_capture_task, "cvbs_capture", 12288, NULL, 1, NULL) != pdPASS) {

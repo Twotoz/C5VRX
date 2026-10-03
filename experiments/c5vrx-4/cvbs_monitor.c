@@ -136,13 +136,13 @@ void c5v4_cvbs_analyze(const uint8_t *raw,size_t n,bool history,bool legacy,
                 out->sync_mv=median(pulse_mv,points);
                 out->blank_mv=median(blank_mv,4);
                 out->sync_depth_mv=out->blank_mv-out->sync_mv;
-                out->levels_valid=out->sync_depth_mv>0;
+                out->levels_valid=true; /* Valid phase plateaus even if fixed DAC mapping clips. */
             }
         }
         have_previous=true;previous_start=k;k=end;
     }
     /* Proposal only. Never an automatic actuator: a small measured phase
      * span can mean lost information, not merely the wrong output gain. */
-    if(out->levels_valid)
+    if(out->levels_valid && out->sync_depth_mv>0)
         out->suggested_scale_q10=(unsigned)clamp(300*1024/out->sync_depth_mv,768,1536);
 }

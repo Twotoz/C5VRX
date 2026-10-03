@@ -23,8 +23,10 @@ AFC uses adjacent raw Phase8 burst/clean-porch evidence and separate sticky vide
 TRACK; AUTO remains off until explicitly selected, with a bounded correction
 budget. Do not use gain HOLD alone as a video lock or a CFO-write permission.
 
-There are no running LUT writes, automatic video AGC/DC correction or H/V
-regeneration. Preserve these limitations until a safe actuator and physical
-timing/throughput evidence exist. Tests/compiler results are not range/HDZero
+Default has no running LUT writes. The user-authorized opt-in `u` video-level
+lab uses a stopped-engine addressing probe and bounded DAC-only LUT16 writes;
+keep it experimental/off by default until live arbitration, physical timing and
+FIFO continuity are demonstrated. H/V regeneration and IQ DC correction remain
+absent. Tests/compiler results are not range/HDZero
 or sample-gapless RF proof. Run verify.py and the exact-head IDF build before
 requesting merge approval; merge only after Leon explicitly approves.
