@@ -557,6 +557,7 @@ typedef struct {
 } ring_dscr_node_t;
 
 static ring_dscr_node_t s_rx_dscr_nodes[MAX_RING_DESCRIPTORS];
+static uint32_t s_rx_dscr_len[MAX_RING_DESCRIPTORS];
 static int s_rx_dscr_count = 0;
 
 static ring_dscr_node_t s_tx_dscr_nodes[MAX_RING_DESCRIPTORS];
@@ -590,6 +591,7 @@ static int patch_descriptors_clear_eof(int dma_ch, bool is_rx)
             s_rx_dscr_nodes[count].dscr = curr;
             s_rx_dscr_nodes[count].buffer = (uint8_t *)curr->buffer;
             s_rx_dscr_nodes[count].length = curr->dw0.size ? curr->dw0.size : 4092u;
+            s_rx_dscr_len[count] = s_rx_dscr_nodes[count].length;
         } else {
             s_tx_dscr_nodes[count].dscr = curr;
             s_tx_dscr_nodes[count].buffer = (uint8_t *)curr->buffer;
@@ -613,9 +615,8 @@ static bool completed_rx_copy_safe(int active, int idx, int64_t start)
 {
     int after = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
         AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val);
-    uint64_t safe_bytes = 0;
-    for (int k = 0; k < s_rx_dscr_count; ++k)
-        if (k != active && k != idx) safe_bytes += s_rx_dscr_nodes[k].length;
+    uint64_t safe_bytes = rx_snapshot_gap_bytes(s_rx_dscr_len, s_rx_dscr_count,
+                                                active, idx);
     return rx_snapshot_safe(active, idx, after, s_rx_dscr_count, safe_bytes,
         IQ_RATE_HZ, (uint64_t)start, (uint64_t)esp_timer_get_time());
 }
@@ -626,10 +627,10 @@ static bool copy_completed_rx_window(uint8_t *dst, size_t bytes, size_t *ring_of
     int64_t start = esp_timer_get_time();
     uint32_t before = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
     int active = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, before);
-    if (active < 0) return false;
-    int idx = (active - 1 + s_rx_dscr_count) % s_rx_dscr_count;
+    int idx = rx_snapshot_pick(s_rx_dscr_len, s_rx_dscr_count, active, bytes);
+    if (idx < 0) return false;
     uint8_t *src = s_rx_dscr_nodes[idx].buffer;
-    if (!src || s_rx_dscr_nodes[idx].length < bytes || src < s_raw_ring ||
+    if (!src || src < s_raw_ring ||
         src + bytes > s_raw_ring + sizeof(s_raw_ring)) return false;
     sync_dma_m2c(src, bytes);
     memcpy(dst, src, bytes);
@@ -1468,11 +1469,11 @@ static bool rx_probe_copy_completed_idx(uint8_t sample[RX_PROBE_REGIONS * RX_PRO
     uint32_t active_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
     int active_idx = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
                                      active_addr);
-    if (active_idx < 0) return false;
-    int sample_idx = (active_idx - 1 + s_rx_dscr_count) % s_rx_dscr_count;
+    int sample_idx = rx_snapshot_pick(s_rx_dscr_len, s_rx_dscr_count,
+                                      active_idx, 4092u);
+    if (sample_idx < 0) return false;
     uint8_t *src = s_rx_dscr_nodes[sample_idx].buffer;
-    if (!src || s_rx_dscr_nodes[sample_idx].length < 4092u ||
-        src < s_raw_ring || src + 4092u > s_raw_ring + sizeof(s_raw_ring))
+    if (!src || src < s_raw_ring || src + 4092u > s_raw_ring + sizeof(s_raw_ring))
         return false;
     for (unsigned i = 0; i < RX_PROBE_REGIONS; ++i) {
         sync_dma_m2c(src + offset[i], RX_PROBE_REGION_BYTES);
@@ -1566,12 +1567,12 @@ static void direct_gain_v3_sentinel_task(void *arg)
         uint32_t active_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
         int active_idx = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
                                          active_addr);
-        if (active_idx < 0) continue;
-        int sample_idx = (active_idx - 1 + s_rx_dscr_count) % s_rx_dscr_count;
+        int sample_idx = rx_snapshot_pick(s_rx_dscr_len, s_rx_dscr_count,
+                                          active_idx, 4092u);
+        if (sample_idx < 0) continue;
         uint8_t *src = s_rx_dscr_nodes[sample_idx].buffer;
         const size_t offset = 1984u;
-        if (!src || s_rx_dscr_nodes[sample_idx].length < 4092u ||
-            src < s_raw_ring || src + offset + sizeof(sample) >
+        if (!src || src < s_raw_ring || src + offset + sizeof(sample) >
                                   s_raw_ring + sizeof(s_raw_ring)) continue;
         sync_dma_m2c(src + offset, sizeof(sample));
         memcpy(sample, src + offset, sizeof(sample));
@@ -2815,8 +2816,13 @@ static void lab_run_rssi_gain_probe(void)
         bool rssi_ok = rf_try_get_wideband_rssi_dbm(&rssi_val);
 
         size_t ring_offset = 0;
-        if (!copy_completed_rx_window(s_control_sample_buf,
-                CONTROL_SAMPLE_BYTES, &ring_offset)) {
+        bool copied = false;
+        for (unsigned attempt = 0; attempt < 3u && !copied; ++attempt) {
+            if (attempt) vTaskDelay(pdMS_TO_TICKS(1));
+            copied = copy_completed_rx_window(s_control_sample_buf,
+                CONTROL_SAMPLE_BYTES, &ring_offset);
+        }
+        if (!copied) {
             printf("C5VRX_RSSI_PROBE gain=%u refused=stale_dma_copy\n", g);
             continue;
         }
@@ -4487,9 +4493,22 @@ static void channel_auto_search(void)
     for (size_t channel = 0; channel < channel_count; ++channel) {
         if (rf_set_channel(channel) != ESP_OK) continue;
         vTaskDelay(pdMS_TO_TICKS(90));
+        /* A refused copy is retried; a channel is never silently dropped
+         * from the scan, and progress still advances if all attempts fail. */
         size_t scan_ring_offset = 0;
-        if (!copy_completed_rx_window(s_control_sample_buf,
-                sizeof(s_control_sample_buf), &scan_ring_offset)) continue;
+        bool copied = false;
+        for (unsigned attempt = 0; attempt < 3u && !copied; ++attempt) {
+            if (attempt) vTaskDelay(pdMS_TO_TICKS(1));
+            copied = copy_completed_rx_window(s_control_sample_buf,
+                sizeof(s_control_sample_buf), &scan_ring_offset);
+        }
+        if (!copied) {
+            printf("[AUTO SEARCH] %s skipped: stale_dma_copy\n",
+                   rf_get_current_channel()->name);
+            s_channel_scan_progress = (unsigned)((channel + 1u) * 100u / channel_count);
+            menu_render_menu();
+            continue;
+        }
         control_metrics_t metrics =
             analyze_control_window(s_control_sample_buf,
                                    sizeof(s_control_sample_buf),
@@ -5565,11 +5584,11 @@ static void cvbs_capture_task(void *arg)
         int64_t begin = esp_timer_get_time();
         uint32_t active_addr = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
         int active = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, active_addr);
-        if (active < 0 || s_rx_dscr_count < 2) break;
-        int completed = (active - 1 + s_rx_dscr_count) % s_rx_dscr_count;
+        int completed = rx_snapshot_pick(s_rx_dscr_len, s_rx_dscr_count, active,
+                                         CONTROL_SAMPLE_BYTES);
+        if (completed < 0) break;
         uint8_t *src = s_rx_dscr_nodes[completed].buffer;
-        if (!src || src < s_raw_ring || src + CONTROL_SAMPLE_BYTES > s_raw_ring + sizeof(s_raw_ring) ||
-            s_rx_dscr_nodes[completed].length < CONTROL_SAMPLE_BYTES) break;
+        if (!src || src < s_raw_ring || src + CONTROL_SAMPLE_BYTES > s_raw_ring + sizeof(s_raw_ring)) break;
         sync_dma_m2c(src, CONTROL_SAMPLE_BYTES);
         memcpy(raw, src, CONTROL_SAMPLE_BYTES);
         unsigned copy_us = (unsigned)(esp_timer_get_time() - begin);
