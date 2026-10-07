@@ -36,7 +36,7 @@ static void start_menu_tx(void);
 
 #define MENU_NODE_CHUNKS ((MENU_MAX_NODES + MENU_NODE_CHUNK - 1u) / MENU_NODE_CHUNK)
 
-enum { SETUP_ITEM_AFC, SETUP_ITEM_BOOT_MENU, SETUP_ITEM_OPTIONS };
+enum { SETUP_ITEM_AFC, SETUP_ITEM_BOOT_MENU, SETUP_ITEM_DEMOD, SETUP_ITEM_OPTIONS };
 
 enum {
     RF_ITEM_GAIN, RF_ITEM_DIGITAL_BW, RF_ITEM_ANALOG_BW, RF_ITEM_LANES,
@@ -465,8 +465,21 @@ bool menu_changes_pending(void)
     return c5vrx4_options_pending() || rf_native_agc_requested() != rf_native_agc_active();
 }
 
+static bool menu_option_available(unsigned option)
+{
+    return !c5vrx4_reference_demod() ||
+        (option != C5VRX4_OPT_HISTORY && option != C5VRX4_OPT_AGC_MASK &&
+         option != C5VRX4_OPT_DC_RECENTER && option != C5VRX4_OPT_SYNC_FW &&
+         option != C5VRX4_OPT_LEVEL && option != C5VRX4_OPT_LINE_FIX &&
+         option != C5VRX4_OPT_IDLE_RASTER && option != C5VRX4_OPT_CVBS);
+}
+
 static void menu_option_text(unsigned option, char *value, size_t n)
 {
+    if (!menu_option_available(option)) {
+        snprintf(value, n, "N/A (DEMOD)");
+        return;
+    }
     /* Native-AGC-only options do nothing under Direct V5, and line repair
      * runs inside the sync flywheel: say so. */
     bool native_only = option == C5VRX4_OPT_AGC_MASK || option == C5VRX4_OPT_NATIVE_PATCH;
@@ -512,12 +525,20 @@ static const char *menu_item_text(unsigned item, char *value, size_t n)
         }
     }
     if (item == SETUP_ITEM_AFC) {
+        if (c5vrx4_reference_demod()) {
+            snprintf(value, n, "OFF (REFERENCE)");
+            return "AFC";
+        }
         snprintf(value, n, "%s", afc_mode_name());
         return "AFC";
     }
     if (item == SETUP_ITEM_BOOT_MENU) {
         snprintf(value, n, "%s", s_menu_boot_btn_enabled ? "ON" : "OFF");
         return "BOOT MENU";
+    }
+    if (item == SETUP_ITEM_DEMOD) {
+        snprintf(value, n, "%s", c5vrx4_demodulator_name());
+        return "DEMOD (REBOOT)";
     }
     unsigned option = s_setup_options[item - SETUP_ITEM_OPTIONS];
     menu_option_text(option, value, n);
@@ -585,12 +606,13 @@ bool menu_item_apply(unsigned item)
     }
     if (item == SETUP_ITEM_AFC) {
         if (s_afc_mode == AFC_MODE_AUTO) {
+            if (c5vrx4_reference_demod()) { s_afc_mode = AFC_MODE_OFF; return true; }
             s_afc_mode = AFC_MODE_HOLD;
         } else if (s_afc_mode == AFC_MODE_HOLD) {
             s_afc_mode = AFC_MODE_OFF;
             apply_frequency_offset_khz_tracked(0);
         } else {
-            s_afc_mode = AFC_MODE_AUTO;
+            s_afc_mode = c5vrx4_reference_demod() ? AFC_MODE_OFF : AFC_MODE_AUTO;
         }
         printf("[MENU: AFC] Mode -> %s\n", afc_mode_name());
         settings_save();
@@ -603,7 +625,14 @@ bool menu_item_apply(unsigned item)
                s_menu_boot_btn_enabled ? "on" : "off");
         return true;
     }
-    (void)c5vrx4_option_cycle(s_setup_options[item - SETUP_ITEM_OPTIONS]);
+    if (item == SETUP_ITEM_DEMOD) {
+        settings_save();
+        (void)c5vrx4_console('g');
+        return true; /* NVS errors keep this boot/mode unchanged. */
+    }
+    unsigned option = s_setup_options[item - SETUP_ITEM_OPTIONS];
+    if (menu_option_available(option)) (void)c5vrx4_option_cycle(option);
+    else printf("[MENU] option unavailable for %s\n", c5vrx4_demodulator_name());
     return true;
 }
 

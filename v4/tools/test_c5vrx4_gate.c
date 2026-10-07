@@ -4,12 +4,14 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "driver/gptimer.h"
 #include "nvs_flash.h"
 #include "freertos/semphr.h"
 static bool native;
 static unsigned timer_calls;
 static int saved_level = -1;
+static int saved_demod = -1;
 static uint64_t alarm_at;
 static StaticSemaphore_t mutex_storage;
 #define xSemaphoreCreateRecursiveMutex() xSemaphoreCreateRecursiveMutexStatic(&mutex_storage)
@@ -37,6 +39,7 @@ static uint16_t saved_bw_width;
 esp_err_t nvs_get_u8(nvs_handle_t h,const char *key,uint8_t *v)
 {
     (void)h;
+    if (!strcmp(key,"ref_demod") && saved_demod >= 0) { *v=(uint8_t)saved_demod; return ESP_OK; }
     if (!strcmp(key,"level_lab") && saved_level >= 0) { *v=saved_level; return ESP_OK; }
     if (!strcmp(key,"bw_code") && saved_bw_code >= 0) { *v=(uint8_t)saved_bw_code; return ESP_OK; }
     return ESP_FAIL;
@@ -57,8 +60,15 @@ const char *esp_err_to_name(esp_err_t e) { (void)e; return "host"; }
 void esp_restart(void) { assert(!"unexpected reboot"); }
 void vTaskDelay(unsigned ticks) { (void)ticks; }
 #include "../pipeline.c"
-int main(void)
+int main(int argc, char **argv)
 {
+    if (argc > 1) saved_demod = atoi(argv[1]);
+    unsigned expected = saved_demod >= 0 && saved_demod < C5VRX4_DEMOD_COUNT ?
+        (unsigned)saved_demod : C5VRX4_DEMOD_VLP56;
+    assert(c5vrx4_demodulator() == expected);
+    assert(c5vrx4_reference_demod());
+    assert(!c5vrx4_dc_recenter_enabled() && !c5vrx4_agc_mask_active());
+    assert(!c5vrx4_idle_raster_enabled() && !c5vrx4_sync_flywheel_enabled());
     /* Fixed analog BW: on by default, uncalibrated until a measurement is stored. */
     assert(c5vrx4_fixed_bw_enabled());
     assert(c5vrx4_bw_code() == C5VRX4_BW_UNCALIBRATED && c5vrx4_bw_target_khz() == 24000u);
@@ -68,9 +78,9 @@ int main(void)
     assert(c5vrx4_bw_code() == C5VRX4_BW_UNCALIBRATED);
     assert(c5vrx4_cvbs_mode() == C5VRX4_CVBS_STD150);
     assert(!strcmp(c5vrx4_cvbs_mode_name(), "STD150"));
-    assert(c5vrx4_level_enabled()); /* absent NVS enables the new default */
+    assert(!c5vrx4_level_enabled()); /* span75 writers never touch pair/donor LUTs */
     saved_level=0;s_level_loaded=false;assert(!c5vrx4_level_enabled());
-    saved_level=1;s_level_loaded=false;assert(c5vrx4_level_enabled());
+    saved_level=1;s_level_loaded=false;assert(!c5vrx4_level_enabled());
     void *m=mmap((void *)0x600A0000,0x10000,PROT_READ|PROT_WRITE,
                  MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED,-1,0);
     assert(m!=MAP_FAILED);

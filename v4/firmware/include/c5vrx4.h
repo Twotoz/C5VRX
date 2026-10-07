@@ -8,6 +8,15 @@ void c5vrx4_start(void);
 void c5vrx4_suspend(void);
 void c5vrx4_resume(void);
 bool c5vrx4_console(int key);
+/* Two-bundle comparisons, NVS ref_demod; g cycles with a reboot.
+ * Existing 0 selects the HC50 baseline; 1/2 retain the #182 donor references.
+ * New/invalid selection boots VLP56 in this experimental stacked PR.
+ * Span75 observers/repair/LUT writers are unavailable in every selection. */
+enum { C5VRX4_DEMOD_HC50, C5VRX4_DEMOD_PHASE8_HR, C5VRX4_DEMOD_GOLDEN,
+       C5VRX4_DEMOD_VLP56, C5VRX4_DEMOD_COUNT };
+unsigned c5vrx4_demodulator(void);
+const char *c5vrx4_demodulator_name(void);
+bool c5vrx4_reference_demod(void);
 bool c5vrx4_history_enabled(void);
 /* IQ lane policy, NVS c5vrx4/lane_mode, Z cycles it with a reboot. Fixed
  * fine {9,7,6,5} is the default: the lanes never switch at runtime. Fixed
