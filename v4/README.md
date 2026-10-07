@@ -14,6 +14,12 @@ of merging. The V4 alpha workflow and flasher build this project independently.
 
 ## Offline optimized demod
 
+[PLL96 LAB](docs/PLL96_LAB.md) adds an operator-requested, quantized stateful
+PLL comparison. It improves nominal weak synthetic video but has severe
+strong-signal losses. Serial `p` toggles PLL96/OVP56 with a reboot; OVP56 remains
+the default. This is separate from the floating offline PLL and lacks board
+acceptance.
+
 The [weak-signal diagnostic sweep](docs/WEAK_SIGNAL_SWEEP.md) separates C/N
 from ADC occupancy and scores contrast loss with a frozen clean calibration.
 It compares the existing demods without changing firmware or selecting a new

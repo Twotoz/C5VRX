@@ -57,7 +57,7 @@ bool c5vrx4_reference_demod(void)
 }
 const char *c5vrx4_demodulator_name(void)
 {
-    static const char *const names[] = {"HC50", "HR50", "GOLDEN50", "VLP56", "OVP56"};
+    static const char *const names[] = {"HC50", "HR50", "GOLDEN50", "VLP56", "OVP56", "PLL96 LAB"};
     return names[c5vrx4_demodulator()];
 }
 
@@ -661,10 +661,13 @@ static void print_state(void)
                "mask=0 flywheel=0 idle_raster=0 live_lut_writes=0\n",
                c5vrx4_demodulator_name(),
                (c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 || c5vrx4_demodulator() == C5VRX4_DEMOD_OVP56) ? 0u :
+               c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96 ? 3u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_GOLDEN ? 5u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_HC50 ? 6u : 8u,
                (c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 || c5vrx4_demodulator() == C5VRX4_DEMOD_OVP56) ? 8u : 16u,
                rf_native_agc_active() ? "native" : "direct_gain_v5");
+        if (c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96)
+            printf("C5VRX4 PLL96 lab=1 stateful=1 strong_regression_known=1 rollback=p_OVP56_reboot\n");
         return;
     }
     c5vrx4_lane_print();
@@ -725,9 +728,11 @@ void c5vrx4_start(void)
 
 bool c5vrx4_console(int key)
 {
-    if (key == 'g') {
+    if (key == 'g' || key == 'p') {
         nvs_handle_t h;
-        unsigned next = (c5vrx4_demodulator() + 1u) % C5VRX4_DEMOD_COUNT;
+        unsigned next = key == 'p' ?
+            (c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96 ? C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_PLL96) :
+            (c5vrx4_demodulator() + 1u) % C5VRX4_DEMOD_COUNT;
         esp_err_t err = nvs_open("c5vrx4", NVS_READWRITE, &h);
         if (err == ESP_OK) {
             err = nvs_set_u8(h, "ref_demod", (uint8_t)next);

@@ -1,5 +1,17 @@
 # Isolated C5VRX-4 integration ledger
 
+## Operator-authorized PLL96 lab
+
+`docs/PLL96_LAB.md` records selectable value5: a coarse phase8/frequency12
+LUT16 loop, not the floating IQ40 PLL. It uses raw32K/TX-only/two-bundle pair20.
+OVP56 remains default; `p` toggles PLL96/OVP56 with a saved-selection reboot.
+Span75 consumers/writers remain gated. Weak synthetic gain comes with severe
+strong losses and no average echo/fading SINAD gain. Preserve the LAB label
+and failure evidence; build/dataflow proof is not physical RF acceptance.
+Record flash and board results separately. No live CPU demod or DMA-boundary
+state resets are authorized. This supersedes the absence of a compiled PLL
+candidate recorded in the previous research ledger, not its evidence bounds.
+
 ## Weak-signal research (PR186)
 
 `docs/MEGA_DEMOD_STUDY.md` records 544 hardware-fit candidates and 100,000

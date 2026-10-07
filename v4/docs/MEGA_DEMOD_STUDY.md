@@ -140,6 +140,11 @@ hardware-fit change offers a tiny improvement. Firmware defaults stay unchanged.
 
 ### Testing PLL with the C5
 
+Follow-up: [PLL96 LAB](PLL96_LAB.md) implements a much coarser, compiled LUT16
+phase/frequency loop for the operator's requested board experiment. It is
+not this floating IQ40 winner; its separate search, regressions and evidence
+boundaries must not inherit the numbers in the table above.
+
 The frozen PLL is a received-amplitude-weighted second-order phase/frequency
 tracker. Its exact parameters are retained in `models/theory_hypotheses.json`.
 It extends the existing tracking-demod research, not an independent discovery.

@@ -380,6 +380,8 @@ def generate():
     generate_pair()
     from generate_ovp56 import generate as generate_optimized
     generate_optimized()
+    from generate_pll96 import generate as generate_pll
+    generate_pll()
     for history in (False, True):
         for transfer, suffix in (("std150", ""), ("legacy", "_legacy"), ("cvbs150", "_cvbs150")):
             name = ('history' if history else 'static') + suffix

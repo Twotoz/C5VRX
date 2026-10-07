@@ -45,7 +45,9 @@ esp_err_t nvs_get_u8(nvs_handle_t h,const char *key,uint8_t *v)
     return ESP_FAIL;
 }
 esp_err_t nvs_set_u8(nvs_handle_t h,const char *key,uint8_t v)
-{ (void)h; if (!strcmp(key,"bw_code")) { saved_bw_code=v; return ESP_OK; } return ESP_FAIL; }
+{ (void)h;
+  if (!strcmp(key,"ref_demod")) { saved_demod=v; return ESP_OK; }
+  if (!strcmp(key,"bw_code")) { saved_bw_code=v; return ESP_OK; } return ESP_FAIL; }
 esp_err_t nvs_get_u16(nvs_handle_t h,const char *key,uint16_t *v)
 { (void)h; if (!strcmp(key,"bw_width") && saved_bw_width) { *v=saved_bw_width; return ESP_OK; } return ESP_FAIL; }
 esp_err_t nvs_set_u16(nvs_handle_t h,const char *key,uint16_t v)
@@ -57,7 +59,8 @@ esp_err_t nvs_set_blob(nvs_handle_t h,const char *key,const void *v,size_t n)
 esp_err_t nvs_commit(nvs_handle_t h) { (void)h; return ESP_OK; }
 void nvs_close(nvs_handle_t h) { (void)h; }
 const char *esp_err_to_name(esp_err_t e) { (void)e; return "host"; }
-void esp_restart(void) { assert(!"unexpected reboot"); }
+static unsigned reboot_calls;
+void esp_restart(void) { ++reboot_calls; }
 void vTaskDelay(unsigned ticks) { (void)ticks; }
 #include "../pipeline.c"
 int main(int argc, char **argv)
@@ -105,6 +108,12 @@ int main(int argc, char **argv)
     assert(c5vrx4_console('~') && !s_running && !(AGC_CTRL&AGC_HOLD));
     assert(c5vrx4_console('~') && s_running);
     c5vrx4_suspend();
+    assert(reboot_calls == 0);
+    memcpy(before,m,sizeof(before));
+    assert(c5vrx4_console('p'));
+    assert(saved_demod == (expected == C5VRX4_DEMOD_PLL96 ?
+                          C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_PLL96));
+    assert(reboot_calls == 1 && !memcmp(before,m,sizeof(before)));
     munmap(m,0x10000);
     puts("C5VRX-4 Direct Gain LOCK / native gate isolation passed");
 }
