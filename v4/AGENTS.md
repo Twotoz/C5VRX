@@ -19,6 +19,11 @@ OVP56 uses the same encoder/layout with a bounded offline video fit and clean
 absolute DAC-level constraints. Preserve VLP56 as value3 and OVP56 as value4.
 See docs/DEMOD_OPTIMIZER.md and its negative search results; no global optimum
 or measured range claim is established.
+Offline broad search (docs/BROAD_DEMOD_SEARCH.md) uses no VLP initialization
+or transfer constraint: 62 LUT8 layouts, 2048 attempts/1997 unique fitted
+models, matched Unwrap75 reference. No new finalist is promoted. Do not call
+this an exhaustive architecture search or global optimum; new signal objectives
+require fresh holdouts. Firmware defaults remain those above.
 This supersedes the historical Unwrap75 defaults/invariants below for the
 active pair-FM path; the old programs/tests are retained research artifacts.
 The generator must not overwrite native HC50 or substitute span75 for VLP56.

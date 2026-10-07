@@ -23,6 +23,11 @@ were tested and rejected where they lost quality. See
 [docs/DEMOD_OPTIMIZER.md](docs/DEMOD_OPTIMIZER.md) for the optimizer, seeds,
 per-scenario results, negative findings, numerical scope and reproduction.
 
+A separate [broad architecture search](docs/BROAD_DEMOD_SEARCH.md) explores
+62 LUT8 layouts and thousands of quantizers without a VLP initialization or
+transfer constraint. Its results are offline evidence, not automatic firmware
+promotion. Unwrap75 is included as a matched-stream reference.
+
 ## Receiver contract
 
 This branch is a pair-FM experiment stacked on PR #183. New/invalid NVS demod

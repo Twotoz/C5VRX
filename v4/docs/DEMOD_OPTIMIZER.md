@@ -25,6 +25,11 @@ two bundles per 50 ns, unique CVBS20, duplicated DAC6 at physical TX40, eight
 instruction slots and a 2048-byte LUT8. No CPU handles live samples. Existing
 span75 observers, repair and live LUT writers remain gated.
 
+The subsequent [broad search](BROAD_DEMOD_SEARCH.md) removes the VLP starting
+point and transfer constraint, varies encoder/middle-context address layouts,
+and includes Unwrap75 in a matched-stream comparison. Its separate DAC-voltage
+metric and seeds must not be mixed with the numerical tables below.
+
 ## Search and numerical guarantees
 
 1. Joint pair search: 32/40/48/56 current tokens; previous token or token>>1;
