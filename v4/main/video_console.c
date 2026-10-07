@@ -1,5 +1,6 @@
 /* C5VRX-4: console responsibilities. */
 #include "video_internal.h"
+#include "snr_meter_hw.h"
 
 #define LAB_GAIN_STEP      2u        /* characterize the states production actually uses */
 
@@ -36,6 +37,10 @@ void console_diag_task(void *arg)
                            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL));
                 }
                 if (c == 'J') {
+                    if (c5vrx4_reference_demod()) {
+                        printf("C5V4_CVBS refused=reference_demod_no_span75_estimator\n");
+                        continue;
+                    }
                     if (__sync_bool_compare_and_swap(&s_cvbs_capture_running, 0u, 1u) &&
                         xTaskCreate(cvbs_capture_task, "cvbs_capture", 4096, NULL, 1, NULL) != pdPASS) {
                         __sync_lock_release(&s_cvbs_capture_running);
@@ -44,6 +49,7 @@ void console_diag_task(void *arg)
                     continue;
                 }
                 if (c5vrx4_console(c)) continue;
+                if (snr_meter_console(c)) continue;
                 if (c == '`') rf_reboot_to_download(); /* flashing, never returns */
                 if (c == 0x14) { dco_ab_toggle(); continue; }
                 if (phy_rx_lab_profile_active() && c < 128 &&
@@ -391,6 +397,7 @@ void console_diag_task(void *arg)
                            " '/\" signal-RSSI/tracking A/B, (/) native hold A/B, H/{/}/[/] PHY lab\n"
                            " K fresh PHY calibration, ~ RX recal lab, ? flight log, Ctrl-T DCO A/B\n"
                            " q quiet, t timers, ` USB download\n"
+                           " 7 SNR reading, 8 SNR floor at this gain (VTX off), 9 5 Hz SNR rows\n"
                            " h/M/Z decode/transfer/lanes, u/%%/&/^/|/_/y/w boot options (reboot)\n");
                     printf("=======================================================\n\n");
                 }
@@ -405,6 +412,7 @@ void console_diag_task(void *arg)
             printf("HB console t_s=%lld idle_raster=%u menu=%u\n", hb_now / 1000000,
                    IDLE_RASTER_ACTIVE(), s_menu_active);
         }
+        snr_meter_tick();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }

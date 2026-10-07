@@ -5,6 +5,9 @@ set(C5VRX4_PROGRAM_DIR "${C5VRX4_FIRMWARE_DIR}/programs")
 target_sources(${COMPONENT_LIB} PRIVATE "${C5VRX4_FIRMWARE_DIR}/pipeline.c")
 target_include_directories(${COMPONENT_LIB} PRIVATE "${C5VRX4_FIRMWARE_DIR}" "${C5VRX4_INCLUDE_DIR}")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE C5VRX4_EXPERIMENT=1)
+
+target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_reference_phase8_hr.bsasm")
+target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_reference_golden.bsasm")
 target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_phase8_static.bsasm")
 target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_phase8_history.bsasm")
 target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_phase8_static_legacy.bsasm")
@@ -20,3 +23,8 @@ target_sources(${COMPONENT_LIB} PRIVATE "${C5VRX4_FIRMWARE_DIR}/sync_flywheel.c"
 target_sources(${COMPONENT_LIB} PRIVATE "${C5VRX4_FIRMWARE_DIR}/lanes.c")
 
 target_sources(${COMPONENT_LIB} PRIVATE "${C5VRX4_FIRMWARE_DIR}/cvbs_level.c" "${C5VRX4_FIRMWARE_DIR}/cvbs_level_hw.c")
+
+target_sources(${COMPONENT_LIB} PRIVATE "${C5VRX4_FIRMWARE_DIR}/snr_meter.c")
+# The menu raster is reserved at the RF dump bank; static RAM must end below it.
+target_link_options(${COMPONENT_LIB} INTERFACE "-T${C5VRX4_FIRMWARE_DIR}/c5vrx4_raster_memory.ld")
+set_property(TARGET ${COMPONENT_LIB} APPEND PROPERTY LINK_DEPENDS "${C5VRX4_FIRMWARE_DIR}/c5vrx4_raster_memory.ld")
