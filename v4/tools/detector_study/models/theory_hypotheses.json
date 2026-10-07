@@ -1,0 +1,137 @@
+{
+  "winners": [
+    {
+      "name": "theory-062400-delay",
+      "family": "delay",
+      "params": [
+        3.0,
+        0.43061239083266134,
+        0.7172720211651862,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "feasibility": "offline reference; no C5 realtime schedule demonstrated",
+      "selection_eligible": false
+    },
+    {
+      "name": "theory-093118-cross",
+      "family": "cross",
+      "params": [
+        0.0,
+        0.2414780376847223,
+        0.4176601187702409,
+        0.18073746559433335,
+        0.0,
+        0.0
+      ],
+      "feasibility": "offline reference; no C5 realtime schedule demonstrated",
+      "selection_eligible": false
+    },
+    {
+      "name": "theory-057946-correlation",
+      "family": "correlation",
+      "params": [
+        2.0,
+        3.0,
+        1.600289936822172,
+        0.39135174399175643,
+        0.0,
+        0.0
+      ],
+      "feasibility": "offline reference; no C5 realtime schedule demonstrated",
+      "selection_eligible": false
+    },
+    {
+      "name": "theory-027163-slope",
+      "family": "slope",
+      "params": [
+        7.0,
+        1.9945998824549278,
+        1.9042464061619166,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "feasibility": "offline reference; no C5 realtime schedule demonstrated",
+      "selection_eligible": true
+    },
+    {
+      "name": "theory-052978-pll",
+      "family": "pll",
+      "params": [
+        0.43706429608458197,
+        0.06339991299276457,
+        0.9958946708989158,
+        1.320331940863313,
+        0.7014120890134898,
+        0.007787935898856698
+      ],
+      "feasibility": "offline reference; no C5 realtime schedule demonstrated",
+      "selection_eligible": false
+    },
+    {
+      "name": "theory-098482-kalman",
+      "family": "kalman",
+      "params": [
+        0.45081015023634335,
+        1.349123716641006,
+        0.9738387695012237,
+        1.3772181743320764,
+        0.0,
+        0.0
+      ],
+      "feasibility": "offline reference; no C5 realtime schedule demonstrated",
+      "selection_eligible": true
+    },
+    {
+      "name": "theory-050690-ml",
+      "family": "ml",
+      "params": [
+        7.0,
+        1.3886624153732627,
+        0.9350019515768102,
+        0.16322046733957607,
+        0.0,
+        0.0
+      ],
+      "feasibility": "offline reference; no C5 realtime schedule demonstrated",
+      "selection_eligible": true
+    },
+    {
+      "name": "theory-060797-hybrid",
+      "family": "hybrid",
+      "params": [
+        13.0,
+        0.368510803497182,
+        1.9981846965547632,
+        0.5086112571762975,
+        0.0,
+        0.0
+      ],
+      "feasibility": "offline reference; no C5 realtime schedule demonstrated",
+      "selection_eligible": false
+    }
+  ],
+  "seed_policy": {
+    "configuration": 2601,
+    "screen": 4701,
+    "selection": [
+      6301,
+      6302
+    ],
+    "final": [
+      6401,
+      6402,
+      6403
+    ],
+    "channel": [
+      6501,
+      6502,
+      6503
+    ]
+  },
+  "no_reselection": true,
+  "provenance": "C5VRX by Twotoz and contributors; https://github.com/Twotoz/C5VRX; https://twotoz.github.io/C5VRX/",
+  "scope": "Frozen offline hypotheses, including failed candidates. No runtime mode or physical acceptance."
+}

@@ -20,6 +20,11 @@ It compares the existing demods without changing firmware or selecting a new
 default. Its illustrative thresholds are synthetic video criteria, not measured
 RF sensitivity or PAL/NTSC lock.
 
+[The multi-theory benchmark](docs/MEGA_DEMOD_STUDY.md) extends this with a
+544-candidate hardware-constrained search and 100,000 configurations across
+eight offline FM theory families. Its pinned weak-pair candidate and complete
+seed/scenario protocols are research artifacts; firmware defaults stay OVP56.
+
 OVP56 is the best eligible weak-signal model found by the hardware-constrained
 search, with clean absolute DAC-level guards. It retains the VLP56 encoder and
 uses a bounded, video-filter-aware optimized table. The independent confirmation

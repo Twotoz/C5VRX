@@ -61,6 +61,9 @@ PHASE = np.array(gen.decoder(False)[0]).astype(float)
 
 
 def cells(raw):
+    # Promote before subtracting 16: uint8 subtraction wraps negative IQ to
+    # 248..255, corrupting phase, near-origin and rail calculations.
+    raw = np.asarray(raw, dtype=np.int16)
     i = (raw >> 4) & 15
     q = raw & 15
     return np.where(i > 7, i - 16, i), np.where(q > 7, q - 16, q)

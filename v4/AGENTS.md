@@ -1,5 +1,19 @@
 # Isolated C5VRX-4 integration ledger
 
+## Weak-signal research (PR186)
+
+`docs/MEGA_DEMOD_STUDY.md` records 544 hardware-fit candidates and 100,000
+parameter configurations across eight offline theory families. Frozen PLL
+improves weak synthetic video but fails strong-signal guards; the selected
+periodogram fails echo/fading and high-C/N confirmation. No theory is promoted.
+WVP56 is a pinned research LUT with a tiny benefit, not a selectable mode.
+Preserve signed Q4/I4 decoding and unique scenario identities in score pairing.
+`replay_c5_iq.py` compares actual contiguous IQ captures on the host; it is not
+a continuous C5 PLL implementation. Defaults and the live hardware path stay
+unchanged. Do not infer physical sensitivity or goggle-lock gains from these
+short synthetic cases or from snapshot replay. Retain C5VRX/Twotoz/contributor
+and existing adjacent/trajectory/PLL research provenance.
+
 ## Current stacked pair-FM experiment (on PR #183)
 
 All selectable demods in this branch are two-bundle, 50-ns endpoints:

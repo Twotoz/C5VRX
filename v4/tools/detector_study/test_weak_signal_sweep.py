@@ -4,6 +4,10 @@ import weak_signal_sweep as W
 
 
 def main():
+    raw = np.arange(256, dtype=np.uint8)
+    i, q = W.D.cells(raw)
+    assert np.array_equal(i, ((raw.astype(int) >> 4)+8)%16-8)
+    assert np.array_equal(q, (raw.astype(int)+8)%16-8)
     # Orthogonal unit-power vectors isolate expected-power normalization exactly.
     phase = np.linspace(0, 2*np.pi, 20000, endpoint=False)
     sig, noise = np.exp(1j*phase), np.exp(2j*phase)
@@ -24,7 +28,9 @@ def main():
     assert abs(W.contrast(y*.1, truth, cal)-10) < 1e-8
     assert W.score(y+10, truth, cal)[0] < 0  # DC error also counts.
     assert W.occupancy(np.full(10000, 0, dtype=np.uint8))['origin_permille'] == 1000
+    assert W.occupancy(np.full(10000, 0xff, dtype=np.uint8))['origin_permille'] == 1000
     assert W.occupancy(np.full(10000, 0x77, dtype=np.uint8))['rail_permille'] == 1000
+    assert W.occupancy(np.full(10000, 0x88, dtype=np.uint8))['rail_permille'] == 1000
     print('PASS fixed total IQ power, known C/N, frozen clean calibration, level/DC collapse and occupancy')
 
 

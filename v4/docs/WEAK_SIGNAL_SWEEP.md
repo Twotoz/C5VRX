@@ -55,7 +55,7 @@ Lowest tested C/N passing the illustrative gate for random-detail video:
 
 | IQ RMS (cells) | HC50 | VLP56 | OVP56 |
 | --- | --- | --- | --- |
-| 0.75 | No pass through 18 dB | No pass through 18 dB | No pass through 18 dB |
+| 0.75 | 14 dB | No pass through 18 dB | No pass through 18 dB |
 | 1.5 | 10 dB | 10 dB | 10 dB |
 | 3 | 8 dB | 8 dB | 8 dB |
 | 5 | 8 dB | 8 dB | 8 dB |
@@ -80,6 +80,13 @@ it does not establish the cause of the operator's board/display symptom.
 These seeds are diagnostic data, not untouched finals for a future optimizer.
 No candidate is trained, selected, promoted or flashed. Future tuning informed
 by these results needs new final seeds.
+
+The follow-up fixes unsigned arithmetic in the host `designs.cells` IQ
+unpacker: negative components of uint8 input previously wrapped to 248..255.
+The CSV is regenerated after an exhaustive 256-byte regression. LUT-based
+OVP56/VLP56 quality numbers are unchanged; HC50 and origin/rail diagnostics
+are corrected. The earlier unsigned-IQ theory runs are invalidated, not
+reported as evidence. See [MEGA_DEMOD_STUDY.md](MEGA_DEMOD_STUDY.md).
 
 ## Next physical discrimination
 
