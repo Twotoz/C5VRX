@@ -123,7 +123,7 @@ def main():
                  f"tools/test_{name}.c", *extra, "-o", target])
             run([target])
             if name == "c5vrx4_gate":
-                for selection in ("0", "1", "2", "3", "4", "5", "255"):
+                for selection in ("0", "1", "2", "3", "4", "5", "6", "255"):
                     run([target, selection])
         for pinned in ((False, True) if posix else ()):
             target = str(Path(td) / f"phy_{pinned}")

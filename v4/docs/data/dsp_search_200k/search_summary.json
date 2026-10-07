@@ -1,0 +1,12 @@
+{
+  "unique_evaluations": 200000,
+  "attempts": 503072,
+  "duplicate_behaviours": 178344,
+  "feasibility_rejected": 124728,
+  "tone_tests": 3200000,
+  "proxy_candidates": 40553,
+  "proxy_waveform_tests": 162212,
+  "frozen_finalists": 12,
+  "elapsed_s": 424.11794129991904,
+  "promotion": "none; independent full-frame selection/final confirmation required"
+}

@@ -2,12 +2,16 @@
 
 ## Operator-authorized PLL96 lab
 
-`docs/PLL96_LAB.md` records selectable value5: a coarse phase8/frequency12
-LUT16 loop, not the floating IQ40 PLL. It uses raw32K/TX-only/two-bundle pair20.
-OVP56 remains default; `p` toggles PLL96/OVP56 with a saved-selection reboot.
-Span75 consumers/writers remain gated. Weak synthetic gain comes with severe
-strong losses and no average echo/fading SINAD gain. Preserve the LAB label
-and failure evidence; build/dataflow proof is not physical RF acceptance.
+`docs/PLL96_LAB.md` records the failed physical value5 experiment. Its I/Q
+encoder was reversed; saved value5 now falls back to OVP56. Value6 is the
+operator-requested corrected 16-phase/6-frequency LAB, selected only through
+uppercase P (also toggles back to OVP56). Lowercase p is the snapshot command;
+g cycles safe values0..4. The repaired LAB recovers synthetic strong H/V pulses
+but still fails strong-picture guards. Preserve this distinction and physical
+failure evidence; build/dataflow proof is not physical RF acceptance.
+`docs/DSP_ARCHITECTURE_DISCOVERY.md` records 200,000 unique compiled behaviours,
+typed formula search and frozen full-frame confirmation. No replacement was
+confirmed. Keep OVP56 default and the fixed positive reference calibration.
 Record flash and board results separately. No live CPU demod or DMA-boundary
 state resets are authorized. This supersedes the absence of a compiled PLL
 candidate recorded in the previous research ledger, not its evidence bounds.

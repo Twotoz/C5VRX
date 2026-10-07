@@ -1,0 +1,188 @@
+{
+  "selected": "DSP-9c5463dcb322",
+  "confirmed": false,
+  "final": {
+    "DSP-9c5463dcb322": {
+      "eligible": false,
+      "weak_sinad": 3.0264687740659886,
+      "weak_h_missing": 4440,
+      "strong_h_missing": 0,
+      "failures": [
+        "weak_sync"
+      ]
+    },
+    "HC50": {
+      "eligible": false,
+      "weak_sinad": 2.1113763689717993,
+      "weak_h_missing": 4464,
+      "strong_h_missing": 2232,
+      "failures": [
+        "black_error_ire",
+        "h_jitter_us",
+        "h_missing",
+        "h_width_rmse_us",
+        "strong_sinad",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains",
+        "weak_sinad",
+        "weak_sync",
+        "white_error_ire"
+      ]
+    },
+    "OVP56": {
+      "eligible": true,
+      "weak_sinad": 3.0332955605483853,
+      "weak_h_missing": 4442,
+      "strong_h_missing": 0,
+      "failures": []
+    },
+    "PLL96-IQ-corrected": {
+      "eligible": false,
+      "weak_sinad": 5.430600554029768,
+      "weak_h_missing": 2945,
+      "strong_h_missing": 2232,
+      "failures": [
+        "h_jitter_us",
+        "h_missing",
+        "h_width_rmse_us",
+        "strong_sinad",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains"
+      ]
+    },
+    "PLL96-rejected-board": {
+      "eligible": false,
+      "weak_sinad": -6.714484041663974,
+      "weak_h_missing": 4462,
+      "strong_h_missing": 2232,
+      "failures": [
+        "black_error_ire",
+        "h_jitter_us",
+        "h_missing",
+        "h_width_rmse_us",
+        "polarity",
+        "strong_sinad",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains",
+        "weak_sinad",
+        "weak_sync",
+        "white_error_ire"
+      ]
+    },
+    "VLP56": {
+      "eligible": false,
+      "weak_sinad": 2.506440524483645,
+      "weak_h_missing": 4367,
+      "strong_h_missing": 0,
+      "failures": [
+        "weak_sinad"
+      ]
+    },
+    "floating-PLL-IQ40": {
+      "eligible": true,
+      "weak_sinad": 8.210414452697833,
+      "weak_h_missing": 2326,
+      "strong_h_missing": 0,
+      "failures": []
+    }
+  },
+  "echo_fade": {
+    "DSP-9c5463dcb322": {
+      "eligible": false,
+      "weak_sinad": 0.6946508765296266,
+      "weak_h_missing": 2232,
+      "strong_h_missing": 423,
+      "failures": [
+        "weak_sinad"
+      ]
+    },
+    "HC50": {
+      "eligible": false,
+      "weak_sinad": 0.5911214161789151,
+      "weak_h_missing": 2232,
+      "strong_h_missing": 1116,
+      "failures": [
+        "black_error_ire",
+        "h_jitter_us",
+        "h_missing",
+        "h_width_rmse_us",
+        "strong_sinad",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains",
+        "weak_sinad",
+        "white_error_ire"
+      ]
+    },
+    "OVP56": {
+      "eligible": true,
+      "weak_sinad": 0.8500091286985035,
+      "weak_h_missing": 2232,
+      "strong_h_missing": 436,
+      "failures": []
+    },
+    "PLL96-IQ-corrected": {
+      "eligible": false,
+      "weak_sinad": 1.8348990981167013,
+      "weak_h_missing": 1447,
+      "strong_h_missing": 435,
+      "failures": [
+        "h_missing",
+        "h_width_rmse_us",
+        "strong_sinad",
+        "sync_error_ire",
+        "v_missing",
+        "vertical_trains"
+      ]
+    },
+    "PLL96-rejected-board": {
+      "eligible": false,
+      "weak_sinad": -6.432838090057985,
+      "weak_h_missing": 2182,
+      "strong_h_missing": 1116,
+      "failures": [
+        "black_error_ire",
+        "h_jitter_us",
+        "h_missing",
+        "h_width_rmse_us",
+        "polarity",
+        "strong_sinad",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains",
+        "weak_sinad",
+        "white_error_ire"
+      ]
+    },
+    "VLP56": {
+      "eligible": false,
+      "weak_sinad": -0.07629068991633559,
+      "weak_h_missing": 2228,
+      "strong_h_missing": 201,
+      "failures": [
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "weak_sinad"
+      ]
+    },
+    "floating-PLL-IQ40": {
+      "eligible": false,
+      "weak_sinad": 5.0960176532935355,
+      "weak_h_missing": 1600,
+      "strong_h_missing": 0,
+      "failures": [
+        "vertical_trains"
+      ]
+    }
+  },
+  "decision": "retain OVP56; no new architecture promoted",
+  "captures": "none supplied; no physical improvement claim"
+}

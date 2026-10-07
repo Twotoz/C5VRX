@@ -1,0 +1,1640 @@
+[
+  {
+    "id": "551d6960679e111fdaf0fc5f26dd3cf6d947ac149f79f69600be3d65c60b9c17",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.14781164138933572,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8680419729967811,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.7690743525506532,
+          "args": [
+            {
+              "op": "shrink",
+              "unit": "rad/span",
+              "k": 0.43225999224595535,
+              "args": [
+                {
+                  "op": "confidence",
+                  "unit": "rad/span",
+                  "k": 1.9376407765909376,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    },
+                    {
+                      "op": "ratio",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.18034159096383015,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.38840772863076384,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.837264500260564,
+    "strong_loss": -0.04978299092988081,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "0a0d9f4d8b71c9741a2cb8db876ce7416cdf3bda97b3dbcfc6b23bac9c479e96",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.164267765397696,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8869585213494223,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.76495411353973,
+          "args": [
+            {
+              "op": "shrink",
+              "unit": "rad/span",
+              "k": 0.6433726201809598,
+              "args": [
+                {
+                  "op": "sign",
+                  "unit": "rad/span"
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.18034159096383015,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.836256797721664,
+    "strong_loss": -0.049898321391534495,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "51513a85e0f86cc6d96075c8f713d4382ae6ecc3b146e334bb837eef74587eb6",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.14033266204972047,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8680419729967811,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.759276688424441,
+          "args": [
+            {
+              "op": "shrink",
+              "unit": "rad/span",
+              "k": 0.19003713465496194,
+              "args": [
+                {
+                  "op": "confidence",
+                  "unit": "rad/span",
+                  "k": 1.487045599602162,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    },
+                    {
+                      "op": "ratio",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.18034159096383015,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.833717016581156,
+    "strong_loss": -0.050055360370876656,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "9b1a53253b4989a0c1e66d15e961cf56d4de97336ad9e299bc4b3a1111eec951",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.1935749297126607,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8680539232010497,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.383802776353251,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.7509372297522958,
+          "args": [
+            {
+              "op": "shrink",
+              "unit": "rad/span",
+              "k": 0.43225999224595535,
+              "args": [
+                {
+                  "op": "confidence",
+                  "unit": "rad/span",
+                  "k": 1.430243518362771,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    },
+                    {
+                      "op": "ratio",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.18034159096383015,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.833455555052073,
+    "strong_loss": -0.061527058296247716,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "5d992cdf2eae2eeab3e247c920236538f882e6f9487695fce08c1db6bce9dac4",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.18945160660128132,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8707099653262884,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.7509372297522958,
+          "args": [
+            {
+              "op": "shrink",
+              "unit": "rad/span",
+              "k": 0.43225999224595535,
+              "args": [
+                {
+                  "op": "confidence",
+                  "unit": "rad/span",
+                  "k": 1.487045599602162,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    },
+                    {
+                      "op": "ratio",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.18034159096383015,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.8332787363175145,
+    "strong_loss": -0.06551104308669053,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "846e04bc0b1e5b62e58891c8d3c9882ccd8ca9a215db53bfcaabeb84938a93c5",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.06192968980116287,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8707099653262884,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "predict",
+          "unit": "rad/span",
+          "k": 1.0244936210625408,
+          "args": [
+            {
+              "op": "predict",
+              "unit": "rad/span",
+              "k": 0.38972897031626874,
+              "args": [
+                {
+                  "op": "conjugate",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "saturate",
+                  "unit": "rad/span",
+                  "k": 0.44948839089842063,
+                  "args": [
+                    {
+                      "op": "polynomial",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "sign",
+              "unit": "rad/span"
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.832345178954686,
+    "strong_loss": -0.06702109998528805,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "fcf12e689e187f7dc58fadf2563bb156a3addb4b144717b3d89ee8e56a02b544",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.13327826622987843,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8707099653262884,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "predict",
+                  "unit": "rad/span",
+                  "k": 0.6637573161426975,
+                  "args": [
+                    {
+                      "op": "piecewise",
+                      "unit": "rad/span"
+                    },
+                    {
+                      "op": "ovp",
+                      "unit": "rad/span"
+                    }
+                  ]
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.7383381749030314,
+          "args": [
+            {
+              "op": "shrink",
+              "unit": "rad/span",
+              "k": 0.5820133043951347,
+              "args": [
+                {
+                  "op": "sign",
+                  "unit": "rad/span"
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.18034159096383015,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.830789085317651,
+    "strong_loss": -0.07094823721498678,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "08cb0d10ef7a5cba6b212476f2043859fd13209c706224f4abd6ae07c9bacc7e",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.10651594094335726,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8707099653262884,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8712006406276184,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.2644918005605114,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.18034159096383015,
+              "args": [
+                {
+                  "op": "huber",
+                  "unit": "rad/span",
+                  "k": 1.358544199245559,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.829076723416156,
+    "strong_loss": -0.08511622597597679,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "76b624382dba6959af92acb7b0d618da980042d4d4816ddb6200cd273a7dbfbc",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.15899030645960946,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8707099653262884,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "piecewise",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.7862844623239601,
+          "args": [
+            {
+              "op": "shrink",
+              "unit": "rad/span",
+              "k": 0.4565520365309684,
+              "args": [
+                {
+                  "op": "sign",
+                  "unit": "rad/span"
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.18034159096383015,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.822614853083085,
+    "strong_loss": -0.08932779908868227,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "58bdc96ebbdd5cb4e3aefb4e8fbe782824fd1740b14408533a4cedeff51dd6b7",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.14781164138933572,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8680419729967811,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.7690743525506532,
+          "args": [
+            {
+              "op": "shrink",
+              "unit": "rad/span",
+              "k": 0.43225999224595535,
+              "args": [
+                {
+                  "op": "confidence",
+                  "unit": "rad/span",
+                  "k": 1.8484125154291693,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    },
+                    {
+                      "op": "ratio",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.18034159096383015,
+              "args": [
+                {
+                  "op": "piecewise",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.42061238674645424,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.8220977570759676,
+    "strong_loss": -0.09115536884127096,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "1586fd6fb84afe336ad21a1339fdd67a8b1be2226980cb6a61fba78d5169e95f",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.14693339079616444,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8680419729967811,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.38220437303959526,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "saturate",
+          "unit": "rad/span",
+          "k": 1.322797097623024,
+          "args": [
+            {
+              "op": "confidence",
+              "unit": "rad/span",
+              "k": 1.9392100425328722,
+              "args": [
+                {
+                  "op": "saturate",
+                  "unit": "rad/span",
+                  "k": 0.44753647494010096,
+                  "args": [
+                    {
+                      "op": "conjugate",
+                      "unit": "rad/span"
+                    }
+                  ]
+                },
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.8214918703028955,
+    "strong_loss": -0.09283784728195421,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "6f0b5697986e6def320f0535b001943818f0afbe48106929158ea1168103a69b",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.13716243507610865,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8572831583865644,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.7647007785493923,
+          "args": [
+            {
+              "op": "shrink",
+              "unit": "rad/span",
+              "k": 0.42275371559301617,
+              "args": [
+                {
+                  "op": "saturate",
+                  "unit": "rad/span",
+                  "k": 1.7643337380524475,
+                  "args": [
+                    {
+                      "op": "midpoint",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.18034159096383015,
+              "args": [
+                {
+                  "op": "confidence",
+                  "unit": "rad/span",
+                  "k": 1.7300361430116125,
+                  "args": [
+                    {
+                      "op": "piecewise",
+                      "unit": "rad/span"
+                    },
+                    {
+                      "op": "ovp",
+                      "unit": "rad/span"
+                    }
+                  ]
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.820992859571049,
+    "strong_loss": -0.09478350334433117,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "4fdf95316de627895228ae922687939ffb7dab94ce0c89966e84a7c5f04f6060",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.15040096504604475,
+      "args": [
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 0.8680419729967811,
+          "args": [
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.30851601293663033,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.37586440709786306,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.13947193245238085,
+              "args": [
+                {
+                  "op": "ovp",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.3810178970532032,
+                  "args": [
+                    {
+                      "op": "sign",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "confidence",
+          "unit": "rad/span",
+          "k": 0.7041516068221341,
+          "args": [
+            {
+              "op": "confidence",
+              "unit": "rad/span",
+              "k": 1.14720920145075,
+              "args": [
+                {
+                  "op": "saturate",
+                  "unit": "rad/span",
+                  "k": 0.5781044248090874,
+                  "args": [
+                    {
+                      "op": "cross",
+                      "unit": "rad/span"
+                    }
+                  ]
+                },
+                {
+                  "op": "huber",
+                  "unit": "rad/span",
+                  "k": 1.2482580868646902,
+                  "args": [
+                    {
+                      "op": "ovp",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "saturate",
+              "unit": "rad/span",
+              "k": 1.9807016112992637,
+              "args": [
+                {
+                  "op": "predict",
+                  "unit": "rad/span",
+                  "k": 0.3561266849580327,
+                  "args": [
+                    {
+                      "op": "ovp",
+                      "unit": "rad/span"
+                    },
+                    {
+                      "op": "polynomial",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.812627459548544,
+    "strong_loss": -0.09721521672479838,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "9eaa8137255074f755f1c47d048dc7ddf051ebf02e0877de2ba809257310caa6",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.18399607513456412,
+      "args": [
+        {
+          "op": "ovp",
+          "unit": "rad/span"
+        },
+        {
+          "op": "huber",
+          "unit": "rad/span",
+          "k": 1.4515693205158895,
+          "args": [
+            {
+              "op": "confidence",
+              "unit": "rad/span",
+              "k": 1.2789275646646783,
+              "args": [
+                {
+                  "op": "sign",
+                  "unit": "rad/span"
+                },
+                {
+                  "op": "ratio",
+                  "unit": "rad/span"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.8106479579757115,
+    "strong_loss": -0.11365730712769384,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "0a12a0ed54ebd130edf6de80a486503c74e38de65ebda82d895c479255754b0f",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.26148666924537484,
+      "args": [
+        {
+          "op": "ovp",
+          "unit": "rad/span"
+        },
+        {
+          "op": "mix",
+          "unit": "rad/span",
+          "k": 1.985031867554014,
+          "args": [
+            {
+              "op": "conjugate",
+              "unit": "rad/span"
+            },
+            {
+              "op": "mix",
+              "unit": "rad/span",
+              "k": 0.2526270661877772,
+              "args": [
+                {
+                  "op": "softsign",
+                  "unit": "rad/span",
+                  "k": 0.03006587486746093,
+                  "args": [
+                    {
+                      "op": "phase",
+                      "unit": "rad/span"
+                    }
+                  ]
+                },
+                {
+                  "op": "confidence",
+                  "unit": "rad/span",
+                  "k": 0.5090429127794835,
+                  "args": [
+                    {
+                      "op": "piecewise",
+                      "unit": "rad/span"
+                    },
+                    {
+                      "op": "polynomial",
+                      "unit": "rad/span"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.802764468500432,
+    "strong_loss": -0.15690355992861882,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "c4dde525b79eb530e00fb36e11ec22af18cc0541ff1595e54583a1e7d9694a3b",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.2814959711017396,
+      "args": [
+        {
+          "op": "ovp",
+          "unit": "rad/span"
+        },
+        {
+          "op": "huber",
+          "unit": "rad/span",
+          "k": 1.438783420280319,
+          "args": [
+            {
+              "op": "midpoint",
+              "unit": "rad/span"
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.797382138348009,
+    "strong_loss": -0.1642975966722986,
+    "sync_penalty": 8.0
+  },
+  {
+    "id": "adff47872699dd97de3020282397202f5219dc3e39c81a4be47af695a4506c1c",
+    "template": 0,
+    "expression": {
+      "op": "mix",
+      "unit": "rad/span",
+      "k": 0.37716253145644163,
+      "args": [
+        {
+          "op": "ovp",
+          "unit": "rad/span"
+        },
+        {
+          "op": "predict",
+          "unit": "rad/span",
+          "k": 0.4322435251737651,
+          "args": [
+            {
+              "op": "huber",
+              "unit": "rad/span",
+              "k": 1.389554717216771,
+              "args": [
+                {
+                  "op": "piecewise",
+                  "unit": "rad/span"
+                }
+              ]
+            },
+            {
+              "op": "sign",
+              "unit": "rad/span"
+            }
+          ]
+        }
+      ]
+    },
+    "weak_sinad": 4.746473053699403,
+    "strong_loss": -0.1695181733449047,
+    "sync_penalty": 8.0
+  }
+]

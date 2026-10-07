@@ -66,7 +66,7 @@ void vTaskDelay(unsigned ticks) { (void)ticks; }
 int main(int argc, char **argv)
 {
     if (argc > 1) saved_demod = atoi(argv[1]);
-    unsigned expected = saved_demod >= 0 && saved_demod < C5VRX4_DEMOD_COUNT ?
+    unsigned expected = saved_demod >= 0 && saved_demod < C5VRX4_DEMOD_COUNT && saved_demod != C5VRX4_DEMOD_PLL96 ?
         (unsigned)saved_demod : C5VRX4_DEMOD_OVP56;
     assert(c5vrx4_demodulator() == expected);
     assert(c5vrx4_reference_demod());
@@ -110,10 +110,15 @@ int main(int argc, char **argv)
     c5vrx4_suspend();
     assert(reboot_calls == 0);
     memcpy(before,m,sizeof(before));
-    assert(c5vrx4_console('p'));
-    assert(saved_demod == (expected == C5VRX4_DEMOD_PLL96 ?
-                          C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_PLL96));
+    assert(!c5vrx4_console('p')); /* Existing snapshot command is restored. */
+    assert(c5vrx4_console('g'));
+    unsigned next = (expected + 1u) % (C5VRX4_DEMOD_OVP56 + 1u);
+    assert(saved_demod == (int)next);
     assert(reboot_calls == 1 && !memcmp(before,m,sizeof(before)));
+    assert(c5vrx4_console('P'));
+    assert(saved_demod == (expected == C5VRX4_DEMOD_PLL96_IQ_FIXED ?
+           C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_PLL96_IQ_FIXED));
+    assert(reboot_calls == 2 && !memcmp(before,m,sizeof(before)));
     munmap(m,0x10000);
     puts("C5VRX-4 Direct Gain LOCK / native gate isolation passed");
 }

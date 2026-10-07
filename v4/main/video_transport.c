@@ -70,7 +70,7 @@ static const void *c5vrx4_selected_program(void)
     case C5VRX4_DEMOD_HC50: return s_hc50_program;
     case C5VRX4_DEMOD_VLP56: return s_vlp56_program;
     case C5VRX4_DEMOD_OVP56: return s_ovp56_program;
-    case C5VRX4_DEMOD_PLL96: return s_pll96_program;
+    case C5VRX4_DEMOD_PLL96_IQ_FIXED: return s_pll96_program;
     case C5VRX4_DEMOD_PHASE8_HR: return s_reference_phase8_hr;
     case C5VRX4_DEMOD_GOLDEN: return s_reference_golden;
     default: break;

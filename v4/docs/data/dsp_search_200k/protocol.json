@@ -1,0 +1,21 @@
+{
+  "configuration_seed": 9201,
+  "screen": 9301,
+  "selection": 9401,
+  "final": [
+    9501,
+    9502
+  ],
+  "stress": 9601,
+  "evaluations": 200000,
+  "policy": "unique compiled LUT behaviours; reference-only positive calibration; freeze before full-frame finals",
+  "source_sha256": {
+    "engine.py": "51c58d61b8314811394bf38a90147c33d304a77786fd4eb267f88ce261d89da1",
+    "expressions.py": "7687ac5adc0430dc2c50f2cc025e4b31b3332cb5c39261023e372b72f02b3c6b",
+    "hardware.py": "925fd43df0bf5b0159d53c0a5a5f2eb3ab08bac8718b79f5c943bdeba9efb1f7",
+    "test_discovery.py": "ec77195d7af851700f11ebd1b597d5196cd7978e8ccfb4d66f64fa021abc7a21",
+    "waveforms.py": "593b79815b17ddc81ad2be8e9dc2e7cba6265580f2644cc792d04d31145c905c"
+  },
+  "hardware": "TX-only LUT8/2KiB/eight slots/two bundles/raw32K/IQ40/unique20/DAC40",
+  "exclusions": "not a global architecture optimum; no new math or RF sensitivity claim"
+}

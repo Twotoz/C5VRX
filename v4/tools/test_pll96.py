@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exhaustive source-driven PLL96 state/input proof; not hardware timing."""
 import json
+import math
 import random
 from pathlib import Path
 import generate_pll96 as G
@@ -20,6 +21,16 @@ def main():
     assert len(table)==768 and len(encoder)==256
     assert all(0 <= x < 96*64 for x in table)
     assert all(0 <= x < 8 for x in encoder)
+    # Independent signed-IQ contract: I is the HIGH nibble, Q the LOW nibble.
+    # The rejected board build swapped these and inverted FM/CVBS polarity.
+    rotation=p[5]
+    for raw in range(256):
+        i,q=raw>>4,raw&15
+        i=i-16 if i>7 else i
+        q=q-16 if q>7 else q
+        expected_token=math.floor((math.atan2(q+.5,i+.5)-rotation)*4/math.pi+.5)%8
+        assert encoder[raw]==expected_token,(raw,encoder[raw],expected_token)
+    assert encoder[0x51]!=encoder[0x15], 'I/Q swap must change phase'
     # Every valid loop state, every byte, and all invalid startup states. Carry
     # the state in the initial lookup result; simulator derives the addresses
     # from the compiled instructions, not from the recurrence used by search.

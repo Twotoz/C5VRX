@@ -25,7 +25,7 @@ def tables(p):
     freq = [2*math.pi*(low+(high-low)*j/(frequencies-1))/20e6 for j in range(frequencies)]
     encoder = []
     for raw in range(256):
-        i, q = raw & 15, raw >> 4
+        i, q = raw >> 4, raw & 15
         i = i-16 if i > 7 else i
         q = q-16 if q > 7 else q
         a = math.atan2(q+.5, i+.5)

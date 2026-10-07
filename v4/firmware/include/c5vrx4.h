@@ -9,12 +9,13 @@ void c5vrx4_suspend(void);
 void c5vrx4_resume(void);
 bool c5vrx4_console(int key);
 /* Two-bundle comparisons, NVS ref_demod; g cycles with a reboot.
- * p toggles experimental PLL96 and OVP56 with a saved-NVS reboot.
+ * Historical PLL96 value5 is quarantined to OVP56 after failed board video.
  * Existing 0 selects the HC50 baseline; 1/2 retain the #182 donor references.
  * New/invalid selection boots OVP56; 3 retains VLP56 in this experimental stacked PR.
  * Span75 observers/repair/LUT writers are unavailable in every selection. */
 enum { C5VRX4_DEMOD_HC50, C5VRX4_DEMOD_PHASE8_HR, C5VRX4_DEMOD_GOLDEN,
-       C5VRX4_DEMOD_VLP56, C5VRX4_DEMOD_OVP56, C5VRX4_DEMOD_PLL96, C5VRX4_DEMOD_COUNT };
+       C5VRX4_DEMOD_VLP56, C5VRX4_DEMOD_OVP56, C5VRX4_DEMOD_PLL96,
+       C5VRX4_DEMOD_PLL96_IQ_FIXED, C5VRX4_DEMOD_COUNT };
 unsigned c5vrx4_demodulator(void);
 const char *c5vrx4_demodulator_name(void);
 bool c5vrx4_reference_demod(void);

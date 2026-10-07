@@ -1,5 +1,37 @@
 # Quantized PLL96 board experiment
 
+## Correction and physical failure (2026-10-08)
+
+Build `84aadd1` was flashed and booted in PLL96 mode, but the operator reported
+static, tearing and unusable video. It is rejected. The generator incorrectly
+decoded I from the low nibble and Q from the high nibble. The project encoder
+contract is I-high/Q-low; swapping them reflects complex phase and reverses FM
+and CVBS polarity. The earlier per-method fitted gain could be negative, hiding
+this defect in SINAD. Historical weak results below must not justify promotion.
+
+Correcting only I/Q restores positive polarity but still misses all strong
+horizontal pulses in the new full-frame diagnostic. The coarse recursive loop
+and its output reconstruction remain material problems; I/Q was not the only
+cause. A separate 4,096-configuration repair study and 352 reconstruction
+checks produced the pinned **16 phase / 6 frequency** LAB in
+`tools/pll96_model.json`. It retains eight observed phase tokens and the same
+96-state, LUT16/2KiB, eight-slot, two-bundle transport. In seed9801 full PAL/NTSC
+30-dB-C/N diagnostics it misses no H/V pulses and detects both vertical trains.
+It still loses strong SINAD, raises sync-tip error and, for NTSC, timing jitter.
+This is an operator-requested hardware comparison, not a successful demod upgrade.
+
+Old persisted value5 falls back to OVP56. The corrected experiment uses value6;
+uppercase serial `P` opts in and toggles back to OVP56 with a saved reboot.
+Lowercase `p` again performs the existing snapshot diagnostic. Normal `g` only
+cycles values0..4. OVP56 remains the new/invalid-selection default. Source tests
+cover signed nibble decoding, all startup states, state continuity, selection
+and unchanged PHY registers. The rejected program/model are preserved under
+`tools/fixtures/`. See [the architecture report](DSP_ARCHITECTURE_DISCOVERY.md)
+for full-frame scoring and the negative 200,000-candidate search.
+
+The sections below describe the original rejected experiment, including its
+old eight-phase/twelve-frequency parameters and historical selection protocol.
+
 Extends C5VRX by Twotoz and contributors and its existing PLL/tracking-demod
 research: https://github.com/Twotoz/C5VRX. Official website and Discord invite:
 https://twotoz.github.io/C5VRX/. Existing donor notices and GPL-3.0-only remain.

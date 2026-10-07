@@ -1,15 +1,14 @@
 {
-  "name": "PLL96",
-  "params": [
-    0.8492273739591515,
-    0.20830259999876782,
-    0.14541878423984206,
-    -4574428.470765073,
-    6957108.999887487,
-    0.37855515877213575,
-    8
-  ],
-  "selection_weak_objective": 4.050922335469217,
-  "scope": "96 phase/frequency states, LUT16 pair20 PLL; experimental, not IQ40 PLL",
-  "provenance": "C5VRX by Twotoz and contributors; existing PLL research; https://github.com/Twotoz/C5VRX; https://twotoz.github.io/C5VRX/"
+    "name":  "PLL96-IQ-FIX-LAB",
+    "params":  [
+                   1.145142164222392,
+                   0.48358608538297043,
+                   0.021303082029173748,
+                   -3850120.9795680568,
+                   4703258.886879753,
+                   0.08809122416339732,
+                   16
+               ],
+    "scope":  "Corrected I-high/Q-low; 16 phase / 6 frequency states; zero missed strong H/V pulses in diagnostic full frames, still fails OVP56 quality guards; explicit lab only",
+    "provenance":  "C5VRX by Twotoz and contributors; existing PLL research; https://github.com/Twotoz/C5VRX; https://twotoz.github.io/C5VRX/"
 }

@@ -14,11 +14,16 @@ of merging. The V4 alpha workflow and flasher build this project independently.
 
 ## Offline optimized demod
 
-[PLL96 LAB](docs/PLL96_LAB.md) adds an operator-requested, quantized stateful
-PLL comparison. It improves nominal weak synthetic video but has severe
-strong-signal losses. Serial `p` toggles PLL96/OVP56 with a reboot; OVP56 remains
-the default. This is separate from the floating offline PLL and lacks board
-acceptance.
+[PLL96 LAB](docs/PLL96_LAB.md) records the failed board build, its reversed-IQ
+bug and the corrected experiment. Serial uppercase `P` toggles the corrected
+PLL96/OVP56 with a reboot; lowercase `p` retains the snapshot command. The old
+saved PLL96 selection falls back to OVP56. The corrected experiment still fails
+strong-picture guards and is not the default or physically accepted.
+
+[Architecture discovery](docs/DSP_ARCHITECTURE_DISCOVERY.md) provides typed
+formula evolution, generated hardware programs and complete PAL/NTSC waveform
+checks. The 200,000 unique-candidate experiment did not confirm a replacement
+for OVP56. Its leaderboard and Pareto frontier remain available for research.
 
 The [weak-signal diagnostic sweep](docs/WEAK_SIGNAL_SWEEP.md) separates C/N
 from ADC occupancy and scores contrast loss with a frozen clean calibration.
