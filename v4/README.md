@@ -31,8 +31,11 @@ The staged direct-gain overload recovery from Louis Hitchcock's
 [PR #182](https://github.com/Twotoz/C5VRX/pull/182), commit `784bbe6`, applies to
 all four modes: physical reductions rather than the immediate hard-G20 drop,
 settling exclusion, staged upward recovery and maximum listening on real loss.
-Manual/native gain ownership is preserved. Louis' reports of solid range/video
-apply to his donor recovery/reference tests; VLP56 is not board-accepted yet.
+Manual/native gain ownership is preserved. The independent always-on recovery
+hook and corrected board evidence come from Louis' [PR #184](https://github.com/Twotoz/C5VRX/pull/184).
+His accepted #183/#184 test actually ran Unwrap75 STD150 with flywheel off,
+because the old build generator overwrote HC50. It does not establish HC50 or
+VLP56 acceptance. See [docs/STAGED_GAIN_SPAN50.md](docs/STAGED_GAIN_SPAN50.md).
 Donor HR50/Golden instructions and LUTs retain zerowidth/C5VRX `69dfd683`
 provenance. See [docs/V3_BENCHMARK.md](docs/V3_BENCHMARK.md).
 

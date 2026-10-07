@@ -11,7 +11,7 @@ static bool reference_mode;
 static rf_iq_lane_stats_t lane_stats;
 uint8_t c5vrx4_fixed_lane(void) { return fixed; }
 bool c5vrx4_history_enabled(void) { return false; }
-bool c5vrx4_reference_demod(void) { return reference_mode; }
+bool c5vrx4_staged_gain_recovery(void) { return reference_mode; }
 uint8_t rf_get_iq_lanes(void) { return lane_stats.last_to; }
 void rf_get_iq_lane_stats(rf_iq_lane_stats_t *s) { *s = lane_stats; }
 #include "../lanes.c"

@@ -367,5 +367,21 @@
       "revision": "784bbe6d625ab17ec115a7d0d1da57a1c45dcd26"
     },
     "evidence": "source-driven host regressions and synthetic held-out video; VLP56 board acceptance pending"
+  },
+  "staged_gain_pr184": {
+    "repository": "https://github.com/LouisHitchcock/C5VRX",
+    "pull_request": "https://github.com/Twotoz/C5VRX/pull/184",
+    "revision": "fa47bed64faa130c88e93da4cf2781a65f2e0abf",
+    "author": "Louis Hitchcock",
+    "paths": [
+      "v4/docs/STAGED_GAIN_SPAN50.md",
+      "v4/firmware/pipeline.c",
+      "v4/firmware/include/c5vrx4.h",
+      "v4/main/direct_gain_v3.c",
+      "v4/main/direct_gain_v3.h",
+      "v4/tools/test_integration.c"
+    ],
+    "modifications": "independent always-on staged gain hook; core/tests already imported from #182; preserve removed OSD timeout and isolated native programs",
+    "evidence": "operator-accepted Unwrap75 STD150 with flywheel off, R3/5732 MHz, app SHA256 prefix 9dfaa8ea60e9c27e, preserved NVS; not HC50/VLP56 acceptance or measured dB"
   }
 }

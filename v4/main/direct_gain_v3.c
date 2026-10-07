@@ -686,7 +686,7 @@ uint8_t direct_gain_v3_tick(direct_gain_v3_t *v3,
     bool reference_recovery = false;
 #ifdef C5VRX4_EXPERIMENT
     fixed_lane = c5vrx4_fixed_lane() != C5VRX4_LANE_ADAPTIVE;
-    reference_recovery = c5vrx4_reference_demod();
+    reference_recovery = c5vrx4_staged_gain_recovery();
 #endif
     /* Fold guard. On a finer lane the rail codes are the last warning before
      * the window folds; a folded strong carrier reads as wide, incoherent
@@ -754,7 +754,7 @@ uint8_t direct_gain_v3_tick(direct_gain_v3_t *v3,
              o->observed_us - v3->write_us < minimum_settle_guard_us(v3)))
             return v3->current_gain;
         /* A low quantized radius after overload is not proof that the RF
-         * carrier vanished. In the opt-in reference comparison, walk back
+         * carrier vanished. With staged gain recovery, walk back
          * through physical tuples and remeasure, instead of G20 -> G83.
          * True loss still reaches max; ordinary listening is unchanged. */
         if (reference_recovery && v3->overload_recovery && !at_max) {

@@ -89,7 +89,7 @@ because six-bit saturation is now enforced during scoring as well.
 program from JSON without NumPy/SciPy. `generate_phase8.py` invokes it in CI.
 The active VLP56 file is separate from every historical span75 output, and
 configuration-time verification is fatal again. Native HC50 is a separately
-pinned copy of #183's tested source, so CI cannot replace it with Unwrap75.
+pinned copy of #183's checked-in source, so CI cannot replace it with Unwrap75.
 
 An absent/invalid `c5vrx4/ref_demod` boots VLP56 in this experimental PR. Existing
 values 0/1/2 select HC50/HR50/Golden50. `g` or SETUP -> DEMOD (REBOOT) cycles
@@ -103,7 +103,10 @@ overload shortcut, honors settling/freshness, walks adjacent physical tuples
 upward after overload, and retains high-gain real-loss listening. It is not
 applied to manual/native gain ownership. Regression coverage is imported with
 attribution; the quoted report of solid range/video is evidence for the donor
-recovery, not for VLP56.
+recovery, not for VLP56. PR #184 corrects the tested program to Unwrap75
+STD150 with flywheel off (the old generator overwrote HC50). Its corrected
+board data are preserved in STAGED_GAIN_SPAN50.md. The recovery now has its
+own always-on hook, independent of the demod/layout compatibility gate.
 
 All span75 semantic estimates, AUTO AFC/search, history/mask, flywheel/line
 repair, idle raster and live level/DC LUT writers are gated as in #182. Stored

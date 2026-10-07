@@ -44,6 +44,12 @@ unsigned c5vrx4_demodulator(void)
     }
     return (unsigned)mode;
 }
+/* #184 recovery is a gain policy, independent of detector layout. */
+bool c5vrx4_staged_gain_recovery(void)
+{
+    return true;
+}
+
 bool c5vrx4_reference_demod(void)
 {
     /* All selectable programs use 50-ns endpoints, not the span75 LUT layout. */

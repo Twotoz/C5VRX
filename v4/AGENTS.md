@@ -9,6 +9,10 @@ raw32K ring, unique CVBS20 and [D,D] physical TX40. CPU does not pace samples.
 `g`/SETUP DEMOD cycles with a saved-NVS reboot; 0 remains the HC50 baseline.
 Preserve Louis Hitchcock's staged overload recovery imported from #182
 `784bbe6d625ab17ec115a7d0d1da57a1c45dcd26` and its regression tests.
+PR #184 (`fa47bed`) supplies the independent always-on staged recovery hook
+and corrected board evidence in docs/STAGED_GAIN_SPAN50.md. The accepted
+#183/#184 board test ran Unwrap75 STD150 with flywheel off because the old
+generator overwrote HC50; do not call it HC50/VLP56 board acceptance.
 Span75 semantic estimates, AUTO AFC/search, mask/history, flywheel/line repair,
 idle raster and level/DC live LUT writers must stay gated for all selections.
 This supersedes the historical Unwrap75 defaults/invariants below for the

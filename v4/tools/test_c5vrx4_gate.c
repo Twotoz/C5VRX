@@ -67,6 +67,7 @@ int main(int argc, char **argv)
         (unsigned)saved_demod : C5VRX4_DEMOD_VLP56;
     assert(c5vrx4_demodulator() == expected);
     assert(c5vrx4_reference_demod());
+    assert(c5vrx4_staged_gain_recovery());
     assert(!c5vrx4_dc_recenter_enabled() && !c5vrx4_agc_mask_active());
     assert(!c5vrx4_idle_raster_enabled() && !c5vrx4_sync_flywheel_enabled());
     /* Fixed analog BW: on by default, uncalibrated until a measurement is stored. */

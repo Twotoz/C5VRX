@@ -17,6 +17,9 @@ enum { C5VRX4_DEMOD_HC50, C5VRX4_DEMOD_PHASE8_HR, C5VRX4_DEMOD_GOLDEN,
 unsigned c5vrx4_demodulator(void);
 const char *c5vrx4_demodulator_name(void);
 bool c5vrx4_reference_demod(void);
+/* Louis Hitchcock/#184: staged physical overload/recovery independent of
+ * demod selection; Direct Gain only, manual/native ownership unchanged. */
+bool c5vrx4_staged_gain_recovery(void);
 bool c5vrx4_history_enabled(void);
 /* IQ lane policy, NVS c5vrx4/lane_mode, Z cycles it with a reboot. Fixed
  * fine {9,7,6,5} is the default: the lanes never switch at runtime. Fixed
