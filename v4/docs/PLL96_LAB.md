@@ -20,6 +20,15 @@ checks produced the pinned **16 phase / 6 frequency** LAB in
 It still loses strong SINAD, raises sync-tip error and, for NTSC, timing jitter.
 This is an operator-requested hardware comparison, not a successful demod upgrade.
 
+After flashing runtime source `60ad240` on COM10 and confirming active
+`PLL96 IQ FIX LAB`, the operator reported that video otherwise looks fine,
+but has substantial perceived gain noise. This is partial positive picture
+feedback, not full picture/range acceptance. A read-only snapshot during that
+report showed IQ coherence98, clip_pm0, origin_pm0, gain36, and zero TX-empty,
+RX-overflow and GDMA error counters. Gain changed during reception, so this
+single observation neither proves a fixed gain fault nor isolates demodulator
+noise. RF strength and a matched OVP56 visual comparison were not established.
+
 Old persisted value5 falls back to OVP56. The corrected experiment uses value6;
 uppercase serial `P` opts in and toggles back to OVP56 with a saved reboot.
 Lowercase `p` again performs the existing snapshot diagnostic. Normal `g` only
