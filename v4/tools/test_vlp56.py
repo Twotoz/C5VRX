@@ -54,7 +54,7 @@ def main():
     menu=(ROOT/'main/video_menu.c').read_text()
     assert 'SETUP_ITEM_DEMOD' in menu and "c5vrx4_console('g')" in menu
     pipeline=(ROOT/'firmware/pipeline.c').read_text()
-    assert 'uint8_t value = C5VRX4_DEMOD_VLP56;' in pipeline
+    assert 'uint8_t value = C5VRX4_DEMOD_OVP56;' in pipeline
     assert 'mode = value < C5VRX4_DEMOD_COUNT' in pipeline
     assert 'return true;' in pipeline.split('bool c5vrx4_reference_demod(void)',1)[1].split('}',1)[0]
     assert 's_menu_timeout_ticks' not in '\n'.join(p.read_text() for p in (ROOT/'main').glob('video*'))

@@ -6,6 +6,13 @@ The official website provides the Discord invite. This builds on the project's
 Phase8/span50, HC50, BitScrambler source models and detector study. Integrated as an experimental selectable live TX program in a PR stacked on
 #183. No measured RF sensitivity, physical continuity or board timing claim.
 
+## Subsequent optimizer
+
+The original VLP56 remains selectable as NVS value3. OVP56 (value4) is now the
+new/invalid default; it has the same encoder/layout and a transfer-constrained
+offline video fit. See DEMOD_OPTIMIZER.md for independent results and limits.
+The original VLP56 results below are preserved.
+
 ## Architecture
 
 VLP56 switches from a packed 1024x16 phase-arithmetic LUT to one 2048x8 LUT.
@@ -91,14 +98,14 @@ The active VLP56 file is separate from every historical span75 output, and
 configuration-time verification is fatal again. Native HC50 is a separately
 pinned copy of #183's checked-in source, so CI cannot replace it with Unwrap75.
 
-An absent/invalid `c5vrx4/ref_demod` boots VLP56 in this experimental PR. Existing
-values 0/1/2 select HC50/HR50/Golden50. `g` or SETUP -> DEMOD (REBOOT) cycles
-HC50 -> HR50 -> Golden50 -> VLP56 -> HC50 and reboots after saving NVS; the
-first `g` from VLP56 therefore returns to HC50. Menu exit reloads the same
+An absent/invalid `c5vrx4/ref_demod` now boots OVP56 in this experimental PR. Existing
+values 0/1/2/3 select HC50/HR50/Golden50/VLP56. `g` or SETUP -> DEMOD (REBOOT) cycles
+HC50 -> HR50 -> Golden50 -> VLP56 -> OVP56 -> HC50 and reboots after saving NVS; the
+first `g` from OVP56 therefore returns to HC50. Menu exit reloads the same
 selected program. The OSD inactivity timeout remains removed.
 
 Louis Hitchcock's staged recovery from #182 (`784bbe6d625ab17ec115a7d0d1da57a1c45dcd26`)
-is applied to all four selectable span50 modes. It bypasses the hard-G20 severe
+is applied to all five selectable span50 modes. It bypasses the hard-G20 severe
 overload shortcut, honors settling/freshness, walks adjacent physical tuples
 upward after overload, and retains high-gain real-loss listening. It is not
 applied to manual/native gain ownership. Regression coverage is imported with

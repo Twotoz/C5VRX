@@ -12,16 +12,27 @@ The active V4 project lives under `v4/`; merge requires the
 operator's explicit approval. Building and publishing a PR alpha is independent
 of merging. The V4 alpha workflow and flasher build this project independently.
 
+## Offline optimized demod
+
+OVP56 is the best eligible weak-signal model found by the hardware-constrained
+search, with clean absolute DAC-level guards. It retains the VLP56 encoder and
+uses a bounded, video-filter-aware optimized table. The independent confirmation
+shows modest gains at 0-4 dB C/N and some losses at 6-14 dB; it is not a global
+optimum or a measured range gain. Joint encoders, midpoint and stateful models
+were tested and rejected where they lost quality. See
+[docs/DEMOD_OPTIMIZER.md](docs/DEMOD_OPTIMIZER.md) for the optimizer, seeds,
+per-scenario results, negative findings, numerical scope and reproduction.
+
 ## Receiver contract
 
 This branch is a pair-FM experiment stacked on PR #183. New/invalid NVS demod
-selection boots **VLP56**. Existing `ref_demod` values 0/1/2 select
-HC50/HR50/Golden50. In **SETUP -> DEMOD (REBOOT)** or with serial `g`, cycle
-HC50 -> HR50 -> Golden50 -> VLP56 -> HC50. A mode change saves NVS and reboots;
-one `g` from VLP56 returns to HC50. Ordinary menu exit reloads the selected
+selection boots **OVP56**. Existing `ref_demod` values 0/1/2/3 select
+HC50/HR50/Golden50/VLP56. In **SETUP -> DEMOD (REBOOT)** or with serial `g`, cycle
+HC50 -> HR50 -> Golden50 -> VLP56 -> OVP56 -> HC50. A mode change saves NVS and reboots;
+one `g` from OVP56 returns to HC50. Ordinary menu exit reloads the selected
 program. The OSD stays open until closed manually.
 
-All four modes use raw Q4/I4 RX40 -> raw32K ring -> TX BitScrambler -> six-bit
+All five modes use raw Q4/I4 RX40 -> raw32K ring -> TX BitScrambler -> six-bit
 [D,D] physical DAC40, with two bundles and unique CVBS20. VLP56 uses one 2-KiB
 8-bit LUT for a 56-code IQ encoder and 28x56 direct frequency/DAC pair map.
 The pinned table/generator and host/board evidence boundaries are documented
@@ -29,7 +40,7 @@ in [docs/PAIR_DEMOD_STUDY.md](docs/PAIR_DEMOD_STUDY.md).
 
 The staged direct-gain overload recovery from Louis Hitchcock's
 [PR #182](https://github.com/Twotoz/C5VRX/pull/182), commit `784bbe6`, applies to
-all four modes: physical reductions rather than the immediate hard-G20 drop,
+all five modes: physical reductions rather than the immediate hard-G20 drop,
 settling exclusion, staged upward recovery and maximum listening on real loss.
 Manual/native gain ownership is preserved. The independent always-on recovery
 hook and corrected board evidence come from Louis' [PR #184](https://github.com/Twotoz/C5VRX/pull/184).

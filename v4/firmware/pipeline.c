@@ -35,12 +35,12 @@ unsigned c5vrx4_demodulator(void)
     static int mode = -1;
     if (mode < 0) {
         nvs_handle_t h;
-        uint8_t value = C5VRX4_DEMOD_VLP56;
+        uint8_t value = C5VRX4_DEMOD_OVP56;
         if (nvs_open("c5vrx4", NVS_READONLY, &h) == ESP_OK) {
             (void)nvs_get_u8(h, "ref_demod", &value);
             nvs_close(h);
         }
-        mode = value < C5VRX4_DEMOD_COUNT ? value : C5VRX4_DEMOD_VLP56;
+        mode = value < C5VRX4_DEMOD_COUNT ? value : C5VRX4_DEMOD_OVP56;
     }
     return (unsigned)mode;
 }
@@ -57,7 +57,7 @@ bool c5vrx4_reference_demod(void)
 }
 const char *c5vrx4_demodulator_name(void)
 {
-    static const char *const names[] = {"HC50", "HR50", "GOLDEN50", "VLP56"};
+    static const char *const names[] = {"HC50", "HR50", "GOLDEN50", "VLP56", "OVP56"};
     return names[c5vrx4_demodulator()];
 }
 
@@ -660,10 +660,10 @@ static void print_state(void)
                "lut_bits=%u transfer=program_native gain_owner=%s semantic_sync=unavailable "
                "mask=0 flywheel=0 idle_raster=0 live_lut_writes=0\n",
                c5vrx4_demodulator_name(),
-               c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 ? 0u :
+               (c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 || c5vrx4_demodulator() == C5VRX4_DEMOD_OVP56) ? 0u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_GOLDEN ? 5u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_HC50 ? 6u : 8u,
-               c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 ? 8u : 16u,
+               (c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 || c5vrx4_demodulator() == C5VRX4_DEMOD_OVP56) ? 8u : 16u,
                rf_native_agc_active() ? "native" : "direct_gain_v5");
         return;
     }

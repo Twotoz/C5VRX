@@ -27,3 +27,5 @@ target_sources(${COMPONENT_LIB} PRIVATE "${C5VRX4_FIRMWARE_DIR}/cvbs_level.c" "$
 # Explicit native span50 programs, never overwritten by the historical generator.
 target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_vlp56.bsasm")
 target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_hc50.bsasm")
+
+target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_ovp56.bsasm")

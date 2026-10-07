@@ -64,7 +64,7 @@ int main(int argc, char **argv)
 {
     if (argc > 1) saved_demod = atoi(argv[1]);
     unsigned expected = saved_demod >= 0 && saved_demod < C5VRX4_DEMOD_COUNT ?
-        (unsigned)saved_demod : C5VRX4_DEMOD_VLP56;
+        (unsigned)saved_demod : C5VRX4_DEMOD_OVP56;
     assert(c5vrx4_demodulator() == expected);
     assert(c5vrx4_reference_demod());
     assert(c5vrx4_staged_gain_recovery());

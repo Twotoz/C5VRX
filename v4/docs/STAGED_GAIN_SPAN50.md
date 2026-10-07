@@ -54,7 +54,7 @@ revision `fa47bed64faa130c88e93da4cf2781a65f2e0abf`. The sections above retain
 his corrected board evidence and original test state, not this branch's runtime.
 The recovery core and host cases were already imported from #182; #184's
 independent `c5vrx4_staged_gain_recovery()` hook now keeps that policy always
-on for Direct Gain, independently of demod selection. All four active demods
+on for Direct Gain, independently of demod selection. All five active demods (including subsequent OVP56)
 remain two-bundle span50; native/manual gain ownership is unchanged.
 
 The build-regeneration fault is fixed here by separate native HC50/VLP56

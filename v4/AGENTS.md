@@ -3,7 +3,7 @@
 ## Current stacked pair-FM experiment (on PR #183)
 
 All selectable demods in this branch are two-bundle, 50-ns endpoints:
-VLP56 (new/invalid NVS default), HC50, donor HR50 and donor Golden50.
+OVP56 (new/invalid NVS default), VLP56, HC50, donor HR50 and donor Golden50.
 VLP56 uses LUT8/2048 bytes, current56/previous28 tokens, raw Q4/I4 RX40,
 raw32K ring, unique CVBS20 and [D,D] physical TX40. CPU does not pace samples.
 `g`/SETUP DEMOD cycles with a saved-NVS reboot; 0 remains the HC50 baseline.
@@ -15,6 +15,10 @@ and corrected board evidence in docs/STAGED_GAIN_SPAN50.md. The accepted
 generator overwrote HC50; do not call it HC50/VLP56 board acceptance.
 Span75 semantic estimates, AUTO AFC/search, mask/history, flywheel/line repair,
 idle raster and level/DC live LUT writers must stay gated for all selections.
+OVP56 uses the same encoder/layout with a bounded offline video fit and clean
+absolute DAC-level constraints. Preserve VLP56 as value3 and OVP56 as value4.
+See docs/DEMOD_OPTIMIZER.md and its negative search results; no global optimum
+or measured range claim is established.
 This supersedes the historical Unwrap75 defaults/invariants below for the
 active pair-FM path; the old programs/tests are retained research artifacts.
 The generator must not overwrite native HC50 or substitute span75 for VLP56.

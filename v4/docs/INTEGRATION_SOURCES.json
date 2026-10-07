@@ -383,5 +383,19 @@
     ],
     "modifications": "independent always-on staged gain hook; core/tests already imported from #182; preserve removed OSD timeout and isolated native programs",
     "evidence": "operator-accepted Unwrap75 STD150 with flywheel off, R3/5732 MHz, app SHA256 prefix 9dfaa8ea60e9c27e, preserved NVS; not HC50/VLP56 acceptance or measured dB"
+  },
+  "optimized_pair_demod": {
+    "canonical": "https://github.com/Twotoz/C5VRX",
+    "extends": "C5VRX by Twotoz/contributors; pinned VLP56 encoder, Phase8/HC50 source models, detector_study designs/designs2",
+    "paths": [
+      "v4/tools/compile_pair_demod.py",
+      "v4/tools/detector_study/optimize_pair.py",
+      "v4/tools/detector_study/optimize_video.py",
+      "v4/tools/detector_study/optimize_tracking.py",
+      "v4/tools/detector_study/optimize_levels.py",
+      "v4/tools/ovp56_codebook.json"
+    ],
+    "modifications": "local joint encoder search, filtered-video table fit, bounded DAC solver and absolute level constraints; OVP56 selectable value4, absent/invalid default; VLP56 retained value3",
+    "evidence": "synthetic frozen confirmation 911-913, complete raw-pair source regression; best eligible for stated edge objective, not globally optimal, board/range acceptance pending"
   }
 }
