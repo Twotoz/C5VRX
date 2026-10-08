@@ -204,6 +204,7 @@ typedef enum {
  * Each lab pauses the gain controller exactly like the 11p A/B above. */
 typedef struct {
     uint32_t glitches, samples;
+    uint64_t hf4_d4, hf4_power, hf4_count; /* fourth-difference probe sums */
     int dc_i, dc_q;             /* milli-cells of the current lane */
     unsigned windows;
     control_metrics_t m;

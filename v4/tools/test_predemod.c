@@ -10,6 +10,22 @@ static uint8_t iq(int i, int q) { return (uint8_t)(((i & 15) << 4) | (q & 15)); 
 
 int main(void)
 {
+    {   /* Fourth-difference sampling probe (zerowidth/C5VRX PR #3). */
+        uint8_t white[4096], slow[4096];
+        uint32_t x = 12345u;
+        for (unsigned k = 0; k < sizeof(white); ++k) { x = x * 1664525u + 1013904223u; white[k] = (uint8_t)(x >> 24); }
+        for (unsigned k = 0; k < sizeof(slow); ++k) {
+            double ph = 2.0 * M_PI * 0.4e6 * k / 40e6;
+            int i = (int)floor(5.5 * cos(ph)), q = (int)floor(5.5 * sin(ph));
+            slow[k] = (uint8_t)(((i & 15) << 4) | (q & 15));
+        }
+        uint64_t d4 = 0, pw = 0; predemod_hf4_sums(white, sizeof(white), &d4, &pw);
+        int w = predemod_hf4_x100(d4, pw, sizeof(white) - 4u);
+        d4 = pw = 0; predemod_hf4_sums(slow, sizeof(slow), &d4, &pw);
+        int s = predemod_hf4_x100(d4, pw, sizeof(slow) - 4u);
+        printf("hf4 white=%d slow_carrier=%d\n", w, s);
+        assert(w > 80 && w < 120 && s < 5);
+    }
     /* A smooth carrier at radius 5 cells, 30 degrees per sample: no glitches. */
     uint8_t ring[64];
     for (unsigned k = 0; k < 64; ++k) {

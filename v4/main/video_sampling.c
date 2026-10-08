@@ -1,9 +1,20 @@
-#define SPHASE_AUTO_PPM 5000u
 #define SPHASE_POSITIONS 9u
 #define SPHASE_SETTLE_TRIES 12u
+/* Mixed MODEM_DIAG reads (zerowidth/C5VRX PR #3 fourth-difference probe, as
+ * absolute excess energy): board scans 2026-10-08, fixed ultrafine, noise and
+ * carrier: clean positions -70..+42, mid-change positions 391..3742
+ * milli-cell^2. Borderline readings 121..199 (with glitches) rescan rather
+ * than keep a low-margin position. The glitch-ppm test passed bad
+ * positions at 756..4368 ppm under its 5000 limit. */
+#define SPHASE_EXCESS_LIMIT 300u
 #include "video_internal.h"
 
 static sphase_scan_t lab_run_sample_phase_scan_result(unsigned *final_ppm);
+static unsigned sphase_metric(const predemod_window_t *w)
+{
+    int excess = predemod_hf4_excess_milli(w->hf4_d4, w->hf4_count);
+    return excess > 0 ? (unsigned)excess : 0u;
+}
 #define SPHASE_RETRY_US    10000000LL
 #define SPHASE_MAX_SCANS   5u
 static sphase_state_t s_sphase_state = SPHASE_UNVERIFIED;
@@ -29,15 +40,15 @@ static sphase_scan_t lab_run_sample_phase_scan_result(unsigned *final_ppm)
         return SPHASE_SCAN_REFUSED;
     }
     printf("SPHASE begin rx_div=%lu lane=%u slip_us=1 positions=%u "
-           "metric=mid_transition_reads hardware_acceptance=pending\n",
+           "metric=hf4_excess_mc2 limit=%u\n",
            (unsigned long)PCR.parl_clk_rx_conf.parl_clk_rx_div_num + 1ul,
-           rf_get_iq_lanes(), SPHASE_POSITIONS);
+           rf_get_iq_lanes(), SPHASE_POSITIONS, SPHASE_EXCESS_LIMIT);
     predemod_window_t w;
     unsigned best = UINT32_MAX;
     for (unsigned pos = 0; pos < SPHASE_POSITIONS; ++pos) {
         if (pos) { rx_clock_slip(1); vTaskDelay(pdMS_TO_TICKS(20)); }
         if (!predemod_collect(48, &w)) { printf("SPHASE slip=%u sample=unavailable\n", pos); continue; }
-        unsigned ppm = predemod_ppm(w.glitches, w.samples);
+        unsigned ppm = sphase_metric(&w);
         if (ppm < best) best = ppm;
         predemod_print("SPHASE", "SCAN", (int)pos, &w);
     }
@@ -46,10 +57,10 @@ static sphase_scan_t lab_run_sample_phase_scan_result(unsigned *final_ppm)
     unsigned last_ppm = UINT32_MAX;
     for (unsigned n = 0; best != UINT32_MAX && n < SPHASE_SETTLE_TRIES; ++n) {
         if (!predemod_collect(48, &w)) break;
-        unsigned ppm = predemod_ppm(w.glitches, w.samples);
+        unsigned ppm = sphase_metric(&w);
         last_ppm = ppm;
-        unsigned margin = best / 4u > 300u ? best / 4u : 300u;
-        if (ppm <= best + margin) { settled = true; break; }
+        unsigned margin = best / 4u > 100u ? best / 4u : 100u;
+        if (ppm <= best + margin && ppm < SPHASE_EXCESS_LIMIT) { settled = true; break; }
         rx_clock_slip(1);
         vTaskDelay(pdMS_TO_TICKS(20));
     }
@@ -90,16 +101,22 @@ void predemod_sphase_autocheck(void)
     if (IDLE_RASTER_ACTIVE()) return;
     if (rf_native_agc_active()) {
         if (now - s_last_idle_sync_us > 1000000LL) return;
-    } else if (s_direct_gain_v3.state != DG3_HOLD || s_v3_coherence < 60 ||
-               s_v3_p50 < 13 || s_v3_p50 > 46) {
-        return;
+    } else {
+        /* A held carrier in band, or (new) receiver noise without clipping:
+         * the excess probe separates both on the board, so a bad position
+         * is fixed at boot before a VTX appears. */
+        bool carrier = s_direct_gain_v3.state == DG3_HOLD && s_v3_coherence >= 60 &&
+                       s_v3_p50 >= 13 && s_v3_p50 <= 46;
+        bool noise = s_v3_p50 <= 8 && s_v3_clip_pm == 0 && s_v3_coherence < 40;
+        if (!carrier && !noise) return;
     }
     predemod_window_t w;
     if (!predemod_collect(48, &w)) return;
-    s_sphase_auto_ppm = predemod_ppm(w.glitches, w.samples);
-    bool good = s_sphase_auto_ppm < SPHASE_AUTO_PPM;
-    printf("SPHASE auto_check ppm=%u threshold=%u coherence=%d state=%s action=%s scans=%u\n",
-           s_sphase_auto_ppm, SPHASE_AUTO_PPM, s_v3_coherence, sphase_state_name(),
+    s_sphase_auto_ppm = sphase_metric(&w);
+    bool good = s_sphase_auto_ppm < SPHASE_EXCESS_LIMIT;
+    printf("SPHASE auto_check excess_mc2=%u threshold=%u glitch_ppm=%u coherence=%d state=%s action=%s scans=%u\n",
+           s_sphase_auto_ppm, SPHASE_EXCESS_LIMIT, predemod_ppm(w.glitches, w.samples),
+           s_v3_coherence, sphase_state_name(),
            good ? "none" : s_sphase_scans < SPHASE_MAX_SCANS ? "scan" : "give_up", s_sphase_scans);
     if (good) {
         s_sphase_state = SPHASE_SETTLED;
@@ -116,7 +133,7 @@ void predemod_sphase_autocheck(void)
     ++s_sphase_scans;
     unsigned final_ppm;
     sphase_scan_t r = lab_run_sample_phase_scan_result(&final_ppm);
-    if (r == SPHASE_SCAN_SETTLED && final_ppm < SPHASE_AUTO_PPM) {
+    if (r == SPHASE_SCAN_SETTLED && final_ppm < SPHASE_EXCESS_LIMIT) {
         s_sphase_state = SPHASE_SETTLED;
         s_sphase_auto_done = true;
         s_sphase_auto_ppm = final_ppm;

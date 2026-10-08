@@ -33,6 +33,53 @@ static inline unsigned predemod_glitches(const uint8_t *s, size_t n, int limit)
     return count;
 }
 
+/* Fourth-difference band ratio (zerowidth/C5VRX PR #3 sampling probe): the
+ * receive filter leaves little above ~10 MHz, a read across MODEM_DIAG
+ * transitions spreads error evenly. Accumulates sum |d4|^2 (1 -4 6 -4 1 on
+ * the cell-centre complex 2v+1) and sum |c|^2 over one region; the ratio
+ * (d4/70 - q) / (c - q) with q the rounding share is formed by the caller.
+ * Board noise, clean ultrafine read, 2026-10-08: about 7 (x100). */
+static inline void predemod_hf4_sums(const uint8_t *s, size_t n,
+                                     uint64_t *d4, uint64_t *power)
+{
+    if (n < 5u) return;
+    for (size_t k = 2; k + 2 < n; ++k) {
+        int di = 0, dq = 0;
+        static const int w[5] = {1, -4, 6, -4, 1};
+        for (int j = -2; j <= 2; ++j) {
+            di += w[j + 2] * (2 * predemod_i(s[k + j]) + 1);
+            dq += w[j + 2] * (2 * predemod_q(s[k + j]) + 1);
+        }
+        int ci = 2 * predemod_i(s[k]) + 1, cq = 2 * predemod_q(s[k]) + 1;
+        *d4 += (uint64_t)(di * di + dq * dq);
+        *power += (uint64_t)(ci * ci + cq * cq);
+    }
+}
+
+/* x100 ratio from the sums above, rounding share removed. Mean is not
+ * subtracted: receiver DC adds to `power` only and lowers the ratio. */
+static inline int predemod_hf4_x100(uint64_t d4, uint64_t power, uint64_t count)
+{
+    if (!count) return 0;
+    double q = 2.0 * 4.0 / 12.0;
+    double num = (double)d4 / (double)count / 70.0 - q;
+    double den = (double)power / (double)count - q;
+    return den > 1e-9 ? (int)(100.0 * num / den) : 0;
+}
+
+/* Absolute excess fourth-difference energy, milli-cell^2 per sample (cell
+ * units, rounding share removed). Mixed reads add about the same error
+ * energy with or without a carrier, while the ratio above is diluted by a
+ * strong carrier's power (board scans 2026-10-08: ratio 1..3 on bad
+ * positions with a carrier, 7..13 on noise). */
+static inline int predemod_hf4_excess_milli(uint64_t d4, uint64_t count)
+{
+    if (!count) return 0;
+    /* (2v+1) units are twice the cell: divide energy by 4. */
+    double excess = (double)d4 / (double)count / 70.0 / 4.0 - 2.0 / 12.0;
+    return (int)(1000.0 * excess);
+}
+
 /* Cell-centre mean (2v+1)/2 per axis, in milli-cells of the current lane. */
 static inline void predemod_dc_mcells(const uint8_t *s, size_t n, int *i, int *q)
 {

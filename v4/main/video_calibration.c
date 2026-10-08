@@ -126,6 +126,10 @@ bool predemod_collect(unsigned windows, predemod_window_t *out)
             out->glitches += predemod_glitches(sample + r * RX_PROBE_REGION_BYTES,
                                                RX_PROBE_REGION_BYTES, 6);
         out->samples += RX_PROBE_REGIONS * (RX_PROBE_REGION_BYTES - 2u);
+        for (unsigned r = 0; r < RX_PROBE_REGIONS; ++r)
+            predemod_hf4_sums(sample + r * RX_PROBE_REGION_BYTES, RX_PROBE_REGION_BYTES,
+                              &out->hf4_d4, &out->hf4_power);
+        out->hf4_count += RX_PROBE_REGIONS * (RX_PROBE_REGION_BYTES - 4u);
         int di, dq;
         predemod_dc_mcells(sample, sizeof(sample), &di, &dq);
         si += di; sq += dq;
@@ -147,11 +151,13 @@ void predemod_print(const char *tag, const char *stage, int extra,
                            const predemod_window_t *w)
 {
     unsigned step = 64u >> rf_get_iq_lanes();
-    printf("%s stage=%s arg=%d freq=%u G=%u lane=%u windows=%u glitch_ppm=%u "
+    printf("%s stage=%s arg=%d freq=%u G=%u lane=%u windows=%u glitch_ppm=%u hf4_x100=%d hf4_excess_mc2=%d "
            "dc_mcells=%d/%d dc_codes=%d/%d P50=%d Q_phase=%d outer_pm=%d origin_pm=%d "
            "video=hardware_pending\n",
            tag, stage, extra, rf_get_frequency_mhz(), s_current_gain, rf_get_iq_lanes(),
-           w->windows, predemod_ppm(w->glitches, w->samples), w->dc_i, w->dc_q,
+           w->windows, predemod_ppm(w->glitches, w->samples),
+           predemod_hf4_x100(w->hf4_d4, w->hf4_power, w->hf4_count),
+           predemod_hf4_excess_milli(w->hf4_d4, w->hf4_count), w->dc_i, w->dc_q,
            w->dc_i * (int)step / 1000, w->dc_q * (int)step / 1000, w->m.p_median,
            w->m.q_phase, w->m.clip_permille, w->m.origin_permille);
 }
