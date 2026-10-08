@@ -101,3 +101,17 @@ python tools/prove_range_finalists.py /fresh/plain-refined/frozen.json --idf /pa
 The proof records model, source, binary, assembler and target hashes alongside
 the resource allocation. A failed assembly never produces a success proof.
 Assembler acceptance still does not establish live timing or physical video.
+
+At2026-10-08 09:24:45UTC, before any new independent confirmation outcome,
+a second, shared-input comparison was registered. Only individually confirmed
+options may enter; identities are checked and duplicate LUT/schedules removed.
+Fresh shared selection uses seed200301; its frozen winner then faces nominal
+seeds200401/200402, echo/fade200501, envelope200511..514, outage200531 and
+content200561..563. It uses exactly the same safe_range gates and no-runner-up
+rule. This separates selecting across policies from the final independent
+decision. If none qualify individually, skip this comparison and retain RANGE32.
+
+```
+python tools/dsp_search/compare_safe_range.py --confirmed /fresh/plain-confirmed /fresh/context-confirmed /fresh/confidence-confirmed /fresh/compact-confirmed --output /fresh/shared
+python tools/dsp_search/validate_range.py --search /fresh/shared --output /fresh/shared-confirmed
+```
