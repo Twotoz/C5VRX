@@ -16,15 +16,23 @@ of merging. The V4 alpha workflow and flasher build this project independently.
 
 The operator-requested [range-priority options](docs/RANGE_PRIORITY_STUDY.md)
 deliberately allow less detail for stronger weak-signal sync. Uppercase `Y`
-cycles RANGE32 -> RANGE BAL LAB -> RANGE32 with saved reboot.
+cycles RANGE32 -> RANGE BAL LAB -> PAIR RANGE LAB -> RANGE32 with saved reboot.
 `R` from any range LAB restores OVP56; another `R` selects original RANGE32.
 RANGE MAX failed the operator's physical noise/sync comparison and is
 quarantined: its saved value8 restores RANGE32 and Y skips it. RANGE BAL passes
 independent synthetic confirmation; its physical acceptance remains pending.
-RANGE32/value7 is the operator-requested default after repeated good-picture
-feedback. RANGE32+ (value10) also produced physical stability issues and is
+Since 2026-10-08 (operator request) new/invalid selections boot PAIR RANGE
+LAB/value11 on fixed ultrafine lanes; RANGE32/value7 is the fallback if PAIR
+is absent or quarantined, and saved selections are kept. Earlier RANGE32 was
+the operator-requested default after repeated good-picture feedback. RANGE32+ (value10) also produced physical stability issues and is
 quarantined to RANGE32; Y skips both failed candidates. `g` stays0..4.
 See the completed [fine-ADC search and physical result](docs/SAFE_RANGE_STUDY.md).
+PAIR RANGE LAB (value11, `RNG-e2a8f30af45e`) is the first shared-word tracker
+whose decoder also reads the second raw IQ40 sample of each 50-ns span (sign
+bits, learned MMSE observations). It passes independent synthetic
+confirmation with fewer missed weak sync pulses (2,558 vs 3,715) and better
+strong detail than RANGE32; it is opt-in and physically untested. See the
+[PAIR range study](docs/PAIR_RANGE_STUDY.md).
 
 [PLL96 LAB](docs/PLL96_LAB.md) records the failed board build, its reversed-IQ
 bug and the corrected experiment. Serial uppercase `P` toggles the corrected

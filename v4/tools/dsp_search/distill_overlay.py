@@ -37,7 +37,7 @@ def project(m,cases,targets,mix,iterations=2):
     for _ in range(iterations):
         count=np.zeros(1024);real=count.copy();imag=count.copy();freq=count.copy()
         for c,(phi,omega,confidence) in zip(cases,targets):
-            ix=O.indices(c['raw'],lut,b,p.get('context_bits',0));n=len(ix)
+            ix=O.model_indices(c['raw'],m,lut);n=len(ix)
             w=confidence[:n].copy();w[:1500]=0 # Exclude unknown capture-start state.
             count+=np.bincount(ix,weights=w,minlength=1024)
             real+=np.bincount(ix,weights=w*np.cos(phi[:n]),minlength=1024)

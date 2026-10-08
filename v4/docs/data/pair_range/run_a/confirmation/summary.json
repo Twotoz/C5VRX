@@ -1,0 +1,257 @@
+{
+  "profile": "safe_range",
+  "selected": "RNG-5cc14ad73003",
+  "confirmed_range_improvement": true,
+  "final": {
+    "HC50": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 13632,
+      "weak_sinad": 3.0845689026297465,
+      "weak_luma_sinad": 4.0363631235469635,
+      "strong_sinad": 4.366306910204517,
+      "strong_detail": 0.5766091867042739
+    },
+    "OVP56": {
+      "usable_cnr": 22,
+      "strong_eligible": true,
+      "weak_missing": 10955,
+      "weak_sinad": 6.122427137123875,
+      "weak_luma_sinad": 14.250374004138997,
+      "strong_sinad": 15.815505431334511,
+      "strong_detail": 0.7264437251323429
+    },
+    "PLL96-IQ-corrected": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 10150,
+      "weak_sinad": 7.401693717830194,
+      "weak_luma_sinad": 11.671932901620877,
+      "strong_sinad": 9.000954387259476,
+      "strong_detail": 0.3631866073975235
+    },
+    "PLL96-board-fixed": {
+      "usable_cnr": 30,
+      "strong_eligible": false,
+      "weak_missing": 2885,
+      "weak_sinad": 6.5563505976267935,
+      "weak_luma_sinad": 11.923600014467107,
+      "strong_sinad": 11.966829988235881,
+      "strong_detail": 0.48327569138988025
+    },
+    "PLL96-rejected-board": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 13624,
+      "weak_sinad": -6.6933666525185584,
+      "weak_luma_sinad": -6.693176259610063,
+      "strong_sinad": -6.6409543429586515,
+      "strong_detail": -0.3572390119716511
+    },
+    "RANGE32": {
+      "usable_cnr": 10,
+      "strong_eligible": true,
+      "weak_missing": 3673,
+      "weak_sinad": 6.971982283498083,
+      "weak_luma_sinad": 15.897477792845208,
+      "strong_sinad": 15.968018544317705,
+      "strong_detail": 0.7211802746279299
+    },
+    "RNG-5cc14ad73003": {
+      "usable_cnr": 10,
+      "strong_eligible": true,
+      "weak_missing": 2960,
+      "weak_sinad": 6.873366200268388,
+      "weak_luma_sinad": 17.343372102608914,
+      "strong_sinad": 16.240756293937594,
+      "strong_detail": 0.7339686814383637
+    },
+    "VLP56": {
+      "usable_cnr": 18,
+      "strong_eligible": true,
+      "weak_missing": 9773,
+      "weak_sinad": 5.896889662995399,
+      "weak_luma_sinad": 15.48240067050974,
+      "strong_sinad": 16.028924247064285,
+      "strong_detail": 0.734922300993299
+    },
+    "floating-PLL-IQ40": {
+      "usable_cnr": 12,
+      "strong_eligible": false,
+      "weak_missing": 3876,
+      "weak_sinad": 10.94273791907534,
+      "weak_luma_sinad": 22.391546554766233,
+      "strong_sinad": 21.46724442804983,
+      "strong_detail": 0.9240792197420693
+    }
+  },
+  "echo_fade": {
+    "HC50": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 4544,
+      "weak_sinad": 1.8170477579268802,
+      "weak_luma_sinad": 3.1488822067240627,
+      "strong_sinad": 4.378433029400587,
+      "strong_detail": 0.43366463179940035
+    },
+    "OVP56": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 4493,
+      "weak_sinad": 2.913762040134333,
+      "weak_luma_sinad": 7.211791891189973,
+      "strong_sinad": 11.827859753654804,
+      "strong_detail": 0.5514472713217475
+    },
+    "PLL96-IQ-corrected": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 2699,
+      "weak_sinad": 4.5770463594227015,
+      "weak_luma_sinad": 7.463872076162895,
+      "strong_sinad": 9.51167239076431,
+      "strong_detail": 0.33755372582489157
+    },
+    "PLL96-board-fixed": {
+      "usable_cnr": 30,
+      "strong_eligible": false,
+      "weak_missing": 2563,
+      "weak_sinad": 2.569625494950954,
+      "weak_luma_sinad": 5.986807276424734,
+      "strong_sinad": 11.350473043851814,
+      "strong_detail": 0.4378132248845835
+    },
+    "PLL96-rejected-board": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 4517,
+      "weak_sinad": -6.6150679819854385,
+      "weak_luma_sinad": -6.573570994599306,
+      "strong_sinad": -6.695064203805466,
+      "strong_detail": -0.342616549985128
+    },
+    "RANGE32": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 3031,
+      "weak_sinad": 3.2216952710788287,
+      "weak_luma_sinad": 7.592784627605092,
+      "strong_sinad": 13.958955766675675,
+      "strong_detail": 0.610380781420501
+    },
+    "RNG-5cc14ad73003": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 2819,
+      "weak_sinad": 3.0209901358590003,
+      "weak_luma_sinad": 7.978142771846964,
+      "strong_sinad": 13.643279998789009,
+      "strong_detail": 0.6056723855060919
+    },
+    "VLP56": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 4379,
+      "weak_sinad": 2.183168145768107,
+      "weak_luma_sinad": 7.345755842049447,
+      "strong_sinad": 12.239694522257784,
+      "strong_detail": 0.5613362967280912
+    },
+    "floating-PLL-IQ40": {
+      "usable_cnr": 22,
+      "strong_eligible": false,
+      "weak_missing": 2143,
+      "weak_sinad": 8.154603678360969,
+      "weak_luma_sinad": 13.733505611206787,
+      "strong_sinad": 16.873482488652222,
+      "strong_detail": 0.7815103367819592
+    }
+  },
+  "content_holdout": {
+    "HC50": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 6816,
+      "weak_sinad": 3.4797591881383956,
+      "weak_luma_sinad": 4.349881621699563,
+      "strong_sinad": 3.724489127267478,
+      "strong_detail": 0.6681714510657478
+    },
+    "OVP56": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 4332,
+      "weak_sinad": 7.867383760390102,
+      "weak_luma_sinad": 17.509785321871856,
+      "strong_sinad": 11.334222745235868,
+      "strong_detail": 0.8397062867462828
+    },
+    "PLL96-IQ-corrected": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 5763,
+      "weak_sinad": 5.612034362475632,
+      "weak_luma_sinad": 12.665304933611862,
+      "strong_sinad": 5.549675009828392,
+      "strong_detail": 0.4113488145135733
+    },
+    "PLL96-board-fixed": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 178,
+      "weak_sinad": 6.5924616319807425,
+      "weak_luma_sinad": 14.297140938433449,
+      "strong_sinad": 7.765495776640834,
+      "strong_detail": 0.610220189774636
+    },
+    "PLL96-rejected-board": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 6816,
+      "weak_sinad": -6.121995340350981,
+      "weak_luma_sinad": -6.773148488229775,
+      "strong_sinad": -6.143245399386013,
+      "strong_detail": -0.447788468152818
+    },
+    "RANGE32": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 48,
+      "weak_sinad": 7.840524744312688,
+      "weak_luma_sinad": 18.761049514077296,
+      "strong_sinad": 10.783783431989406,
+      "strong_detail": 0.8204433236832679
+    },
+    "RNG-5cc14ad73003": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 18,
+      "weak_sinad": 8.084810534546742,
+      "weak_luma_sinad": 20.384683532140354,
+      "strong_sinad": 11.14198955783113,
+      "strong_detail": 0.834251170995329
+    },
+    "VLP56": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 3339,
+      "weak_sinad": 7.9073499116877715,
+      "weak_luma_sinad": 18.93347587146799,
+      "strong_sinad": 11.411610961772666,
+      "strong_detail": 0.8420025005523118
+    },
+    "floating-PLL-IQ40": {
+      "usable_cnr": 30,
+      "strong_eligible": false,
+      "weak_missing": 260,
+      "weak_sinad": 12.705915963033815,
+      "weak_luma_sinad": 23.73472352270933,
+      "strong_sinad": 17.729633644791196,
+      "strong_detail": 0.9722379945250109
+    }
+  },
+  "independent_final_executed": true,
+  "physical_video_acceptance": false,
+  "old_quality_guards_replaced_only_in_this_explicit_range_protocol": true
+}

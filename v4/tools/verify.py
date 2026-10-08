@@ -56,7 +56,7 @@ def main():
     assert "phy_rx_lab_try_actuator(afc_epoch.phy)" in video
     pipeline = (FIRMWARE / "pipeline.c").read_text()
     assert '"lane_mode"' in pipeline and '"force_ultra_v2"' not in pipeline
-    assert "mode = C5VRX4_LANES_FINE" in pipeline, "fixed fine must stay the default lane policy"
+    assert "mode = C5VRX4_LANES_ULTRAFINE" in pipeline, "fixed ultrafine is the operator default lane policy (2026-10-08)"
     # Native AGC acquisition mask: per-boot latch, no pacing while masking,
     # DC recentring refused (bank 3 is the hold identity plane).
     assert "static int8_t active = -1;" in pipeline and "!c5vrx4_agc_mask_active() && !s_suspend_depth" in pipeline

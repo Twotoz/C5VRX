@@ -68,13 +68,24 @@ int main(int argc, char **argv)
     if (argc > 1) saved_demod = atoi(argv[1]);
     unsigned expected = saved_demod >= 0 && saved_demod < C5VRX4_DEMOD_COUNT && saved_demod != C5VRX4_DEMOD_PLL96 ?
         (unsigned)saved_demod : saved_demod == C5VRX4_DEMOD_PLL96 ?
-        C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_RANGE32;
+        C5VRX4_DEMOD_OVP56 : default_demod();
+    /* Missing/invalid selections boot the confirmed PAIR LAB when present. */
+    if (saved_demod < 0 || saved_demod >= (int)C5VRX4_DEMOD_COUNT) {
+        int pair = -1;
+#if C5VRX4_RANGE_OPTION_COUNT
+        for (unsigned i = 0; i < C5VRX4_RANGE_OPTION_COUNT; ++i)
+            if (!strcmp(c5vrx4_range_options[i].model_id, "e2a8f30af45e") && c5vrx4_range_options[i].selectable)
+                pair = (int)(C5VRX4_DEMOD_RANGE_OPTION0 + i);
+#endif
+        assert(expected == (unsigned)(pair >= 0 ? pair : (int)C5VRX4_DEMOD_RANGE32));
+    }
 #if C5VRX4_RANGE_OPTION_COUNT
     if (expected >= C5VRX4_DEMOD_RANGE_OPTION0 &&
         !c5vrx4_range_options[expected - C5VRX4_DEMOD_RANGE_OPTION0].selectable)
         expected = C5VRX4_DEMOD_RANGE32;
 #endif
     assert(c5vrx4_demodulator() == expected);
+    assert(c5vrx4_lane_mode() == C5VRX4_LANES_ULTRAFINE && !strcmp(c5vrx4_lane_mode_name(), "fixed_ultrafine"));
     assert(c5vrx4_reference_demod());
     assert(c5vrx4_staged_gain_recovery());
     assert(!c5vrx4_dc_recenter_enabled() && !c5vrx4_agc_mask_active());

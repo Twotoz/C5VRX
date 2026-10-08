@@ -3,6 +3,7 @@
 #include "sdkconfig.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <inttypes.h>
 #include "driver/gptimer.h"
 #include "esp_attr.h"
@@ -30,12 +31,27 @@ static bool s_cvbs_loaded;
 static unsigned s_cvbs_mode;
 static bool s_level_loaded, s_level;
 
+/* Operator default, 2026-10-08: the independently confirmed PAIR RANGE LAB
+ * (found by model id, not table position). Without it, or once quarantined,
+ * new/invalid selections use board-proven RANGE32. Saved choices persist. */
+#define C5VRX4_DEFAULT_RANGE_MODEL "e2a8f30af45e"
+static unsigned default_demod(void)
+{
+#if C5VRX4_RANGE_OPTION_COUNT
+    for (unsigned i = 0; i < C5VRX4_RANGE_OPTION_COUNT; ++i)
+        if (c5vrx4_range_options[i].selectable &&
+            !strcmp(c5vrx4_range_options[i].model_id, C5VRX4_DEFAULT_RANGE_MODEL))
+            return C5VRX4_DEMOD_RANGE_OPTION0 + i;
+#endif
+    return C5VRX4_DEMOD_RANGE32;
+}
+
 unsigned c5vrx4_demodulator(void)
 {
     static int mode = -1;
     if (mode < 0) {
         nvs_handle_t h;
-        uint8_t value = C5VRX4_DEMOD_RANGE32;
+        uint8_t value = (uint8_t)default_demod();
         if (nvs_open("c5vrx4", NVS_READONLY, &h) == ESP_OK) {
             (void)nvs_get_u8(h, "ref_demod", &value);
             nvs_close(h);
@@ -43,7 +59,7 @@ unsigned c5vrx4_demodulator(void)
         /* PLL96 failed the operator's physical video/sync test. Quarantine
          * its persisted selection too; flashing must restore usable video. */
         mode = value == C5VRX4_DEMOD_PLL96 ? C5VRX4_DEMOD_OVP56 :
-            value < C5VRX4_DEMOD_COUNT ? value : C5VRX4_DEMOD_RANGE32;
+            value < C5VRX4_DEMOD_COUNT ? value : default_demod();
 #if C5VRX4_RANGE_OPTION_COUNT
         /* Failed board experiments must not survive in saved selections. */
         if (mode >= C5VRX4_DEMOD_RANGE_OPTION0 &&
@@ -121,13 +137,15 @@ uint8_t c5vrx4_lane_mode(void)
 {
     if (!s_lane_mode_loaded) {
         nvs_handle_t handle;
-        uint8_t mode = C5VRX4_LANES_FINE;
+        /* Operator default, 2026-10-08: fixed ultrafine (V5 lowers analog
+         * gain on folded IQ); fine and protected V5 remain Z choices. */
+        uint8_t mode = C5VRX4_LANES_ULTRAFINE;
         if (nvs_open("c5vrx4", NVS_READONLY, &handle) == ESP_OK) {
             (void)nvs_get_u8(handle, "lane_mode", &mode);
             nvs_close(handle);
         }
         /* The older force_ultra_v2 comparison key is deliberately ignored. */
-        s_lane_mode = mode <= C5VRX4_LANES_ADAPTIVE ? mode : C5VRX4_LANES_FINE;
+        s_lane_mode = mode <= C5VRX4_LANES_ADAPTIVE ? mode : C5VRX4_LANES_ULTRAFINE;
         s_lane_mode_loaded = true;
     }
     return s_lane_mode;

@@ -1,5 +1,28 @@
 # Isolated C5VRX-4 integration ledger
 
+## Operator-approved PAIR range LAB, 2026-10-08
+
+`docs/PAIR_RANGE_STUDY.md` records the PAIR4411 schedule: the decoder address
+holds the full first raw byte plus the I/Q sign bits of the second sample in
+the same 50-ns span; observations are learned offline (mean clean-carrier
+phasor per address). Eight slots, two bundles, two lookups, LUT16/2 KiB, raw
+RX40/raw32K, TX-only and DAC6 [D,D] are unchanged. Two completed1M searches
+(A: plain winner 5cc14 confirmed; C: PAIR e2a8 confirmed after envelope
+screens) plus negative state-conditioned, 75-ns cascade, 25-ns single-lookup,
+extra-fine-lane and direct LUT-polish results are retained. The operator
+approved pinning e2a8 as opt-in PAIR RANGE LAB value11; RANGE32 stays default,
+R returns to OVP56/RANGE32 and no board result exists yet. Direct Gain V5 is
+demod-independent; a host regression covers fixed-ultrafine fold recovery.
+Keep the lane profile explicit (`lane_profile.py`) and do not infer measured
+range or global optimality from synthetic confirmation.
+The operator then asked (same day) for PAIR plus fixed ultrafine to be the
+post-flash default. `default_demod()` selects the option with model id
+e2a8f30af45e when it is selectable, else RANGE32; quarantined saved options
+still restore RANGE32 and explicit saved choices persist. Missing/invalid
+`lane_mode` now means fixed ultrafine; Z still cycles fine/protected V5. This
+supersedes the 2026-10-04 fixed-fine default and the RANGE32 default above,
+before any PAIR board result; revert both if the flight test regresses.
+
 ## Operator-selected stable default, 2026-10-08
 
 The operator tested RANGE32+ on the C5, reported odd issues and said RANGE32

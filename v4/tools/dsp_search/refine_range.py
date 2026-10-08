@@ -13,6 +13,7 @@ import distill_overlay as D
 import refine_overlay as H
 import search_range as R
 import range_objective as J
+import lane_profile as Lp
 
 
 def main():
@@ -26,7 +27,7 @@ def main():
         refinement_screen_seed=seed+211,lsmr_cap=48,fits_per_base=6,blends=[.25,.5,1],
         refinement_source_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')},
         teacher_scope='received-IQ floating phase/frequency targets only during training; true CVBS output fit'))
-    lane='fine' if J.PROFILES[profile].get('fine_lane') else None
+    lane=Lp.LANE if J.PROFILES[profile].get('fine_lane') else None
     train=F.dataset(seed+111,lane);screen=R.cases(seed+211,lane);teacher=D.teachers(train)
     bases=[O.synthesize(r['params']) for r in json.loads((a.search/'frozen.json').read_text())['finalists']]
     pinned=json.loads((Path(__file__).parents[1]/'range32_model.json').read_text());bases.append(pinned)

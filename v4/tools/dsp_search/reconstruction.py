@@ -10,6 +10,7 @@ from scipy.sparse.linalg import LinearOperator,lsmr
 import overlay_fsm as O
 import engine as S
 import waveforms as V
+import lane_profile as L
 
 
 def dataset(seed,lane_model=None):
@@ -18,7 +19,7 @@ def dataset(seed,lane_model=None):
                              ('NTSC',5,1e6),('PAL',3,.5e6),('NTSC',3,1.5e6)]:
         for stressed in (False,True):
             for cnr in (6,30):
-                c=V.make_case(standard,seed,cnr,rms,short=True,stress=stressed,
+                c=V.make_case(standard,seed,cnr,L.scale(rms),short=True,stress=stressed,
                               cfo_hz=cfo,stimulus_seed=seed+100000,lane_model=lane_model)
                 for key in ('raw','clean','truth','region'):c[key]=c[key][65536:98304]
                 c['calibration']=V.M.clean_calibration(S.decode(c['clean'],baseline),c['truth'],3000)
@@ -28,7 +29,7 @@ def dataset(seed,lane_model=None):
 
 def operator(m,cases,strong_weight=8,regularization=.1,edge_weight=1):
     lut=np.array(m['lut'],np.uint16);p=m['params'];k=1024
-    ix=[O.indices(c['raw'],lut,p['token_bits'],p.get('context_bits',0),p.get('counter_phase',False)) for c in cases]
+    ix=[O.model_indices(c['raw'],m,lut) for c in cases]
     weights=[np.sqrt(strong_weight if c['cnr']>=20 else 1) for c in cases]
     norm=np.sqrt(np.maximum(sum(w*w*np.bincount(a,minlength=k) for a,w in zip(ix,weights)),1))
     windows=[];targets=[];sample_weights=[]
