@@ -257,5 +257,19 @@ int main(void)
     direct_gain_v3_reset(&v, &table, 81, 62);
     direct_gain_v3_enable_lanes(&v, 2);
     assert(v.lane == 2u && v.lane_cap == 2u);
+    /* A strong carrier folded by the small ultrafine window can show an
+     * ordinary P50 (host model, rms10 cells: P50 15, P95 99, rails 174 pm).
+     * Fixed lanes cannot escape, so the analog gain must come down. */
+    direct_gain_v3_sync_applied(&v, 81, 300000);
+    dg3_observation_t folded = {.p50=15, .p90=60, .p95=99, .origin_pm=69, .clip_pm=174,
+                                .coherence=56, .observed_us=300100};
+    uint8_t lowest = 81;
+    for (unsigned n = 0; n < 40; ++n, folded.observed_us += 1000) {
+        uint8_t gain = direct_gain_v3_tick(&v, &folded);
+        if (v.state == DG3_SETTLE && v.write_us == folded.observed_us)
+            direct_gain_v3_sync_applied(&v, gain, folded.observed_us);
+        if (gain < lowest) lowest = gain;
+    }
+    assert(lowest < 81 && v.lane == 2u && v.lane_changes == 0u);
     puts("PASS: protected lanes, freshness, severe coarse overload floor, stale drop refusal, zero-write clean tracking and fixed fine/ultrafine lanes");
 }
