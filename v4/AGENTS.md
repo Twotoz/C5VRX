@@ -10,8 +10,15 @@ RANGE MAX LAB failed the operator's board test (noisy/desynchronized);
 restoring RANGE32 immediately restored a good picture. Value8 is quarantined
 to RANGE32 and Y skips it. Also preserve strong-echo/PAL-recovery vetoes.
 RANGE BAL LAB passes independent synthetic confirmation; board acceptance
-is pending. `docs/SAFE_RANGE_STUDY.md` predeclares the next fresh search,
-with fine ADC at every stage and explicit waveform/burst/timing guards.
+is pending. `docs/SAFE_RANGE_STUDY.md` records four further completed
+million-vector fine-ADC searches, explicit waveform/burst/timing guards and
+45 real C5 assembler proofs. No new replacement qualifies: context/confidence/
+compact select the exact RANGE32 baseline; RNG-58c0e88fcba8 reduces synthetic
+weak misses but fails the frozen PAL V-timing and strong echo-detail gates.
+Keep it as research, not a selectable/promoted mode. The guarded snapshot
+geometry fix accepts rotated DMA descriptor lists; it is unflashed and no
+successful new live IQ capture is claimed. Preserve both small vetoes and
+the completed negative results rather than moving thresholds after outcomes.
 Do not start C5VRX-5 until the operator says to do so. Preserve
 value7/current RANGE32 and value4/OVP56 rollback, all live-writer gates,
 continuous raw DMA/state, fixed lanes and gain ownership. No merge authorized.

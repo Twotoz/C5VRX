@@ -1,0 +1,12 @@
+{
+  "profile": "safe_range",
+  "selected": "RNG-49c57570d609",
+  "confirmed_range_improvement": false,
+  "final": null,
+  "echo_fade": null,
+  "content_holdout": null,
+  "physical_video_acceptance": false,
+  "independent_final_executed": false,
+  "decision": "frozen winner is compiled-identical RANGE32; no strict improvement possible",
+  "baseline_sha256": "49c57570d60960f7fe2403a90de859accad36b70af05590602b7356e45b77494"
+}
