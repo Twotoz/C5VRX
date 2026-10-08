@@ -15,7 +15,10 @@ million-vector fine-ADC searches, explicit waveform/burst/timing guards and
 45 real C5 assembler proofs. No new replacement qualifies: context/confidence/
 compact select the exact RANGE32 baseline; RNG-58c0e88fcba8 reduces synthetic
 weak misses but fails the frozen PAL V-timing and strong echo-detail gates.
-Keep it as research, not a selectable/promoted mode. The guarded snapshot
+The operator subsequently explicitly requested a C5 board test of that exact
+candidate. It is pinned as RANGE32+ LAB/value10, an operator-authorized
+independent_range_tradeoff with both vetoes disclosed, not a confirmed/default
+replacement. Preserve value7 RANGE32 and R-to-OVP/RANGE32 rollback. The guarded snapshot
 geometry fix accepts rotated DMA descriptor lists; it is unflashed and no
 successful new live IQ capture is claimed. Preserve both small vetoes and
 the completed negative results rather than moving thresholds after outcomes.

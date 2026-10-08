@@ -163,6 +163,15 @@ optimality. Further promotion needs actual board/goggle evidence; the IQ
 export geometry fix remains unflashed and no valid new live IQ is claimed.
 C5VRX-5 remains deferred until the operator explicitly requests it.
 
+Subsequent operator instruction explicitly requests testing this exact
+near-miss on the C5. It is therefore pinned as **RANGE32+ LAB/value10** with
+status `independent_range_tradeoff`, both original vetoes preserved and physical
+acceptance pending. This is an explicit experimental board test, not a changed
+synthetic verdict or default promotion. Y cycles RANGE32/value7, BAL/value9
+and RANGE32+/value10, skipping failed MAX/value8. R from RANGE32+ restores
+OVP56; another R selects the known working RANGE32. No PHY/gain ownership,
+lane, DMA or live-writer behavior is changed by this opt-in.
+
 ## Reproduction
 
 From `v4/`, with NumPy/SciPy/Numba and BLAS threads fixed to1:
