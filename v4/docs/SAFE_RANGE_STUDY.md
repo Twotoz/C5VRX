@@ -53,6 +53,12 @@ RMSE may worsen by at most.1us. This revision precedes inspecting any new
 frozen-winner outcome; the search launch hashes and historical studies stay
 unchanged. Independent confirmation records the revised source hashes.
 
+Confirmation also reports spurious sync-like pulses (>=1us below the fixed
+sync threshold, farther than2us from every expected sync start), separately
+from missing true pulses and normalized by expected H lines. This diagnostic
+does not change the predeclared selection/gates. Neither pulse count proves
+goggle lock; real sync separators also depend on pulse shape and filtering.
+
 From `v4/`, with NumPy/SciPy/Numba and BLAS threads fixed to1:
 
 ```

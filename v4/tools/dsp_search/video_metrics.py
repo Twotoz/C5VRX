@@ -31,7 +31,14 @@ def dropout(y,c):
         j=np.clip(np.searchsorted(actual,expected),0,len(actual)-1);prev=np.maximum(j-1,0)
         error=np.minimum(abs(actual[j]-expected),abs(actual[prev]-expected))/40
         return float(np.percentile(np.minimum(error,2.025),95))
+    # A low missed-pulse count can coexist with many spurious sync-like
+    # excursions. Report these separately; they are not receiver lock proof.
+    if len(actual) and len(es):
+        j=np.clip(np.searchsorted(es,actual),0,len(es)-1);prev=np.maximum(j-1,0)
+        false=int(np.sum(np.minimum(abs(es[j]-actual),abs(es[prev]-actual))>80))
+    else:false=len(actual)
     return dict(h_expected=len(expected),max_h_gap=longest,expected_v_trains=expected_trains,
+                false_sync_pulses=false,false_sync_per_line=float(false/max(len(es[horizontal]),1)),
                 h_jitter_us=penalized(horizontal),v_jitter_us=penalized(broad))
 
 

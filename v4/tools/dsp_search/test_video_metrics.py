@@ -1,7 +1,7 @@
 """Missing sync must count as timing failure; recovering a train is improvement."""
 import unittest
 import numpy as np
-from video_metrics import waveform,relative_quality
+from video_metrics import waveform,relative_quality,dropout
 from leaderboard import frontier
 import waveforms as V
 
@@ -40,6 +40,20 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(bad['v_trains'],1)
         self.assertNotIn('vertical_trains',relative_quality(good,bad))
         self.assertIn('vertical_trains',relative_quality(bad,good))
+
+    def test_false_pulses_reported_even_when_no_true_sync_is_missing(self):
+        truth=np.zeros(16000)
+        truth[5000:5188]=-40;truth[10000:10188]=-40
+        case=dict(truth=truth,region=np.zeros(len(truth)),calibration=(0,1,0))
+        noisy=truth.copy();noisy[7500:7580]=-40
+        good=waveform(truth,case);bad=waveform(noisy,case)
+        self.assertEqual(good['false_sync_pulses'],0)
+        self.assertEqual(bad['h_missing'],0)
+        self.assertEqual(bad['false_sync_pulses'],1)
+        self.assertEqual(bad['false_sync_per_line'],.5)
+        # Without any expected sync, every detected excursion is spurious.
+        empty=dict(case,truth=np.zeros(len(truth)))
+        self.assertEqual(dropout(noisy,empty)['false_sync_pulses'],3)
 
     def test_frontier_preserves_independent_tradeoffs(self):
         rows=[dict(id=name,weak_sinad=w,weak_missing=m,strong_sinad=s)
