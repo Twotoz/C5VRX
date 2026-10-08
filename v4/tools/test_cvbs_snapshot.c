@@ -41,10 +41,19 @@ int main(void)
             size_t at=(p.offset+j)%sizeof(ring);
             assert(at<end || at>=end+active); /* never active RX memory */
         }
-        assert(c5v4_snapshot_current(end,end,10,p.safe_bytes,40000000));
-        assert(!c5v4_snapshot_current(end,end+1,10,p.safe_bytes,40000000));
-        assert(!c5v4_snapshot_current(end,end,51,p.safe_bytes,40000000));
-        assert(!c5v4_snapshot_current(end,end,1000,p.safe_bytes,40000000));
+        const size_t R=sizeof(ring),C=sizeof(copy);
+        /* No advance, fast copy: valid (as before). */
+        assert(c5v4_snapshot_current(R,C,0,active,10,p.safe_bytes,40000000));
+        /* Board copies of 65-234 us that move RX one or more descriptors
+         * ahead stay valid while RX is still outside the copied bytes. */
+        assert(c5v4_snapshot_current(R,C,4092,4092,234,p.safe_bytes,40000000));
+        assert(c5v4_snapshot_current(R,C,8184,4092,450,p.safe_bytes,40000000));
+        /* RX reaching the copied bytes, or a copy long enough to lap the
+         * ring unseen, is refused. */
+        assert(!c5v4_snapshot_current(R,C,R-C-4091,4092,100,p.safe_bytes,40000000));
+        assert(!c5v4_snapshot_current(R,C,0,active,600,p.safe_bytes,40000000));
+        assert(!c5v4_snapshot_current(R,C,0,active,1000,p.safe_bytes,40000000));
+        assert(!c5v4_snapshot_current(R,C,R,0,10,p.safe_bytes,40000000));
     }
     /* Lane-only switches were missing from the gain/PHY timestamp guard. */
     assert(c5v4_level_source_ready(10000,0,0,0,false));

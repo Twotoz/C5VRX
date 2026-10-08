@@ -270,9 +270,14 @@ bool video_copy_iq_snapshot(uint8_t *raw)
     memcpy(raw, s_raw_ring + plan.offset, plan.first);
     size_t rest = C5V4_LEVEL_SAMPLE_BYTES - plan.first;
     if (rest) { sync_dma_m2c(s_raw_ring, rest); memcpy(raw+plan.first, s_raw_ring, rest); }
-    uint32_t after = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
-    return c5v4_snapshot_current(before, after,
-        (uint64_t)(esp_timer_get_time()-start), plan.safe_bytes, IQ_RATE_HZ);
+    uint64_t elapsed = (uint64_t)(esp_timer_get_time()-start);
+    int later = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count,
+                                AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val);
+    if (later < 0) return false;
+    size_t after_start = (size_t)(s_rx_dscr_nodes[later].buffer - s_raw_ring);
+    size_t advanced = (after_start + total - end) % total;
+    return c5v4_snapshot_current(total, C5V4_LEVEL_SAMPLE_BYTES, advanced,
+        s_rx_dscr_nodes[later].length, elapsed, plan.safe_bytes, IQ_RATE_HZ);
 }
 
 void cvbs_level_task(void *arg)

@@ -26,11 +26,22 @@ static inline bool c5v4_snapshot_plan(size_t ring, size_t active_offset,
     out->safe_bytes = ring-bytes-active_bytes;
     return true;
 }
-static inline bool c5v4_snapshot_current(uint32_t before, uint32_t after,
-    uint64_t elapsed_us, size_t safe_bytes, unsigned rate)
+/* The copy ends where the active descriptor began; RX may keep writing ahead
+ * of it. `advanced` is the forward distance from that start to the start of
+ * the descriptor active after the copy, `after_bytes` that descriptor's
+ * length: everything RX can have touched lies inside them. The copy is valid
+ * if that span never reaches the copied bytes (ring - copied), and the copy
+ * time with a 10 % margin could not have lapped the ring unseen (safe_bytes,
+ * about 512 us at IQ40). The former <=50 us/no-advance rule refused every
+ * board copy (65-234 us under observer load, 2026-10-08) although RX still
+ * had ~512 us to go before reaching the copied bytes. */
+static inline bool c5v4_snapshot_current(size_t ring, size_t copied,
+    size_t advanced, size_t after_bytes, uint64_t elapsed_us,
+    size_t safe_bytes, unsigned rate)
 {
-    return rate && before == after && elapsed_us <= 50 &&
-        elapsed_us * rate < (uint64_t)safe_bytes * 1000000u;
+    return rate && copied < ring && advanced < ring && after_bytes <= ring &&
+        advanced + after_bytes <= ring - copied &&
+        elapsed_us * rate * 11u < (uint64_t)safe_bytes * 10000000u;
 }
 /* 205 us of IQ plus <=103 us completed-descriptor age; leave settling margin.
  * Lane routing has its own timestamp: it is not an RF gain write. */
