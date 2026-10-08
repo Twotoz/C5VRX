@@ -13,6 +13,7 @@ import validate_overlay as V
 import waveforms as W
 from video_metrics import burst
 from validate_recovery import recovery
+from refine_overlay import digest
 
 CNRS=(0,2,4,6,8,10,12,14,18,22,30)
 PINNED=json.loads((Path(__file__).parents[1]/'range32_model.json').read_text())
@@ -95,6 +96,15 @@ def main():
     eligible=[m for m in models if selected[m['name']]['strong_eligible']]
     winner=min(eligible,key=lambda m:rank(selected[m['name']])) if eligible else None
     S.save(a.output/'frozen_winner.json',dict(winner=winner,selection=selected,no_reselection=True))
+    if winner and digest(winner)==digest(PINNED):
+        # Same compiled LUT and schedule on identical inputs cannot strictly
+        # improve over itself. Do not spend fresh holdouts comparing duplicates.
+        S.save(a.output/'summary.json',dict(profile=profile,selected=winner['name'],
+            confirmed_range_improvement=False,final=None,echo_fade=None,content_holdout=None,
+            physical_video_acceptance=False,independent_final_executed=False,
+            decision='frozen winner is compiled-identical RANGE32; no strict improvement possible',
+            baseline_sha256=digest(PINNED)))
+        return
     chosen=[winner] if winner else [];final=[]
     for seed in p['final_seeds']:final+=evaluate(chosen,profile,seed,CNRS,'final')
     Q.write_rows(a.output/'final.csv',final);nominal=aggregate(final)
@@ -145,6 +155,7 @@ def main():
     S.save(a.output/'summary.json',dict(profile=profile,selected=winner['name'] if winner else None,
         confirmed_range_improvement=bool(accepted),final=nominal,echo_fade=stressed,
         content_holdout=aggregate(content) if content else None,
+        independent_final_executed=True,
         physical_video_acceptance=False,old_quality_guards_replaced_only_in_this_explicit_range_protocol=True))
 
 

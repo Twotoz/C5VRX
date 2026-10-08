@@ -50,6 +50,13 @@ are bounded at2.025us rather than treated as zero. The common usable screen,
 independent final seeds, offset/fade/outage tests and frozen-winner/no-runner-up
 rule remain unchanged. Selection data never becomes final confirmation data.
 No method is promoted or flashed automatically after synthetic success.
+If selection freezes the exact existing RANGE32 LUT/schedule, it cannot
+strictly outperform itself on matched inputs. The validator now records that
+identity rejection and skips duplicate final simulations. It does not replace
+the winner with a runner-up or label selection rows as final confirmation.
+Already started validators may finish the equivalent explicit comparison;
+their original source hashes distinguish that path. Neither counts as a new
+confirmed model.
 
 Before any finalist freeze, at2026-10-08 08:53:54UTC, an additional content
 holdout was registered while the searches were running. It uses zone plates,
