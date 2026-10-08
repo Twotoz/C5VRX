@@ -144,3 +144,33 @@ python validate_range.py --search /fresh/c-refined --output /fresh/c-confirmed
 python ../prove_range_finalists.py /fresh/c-refined/frozen.json --idf $IDF_PATH --output /fresh/c-proof
 python test_pair.py
 ```
+
+## zerowidth/C5VRX PR #3 review (2026-10-08)
+
+Credit: zerowidth/C5VRX PR #3, `docs/p4-receiver-findings.md` (head
+5652b347), C5 + P4 receiver measurements. Each finding was checked against
+this standalone RX40 path rather than assumed to transfer.
+
+- **Interference bursts (built).** Wi-Fi bursts of 0.1-0.5 ms clipping every
+  sample held his weak carrier 20+ steps low. In the V5 host model a weak
+  edge carrier at G83 fell to G20 (10 writes, 49 overloads in 240 ms).
+  V5 now counts saturation only after 1 ms (`DG3_BURST_US`); the burst
+  regression keeps G83 with zero writes and persistent overload still drops.
+  The operator's board (old firmware, no VTX, 72 min) logged 4,530 V5 writes,
+  consistent with but not proof of burst-driven drops; `bursts_ignored` now
+  reports it.
+- **Gain table limit 77 (not applicable).** His decode used the 2.4 GHz spans
+  that PR #174 corrected here. The board reports table_max 83 and 0 clip_pm at
+  G83 without a VTX.
+- **DC offset at high gain (measured, no change).** Board, fixed ultrafine,
+  G83: I -0.23, Q +0.04 cells with per-gain hardware DCO active, small
+  against the edge noise radius (~1.7 cells).
+- **Fourth-difference sampling test (not ported).** On the host lane model with
+  the board's ~19.4 MHz filter, clean and mixed 4-bit reads scored alike
+  (noise 36.7 vs 35.0; carrier 11.3 vs 10.7): his criterion relies on an
+  almost empty band above ~10 MHz (802.11p filter) and 7-bit lanes. The
+  existing check reports settled/0 ppm. Porting needs real IQ, currently
+  blocked because guarded snapshots refuse copies of 65-234 us (>50 us).
+- **802.11p, despeck, sync slicer, click handling:** the fixed calibrated
+  filter and edge gear already cover the filter result; the others belong to
+  his software decoder, not the analog goggle path.
