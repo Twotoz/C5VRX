@@ -35,14 +35,15 @@ unsigned c5vrx4_demodulator(void)
     static int mode = -1;
     if (mode < 0) {
         nvs_handle_t h;
-        uint8_t value = C5VRX4_DEMOD_OVP56;
+        uint8_t value = C5VRX4_DEMOD_RANGE32;
         if (nvs_open("c5vrx4", NVS_READONLY, &h) == ESP_OK) {
             (void)nvs_get_u8(h, "ref_demod", &value);
             nvs_close(h);
         }
         /* PLL96 failed the operator's physical video/sync test. Quarantine
          * its persisted selection too; flashing must restore usable video. */
-        mode = value < C5VRX4_DEMOD_COUNT && value != C5VRX4_DEMOD_PLL96 ? value : C5VRX4_DEMOD_OVP56;
+        mode = value == C5VRX4_DEMOD_PLL96 ? C5VRX4_DEMOD_OVP56 :
+            value < C5VRX4_DEMOD_COUNT ? value : C5VRX4_DEMOD_RANGE32;
 #if C5VRX4_RANGE_OPTION_COUNT
         /* Failed board experiments must not survive in saved selections. */
         if (mode >= C5VRX4_DEMOD_RANGE_OPTION0 &&

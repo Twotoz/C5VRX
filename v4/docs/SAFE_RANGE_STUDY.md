@@ -213,3 +213,25 @@ decision. If none qualify individually, skip this comparison and retain RANGE32.
 python tools/dsp_search/compare_safe_range.py --confirmed /fresh/plain-confirmed /fresh/context-confirmed /fresh/confidence-confirmed /fresh/compact-confirmed --output /fresh/shared
 python tools/dsp_search/validate_range.py --search /fresh/shared --output /fresh/shared-confirmed
 ```
+
+
+## Subsequent physical result and stable default
+
+On 2026-10-08 the operator tested RANGE32+ on the C5 and reported odd issues,
+with RANGE32 more stable, then explicitly requested RANGE32 as the standard.
+The flashed test source was `9155cf7bffb030eed151b4549f1cd048e993d8b3`,
+version `4.0.0-alpha-range32plus`, model `58c0e88fcba8`.
+Flash verification succeeded for bootloader, partition table and app, without
+NVS/PHY erasure. Runtime confirmed the exact model and safe writer gates.
+The activation helper's overly long ELF-prefix assertion failed because IDF
+prints only `bbae5e521...`; the app and running firmware were present.
+This was an assertion mismatch, not a failed flash.
+
+RANGE32 was restored and saved, with runtime heartbeats and writer gates
+verified. RANGE32+ is now disabled: saved value10 falls back to RANGE32 and Y
+skips it. Its formula and all original frozen vetoes remain archived.
+RANGE32/value7 is now the new/missing/invalid-NVS default at the operator's
+request; explicit saved working selections are preserved. The original failed
+PLL96/value5 continues to fall back to OVP56/value4. OVP56 remains available
+as a manual rollback. The physical feedback is qualitative, with no calibrated
+RF C/N or measured range claim and no new successful IQ capture.

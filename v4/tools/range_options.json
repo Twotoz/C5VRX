@@ -3249,14 +3249,15 @@
       },
       "sha256": "58c0e88fcba8a27cdc4c6f5307aed1c48fa12e917d431ab8b0b70b7f4dd21d5b",
       "status": "independent_range_tradeoff",
-      "selectable": true,
+      "selectable": false,
       "vetoes": [
         "PAL C/N10 seed70401 V timing p95 0.50625us exceeds frozen 0.5us bound; tested usable threshold12 versus RANGE32 10",
         "PAL strong echo detail correlation loss0.032195 exceeds frozen0.03 bound"
       ],
       "evidence": "docs/data/safe_range/plain/confirmation/summary.json",
       "physical_acceptance": false,
-      "operator_authorized_physical_test": "2026-10-08: user explicitly requested testing this candidate on the C5; no default promotion"
+      "operator_authorized_physical_test": "2026-10-08: user explicitly requested testing this candidate on the C5; no default promotion",
+      "physical_result": "2026-10-08: operator reports odd issues and RANGE32 is more stable; quarantine value10 to RANGE32 and skip it in Y cycle"
     }
   ]
 }

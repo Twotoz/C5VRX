@@ -1,5 +1,21 @@
 # Isolated C5VRX-4 integration ledger
 
+## Operator-selected stable default, 2026-10-08
+
+The operator tested RANGE32+ on the C5, reported odd issues and said RANGE32
+is more stable, explicitly requesting RANGE32 as the standard setting.
+This supersedes earlier OVP56-default and RANGE32+-selectable instructions:
+new/missing/invalid saved selections use RANGE32/value7. Explicit saved working
+modes remain respected; failed original PLL96/value5 still falls back to OVP56.
+RANGE32+/value10 is now quarantined to RANGE32 and skipped by Y, like failed
+MAX/value8. Preserve its model and original independent synthetic vetoes as
+negative evidence. OVP56/value4 remains an explicit rollback option.
+The board was restored to persisted RANGE32 after this feedback. The rotated
+snapshot geometry fix was included in the flashed 9155cf7 firmware; no new
+successful actual IQ capture is claimed. Do not infer calibrated range from
+operator feedback, and do not start C5VRX-5 or merge PR187.
+
+
 ## Operator-authorized range-priority options
 
 `docs/RANGE_PRIORITY_STUDY.md` records the new explicit range-over-detail
