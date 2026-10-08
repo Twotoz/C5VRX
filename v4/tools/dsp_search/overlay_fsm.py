@@ -84,6 +84,13 @@ def synthesize(p):
     rmean=np.divide(np.bincount(encoder,weights=radius,minlength=n),occupancy,
                     out=np.ones(n),where=occupancy>0)
     reliability=np.clip(rmean/float(p['radius_scale']),float(p['confidence_floor']),1)[None,:]
+    # Noise shrinks the mean phase-detector output (Bussgang); a first-order
+    # loop passes that straight into smaller video and shallower sync. With
+    # `unbias` > 0 the correction is divided by the token's mean reliability
+    # (learned phasor length or radius), restoring its expected size.
+    unbias=float(p.get('unbias',0.))
+    if not 0<=unbias<=1:raise ValueError('unbias outside 0..1')
+    expansion=np.clip(rmean/float(p['radius_scale']),.2,1)[None,:]**(-unbias)
     if groups==1:reliability=np.ones((1,n))
     if frequencies==1:freq=np.array([float(p['centre_hz'])])
     else:freq=np.linspace(float(p['low_hz']),float(p['high_hz']),frequencies)
@@ -98,6 +105,7 @@ def synthesize(p):
     error=(observed-predicted+np.pi)%(2*np.pi)-np.pi
     limit=float(p['limit']);mode=p['error_function']
     innovation=error if mode=='linear' else np.clip(error,-limit,limit) if mode=='clip' else np.sin(error) if mode=='sine' else limit*np.tanh(error/limit)
+    innovation=innovation*expansion
     gain=float(p['kp'])*reliability
     if p.get('adaptive'):
         gain=np.clip(gain*(1+float(p['adaptation'])*abs(error)/np.pi),0,1.8)

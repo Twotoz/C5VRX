@@ -29,19 +29,34 @@ CATEGORICAL={'error_function':('linear','clip','sine','tanh'),'adaptive':(False,
              'reconstruction':('innovation','advance','quantized_advance','mixed_advance')}
 DECODERS=[('4411',mix,seed) for mix in ('uniform','weak','strong') for seed in (0,1)]
 PLAIN=-1
+# Amplitude mode (recorded in the protocol, default off): first-order trackers
+# shrink video and sync depth under noise; this mode also searches
+# phase x frequency (second-order) allocations down to 8 phases/8 tokens,
+# adds the unbiased-innovation parameter and penalizes weak-signal sync-depth
+# and contrast loss in the objective.
+AMP=os.environ.get('C5VRX4_AMPLITUDE','0')=='1'
+if AMP:CONTINUOUS['unbias']=(0,1,'lin')
 # Extra C/N3..4 weak cases (recorded in the protocol; default off).
 EDGE=os.environ.get('C5VRX4_EDGE_SCREEN','0')=='1'
+
+
+def amplitude_objective(r):
+    """Weak-signal sync depth and contrast in the objective (amplitude mode)."""
+    if r is None or not AMP:return r
+    r=dict(r,base_score=r['score'])
+    r['score']=r['score']-.5*r['weak_sync_error']-.2*max(0.,95.-r['weak_contrast'])
+    return r
 
 
 def topologies():
     result=[]
     for decoder in [PLAIN,*range(len(DECODERS))]:
-        for b in (4,5,6):
+        for b in ((3,4,5,6) if AMP else (4,5,6)):
             states=1<<(10-b)
-            for phases in (16,32,64):
+            for phases in ((8,16,32,64) if AMP else (16,32,64)):
                 if phases>states:continue
                 for groups in (1,2,4):
-                    if (1<<b)//groups<16:continue
+                    if (1<<b)//groups<(8 if AMP else 16):continue
                     if decoder==PLAIN and groups>1 and b<5:continue
                     result.append((decoder,b,phases,groups))
     return result
@@ -153,7 +168,7 @@ def evaluate(genome):
     values,_=S.tone_stats(O.model_codes(STATE['tone'],m),S.F.LEVELS)
     if not (np.max(abs(values-STATE['means']))<=5 and np.corrcoef(values,STATE['means'])[0,1]>.98):
         return key,None,'tone_rejected'
-    r=R.score(m,STATE['cases'],'safe_range')
+    r=amplitude_objective(R.score(m,STATE['cases'],'safe_range'))
     return key,r,'eligible' if r else 'strong_rejected'
 
 
@@ -231,7 +246,7 @@ def main():
     bank=[];training=[]
     for layout,mix,seed in DECODERS:
         vectors,info=P.learn(layout,a.seed_base+601+seed,mix);bank.append(vectors);training.append(info)
-    S.save(a.output/'protocol.json',dict(profile='safe_range',evaluations=a.evaluations,workers=a.workers,
+    S.save(a.output/'protocol.json',dict(profile='safe_range_amp' if AMP else 'safe_range',amplitude_mode=AMP,evaluations=a.evaluations,workers=a.workers,
         config_seed=a.seed_base+101,screen_seed=a.seed_base+201,second_screen_seed=a.seed_base+251,
         selection_seed=a.seed_base+301,final_seeds=[a.seed_base+401,a.seed_base+402],stress_seed=a.seed_base+501,
         decoder_training=training,topologies=TOPOLOGIES,lane_profile=__import__('lane_profile').record(),edge_screen=EDGE,
@@ -260,7 +275,7 @@ def finalize(output,workers,bank,seed_base,interrupted=False):
     for key,score,genome,metrics in candidates:
         if key in done:continue
         done.add(key);p=params(genome,bank,a.seed_base);m=O.synthesize(p)
-        again=R.score(m,second,'safe_range')
+        again=amplitude_objective(R.score(m,second,'safe_range'))
         if again:rows.append(dict(id=key,params=p,metrics=metrics,second=again,
                                   topology=TOPOLOGIES[genome['topology']],
                                   combined=float((score+again['score'])/2)))

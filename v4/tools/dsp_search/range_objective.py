@@ -16,6 +16,10 @@ PROFILES={
                       reference_guard=True,reference_loss=1,detail_loss=.03,
                       weak_width_weight=2,weak_jitter_weight=2,fine_lane=True,burst_guard=True),
 }
+# Same guards; independent confirmation additionally requires weak-signal
+# sync depth and contrast no worse than the matched control (predeclared
+# 2026-10-08 before any amplitude-mode outcome).
+PROFILES['safe_range_amp']=dict(PROFILES['safe_range'],amplitude_gate=True)
 LOWPASS=sg.butter(2,700000,fs=40000000,output='sos')
 
 
@@ -79,4 +83,6 @@ def summary(rows):
                 strong_eligible=bool(strong) and all(not r['quality_failures'] for r in strong),
                 weak_missing=sum(r['h_missing']+r['v_missing'] for r in weak),
                 weak_sinad=mean(weak,'sinad'),weak_luma_sinad=mean(weak,'luma_sinad'),
+                weak_sync_error=float(np.mean([abs(r['sync_error_ire']) for r in weak])) if weak else None,
+                weak_contrast=mean(weak,'contrast'),
                 strong_sinad=mean(strong,'sinad'),strong_detail=mean(strong,'detail_corr'))

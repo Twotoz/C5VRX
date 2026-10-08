@@ -70,6 +70,8 @@ def score(m,prepared,profile):
     return dict(score=luma-1.5*missing-guard.get('weak_width_weight',0)*width-guard.get('weak_jitter_weight',0)*jitter,
                 weak_sinad=sinad,weak_missing=missing,
                 weak_luma_sinad=luma,strong_sinad=float(np.mean([r['sinad'] for r in strong])),
+                weak_sync_error=float(np.mean([abs(r['sync_error_ire']) for r in weak])),
+                weak_contrast=float(np.mean([r['contrast'] for r in weak])),
                 detail=float(np.mean([r['detail_corr'] for r in strong])))
 
 

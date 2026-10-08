@@ -30,7 +30,8 @@ def assess(item):
     import overlay_fsm as O
     R=STATE['R'];key,params=item;m=O.synthesize(params);passes=0;scores=[];weak=[]
     for cases in STATE['screens']:
-        r=R.score(m,cases,'safe_range')
+        import search_pair_range as Q
+        r=Q.amplitude_objective(R.score(m,cases,'safe_range'))
         if r:passes+=1;scores.append(r['score']);weak.append((r['weak_luma_sinad'],r['weak_missing'],r['strong_sinad'],r['detail']))
     mean=np.mean(weak,axis=0).tolist() if weak else None
     return dict(id=key,passes=passes,score=float(np.mean(scores)) if scores else None,
@@ -51,7 +52,7 @@ def main():
     import lane_profile as L
     for directory in a.search:
         p=json.loads((directory/'protocol.json').read_text())
-        if p.get('edge_screen',False)!=Q.EDGE or p.get('lane_profile',dict(lane='fine',nominal_rms=3.))!=L.record():
+        if p.get('edge_screen',False)!=Q.EDGE or p.get('amplitude_mode',False)!=Q.AMP or p.get('lane_profile',dict(lane='fine',nominal_rms=3.))!=L.record():
             ap.error('search used another screen/lane profile')
     seeds=[base+811+10*i for i in range(6)];items={};origin={}
     for directory in a.search:

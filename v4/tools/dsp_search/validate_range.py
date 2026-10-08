@@ -61,6 +61,11 @@ def rank(r):
     return (r['usable_cnr'] if r['usable_cnr'] is not None else 999,r['weak_missing'],-r['weak_luma_sinad'])
 
 
+def amplitude_ok(candidate,control):
+    return (candidate['weak_sync_error']<=control['weak_sync_error'] and
+            candidate['weak_contrast']>=control['weak_contrast'])
+
+
 def confirms(candidate,control):
     # Same usable definition and new independent data for both. Weak luma gain
     # alone cannot qualify when threshold or synchronization deteriorates.
@@ -126,6 +131,8 @@ def main():
             content+=evaluate(chosen,profile,p['stress_seed']+60+i,(6,10,30),'content_holdout',pattern=pattern)
         Q.write_rows(a.output/'content.csv',content)
     accepted=bool(winner and confirms(nominal[winner['name']],nominal['RANGE32']))
+    if winner and J.PROFILES[profile].get('amplitude_gate'):
+        accepted &= amplitude_ok(nominal[winner['name']],nominal['RANGE32'])
     if winner:
         new=stressed[winner['name']];old=stressed['RANGE32']
         accepted &= (new['strong_eligible'] and new['weak_missing']<=old['weak_missing'] and
