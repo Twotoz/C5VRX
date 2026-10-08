@@ -1,4 +1,22 @@
 {
+  "reference_gain_recovery_comparison": {
+    "canonical": "https://github.com/Twotoz/C5VRX",
+    "reference_revision": "69dfd683f534ec1663ecb2cf7645dea38ca05348",
+    "reference_path": "main/direct_gain_v3.c",
+    "modifications": "staged #182 recovery applies to all span50 selections; direct gain only; manual/native remain owners",
+    "evidence": "host regression failed before and passes after; physical range acceptance pending"
+  },
+  "reference_demodulator_donor": {
+    "repository": "https://github.com/zerowidth/C5VRX",
+    "revision": "69dfd683f534ec1663ecb2cf7645dea38ca05348",
+    "canonical": "https://github.com/Twotoz/C5VRX",
+    "paths": [
+      "main/fm_phase8_hr_live.bsasm",
+      "main/fm.bsasm"
+    ],
+    "modifications": "provenance comments only; opt-in V4 transport selection with span75-consumer exclusions",
+    "evidence": "source-driven endpoint pairs; hardware acceptance pending"
+  },
   "base_main": "b8d32b90f479feff7fbb34e6ca01cc9ba2d0d697",
   "runtime_donor": "f1d4167406c68b6fe1694b875697f36c76c0aa87",
   "afc_donor": "33a8c0b30807a0380e394d5e65954bc45dcb3dd5",
@@ -76,7 +94,7 @@
     },
     {
       "number": 130,
-      "title": "feat: range work — lanes with noise cap, BW gear, gain fixes, HC demodulator (opt-in)",
+      "title": "feat: range work \u2014 lanes with noise cap, BW gear, gain fixes, HC demodulator (opt-in)",
       "sha": "d7c93e1408e698fe337a163fe49d0558ddcc256b",
       "merged": true,
       "disposition": "inherited current-main runtime; later implementations supersede historical defaults"
@@ -333,5 +351,51 @@
       "merged": true,
       "disposition": "inherited current-main runtime; later implementations supersede historical defaults"
     }
-  ]
+  ],
+  "pair_fm_stacked_pr": {
+    "base_pr": 183,
+    "base_revision": "c667dfd8f07f327a291bdcd903e9961ba3c94f9d",
+    "canonical": "https://github.com/Twotoz/C5VRX",
+    "programs": [
+      "firmware/programs/c5vrx4_vlp56.bsasm",
+      "firmware/programs/c5vrx4_hc50.bsasm"
+    ],
+    "recovery_donor": {
+      "pr": 182,
+      "author": "Louis Hitchcock",
+      "repository": "LouisHitchcock/C5VRX",
+      "revision": "784bbe6d625ab17ec115a7d0d1da57a1c45dcd26"
+    },
+    "evidence": "source-driven host regressions and synthetic held-out video; VLP56 board acceptance pending"
+  },
+  "staged_gain_pr184": {
+    "repository": "https://github.com/LouisHitchcock/C5VRX",
+    "pull_request": "https://github.com/Twotoz/C5VRX/pull/184",
+    "revision": "fa47bed64faa130c88e93da4cf2781a65f2e0abf",
+    "author": "Louis Hitchcock",
+    "paths": [
+      "v4/docs/STAGED_GAIN_SPAN50.md",
+      "v4/firmware/pipeline.c",
+      "v4/firmware/include/c5vrx4.h",
+      "v4/main/direct_gain_v3.c",
+      "v4/main/direct_gain_v3.h",
+      "v4/tools/test_integration.c"
+    ],
+    "modifications": "independent always-on staged gain hook; core/tests already imported from #182; preserve removed OSD timeout and isolated native programs",
+    "evidence": "operator-accepted Unwrap75 STD150 with flywheel off, R3/5732 MHz, app SHA256 prefix 9dfaa8ea60e9c27e, preserved NVS; not HC50/VLP56 acceptance or measured dB"
+  },
+  "optimized_pair_demod": {
+    "canonical": "https://github.com/Twotoz/C5VRX",
+    "extends": "C5VRX by Twotoz/contributors; pinned VLP56 encoder, Phase8/HC50 source models, detector_study designs/designs2",
+    "paths": [
+      "v4/tools/compile_pair_demod.py",
+      "v4/tools/detector_study/optimize_pair.py",
+      "v4/tools/detector_study/optimize_video.py",
+      "v4/tools/detector_study/optimize_tracking.py",
+      "v4/tools/detector_study/optimize_levels.py",
+      "v4/tools/ovp56_codebook.json"
+    ],
+    "modifications": "local joint encoder search, filtered-video table fit, bounded DAC solver and absolute level constraints; OVP56 selectable value4, absent/invalid default; VLP56 retained value3",
+    "evidence": "synthetic frozen confirmation 911-913, complete raw-pair source regression; best eligible for stated edge objective, not globally optimal, board/range acceptance pending"
+  }
 }

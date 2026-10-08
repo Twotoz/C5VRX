@@ -12,9 +12,60 @@ The active V4 project lives under `v4/`; merge requires the
 operator's explicit approval. Building and publishing a PR alpha is independent
 of merging. The V4 alpha workflow and flasher build this project independently.
 
+## Offline optimized demod
+
+OVP56 is the best eligible weak-signal model found by the hardware-constrained
+search, with clean absolute DAC-level guards. It retains the VLP56 encoder and
+uses a bounded, video-filter-aware optimized table. The independent confirmation
+shows modest gains at 0-4 dB C/N and some losses at 6-14 dB; it is not a global
+optimum or a measured range gain. Joint encoders, midpoint and stateful models
+were tested and rejected where they lost quality. See
+[docs/DEMOD_OPTIMIZER.md](docs/DEMOD_OPTIMIZER.md) for the optimizer, seeds,
+per-scenario results, negative findings, numerical scope and reproduction.
+
+A separate [broad architecture search](docs/BROAD_DEMOD_SEARCH.md) explores
+62 LUT8 layouts and thousands of quantizers without a VLP initialization or
+transfer constraint. Its results are offline evidence, not automatic firmware
+promotion. Unwrap75 is included as a matched-stream reference.
+
 ## Receiver contract
 
-### Current code layout
+This branch is a pair-FM experiment stacked on PR #183. New/invalid NVS demod
+selection boots **OVP56**. Existing `ref_demod` values 0/1/2/3 select
+HC50/HR50/Golden50/VLP56. In **SETUP -> DEMOD (REBOOT)** or with serial `g`, cycle
+HC50 -> HR50 -> Golden50 -> VLP56 -> OVP56 -> HC50. A mode change saves NVS and reboots;
+one `g` from OVP56 returns to HC50. Ordinary menu exit reloads the selected
+program. The OSD stays open until closed manually.
+
+All five modes use raw Q4/I4 RX40 -> raw32K ring -> TX BitScrambler -> six-bit
+[D,D] physical DAC40, with two bundles and unique CVBS20. VLP56 uses one 2-KiB
+8-bit LUT for a 56-code IQ encoder and 28x56 direct frequency/DAC pair map.
+The pinned table/generator and host/board evidence boundaries are documented
+in [docs/PAIR_DEMOD_STUDY.md](docs/PAIR_DEMOD_STUDY.md).
+
+The staged direct-gain overload recovery from Louis Hitchcock's
+[PR #182](https://github.com/Twotoz/C5VRX/pull/182), commit `784bbe6`, applies to
+all five modes: physical reductions rather than the immediate hard-G20 drop,
+settling exclusion, staged upward recovery and maximum listening on real loss.
+Manual/native gain ownership is preserved. The independent always-on recovery
+hook and corrected board evidence come from Louis' [PR #184](https://github.com/Twotoz/C5VRX/pull/184).
+His accepted #183/#184 test actually ran Unwrap75 STD150 with flywheel off,
+because the old build generator overwrote HC50. It does not establish HC50 or
+VLP56 acceptance. See [docs/STAGED_GAIN_SPAN50.md](docs/STAGED_GAIN_SPAN50.md).
+Donor HR50/Golden instructions and LUTs retain zerowidth/C5VRX `69dfd683`
+provenance. See [docs/V3_BENCHMARK.md](docs/V3_BENCHMARK.md).
+
+Span75-specific semantic sync, AUTO AFC/search, mask/history, flywheel/line
+repair, idle raster and live level/DC LUT writers are unavailable with these
+programs. The menu shows N/A and retains previous NVS preferences. The VLP56
+program uses its pinned study transfer; old `M`/CVBS transfer choices do not
+apply. Check output sync depth/offset on the actual DAC/goggles and test other
+VTX frequency deviations/carrier offsets before claiming improved RF range.
+
+Subsequent Unwrap75 details are retained historical runtime documentation;
+the active two-bundle contract above takes precedence in this stacked build.
+
+### Code layout
 
 The standalone project is organized as follows:
 
@@ -32,7 +83,7 @@ the previous 8,765-line C5VRX-3/V4 implementation is split by ownership:
 
 | Modules | Responsibility |
 | --- | --- |
-| `video_transport.c` | Raw DMA ring, PARLIO and current three-bundle programs |
+| `video_transport.c` | Raw DMA ring, PARLIO and selectable two-bundle programs |
 | `video_gain.c` | Direct Gain V5 observer, sentinel and gain/BW writes |
 | `video_control.c`, `video_settings.c` | Buttons, scanner, AFC, NVS and native ownership |
 | `video_menu.c`, `video_idle.c` | Standalone menu/idle TX and optional flywheel |
@@ -53,7 +104,7 @@ Git history. The unused 6-ms Fusion task and 4,096-byte stack are gone.
 Only Direct Gain V5 and opt-in native AGC remain as gain owners. Old profile
 bytes migrate to V5 without changing the 14-byte v3/v4 settings layout. `N` and
 `X` toggle native AGC with a reboot; `D` resets V5 controls. Removed research keys:
-`g`, `F`, `G`, `U`, `S`, `R`, `I`, `Y`, `i`, `z`, and `1` through `6`.
+`F`, `G`, `U`, `S`, `R`, `I`, `Y`, `i`, `z`, and `1` through `6`.
 The lab-row output omits stale Fusion/FFT fields that are no longer measured.
 Existing boot-option opt-outs, automatic calibrations and PHY write guards stay.
 
@@ -63,7 +114,7 @@ longer run in this target; scanner classification tests remain. Firmware builds
 and host tests do not replace a board test of menu/idle handoffs, retuning, native
 AGC, calibration and live video after the refactor.
 
-### Live pipeline
+### Historical Unwrap75 pipeline (inactive in this branch)
 
 - MODEM_DIAG packed Q4/I4, positive-edge PARLIO RX at 40 MS/s, raw cyclic ring.
 - TX-only Phase8 endpoint decode plus middle-sample quadrant winding; exactly
@@ -248,7 +299,10 @@ timeouts, reply latency, heartbeat gaps).
 [docs/CVBS_OUTPUT.md](docs/CVBS_OUTPUT.md) explains the loaded transfer and scope model.
 Earlier research files are donor records; this README defines current defaults.
 
-## Evidence boundary
+## Historical span75 evidence boundary
+
+The span75 level-regulation details below are retained evidence. Those services
+are gated in the active pair-FM modes; see PAIR_DEMOD_STUDY.md for current limits.
 
 This is an unmerged test build. Host tests and compiler success do not establish
 sample-gapless transport, improved sensitivity/range, PAL/NTSC compliance or
