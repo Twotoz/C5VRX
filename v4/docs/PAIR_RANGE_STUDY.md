@@ -174,3 +174,129 @@ this standalone RX40 path rather than assumed to transfer.
 - **802.11p, despeck, sync slicer, click handling:** the fixed calibrated
   filter and edge gear already cover the filter result; the others belong to
   his software decoder, not the analog goggle path.
+
+## Self-fitting range demod: EDGE, AutoFit and FusionDemod (2026-10-09)
+
+### Root causes found on the board first
+
+- **PHY features were off in local builds.** IDF 6.0.1 links libphy
+  694c5df5, which the PHY lab does not pin, so DCO, the RX filter and the
+  11p path refused (`DCO refused=unverified_PHY_binary`). Builds use
+  `espressif/idf:v6.0.2` (libphy dbf33c41). Hardware DCO then corrects the
+  receiver DC from 1.3-1.7 cells to about 0. Earlier flashes from that day
+  ran without these features.
+- **The weak "static" capture was mostly DC.** The new envelope C/N meter
+  reads 19.7 dB on the strong capture and 16.6 dB on the "antenna off"
+  capture. That capture is small (radius about 3 cells) with -2.5 cells DC,
+  so its samples ran close to the origin. DCO plus the circle DC fit
+  address that, not demodulation.
+- **A carrier biases the plain DC mean.** A constant-envelope carrier lies
+  on a circle around the true DC, but it spends uneven time per angle. The
+  predemod DC uses the Kasa circle centre when the envelope is constant and
+  falls back to the mean on noise. Host test: mean +1.36/+2.76 cells vs
+  circle -1.37/+0.95 for a true -1.40/+0.90. DCO search and drift tracking
+  use it.
+- **AFC was off on the board.** The reference-demod boot stamp forced it
+  off after the range-tracker AUTO setting. Range trackers now keep AFC
+  AUTO, centring blanking on their -436 kHz design porch.
+
+### EDGE: second-order trackers built for the range edge
+
+`edge_fsm.py` composes P phases x F frequencies x 8 PAIR4411 tokens
+(P*F*8 = 1024) from these building blocks:
+
+- detector: clip, tanh, sine or soft-hold;
+- loop leak;
+- output: frequency, advance or average;
+- grid: uniform or companded;
+- per-token reliability.
+
+The screens randomize the hardware:
+
+- VTX deviation x0.75-1.35;
+- DC up to 0.33 RMS;
+- I/Q gain and phase error;
+- picture content.
+
+They calibrate on a nominal goggle gain with a back-porch clamp and
+re-synthesize each AutoFit model from noisy fits (deviation +-10 %,
+centre +-100 kHz). Sanity is relative to the best of RANGE32/PAIR on the
+same signal, because near C/N 8-12 those also lose pulses on other
+VTXs/boards.
+
+Under the FusionDemod objective (EDGE below 9 dB, sanity at 8/9/10 dB),
+nine of 51,840 models pass all four screens, all from one family:
+4x32x8, weak-mix decoder, kp 0.7, ki 0.1. The winner (tanh plus
+reliability) was compared on six held-out screens and on real IQ:
+
+| model | missed sync | sum of abs sync level (IRE) | real static click increase |
+| --- | ---: | ---: | ---: |
+| PAIR | 436 | 1246 | +12.59 |
+| first EDGE pin (clip, ki 0.2) | 114 | 353 | +0.76 |
+| **EDGE (pinned, value12)** | **57** | **292** | **+0.49** |
+
+RANGE32 measured +7.53 on the same real captures. Board report on the
+first EDGE pin: range good, picture very grainy. That is expected from 32
+frequency states, and FusionDemod therefore runs PAIR above 12 dB.
+
+### AutoFit on the device
+
+The AFC v2 windows give the mean sync-tip and porch frequencies. Fitting
+uses a median of 16 windows with the middle-half spread at most 250 kHz:
+
+- deviation = (porch - sync) / 1914 kHz;
+- centre = porch + deviation x 1436 kHz.
+
+The search model's transfer is f = centre + deviation (IRE - 30)
+x 47.857 kHz. Fits are accepted only above 12 dB, are held, and are
+stored per channel.
+
+`firmware/edge_autofit.c` rewrites LUT bits 0..12 bit-exact with
+`edge_fsm.synthesize` (host golden test, three fits). At program load a
+stopped-engine self-test requires the pinned synthesis to reproduce all
+1024 loaded words. On the board it passed for the first pin
+(`EDGE_AF lut verified=1`). Live updates write only changed words, with
+read-back retries.
+
+### FusionDemod (operator idea: quality falls gradually with distance)
+
+FM estimation theory supports the idea: the optimal loop bandwidth shrinks
+as C/N falls. `ladder_edge.py` scored 216 and 324 one-program EDGE variants
+per C/N:
+
+- every C/N's best EDGE kept sync where PAIR/RANGE32 lost 10-37 pulses on
+  randomized hardware;
+- no EDGE variant reached PAIR's strong-signal SINAD.
+
+The useful ladder therefore has two rungs: PAIR, and EDGE with AutoFit.
+
+The C/N meter is the Rician envelope ratio about the fitted DC, inverted
+as rho = (R-1) + sqrt(R(R-1)). It is accurate to +-1 dB from 2 to 14 dB,
+with +-0.3 dB spread per 4096-sample window, and independent of content
+and deviation. Switching rules:
+
+- to EDGE on a three-window median below 9 dB, or one window below 5 dB
+  (50-ms ticks);
+- back to PAIR after 3 s continuously above 12 dB;
+- minimum dwell 1 s.
+
+A live swap loads the program (halt), runs the self-test, writes the held
+fit into the stopped engine, then resets and runs. Menu option
+`FUSION DEMOD` (default on) applies to the EDGE RANGE LAB selection.
+Continuity of a live swap is not yet measured on the board.
+
+### Negative results retained
+
+- **Dual 40 MHz raw-bit tokens:** worse than EDGE (large errors 63-284 vs
+  8-15; real clicks +1.1 to +19.9 vs +0.3).
+- **Lookahead bits from the next span:** the 10-bit address is full. Next
+  span's first sample replaces the current second sample's signs, but the
+  FSM sees that sample in full one lookup later, while the second sample is
+  seen nowhere else. Strictly less new information.
+- **Hardware counter as frequency integrator:** the counter cannot enter
+  the full LUT address, so the loop cannot react to it. Accumulating
+  frequency gives phase, while video is frequency; finer output would need
+  a leaky average.
+- **Earlier negatives:** static or adaptive output multipliers, unbias, the
+  amplitude objective (more real clicks), lane fusion (PARLIO RX has 8 data
+  lines) and the extra-fine lane.
