@@ -16,7 +16,8 @@ def half_sample(standard,h):
     return h*1280 if standard=='PAL' else ((h*2860+4)//9)*4
 
 
-def raster(standard,fields=2,short=False,stimulus_seed=None):
+def raster(standard,fields=2,short=False,stimulus_seed=None,pattern='bars'):
+    if pattern not in ('bars','zoneplate','checker','texture'):raise ValueError('unknown image pattern')
     pal=standard=='PAL';fh=625 if pal else 525;eq=5 if pal else 6
     total=128 if short else fh*fields
     length=half_sample(standard,total)
@@ -53,14 +54,27 @@ def raster(standard,fields=2,short=False,stimulus_seed=None):
             detail=(bars>=5)
             y+=detail*(amplitude*np.sin(2*np.pi*detail_hz*x)+
                        8*np.sin(2*np.pi*fsc*(x+a/FS)+((-1)**(h//2) if pal else 1)*.6))
+            if pattern!='bars':
+                texture=(bars!=0)&(bars!=4)
+                if pattern=='zoneplate':
+                    duration=max(len(x)/FS,1/FS)
+                    image=50+35*np.sin(2*np.pi*(.25e6*x+4.25e6*x*x/(2*duration))+h*.19)
+                elif pattern=='checker':
+                    image=5.+90.*((np.floor((np.arange(len(x))+13*h)/(8+4*(h%5))).astype(int))&1)
+                else:
+                    prng=rng if rng is not None else np.random.default_rng(h)
+                    knots=np.arange(0,len(x)+8,8)
+                    image=np.interp(np.arange(len(x)),knots,prng.uniform(5,95,len(knots)))
+                image+=8*np.sin(2*np.pi*fsc*(x+a/FS)+((-1)**(h//2) if pal else 1)*.6)
+                y[texture]=image[texture]
             ire[a:b]=y;region[a:b]=1
             region[a:b][bars==0]=4;region[a:b][bars==4]=5
         h+=2
     return ire,region
 
 
-def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimulus_seed=None,loss_windows_us=(),lane_model=None,include_traces=False):
-    ire,region=raster(standard,short=short,stimulus_seed=stimulus_seed)
+def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimulus_seed=None,loss_windows_us=(),lane_model=None,include_traces=False,pattern='bars'):
+    ire,region=raster(standard,short=short,stimulus_seed=stimulus_seed,pattern=pattern)
     # Integrate FM at 80 MS/s before the existing analog-channel model.
     source=sg.lfilter(sg.firwin(81,6e6,fs=80e6),1,np.repeat(ire,2))
     freq=cfo_hz+(source-30)*6.7e6/140
@@ -89,7 +103,7 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimul
     if calibration[1]<=0:raise ValueError('baseline polarity must be positive')
     result=dict(raw=raw(noise),clean=clean,truth=truth,region=region,calibration=calibration,
                 standard=standard,seed=seed,cnr=cnr,rms=rms,stress=stress,stimulus_seed=stimulus_seed,cfo_hz=cfo_hz,
-                loss_windows_us=loss_windows_us,lane_model=lane_model)
+                loss_windows_us=loss_windows_us,lane_model=lane_model,pattern=pattern)
     if include_traces:result['rx_signal']=z
     return result
 

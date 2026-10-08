@@ -42,6 +42,17 @@ independent final seeds, offset/fade/outage tests and frozen-winner/no-runner-up
 rule remain unchanged. Selection data never becomes final confirmation data.
 No method is promoted or flashed automatically after synthetic success.
 
+Before any finalist freeze, at2026-10-08 08:53:54UTC, an additional content
+holdout was registered while the searches were running. It uses zone plates,
+moving checker transitions and seeded interpolated texture, retaining the
+same sync/porch/burst/flat calibration patches. These patterns are never
+used by the search or DAC fit. Full PAL/NTSC cases at C/N6/10/30dB use fresh
+seeds+561..563. Strong picture/burst guards still apply. Weak total H/V misses
+must not exceed matched RANGE32, and mean bounded H/V jitter and H width
+RMSE may worsen by at most.1us. This revision precedes inspecting any new
+frozen-winner outcome; the search launch hashes and historical studies stay
+unchanged. Independent confirmation records the revised source hashes.
+
 From `v4/`, with NumPy/SciPy/Numba and BLAS threads fixed to1:
 
 ```

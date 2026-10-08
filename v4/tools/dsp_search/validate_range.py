@@ -18,14 +18,14 @@ CNRS=(0,2,4,6,8,10,12,14,18,22,30)
 PINNED=json.loads((Path(__file__).parents[1]/'range32_model.json').read_text())
 
 
-def evaluate(models,profile,seed,cnrs,stage,stress=False,rms=3,cfo_hz=1e6,loss_windows_us=()):
+def evaluate(models,profile,seed,cnrs,stage,stress=False,rms=3,cfo_hz=1e6,loss_windows_us=(),pattern='bars'):
     ref=S.F.load_reference('OVP56')
     methods=[('OVP56',lambda raw:S.decode(raw,ref)),('RANGE32',lambda raw:O.decode(raw,PINNED))]+V.controls()
     methods+=[(m['name'],lambda raw,m=m:O.decode(raw,m)) for m in models];rows=[]
     for standard in ('PAL','NTSC'):
         for cnr in cnrs:
             c=W.make_case(standard,seed,cnr,rms,stress=stress,cfo_hz=cfo_hz,
-                          stimulus_seed=seed+100000,loss_windows_us=loss_windows_us,lane_model='fine')
+                          stimulus_seed=seed+100000,loss_windows_us=loss_windows_us,lane_model='fine',pattern=pattern)
             c['calibration']=W.M.clean_calibration(S.decode(c['clean'],ref)[:131072],c['truth'][:131072],3000)
             include_burst=cnr>=20 and J.PROFILES[profile].get('burst_guard',False)
             reference=J.measure(O.decode(c['raw'],PINNED),c,include_burst)
@@ -34,7 +34,7 @@ def evaluate(models,profile,seed,cnrs,stage,stress=False,rms=3,cfo_hz=1e6,loss_w
                 use_reference=stress or rms<2 or J.PROFILES[profile].get('reference_guard')
                 failures=J.strong_failures(r,profile,reference if use_reference else None) if cnr>=20 and not loss_windows_us else []
                 r.update(model=name,profile=profile,stage=stage,seed=seed,standard=standard,cnr=cnr,rms=rms,
-                         cfo_hz=cfo_hz,quality_failures=';'.join(failures),usable=J.usable(r))
+                         cfo_hz=cfo_hz,quality_failures=';'.join(failures),usable=J.usable(r),image_pattern=pattern)
                 if cnr>=20:
                     if 'burst_gain' not in r:r.update(burst(y,c))
                 else:r.update(burst_gain=None,burst_phase_deg=None,burst_phase_jitter_deg=None,
@@ -75,6 +75,11 @@ def main():
     a.output.mkdir(parents=True);p=json.loads((a.search/'protocol.json').read_text());profile=p['profile']
     S.save(a.output/'protocol.json',dict(p,confirmation_lane='fine',common_cnr_grid=CNRS,
          confirmation_source_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')},
+         content_holdout=dict(registered_utc='2026-10-08 08:53:54',
+             patterns=['zoneplate','checker','texture'],cnrs=[6,10,30],
+             seeds=[p['stress_seed']+60+i for i in range(3)],
+             gates='strong reference/burst guards; weak H+V misses <= RANGE32; mean bounded H/V jitter and H width <= RANGE32 + 0.1 us')
+             if J.PROFILES[profile].get('reference_guard') else None,
          decision='no automatic promotion; freeze once; no runner-up after final veto',
          controls='OVP56,current RANGE32,HC50,original/repaired PLL96,floating IQ40 PLL'))
     models=[]
@@ -101,6 +106,11 @@ def main():
     loss=evaluate(chosen,profile,p['stress_seed']+30,(6,10,30),'carrier_outage',
                   loss_windows_us=((7000,8000),(26000,27000)))
     Q.write_rows(a.output/'outage.csv',loss)
+    content=[]
+    if J.PROFILES[profile].get('reference_guard'):
+        for i,pattern in enumerate(('zoneplate','checker','texture')):
+            content+=evaluate(chosen,profile,p['stress_seed']+60+i,(6,10,30),'content_holdout',pattern=pattern)
+        Q.write_rows(a.output/'content.csv',content)
     accepted=bool(winner and confirms(nominal[winner['name']],nominal['RANGE32']))
     if winner:
         new=stressed[winner['name']];old=stressed['RANGE32']
@@ -117,6 +127,14 @@ def main():
             if r['recovery_missing']>ref['recovery_missing']:accepted=False
             if ref['recovery_max_lock_us'] is not None and (r['recovery_max_lock_us'] is None or
                     r['recovery_max_lock_us']>ref['recovery_max_lock_us']+64):accepted=False
+        if content:
+            new=[r for r in content if r['model']==winner['name']]
+            old=[r for r in content if r['model']=='RANGE32']
+            accepted &= not any(r['quality_failures'] for r in new if r['cnr']>=20)
+            weak=lambda rows:[r for r in rows if r['cnr']<=10]
+            accepted &= sum(r['h_missing']+r['v_missing'] for r in weak(new))<=sum(r['h_missing']+r['v_missing'] for r in weak(old))
+            for key in ('h_jitter_us','v_jitter_us','h_width_rmse_us'):
+                accepted &= np.mean([min(r[key],2.025) for r in weak(new)])<=np.mean([min(r[key],2.025) for r in weak(old)])+.1
     # Preserve even vetoed options as research; only confirmed models receive
     # the confirmation label. Physical picture/range acceptance stays separate.
     if winner:
@@ -125,6 +143,7 @@ def main():
     if accepted:S.save(a.output/'confirmed_model.json',winner)
     S.save(a.output/'summary.json',dict(profile=profile,selected=winner['name'] if winner else None,
         confirmed_range_improvement=bool(accepted),final=nominal,echo_fade=stressed,
+        content_holdout=aggregate(content) if content else None,
         physical_video_acceptance=False,old_quality_guards_replaced_only_in_this_explicit_range_protocol=True))
 
 
