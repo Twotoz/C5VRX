@@ -67,3 +67,14 @@ python tools/dsp_search/validate_range.py --search /fresh/plain-refined --output
 Repeat refinement/confirmation per policy. Record completed counts and
 per-frame evidence after execution; the stated budgets are targets until
 their summaries exist. Preserve the previous negative evidence separately.
+
+For each refined frozen set, run the real ESP32-C5 assembler from an activated
+ESP-IDF environment (no NumPy/SciPy/Numba needed for this step):
+
+```
+python tools/prove_range_finalists.py /fresh/plain-refined/frozen.json --idf /path/to/esp-idf --output /fresh/plain-proof
+```
+
+The proof records model, source, binary, assembler and target hashes alongside
+the resource allocation. A failed assembly never produces a success proof.
+Assembler acceptance still does not establish live timing or physical video.
