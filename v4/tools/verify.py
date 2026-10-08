@@ -129,6 +129,7 @@ def main():
         ("integration", ["-DC5VRX4_EXPERIMENT=1", f"-I{INCLUDE}", "-Itools/phy_lab_stubs", "main/direct_gain_v3.c", "main/arc_phy.c"]),
         ("c5vrx4_gate", ["-pthread", f"-I{INCLUDE}", "-Itools/phy_lab_stubs"]),
         ("predemod", [f"-I{INCLUDE}", "-lm"]),
+        ("edge_autofit", ["-Itools", "firmware/edge_autofit.c", "-lm"]),
         ("agc_witness", [f"-I{INCLUDE}"]),
         ("idle_raster", [f"-I{INCLUDE}"]),
         ("sync_flywheel", [f"-I{INCLUDE}", "-O2", "firmware/sync_flywheel.c", "-lm"]),

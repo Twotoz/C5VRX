@@ -271,6 +271,43 @@ int main(void)
             else assert(r.gain_x1000 > 980 && r.gain_x1000 < 1020 && abs(r.phase_x10) < 10 && r.irr_db_x10 > 330);
         }
     }
+    {
+        /* Circle DC: an FM carrier dwelling near one phase (blanking) biases
+         * the mean; the Kasa centre recovers the receiver DC. Noise falls
+         * back to the plain mean. */
+        static uint8_t buf[60000];
+        const double dci = -1.4, dcq = .9, amp = 4.6;
+        srand(7);
+        double ph = 0;
+        for (unsigned k = 0; k < sizeof(buf); ++k) {
+            /* Dwell at one phase (video near 0 Hz), then sweep full turns. */
+            if ((k % 2560u) < 1800u) ph = .6; else ph += .35;
+            double ni = ((rand() & 255) - 127.5) / 255.0, nq = ((rand() & 255) - 127.5) / 255.0;
+            int i = (int)floor(amp * cos(ph) + dci + ni * .6), q = (int)floor(amp * sin(ph) + dcq + nq * .6);
+            i = i < -8 ? -8 : i > 7 ? 7 : i; q = q < -8 ? -8 : q > 7 ? 7 : q;
+            buf[k] = (uint8_t)(((i & 15) << 4) | (q & 15));
+        }
+        predemod_circle_t c = {0};
+        predemod_circle_sums(buf, sizeof(buf), &c);
+        int di, dq; unsigned r;
+        assert(predemod_circle_dc(&c, &di, &dq, &r) == 1 && r > 300);
+        int mi, mq; predemod_dc_mcells(buf, sizeof(buf), &mi, &mq);
+        assert(abs(di + 1400) < 150 && abs(dq - 900) < 150);
+        assert(abs(mi + 1400) + abs(mq - 900) > 3 * (abs(di + 1400) + abs(dq - 900)));
+        printf("circle DC: carrier %d/%d vs mean %d/%d (true -1400/900)\n", di, dq, mi, mq);
+        for (unsigned k = 0; k < sizeof(buf); ++k) {
+            double u1 = (rand() + 1.0) / (RAND_MAX + 2.0), u2 = (rand() + 1.0) / (RAND_MAX + 2.0);
+            double g = sqrt(-2 * log(u1)) * 1.5;
+            int i = (int)floor(g * cos(6.2831853 * u2) + .7), q = (int)floor(g * sin(6.2831853 * u2) - .3);
+            i = i < -8 ? -8 : i > 7 ? 7 : i; q = q < -8 ? -8 : q > 7 ? 7 : q;
+            buf[k] = (uint8_t)(((i & 15) << 4) | (q & 15));
+        }
+        predemod_circle_t z = {0};
+        predemod_circle_sums(buf, sizeof(buf), &z);
+        assert(predemod_circle_dc(&z, &di, &dq, &r) == 0 && r < 150);
+        predemod_dc_mcells(buf, sizeof(buf), &mi, &mq);
+        assert(di == mi || abs(di - mi) <= 1);
+    }
     puts("PASS: glitch metric, DC centre, DC-cal point, relative filter code, DCO solver, exact Phase8 recentring, DC decision, FFT, noise-width estimate, BW choice and esp-sdr curve/mode fit");
     return 0;
 }

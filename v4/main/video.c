@@ -195,7 +195,8 @@ esp_err_t video_start(void)
 
     /* Print startup stamp (visible on serial monitor at boot). */
     if (c5vrx4_reference_demod()) {
-        s_afc_mode = AFC_MODE_OFF;
+        /* Range trackers keep AFC AUTO (set after settings_load above). */
+        if (!c5vrx4_range_demod()) s_afc_mode = AFC_MODE_OFF;
         ESP_EARLY_LOGW(TAG, "C5VRX-4 REFERENCE: %s IQ40M -> DAC20M [D,D]@40M; "
                        "span75 observers/repair disabled; experimental",
                        c5vrx4_demodulator_name());

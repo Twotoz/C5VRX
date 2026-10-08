@@ -206,6 +206,9 @@ typedef struct {
     uint32_t glitches, samples;
     uint64_t hf4_d4, hf4_power, hf4_count; /* fourth-difference probe sums */
     int dc_i, dc_q;             /* milli-cells of the current lane */
+    int mean_i, mean_q;         /* plain sample mean (milli-cells) */
+    unsigned envelope_x100;     /* r^2 mean^2/var about the fitted centre */
+    uint8_t dc_circle;          /* 1: dc_i/q is the carrier circle centre */
     unsigned windows;
     control_metrics_t m;
 } predemod_window_t;
@@ -298,6 +301,13 @@ void predemod_print(const char *tag, const char *stage, int extra,
 bool predemod_pause(const char *tag, analog_agc_mode_t *saved_mode);
 void predemod_resume(analog_agc_mode_t saved_mode);
 void lab_predemod_status(void);
+/* Realtime EDGE AutoFit (video_autofit.c). */
+#include "afc_v2.h"
+#include "edge_autofit.h"
+void edge_autofit_observe(const afc2_result_t *r, bool valid, bool settled);
+void edge_autofit_set_params(const edge_af_params_t *p);
+bool edge_autofit_reapply(void);
+void edge_autofit_print(void);
 void rx_clock_slip(uint32_t us);
 void lab_run_sample_phase_scan(void);
 bool lab_dco_measure(int dc[2]);

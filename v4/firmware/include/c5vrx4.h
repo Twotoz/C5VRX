@@ -28,6 +28,8 @@ bool c5vrx4_reference_demod(void);
 /* RANGE32 and the pinned range options: shared-word trackers designed for a
  * +1 MHz carrier centre (blanking at -436 kHz). AFC centres the VTX there. */
 bool c5vrx4_range_demod(void);
+/* The pinned EDGE RANGE LAB: its LUT is re-synthesized for the measured VTX. */
+bool c5vrx4_edge_autofit_demod(void);
 #define C5VRX4_RANGE_PORCH_KHZ (-436)
 /* Louis Hitchcock/#184: staged physical overload/recovery independent of
  * demod selection; Direct Gain only, manual/native ownership unchanged. */

@@ -113,7 +113,7 @@ static bool s_bw_autocal_tried;
 bool predemod_collect(unsigned windows, predemod_window_t *out)
 {
     uint8_t sample[RX_PROBE_REGIONS * RX_PROBE_REGION_BYTES];
-    int64_t si = 0, sq = 0;
+    predemod_circle_t circle = {0};
     memset(out, 0, sizeof(*out));
     for (unsigned tries = 0; tries < windows * 3u && out->windows < windows; ++tries) {
         /* Two ticks: the window analysis below costs about one, so a 1-tick
@@ -130,15 +130,15 @@ bool predemod_collect(unsigned windows, predemod_window_t *out)
             predemod_hf4_sums(sample + r * RX_PROBE_REGION_BYTES, RX_PROBE_REGION_BYTES,
                               &out->hf4_d4, &out->hf4_power);
         out->hf4_count += RX_PROBE_REGIONS * (RX_PROBE_REGION_BYTES - 4u);
-        int di, dq;
-        predemod_dc_mcells(sample, sizeof(sample), &di, &dq);
-        si += di; sq += dq;
+        predemod_circle_sums(sample, sizeof(sample), &circle);
         out->m = analyze_control_window(sample, sizeof(sample), 0);
         ++out->windows;
     }
     if (!out->windows) return false;
-    out->dc_i = (int)(si / (int64_t)out->windows);
-    out->dc_q = (int)(sq / (int64_t)out->windows);
+    /* Circle centre under a carrier, plain mean otherwise (predemod.h). */
+    out->dc_circle = (uint8_t)predemod_circle_dc(&circle, &out->dc_i, &out->dc_q, &out->envelope_x100);
+    out->mean_i = (int)((double)circle.x / (double)circle.n * 500.0);
+    out->mean_q = (int)((double)circle.y / (double)circle.n * 500.0);
     return out->windows * 2u >= windows;
 }
 
@@ -152,12 +152,13 @@ void predemod_print(const char *tag, const char *stage, int extra,
 {
     unsigned step = 64u >> rf_get_iq_lanes();
     printf("%s stage=%s arg=%d freq=%u G=%u lane=%u windows=%u glitch_ppm=%u hf4_x100=%d hf4_excess_mc2=%d "
-           "dc_mcells=%d/%d dc_codes=%d/%d P50=%d Q_phase=%d outer_pm=%d origin_pm=%d "
+           "dc_mcells=%d/%d dc_fit=%s env_x100=%u dc_codes=%d/%d P50=%d Q_phase=%d outer_pm=%d origin_pm=%d "
            "video=hardware_pending\n",
            tag, stage, extra, rf_get_frequency_mhz(), s_current_gain, rf_get_iq_lanes(),
            w->windows, predemod_ppm(w->glitches, w->samples),
            predemod_hf4_x100(w->hf4_d4, w->hf4_power, w->hf4_count),
            predemod_hf4_excess_milli(w->hf4_d4, w->hf4_count), w->dc_i, w->dc_q,
+           w->dc_circle ? "circle" : "mean", w->envelope_x100,
            w->dc_i * (int)step / 1000, w->dc_q * (int)step / 1000, w->m.p_median,
            w->m.q_phase, w->m.clip_permille, w->m.origin_permille);
 }
@@ -780,4 +781,5 @@ void predemod_correction_print(void)
            c5vrx4_sphase_auto_enabled(), s_sphase_auto_done,
            s_sphase_auto_done ? s_sphase_auto_ppm : 0u, sphase_state_name(), s_sphase_scans);
     c5v4_decoder_print();
+    edge_autofit_print();
 }

@@ -7,6 +7,8 @@
 #include "cvbs_level.h"
 #include "c5vrx4.h"
 #include "predemod.h"
+#include "edge_autofit.h"
+#include "edge_autofit_table.h"
 #include "soc/bitscrambler_struct.h"
 #include "hal/bitscrambler_ll.h"
 #include <stdio.h>
@@ -68,9 +70,65 @@ void c5v4_level_hw_stop(void)
 {
     c5v4_level_hw_lock(); ready = false; c5v4_level_hw_unlock();
 }
+static bool edge_verified, edge_blocked;
+static uint16_t edge_shadow[1024];
+static uint32_t edge_writes, edge_words, edge_faults;
+static uint16_t edge_scratch[1024];
+/* Engine stopped (program just loaded): the pinned synthesis must reproduce
+ * every loaded word, then one write/restore proves the host write mapping.
+ * A stored fit for this channel is applied here, reliably, before start. */
+static void edge_prepare(void)
+{
+    edge_verified = false;
+    if (!c5vrx4_edge_autofit_demod() || edge_blocked ||
+        bitscrambler_ll_get_lut_width(&BITSCRAMBLER, BITSCRAMBLER_DIR_TX) != 1) return;
+    edge_af_params_t p; edge_af_pinned(&p);
+    if (!edge_af_synthesize(&p, EDGE_AF_PINNED_DEVIATION, EDGE_AF_PINNED_CENTRE_HZ, edge_scratch)) return;
+    unsigned bad = 0;
+    for (unsigned i = 0; i < 1024; ++i) {
+        edge_shadow[i] = read_entry(i);
+        if ((edge_shadow[i] & 0x1fffu) != edge_scratch[i]) ++bad;
+    }
+    uint16_t flip = edge_shadow[40] ^ 1u;
+    write_entry(40, flip);
+    bool mapped = read_entry(40) == flip && read_entry(41) == edge_shadow[41] && read_entry(39) == edge_shadow[39];
+    write_entry(40, edge_shadow[40]);
+    mapped = mapped && read_entry(40) == edge_shadow[40];
+    edge_verified = !bad && mapped;
+    printf("EDGE_AF startup_selftest=%s mismatched_words=%u write_mapping=%s\n",
+           edge_verified ? "pass" : "refused", bad, mapped ? "pass" : "fail");
+    if (!edge_verified) ++edge_faults;
+}
+bool c5v4_edge_lut_ready(void)
+{ c5v4_level_hw_lock(); bool v = edge_verified && !edge_blocked; c5v4_level_hw_unlock(); return v; }
+bool c5v4_edge_lut_write(const uint16_t low13[1024])
+{
+    c5v4_level_hw_lock();
+    bool ok = edge_verified && !edge_blocked &&
+              bitscrambler_ll_get_lut_width(&BITSCRAMBLER, BITSCRAMBLER_DIR_TX) == 1;
+    unsigned changed = 0;
+    for (unsigned i = 0; ok && i < 1024; ++i) {
+        uint16_t word = (uint16_t)((edge_shadow[i] & 0xe000u) | (low13[i] & 0x1fffu));
+        if (word == edge_shadow[i]) continue;
+        if (!write_verified(i, word)) { ok = false; edge_blocked = true; ++edge_faults; break; }
+        edge_shadow[i] = word; ++changed;
+    }
+    if (ok) { ++edge_writes; edge_words += changed; }
+    c5v4_level_hw_unlock();
+    return ok;
+}
+void c5v4_edge_lut_print(void)
+{
+    c5v4_level_hw_lock();
+    printf("EDGE_AF lut verified=%u blocked=%u updates=%lu words=%lu faults=%lu retries=%lu\n",
+           edge_verified, edge_blocked, (unsigned long)edge_writes, (unsigned long)edge_words,
+           (unsigned long)edge_faults, (unsigned long)retries);
+    c5v4_level_hw_unlock();
+}
 void c5v4_level_hw_prepare(void)
 {
     ready = lut_verified = false;
+    edge_prepare();
     decoder_dc[0] = decoder_dc[1] = 0; /* every program load is pristine */
     /* The donor programs do not use the span75 LUT-bank layout. */
     if (c5vrx4_reference_demod()) return;

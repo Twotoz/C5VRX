@@ -6,6 +6,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <math.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 static inline int predemod_i(uint8_t b) { return (int8_t)(b & 0xf0u) >> 4; }
 static inline int predemod_q(uint8_t b) { return (int8_t)(uint8_t)(b << 4) >> 4; }
@@ -90,6 +93,51 @@ static inline void predemod_dc_mcells(const uint8_t *s, size_t n, int *i, int *q
     }
     *i = n ? (int)(si * 500 / (int32_t)n) : 0;
     *q = n ? (int)(sq * 500 / (int32_t)n) : 0;
+}
+
+/* Receiver DC under a carrier (operator 2026-10-09). A constant-envelope FM
+ * carrier lies on a circle around the true DC, but its phase spends unequal
+ * time per angle (video content, blanking near 0 Hz), so the plain mean is
+ * pulled toward where the carrier dwells (board captures: up to ~0.3 cell).
+ * The Kasa circle fit minimizes sum(z - 2ax - 2by - c)^2 with z = x^2 + y^2;
+ * its centre (a, b) does not depend on the phase distribution. Sums use
+ * half-cell centres x = 2i + 1 (int64; |x| <= 15). */
+typedef struct { int64_t n, x, y, xx, yy, xy, z, zx, zy, zz; } predemod_circle_t;
+static inline void predemod_circle_sums(const uint8_t *s, size_t n, predemod_circle_t *c)
+{
+    for (size_t k = 0; k < n; ++k) {
+        int64_t x = 2 * predemod_i(s[k]) + 1, y = 2 * predemod_q(s[k]) + 1, z = x * x + y * y;
+        c->n++; c->x += x; c->y += y; c->xx += x * x; c->yy += y * y; c->xy += x * y;
+        c->z += z; c->zx += z * x; c->zy += z * y; c->zz += z * z;
+    }
+}
+
+/* DC in milli-cells: the circle centre when the envelope is clearly
+ * constant (carrier, r^2 mean^2/var >= 2; complex noise gives 1), else
+ * the plain mean. Returns 1 when the circle centre was used. */
+static inline int predemod_circle_dc(const predemod_circle_t *c, int *i, int *q, unsigned *ratio_x100)
+{
+    *i = *q = 0; if (ratio_x100) *ratio_x100 = 0;
+    if (c->n < 64) return 0;
+    double n = (double)c->n, mx = c->x / n, my = c->y / n;
+    *i = (int)(mx * 500.0); *q = (int)(my * 500.0);
+    /* Normal equations of [2a 2b c] (covariance form, well conditioned). */
+    double sxx = c->xx / n - mx * mx, syy = c->yy / n - my * my, sxy = c->xy / n - mx * my;
+    double mz = c->z / n, szx = c->zx / n - mz * mx, szy = c->zy / n - mz * my;
+    double det = sxx * syy - sxy * sxy;
+    if (!(det > 1e-6)) return 0;
+    double a = .5 * (szx * syy - szy * sxy) / det, b = .5 * (szy * sxx - szx * sxy) / det;
+    /* r^2 about (a, b) = z - 2ax - 2by + a^2 + b^2; its mean and variance. */
+    double k0 = a * a + b * b;
+    double m1 = mz - 2 * a * mx - 2 * b * my + k0;
+    double ezz = c->zz / n, ezx = c->zx / n, ezy = c->zy / n, exx = c->xx / n, eyy = c->yy / n, exy = c->xy / n;
+    double eu2 = ezz + 4 * a * a * exx + 4 * b * b * eyy - 4 * a * ezx - 4 * b * ezy + 8 * a * b * exy;
+    double eu = mz - 2 * a * mx - 2 * b * my, var = eu2 - eu * eu;
+    double ratio = var > 0 ? m1 * m1 / var : 99.99;
+    if (ratio_x100) *ratio_x100 = ratio > 99.99 ? 9999u : (unsigned)(ratio * 100.0 + .5);
+    if (ratio < 2.0 || fabs(a) > 15.0 || fabs(b) > 15.0) return 0;
+    *i = (int)(a * 500.0); *q = (int)(b * 500.0);
+    return 1;
 }
 
 /* Carrier test independent of sync and of receiver DC (review 2026-10-07):

@@ -3,6 +3,7 @@ set(C5VRX4_INCLUDE_DIR "${C5VRX4_FIRMWARE_DIR}/include")
 set(C5VRX4_PROGRAM_DIR "${C5VRX4_FIRMWARE_DIR}/programs")
 
 target_sources(${COMPONENT_LIB} PRIVATE "${C5VRX4_FIRMWARE_DIR}/pipeline.c")
+target_sources(${COMPONENT_LIB} PRIVATE "${C5VRX4_FIRMWARE_DIR}/edge_autofit.c")
 target_include_directories(${COMPONENT_LIB} PRIVATE "${C5VRX4_FIRMWARE_DIR}" "${C5VRX4_INCLUDE_DIR}")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE C5VRX4_EXPERIMENT=1)
 

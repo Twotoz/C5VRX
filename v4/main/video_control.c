@@ -588,6 +588,10 @@ void analog_agc_task(void *arg)
         bool was_afc_locked = s_afc_video_locked;
         bool afc_valid = afc_window_ok && afc2.lines && afc2.standard &&
             afc2.porch_pairs && afc2.sync_pairs && afc2.burst_x10 >= AFC2_BURST_MIN_X10;
+        /* EDGE AutoFit uses the same windows; it writes only once AFC no
+         * longer retunes (video TRACK) or AFC is not in AUTO. */
+        edge_autofit_observe(&afc2, afc_valid,
+                             s_afc_video_locked || s_afc_mode != AFC_MODE_AUTO);
         s_afc_video_locked = afc2_native_lock(s_afc_video_locked, afc_valid,
             afc2_ctrl_can_lock(&afc2_ctrl, s_afc_mode == AFC_MODE_AUTO),
             afc2_ctrl.n, &afc_lost_windows);

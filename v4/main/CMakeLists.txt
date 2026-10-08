@@ -10,6 +10,7 @@ idf_component_register(
         "menu_raster.c"
         "video.c"
         "video_calibration.c"
+        "video_autofit.c"
         "video_console.c"
         "video_control.c"
         "video_diagnostics.c"

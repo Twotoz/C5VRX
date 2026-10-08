@@ -1,5 +1,6 @@
 /* C5VRX by Twotoz and contributors: span75 transport and opt-in native gate. */
 #include "c5vrx4.h"
+#include "edge_autofit_table.h"
 #include "sdkconfig.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -80,6 +81,18 @@ bool c5vrx4_reference_demod(void)
     /* All selectable programs use 50-ns endpoints, not the span75 LUT layout. */
     return true;
 }
+bool c5vrx4_edge_autofit_demod(void)
+{
+#if C5VRX4_RANGE_OPTION_COUNT
+    unsigned mode = c5vrx4_demodulator();
+    return mode >= C5VRX4_DEMOD_RANGE_OPTION0 &&
+           mode < C5VRX4_DEMOD_RANGE_OPTION0 + C5VRX4_RANGE_OPTION_COUNT &&
+           !strcmp(c5vrx4_range_options[mode - C5VRX4_DEMOD_RANGE_OPTION0].model_id, EDGE_AF_MODEL_ID);
+#else
+    return false;
+#endif
+}
+
 bool c5vrx4_range_demod(void)
 {
     return c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE32;
