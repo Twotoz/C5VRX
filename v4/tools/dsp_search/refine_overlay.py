@@ -22,6 +22,7 @@ from video_metrics import waveform,detail,relative_quality
 def digest(m):
     p=m['params']
     schedule=b'counter_phase' if p.get('counter_phase') else b''
+    if p.get('pair_layout'):schedule+=b'pair'+p['pair_layout'].encode()
     return hashlib.sha256(np.array(m['lut'],np.uint16).tobytes()+bytes([p['token_bits'],p.get('context_bits',0)])+schedule).hexdigest()
 
 

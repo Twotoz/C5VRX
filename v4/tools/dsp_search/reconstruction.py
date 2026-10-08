@@ -28,7 +28,7 @@ def dataset(seed,lane_model=None):
 
 def operator(m,cases,strong_weight=8,regularization=.1,edge_weight=1):
     lut=np.array(m['lut'],np.uint16);p=m['params'];k=1024
-    ix=[O.indices(c['raw'],lut,p['token_bits'],p.get('context_bits',0),p.get('counter_phase',False)) for c in cases]
+    ix=[O.model_indices(c['raw'],m,lut) for c in cases]
     weights=[np.sqrt(strong_weight if c['cnr']>=20 else 1) for c in cases]
     norm=np.sqrt(np.maximum(sum(w*w*np.bincount(a,minlength=k) for a,w in zip(ix,weights)),1))
     windows=[];targets=[];sample_weights=[]

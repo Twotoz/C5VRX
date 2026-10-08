@@ -18,6 +18,9 @@ def identity(model):
     payload += bytes([p['token_bits'], p.get('context_bits', 0)])
     if p.get('counter_phase', False):
         payload += b'counter_phase'
+    if p.get('pair_layout'):
+        # Same LUT words with another address schedule are another model.
+        payload += b'pair' + p['pair_layout'].encode()
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -40,7 +43,7 @@ def render(options):
         if status == 'independent_range_tradeoff' and not option.get('vetoes'):
             raise ValueError('experimental trade-off requires disclosed confirmation vetoes')
         p = model['params']
-        resource = cost(p['token_bits'], p.get('context_bits', 0), p.get('counter_phase', False))
+        resource = cost(p['token_bits'], p.get('context_bits', 0), p.get('counter_phase', False), p.get('pair_layout'))
         phases, groups = p['phases'], p['confidence_groups']
         if (type(phases) is not int or phases < 4 or phases & (phases - 1) or
                 phases > resource['states'] or groups not in (1, 2, 4)):

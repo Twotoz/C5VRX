@@ -10,8 +10,19 @@ import hardware as H
 import compile_overlay as C
 
 
-def cost(token_bits,context_bits=0,counter_phase=False):
-    return C.cost(token_bits,context_bits,counter_phase)
+def cost(token_bits,context_bits=0,counter_phase=False,pair_layout=None):
+    return C.cost(token_bits,context_bits,counter_phase,pair_layout)
+
+
+def pair_cells(layout):
+    """Mid-cell signed IQ values of both samples for each PAIR address."""
+    bits=C.pair_bits(layout);address=np.arange(1024);word=np.zeros(1024,np.int64)
+    for j,bit in enumerate(bits):word|=((address>>j)&1)<<bit
+    values=[]
+    for keep,base in zip(map(int,layout),(4,0,12,8)):
+        nibble=(word>>base)&15;signed=np.where(nibble>7,nibble-16,nibble)
+        values.append(signed+(1<<(4-keep))/2)
+    return values[0]+1j*values[1],values[2]+1j*values[3]
 
 
 def synthesize(p):
@@ -19,8 +30,8 @@ def synthesize(p):
         value=p.get(key,1)
         if type(value) is not int:raise ValueError('integer state allocation required')
     b=int(p['token_bits']);context=p.get('context_bits',0)
-    counter=p.get('counter_phase',False)
-    resource=cost(b,context,counter);n=1<<b;states=resource['states']
+    counter=p.get('counter_phase',False);layout=p.get('pair_layout')
+    resource=cost(b,context,counter,layout);n=1<<b;states=resource['states']
     numeric=('kp','ki','output_gain','low_hz','high_hz','centre_hz','rotation','radius_scale',
              'confidence_floor','limit','adaptation')
     if any(not np.isfinite(p[k]) for k in numeric):raise ValueError('nonfinite parameter')
@@ -47,6 +58,23 @@ def synthesize(p):
         next_z=(1-2*(quadrant&1))+1j*(1-2*((quadrant>>1)&1))
         aligned=next_z*p['context_radius']/np.sqrt(2)*np.exp(-2j*np.pi*p['centre_hz']/40e6)
         z=(1-p['context_weight'])*z+p['context_weight']*aligned
+    if layout:
+        # Combine both samples with a fixed half-span carrier-prior rotation;
+        # no state or CPU is involved. B may be weighted below A.
+        if not 0<=p['pair_weight']<=1.5 or not abs(p['pair_rotation'])<=np.pi:
+            raise ValueError('invalid pair combination')
+        za,zb=pair_cells(layout)
+        z=za+float(p['pair_weight'])*zb*np.exp(-1j*float(p['pair_rotation']))
+        if 'observation_vectors' in p:
+            # Learned offline: mean unit carrier phasor of the clean received
+            # signal at sample A, conditioned on each 10-bit address. Its
+            # angle is the observation and its length the reliability. Never
+            # seen addresses keep the weak geometric pair estimate.
+            learned=np.asarray(p['observation_vectors'],float)
+            if learned.shape!=(1024,2) or not np.isfinite(learned).all() or np.any(np.hypot(*learned.T)>1+1e-9):
+                raise ValueError('observation vectors need 1024 finite unit-disc entries')
+            learned=learned[:,0]+1j*learned[:,1]
+            z=np.where(abs(learned)>0,learned,.01*z/np.maximum(abs(z),1e-12))
     radius=abs(z);rotation=float(p['rotation'])
     angle=np.floor((np.angle(z)-rotation)*obs/(2*np.pi)+.5).astype(int)%obs
     if groups==1:confidence=np.zeros(len(z),int)
@@ -94,7 +122,7 @@ def synthesize(p):
         else:raise ValueError('unknown output reconstruction')
     code=np.rint(np.clip((out*128/np.pi-H.B.P.OFFSET)*H.B.P.SCALE,0,63)).astype(np.uint16)
     lut=(code+(next_state.astype(np.uint16)<<6)).ravel()
-    start=0 if context or counter else 768
+    start=0 if context or counter or layout else 768
     lut[start:start+len(encoder)]=lut[start:start+len(encoder)] | (encoder.astype(np.uint16)<<(16-b))
     return dict(name='OVERLAY',params=p,lut=lut.tolist(),cost=resource)
 
@@ -120,8 +148,43 @@ def codes(raw,lut,b,context=0,counter=False):
     return out
 
 
+@njit(cache=True)
+def pair_codes(raw,lut,b,bits):
+    out=np.zeros(len(raw),np.uint8);state=0;mask=(1<<(10-b))-1
+    for k in range(len(raw)//2-1):
+        word=np.int64(raw[2*k])|(np.int64(raw[2*k+1])<<8);address=0
+        for j in range(10):address|=((word>>bits[j])&1)<<j
+        token=np.int64(lut[address])>>(16-b)
+        value=np.int64(lut[(state<<b)+token]);state=(value>>6)&mask
+        out[2*k+2]=out[2*k+3]=value&63
+    return out
+
+
+@njit(cache=True)
+def pair_indices(raw,lut,b,bits):
+    result=np.zeros(len(raw)//2-1,np.int64);state=0;mask=(1<<(10-b))-1
+    for k in range(len(result)):
+        word=np.int64(raw[2*k])|(np.int64(raw[2*k+1])<<8);address=0
+        for j in range(10):address|=((word>>bits[j])&1)<<j
+        token=np.int64(lut[address])>>(16-b)
+        address=(state<<b)+token;result[k]=address;state=(np.int64(lut[address])>>6)&mask
+    return result
+
+
+def model_codes(raw,m,lut=None):
+    p=m['params'];lut=np.array(m['lut'],np.uint16) if lut is None else lut
+    if p.get('pair_layout'):return pair_codes(raw,lut,p['token_bits'],np.array(C.pair_bits(p['pair_layout']),np.int64))
+    return codes(raw,lut,p['token_bits'],p.get('context_bits',0),p.get('counter_phase',False))
+
+
+def model_indices(raw,m,lut=None):
+    p=m['params'];lut=np.array(m['lut'],np.uint16) if lut is None else lut
+    if p.get('pair_layout'):return pair_indices(raw,lut,p['token_bits'],np.array(C.pair_bits(p['pair_layout']),np.int64))
+    return indices(raw,lut,p['token_bits'],p.get('context_bits',0),p.get('counter_phase',False))
+
+
 def decode(raw,m):
-    return H.B.D.goggle(H.B.DAC_VOLTS[codes(raw,np.array(m['lut'],np.uint16),m['params']['token_bits'],m['params'].get('context_bits',0),m['params'].get('counter_phase',False))])
+    return H.B.D.goggle(H.B.DAC_VOLTS[model_codes(raw,m)])
 
 
 @njit(cache=True)

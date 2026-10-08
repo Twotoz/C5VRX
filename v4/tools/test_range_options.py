@@ -51,6 +51,12 @@ class RangeOptionsTest(unittest.TestCase):
             address = raw[k] + (0 if counter else 768)
             if context:
                 address = raw[k] + (((raw[k + 1] >> 7) & 1) << 8) + (((raw[k + 1] >> 3) & 1) << 9)
+            if p.get('pair_layout'):
+                # PAIR: kept sign-first bits of both raw samples, I before Q.
+                word16 = raw[k] | (raw[k + 1] << 8); address = j = 0
+                for keep, base in zip(map(int, p['pair_layout']), (4, 0, 12, 8)):
+                    for bit in range(base + 4 - keep, base + 4):
+                        address |= ((word16 >> bit) & 1) << j; j += 1
             lookup_state = state
             if counter:
                 accumulator = (accumulator + address + (state << 11)) & 65535
