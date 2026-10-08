@@ -22,6 +22,11 @@ bool s_sphase_auto_done;     /* = SETTLED, kept for the status line */
 unsigned s_sphase_auto_ppm = UINT32_MAX;
 unsigned s_sphase_scans;
 static int64_t s_sphase_next_us;
+/* Periodic re-verification (zerowidth/C5VRX PR #3: the clean position's
+ * margin is unknown and may drift as the boards warm up). A clean result
+ * costs one 48-window collection and no slip. */
+#define SPHASE_RECHECK_US  120000000LL
+static int64_t s_sphase_settled_us;
 static uint16_t s_sphase_freq;
 
 static sphase_scan_t lab_run_sample_phase_scan_result(unsigned *final_ppm)
@@ -91,8 +96,12 @@ void predemod_sphase_autocheck(void)
         if (s_sphase_state == SPHASE_SETTLED) s_sphase_state = SPHASE_UNVERIFIED;
         s_sphase_auto_done = false;
     }
-    if (s_sphase_state == SPHASE_SETTLED) return;
     const int64_t now = esp_timer_get_time();
+    if (s_sphase_state == SPHASE_SETTLED) {
+        if (now - s_sphase_settled_us < SPHASE_RECHECK_US) return;
+        s_sphase_state = SPHASE_UNVERIFIED;   /* periodic re-check */
+        s_sphase_scans = 0;
+    }
     if (now < s_sphase_next_us) return;
     /* A usable carrier. Direct V5: holding with the envelope in band, and
      * only moderate coherence (bad sampling itself lowers it). Native AGC
@@ -121,6 +130,7 @@ void predemod_sphase_autocheck(void)
     if (good) {
         s_sphase_state = SPHASE_SETTLED;
         s_sphase_auto_done = true;
+        s_sphase_settled_us = now;
         return;
     }
     if (s_sphase_scans >= SPHASE_MAX_SCANS) {
@@ -137,6 +147,7 @@ void predemod_sphase_autocheck(void)
         s_sphase_state = SPHASE_SETTLED;
         s_sphase_auto_done = true;
         s_sphase_auto_ppm = final_ppm;
+        s_sphase_settled_us = esp_timer_get_time();
     } else {
         s_sphase_state = s_sphase_scans >= SPHASE_MAX_SCANS ? SPHASE_FAILED : SPHASE_UNVERIFIED;
         s_sphase_next_us = esp_timer_get_time() + SPHASE_RETRY_US;

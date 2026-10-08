@@ -56,6 +56,28 @@ int main(void)
     }
     assert(!afc2_ctrl_decide(&c, true, &step));
 
+    /* Range trackers centre blanking on their design porch, not on 0 kHz:
+     * a VTX already at -436 kHz needs no write; one at +200 kHz (board
+     * capture 2026-10-08) steps toward the design by the clamped amount. */
+    {
+        afc2_ctrl_t t = {0};
+        int32_t s2 = 0;
+        afc2_ctrl_reset(&t, 9u, true);
+        t.target_khz = -436;
+        for (unsigned k = 0; k < AFC2_CTRL_SAMPLES; ++k) {
+            afc2_result_t s = est(-436 + (int)(k % 3) * 10 - 10, -2350, -1, 2);
+            afc2_ctrl_observe(&t, &s);
+        }
+        assert(!afc2_ctrl_decide(&t, true, &s2));
+        afc2_ctrl_reset(&t, 10u, true);
+        for (unsigned k = 0; k < AFC2_CTRL_SAMPLES; ++k) {
+            afc2_result_t s = est(200, -2150, -1, 2);
+            afc2_ctrl_observe(&t, &s);
+        }
+        assert(afc2_ctrl_decide(&t, true, &s2) && s2 == AFC2_CTRL_MAX_STEP_KHZ);
+        assert(t.target_khz == -436);   /* reset keeps the design target */
+    }
+
     /* Unstable estimates (scene leakage / noise): no write. */
     afc2_ctrl_sync(&c, 4u, false);
     for (unsigned k = 0; k < AFC2_CTRL_SAMPLES; ++k) {

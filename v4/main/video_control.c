@@ -351,7 +351,7 @@ static void handle_button_long_click(void)
                    rf_bw_mode_name(), s_current_bw40 ? "BW40" : "BW20");
             break;
         case 3: /* AFC MODE */
-            if (c5vrx4_reference_demod()) { s_afc_mode = AFC_MODE_OFF; break; }
+            if (c5vrx4_reference_demod() && !c5vrx4_range_demod()) { s_afc_mode = AFC_MODE_OFF; break; }
             if (s_afc_mode == AFC_MODE_AUTO) {
                 s_afc_mode = AFC_MODE_HOLD;
             } else if (s_afc_mode == AFC_MODE_HOLD) {
@@ -383,6 +383,7 @@ void analog_agc_task(void *arg)
     (void)arg;
     int settle_ticks = 0;
     afc2_ctrl_t afc2_ctrl = {0};
+    afc2_ctrl.target_khz = c5vrx4_range_demod() ? C5VRX4_RANGE_PORCH_KHZ : 0;
     bool afc2_own_write = false;
     uint8_t afc_lost_windows = 0;
     int menu_refresh_ticks = 0;
@@ -626,7 +627,8 @@ void analog_agc_task(void *arg)
             if (eligible && phy_rx_lab_try_actuator(afc_epoch.phy)) {
                 /* A gain/profile writer may have won ownership between the
                  * pre-check and this acquire. Re-check while excluding it. */
-                bool current = !c5vrx4_reference_demod() && s_afc_mode == AFC_MODE_AUTO && !s_afc_video_locked &&
+                bool current = (!c5vrx4_reference_demod() || c5vrx4_range_demod()) &&
+                    s_afc_mode == AFC_MODE_AUTO && !s_afc_video_locked &&
                     rx_control_epoch_equal(afc_epoch, (rx_control_epoch_t){
                         s_profile_generation, phy_rx_lab_generation(), s_gain_transition_count});
                 if (afc2_ctrl_decide(&afc2_ctrl, current, &step)) {

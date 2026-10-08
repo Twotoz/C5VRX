@@ -36,7 +36,11 @@ esp_err_t video_start(void)
     if (!s_menu_commands) return ESP_ERR_NO_MEM;
 
     settings_load();
-    if (c5vrx4_reference_demod()) s_afc_mode = AFC_MODE_OFF;
+    /* Operator 2026-10-08: range trackers get AFC (acquisition-only, sticky
+     * video TRACK) to centre the VTX on their design; other reference
+     * programs keep AFC off. */
+    if (c5vrx4_range_demod()) s_afc_mode = AFC_MODE_AUTO;
+    else if (c5vrx4_reference_demod()) s_afc_mode = AFC_MODE_OFF;
     c5vrx4_options_snapshot();
     s_dg3_saved_valid = c5vrx4_blob_load("dg3_map", &s_dg3_saved, sizeof(s_dg3_saved)) &&
                         s_dg3_saved.version == DG3_MAP_VERSION &&

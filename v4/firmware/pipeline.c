@@ -80,6 +80,10 @@ bool c5vrx4_reference_demod(void)
     /* All selectable programs use 50-ns endpoints, not the span75 LUT layout. */
     return true;
 }
+bool c5vrx4_range_demod(void)
+{
+    return c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE32;
+}
 const char *c5vrx4_demodulator_name(void)
 {
     static const char *const names[] = {"HC50", "HR50", "GOLDEN50", "VLP56", "OVP56", "PLL96 REJECTED", "PLL96 IQ FIX LAB", "RANGE32 LAB"};

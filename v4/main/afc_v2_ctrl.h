@@ -56,6 +56,10 @@ typedef struct {
     uint8_t standard;
     uint8_t corrections;
     afc2_ref_t ref;
+    /* Design porch frequency of the active demodulator (kHz relative to the
+     * tuned frequency). Shared-word range trackers (RANGE32/PAIR/EDGE) are
+     * designed for blanking at -436 kHz; 0 keeps the original target. */
+    int32_t target_khz;
 } afc2_ctrl_t;
 
 static inline void afc2_ctrl_reset(afc2_ctrl_t *c, uint32_t context, bool new_acquisition)
@@ -96,7 +100,7 @@ static inline void afc2_ctrl_observe(afc2_ctrl_t *c, const afc2_result_t *r)
     if (c->n && (r->polarity != c->polarity || r->standard != c->standard)) c->n = 0;
     c->polarity = r->polarity;
     c->standard = r->standard;
-    int32_t v = c->ref == AFC2_REF_SYNC_MID ? (r->sync_khz + r->porch_khz) / 2 : r->porch_khz;
+    int32_t v = (c->ref == AFC2_REF_SYNC_MID ? (r->sync_khz + r->porch_khz) / 2 : r->porch_khz) - c->target_khz;
     if (c->n < AFC2_CTRL_SAMPLES) {
         c->est[c->n++] = v;
     } else {

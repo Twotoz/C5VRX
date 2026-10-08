@@ -25,6 +25,10 @@ enum { C5VRX4_DEMOD_HC50, C5VRX4_DEMOD_PHASE8_HR, C5VRX4_DEMOD_GOLDEN,
 unsigned c5vrx4_demodulator(void);
 const char *c5vrx4_demodulator_name(void);
 bool c5vrx4_reference_demod(void);
+/* RANGE32 and the pinned range options: shared-word trackers designed for a
+ * +1 MHz carrier centre (blanking at -436 kHz). AFC centres the VTX there. */
+bool c5vrx4_range_demod(void);
+#define C5VRX4_RANGE_PORCH_KHZ (-436)
 /* Louis Hitchcock/#184: staged physical overload/recovery independent of
  * demod selection; Direct Gain only, manual/native ownership unchanged. */
 bool c5vrx4_staged_gain_recovery(void);
