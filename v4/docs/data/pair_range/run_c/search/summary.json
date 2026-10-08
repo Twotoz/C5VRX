@@ -1,0 +1,26 @@
+{
+  "proposals": 1773713,
+  "unique": 1000000,
+  "tone_rejected": 288413,
+  "strong_rejected": 394547,
+  "eligible": 317040,
+  "invalid": 0,
+  "restarts": 201,
+  "per_worker_unique": 1000000,
+  "union_unique": 999985,
+  "interrupted": false,
+  "worker_seconds": [
+    7392,
+    10692,
+    10041,
+    10051,
+    9852,
+    10407,
+    8842
+  ],
+  "second_screen_eligible": 44,
+  "finalists": 13,
+  "elapsed_s": 9.23971530000199,
+  "best_pair": 7.296675258922823,
+  "best_plain": 2.9909261895162578
+}

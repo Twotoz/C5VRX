@@ -1,0 +1,603 @@
+{
+  "profile": "safe_range",
+  "evaluations": 1000000,
+  "workers": 7,
+  "config_seed": 340101,
+  "screen_seed": 340201,
+  "second_screen_seed": 340251,
+  "selection_seed": 340301,
+  "final_seeds": [
+    340401,
+    340402
+  ],
+  "stress_seed": 340501,
+  "decoder_training": [
+    {
+      "layout": "4411",
+      "seed": 340601,
+      "mix": "uniform",
+      "cases": 32,
+      "lane": "fine",
+      "occupied": 612,
+      "samples": 2612352
+    },
+    {
+      "layout": "4411",
+      "seed": 340602,
+      "mix": "uniform",
+      "cases": 32,
+      "lane": "fine",
+      "occupied": 675,
+      "samples": 2612352
+    },
+    {
+      "layout": "4411",
+      "seed": 340601,
+      "mix": "weak",
+      "cases": 32,
+      "lane": "fine",
+      "occupied": 660,
+      "samples": 2612352
+    },
+    {
+      "layout": "4411",
+      "seed": 340602,
+      "mix": "weak",
+      "cases": 32,
+      "lane": "fine",
+      "occupied": 734,
+      "samples": 2612352
+    },
+    {
+      "layout": "4411",
+      "seed": 340601,
+      "mix": "strong",
+      "cases": 32,
+      "lane": "fine",
+      "occupied": 523,
+      "samples": 2612352
+    },
+    {
+      "layout": "4411",
+      "seed": 340602,
+      "mix": "strong",
+      "cases": 32,
+      "lane": "fine",
+      "occupied": 608,
+      "samples": 2612352
+    }
+  ],
+  "topologies": [
+    [
+      -1,
+      4,
+      16,
+      1
+    ],
+    [
+      -1,
+      4,
+      32,
+      1
+    ],
+    [
+      -1,
+      4,
+      64,
+      1
+    ],
+    [
+      -1,
+      5,
+      16,
+      1
+    ],
+    [
+      -1,
+      5,
+      16,
+      2
+    ],
+    [
+      -1,
+      5,
+      32,
+      1
+    ],
+    [
+      -1,
+      5,
+      32,
+      2
+    ],
+    [
+      -1,
+      6,
+      16,
+      1
+    ],
+    [
+      -1,
+      6,
+      16,
+      2
+    ],
+    [
+      -1,
+      6,
+      16,
+      4
+    ],
+    [
+      0,
+      4,
+      16,
+      1
+    ],
+    [
+      0,
+      4,
+      32,
+      1
+    ],
+    [
+      0,
+      4,
+      64,
+      1
+    ],
+    [
+      0,
+      5,
+      16,
+      1
+    ],
+    [
+      0,
+      5,
+      16,
+      2
+    ],
+    [
+      0,
+      5,
+      32,
+      1
+    ],
+    [
+      0,
+      5,
+      32,
+      2
+    ],
+    [
+      0,
+      6,
+      16,
+      1
+    ],
+    [
+      0,
+      6,
+      16,
+      2
+    ],
+    [
+      0,
+      6,
+      16,
+      4
+    ],
+    [
+      1,
+      4,
+      16,
+      1
+    ],
+    [
+      1,
+      4,
+      32,
+      1
+    ],
+    [
+      1,
+      4,
+      64,
+      1
+    ],
+    [
+      1,
+      5,
+      16,
+      1
+    ],
+    [
+      1,
+      5,
+      16,
+      2
+    ],
+    [
+      1,
+      5,
+      32,
+      1
+    ],
+    [
+      1,
+      5,
+      32,
+      2
+    ],
+    [
+      1,
+      6,
+      16,
+      1
+    ],
+    [
+      1,
+      6,
+      16,
+      2
+    ],
+    [
+      1,
+      6,
+      16,
+      4
+    ],
+    [
+      2,
+      4,
+      16,
+      1
+    ],
+    [
+      2,
+      4,
+      32,
+      1
+    ],
+    [
+      2,
+      4,
+      64,
+      1
+    ],
+    [
+      2,
+      5,
+      16,
+      1
+    ],
+    [
+      2,
+      5,
+      16,
+      2
+    ],
+    [
+      2,
+      5,
+      32,
+      1
+    ],
+    [
+      2,
+      5,
+      32,
+      2
+    ],
+    [
+      2,
+      6,
+      16,
+      1
+    ],
+    [
+      2,
+      6,
+      16,
+      2
+    ],
+    [
+      2,
+      6,
+      16,
+      4
+    ],
+    [
+      3,
+      4,
+      16,
+      1
+    ],
+    [
+      3,
+      4,
+      32,
+      1
+    ],
+    [
+      3,
+      4,
+      64,
+      1
+    ],
+    [
+      3,
+      5,
+      16,
+      1
+    ],
+    [
+      3,
+      5,
+      16,
+      2
+    ],
+    [
+      3,
+      5,
+      32,
+      1
+    ],
+    [
+      3,
+      5,
+      32,
+      2
+    ],
+    [
+      3,
+      6,
+      16,
+      1
+    ],
+    [
+      3,
+      6,
+      16,
+      2
+    ],
+    [
+      3,
+      6,
+      16,
+      4
+    ],
+    [
+      4,
+      4,
+      16,
+      1
+    ],
+    [
+      4,
+      4,
+      32,
+      1
+    ],
+    [
+      4,
+      4,
+      64,
+      1
+    ],
+    [
+      4,
+      5,
+      16,
+      1
+    ],
+    [
+      4,
+      5,
+      16,
+      2
+    ],
+    [
+      4,
+      5,
+      32,
+      1
+    ],
+    [
+      4,
+      5,
+      32,
+      2
+    ],
+    [
+      4,
+      6,
+      16,
+      1
+    ],
+    [
+      4,
+      6,
+      16,
+      2
+    ],
+    [
+      4,
+      6,
+      16,
+      4
+    ],
+    [
+      5,
+      4,
+      16,
+      1
+    ],
+    [
+      5,
+      4,
+      32,
+      1
+    ],
+    [
+      5,
+      4,
+      64,
+      1
+    ],
+    [
+      5,
+      5,
+      16,
+      1
+    ],
+    [
+      5,
+      5,
+      16,
+      2
+    ],
+    [
+      5,
+      5,
+      32,
+      1
+    ],
+    [
+      5,
+      5,
+      32,
+      2
+    ],
+    [
+      5,
+      6,
+      16,
+      1
+    ],
+    [
+      5,
+      6,
+      16,
+      2
+    ],
+    [
+      5,
+      6,
+      16,
+      4
+    ]
+  ],
+  "objective": "safe_range: strong waveform/detail/burst guards against matched RANGE32, including six jittered amplitude/offset envelope cases; weak luma, misses, width, jitter",
+  "families": "PAIR4411 learned observations and plain first-sample trackers under one budget",
+  "policy": "island evolution; per-worker unique compiled LUT/schedules; union reported; second screen re-ranks; no promotion",
+  "source_sha256": {
+    "ablate_pll.py": "478479c31c583e0a4814839c8bc7caac8ebcbbdb4afb9684b54166fd3bd6fb16",
+    "audit_pll96.py": "8481a71a71caa7875864e1cbbbf39c26c717cd7215a04684b1dce7a8f1b3e075",
+    "compare_counter.py": "d57e0fe3944ce261b159a6a6b49d2f0e0a48577616590055649ca6932e6ac66b",
+    "compare_safe_range.py": "7666d0a0a53ba4618803906a0f785cb7f2b3750b3b7153a1ac0b95cd3fe9c357",
+    "compare_strategies.py": "b24414e0b070a074aa53280d846dbdfdb22179f09aac9408d5d5381adfa06ddc",
+    "distill_overlay.py": "85644b203ffb62d9cdaa47f8fc780f25128f11965d7a76a1cc6d772bed21a533",
+    "engine.py": "22acf995147f0fc9f1923cfedaf863db4bf48aa9fdae93de3a06fb9196f3a669",
+    "expressions.py": "1ca25e1ac22b5bf25e3959e8ee5a05807ea484229b7869984aea2d96e32588db",
+    "hardware.py": "012b06f55bbc7621cc8c7d476fdd2d14593db2bd689b7153c943aca99ac30857",
+    "iq_lanes.py": "14688c7419c1f427dc450790c437da077409bc27d69cd85c3be66de343a0be1f",
+    "leaderboard.py": "31d13e25a31e2491981732d627d92f4013b5d6214acfcbcea853e910cc055052",
+    "overlay_fsm.py": "6eb4c8307de35c1982b4364530660bd934788ff23c66de65f6ac900972b656e1",
+    "pair_decoder.py": "0eba417db499ba0a9f779e096321f2c4830a96cb31de4997bcdb080dcd4f74c7",
+    "polish_lut.py": "4df0b719b54fc6d9780a84dcd5eb74ea6534d6fb585b74fcb234aab5cf9bca6c",
+    "range_objective.py": "95e840e5194d3f63ca71ce31218ff27654aa78e33a095427e361da57b7780fa6",
+    "reconstruction.py": "7726aeeac557e4a35c3b34aed77b4a6e44160c4e5e395413180af40e2864d12c",
+    "refine_overlay.py": "b02785f4b14fc18d5d57fc05352584a7c12ce64edf333abc89297e7ffc00f38d",
+    "refine_range.py": "8c3b7a65044bb04a7ebebc8c84497528947dc50784a668353630b6b56be83940",
+    "repair_pll96.py": "8dde8df661d6d2e7f85cd054e55eb0d878311928ad83761f891e3c9ca8f1efa4",
+    "repair_reconstruction.py": "5128c6efdf3213d8ef67c65e5cdfac66864b6e238115ddc6660bdd30110b1cff",
+    "robust_select.py": "1626a05baef520cbb9722469ac8ef8e83ffc9d6f0454d65ac798c9c477639034",
+    "search_compact_range.py": "8a27c44c7fe88ea824ffd0e2acb9c57ec878fc94eb70baca0447e096ed8201a7",
+    "search_overlay.py": "5e5552708c339ea2799151e3e8367d09f04cb8f23e526b35176a24905f86c6fe",
+    "search_pair_range.py": "9eea7fbbf81ed09cf283388d9b8c818c1a1fdb06257739393cb4394c5300fcb2",
+    "search_range.py": "7a4e3ef4db1398c7eb85978ed6de59c50d135279636ad9368f7062cd65995d27",
+    "search_safe_range.py": "bfa948ce51aa8ae1520e5e6850bad9f57c94a6d17c79a31ffe5fbee7d31e7c94",
+    "test_compare_safe_range.py": "9ca26015fc420d1940715c6a4537df3162dab98d0273f43f1b4376ebcf67599f",
+    "test_content_holdout.py": "5313581f15c705eab1b686d9c307ae2fc214d3c53fa4a38ce9bb3b2a057c7654",
+    "test_counter.py": "8a63adb33a6c597c66eb359af9aa9bb62f93cd9d8434074c8e29c61ba6b3dc87",
+    "test_discovery.py": "3d806305d6cec7aef8da3ee87e443068b440d5919e5a13d524feac92de948dfb",
+    "test_distill.py": "2a3ac6372b183713fdff179eb2b95067e46d7493b725f4e0cc02e47ee123a8d4",
+    "test_iq_lanes.py": "74d821b86b053bf4e5ddc130e3e00c9b25a7cbbff1e5f709afc73ff511a04e37",
+    "test_overlay.py": "2c52f76de92ed353e7ae54ba55b2d0f70eab2a0409b1a3f017c8a4da2fac7d50",
+    "test_pair.py": "ef56ffa19b2e236269b69a0c8b36d31dce5478f8450cd45db0d5f9168a4b45cc",
+    "test_range_objective.py": "a175e41b2a53e82ad4ef39681013fef1a6a65c241d0c8e933ca606d9d834e6a1",
+    "test_range_validation.py": "246e99ef684240d22bd1c29058e6d97ecef5e5935f394a8463cfd9a8744d3c3c",
+    "test_reconstruction.py": "3bc8be35306260a62cd635ce323a8d35a5e4d99cab755becc3deadc3a839f669",
+    "test_video_metrics.py": "4228b7ca68c4b796a1a85a0b9b49ca7bda802129d3eb7e814bb4c7156b9a1d89",
+    "validate_overlay.py": "e83ce7ab6b648c00cd8510a603cee9c66e2ca83266e964a4f48aff53c2bbdaee",
+    "validate_range.py": "235bfb207380109ad5bb078b432e264a17466feb93c40035675d6ea422b854b1",
+    "validate_recovery.py": "95e750091cefdedac8b18238aa6b4bc5b9126a7e5238b39ccb247adab2b9cafe",
+    "validate_search.py": "10b14e838ecbe77850b80d2a2486acbee5c7588bd92b903cf0fe6ef9d4d6e89d",
+    "validate_signal_integrity.py": "a6cac418b08504fcbfcebbcbd4822a40f29bb49baa119c29c74932da5787315c",
+    "video_metrics.py": "9c96f10521f2ddbed34062725310b3887c69520477e929ba9bca5ac3f2d6599e",
+    "waveforms.py": "4ffab21b4e8a1d77e7fa70ec76b32a3a29d3e70d3eb03b15c2c9d8aa27e41243"
+  },
+  "robust_selection_seeds": [
+    340811,
+    340821,
+    340831,
+    340841,
+    340851,
+    340861
+  ],
+  "robust_sources": [
+    "C:\\Users\\leonb\\c5vrx4-pair-c"
+  ],
+  "candidates": 694,
+  "rule": "rank by guard-pass screens (of six, each with amplitude/offset envelope), then mean safe_range score; no guard changes",
+  "robust_source_sha256": {
+    "ablate_pll.py": "478479c31c583e0a4814839c8bc7caac8ebcbbdb4afb9684b54166fd3bd6fb16",
+    "audit_pll96.py": "8481a71a71caa7875864e1cbbbf39c26c717cd7215a04684b1dce7a8f1b3e075",
+    "compare_counter.py": "d57e0fe3944ce261b159a6a6b49d2f0e0a48577616590055649ca6932e6ac66b",
+    "compare_safe_range.py": "7666d0a0a53ba4618803906a0f785cb7f2b3750b3b7153a1ac0b95cd3fe9c357",
+    "compare_strategies.py": "b24414e0b070a074aa53280d846dbdfdb22179f09aac9408d5d5381adfa06ddc",
+    "distill_overlay.py": "85644b203ffb62d9cdaa47f8fc780f25128f11965d7a76a1cc6d772bed21a533",
+    "engine.py": "22acf995147f0fc9f1923cfedaf863db4bf48aa9fdae93de3a06fb9196f3a669",
+    "expressions.py": "1ca25e1ac22b5bf25e3959e8ee5a05807ea484229b7869984aea2d96e32588db",
+    "hardware.py": "012b06f55bbc7621cc8c7d476fdd2d14593db2bd689b7153c943aca99ac30857",
+    "iq_lanes.py": "14688c7419c1f427dc450790c437da077409bc27d69cd85c3be66de343a0be1f",
+    "lane_profile.py": "b36dcf6a603f5a10cabe0b84ff556a424b76a68a8e50ecef50cbf34cf1d9750c",
+    "leaderboard.py": "31d13e25a31e2491981732d627d92f4013b5d6214acfcbcea853e910cc055052",
+    "overlay_fsm.py": "6eb4c8307de35c1982b4364530660bd934788ff23c66de65f6ac900972b656e1",
+    "pair_decoder.py": "fa05ad96b96c3e5209b001d2fe952887fedfb6356ccd5a799139fbd06a746b4f",
+    "polish_lut.py": "e9593972f019928c3e3632368f64ea17a9cf1572ce8f35c6d163043189ab711b",
+    "range_objective.py": "95e840e5194d3f63ca71ce31218ff27654aa78e33a095427e361da57b7780fa6",
+    "reconstruction.py": "1582a43a47aa731368047c44f6d5b4d9f60f79a55b318c327c20254382a8b968",
+    "refine_overlay.py": "b02785f4b14fc18d5d57fc05352584a7c12ce64edf333abc89297e7ffc00f38d",
+    "refine_range.py": "085cdb674ed8b741fa9352b61093bf30ee5dd0dc6d2d2c0042f315399baecc20",
+    "repair_pll96.py": "8dde8df661d6d2e7f85cd054e55eb0d878311928ad83761f891e3c9ca8f1efa4",
+    "repair_reconstruction.py": "5128c6efdf3213d8ef67c65e5cdfac66864b6e238115ddc6660bdd30110b1cff",
+    "robust_select.py": "06239522f6be59a36dedf02cb98fdb3fa90545747ef0deeb5a2f63bda56e0f26",
+    "search_compact_range.py": "8a27c44c7fe88ea824ffd0e2acb9c57ec878fc94eb70baca0447e096ed8201a7",
+    "search_overlay.py": "5e5552708c339ea2799151e3e8367d09f04cb8f23e526b35176a24905f86c6fe",
+    "search_pair_range.py": "b6065ac82b22ce10e4ac88ff9b3e1115db8d7ab613824ab4a9501719fab815f9",
+    "search_range.py": "0797c75c10569202b3051c0b48c17646ed3dbf2bd5c0026833bd18374b9a5533",
+    "search_safe_range.py": "bfa948ce51aa8ae1520e5e6850bad9f57c94a6d17c79a31ffe5fbee7d31e7c94",
+    "test_compare_safe_range.py": "9ca26015fc420d1940715c6a4537df3162dab98d0273f43f1b4376ebcf67599f",
+    "test_content_holdout.py": "5313581f15c705eab1b686d9c307ae2fc214d3c53fa4a38ce9bb3b2a057c7654",
+    "test_counter.py": "8a63adb33a6c597c66eb359af9aa9bb62f93cd9d8434074c8e29c61ba6b3dc87",
+    "test_discovery.py": "3d806305d6cec7aef8da3ee87e443068b440d5919e5a13d524feac92de948dfb",
+    "test_distill.py": "2a3ac6372b183713fdff179eb2b95067e46d7493b725f4e0cc02e47ee123a8d4",
+    "test_iq_lanes.py": "74d821b86b053bf4e5ddc130e3e00c9b25a7cbbff1e5f709afc73ff511a04e37",
+    "test_overlay.py": "2c52f76de92ed353e7ae54ba55b2d0f70eab2a0409b1a3f017c8a4da2fac7d50",
+    "test_pair.py": "ef56ffa19b2e236269b69a0c8b36d31dce5478f8450cd45db0d5f9168a4b45cc",
+    "test_range_objective.py": "a175e41b2a53e82ad4ef39681013fef1a6a65c241d0c8e933ca606d9d834e6a1",
+    "test_range_validation.py": "246e99ef684240d22bd1c29058e6d97ecef5e5935f394a8463cfd9a8744d3c3c",
+    "test_reconstruction.py": "3bc8be35306260a62cd635ce323a8d35a5e4d99cab755becc3deadc3a839f669",
+    "test_video_metrics.py": "4228b7ca68c4b796a1a85a0b9b49ca7bda802129d3eb7e814bb4c7156b9a1d89",
+    "validate_overlay.py": "e83ce7ab6b648c00cd8510a603cee9c66e2ca83266e964a4f48aff53c2bbdaee",
+    "validate_range.py": "b755067d57a0597da5f9d7607b6b6371dffe91a17f7d91eaca40911899eb427b",
+    "validate_recovery.py": "95e750091cefdedac8b18238aa6b4bc5b9126a7e5238b39ccb247adab2b9cafe",
+    "validate_search.py": "10b14e838ecbe77850b80d2a2486acbee5c7588bd92b903cf0fe6ef9d4d6e89d",
+    "validate_signal_integrity.py": "a6cac418b08504fcbfcebbcbd4822a40f29bb49baa119c29c74932da5787315c",
+    "video_metrics.py": "9c96f10521f2ddbed34062725310b3887c69520477e929ba9bca5ac3f2d6599e",
+    "waveforms.py": "4ffab21b4e8a1d77e7fa70ec76b32a3a29d3e70d3eb03b15c2c9d8aa27e41243"
+  }
+}

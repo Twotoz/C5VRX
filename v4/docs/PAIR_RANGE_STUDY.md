@@ -59,7 +59,44 @@ confirmation against matched RANGE32.
 
 ## Results
 
-RESULTS_PLACEHOLDER
+Two completed one-million searches (per-worker unique compiled LUT/schedules;
+union 999,992 and 999,985) were followed by robust selection, the unchanged
+refinement and the unchanged `validate_range.py` independent confirmation
+(fresh seeds, full PAL/NTSC fields, echo/fade, amplitude/offset envelope,
+carrier outage and unseen zone-plate/checker/texture content).
+
+**Run C (seed340000, envelope screens) confirms PAIR `RNG-e2a8f30af45e`**
+(PAIR4411, 32 phases, 32 tokens, learned observations, fitted DAC):
+
+| Independent metric | RANGE32 | PAIR e2a8 |
+| --- | ---: | ---: |
+| Nominal weak H+V misses, C/N0..10 | 3,715 | 2,558 |
+| Mean weak luma SINAD | 15.875 dB | 18.018 dB |
+| First passing tested nominal C/N | 10 dB | 10 dB |
+| Strong waveform SINAD / detail | 15.940 / 0.721 | 16.355 / 0.742 |
+| Echo/fade weak misses | 3,006 | 2,562 |
+| Echo/fade first passing tested C/N | 30 dB | 22 dB |
+| Unseen content weak misses (C/N6/10) | 40 | 7 |
+
+All strong, envelope, outage and content gates pass. The nominal usable C/N
+grid step is 2 dB; equal thresholds do not exclude a smaller shift and the
+table is not a measured RF sensitivity. Its source assembles with the ESP32-C5
+BitScrambler assembler and its 20k-sample stream is bit-exact against an
+independent standard-library PAIR implementation.
+
+**Run A (seed320000, nominal screens) confirms plain `RNG-5cc14ad73003`**
+(first sample only; misses 2,960 vs 3,673, weak luma 17.343 vs 15.897 dB,
+strong 16.241/0.734 vs 15.968/0.721). Its PAIR leaders failed the 0.5 MHz
+offset envelope (see below). On a matched fixed-ultrafine screen (RMS4.5, the
+board's edge noise) 5cc14 also beats RANGE32 (weak luma 17.52 vs 15.66 dB).
+
+Robust selection on run C found no candidate passing all six envelope screens;
+the best PAIR leaders passed five. Full-field confirmation, with many more
+bursts and lines, decided. Run D (fixed-ultrafine edge profile) is separate.
+
+Shared floating-point controls in the same confirmation keep a higher weak
+SINAD (22.4 dB) but miss more pulses (3,876), first pass at 12 dB and fail
+strong guards; they are a reference, not an executable C5 target.
 
 ## Negative results retained
 
