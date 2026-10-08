@@ -32,13 +32,31 @@ class RangeOptionsTest(unittest.TestCase):
     def test_encoder_and_state_mask_survive_ring_wrap(self):
         header, programs = render([self.option])
         self.assertIn('#define C5VRX4_RANGE_OPTION_COUNT 1', header)
-        source = programs['c5vrx4_range_option0.bsasm']
+        self.check_stream(self.model, programs['c5vrx4_range_option0.bsasm'])
+        manifest = ROOT / 'tools/range_options.json'
+        if manifest.exists():
+            options = json.loads(manifest.read_text())['options']
+            _, programs = render(options)
+            for index, option in enumerate(options):
+                with self.subTest(option=option['label']):
+                    self.check_stream(option['model'], programs[f'c5vrx4_range_option{index}.bsasm'])
+
+    def check_stream(self, model, source):
         rng = random.Random(731)
         raw = [rng.randrange(256) for _ in range(70000)]
-        lut = self.model['lut']; state = 0; expected = [0, 0]
-        for sample in raw[::2]:
-            word = lut[state * 32 + (lut[768 + sample] >> 11)]
-            state = (word >> 6) & 31
+        lut = model['lut']; p = model['params']; b = p['token_bits']
+        state = accumulator = 0; expected = [0, 0]
+        counter, context = p.get('counter_phase', False), p.get('context_bits', 0)
+        for k in range(0, len(raw), 2):
+            address = raw[k] + (0 if counter else 768)
+            if context:
+                address = raw[k] + (((raw[k + 1] >> 7) & 1) << 8) + (((raw[k + 1] >> 3) & 1) << 9)
+            lookup_state = state
+            if counter:
+                accumulator = (accumulator + address + (state << 11)) & 65535
+                lookup_state = accumulator >> 11
+            word = lut[(lookup_state << b) + (lut[address] >> (16 - b))]
+            state = (word >> 6) & ((1 << (10 - b)) - 1)
             expected.extend([word & 63] * 2)
         original = B.parse
         B.parse = lru_cache(maxsize=1)(original)
