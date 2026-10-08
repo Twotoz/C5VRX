@@ -14,6 +14,7 @@ import search_overlay as R
 import range_objective as J
 import refine_overlay as F
 import waveforms as V
+import lane_profile as L
 
 PINNED=json.loads((Path(__file__).parents[1]/'range32_model.json').read_text())
 
@@ -41,7 +42,7 @@ def cases(seed,lane_model=None):
     for standard,cnr,stress in [('PAL',30,False),('NTSC',30,False),
                                ('PAL',2,False),('PAL',6,False),('NTSC',6,False),
                                ('NTSC',10,False),('PAL',6,True)]:
-        c=V.make_case(standard,seed,cnr,3,short=True,stress=stress,stimulus_seed=seed+100000,lane_model=lane_model)
+        c=V.make_case(standard,seed,cnr,L.scale(3),short=True,stress=stress,stimulus_seed=seed+100000,lane_model=lane_model)
         for key in ('raw','clean','truth','region'):c[key]=c[key][65536:81920]
         c['calibration']=V.M.clean_calibration(S.decode(c['clean'],baseline),c['truth'],3000)
         result.append(c)

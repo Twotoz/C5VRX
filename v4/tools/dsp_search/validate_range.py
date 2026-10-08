@@ -14,6 +14,7 @@ import waveforms as W
 from video_metrics import burst
 from validate_recovery import recovery
 from refine_overlay import digest
+import lane_profile as L
 
 CNRS=(0,2,4,6,8,10,12,14,18,22,30)
 PINNED=json.loads((Path(__file__).parents[1]/'range32_model.json').read_text())
@@ -26,8 +27,8 @@ def evaluate(models,profile,seed,cnrs,stage,stress=False,rms=3,cfo_hz=1e6,loss_w
     methods+=[(m['name'],lambda raw,m=m:O.decode(raw,m)) for m in models];rows=[]
     for standard in ('PAL','NTSC'):
         for cnr in cnrs:
-            c=W.make_case(standard,seed,cnr,rms,stress=stress,cfo_hz=cfo_hz,
-                          stimulus_seed=seed+100000,loss_windows_us=loss_windows_us,lane_model='fine',pattern=pattern)
+            c=W.make_case(standard,seed,cnr,L.scale(rms),stress=stress,cfo_hz=cfo_hz,
+                          stimulus_seed=seed+100000,loss_windows_us=loss_windows_us,lane_model=L.LANE,pattern=pattern)
             c['calibration']=W.M.clean_calibration(S.decode(c['clean'],ref)[:131072],c['truth'][:131072],3000)
             include_burst=cnr>=20 and J.PROFILES[profile].get('burst_guard',False)
             reference=J.measure(O.decode(c['raw'],PINNED),c,include_burst)
@@ -74,8 +75,10 @@ def main():
     ap.add_argument('--search',type=Path,required=True);ap.add_argument('--output',type=Path,required=True)
     a=ap.parse_args()
     if a.output.exists():ap.error('fresh independent confirmation directory required')
-    a.output.mkdir(parents=True);p=json.loads((a.search/'protocol.json').read_text());profile=p['profile']
-    S.save(a.output/'protocol.json',dict(p,confirmation_lane='fine',common_cnr_grid=CNRS,
+    p=json.loads((a.search/'protocol.json').read_text());profile=p['profile']
+    if p.get('lane_profile',dict(lane='fine',nominal_rms=3.))!=L.record():ap.error('search used another lane profile')
+    a.output.mkdir(parents=True)
+    S.save(a.output/'protocol.json',dict(p,confirmation_lane=L.LANE,confirmation_nominal_rms=L.RMS,common_cnr_grid=CNRS,
          confirmation_source_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')},
          content_holdout=dict(registered_utc='2026-10-08 08:53:54',
              patterns=['zoneplate','checker','texture'],cnrs=[6,10,30],

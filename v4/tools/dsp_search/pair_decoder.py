@@ -9,6 +9,7 @@ import numpy as np
 import overlay_fsm as O
 C=O.C
 import waveforms as W
+import lane_profile as L
 
 MIXES={
     'uniform':(2,4,6,8,10,14,20,30),
@@ -24,11 +25,12 @@ def addresses(raw,layout):
     return address
 
 
-def learn(layout,seed,mix='uniform',cases=32,lane='fine'):
+def learn(layout,seed,mix='uniform',cases=32,lane=None):
+    lane=lane or L.LANE
     if mix not in MIXES:raise ValueError('unknown training mixture')
     rng=np.random.default_rng(seed);acc=np.zeros(1024,complex);count=np.zeros(1024)
     for i in range(cases):
-        c=W.make_case(('PAL','NTSC')[i%2],seed+i,float(rng.choice(MIXES[mix])),float(rng.uniform(1.5,5)),
+        c=W.make_case(('PAL','NTSC')[i%2],seed+i,float(rng.choice(MIXES[mix])),L.scale(float(rng.uniform(1.5,5))),
                       short=True,cfo_hz=float(rng.uniform(.5e6,1.5e6)),stimulus_seed=seed+1000+i,
                       lane_model=lane,include_traces=True,stress=i%5==4)
         a=addresses(c['raw'],layout);u=c['rx_signal'][0::2][:len(a)]

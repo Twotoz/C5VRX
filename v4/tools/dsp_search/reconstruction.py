@@ -10,6 +10,7 @@ from scipy.sparse.linalg import LinearOperator,lsmr
 import overlay_fsm as O
 import engine as S
 import waveforms as V
+import lane_profile as L
 
 
 def dataset(seed,lane_model=None):
@@ -18,7 +19,7 @@ def dataset(seed,lane_model=None):
                              ('NTSC',5,1e6),('PAL',3,.5e6),('NTSC',3,1.5e6)]:
         for stressed in (False,True):
             for cnr in (6,30):
-                c=V.make_case(standard,seed,cnr,rms,short=True,stress=stressed,
+                c=V.make_case(standard,seed,cnr,L.scale(rms),short=True,stress=stressed,
                               cfo_hz=cfo,stimulus_seed=seed+100000,lane_model=lane_model)
                 for key in ('raw','clean','truth','region'):c[key]=c[key][65536:98304]
                 c['calibration']=V.M.clean_calibration(S.decode(c['clean'],baseline),c['truth'],3000)

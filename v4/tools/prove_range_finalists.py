@@ -36,7 +36,7 @@ def main():
             p = model['params']
             prepared.append((source, dict(model_id=row['id'], frozen=str(frozen),
                 source_sha256=hashlib.sha256(source).hexdigest(),
-                cost=cost(p['token_bits'], p.get('context_bits', 0), p.get('counter_phase', False)))))
+                cost=cost(p['token_bits'], p.get('context_bits', 0), p.get('counter_phase', False), p.get('pair_layout')))))
     if not prepared:
         ap.error('no frozen finalists supplied')
     a.output.mkdir(parents=True)

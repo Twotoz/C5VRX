@@ -110,12 +110,13 @@ def screen(seed):
     import search_range as R
     import waveforms as V
     import engine as S
-    cases=R.cases(seed,'fine');rng=np.random.default_rng(seed+77)
+    import lane_profile as L
+    cases=R.cases(seed,L.LANE);rng=np.random.default_rng(seed+77)
     baseline=S.F.load_reference('OVP56')
     for i,(rms,cfo) in enumerate(((1.5,1e6),(5,1e6),(3,.5e6),(3,1.5e6),(2,.75e6),(4,1.25e6))):
-        rms*=float(rng.uniform(.9,1.1));cfo+=float(rng.uniform(-.08e6,.08e6))
+        rms=L.scale(rms)*float(rng.uniform(.9,1.1));cfo+=float(rng.uniform(-.08e6,.08e6))
         c=V.make_case(('PAL','NTSC')[i%2],seed+20+i,30,rms,short=True,cfo_hz=cfo,
-                      stimulus_seed=seed+100020+i,lane_model='fine')
+                      stimulus_seed=seed+100020+i,lane_model=L.LANE)
         for key in ('raw','clean','truth','region'):c[key]=c[key][65536:81920]
         c['calibration']=V.M.clean_calibration(S.decode(c['clean'],baseline),c['truth'],3000)
         cases.append(c)
@@ -224,7 +225,7 @@ def main():
     S.save(a.output/'protocol.json',dict(profile='safe_range',evaluations=a.evaluations,workers=a.workers,
         config_seed=a.seed_base+101,screen_seed=a.seed_base+201,second_screen_seed=a.seed_base+251,
         selection_seed=a.seed_base+301,final_seeds=[a.seed_base+401,a.seed_base+402],stress_seed=a.seed_base+501,
-        decoder_training=training,topologies=TOPOLOGIES,
+        decoder_training=training,topologies=TOPOLOGIES,lane_profile=__import__('lane_profile').record(),
         objective='safe_range: strong waveform/detail/burst guards against matched RANGE32, including six jittered amplitude/offset envelope cases; weak luma, misses, width, jitter',
         families='PAIR4411 learned observations and plain first-sample trackers under one budget',
         policy='island evolution; per-worker unique compiled LUT/schedules; union reported; second screen re-ranks; no promotion',

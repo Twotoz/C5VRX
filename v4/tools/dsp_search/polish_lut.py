@@ -71,7 +71,8 @@ def polish(args):
     import refine_overlay as F
     m=dict(entry.get('model') or O.synthesize(entry['params']));p=m['params']
     half=len(seeds)//2
-    train=[R.cases(s,'fine') for s in seeds[:half]];held=[R.cases(s,'fine') for s in seeds[half:]]
+    import lane_profile as L
+    train=[R.cases(s,L.LANE) for s in seeds[:half]];held=[R.cases(s,L.LANE) for s in seeds[half:]]
     best=objective(m,train,R);held_best=objective(m,held,R)
     if best is None or held_best is None:return dict(id=entry['id'],status='base_ineligible')
     start=dict(train=best,held=held_best);evaluations=kept=pending=passes=0
