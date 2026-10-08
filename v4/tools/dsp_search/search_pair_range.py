@@ -29,6 +29,8 @@ CATEGORICAL={'error_function':('linear','clip','sine','tanh'),'adaptive':(False,
              'reconstruction':('innovation','advance','quantized_advance','mixed_advance')}
 DECODERS=[('4411',mix,seed) for mix in ('uniform','weak','strong') for seed in (0,1)]
 PLAIN=-1
+# Extra C/N3..4 weak cases (recorded in the protocol; default off).
+EDGE=os.environ.get('C5VRX4_EDGE_SCREEN','0')=='1'
 
 
 def topologies():
@@ -120,6 +122,13 @@ def screen(seed):
         for key in ('raw','clean','truth','region'):c[key]=c[key][65536:81920]
         c['calibration']=V.M.clean_calibration(S.decode(c['clean'],baseline),c['truth'],3000)
         cases.append(c)
+    if EDGE:
+        # Range is decided in the FM-threshold cliff: weight C/N3..4 more.
+        for i,(standard,cnr) in enumerate((('PAL',3),('NTSC',3),('PAL',4),('NTSC',4))):
+            c=V.make_case(standard,seed+40+i,cnr,L.scale(3),short=True,stimulus_seed=seed+100040+i,lane_model=L.LANE)
+            for key in ('raw','clean','truth','region'):c[key]=c[key][65536:81920]
+            c['calibration']=V.M.clean_calibration(S.decode(c['clean'],baseline),c['truth'],3000)
+            cases.append(c)
     return cases
 
 
@@ -225,7 +234,7 @@ def main():
     S.save(a.output/'protocol.json',dict(profile='safe_range',evaluations=a.evaluations,workers=a.workers,
         config_seed=a.seed_base+101,screen_seed=a.seed_base+201,second_screen_seed=a.seed_base+251,
         selection_seed=a.seed_base+301,final_seeds=[a.seed_base+401,a.seed_base+402],stress_seed=a.seed_base+501,
-        decoder_training=training,topologies=TOPOLOGIES,lane_profile=__import__('lane_profile').record(),
+        decoder_training=training,topologies=TOPOLOGIES,lane_profile=__import__('lane_profile').record(),edge_screen=EDGE,
         objective='safe_range: strong waveform/detail/burst guards against matched RANGE32, including six jittered amplitude/offset envelope cases; weak luma, misses, width, jitter',
         families='PAIR4411 learned observations and plain first-sample trackers under one budget',
         policy='island evolution; per-worker unique compiled LUT/schedules; union reported; second screen re-ranks; no promotion',

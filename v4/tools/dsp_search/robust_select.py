@@ -48,6 +48,11 @@ def main():
     import pair_decoder as P
     import search_pair_range as Q
     protocol=json.loads((a.search[0]/'protocol.json').read_text());base=protocol['config_seed']-101
+    import lane_profile as L
+    for directory in a.search:
+        p=json.loads((directory/'protocol.json').read_text())
+        if p.get('edge_screen',False)!=Q.EDGE or p.get('lane_profile',dict(lane='fine',nominal_rms=3.))!=L.record():
+            ap.error('search used another screen/lane profile')
     seeds=[base+811+10*i for i in range(6)];items={};origin={}
     for directory in a.search:
         p=json.loads((directory/'protocol.json').read_text());sb=p['config_seed']-101
