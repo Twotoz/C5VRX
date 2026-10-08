@@ -85,6 +85,7 @@ def main():
            blocks=dict(allocations=ALLOCATIONS, detectors=DETECTORS, outputs=OUTPUTS, grids=GRIDS, leaks=LEAKS,
                        decoders=DECODERS, kp=KP, ki=KI, hold=HOLD),
            rule='stage1 one screen; best decile re-scored on three more; rank by mean of four',
+           fusion_objective=os.environ.get('C5VRX4_EDGE_FUSION') == '1',
            source_sha256={p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')}))
     start = time.monotonic()
     with mp.get_context('spawn').Pool(a.workers, initializer=setup, initargs=(seeds, bank)) as pool:

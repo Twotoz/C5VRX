@@ -23,6 +23,13 @@ int main(void)
     int64_t start = t; bool back = false;
     for (; t - start < 3200000; t += 50000) if (fdemod_step(&f, 130, t)) { back = true; break; }
     assert(back && !f.edge && t - start >= FUSION_PAIR_HOLD_US);
+    /* A sudden fade (one window below 5 dB) switches without the median. */
+    {
+        fdemod_t g = {0};
+        int64_t u = 50000000;
+        for (int k = 0; k < 5; ++k, u += 50000) assert(!fdemod_step(&g, 180, u));
+        assert(fdemod_step(&g, 30, u) && g.edge);
+    }
     /* Minimum dwell after a switch. */
     assert(!fdemod_step(&f, 50, t + 50000) && !fdemod_step(&f, 50, t + 100000));
     assert(fdemod_step(&f, 50, t + FUSION_MIN_DWELL_US + 1) && f.edge && f.to_edge == 2 && f.to_pair == 1);

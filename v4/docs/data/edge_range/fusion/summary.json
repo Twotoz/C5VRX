@@ -1,0 +1,35 @@
+{
+  "structures": 1920,
+  "models": 51840,
+  "stage1_pass": 62,
+  "stage2": 50,
+  "four_screen_pass": 9,
+  "best": {
+    "index": 24959,
+    "structure": {
+      "decoder": 1,
+      "reliability": true,
+      "alloc": [
+        4,
+        32,
+        8
+      ],
+      "detector": "tanh",
+      "output": "freq",
+      "grid": "uniform",
+      "leak": 0.0
+    },
+    "kp": 0.7,
+    "ki": 0.1,
+    "hold": 3.2,
+    "scores": [
+      -152.45741417321022,
+      -154.32430098784292,
+      -111.98798191566235,
+      -122.80210463503138
+    ],
+    "mean": -135.3929504279367,
+    "worst": -154.32430098784292
+  },
+  "elapsed_s": 418.51096130000224
+}

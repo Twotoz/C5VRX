@@ -10,7 +10,8 @@
 #include <stdint.h>
 #include <math.h>
 
-#define FUSION_EDGE_BELOW_X10  90    /* to EDGE below 9.0 dB */
+#define FUSION_EDGE_BELOW_X10  90    /* to EDGE below 9.0 dB (median of three) */
+#define FUSION_PANIC_X10       50    /* one window below 5 dB: EDGE at once */
 #define FUSION_PAIR_ABOVE_X10  120   /* to PAIR above 12.0 dB ... */
 #define FUSION_PAIR_HOLD_US    3000000LL  /* ... held for 3 s */
 #define FUSION_MIN_DWELL_US    1000000LL
@@ -47,7 +48,7 @@ static inline bool fdemod_step(fdemod_t *f, int cnr_x10, int64_t now)
     if (cnr_x10 >= FUSION_PAIR_ABOVE_X10) { if (!f->above_since) f->above_since = now; }
     else f->above_since = 0;
     if (now - f->switched_us < FUSION_MIN_DWELL_US) return false;
-    if (!f->edge && med < FUSION_EDGE_BELOW_X10) {
+    if (!f->edge && (med < FUSION_EDGE_BELOW_X10 || cnr_x10 < FUSION_PANIC_X10)) {
         f->edge = true; f->switched_us = now; ++f->to_edge; return true;
     }
     if (f->edge && f->above_since && now - f->above_since >= FUSION_PAIR_HOLD_US) {

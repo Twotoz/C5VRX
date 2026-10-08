@@ -10,9 +10,10 @@
 
 void edge_af_pinned(edge_af_params_t *p)
 {
-    p->phases = 4; p->frequencies = 32; p->output = EDGE_AF_OUT_FREQ;
+    p->phases = EDGE_AF_PHASES; p->frequencies = EDGE_AF_FREQUENCIES; p->output = EDGE_AF_OUTPUT;
+    p->detector = EDGE_AF_DETECTOR; p->reliability = true;
     p->kp = EDGE_AF_KP; p->ki = EDGE_AF_KI; p->hold = EDGE_AF_HOLD; p->limit = EDGE_AF_LIMIT;
-    p->mix = 0.0; p->low_hz = EDGE_AF_LOW_HZ; p->high_hz = EDGE_AF_HIGH_HZ;
+    p->mix = EDGE_AF_MIX; p->low_hz = EDGE_AF_LOW_HZ; p->high_hz = EDGE_AF_HIGH_HZ;
 }
 
 /* numpy remainder: result has the sign of the divisor. */
@@ -26,7 +27,8 @@ static double pymod(double a, double b)
 bool edge_af_synthesize(const edge_af_params_t *p, double fit_d, double fit_c, uint16_t low13[1024])
 {
     const int P = p->phases, F = p->frequencies, T = 8;
-    if (P < 4 || F < 2 || P * F * T != 1024 || p->output > EDGE_AF_OUT_AVG) return false;
+    if (P < 4 || F < 2 || P * F * T != 1024 || p->output > EDGE_AF_OUT_AVG ||
+        p->detector > EDGE_AF_DET_SOFTHOLD) return false;
     if (!(fit_d >= .4 && fit_d <= 3.0) || fabs(fit_c) > 4e6) return false;
     const double two_pi = 2 * M_PI;
     double lo = fit_c + fit_d * (p->low_hz - EDGE_AF_NOMINAL_HZ);
@@ -41,9 +43,17 @@ bool edge_af_synthesize(const edge_af_params_t *p, double fit_d, double fit_c, u
         double pr = (double)(pi_ * 2) * M_PI / P + fr;
         for (int t = 0; t < T; ++t) {
             double e = pymod(edge_af_obs[t] - pr + M_PI, two_pi) - M_PI;
-            if (fabs(e) > p->hold) e = 0.0;
+            if (p->detector == EDGE_AF_DET_SOFTHOLD) {
+                double u = e / p->hold;
+                e = e * exp(-(u * u));
+            } else {
+                if (fabs(e) > p->hold) e = 0.0;
+                if (p->detector == EDGE_AF_DET_TANH) e = p->limit * tanh(e / p->limit);
+                else if (p->detector == EDGE_AF_DET_SINE) e = sin(e);
+            }
             if (e < -p->limit) e = -p->limit;
             if (e > p->limit) e = p->limit;
+            if (p->reliability) e = e * edge_af_rel[t];
             double target = fr + p->ki * e - 0.0;
             double fq = rint((target - fmin) / step);
             int f2 = fq < 0 ? 0 : fq > F - 1 ? F - 1 : (int)fq;

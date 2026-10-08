@@ -25,10 +25,17 @@ def main():
     opt = next(o for o in json.loads((ROOT / 'tools/range_options.json').read_text())['options']
                if o['label'] == LABEL)
     p = opt['model']['params']
-    assert (p['phases'], p['frequencies'], p['token_bits']) == (4, 32, 3) and p['autofit']
-    assert p['detector'] == 'clip' and p['output'] == 'freq' and p['grid'] == 'uniform'
-    assert p['leak'] == 0 and p['mix'] == 0 and not p['reliability'] and p['pair_layout'] == '4411'
-    _, obs = F.pair_tokens(8, p['observation_vectors'], p['rotation'])
+    assert p['token_bits'] == 3 and p['phases'] * p['frequencies'] == 128 and p['autofit']
+    assert p['grid'] == 'uniform' and p['leak'] == 0 and p['pair_layout'] == '4411'
+    tok, obs = F.pair_tokens(8, p['observation_vectors'], p['rotation'])
+    # Reliability: per-token weight from the learned phasor magnitudes (edge_fsm).
+    rel = np.ones(8)
+    if p.get('reliability'):
+        v = np.asarray(p['observation_vectors'], float); rr = np.hypot(v[:, 0], v[:, 1])
+        rt = np.array([rr[tok == t].mean() if np.any(tok == t) else 1. for t in range(8)])
+        rel = np.clip(rt / max(rt.max(), 1e-9), .2, 1)
+    det = ('clip', 'tanh', 'sine', 'softhold').index(p.get('detector', 'clip'))
+    out = ('freq', 'advance', 'avg').index(p.get('output', 'freq'))
     model = F.synthesize(p)
     assert model['lut'] == opt['model']['lut'], 'pinned LUT is not this synthesis'
     r = lambda v: repr(float(v))
@@ -37,12 +44,15 @@ def main():
          f'#define EDGE_AF_PINNED_DEVIATION {r(p["fit_deviation"])}',
          f'#define EDGE_AF_PINNED_CENTRE_HZ {r(p["fit_centre_hz"])}',
          f'#define EDGE_AF_KP {r(p["kp"])}', f'#define EDGE_AF_KI {r(p["ki"])}',
+         f'#define EDGE_AF_DETECTOR {det}', f'#define EDGE_AF_OUTPUT {out}', f'#define EDGE_AF_MIX {r(p["mix"])}',
+         f'#define EDGE_AF_PHASES {p["phases"]}', f'#define EDGE_AF_FREQUENCIES {p["frequencies"]}',
          f'#define EDGE_AF_HOLD {r(p["hold"])}', f'#define EDGE_AF_LIMIT {r(p["limit"])}',
          f'#define EDGE_AF_LOW_HZ {r(p["low_hz"])}', f'#define EDGE_AF_HIGH_HZ {r(p["high_hz"])}',
          f'#define EDGE_AF_NOMINAL_HZ {r(F.NOMINAL_CENTRE_HZ)}',
          f'#define EDGE_AF_OFFSET {r(F.B.P.OFFSET)}', f'#define EDGE_AF_SCALE {r(F.B.P.SCALE)}',
          '#ifdef EDGE_AF_TABLE_DATA',
-         'static const double edge_af_obs[8] = {' + ', '.join(r(v) for v in obs) + '};', '#endif', '']
+         'static const double edge_af_obs[8] = {' + ', '.join(r(v) for v in obs) + '};',
+         'static const double edge_af_rel[8] = {' + ', '.join(r(v) for v in rel) + '};', '#endif', '']
     (ROOT / 'firmware/include/edge_autofit_table.h').write_text('\n'.join(h), encoding='utf-8')
     g = ['#pragma once', '/* Generated golden EDGE AutoFit LUTs (edge_fsm.synthesize). */',
          f'#define EDGE_AF_GOLDEN_COUNT {len(GOLDEN_FITS)}',

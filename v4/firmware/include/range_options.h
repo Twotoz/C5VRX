@@ -13,5 +13,5 @@ static const c5vrx4_range_option_t c5vrx4_range_options[] = {
     {"RANGE BAL LAB", "c2510e3dad79", 5, 32, 32, 1, 1},
     {"RANGE32+ LAB", "58c0e88fcba8", 5, 32, 32, 1, 0},
     {"PAIR RANGE LAB", "e2a8f30af45e", 5, 32, 32, 1, 1},
-    {"EDGE RANGE LAB", "5e18bc4fcd64", 2, 4, 8, 32, 1},
+    {"EDGE RANGE LAB", "61ba9157643c", 2, 4, 8, 32, 1},
 };

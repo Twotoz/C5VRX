@@ -54,6 +54,10 @@ def screen(seed):
     # takes over above it, so sanity is required where the two meet, not at
     # strong signal (a range-edge model used near the VTX failed as MAX).
     plan = [(c, 'edge') for c in (0, 2, 3, 4, 6)] + [(c, 'sane') for c in (8, 10, 12)]
+    if os.environ.get('C5VRX4_EDGE_FUSION') == '1':
+        # FusionDemod: EDGE runs only below 9 dB (PAIR above 12 dB), so the
+        # sanity region is the hand-over itself.
+        plan = [(c, 'edge') for c in (0, 2, 3, 4, 6)] + [(c, 'sane') for c in (8, 9, 10)]
     for k, (cnr, kind) in enumerate(plan):
         for std in ('PAL', 'NTSC'):
             cfo = float(rng.uniform(.5e6, 1.5e6)); rms = L.scale(3) * float(rng.uniform(.85, 1.15))

@@ -8,9 +8,12 @@
 #include <stdint.h>
 
 enum { EDGE_AF_OUT_FREQ = 0, EDGE_AF_OUT_ADVANCE = 1, EDGE_AF_OUT_AVG = 2 };
+enum { EDGE_AF_DET_CLIP = 0, EDGE_AF_DET_TANH = 1, EDGE_AF_DET_SINE = 2, EDGE_AF_DET_SOFTHOLD = 3 };
 typedef struct {
     uint8_t phases, frequencies;        /* phases * frequencies * 8 == 1024 */
     uint8_t output;                     /* EDGE_AF_OUT_* (edge_fsm output block) */
+    uint8_t detector;                   /* EDGE_AF_DET_* */
+    bool reliability;                   /* per-token weights from the pinned decoder */
     double kp, ki, hold, limit, mix, low_hz, high_hz;
 } edge_af_params_t;
 

@@ -1,0 +1,43 @@
+{
+ "objective": "FusionDemod: EDGE below 9 dB, sanity at 8/9/10 dB relative to the best of RANGE32/PAIR",
+ "fresh_screens": "6 held-out screens (seeds 427201..427251), C/N 0-6, randomized VTX/board, AutoFit from noisy fits",
+ "missed_sync": {
+  "previous_EDGE": 114,
+  "EDGE": 57,
+  "PAIR": 436
+ },
+ "sync_level_abs_ire_sum": {
+  "previous_EDGE": 353,
+  "EDGE": 292,
+  "PAIR": 1246
+ },
+ "real_board_click_increase_static": {
+  "previous_EDGE": 0.76,
+  "EDGE": 0.49,
+  "PAIR": 12.59,
+  "RANGE32": 7.53
+ },
+ "previous": {
+  "edge_screens": "5 screens incl. held-out seed 425901, C/N 0-6, randomized VTX/board",
+  "missed_sync": {
+   "RANGE32": 429,
+   "PAIR": 358,
+   "EDGE": 92
+  },
+  "sync_level_abs_ire_sum": {
+   "RANGE32": 1214,
+   "PAIR": 1090,
+   "EDGE": 274
+  },
+  "large_errors": {
+   "RANGE32": 8234,
+   "PAIR": 7445,
+   "EDGE": 7279
+  },
+  "real_board_click_increase_static": {
+   "RANGE32": 7.53,
+   "PAIR": 12.59,
+   "EDGE": 0.76
+  }
+ }
+}
