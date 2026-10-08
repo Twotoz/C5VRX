@@ -21,7 +21,10 @@ cycles RANGE32 -> RANGE BAL LAB -> RANGE32 with saved reboot.
 RANGE MAX failed the operator's physical noise/sync comparison and is
 quarantined: its saved value8 restores RANGE32 and Y skips it. RANGE BAL passes
 independent synthetic confirmation; its physical acceptance remains pending.
-OVP56 stays the default and `g` stays0..4. The board was restored to RANGE32.
+RANGE32/value7 is the operator-requested default after repeated good-picture
+feedback. RANGE32+ (value10) also produced physical stability issues and is
+quarantined to RANGE32; Y skips both failed candidates. `g` stays0..4.
+See the completed [fine-ADC search and physical result](docs/SAFE_RANGE_STUDY.md).
 
 [PLL96 LAB](docs/PLL96_LAB.md) records the failed board build, its reversed-IQ
 bug and the corrected experiment. Serial uppercase `P` toggles the corrected
@@ -43,7 +46,8 @@ uppercase `I` IQ snapshot export; snapshots are diagnostic, not range proof.
 confirmed synthetic winner after1.7million additional LUT evaluations and
 structural/output studies. Uppercase `R` toggles RANGE32 LAB/OVP56 with a reboot.
 It improves weak-waveform and sync metrics while passing strong-picture guards;
-physical video/range acceptance remains pending. OVP56 stays the safe default.
+the operator reports good physical video and better range qualitatively.
+RANGE32 is now the default; calibrated RF sensitivity remains unmeasured.
 
 The [weak-signal diagnostic sweep](docs/WEAK_SIGNAL_SWEEP.md) separates C/N
 from ADC occupancy and scores contrast loss with a frozen clean calibration.
@@ -54,9 +58,9 @@ RF sensitivity or PAL/NTSC lock.
 [The multi-theory benchmark](docs/MEGA_DEMOD_STUDY.md) extends this with a
 544-candidate hardware-constrained search and 100,000 configurations across
 eight offline FM theory families. Its pinned weak-pair candidate and complete
-seed/scenario protocols are research artifacts; firmware defaults stay OVP56.
+seed/scenario protocols remain research artifacts rather than promoted modes.
 
-OVP56 is the retained safe default from the earlier hardware-constrained
+OVP56 is the retained rollback baseline from the earlier hardware-constrained
 search, with clean absolute DAC-level guards. It retains the VLP56 encoder and
 uses a bounded, video-filter-aware optimized table. The independent confirmation
 shows modest gains at 0-4 dB C/N and some losses at 6-14 dB; it is not a global
@@ -73,7 +77,7 @@ promotion. Unwrap75 is included as a matched-stream reference.
 ## Receiver contract
 
 This branch is a pair-FM experiment stacked on PR #183. New/invalid NVS demod
-selection boots **OVP56**. Existing `ref_demod` values 0/1/2/3 select
+selection boots **RANGE32/value7**. Explicit saved working modes are preserved. Existing `ref_demod` values 0/1/2/3 select
 HC50/HR50/Golden50/VLP56. In **SETUP -> DEMOD (REBOOT)** or with serial `g`, cycle
 HC50 -> HR50 -> Golden50 -> VLP56 -> OVP56 -> HC50. A mode change saves NVS and reboots;
 one `g` from OVP56 returns to HC50. Ordinary menu exit reloads the selected

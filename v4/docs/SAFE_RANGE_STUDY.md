@@ -235,3 +235,8 @@ request; explicit saved working selections are preserved. The original failed
 PLL96/value5 continues to fall back to OVP56/value4. OVP56 remains available
 as a manual rollback. The physical feedback is qualitative, with no calibrated
 RF C/N or measured range claim and no new successful IQ capture.
+
+Stable-default firmware `4.0.0-alpha-range32-stable` from `2c38a27c199d966bd2ac0dc2f6b607b2e795db98`
+was subsequently built and flashed. All flash hashes verified, NVS/PHY were
+preserved, and runtime confirmed RANGE32 model `49c57570d609`, zero live LUT
+writes and continuing heartbeats. See [physical result](data/safe_range/range32plus-physical-result.json).
