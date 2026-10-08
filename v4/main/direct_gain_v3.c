@@ -44,6 +44,12 @@ static bool s_lut_ready;
  * completed RX descriptor (~102 us) can still hold pre-switch samples, so
  * two descriptor periods are skipped before measuring. */
 #define DG3_LANE_GUARD_US   250u
+/* Wi-Fi stations put 0.1-0.5 ms bursts on the channel 1-4% of the time, each
+ * clipping every sample (zerowidth/C5VRX PR #3, P4 receiver findings). Read
+ * as overload they held a weak carrier 20+ steps low; FM itself survives
+ * clipping. Saturation counts only once it has lasted this long; a strong
+ * carrier keeps clipping and still comes down about 1 ms later. */
+#define DG3_BURST_US       1000u
 /* Soft fold evidence (rail codes, wide junk) must persist this many windows:
  * a strong carrier arriving persists, a short interference burst does not
  * (hardware, VTX off: ~9 single-window bursts/s on ultrafine). Hard
@@ -681,6 +687,19 @@ uint8_t direct_gain_v3_tick(direct_gain_v3_t *v3,
         return v3->current_gain;
     bool no_carrier = o->p50 <= 4 && o->origin_pm >= 650 && o->coherence < 20;
     bool saturated = o->clip_pm >= 100 || o->p95 >= 95;
+    if (!saturated) {
+        v3->saturated_run = false;
+    } else if (!v3->saturated_run) {
+        v3->saturated_run = true;
+        v3->saturated_since_us = o->observed_us;
+    }
+    if (saturated && o->observed_us - v3->saturated_since_us < DG3_BURST_US) {
+        /* Possibly an interference burst: ignore the window entirely, so it
+         * is neither a fold, an overload nor the next window's prior. */
+        ++v3->bursts_ignored;
+        v3->last_tracking = prior;
+        return v3->current_gain;
+    }
     bool at_max = v3->current_gain == v3->table.max_index;
     bool fixed_lane = false;
     bool reference_recovery = false;

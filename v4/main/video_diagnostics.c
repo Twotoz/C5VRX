@@ -167,7 +167,7 @@ void lab_print_row(const char *kind, const hw_transport_counters_t *base)
     printf("DG3_OBS p50=%d p90=%d p95=%d origin_pm=%d clip_pm=%d coherence=%d "
            "state=%u gain=%u lane=%u lane_cap=%u noise_r2_q4=%u "
            "dc_i_mstep=%d dc_q_mstep=%d bw40=%u bw_switches=%lu "
-           "lane_changes=%lu fold_drops=%lu "
+           "lane_changes=%lu fold_drops=%lu bursts_ignored=%lu "
            "virtual_q8=%ld writes=%lu holds=%lu verified=%lu learned=%lu "
            "settle_fine_us=%u settle_bb_us=%u settle_rf_us=%u obs_windows=%lu obs_us_avg=%lu obs_us_max=%lu "
            "sfw_us_last=%lu sfw_us_max=%lu\n",
@@ -181,6 +181,7 @@ void lab_print_row(const char *kind, const hw_transport_counters_t *base)
            s_current_bw40 ? 1u : 0u, (unsigned long)s_v3_bw_switches,
            (unsigned long)s_direct_gain_v3.lane_changes,
            (unsigned long)s_direct_gain_v3.fold_drops,
+           (unsigned long)s_direct_gain_v3.bursts_ignored,
            (long)s_direct_gain_v3.virtual_gain_q8,
            (unsigned long)s_direct_gain_v3.writes,
            (unsigned long)s_direct_gain_v3.holds,

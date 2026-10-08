@@ -15,6 +15,16 @@ static dg3_observation_t obs(int p50, int p95, int origin, int clip,
     };
 }
 
+/* Saturation counts once it has lasted DG3_BURST_US (Wi-Fi burst gate,
+ * zerowidth/C5VRX PR #3): replay the same window 1 ms earlier. */
+static uint8_t sustained(direct_gain_v3_t *v3, dg3_observation_t o)
+{
+    dg3_observation_t first = o;
+    first.observed_us = o.observed_us - 1000u;
+    (void)direct_gain_v3_tick(v3, &first);
+    return direct_gain_v3_tick(v3, &o);
+}
+
 /* Radius-boost plant: every state is measured (0.5 dB per index), the ring
  * power follows the gain exactly, spread and rail codes are scenario input. */
 static int boost_p50(const direct_gain_v3_t *v3, double base)
@@ -160,7 +170,10 @@ int main(void)
 
     /* Saturation drops sensitivity; carrier loss listens at maximum gain
      * (the table maximum, not the G62 survival trap). */
-    dg3_observation_t clipped = obs(50, 105, 0, 200, 90, 600000u);
+    dg3_observation_t clipped = obs(50, 105, 0, 200, 90, 599000u);
+    /* One clipped window may be a Wi-Fi burst; 1 ms of clipping is not. */
+    assert(direct_gain_v3_tick(&v3, &clipped) == next && v3.overloads == 0u);
+    clipped.observed_us = 600000u;
     uint8_t down = direct_gain_v3_tick(&v3, &clipped);
     assert(down != next && v3.overloads == 1u);
     dg3_observation_t lost = obs(1, 2, 950, 0, 0, 700000u);
@@ -172,9 +185,10 @@ int main(void)
         assert(direct_gain_v3_tick(&v3, &lost) == table.max_index);
     }
     assert(v3.writes == lost_writes);
-    /* A strong carrier appearing at maximum gain is dropped at once. */
+    /* A strong carrier appearing at maximum gain is dropped once it has
+     * clipped for 1 ms; one clipped window alone may be a Wi-Fi burst. */
     dg3_observation_t strong = obs(60, 110, 0, 300, 90, lost.observed_us + 5000u);
-    assert(direct_gain_v3_tick(&v3, &strong) < table.max_index);
+    assert(sustained(&v3, strong) < table.max_index);
 
     /* Measured tuple response wins over numeric index order. G55 is marked
      * stronger than G56; G54 is the useful measured gain-down destination. */
@@ -238,7 +252,7 @@ int main(void)
     v3.damp_until_us = late.observed_us + 1000000u;
     dg3_observation_t sat = obs(60, 110, 0, 300, 90, late.observed_us + 5000u);
     uint8_t pre_sat = v3.current_gain;
-    assert(direct_gain_v3_tick(&v3, &sat) < pre_sat);
+    assert(sustained(&v3, sat) < pre_sat);
 
     /* Range lanes: continuous total gain beyond the table maximum. */
     {
@@ -302,8 +316,9 @@ int main(void)
         dg3_observation_t none = obs(1, 3, 980, 0, 5, t += 1000u);
         assert(direct_gain_v3_tick(&v3, &none) == max && v3.lane == 2u);
         /* A strong VTX switching on folds: junk -> coarse. */
-        dg3_observation_t vtx = obs(40, 100, 50, 250, 20, t += 1000u);
-        (void)direct_gain_v3_tick(&v3, &vtx);
+        /* (2 ms: the replayed first window must fall after the lane guard.) */
+        dg3_observation_t vtx = obs(40, 100, 50, 250, 20, t += 2000u);
+        (void)sustained(&v3, vtx);
         assert(v3.lane == 0u);
 
         /* Lanes are never entered below the analog maximum. */
@@ -342,11 +357,11 @@ int main(void)
         direct_gain_v3_reset(&v3, &table, max, 62u);
         const arc_gain_tuple_t top = v3.tuple[max];
         dg3_observation_t sat = obs(70, 110, 0, 300, 90, 50000000u);
-        uint8_t g = direct_gain_v3_tick(&v3, &sat);
+        uint8_t g = sustained(&v3, sat);
         assert(g < max);
         if (top.bb_code > 1u) assert(v3.tuple[g].rf_stage == top.rf_stage);
     }
-    /* Saturation during the settle of an upward write acts at once. */
+    /* Sustained saturation during the settle of an upward write acts. */
     {
         direct_gain_v3_reset(&v3, &table, 40u, 62u);
         dg3_observation_t weak = obs(8, 14, 100, 0, 90, 60000000u);
@@ -355,7 +370,7 @@ int main(void)
         direct_gain_v3_sync_applied(&v3, up, weak.observed_us);
         assert(v3.state == DG3_SETTLE);
         dg3_observation_t sat = obs(70, 110, 0, 300, 90, weak.observed_us + 50u);
-        assert(direct_gain_v3_tick(&v3, &sat) < up);
+        assert(sustained(&v3, sat) < up);
         /* After a downward write a stale saturated window inside the 300 us
          * floor is ignored (no double drop). */
         uint8_t down = v3.current_gain;
@@ -435,7 +450,7 @@ int main(void)
         boost_run(&v3, 22.0, 4, 0, 90, 500u, &t);
         assert(v3.boost);
         dg3_observation_t sat = obs(80, 110, 0, 300, 90, t += 200u);
-        assert(direct_gain_v3_tick(&v3, &sat) < 60u && !v3.boost && v3.overloads == 1u);
+        assert(sustained(&v3, sat) < 60u && !v3.boost && v3.overloads == 1u);
 
         /* Never entered: a wide ring (noisy), low coherence, rail codes or a
          * P95 that would not fit the boost band. */
@@ -538,7 +553,7 @@ int main(void)
         memset(&s5, 0, sizeof(s5));
         direct_gain_v3_reset(&s5, &table, 54u, 62u);           /* first of the top stage */
         dg3_observation_t rail = obs(113, 113, 0, 800, 60, 8000000u);
-        g = direct_gain_v3_tick(&s5, &rail);
+        g = sustained(&s5, rail);
         printf("stage start overload: G54 -> G%u\n", g);
         assert(g < 54u && s5.tuple[g].rf_stage == 7u);
     }

@@ -22,6 +22,10 @@ int main(void)
     assert(!rx_control_observation_current(captured,captured,10000,9999));
     assert(!rx_control_observation_current(captured,captured,10000,11001));
     assert(rx_control_observation_current(captured,captured,10000,11000));
+    /* Saturation must persist DG3_BURST_US: an earlier current window. */
+    dg3_observation_t earlier=overload; earlier.observed_us=9000;
+    (void)direct_gain_v3_tick(&dg,&earlier);
+    assert(dg.current_gain==table.max_index && dg.writes==0 && dg.bursts_ignored==1);
     if (rx_control_observation_current(captured,captured,10000,10200))
         (void)direct_gain_v3_tick(&dg,&overload);
     assert(dg.current_gain<table.max_index && dg.writes==1 && dg.overloads==1);

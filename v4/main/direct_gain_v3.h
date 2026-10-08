@@ -87,6 +87,11 @@ typedef struct {
     uint16_t boost_ok_windows;
     uint64_t boost_hold_until_us, boost_exit_us;
     uint32_t boost_entries, boost_exits;
+    /* Interference-burst gate (zerowidth/C5VRX PR #3): saturation must last
+     * DG3_BURST_US before it counts as overload; shorter runs are ignored. */
+    uint64_t saturated_since_us;
+    bool saturated_run;
+    uint32_t bursts_ignored;
 } direct_gain_v3_t;
 
 void direct_gain_v3_reset(direct_gain_v3_t *v3, const arc_gain_table_t *table,
