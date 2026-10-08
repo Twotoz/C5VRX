@@ -27,8 +27,6 @@ def main():
         assert all(out[2*k+4]==table[tokens[k]>>1][tokens[k+1]] for k in range(len(tokens)-2))
     transport=(ROOT/'main/video_transport.c').read_text();pipeline=(ROOT/'firmware/pipeline.c').read_text()
     assert 'case C5VRX4_DEMOD_OVP56: return s_ovp56_program;' in transport
-    assert 'uint8_t value = C5VRX4_DEMOD_OVP56;' in pipeline
-    assert 'value != C5VRX4_DEMOD_PLL96 ? value : C5VRX4_DEMOD_OVP56;' in pipeline
-    print('PASS OVP56: all 65536 raw pairs, startup state, LUT8/2KiB, two bundles, duplicate DAC6, native routing/default')
+    print('PASS OVP56: all 65536 raw pairs, startup state, LUT8/2KiB, two bundles, duplicate DAC6, native routing; defaults/quarantine covered by C gate tests')
 
 if __name__=='__main__':main()
