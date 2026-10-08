@@ -14,6 +14,14 @@ of merging. The V4 alpha workflow and flasher build this project independently.
 
 ## Offline optimized demod
 
+The operator-requested [range-priority options](docs/RANGE_PRIORITY_STUDY.md)
+deliberately allow less detail for stronger weak-signal sync. Uppercase `Y`
+cycles RANGE32 -> RANGE MAX LAB -> RANGE BAL LAB -> RANGE32 with saved reboot.
+`R` from any range LAB restores OVP56; another `R` selects original RANGE32.
+RANGE MAX is a board experiment with disclosed strong-echo/recovery vetoes;
+RANGE BAL passes independent synthetic confirmation. Physical acceptance of
+these new options remains pending. OVP56 stays the default and `g` stays0..4.
+
 [PLL96 LAB](docs/PLL96_LAB.md) records the failed board build, its reversed-IQ
 bug and the corrected experiment. Serial uppercase `P` toggles the corrected
 PLL96/OVP56 with a reboot; lowercase `p` retains the snapshot command. The old

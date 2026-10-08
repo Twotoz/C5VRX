@@ -73,6 +73,14 @@ class RangeOptionsTest(unittest.TestCase):
         self.assertIn('#define C5VRX4_RANGE_OPTION_COUNT 0', header)
         self.assertEqual(programs, {})
 
+    def test_range_tradeoff_requires_visible_vetoes(self):
+        option = dict(self.option, status='independent_range_tradeoff')
+        with self.assertRaises(ValueError):
+            render([option])
+        option['vetoes'] = ['strong_echo_detail', 'PAL_recovery']
+        header, _ = render([option])
+        self.assertIn('#define C5VRX4_RANGE_OPTION_COUNT 1', header)
+
 
 if __name__ == '__main__':
     unittest.main()

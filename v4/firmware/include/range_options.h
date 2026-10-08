@@ -1,4 +1,13 @@
 #pragma once
 #include <stdint.h>
-/* Generated C5VRX by Twotoz/contributors. Synthetic LAB acceptance only. */
-#define C5VRX4_RANGE_OPTION_COUNT 0
+/* Generated C5VRX by Twotoz/contributors. Pinned LAB; physical acceptance separate. */
+#define C5VRX4_RANGE_OPTION_COUNT 2
+typedef struct {
+    const char *label, *model_id;
+    uint8_t phase_bits;
+    uint16_t phase_states, observation_tokens, frequency_states;
+} c5vrx4_range_option_t;
+static const c5vrx4_range_option_t c5vrx4_range_options[] = {
+    {"RANGE MAX LAB", "f96c6225fc10", 3, 8, 4, 32},
+    {"RANGE BAL LAB", "c2510e3dad79", 5, 32, 32, 1},
+};

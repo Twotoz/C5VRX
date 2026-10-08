@@ -21,6 +21,46 @@ RANGE32 is left active during offline research. No automatic promotion/merge.
 
 ## Declared options and common range screen
 
+### Completed runs and initial firmware options
+
+All four million-evaluation searches completed. Each run deduplicates actual
+compiled LUT/schedule behavior; overlap between runs is possible. Only the
+screened subset receives expensive waveform tests, not all four million.
+The independent final PAL/NTSC cases use two fresh image/noise seeds each.
+
+| Pinned LAB | Final weak H/V misses, candidate/reference | Strong waveform SINAD, candidate/reference | Strong detail correlation, candidate/reference | Common usable C/N | Confirmation |
+| --- | ---: | ---: | ---: | ---: | --- |
+| RANGE MAX, f96c6225fc10 |465/3730|11.33/15.96dB|0.431/0.722|10/10dB|Vetoed; explicitly requested board experiment|
+| RANGE BAL, c2510e3dad79 |2945/3709|15.36/15.98dB|0.713/0.721|10/10dB|Passes independent synthetic guards|
+
+Weak totals cover C/N0..10dB, two seeds and both standards. Reference is the
+same pinned RANGE32 on the same inputs, separately paired for each profile.
+MAX misses15 versus341 H/V pulses at4dB and0 versus29 at6dB. Its nominal
+aggregate reduction is87.5%; this is not a physical range percentage.
+The common usability threshold remains unchanged because weak pulse widths
+and timing still exceed the engineering bounds, despite many fewer misses.
+
+MAX uses phase8/frequency32, four angular observation tokens and two bits of
+next-IQ sign context; a bounded tanh innovation and learned DAC reconstruction
+replace the old PLL96 equations. It has fixed loop gains, without radius
+confidence groups or an innovation-dependent bandwidth multiplier. Tracking
+still depends on its evolving state. The data does not require the more
+explicit gain-adaptive variants to win every objective.
+
+MAX improves echo/fade usable C/N18 versus30dB, but fails the predeclared
+strong-echo waveform loss limit of2dB relative to RANGE32. Its weak PAL10dB
+post-outage five-pulse lock takes512.1us versus320.1us:192us slower, exceeding
+the allowed extra64us. Strong recovery is matched; these vetoes are preserved,
+not removed to call MAX confirmed. The operator requested flashing this
+candidate; these limitations were disclosed before flashing. It stays experimental.
+Detailed rows and protocols are under `data/range_priority/`.
+
+Firmware values8/9 pin MAX/BAL, while7 retains the physically tested RANGE32.
+Uppercase Y cycles7->8->9->7 with saved reboot; R from any range LAB restores
+OVP56 value4. No running LUT changes or automatic switching are introduced.
+Extreme/compact confirmation is still running at this checkpoint; their
+results will be appended separately, without altering the frozen selections.
+
 | Profile | Strong waveform SINAD floor | Strong contrast | Fine-detail correlation floor | CVBS level-error limit |
 | --- | ---: | ---: | ---: | ---: |
 | Balanced |12dB|70..130%|0.40|10IRE|
@@ -116,6 +156,19 @@ scarce observation bits, while frequency/history states spend tracking bits.
 The search may therefore reject adaptation in favor of a simpler model. A
 fixed LUT does not imply fixed behavior: its output and next state still
 depend on the observation and current state.
+
+For the compiled tracker family, the adaptive equation is
+`e = wrap(observed_phase - predicted_phase)` and
+`k = clip(kp * confidence * (1 + adaptation * abs(e)/pi), 0, 1.8)`.
+The chosen bounded innovation function drives the quantized phase and frequency
+updates; the final DAC mapping is evaluated separately. With no confidence
+groups, confidence is exactly1. RANGE32 already uses innovation-dependent
+gain, without an amplitude confidence partition or separate frequency state.
+This is not a rule that every large error deserves a larger correction: the
+search must demonstrate that the complete recurrence reconstructs usable video.
+Hardware enforces `state_bits + token_bits = 10` and
+`DAC_bits + state_bits + token_bits = 16`; extra memory/observations have a
+real quantization cost rather than unlimited floating-point precision.
 
 Existing independent echo/fade and carrier-outage cases exercise changing
 conditions and recovery without resetting model state at a DMA boundary.

@@ -34,8 +34,11 @@ def render(options):
         if option['sha256'] != digest or digest in seen:
             raise ValueError('model identity mismatch or duplicate option')
         seen.add(digest)
-        if option.get('status') != 'independent_synthetic_confirmation':
-            raise ValueError('research-only model cannot become a selectable option')
+        status = option.get('status')
+        if status not in ('independent_synthetic_confirmation', 'independent_range_tradeoff'):
+            raise ValueError('short proxy models cannot become selectable options')
+        if status == 'independent_range_tradeoff' and not option.get('vetoes'):
+            raise ValueError('experimental trade-off requires disclosed confirmation vetoes')
         p = model['params']
         resource = cost(p['token_bits'], p.get('context_bits', 0), p.get('counter_phase', False))
         phases, groups = p['phases'], p['confidence_groups']
@@ -51,7 +54,7 @@ def render(options):
         ]) + '},')
         programs[f'c5vrx4_range_option{index}.bsasm'] = build(model)
     header = ('#pragma once\n#include <stdint.h>\n'
-              '/* Generated C5VRX by Twotoz/contributors. Synthetic LAB acceptance only. */\n'
+              '/* Generated C5VRX by Twotoz/contributors. Pinned LAB; physical acceptance separate. */\n'
               f'#define C5VRX4_RANGE_OPTION_COUNT {len(options)}\n')
     if entries:
         header += ('typedef struct {\n'
@@ -76,7 +79,7 @@ def generate():
             path.write_text(programs[path.name], encoding='utf-8')
         elif path.exists():
             path.unlink()
-    print(f'Generated {len(options)} independently confirmed synthetic range LAB options')
+    print(f'Generated {len(options)} pinned range LAB options; consult each option evidence/status')
 
 
 if __name__ == '__main__':

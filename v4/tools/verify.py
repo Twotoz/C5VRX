@@ -41,7 +41,7 @@ def verify_range_option_gate(cc, directory):
 def main():
     # Do not silently cross-compile the host regressions with the IDF compiler.
     cc = os.environ.get("C5VRX4_HOST_CC", "gcc")
-    tracked = list(PROGRAMS.glob("*.bsasm")) + [INCLUDE / "cvbs_tables.h"]
+    tracked = list(PROGRAMS.glob("*.bsasm")) + [INCLUDE / "cvbs_tables.h", INCLUDE / "range_options.h"]
     before = {p: p.read_text() for p in tracked}
     run([sys.executable, "tools/generate_phase8.py"])
     assert all(p.read_text() == content for p, content in before.items()), "stale generated program/table"

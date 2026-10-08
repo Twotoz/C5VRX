@@ -1,5 +1,19 @@
 # Isolated C5VRX-4 integration ledger
 
+## Operator-authorized range-priority options
+
+`docs/RANGE_PRIORITY_STUDY.md` records the new explicit range-over-detail
+objective and four completed million-evaluation runs (unique within each run).
+Pinned options start at value8; Y cycles RANGE32 and the generated options,
+saves and reboots. R from any range LAB returns to OVP56; g remains0..4.
+RANGE MAX LAB is an explicitly requested board experiment, NOT a fully
+confirmed replacement: independent weak sync improves, but strong-echo
+waveform and PAL recovery guards veto overall confirmation. Keep these
+negative results visible. RANGE BAL LAB passes independent synthetic
+confirmation. Neither new option has physical acceptance yet. Preserve
+value7/current RANGE32 and value4/OVP56 rollback, all live-writer gates,
+continuous raw DMA/state, fixed lanes and gain ownership. No merge authorized.
+
 ## Operator-authorized RANGE32 lab
 
 `docs/RANGE32_RESULTS.md` supersedes the earlier no-confirmed-replacement
