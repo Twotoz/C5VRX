@@ -25,12 +25,12 @@ def verify_range_option_gate(cc, directory):
     (include / "range_options.h").write_text(
         '#pragma once\n#define C5VRX4_RANGE_OPTION_COUNT 4\n'
         'typedef struct { const char *label, *model_id; unsigned phase_bits, '
-        'phase_states, observation_tokens, frequency_states; } c5vrx4_range_option_t;\n'
+        'phase_states, observation_tokens, frequency_states, selectable; } c5vrx4_range_option_t;\n'
         'static const c5vrx4_range_option_t c5vrx4_range_options[] = {\n'
-        '{"TEST0", "fixture0", 2, 4, 4, 64},\n'
-        '{"TEST1", "fixture1", 4, 16, 4, 16},\n'
-        '{"TEST2", "fixture2", 5, 32, 16, 2},\n'
-        '{"TEST3", "fixture3", 8, 256, 4, 1}};\n')
+        '{"TEST0", "fixture0", 2, 4, 4, 64, 0},\n'
+        '{"TEST1", "fixture1", 4, 16, 4, 16, 1},\n'
+        '{"TEST2", "fixture2", 5, 32, 16, 2, 1},\n'
+        '{"TEST3", "fixture3", 8, 256, 4, 1, 1}};\n')
     target = str(fixture / "gate")
     run([cc, "-std=c11", "-D_DEFAULT_SOURCE", "-Wall", "-Wextra", "-Werror",
          f"-I{include}", f"-I{INCLUDE}", "-Itools/phy_lab_stubs", "-Imain",

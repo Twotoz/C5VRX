@@ -1089,10 +1089,13 @@
       "status": "independent_range_tradeoff",
       "vetoes": [
         "Strong echo waveform loss exceeds 2 dB reference limit",
-        "PAL C/N10 recovery 512.1 us vs RANGE32 320.1 us; exceeds allowed extra 64 us"
+        "PAL C/N10 recovery 512.1 us vs RANGE32 320.1 us; exceeds allowed extra 64 us",
+        "Physical board comparison failed: noisy/desynchronized MAX; restored RANGE32 has good picture"
       ],
       "evidence": "docs/data/range_priority/range/confirmation/summary.json",
-      "physical_acceptance": false
+      "physical_acceptance": false,
+      "selectable": false,
+      "physical_result": "Operator reports noisy/desynchronized MAX video; restoring RANGE32 immediately restores a good picture."
     },
     {
       "label": "RANGE BAL LAB",

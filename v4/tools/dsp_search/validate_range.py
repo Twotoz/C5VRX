@@ -27,13 +27,16 @@ def evaluate(models,profile,seed,cnrs,stage,stress=False,rms=3,cfo_hz=1e6,loss_w
             c=W.make_case(standard,seed,cnr,rms,stress=stress,cfo_hz=cfo_hz,
                           stimulus_seed=seed+100000,loss_windows_us=loss_windows_us,lane_model='fine')
             c['calibration']=W.M.clean_calibration(S.decode(c['clean'],ref)[:131072],c['truth'][:131072],3000)
-            reference=J.measure(O.decode(c['raw'],PINNED),c)
+            include_burst=cnr>=20 and J.PROFILES[profile].get('burst_guard',False)
+            reference=J.measure(O.decode(c['raw'],PINNED),c,include_burst)
             for name,fn in methods:
-                y=fn(c['raw']);r=J.measure(y,c)
-                failures=J.strong_failures(r,profile,reference if stress or rms<2 else None) if cnr>=20 and not loss_windows_us else []
+                y=fn(c['raw']);r=J.measure(y,c,include_burst)
+                use_reference=stress or rms<2 or J.PROFILES[profile].get('reference_guard')
+                failures=J.strong_failures(r,profile,reference if use_reference else None) if cnr>=20 and not loss_windows_us else []
                 r.update(model=name,profile=profile,stage=stage,seed=seed,standard=standard,cnr=cnr,rms=rms,
                          cfo_hz=cfo_hz,quality_failures=';'.join(failures),usable=J.usable(r))
-                if cnr>=20:r.update(burst(y,c))
+                if cnr>=20:
+                    if 'burst_gain' not in r:r.update(burst(y,c))
                 else:r.update(burst_gain=None,burst_phase_deg=None,burst_phase_jitter_deg=None,
                               burst_amplitude_jitter_pct=None,burst_rmse_ire=None)
                 if loss_windows_us:

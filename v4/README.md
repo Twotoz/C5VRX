@@ -16,11 +16,12 @@ of merging. The V4 alpha workflow and flasher build this project independently.
 
 The operator-requested [range-priority options](docs/RANGE_PRIORITY_STUDY.md)
 deliberately allow less detail for stronger weak-signal sync. Uppercase `Y`
-cycles RANGE32 -> RANGE MAX LAB -> RANGE BAL LAB -> RANGE32 with saved reboot.
+cycles RANGE32 -> RANGE BAL LAB -> RANGE32 with saved reboot.
 `R` from any range LAB restores OVP56; another `R` selects original RANGE32.
-RANGE MAX is a board experiment with disclosed strong-echo/recovery vetoes;
-RANGE BAL passes independent synthetic confirmation. Physical acceptance of
-these new options remains pending. OVP56 stays the default and `g` stays0..4.
+RANGE MAX failed the operator's physical noise/sync comparison and is
+quarantined: its saved value8 restores RANGE32 and Y skips it. RANGE BAL passes
+independent synthetic confirmation; its physical acceptance remains pending.
+OVP56 stays the default and `g` stays0..4. The board was restored to RANGE32.
 
 [PLL96 LAB](docs/PLL96_LAB.md) records the failed board build, its reversed-IQ
 bug and the corrected experiment. Serial uppercase `P` toggles the corrected

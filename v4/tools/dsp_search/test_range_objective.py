@@ -8,6 +8,7 @@ import search_range as R
 import overlay_fsm as O
 from validate_range import confirms
 from search_compact_range import compact
+from search_safe_range import constrain
 
 
 class ObjectiveTests(unittest.TestCase):
@@ -46,6 +47,25 @@ class ObjectiveTests(unittest.TestCase):
             self.assertGreater((1<<(10-p['token_bits']))//p['phases'],1)
             self.assertFalse(p['counter_phase'])
             self.assertLess(p['low_hz'],p['high_hz'])
+
+    def test_new_search_excludes_failed_coarse_observation_family(self):
+        rng=np.random.default_rng(70104)
+        for policy in ('plain','context','confidence','compact'):
+            for _ in range(40):
+                p=constrain(R.propose(rng),rng,policy)
+                O.compile_model(O.synthesize(p))
+                self.assertGreaterEqual(p['phases'],16)
+                self.assertGreaterEqual((1<<p['token_bits'])//p['confidence_groups'],16)
+                if policy=='compact':self.assertGreater((1<<(10-p['token_bits']))//p['phases'],1)
+
+    def test_failed_board_model_cannot_pass_new_strong_picture_guard(self):
+        options=json.loads((Path(__file__).parents[1]/'range_options.json').read_text())['options']
+        failed=next(r['model'] for r in options if r['sha256'].startswith('f96c6225fc10'))
+        pinned=json.loads((Path(__file__).parents[1]/'range32_model.json').read_text())
+        for c in R.cases(70105,lane_model='fine')[:2]:
+            reference=J.measure(O.decode(c['raw'],pinned),c,True)
+            self.assertEqual(J.strong_failures(reference,'safe_range',reference),[])
+            self.assertTrue(J.strong_failures(J.measure(O.decode(c['raw'],failed),c,True),'safe_range',reference))
 
 
 if __name__=='__main__':unittest.main()

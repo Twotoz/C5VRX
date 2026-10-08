@@ -12,14 +12,14 @@ import engine as S
 import waveforms as V
 
 
-def dataset(seed):
+def dataset(seed,lane_model=None):
     baseline=S.F.load_reference('OVP56');cases=[]
     for standard,rms,cfo in [('PAL',3,1e6),('NTSC',3,1e6),('PAL',1.5,1e6),
                              ('NTSC',5,1e6),('PAL',3,.5e6),('NTSC',3,1.5e6)]:
         for stressed in (False,True):
             for cnr in (6,30):
                 c=V.make_case(standard,seed,cnr,rms,short=True,stress=stressed,
-                              cfo_hz=cfo,stimulus_seed=seed+100000)
+                              cfo_hz=cfo,stimulus_seed=seed+100000,lane_model=lane_model)
                 for key in ('raw','clean','truth','region'):c[key]=c[key][65536:98304]
                 c['calibration']=V.M.clean_calibration(S.decode(c['clean'],baseline),c['truth'],3000)
                 cases.append(c)

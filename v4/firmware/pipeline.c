@@ -43,6 +43,12 @@ unsigned c5vrx4_demodulator(void)
         /* PLL96 failed the operator's physical video/sync test. Quarantine
          * its persisted selection too; flashing must restore usable video. */
         mode = value < C5VRX4_DEMOD_COUNT && value != C5VRX4_DEMOD_PLL96 ? value : C5VRX4_DEMOD_OVP56;
+#if C5VRX4_RANGE_OPTION_COUNT
+        /* Failed board experiments must not survive in saved selections. */
+        if (mode >= C5VRX4_DEMOD_RANGE_OPTION0 &&
+            !c5vrx4_range_options[mode - C5VRX4_DEMOD_RANGE_OPTION0].selectable)
+            mode = C5VRX4_DEMOD_RANGE32;
+#endif
     }
     return (unsigned)mode;
 }
@@ -747,6 +753,18 @@ void c5vrx4_start(void)
     print_state();
 }
 
+#if C5VRX4_RANGE_OPTION_COUNT
+static unsigned next_range_demod(unsigned mode)
+{
+    unsigned next = mode >= C5VRX4_DEMOD_RANGE32 ? mode : C5VRX4_DEMOD_RANGE32;
+    do {
+        next = C5VRX4_DEMOD_RANGE32 + (next - C5VRX4_DEMOD_RANGE32 + 1u) % (C5VRX4_RANGE_OPTION_COUNT + 1u);
+    } while (next >= C5VRX4_DEMOD_RANGE_OPTION0 &&
+             !c5vrx4_range_options[next - C5VRX4_DEMOD_RANGE_OPTION0].selectable);
+    return next;
+}
+#endif
+
 bool c5vrx4_console(int key)
 {
     if (key == 'g' || key == 'P' || key == 'R'
@@ -760,9 +778,7 @@ bool c5vrx4_console(int key)
         unsigned next = key == 'R' ?
             (c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE32 ? C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_RANGE32) :
 #if C5VRX4_RANGE_OPTION_COUNT
-            key == 'Y' ? (c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE32 ?
-             C5VRX4_DEMOD_RANGE32 + (c5vrx4_demodulator() - C5VRX4_DEMOD_RANGE32 + 1u) % (C5VRX4_RANGE_OPTION_COUNT + 1u) :
-             C5VRX4_DEMOD_RANGE_OPTION0) :
+            key == 'Y' ? next_range_demod(c5vrx4_demodulator()) :
 #endif
             key == 'P' ?
             (c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96_IQ_FIXED ?

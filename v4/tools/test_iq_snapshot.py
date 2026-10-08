@@ -28,6 +28,8 @@ class SnapshotTests(unittest.TestCase):
 
     def test_refusal(self):
         with self.assertRaisesRegex(ValueError,'settling'):decode(['IQSNAP_REFUSED stale_or_settling'])
+        with self.assertRaisesRegex(ValueError,'copied=0'):
+            decode(['IQSNAP_REFUSED stale_or_settling source_ready=1 copied=0 epoch_ok=1'])
 
 
 if __name__=='__main__':unittest.main()

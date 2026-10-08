@@ -15,6 +15,8 @@ import range_objective as J
 import refine_overlay as F
 import waveforms as V
 
+PINNED=json.loads((Path(__file__).parents[1]/'range32_model.json').read_text())
+
 
 def propose(rng):
     p=O.propose(rng,extended=True)
@@ -34,12 +36,12 @@ def mutate(p,rng):
     return q
 
 
-def cases(seed):
+def cases(seed,lane_model=None):
     baseline=S.F.load_reference('OVP56');result=[]
     for standard,cnr,stress in [('PAL',30,False),('NTSC',30,False),
                                ('PAL',2,False),('PAL',6,False),('NTSC',6,False),
                                ('NTSC',10,False),('PAL',6,True)]:
-        c=V.make_case(standard,seed,cnr,3,short=True,stress=stress,stimulus_seed=seed+100000)
+        c=V.make_case(standard,seed,cnr,3,short=True,stress=stress,stimulus_seed=seed+100000,lane_model=lane_model)
         for key in ('raw','clean','truth','region'):c[key]=c[key][65536:81920]
         c['calibration']=V.M.clean_calibration(S.decode(c['clean'],baseline),c['truth'],3000)
         result.append(c)
@@ -49,13 +51,23 @@ def cases(seed):
 def score(m,prepared,profile):
     rows=[]
     for c in prepared:
-        r=J.measure(O.decode(c['raw'],m),c)
-        if c['cnr']>=20 and J.strong_failures(r,profile):return None
+        include_burst=c['cnr']>=20 and J.PROFILES[profile].get('burst_guard',False)
+        r=J.measure(O.decode(c['raw'],m),c,include_burst)
+        if c['cnr']>=20:
+            reference=None
+            if J.PROFILES[profile].get('reference_guard'):
+                if '_range_reference' not in c:c['_range_reference']=J.measure(O.decode(c['raw'],PINNED),c,include_burst)
+                reference=c['_range_reference']
+            if J.strong_failures(r,profile,reference):return None
         rows.append((c,r))
     weak=[r for c,r in rows if c['cnr']<20];strong=[r for c,r in rows if c['cnr']>=20]
     missing=sum(r['h_missing']+r['v_missing'] for r in weak)
     luma=float(np.mean([r['luma_sinad'] for r in weak]));sinad=float(np.mean([r['sinad'] for r in weak]))
-    return dict(score=luma-1.5*missing,weak_sinad=sinad,weak_missing=missing,
+    guard=J.PROFILES[profile]
+    width=float(np.mean([min(r['h_width_rmse_us'],2.025) for r in weak]))
+    jitter=float(np.mean([r['h_jitter_us']+r['v_jitter_us'] for r in weak]))
+    return dict(score=luma-1.5*missing-guard.get('weak_width_weight',0)*width-guard.get('weak_jitter_weight',0)*jitter,
+                weak_sinad=sinad,weak_missing=missing,
                 weak_luma_sinad=luma,strong_sinad=float(np.mean([r['sinad'] for r in strong])),
                 detail=float(np.mean([r['detail_corr'] for r in strong])))
 
@@ -99,10 +111,13 @@ def main():
         common_usable='SINAD>=5; contrast50..150; H misses<=2%, gap<=3; V misses0/trains2; jitter<=.5us,widthRMSE<=.5us',
         evaluations=a.evaluations,config_seed=a.seed_base+101,screen_seed=a.seed_base+201,
         selection_seed=a.seed_base+301,final_seeds=[a.seed_base+401,a.seed_base+402],stress_seed=a.seed_base+501,
-        objective='range priority; intentional strong detail/colour trade-off; not measured RF range',
+        objective=('weak range with reference strong waveform/detail guards; fine ADC from search through confirmation'
+                   if J.PROFILES[a.profile].get('reference_guard') else
+                   'range priority; intentional strong detail/colour trade-off; not measured RF range'),
         staging='tone -> approximate low-band information on five8192-byte cases -> detailed short-video screen for topology top8 and1/256 audits; independent full fields later',
         source_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')}))
-    prepared=cases(a.seed_base+201);tone,_=S.tone_data();ref=S.F.load_reference('OVP56')
+    prepared=cases(a.seed_base+201,'fine' if J.PROFILES[a.profile].get('fine_lane') else None)
+    tone,_=S.tone_data();ref=S.F.load_reference('OVP56')
     means,_=S.tone_stats(S.codes(tone,ref),S.F.LEVELS)
     pinned=json.loads((Path(__file__).parents[1]/'range32_model.json').read_text())
     # Analytical mutations do not inherit the learned output; the pinned

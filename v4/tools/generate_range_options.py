@@ -48,9 +48,13 @@ def render(options):
         tokens = (1 << p['token_bits']) // groups
         if tokens < 4:
             raise ValueError('insufficient angular observation states')
+        selectable = option.get('selectable', True)
+        if type(selectable) is not bool:
+            raise ValueError('explicit boolean selection gate required')
         entries.append('    {' + ', '.join([
             json.dumps(label), json.dumps(digest[:12]), str(phases.bit_length() - 1),
             str(phases), str(tokens), str(resource['states'] // phases),
+            str(int(selectable)),
         ]) + '},')
         programs[f'c5vrx4_range_option{index}.bsasm'] = build(model)
     header = ('#pragma once\n#include <stdint.h>\n'
@@ -61,6 +65,7 @@ def render(options):
                    '    const char *label, *model_id;\n'
                    '    uint8_t phase_bits;\n'
                    '    uint16_t phase_states, observation_tokens, frequency_states;\n'
+                   '    uint8_t selectable;\n'
                    '} c5vrx4_range_option_t;\n'
                    'static const c5vrx4_range_option_t c5vrx4_range_options[] = {\n'
                    + '\n'.join(entries) + '\n};\n')

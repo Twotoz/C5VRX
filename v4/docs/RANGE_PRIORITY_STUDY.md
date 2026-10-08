@@ -30,7 +30,7 @@ The independent final PAL/NTSC cases use two fresh image/noise seeds each.
 
 | Pinned LAB | Final weak H/V misses, candidate/reference | Strong waveform SINAD, candidate/reference | Strong detail correlation, candidate/reference | Common usable C/N | Confirmation |
 | --- | ---: | ---: | ---: | ---: | --- |
-| RANGE MAX, f96c6225fc10 |465/3730|11.33/15.96dB|0.431/0.722|10/10dB|Vetoed; explicitly requested board experiment|
+| RANGE MAX, f96c6225fc10 |465/3730|11.33/15.96dB|0.431/0.722|10/10dB|Vetoed; also failed physical noise/sync test|
 | RANGE BAL, c2510e3dad79 |2945/3709|15.36/15.98dB|0.713/0.721|10/10dB|Passes independent synthetic guards|
 
 Weak totals cover C/N0..10dB, two seeds and both standards. Reference is the
@@ -56,10 +56,22 @@ candidate; these limitations were disclosed before flashing. It stays experiment
 Detailed rows and protocols are under `data/range_priority/`.
 
 Firmware values8/9 pin MAX/BAL, while7 retains the physically tested RANGE32.
-Uppercase Y cycles7->8->9->7 with saved reboot; R from any range LAB restores
-OVP56 value4. No running LUT changes or automatic switching are introduced.
-Extreme/compact confirmation is still running at this checkpoint; their
-results will be appended separately, without altering the frozen selections.
+The operator reported noisy/desynchronized MAX video, then confirmed a good
+picture immediately after restoring RANGE32. MAX is now quarantined: saved8
+restores7 and Y skips8. Updated firmware cycles7->9->7; R restores OVP56.
+The actually flashed6f022ce build predates this quarantine and still cycles
+through8; its active selection was explicitly restored and verified as7.
+No running LUT changes or automatic switching are introduced. Logs/flash
+identity are recorded in `data/range_priority/flash-max-board-result.json`.
+
+All four confirmations completed. Extreme1bb4e5330dad has nominal threshold
+12 versus10dB for RANGE32 and fails improvement confirmation. Compact
+e8b8a23c51cf has nominal threshold12 versus12dB, but no usable echo/fade
+threshold and fails confirmation. Their complete negative results remain
+available. The4million evaluation budget includes25,650 detailed short-video
+screens and600 capped DAC fits;64 frozen finalists pass the actual C5 assembler.
+None of the counts establishes global optimality. [The next study](SAFE_RANGE_STUDY.md)
+uses this physical failure to predeclare stronger constraints and fresh data.
 
 | Profile | Strong waveform SINAD floor | Strong contrast | Fine-detail correlation floor | CVBS level-error limit |
 | --- | ---: | ---: | ---: | ---: |

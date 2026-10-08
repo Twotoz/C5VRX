@@ -68,6 +68,11 @@ int main(int argc, char **argv)
     if (argc > 1) saved_demod = atoi(argv[1]);
     unsigned expected = saved_demod >= 0 && saved_demod < C5VRX4_DEMOD_COUNT && saved_demod != C5VRX4_DEMOD_PLL96 ?
         (unsigned)saved_demod : C5VRX4_DEMOD_OVP56;
+#if C5VRX4_RANGE_OPTION_COUNT
+    if (expected >= C5VRX4_DEMOD_RANGE_OPTION0 &&
+        !c5vrx4_range_options[expected - C5VRX4_DEMOD_RANGE_OPTION0].selectable)
+        expected = C5VRX4_DEMOD_RANGE32;
+#endif
     assert(c5vrx4_demodulator() == expected);
     assert(c5vrx4_reference_demod());
     assert(c5vrx4_staged_gain_recovery());
@@ -124,9 +129,11 @@ int main(int argc, char **argv)
     assert(reboot_calls == 3 && !memcmp(before,m,sizeof(before)));
 #if C5VRX4_RANGE_OPTION_COUNT
     assert(c5vrx4_console('Y'));
-    unsigned range_next = expected >= C5VRX4_DEMOD_RANGE32 ?
-        C5VRX4_DEMOD_RANGE32 + (expected - C5VRX4_DEMOD_RANGE32 + 1u) % (C5VRX4_RANGE_OPTION_COUNT + 1u) :
-        C5VRX4_DEMOD_RANGE_OPTION0;
+    unsigned range_next = expected >= C5VRX4_DEMOD_RANGE32 ? expected : C5VRX4_DEMOD_RANGE32;
+    do {
+        range_next = C5VRX4_DEMOD_RANGE32 + (range_next - C5VRX4_DEMOD_RANGE32 + 1u) % (C5VRX4_RANGE_OPTION_COUNT + 1u);
+    } while (range_next >= C5VRX4_DEMOD_RANGE_OPTION0 &&
+             !c5vrx4_range_options[range_next - C5VRX4_DEMOD_RANGE_OPTION0].selectable);
     assert(saved_demod == (int)range_next);
     assert(reboot_calls == 4 && !memcmp(before,m,sizeof(before)));
 #else

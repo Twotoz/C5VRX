@@ -1,0 +1,44 @@
+{
+  "source_commit": "6f022ceeedec3671e650faa79443ce7771f0251a",
+  "version": "4.0.0-alpha-range-max",
+  "idf": "6.0.2",
+  "default": "OVP56",
+  "experimental_selection": "RANGE MAX LAB value8",
+  "range_options": [
+    {
+      "label": "RANGE MAX LAB",
+      "sha256": "f96c6225fc10646d9d2bb3757c742e7e34f2d94958fb507409df9710a86d1637",
+      "status": "independent_range_tradeoff",
+      "vetoes": [
+        "Strong echo waveform loss exceeds 2 dB reference limit",
+        "PAL C/N10 recovery 512.1 us vs RANGE32 320.1 us; exceeds allowed extra 64 us"
+      ]
+    },
+    {
+      "label": "RANGE BAL LAB",
+      "sha256": "c2510e3dad79a2868a0d0863533986243e206a1f7a8ca5ab3613a2d3cac6fa5b",
+      "status": "independent_synthetic_confirmation",
+      "vetoes": []
+    }
+  ],
+  "flash_completed": true,
+  "physical_validation": false,
+  "flash_offsets": {
+    "bootloader.bin": "0x2000",
+    "partition-table.bin": "0x8000",
+    "c5vrx4.bin": "0x10000"
+  },
+  "sha256": {
+    "c5vrx4.bin": "5b50143a6eb2b9f7de53f2a5f93fade39f859e1924a7b086a4317c1610a3d10c",
+    "bootloader.bin": "03557d4a8e6d0d3ed2d1a882fd095eaceb47d458ed55806dc49a53c299043f8b",
+    "partition-table.bin": "73c0b5c3e5fcba3a151cc70c453c93dd5f4798899e7f2f8cca76da1f32ffc501",
+    "c5vrx4.elf": "75815b411d2f861f5e1f249cc8b44756a3d4268522b5cc818cbdd01b9d13630d",
+    "flasher_args.json": "9f7cf94f846cea1a216ca3f1a7f320bd8c3ae5ccd85396e289b3850909069e69"
+  },
+  "boot_model_verified": true,
+  "active_model": "OVL-49c57570d609",
+  "physical_result": "MAX noisy/desynchronized; operator confirms restored RANGE32 good picture",
+  "rollback_completed": true,
+  "app_elf_sha256": "75815b411d2f861f5e1f249cc8b44756a3d4268522b5cc818cbdd01b9d13630d",
+  "nvs_phy_backup_sha256": "7e3f8b72fd90e7c513cb8b95313883d3ea7d839910bf542a56daf5deeb5bea7d"
+}

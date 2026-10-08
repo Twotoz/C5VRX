@@ -6,8 +6,9 @@ typedef struct {
     const char *label, *model_id;
     uint8_t phase_bits;
     uint16_t phase_states, observation_tokens, frequency_states;
+    uint8_t selectable;
 } c5vrx4_range_option_t;
 static const c5vrx4_range_option_t c5vrx4_range_options[] = {
-    {"RANGE MAX LAB", "f96c6225fc10", 3, 8, 4, 32},
-    {"RANGE BAL LAB", "c2510e3dad79", 5, 32, 32, 1},
+    {"RANGE MAX LAB", "f96c6225fc10", 3, 8, 4, 32, 0},
+    {"RANGE BAL LAB", "c2510e3dad79", 5, 32, 32, 1, 1},
 };

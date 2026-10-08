@@ -4,13 +4,15 @@
 
 `docs/RANGE_PRIORITY_STUDY.md` records the new explicit range-over-detail
 objective and four completed million-evaluation runs (unique within each run).
-Pinned options start at value8; Y cycles RANGE32 and the generated options,
+Pinned options start at value8; Y cycles RANGE32 and enabled generated options,
 saves and reboots. R from any range LAB returns to OVP56; g remains0..4.
-RANGE MAX LAB is an explicitly requested board experiment, NOT a fully
-confirmed replacement: independent weak sync improves, but strong-echo
-waveform and PAL recovery guards veto overall confirmation. Keep these
-negative results visible. RANGE BAL LAB passes independent synthetic
-confirmation. Neither new option has physical acceptance yet. Preserve
+RANGE MAX LAB failed the operator's board test (noisy/desynchronized);
+restoring RANGE32 immediately restored a good picture. Value8 is quarantined
+to RANGE32 and Y skips it. Also preserve strong-echo/PAL-recovery vetoes.
+RANGE BAL LAB passes independent synthetic confirmation; board acceptance
+is pending. `docs/SAFE_RANGE_STUDY.md` predeclares the next fresh search,
+with fine ADC at every stage and explicit waveform/burst/timing guards.
+Do not start C5VRX-5 until the operator says to do so. Preserve
 value7/current RANGE32 and value4/OVP56 rollback, all live-writer gates,
 continuous raw DMA/state, fixed lanes and gain ownership. No merge authorized.
 

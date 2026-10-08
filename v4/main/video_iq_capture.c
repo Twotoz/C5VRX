@@ -18,12 +18,20 @@ void video_export_iq_snapshot(void)
     bool settling = s_rx_profile == RX_PROFILE_DIRECT_GAIN &&
         s_agc_mode == ANALOG_AGC_ACTIVE && s_direct_gain_v3.state == DG3_SETTLE;
     unsigned gain = s_current_gain, lane = rf_get_iq_lanes(), freq = rf_get_frequency_mhz();
-    if (!c5v4_level_source_ready(now, s_last_gain_write_us, s_last_phy_write_us,
-            lanes.last_switch_us, settling) || !video_copy_iq_snapshot(raw) ||
-        epoch.profile != s_profile_generation || epoch.phy != phy_rx_lab_generation() ||
-        epoch.gain != s_gain_transition_count || lane != rf_get_iq_lanes() ||
-        freq != rf_get_frequency_mhz()) {
-        free(raw); printf("IQSNAP_REFUSED stale_or_settling\n"); return;
+    bool source_ready = c5v4_level_source_ready(now, s_last_gain_write_us,
+        s_last_phy_write_us, lanes.last_switch_us, settling);
+    int64_t copy_start = esp_timer_get_time();
+    bool copied = source_ready && video_copy_iq_snapshot(raw);
+    int64_t copy_us = esp_timer_get_time() - copy_start;
+    bool epoch_ok = epoch.profile == s_profile_generation && epoch.phy == phy_rx_lab_generation() &&
+        epoch.gain == s_gain_transition_count && lane == rf_get_iq_lanes() && freq == rf_get_frequency_mhz();
+    if (!source_ready || !copied || !epoch_ok) {
+        free(raw);
+        printf("IQSNAP_REFUSED stale_or_settling source_ready=%u copy_attempted=%u copied=%u "
+               "epoch_ok=%u gain_settling=%u copy_us=%lld dma_ch=%d descriptors=%d\n",
+               (unsigned)source_ready, (unsigned)source_ready, (unsigned)copied, (unsigned)epoch_ok,
+               (unsigned)settling, (long long)copy_us, s_rx_dma_ch, s_rx_dscr_count);
+        return;
     }
     uint32_t hash = 2166136261u;
     for (unsigned k = 0; k < C5V4_LEVEL_SAMPLE_BYTES; ++k) hash = (hash ^ raw[k]) * 16777619u;

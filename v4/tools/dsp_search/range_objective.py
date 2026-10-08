@@ -6,17 +6,20 @@ RANGE32 quality guards or turn simulated C/N into measured RF sensitivity.
 import numpy as np
 from scipy import signal as sg
 import waveforms as V
-from video_metrics import waveform,detail
+from video_metrics import waveform,detail,burst
 
 PROFILES={
     'balanced':dict(strong_sinad=12,contrast=(70,130),detail=.4,level_error=10,timing=.5,width=.35),
     'range':dict(strong_sinad=9,contrast=(60,135),detail=.25,level_error=15,timing=.6,width=.5),
     'extreme':dict(strong_sinad=7,contrast=(50,140),detail=.1,level_error=20,timing=.75,width=.65),
+    'safe_range':dict(strong_sinad=14,contrast=(85,115),detail=.65,level_error=5,timing=.35,width=.2,
+                      reference_guard=True,reference_loss=1,detail_loss=.03,
+                      weak_width_weight=2,weak_jitter_weight=2,fine_lane=True,burst_guard=True),
 }
 LOWPASS=sg.butter(2,700000,fs=40000000,output='sos')
 
 
-def measure(y,c):
+def measure(y,c,include_burst=False):
     r=waveform(y,c)
     a,t,_=V.calibrated(y,c)
     a=sg.sosfilt(LOWPASS,a);t=sg.sosfilt(LOWPASS,t)
@@ -24,6 +27,7 @@ def measure(y,c):
     a=a[400:];t=t[400:]
     r['luma_sinad']=float(10*np.log10(np.var(t)/max(np.mean((a-t)**2),1e-20)))
     r['detail_corr']=detail(y,c)
+    if include_burst:r.update(burst(y,c))
     return r
 
 
@@ -40,9 +44,16 @@ def strong_failures(r,profile,reference=None):
     # Under adverse channels, never require an already broken reference to
     # meet healthy-source absolutes. Still reject additional sync/level loss.
     if reference is not None:
-        reasons=[]
+        if not p.get('reference_guard') or strong_failures(reference,profile):reasons=[]
         if not r['polarity_ok'] or r['contrast']<50:reasons.append('contrast')
-        if r['sinad']<reference['sinad']-2:reasons.append('stress_waveform')
+        if r['sinad']<reference['sinad']-p.get('reference_loss',2):reasons.append('stress_waveform')
+        if p.get('reference_guard') and r['detail_corr']<reference['detail_corr']-p['detail_loss']:
+            reasons.append('reference_detail')
+        if p.get('burst_guard'):
+            if not .7*reference['burst_gain']<=r['burst_gain']<=1.3*reference['burst_gain']:
+                reasons.append('burst_gain')
+            for key,margin in (('burst_phase_jitter_deg',5),('burst_amplitude_jitter_pct',10),('burst_rmse_ire',3)):
+                if r[key]>reference[key]+margin:reasons.append(key)
         for key in ('h_missing','v_missing'):
             if r[key]>reference[key]:reasons.append(key)
         if abs(r['v_trains']-r['expected_v_trains'])>abs(reference['v_trains']-r['expected_v_trains']):reasons.append('vertical_trains')
