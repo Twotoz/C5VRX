@@ -14,6 +14,13 @@ the existing safe modes0..4. Uppercase `P` retains corrected PLL96 LAB6;
 the failed original PLL96 selection5 remains quarantined to OVP56.
 No automatic promotion, merge or physical video acceptance is implied.
 
+Subsequent operator test: flashed app4.0.0-alpha-range32 from84d6e391 boots
+RANGE32 and maintains heartbeats. The operator reports excellent video and
+clearly better range. This is positive qualitative physical feedback; a matched
+attenuation/strong/weak/dropout comparison remains pending. The operator's
+subsequent range-over-detail request is tracked separately in
+[the range-priority study](RANGE_PRIORITY_STUDY.md), with new objectives/seeds.
+
 RANGE32 passed independent full-field PAL/NTSC waveform, synchronization,
 fine-detail, amplitude, carrier-offset and echo/fade guards. This is evidence
 for a hardware experiment, not a claim of measured FPV range or best-ever FM

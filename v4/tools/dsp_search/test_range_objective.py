@@ -7,6 +7,7 @@ import range_objective as J
 import search_range as R
 import overlay_fsm as O
 from validate_range import confirms
+from search_compact_range import compact
 
 
 class ObjectiveTests(unittest.TestCase):
@@ -37,6 +38,14 @@ class ObjectiveTests(unittest.TestCase):
         self.assertFalse(confirms(dict(control,usable_cnr=8,weak_missing=101),control))
         self.assertFalse(confirms(dict(control,weak_luma_sinad=20),control))
         self.assertTrue(confirms(dict(control,usable_cnr=8),control))
+
+    def test_compact_memory_is_real_frequency_state(self):
+        rng=np.random.default_rng(28104)
+        for _ in range(40):
+            p=compact(R.propose(rng),rng);O.compile_model(O.synthesize(p))
+            self.assertGreater((1<<(10-p['token_bits']))//p['phases'],1)
+            self.assertFalse(p['counter_phase'])
+            self.assertLess(p['low_hz'],p['high_hz'])
 
 
 if __name__=='__main__':unittest.main()

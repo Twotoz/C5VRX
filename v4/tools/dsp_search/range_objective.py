@@ -61,12 +61,11 @@ def usable(r):
 
 def summary(rows):
     weak=[r for r in rows if r['cnr']<=10];strong=[r for r in rows if r['cnr']>=20]
+    def mean(rr,key):return float(np.mean([r[key] for r in rr])) if rr else None
     cnrs=sorted({r['cnr'] for r in rows})
     thresholds=[cnr for cnr in cnrs if all(r['usable'] for r in rows if r['cnr']>=cnr)]
     return dict(usable_cnr=min(thresholds) if thresholds else None,
-                strong_eligible=all(not r['quality_failures'] for r in strong),
+                strong_eligible=bool(strong) and all(not r['quality_failures'] for r in strong),
                 weak_missing=sum(r['h_missing']+r['v_missing'] for r in weak),
-                weak_sinad=float(np.mean([r['sinad'] for r in weak])),
-                weak_luma_sinad=float(np.mean([r['luma_sinad'] for r in weak])),
-                strong_sinad=float(np.mean([r['sinad'] for r in strong])),
-                strong_detail=float(np.mean([r['detail_corr'] for r in strong])))
+                weak_sinad=mean(weak,'sinad'),weak_luma_sinad=mean(weak,'luma_sinad'),
+                strong_sinad=mean(strong,'sinad'),strong_detail=mean(strong,'detail_corr'))

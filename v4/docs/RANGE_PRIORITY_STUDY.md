@@ -58,6 +58,17 @@ are explored;20% of fresh proposals use actual next-sample sign context and5%
 use the previously compiled address-coupled counter schedule. Existing negative
 counter/context results motivate bounded exploration rather than assumed gains.
 
+A fourth1,000,000-evaluation run (base60000, Range guards) specifically explores
+compact frequency-memory grids targeting25/50/100/250/500kHz state spacing.
+Its predictor occupies a narrow band around the carrier; the innovation output
+still reconstructs wide video excursions. It has at least two actual frequency
+states, trading phase/observation capacity for memory, and uses the regular
+compiled shared-word schedule rather than an imaginary fine accumulator.
+This is a hypothesis, not instantaneous DAC6 or RF tuning resolution. Large
+state allocations bound the span to the supported numerical band. Thus the
+completed target is4million per-run unique evaluations, not four million
+fundamentally different mathematical architecture families.
+
 Stages are signed tone checks, approximate low-band information on five
 8192-byte IQ cases, then detailed short-video checks for the top8 proxies per
 topology plus random1/256 audits. The cheap proxy is not full CVBS acceptance.
@@ -94,6 +105,7 @@ OMP_NUM_THREADS=1. Output directories must be fresh. From `v4/`:
 python tools/dsp_search/search_range.py --output /new/balanced --profile balanced --seed-base 30000 --evaluations 1000000
 python tools/dsp_search/search_range.py --output /new/range --profile range --seed-base 40000 --evaluations 1000000
 python tools/dsp_search/search_range.py --output /new/extreme --profile extreme --seed-base 50000 --evaluations 1000000
+python tools/dsp_search/search_compact_range.py --output /new/compact --profile range --seed-base 60000 --evaluations 1000000
 python tools/dsp_search/refine_range.py --search /new/range --output /new/range-refined
 python tools/dsp_search/validate_range.py --search /new/range-refined --output /new/range-confirmed
 python tools/dsp_search/leaderboard.py /new/range/leaderboard.sqlite --pareto
