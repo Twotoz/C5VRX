@@ -5,6 +5,17 @@
 #include <stdint.h>
 #define C5V4_LEVEL_SAMPLE_BYTES 8190u
 typedef struct { size_t offset, first, safe_bytes; } c5v4_snapshot_plan_t;
+/* Descriptor discovery begins at the current DMA node, not necessarily at
+ * buffer zero. Validate one contiguous physical segment in that cyclic order.
+ * The caller must also require total coverage == ring after the last node. */
+static inline bool c5v4_snapshot_segment(size_t ring, size_t first,
+    size_t covered, size_t offset, size_t bytes)
+{
+    if (!ring || first >= ring || covered >= ring || offset >= ring ||
+        !bytes || bytes > ring-covered || bytes > ring-offset) return false;
+    size_t expected = covered < ring-first ? first+covered : covered-(ring-first);
+    return offset == expected;
+}
 static inline bool c5v4_snapshot_plan(size_t ring, size_t active_offset,
     size_t active_bytes, size_t bytes, c5v4_snapshot_plan_t *out)
 {

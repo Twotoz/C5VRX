@@ -16,6 +16,15 @@ model still does not establish actual analog ADC noise/calibration. Existing
 IQ export refused `stale_or_settling`; no valid board capture was obtained.
 The exporter now reports source/copy/epoch/deadline context without relaxing
 any freshness or DMA exclusion. Its diagnostic update is not yet flashed.
+Code investigation also found a deterministic false-refusal bug: descriptor
+discovery starts at the active DMA node, whereas snapshot validation required
+the first node's buffer to be ring byte0. Validation now accepts any rotation
+of the contiguous physical ring, still requiring complete non-overlapping
+coverage, unchanged active descriptor, <=50us copy time, no possible DMA lap
+and unchanged gain/PHY/lane epochs. The host regression checks every rotation
+including the short tail node and rejects gaps, overlaps and invalid lengths.
+This code-level fix is not yet a successful board capture or a diagnosis of
+which refusal condition occurred in the old firmware.
 
 Four fresh policies each target1million unique LUT/schedule evaluations:
 plain(base70000), bounded next-IQ context(base80000), radius confidence

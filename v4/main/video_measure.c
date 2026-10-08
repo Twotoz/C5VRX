@@ -249,12 +249,16 @@ bool video_copy_iq_snapshot(uint8_t *raw)
     uint32_t before = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
     int active = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, before);
     if (active < 0) return false;
-    /* Verify this is the contiguous circular raw ring before using geometry. */
+    /* Discovery starts at the current DMA descriptor; the stored sequence
+     * can be any rotation of the contiguous physical circular raw ring. */
+    uintptr_t base = (uintptr_t)s_raw_ring;
+    uintptr_t first = (uintptr_t)s_rx_dscr_nodes[0].buffer;
+    if (first < base || first-base >= sizeof(s_raw_ring)) return false;
     size_t total = 0;
     for (int k = 0; k < s_rx_dscr_count; ++k) {
-        if (!s_rx_dscr_nodes[k].length || total > sizeof(s_raw_ring) ||
-            s_rx_dscr_nodes[k].buffer != s_raw_ring + total ||
-            s_rx_dscr_nodes[k].length > sizeof(s_raw_ring)-total) return false;
+        uintptr_t address = (uintptr_t)s_rx_dscr_nodes[k].buffer;
+        if (address < base || !c5v4_snapshot_segment(sizeof(s_raw_ring),
+                first-base, total, address-base, s_rx_dscr_nodes[k].length)) return false;
         total += s_rx_dscr_nodes[k].length;
     }
     if (total != sizeof(s_raw_ring)) return false;
