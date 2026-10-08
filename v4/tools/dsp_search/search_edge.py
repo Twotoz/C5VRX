@@ -78,6 +78,24 @@ def screen(seed):
                             fit_dc_cells=tuple(float(v) for v in np.array([hw['dc'].real, hw['dc'].imag]) * rms
                                                + rng.uniform(-.2, .2, 2)))
             c['kind'] = kind; cases.append(c)
+    # Switch-region reference: the best of the detail demods on the same
+    # signal. Near C/N 8..12 with other VTXs/boards they too miss pulses and
+    # show spurious sync, so EDGE must merely never be worse than SHARP there.
+    import json
+    import overlay_fsm as O
+    from video_metrics import waveform
+    root = Path(__file__).resolve().parents[2]
+    controls = [json.loads((root / 'tools/range32_model.json').read_text())]
+    opts = json.loads((root / 'tools/range_options.json').read_text())['options']
+    controls += [o['model'] for o in opts if o['label'] == 'PAIR RANGE LAB']
+    for c in cases:
+        if c['kind'] != 'sane': continue
+        rs = []
+        for m in controls:
+            y = O.decode(c['raw'], m); rs.append(waveform(y, clamp(c, y)))
+        c['ref'] = dict(miss=min(r['h_missing'] + r['v_missing'] for r in rs),
+                        false=min(r['false_sync_per_line'] for r in rs),
+                        sync=min(abs(r['sync_error_ire']) for r in rs))
     return cases
 
 
@@ -108,7 +126,9 @@ def score(m, cases):
             # patterns (operator 2026-10-08: strong detail matters less).
             # One spurious pulse in an 11-line window is 0.09/line; white
             # patches narrower than a blurred edge read low (detail, not level).
-            if (miss or r['false_sync_per_line'] > .1 or abs(r['sync_error_ire']) > 8 or
+            ref = c['ref']
+            if (miss > ref['miss'] or r['false_sync_per_line'] > ref['false'] + .1 or
+                    abs(r['sync_error_ire']) > max(8., ref['sync'] + 2.) or
                     abs(r['black_error_ire']) > 10 or abs(r['white_error_ire']) > 25 or
                     r['v_trains'] != r['expected_v_trains']):
                 return None
@@ -223,7 +243,7 @@ def main():
         allocations=ALLOCATIONS, decoders=DECODERS, weights=WEIGHT,
         randomization='deviation x0.75..1.35, DC up to 0.33 RMS, I/Q gain 0.95..1.05, phase +-3 deg, bars/zoneplate/checker/texture',
         objective='edge cost: 3*missed + 0.5*large errors/1000 + 1.5*|sync error IRE| at C/N 0..8 (weights 0.5..2); '
-                  'hard sanity at the FusionDemod switch region C/N 8/10/12: no missed sync, false sync <=0.05/line, |sync| <=8, |black| <=10, |white| <=25 IRE, false sync <=0.1/line (detail not scored)',
+                  'sanity at the FusionDemod switch region C/N 8/10/12 relative to the best of RANGE32/PAIR on the same signal (missed <=, false sync <= +0.1/line, |sync| <= max(8, ref+2)), plus no missed sync, false sync <=0.05/line, |sync| <=8, |black| <=10, |white| <=25 IRE, false sync <=0.1/line (detail not scored)',
         source_sha256={p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')}))
     share = [a.evaluations // a.workers + (i < a.evaluations % a.workers) for i in range(a.workers)]
     with mp.get_context('spawn').Pool(a.workers) as pool:

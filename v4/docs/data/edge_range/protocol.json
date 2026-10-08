@@ -1,0 +1,160 @@
+{
+  "profile": "edge_structure",
+  "config_seed": 424101,
+  "structures": 1920,
+  "models": 51840,
+  "screen_seeds": [
+    424201,
+    424211,
+    424221,
+    424231
+  ],
+  "lane_profile": {
+    "lane": "ultrafine",
+    "nominal_rms": 4.5
+  },
+  "blocks": {
+    "allocations": [
+      [
+        8,
+        16,
+        8
+      ],
+      [
+        16,
+        8,
+        8
+      ],
+      [
+        8,
+        8,
+        16
+      ],
+      [
+        4,
+        32,
+        8
+      ],
+      [
+        16,
+        16,
+        4
+      ],
+      [
+        8,
+        32,
+        4
+      ],
+      [
+        16,
+        4,
+        16
+      ],
+      [
+        32,
+        4,
+        8
+      ]
+    ],
+    "detectors": [
+      "clip",
+      "tanh",
+      "sine",
+      "softhold"
+    ],
+    "outputs": [
+      "freq",
+      "advance",
+      "avg"
+    ],
+    "grids": [
+      "uniform",
+      "companded"
+    ],
+    "leaks": [
+      0.0,
+      0.03
+    ],
+    "decoders": [
+      null,
+      [
+        "4411",
+        "weak",
+        0
+      ],
+      [
+        "4411",
+        "uniform",
+        0
+      ]
+    ],
+    "kp": [
+      0.4,
+      0.7,
+      1.0
+    ],
+    "ki": [
+      0.1,
+      0.2,
+      0.35
+    ],
+    "hold": [
+      1.0,
+      1.8,
+      3.2
+    ]
+  },
+  "rule": "stage1 one screen; best decile re-scored on three more; rank by mean of four",
+  "source_sha256": {
+    "ablate_pll.py": "478479c31c583e0a4814839c8bc7caac8ebcbbdb4afb9684b54166fd3bd6fb16",
+    "audit_pll96.py": "8481a71a71caa7875864e1cbbbf39c26c717cd7215a04684b1dce7a8f1b3e075",
+    "compare_counter.py": "d57e0fe3944ce261b159a6a6b49d2f0e0a48577616590055649ca6932e6ac66b",
+    "compare_safe_range.py": "7666d0a0a53ba4618803906a0f785cb7f2b3750b3b7153a1ac0b95cd3fe9c357",
+    "compare_strategies.py": "b24414e0b070a074aa53280d846dbdfdb22179f09aac9408d5d5381adfa06ddc",
+    "distill_overlay.py": "85644b203ffb62d9cdaa47f8fc780f25128f11965d7a76a1cc6d772bed21a533",
+    "edge_fsm.py": "2734f2b9a77403c26a80b15d3abc247eafadb73bfe22f44a98daa062475d5cdf",
+    "engine.py": "22acf995147f0fc9f1923cfedaf863db4bf48aa9fdae93de3a06fb9196f3a669",
+    "expressions.py": "1ca25e1ac22b5bf25e3959e8ee5a05807ea484229b7869984aea2d96e32588db",
+    "hardware.py": "012b06f55bbc7621cc8c7d476fdd2d14593db2bd689b7153c943aca99ac30857",
+    "iq_lanes.py": "14688c7419c1f427dc450790c437da077409bc27d69cd85c3be66de343a0be1f",
+    "lane_profile.py": "b36dcf6a603f5a10cabe0b84ff556a424b76a68a8e50ecef50cbf34cf1d9750c",
+    "leaderboard.py": "31d13e25a31e2491981732d627d92f4013b5d6214acfcbcea853e910cc055052",
+    "overlay_fsm.py": "8fad2b7ebeed9fbf1cfd307bfce19f16b64eef1638204923af4b29a5b4e79c9a",
+    "pair_decoder.py": "fa05ad96b96c3e5209b001d2fe952887fedfb6356ccd5a799139fbd06a746b4f",
+    "polish_lut.py": "e9593972f019928c3e3632368f64ea17a9cf1572ce8f35c6d163043189ab711b",
+    "range_objective.py": "5e1882ae0d41f085caaea859031ea6a52493150e3ffa21dfbb7c0739526119d5",
+    "reconstruction.py": "1582a43a47aa731368047c44f6d5b4d9f60f79a55b318c327c20254382a8b968",
+    "refine_overlay.py": "b02785f4b14fc18d5d57fc05352584a7c12ce64edf333abc89297e7ffc00f38d",
+    "refine_range.py": "085cdb674ed8b741fa9352b61093bf30ee5dd0dc6d2d2c0042f315399baecc20",
+    "repair_pll96.py": "8dde8df661d6d2e7f85cd054e55eb0d878311928ad83761f891e3c9ca8f1efa4",
+    "repair_reconstruction.py": "5128c6efdf3213d8ef67c65e5cdfac66864b6e238115ddc6660bdd30110b1cff",
+    "robust_select.py": "431f56422db0e13f8f5bdb48beb0e9a0f8514d48658f8a535f7ce5ace43e7715",
+    "search_compact_range.py": "8a27c44c7fe88ea824ffd0e2acb9c57ec878fc94eb70baca0447e096ed8201a7",
+    "search_edge.py": "8eaca9e4cc1e975ed8e2420cdbcb6361f85d96141964c007177feaf738a3062c",
+    "search_overlay.py": "5e5552708c339ea2799151e3e8367d09f04cb8f23e526b35176a24905f86c6fe",
+    "search_pair_range.py": "48364743d717e45298058425e042e1e9e492d7eedefc5223f671119962c40018",
+    "search_range.py": "9fc6088ecadcb4d2140383ceb016bfc4a6297ab9f9ae9b9ebbf8bf221b648111",
+    "search_safe_range.py": "bfa948ce51aa8ae1520e5e6850bad9f57c94a6d17c79a31ffe5fbee7d31e7c94",
+    "select_edge.py": "b03cc7f6c0c1aa7c6f5640e16234eab7232b26bcb79004ffeceec28241c7464a",
+    "structure_edge.py": "9ed433e68935bca8097dc179d34bb31d51cf6949c1b357a57842bd5f612f553f",
+    "test_compare_safe_range.py": "9ca26015fc420d1940715c6a4537df3162dab98d0273f43f1b4376ebcf67599f",
+    "test_content_holdout.py": "5313581f15c705eab1b686d9c307ae2fc214d3c53fa4a38ce9bb3b2a057c7654",
+    "test_counter.py": "8a63adb33a6c597c66eb359af9aa9bb62f93cd9d8434074c8e29c61ba6b3dc87",
+    "test_discovery.py": "3d806305d6cec7aef8da3ee87e443068b440d5919e5a13d524feac92de948dfb",
+    "test_distill.py": "2a3ac6372b183713fdff179eb2b95067e46d7493b725f4e0cc02e47ee123a8d4",
+    "test_iq_lanes.py": "74d821b86b053bf4e5ddc130e3e00c9b25a7cbbff1e5f709afc73ff511a04e37",
+    "test_overlay.py": "2c52f76de92ed353e7ae54ba55b2d0f70eab2a0409b1a3f017c8a4da2fac7d50",
+    "test_pair.py": "ef56ffa19b2e236269b69a0c8b36d31dce5478f8450cd45db0d5f9168a4b45cc",
+    "test_range_objective.py": "a175e41b2a53e82ad4ef39681013fef1a6a65c241d0c8e933ca606d9d834e6a1",
+    "test_range_validation.py": "246e99ef684240d22bd1c29058e6d97ecef5e5935f394a8463cfd9a8744d3c3c",
+    "test_reconstruction.py": "3bc8be35306260a62cd635ce323a8d35a5e4d99cab755becc3deadc3a839f669",
+    "test_video_metrics.py": "4228b7ca68c4b796a1a85a0b9b49ca7bda802129d3eb7e814bb4c7156b9a1d89",
+    "validate_overlay.py": "e83ce7ab6b648c00cd8510a603cee9c66e2ca83266e964a4f48aff53c2bbdaee",
+    "validate_range.py": "ffe460074c6290831ade1479d33741c4552eb652273d0f53bd5364bcf45a61e6",
+    "validate_recovery.py": "95e750091cefdedac8b18238aa6b4bc5b9126a7e5238b39ccb247adab2b9cafe",
+    "validate_search.py": "10b14e838ecbe77850b80d2a2486acbee5c7588bd92b903cf0fe6ef9d4d6e89d",
+    "validate_signal_integrity.py": "a6cac418b08504fcbfcebbcbd4822a40f29bb49baa119c29c74932da5787315c",
+    "video_metrics.py": "9c96f10521f2ddbed34062725310b3887c69520477e929ba9bca5ac3f2d6599e",
+    "waveforms.py": "cb79838fa2c510fe87670f9f11a1b0b9d74187dc2462304925f80c34e6b0aa23"
+  }
+}

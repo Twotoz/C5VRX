@@ -1,0 +1,35 @@
+{
+  "structures": 1920,
+  "models": 51840,
+  "stage1_pass": 83,
+  "stage2": 50,
+  "four_screen_pass": 1,
+  "best": {
+    "index": 14270,
+    "structure": {
+      "decoder": 1,
+      "reliability": false,
+      "alloc": [
+        4,
+        32,
+        8
+      ],
+      "detector": "clip",
+      "output": "freq",
+      "grid": "uniform",
+      "leak": 0.0
+    },
+    "kp": 0.7,
+    "ki": 0.2,
+    "hold": 3.2,
+    "scores": [
+      -133.33257572091603,
+      -128.3339139417546,
+      -130.2680589698034,
+      -114.63414738831416
+    ],
+    "mean": -126.64217400519705,
+    "worst": -133.33257572091603
+  },
+  "elapsed_s": 453.7016733000055
+}
