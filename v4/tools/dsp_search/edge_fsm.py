@@ -13,9 +13,9 @@ import compile_overlay as C
 B = O.H.B
 
 
-def first_tokens(T):
+def first_tokens(T, dc=0j):
     i, q = B.D.cells(np.arange(256))
-    a = np.arctan2(q + .5, i + .5)
+    a = np.arctan2(q + .5 - dc.imag, i + .5 - dc.real)
     return (np.floor((a + np.pi) * T / (2 * np.pi)).astype(int)) % T, (np.arange(T) + .5) * 2 * np.pi / T - np.pi
 
 
@@ -33,26 +33,74 @@ def pair_tokens(T, vectors, rotation):
     return tok, obs
 
 
+NOMINAL_CENTRE_HZ = 1e6  # design carrier for low_hz/high_hz and the DAC transfer
+
+
 def synthesize(p):
     T = 1 << int(p['token_bits']); P = int(p['phases']); F = int(p['frequencies'])
     if P * F * T != 1024 or P < 4 or F < 2:
         raise ValueError('edge allocation must fill 1024 words with P>=4, F>=2')
-    fmin = 2 * np.pi * p['low_hz'] / 20e6; fmax = 2 * np.pi * p['high_hz'] / 20e6
+    # AutoFit: measured carrier centre, VTX deviation scale and receiver DC
+    # (cells) re-place the frequency states and the DAC transfer so a
+    # different VTX/board lands on the same nominal video levels.
+    fit_c = float(p.get('fit_centre_hz', NOMINAL_CENTRE_HZ)); fit_d = float(p.get('fit_deviation', 1.))
+    if not .4 <= fit_d <= 3. or abs(fit_c) > 4e6:
+        raise ValueError('autofit outside supported range')
+    lo = fit_c + fit_d * (p['low_hz'] - NOMINAL_CENTRE_HZ)
+    hi = fit_c + fit_d * (p['high_hz'] - NOMINAL_CENTRE_HZ)
+    fmin = 2 * np.pi * lo / 20e6; fmax = 2 * np.pi * hi / 20e6
     if not fmin < fmax:
         raise ValueError('frequency range')
     step = (fmax - fmin) / (F - 1)
+    # Structural building blocks (defaults reproduce generate_edge exactly).
+    detector = p.get('detector', 'clip'); output = p.get('output', 'freq')
+    grid = p.get('grid', 'uniform'); leak = float(p.get('leak', 0.))
+    if detector not in ('clip', 'tanh', 'sine', 'softhold') or output not in ('freq', 'advance', 'avg'):
+        raise ValueError('unknown edge building block')
+    if grid not in ('uniform', 'companded') or not 0 <= leak <= .2:
+        raise ValueError('frequency grid/leak')
+    if grid == 'uniform':
+        levels = fmin + np.arange(F) * step
+    else:  # denser near the video range centre, same end points
+        u = np.linspace(-1, 1, F); mid = (fmin + fmax) / 2
+        levels = mid + (fmax - fmin) / 2 * np.sign(u) * abs(u) ** float(p.get('gamma', 1.6))
     if p.get('pair_layout'):
         tok, obs = pair_tokens(T, p['observation_vectors'], p['rotation'])
     else:
-        tok, obs = first_tokens(T); obs = obs + p['rotation']
+        tok, obs = first_tokens(T, complex(*p.get('fit_dc_cells', (0., 0.)))); obs = obs + p['rotation']
     s = np.arange(P * F); fi = s // P; pi_ = s % P
-    fr = (fmin + fi * step)[:, None]; pr = (pi_ * 2 * np.pi / P)[:, None] + fr
+    fr = levels[fi][:, None]; pr = (pi_ * 2 * np.pi / P)[:, None] + fr
     e = (obs[None, :] - pr + np.pi) % (2 * np.pi) - np.pi
-    e = np.where(abs(e) > p['hold'], 0., e)
+    if detector == 'softhold':  # weight falls smoothly for implausible steps
+        e = e * np.exp(-(e / p['hold']) ** 2)
+    else:
+        e = np.where(abs(e) > p['hold'], 0., e)
+        if detector == 'tanh':
+            e = p['limit'] * np.tanh(e / p['limit'])
+        elif detector == 'sine':
+            e = np.sin(e)
     e = np.clip(e, -p['limit'], p['limit'])
-    f2 = np.clip(np.rint((fr + p['ki'] * e - fmin) / step), 0, F - 1).astype(int)
+    if p.get('reliability') and p.get('pair_layout'):
+        v = np.asarray(p['observation_vectors'], float); r = np.hypot(v[:, 0], v[:, 1])
+        rt = np.array([r[tok == t].mean() if np.any(tok == t) else 1. for t in range(T)])
+        e = e * np.clip(rt / max(rt.max(), 1e-9), .2, 1)[None, :]
+    centre = 2 * np.pi * float(p.get('centre_hz', 1e6)) / 20e6
+    target = fr + p['ki'] * e - leak * (fr - centre)
+    if grid == 'uniform':
+        f2 = np.clip(np.rint((target - fmin) / step), 0, F - 1).astype(int)
+    else:
+        f2 = np.argmin(abs(target[..., None] - levels), axis=-1)
     p2 = (np.floor((pr + p['kp'] * e) * P / (2 * np.pi) + .5).astype(int)) % P
-    out = fmin + f2 * step + p['mix'] * p['kp'] * e
+    if output == 'freq':
+        out = levels[f2] + p['mix'] * p['kp'] * e
+    elif output == 'advance':
+        out = fr + p['kp'] * e
+    else:
+        out = (fr + levels[f2]) / 2 + p['mix'] * p['kp'] * e
+    if 'fit_deviation' in p or 'fit_centre_hz' in p:
+        # Map this VTX's frequency back onto the nominal transfer.
+        cn = 2 * np.pi * NOMINAL_CENTRE_HZ / 20e6; cm = 2 * np.pi * fit_c / 20e6
+        out = cn + (out - cm) / fit_d
     code = np.rint(np.clip((out * 128 / np.pi - B.P.OFFSET) * B.P.SCALE, 0, 63)).astype(np.uint16)
     lut = (code + ((f2 * P + p2).astype(np.uint16) << 6)).ravel()
     b = int(p['token_bits'])

@@ -73,11 +73,14 @@ def raster(standard,fields=2,short=False,stimulus_seed=None,pattern='bars'):
     return ire,region
 
 
-def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimulus_seed=None,loss_windows_us=(),lane_model=None,include_traces=False,pattern='bars'):
+def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimulus_seed=None,loss_windows_us=(),lane_model=None,include_traces=False,pattern='bars',
+              deviation=1.,dc=0j,iq_gain=1.,iq_phase_deg=0.):
+    # Hardware randomization (defaults = unchanged): VTX deviation scale,
+    # receiver DC (fraction of RMS), I/Q gain and phase imbalance.
     ire,region=raster(standard,short=short,stimulus_seed=stimulus_seed,pattern=pattern)
     # Integrate FM at 80 MS/s before the existing analog-channel model.
     source=sg.lfilter(sg.firwin(81,6e6,fs=80e6),1,np.repeat(ire,2))
-    freq=cfo_hz+(source-30)*6.7e6/140
+    freq=cfo_hz+deviation*(source-30)*6.7e6/140
     z=np.exp(2j*np.pi*np.cumsum(freq)/80e6)
     z=B.D.chan(z)[::2]
     z/=np.sqrt(np.mean(abs(z)**2))
@@ -93,6 +96,9 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimul
     def raw(n):
         y=W.iq_at(z,n,cnr,rms)
         if stress:y=y.real*1.05+1j*y.imag+.15-.1j
+        if dc or iq_gain!=1. or iq_phase_deg:
+            ph=np.radians(iq_phase_deg)
+            y=iq_gain*y.real+1j*(y.imag*np.cos(ph)+y.real*np.sin(ph))+dc*rms
         if lane_model:
             from iq_lanes import quantize
             return quantize(y,lane_model)

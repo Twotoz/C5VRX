@@ -37,7 +37,7 @@ def params(genome, bank):
     d, (P, F, T) = TOPOLOGIES[genome['topology']]
     p = {k: value(k, genome['u'][i]) for i, k in enumerate(CONTINUOUS)}
     p['rotation'] *= 2 * np.pi / T
-    p.update(token_bits=int(T).bit_length() - 1, phases=P, frequencies=F)
+    p.update(token_bits=int(T).bit_length() - 1, phases=P, frequencies=F, autofit=True)
     if DECODERS[d]:
         p.update(pair_layout='4411', observation_vectors=bank[d])
     return p
@@ -50,31 +50,67 @@ def screen(seed):
     import lane_profile as L
     base = S.F.load_reference('OVP56'); rng = np.random.default_rng(seed + 9)
     cases = []
-    plan = [(c, 'edge') for c in (0, 2, 3, 4, 6, 8)] + [(c, 'sane') for c in (10, 14, 30)]
+    # FusionDemod: EDGE runs only below the switch point (C/N ~8..10); SHARP
+    # takes over above it, so sanity is required where the two meet, not at
+    # strong signal (a range-edge model used near the VTX failed as MAX).
+    plan = [(c, 'edge') for c in (0, 2, 3, 4, 6)] + [(c, 'sane') for c in (8, 10, 12)]
     for k, (cnr, kind) in enumerate(plan):
         for std in ('PAL', 'NTSC'):
             cfo = float(rng.uniform(.5e6, 1.5e6)); rms = L.scale(3) * float(rng.uniform(.85, 1.15))
+            # Domain randomization: other VTXs, cameras and receiver boards.
+            hw = dict(deviation=float(rng.uniform(.75, 1.35)),
+                      dc=complex(*rng.uniform(-.33, .33, 2)), iq_gain=float(rng.uniform(.95, 1.05)),
+                      iq_phase_deg=float(rng.uniform(-3, 3)),
+                      pattern=('bars', 'zoneplate', 'checker', 'texture')[int(rng.integers(4))])
             c = V.make_case(std, seed + 10 * k + (std == 'NTSC'), cnr, rms, short=True, cfo_hz=cfo,
-                            stimulus_seed=seed + 500 + k, lane_model=L.LANE)
+                            stimulus_seed=seed + 500 + k, lane_model=L.LANE, **hw)
             for key in ('raw', 'clean', 'truth', 'region'): c[key] = c[key][65536:98304]
-            c['calibration'] = V.M.clean_calibration(S.decode(c['clean'], base), c['truth'], 3000)
+            # A goggle has a fixed video gain: calibrate on the nominal VTX and
+            # board (deviation 1, no DC/IQ error); per-line DC is clamped in
+            # score(), like the goggle's back-porch clamp.
+            n = V.make_case(std, seed + 10 * k + (std == 'NTSC'), cnr, rms, short=True, cfo_hz=cfo,
+                            stimulus_seed=seed + 500 + k, lane_model=L.LANE, pattern=hw['pattern'])
+            c['calibration'] = V.M.clean_calibration(S.decode(n['clean'][65536:98304], base),
+                                                     n['truth'][65536:98304], 3000)
+            # AutoFit inputs as measured: true hardware plus estimator error.
+            c['fit'] = dict(fit_deviation=hw['deviation'] * float(rng.uniform(.9, 1.1)),
+                            fit_centre_hz=cfo + float(rng.uniform(-1e5, 1e5)),
+                            fit_dc_cells=tuple(float(v) for v in np.array([hw['dc'].real, hw['dc'].imag]) * rms
+                                               + rng.uniform(-.2, .2, 2)))
             c['kind'] = kind; cases.append(c)
     return cases
 
 
-WEIGHT = {0: .5, 2: 2., 3: 2., 4: 2., 6: 1., 8: .5}
+WEIGHT = {0: .5, 2: 2., 3: 2., 4: 2., 6: 1.}
+
+
+def clamp(c, y):
+    """Goggle back-porch DC restore: shift offset so the burst/porch mean matches."""
+    import waveforms as V
+    lag, g, off = c['calibration']; a, t, region = V.calibrated(y, c); m = region == 3
+    return dict(c, calibration=(lag, g, off + (float(np.mean(t[m] - a[m])) if m.any() else 0.)))
 
 
 def score(m, cases):
     import overlay_fsm as O
+    import edge_fsm as F
     from video_metrics import waveform
     cost = 0.; rows = []
     for c in cases:
-        r = waveform(O.decode(c['raw'], m), c)
+        # AutoFit models are re-synthesized per case from its measured fit;
+        # fixed models (controls) are decoded as they are.
+        mm = F.synthesize(dict(m['params'], **c['fit'])) if m['params'].get('autofit') else m
+        y = O.decode(c['raw'], mm)
+        r = waveform(y, clamp(c, y))
         miss = r['h_missing'] + r['v_missing']
         if c['kind'] == 'sane':
-            if (miss or r['false_sync_per_line'] > .05 or abs(r['sync_error_ire']) > 8 or
-                    not 70 <= r['contrast'] <= 130 or r['v_trains'] != r['expected_v_trains']):
+            # Goggle-relevant levels, not detail: an edge demod may blur fine
+            # patterns (operator 2026-10-08: strong detail matters less).
+            # One spurious pulse in an 11-line window is 0.09/line; white
+            # patches narrower than a blurred edge read low (detail, not level).
+            if (miss or r['false_sync_per_line'] > .1 or abs(r['sync_error_ire']) > 8 or
+                    abs(r['black_error_ire']) > 10 or abs(r['white_error_ire']) > 25 or
+                    r['v_trains'] != r['expected_v_trains']):
                 return None
         else:
             w = WEIGHT[c['cnr']]
@@ -185,8 +221,9 @@ def main():
     S.save(a.output / 'protocol.json', dict(profile='edge', evaluations=a.evaluations, workers=a.workers,
         config_seed=a.seed_base + 101, screen_seed=a.seed_base + 201, lane_profile=L.record(),
         allocations=ALLOCATIONS, decoders=DECODERS, weights=WEIGHT,
+        randomization='deviation x0.75..1.35, DC up to 0.33 RMS, I/Q gain 0.95..1.05, phase +-3 deg, bars/zoneplate/checker/texture',
         objective='edge cost: 3*missed + 0.5*large errors/1000 + 1.5*|sync error IRE| at C/N 0..8 (weights 0.5..2); '
-                  'hard sanity at C/N 10/14/30: no missed sync, false sync <=0.05/line, |sync error| <=8 IRE, contrast 70..130',
+                  'hard sanity at the FusionDemod switch region C/N 8/10/12: no missed sync, false sync <=0.05/line, |sync| <=8, |black| <=10, |white| <=25 IRE, false sync <=0.1/line (detail not scored)',
         source_sha256={p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')}))
     share = [a.evaluations // a.workers + (i < a.evaluations % a.workers) for i in range(a.workers)]
     with mp.get_context('spawn').Pool(a.workers) as pool:
