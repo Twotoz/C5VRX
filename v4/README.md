@@ -21,8 +21,10 @@ cycles RANGE32 -> RANGE BAL LAB -> PAIR RANGE LAB -> RANGE32 with saved reboot.
 RANGE MAX failed the operator's physical noise/sync comparison and is
 quarantined: its saved value8 restores RANGE32 and Y skips it. RANGE BAL passes
 independent synthetic confirmation; its physical acceptance remains pending.
-RANGE32/value7 is the operator-requested default after repeated good-picture
-feedback. RANGE32+ (value10) also produced physical stability issues and is
+Since 2026-10-08 (operator request) new/invalid selections boot PAIR RANGE
+LAB/value11 on fixed ultrafine lanes; RANGE32/value7 is the fallback if PAIR
+is absent or quarantined, and saved selections are kept. Earlier RANGE32 was
+the operator-requested default after repeated good-picture feedback. RANGE32+ (value10) also produced physical stability issues and is
 quarantined to RANGE32; Y skips both failed candidates. `g` stays0..4.
 See the completed [fine-ADC search and physical result](docs/SAFE_RANGE_STUDY.md).
 PAIR RANGE LAB (value11, `RNG-e2a8f30af45e`) is the first shared-word tracker

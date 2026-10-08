@@ -15,6 +15,13 @@ R returns to OVP56/RANGE32 and no board result exists yet. Direct Gain V5 is
 demod-independent; a host regression covers fixed-ultrafine fold recovery.
 Keep the lane profile explicit (`lane_profile.py`) and do not infer measured
 range or global optimality from synthetic confirmation.
+The operator then asked (same day) for PAIR plus fixed ultrafine to be the
+post-flash default. `default_demod()` selects the option with model id
+e2a8f30af45e when it is selectable, else RANGE32; quarantined saved options
+still restore RANGE32 and explicit saved choices persist. Missing/invalid
+`lane_mode` now means fixed ultrafine; Z still cycles fine/protected V5. This
+supersedes the 2026-10-04 fixed-fine default and the RANGE32 default above,
+before any PAIR board result; revert both if the flight test regresses.
 
 ## Operator-selected stable default, 2026-10-08
 
