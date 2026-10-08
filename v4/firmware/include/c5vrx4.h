@@ -30,6 +30,8 @@ bool c5vrx4_reference_demod(void);
 bool c5vrx4_range_demod(void);
 /* The pinned EDGE RANGE LAB: its LUT is re-synthesized for the measured VTX. */
 bool c5vrx4_edge_autofit_demod(void);
+/* PAIR RANGE LAB: FusionDemod's sharp program. */
+#define C5VRX4_PAIR_MODEL_ID "e2a8f30af45e"
 #define C5VRX4_RANGE_PORCH_KHZ (-436)
 /* Louis Hitchcock/#184: staged physical overload/recovery independent of
  * demod selection; Direct Gain only, manual/native ownership unchanged. */
@@ -59,7 +61,7 @@ enum {
     C5VRX4_OPT_AGC_MASK, C5VRX4_OPT_DC_RECENTER, C5VRX4_OPT_SPHASE,
     C5VRX4_OPT_IDLE_RASTER, C5VRX4_OPT_RADIUS_BOOST, C5VRX4_OPT_SYNC_FW,
     C5VRX4_OPT_LEVEL, C5VRX4_OPT_CVBS, C5VRX4_OPT_HISTORY, C5VRX4_OPT_NATIVE_PATCH, C5VRX4_OPT_HW_DCO,
-    C5VRX4_OPT_LINE_FIX, C5VRX4_OPT_EDGE_GEAR,
+    C5VRX4_OPT_LINE_FIX, C5VRX4_OPT_EDGE_GEAR, C5VRX4_OPT_FUSION,
     C5VRX4_OPT_COUNT
 };
 void c5vrx4_options_snapshot(void);
@@ -76,6 +78,9 @@ bool c5vrx4_hw_dco_enabled(void);
  * never ran (boot bug), and switched on it was never shown to extend range;
  * operator 2026-10-07: range with it worse than main. Opt-in. */
 bool c5vrx4_edge_gear_enabled(void);
+/* FusionDemod (EDGE RANGE LAB selection): PAIR on a good carrier, EDGE with
+ * AutoFit near the range edge. Default on; off = pure EDGE. */
+bool c5vrx4_fusion_enabled(void);
 /* Opaque NVS blob store (c5vrx4/<key>); returns false when absent/short. */
 bool c5vrx4_blob_load(const char *key, void *data, size_t size);
 bool c5vrx4_blob_store(const char *key, const void *data, size_t size);

@@ -35,7 +35,7 @@ static bool s_level_loaded, s_level;
 /* Operator default, 2026-10-08: the independently confirmed PAIR RANGE LAB
  * (found by model id, not table position). Without it, or once quarantined,
  * new/invalid selections use board-proven RANGE32. Saved choices persist. */
-#define C5VRX4_DEFAULT_RANGE_MODEL "e2a8f30af45e"
+#define C5VRX4_DEFAULT_RANGE_MODEL C5VRX4_PAIR_MODEL_ID
 static unsigned default_demod(void)
 {
 #if C5VRX4_RANGE_OPTION_COUNT
@@ -231,6 +231,13 @@ bool c5vrx4_edge_gear_enabled(void)
 {
     if (s_edge_gear < 0) s_edge_gear = nvs_flag("edge_gear", false);
     return s_edge_gear;
+}
+
+static int8_t s_fusion = -1;
+bool c5vrx4_fusion_enabled(void)
+{
+    if (s_fusion < 0) s_fusion = nvs_flag("fusion", true);
+    return s_fusion;
 }
 
 static int8_t s_native_patch = -1;
@@ -516,6 +523,7 @@ static const c5vrx4_option_t s_options[C5VRX4_OPT_COUNT] = {
     [C5VRX4_OPT_HW_DCO]       = {"HW DC CORR",    "dco_auto",     1, 2, s_off_on},
     [C5VRX4_OPT_LINE_FIX]     = {"LINE REPAIR",   "line_fix",     1, 2, s_off_on},
     [C5VRX4_OPT_EDGE_GEAR]    = {"EDGE FILTER",   "edge_gear",    0, 2, s_off_on},
+    [C5VRX4_OPT_FUSION]       = {"FUSION DEMOD",  "fusion",       1, 2, s_off_on},
 };
 static uint8_t s_option_boot[C5VRX4_OPT_COUNT];
 static bool s_option_snapshot;

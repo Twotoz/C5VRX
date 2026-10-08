@@ -19,6 +19,9 @@ static void handle_button_long_click(void);
 /* AGC sampling and channel scan are serialized in analog_agc_task, so they
  * share one descriptor-sized CPU snapshot instead of reserving 8 KiB. */
 static uint8_t s_control_sample_buf[CONTROL_SAMPLE_BYTES];
+volatile int s_cnr_x10 = -99;
+fdemod_t s_fdemod = {.edge = true};   /* the selected EDGE program is loaded first */
+uint32_t s_fdemod_swaps;
 
 static volatile int s_last_n_clip = 0;
 
@@ -588,10 +591,27 @@ void analog_agc_task(void *arg)
         bool was_afc_locked = s_afc_video_locked;
         bool afc_valid = afc_window_ok && afc2.lines && afc2.standard &&
             afc2.porch_pairs && afc2.sync_pairs && afc2.burst_x10 >= AFC2_BURST_MIN_X10;
-        /* EDGE AutoFit uses the same windows; it writes only once AFC no
-         * longer retunes (video TRACK) or AFC is not in AUTO. */
-        edge_autofit_observe(&afc2, afc_valid,
+        /* C/N from the envelope about the fitted DC (fusion_demod.h). */
+        {
+            predemod_circle_t circle = {0};
+            int cdi, cdq; unsigned ratio = 0;
+            predemod_circle_sums(s_control_sample_buf, sizeof(s_control_sample_buf), &circle);
+            (void)predemod_circle_dc(&circle, &cdi, &cdq, &ratio);
+            s_cnr_x10 = fdemod_cnr_x10(ratio);
+        }
+        /* EDGE AutoFit uses the same windows; it fits only on a good carrier
+         * and writes only once AFC no longer retunes (video TRACK) or AFC is
+         * not in AUTO. */
+        edge_autofit_observe(&afc2, afc_valid && s_cnr_x10 >= FUSION_PAIR_ABOVE_X10,
                              s_afc_video_locked || s_afc_mode != AFC_MODE_AUTO);
+        if (c5vrx4_edge_autofit_demod() && c5vrx4_fusion_enabled() && !s_menu_active &&
+            fdemod_step(&s_fdemod, s_cnr_x10, control_now_us)) {
+            bool ok = flight_swap_program(s_fdemod.edge);
+            if (!ok) s_fdemod.edge = !s_fdemod.edge;
+            ++s_fdemod_swaps;
+            printf("FUSION switch=%s cnr_db=%.1f ok=%u\n", s_fdemod.edge ? "EDGE" : "PAIR",
+                   s_cnr_x10 / 10.0, ok);
+        }
         s_afc_video_locked = afc2_native_lock(s_afc_video_locked, afc_valid,
             afc2_ctrl_can_lock(&afc2_ctrl, s_afc_mode == AFC_MODE_AUTO),
             afc2_ctrl.n, &afc_lost_windows);

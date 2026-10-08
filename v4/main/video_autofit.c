@@ -104,6 +104,9 @@ void edge_autofit_observe(const afc2_result_t *r, bool valid, bool settled)
 void edge_autofit_print(void)
 {
     if (!c5vrx4_edge_autofit_demod()) return;
+    printf("FUSION enabled=%u program=%s cnr_db=%.1f to_edge=%lu to_pair=%lu swaps=%lu\n",
+           c5vrx4_fusion_enabled(), s_fdemod.edge ? "EDGE" : "PAIR", s_cnr_x10 / 10.0,
+           (unsigned long)s_fdemod.to_edge, (unsigned long)s_fdemod.to_pair, (unsigned long)s_fdemod_swaps);
     printf("EDGE_AF applied=%u dev=%.3f centre_khz=%.0f fits=%lu updates=%lu rejects=%lu rung=%ux%u/out%u kp=%.2f ki=%.2f\n",
            s_applied, s_dev, s_centre / 1000.0, (unsigned long)s_fits, (unsigned long)s_updates,
            (unsigned long)s_rejects, s_params.phases, s_params.frequencies, s_params.output, s_params.kp, s_params.ki);

@@ -308,6 +308,12 @@ void edge_autofit_observe(const afc2_result_t *r, bool valid, bool settled);
 void edge_autofit_set_params(const edge_af_params_t *p);
 bool edge_autofit_reapply(void);
 void edge_autofit_print(void);
+#include "fusion_demod.h"
+#include "predemod.h"
+extern volatile int s_cnr_x10;
+extern fdemod_t s_fdemod;
+extern uint32_t s_fdemod_swaps;
+bool flight_swap_program(bool edge);
 void rx_clock_slip(uint32_t us);
 void lab_run_sample_phase_scan(void);
 bool lab_dco_measure(int dc[2]);

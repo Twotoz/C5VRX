@@ -70,7 +70,9 @@ void c5v4_level_hw_stop(void)
 {
     c5v4_level_hw_lock(); ready = false; c5v4_level_hw_unlock();
 }
-static bool edge_verified, edge_blocked;
+static bool edge_verified, edge_blocked, edge_program = true;
+/* FusionDemod may load PAIR while EDGE is the selection: no self-test then. */
+void c5v4_edge_set_loaded(bool edge) { c5v4_level_hw_lock(); edge_program = edge; c5v4_level_hw_unlock(); }
 static uint16_t edge_shadow[1024];
 static uint32_t edge_writes, edge_words, edge_faults;
 static uint16_t edge_scratch[1024];
@@ -80,7 +82,7 @@ static uint16_t edge_scratch[1024];
 static void edge_prepare(void)
 {
     edge_verified = false;
-    if (!c5vrx4_edge_autofit_demod() || edge_blocked ||
+    if (!c5vrx4_edge_autofit_demod() || !edge_program || edge_blocked ||
         bitscrambler_ll_get_lut_width(&BITSCRAMBLER, BITSCRAMBLER_DIR_TX) != 1) return;
     edge_af_params_t p; edge_af_pinned(&p);
     if (!edge_af_synthesize(&p, EDGE_AF_PINNED_DEVIATION, EDGE_AF_PINNED_CENTRE_HZ, edge_scratch)) return;

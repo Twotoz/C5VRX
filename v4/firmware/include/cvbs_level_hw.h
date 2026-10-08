@@ -20,6 +20,7 @@ bool c5v4_level_hw_lut_verified(void);
 bool c5v4_edge_lut_ready(void);
 bool c5v4_edge_lut_write(const uint16_t low13[1024]);
 void c5v4_edge_lut_print(void);
+void c5v4_edge_set_loaded(bool edge);
 bool c5v4_decoder_recenter(int di_mcells, int dq_mcells);
 void c5v4_decoder_dc(int dc[2]);
 void c5v4_decoder_print(void);

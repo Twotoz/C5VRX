@@ -80,6 +80,28 @@ int s_tx_dscr_count = 0;
 
 /* M-selected output transfer (generate_phase8.py): STD150 default,
  * LEGACY_FULL or CVBS150; STATIC/HISTORY decode is independent of it. */
+static const void *range_option_program(unsigned index)
+{
+    switch (index) {
+#if C5VRX4_RANGE_OPTION_COUNT >= 1
+    case 0: return s_range_option0;
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 2
+    case 1: return s_range_option1;
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 3
+    case 2: return s_range_option2;
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 4
+    case 3: return s_range_option3;
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 5
+    case 4: return s_range_option4;
+#endif
+    default: return NULL;
+    }
+}
+
 static const void *c5vrx4_selected_program(void)
 {
     switch (c5vrx4_demodulator()) {
@@ -450,8 +472,39 @@ void quiet_tx_interrupts(void)
     PARL_IO.int_ena.val = 0;
 }
 
+/* FusionDemod: PAIR <-> EDGE while live. Same sequence as a menu exit
+ * minus the transport restart: load (halts), self-test, AutoFit words
+ * written into the stopped engine, reset, run. Board continuity of a live
+ * swap is a physical gate (fusion_swaps/tx_empty in the status). */
+bool flight_swap_program(bool edge)
+{
+#if C5VRX4_RANGE_OPTION_COUNT
+    const void *pair = NULL, *edge_prog = c5vrx4_selected_program();
+    for (unsigned i = 0; i < C5VRX4_RANGE_OPTION_COUNT; ++i)
+        if (!strcmp(c5vrx4_range_options[i].model_id, C5VRX4_PAIR_MODEL_ID) &&
+            c5vrx4_range_options[i].selectable)
+            pair = range_option_program(i);
+    if (!pair || !c5vrx4_edge_autofit_demod()) return false;
+    c5v4_level_hw_lock();
+    c5v4_edge_set_loaded(edge);
+    esp_err_t err = bitscrambler_load_program(s_flight_bs, edge ? edge_prog : pair);
+    if (err == ESP_OK) {
+        c5v4_level_hw_prepare();
+        if (edge) (void)edge_autofit_reapply();
+        err = bitscrambler_reset(s_flight_bs);
+        if (err == ESP_OK) err = bitscrambler_start(s_flight_bs);
+    }
+    c5v4_level_hw_unlock();
+    return err == ESP_OK;
+#else
+    (void)edge;
+    return false;
+#endif
+}
+
 void start_flight_demodulator(void)
 {
+    c5v4_edge_set_loaded(true);   /* the selected program itself */
     c5v4_level_hw_lock();
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
     ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs,
