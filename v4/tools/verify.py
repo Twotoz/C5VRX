@@ -147,7 +147,7 @@ def main():
                  f"tools/test_{name}.c", *extra, "-o", target])
             run([target])
             if name == "c5vrx4_gate":
-                for selection in ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "255"):
+                for selection in ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "255"):
                     run([target, selection])
                 verify_range_option_gate(cc, td)
         for pinned in ((False, True) if posix else ()):

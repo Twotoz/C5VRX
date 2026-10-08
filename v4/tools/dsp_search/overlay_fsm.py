@@ -106,6 +106,13 @@ def synthesize(p):
     limit=float(p['limit']);mode=p['error_function']
     innovation=error if mode=='linear' else np.clip(error,-limit,limit) if mode=='clip' else np.sin(error) if mode=='sine' else limit*np.tanh(error/limit)
     innovation=innovation*expansion
+    # Click hold: an observation further than `click_hold` radians from the
+    # prediction is treated as an FM click, not followed by phase, frequency
+    # memory or video (the step is held). Absent = off (default behaviour).
+    if 'click_hold' in p:
+        hold=float(p['click_hold'])
+        if not .3<=hold<=np.pi:raise ValueError('click hold outside 0.3..pi')
+        innovation=np.where(abs(error)>hold,0.,innovation)
     gain=float(p['kp'])*reliability
     if p.get('adaptive'):
         gain=np.clip(gain*(1+float(p['adaptation'])*abs(error)/np.pi),0,1.8)

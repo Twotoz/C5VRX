@@ -36,6 +36,9 @@ PLAIN=-1
 # and contrast loss in the objective.
 AMP=os.environ.get('C5VRX4_AMPLITUDE','0')=='1'
 if AMP:CONTINUOUS['unbias']=(0,1,'lin')
+# Click hold (C5VRX4_CLICK_HOLD=1, recorded): skip implausible phase steps.
+CLICK=os.environ.get('C5VRX4_CLICK_HOLD','0')=='1'
+if CLICK:CONTINUOUS['click_hold']=(.3,np.pi,'lin')
 # Extra C/N3..4 weak cases (recorded in the protocol; default off).
 EDGE=os.environ.get('C5VRX4_EDGE_SCREEN','0')=='1'
 
@@ -249,7 +252,7 @@ def main():
     S.save(a.output/'protocol.json',dict(profile='safe_range_amp' if AMP else 'safe_range',amplitude_mode=AMP,evaluations=a.evaluations,workers=a.workers,
         config_seed=a.seed_base+101,screen_seed=a.seed_base+201,second_screen_seed=a.seed_base+251,
         selection_seed=a.seed_base+301,final_seeds=[a.seed_base+401,a.seed_base+402],stress_seed=a.seed_base+501,
-        decoder_training=training,topologies=TOPOLOGIES,lane_profile=__import__('lane_profile').record(),edge_screen=EDGE,
+        decoder_training=training,topologies=TOPOLOGIES,lane_profile=__import__('lane_profile').record(),edge_screen=EDGE,click_hold=CLICK,
         objective='safe_range: strong waveform/detail/burst guards against matched RANGE32, including six jittered amplitude/offset envelope cases; weak luma, misses, width, jitter',
         families='PAIR4411 learned observations and plain first-sample trackers under one budget',
         policy='island evolution; per-worker unique compiled LUT/schedules; union reported; second screen re-ranks; no promotion',

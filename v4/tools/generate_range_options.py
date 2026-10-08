@@ -6,7 +6,7 @@ from pathlib import Path
 from compile_overlay import build, cost
 
 ROOT = Path(__file__).resolve().parents[1]
-MAX_OPTIONS = 4
+MAX_OPTIONS = 5
 
 
 def identity(model):
@@ -26,7 +26,7 @@ def identity(model):
 
 def render(options):
     if len(options) > MAX_OPTIONS:
-        raise ValueError('at most four explicit LAB options')
+        raise ValueError('at most five explicit LAB options')
     entries, programs, seen = [], {}, set()
     for index, option in enumerate(options):
         label, model = option['label'], option['model']
