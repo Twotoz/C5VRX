@@ -6,6 +6,30 @@ int main(void)
 {
     uint8_t ring[32768], copy[C5V4_LEVEL_SAMPLE_BYTES];
     for (unsigned i=0;i<sizeof(ring);++i) ring[i]=(uint8_t)(i*31+i/256);
+    /* Discovery walks from the active descriptor. Every rotation, including
+     * the short tail node, must validate without assuming node0 == ring0. */
+    size_t offsets[9], sizes[9];
+    for (unsigned k=0;k<9;++k) {
+        offsets[k]=k*4092u;
+        sizes[k]=sizeof(ring)-offsets[k] < 4092u ? sizeof(ring)-offsets[k] : 4092u;
+    }
+    for (unsigned rotation=0;rotation<9;++rotation) {
+        size_t covered=0;
+        for (unsigned k=0;k<9;++k) {
+            unsigned index=(rotation+k)%9;
+            assert(c5v4_snapshot_segment(sizeof(ring),offsets[rotation],covered,
+                                         offsets[index],sizes[index]));
+            assert(!c5v4_snapshot_segment(sizeof(ring),offsets[rotation],covered,
+                                          offsets[index]+1,sizes[index]));
+            covered+=sizes[index];
+        }
+        assert(covered==sizeof(ring));
+        assert(!c5v4_snapshot_segment(sizeof(ring),offsets[rotation],covered,0,1));
+    }
+    assert(!c5v4_snapshot_segment(sizeof(ring),0,0,0,0));
+    assert(!c5v4_snapshot_segment(sizeof(ring),0,0,0,sizeof(ring)+1));
+    assert(!c5v4_snapshot_segment(sizeof(ring),0,0,sizeof(ring),1));
+    assert(!c5v4_snapshot_segment(sizeof(ring),32760,0,32760,32));
     for (unsigned end=0;end<sizeof(ring);end+=4092) {
         size_t active=sizeof(ring)-end < 4092 ? sizeof(ring)-end : 4092;
         c5v4_snapshot_plan_t p;

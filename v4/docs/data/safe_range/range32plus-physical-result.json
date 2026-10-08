@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-08",
+  "test_model": "58c0e88fcba8",
+  "test_source": "9155cf7bffb030eed151b4549f1cd048e993d8b3",
+  "test_firmware": "4.0.0-alpha-range32plus",
+  "operator_feedback": "Odd issues; RANGE32 seems more stable. Operator requests RANGE32 as standard.",
+  "physical_acceptance": false,
+  "calibrated_rf_measurement": false,
+  "action": "Quarantine value10; skip in Y; new/missing/invalid-NVS default RANGE32/value7; preserve explicit saved working modes and OVP56 rollback",
+  "stable_source": "2c38a27c199d966bd2ac0dc2f6b607b2e795db98",
+  "stable_version": "4.0.0-alpha-range32-stable",
+  "stable_app_sha256": "7fdebedb39d4e437c2b315ebef6390d23a6a87a103287561719563e9201989e4",
+  "active_model": "49c57570d609",
+  "active_selection": 7,
+  "flash_hashes_verified": true,
+  "nvs_phy_preserved": true,
+  "nvs_phy_backup_sha256": "0ea793056d506b643e9036ac613d2c5742fbd8a74bfe3d003e0392a40ecdcdb0",
+  "runtime_model_verified": true,
+  "live_lut_writes": 0,
+  "successful_new_actual_iq_capture": false,
+  "boot_log_sha256": "07adf6902a14709c4cdc847ede5069b3d91e2c9ba73413eeff82593bd093fa50"
+}

@@ -45,7 +45,9 @@ esp_err_t nvs_get_u8(nvs_handle_t h,const char *key,uint8_t *v)
     return ESP_FAIL;
 }
 esp_err_t nvs_set_u8(nvs_handle_t h,const char *key,uint8_t v)
-{ (void)h; if (!strcmp(key,"bw_code")) { saved_bw_code=v; return ESP_OK; } return ESP_FAIL; }
+{ (void)h;
+  if (!strcmp(key,"ref_demod")) { saved_demod=v; return ESP_OK; }
+  if (!strcmp(key,"bw_code")) { saved_bw_code=v; return ESP_OK; } return ESP_FAIL; }
 esp_err_t nvs_get_u16(nvs_handle_t h,const char *key,uint16_t *v)
 { (void)h; if (!strcmp(key,"bw_width") && saved_bw_width) { *v=saved_bw_width; return ESP_OK; } return ESP_FAIL; }
 esp_err_t nvs_set_u16(nvs_handle_t h,const char *key,uint16_t v)
@@ -57,14 +59,21 @@ esp_err_t nvs_set_blob(nvs_handle_t h,const char *key,const void *v,size_t n)
 esp_err_t nvs_commit(nvs_handle_t h) { (void)h; return ESP_OK; }
 void nvs_close(nvs_handle_t h) { (void)h; }
 const char *esp_err_to_name(esp_err_t e) { (void)e; return "host"; }
-void esp_restart(void) { assert(!"unexpected reboot"); }
+static unsigned reboot_calls;
+void esp_restart(void) { ++reboot_calls; }
 void vTaskDelay(unsigned ticks) { (void)ticks; }
 #include "../pipeline.c"
 int main(int argc, char **argv)
 {
     if (argc > 1) saved_demod = atoi(argv[1]);
-    unsigned expected = saved_demod >= 0 && saved_demod < C5VRX4_DEMOD_COUNT ?
-        (unsigned)saved_demod : C5VRX4_DEMOD_OVP56;
+    unsigned expected = saved_demod >= 0 && saved_demod < C5VRX4_DEMOD_COUNT && saved_demod != C5VRX4_DEMOD_PLL96 ?
+        (unsigned)saved_demod : saved_demod == C5VRX4_DEMOD_PLL96 ?
+        C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_RANGE32;
+#if C5VRX4_RANGE_OPTION_COUNT
+    if (expected >= C5VRX4_DEMOD_RANGE_OPTION0 &&
+        !c5vrx4_range_options[expected - C5VRX4_DEMOD_RANGE_OPTION0].selectable)
+        expected = C5VRX4_DEMOD_RANGE32;
+#endif
     assert(c5vrx4_demodulator() == expected);
     assert(c5vrx4_reference_demod());
     assert(c5vrx4_staged_gain_recovery());
@@ -105,6 +114,32 @@ int main(int argc, char **argv)
     assert(c5vrx4_console('~') && !s_running && !(AGC_CTRL&AGC_HOLD));
     assert(c5vrx4_console('~') && s_running);
     c5vrx4_suspend();
+    assert(reboot_calls == 0);
+    memcpy(before,m,sizeof(before));
+    assert(!c5vrx4_console('p')); /* Existing snapshot command is restored. */
+    assert(c5vrx4_console('g'));
+    unsigned next = (expected + 1u) % (C5VRX4_DEMOD_OVP56 + 1u);
+    assert(saved_demod == (int)next);
+    assert(reboot_calls == 1 && !memcmp(before,m,sizeof(before)));
+    assert(c5vrx4_console('P'));
+    assert(saved_demod == (expected == C5VRX4_DEMOD_PLL96_IQ_FIXED ?
+           C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_PLL96_IQ_FIXED));
+    assert(reboot_calls == 2 && !memcmp(before,m,sizeof(before)));
+    assert(c5vrx4_console('R'));
+    assert(saved_demod == (expected >= C5VRX4_DEMOD_RANGE32 ? C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_RANGE32));
+    assert(reboot_calls == 3 && !memcmp(before,m,sizeof(before)));
+#if C5VRX4_RANGE_OPTION_COUNT
+    assert(c5vrx4_console('Y'));
+    unsigned range_next = expected >= C5VRX4_DEMOD_RANGE32 ? expected : C5VRX4_DEMOD_RANGE32;
+    do {
+        range_next = C5VRX4_DEMOD_RANGE32 + (range_next - C5VRX4_DEMOD_RANGE32 + 1u) % (C5VRX4_RANGE_OPTION_COUNT + 1u);
+    } while (range_next >= C5VRX4_DEMOD_RANGE_OPTION0 &&
+             !c5vrx4_range_options[range_next - C5VRX4_DEMOD_RANGE_OPTION0].selectable);
+    assert(saved_demod == (int)range_next);
+    assert(reboot_calls == 4 && !memcmp(before,m,sizeof(before)));
+#else
+    assert(!c5vrx4_console('Y'));
+#endif
     munmap(m,0x10000);
     puts("C5VRX-4 Direct Gain LOCK / native gate isolation passed");
 }

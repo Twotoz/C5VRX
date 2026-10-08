@@ -1,0 +1,53 @@
+{
+  "scope": "derived audit of frozen confirmation rows; no new evaluations",
+  "candidate": "RNG-58c0e88fcba8",
+  "vetoes": [
+    {
+      "gate": "nominal_usable_cnr",
+      "candidate": 12,
+      "range32": 10
+    },
+    {
+      "gate": "channel.csv",
+      "failures": [
+        {
+          "standard": "PAL",
+          "cnr": 30.0,
+          "rms": 3.0,
+          "cfo_hz": 1000000.0,
+          "quality_failures": "reference_detail"
+        }
+      ]
+    }
+  ],
+  "nominal_10db_regressions": [
+    {
+      "standard": "PAL",
+      "seed": 70401.0,
+      "cnr": 10.0,
+      "sinad": 11.669772672517647,
+      "contrast": 97.18496320740911,
+      "h_missing": 0.0,
+      "v_missing": 0.0,
+      "v_trains": 2.0,
+      "h_jitter_us": 0.1,
+      "v_jitter_us": 0.5062499999999996,
+      "h_width_rmse_us": 0.2435605085219593,
+      "max_h_gap": 0.0
+    }
+  ],
+  "content_weak_timing": {
+    "h_jitter_us": {
+      "candidate": 0.5469791666666666,
+      "range32": 0.6413541666666666
+    },
+    "v_jitter_us": {
+      "candidate": 0.23458333333333323,
+      "range32": 0.3461458333333332
+    },
+    "h_width_rmse_us": {
+      "candidate": 1.0429806673505746,
+      "range32": 1.1845156389675002
+    }
+  }
+}

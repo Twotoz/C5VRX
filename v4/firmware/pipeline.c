@@ -35,12 +35,21 @@ unsigned c5vrx4_demodulator(void)
     static int mode = -1;
     if (mode < 0) {
         nvs_handle_t h;
-        uint8_t value = C5VRX4_DEMOD_OVP56;
+        uint8_t value = C5VRX4_DEMOD_RANGE32;
         if (nvs_open("c5vrx4", NVS_READONLY, &h) == ESP_OK) {
             (void)nvs_get_u8(h, "ref_demod", &value);
             nvs_close(h);
         }
-        mode = value < C5VRX4_DEMOD_COUNT ? value : C5VRX4_DEMOD_OVP56;
+        /* PLL96 failed the operator's physical video/sync test. Quarantine
+         * its persisted selection too; flashing must restore usable video. */
+        mode = value == C5VRX4_DEMOD_PLL96 ? C5VRX4_DEMOD_OVP56 :
+            value < C5VRX4_DEMOD_COUNT ? value : C5VRX4_DEMOD_RANGE32;
+#if C5VRX4_RANGE_OPTION_COUNT
+        /* Failed board experiments must not survive in saved selections. */
+        if (mode >= C5VRX4_DEMOD_RANGE_OPTION0 &&
+            !c5vrx4_range_options[mode - C5VRX4_DEMOD_RANGE_OPTION0].selectable)
+            mode = C5VRX4_DEMOD_RANGE32;
+#endif
     }
     return (unsigned)mode;
 }
@@ -57,7 +66,11 @@ bool c5vrx4_reference_demod(void)
 }
 const char *c5vrx4_demodulator_name(void)
 {
-    static const char *const names[] = {"HC50", "HR50", "GOLDEN50", "VLP56", "OVP56"};
+    static const char *const names[] = {"HC50", "HR50", "GOLDEN50", "VLP56", "OVP56", "PLL96 REJECTED", "PLL96 IQ FIX LAB", "RANGE32 LAB"};
+#if C5VRX4_RANGE_OPTION_COUNT
+    if (c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE_OPTION0)
+        return c5vrx4_range_options[c5vrx4_demodulator() - C5VRX4_DEMOD_RANGE_OPTION0].label;
+#endif
     return names[c5vrx4_demodulator()];
 }
 
@@ -660,11 +673,29 @@ static void print_state(void)
                "lut_bits=%u transfer=program_native gain_owner=%s semantic_sync=unavailable "
                "mask=0 flywheel=0 idle_raster=0 live_lut_writes=0\n",
                c5vrx4_demodulator_name(),
+#if C5VRX4_RANGE_OPTION_COUNT
+               c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE_OPTION0 ?
+               (unsigned)c5vrx4_range_options[c5vrx4_demodulator() - C5VRX4_DEMOD_RANGE_OPTION0].phase_bits :
+#endif
                (c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 || c5vrx4_demodulator() == C5VRX4_DEMOD_OVP56) ? 0u :
+               c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96_IQ_FIXED ? 4u :
+               c5vrx4_demodulator() == C5VRX4_DEMOD_RANGE32 ? 5u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_GOLDEN ? 5u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_HC50 ? 6u : 8u,
                (c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 || c5vrx4_demodulator() == C5VRX4_DEMOD_OVP56) ? 8u : 16u,
                rf_native_agc_active() ? "native" : "direct_gain_v5");
+        if (c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96_IQ_FIXED)
+            printf("C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot\n");
+        if (c5vrx4_demodulator() == C5VRX4_DEMOD_RANGE32)
+            printf("C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot\n");
+#if C5VRX4_RANGE_OPTION_COUNT
+        if (c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE_OPTION0) {
+            const c5vrx4_range_option_t *option = &c5vrx4_range_options[c5vrx4_demodulator() - C5VRX4_DEMOD_RANGE_OPTION0];
+            printf("C5VRX4 range_lab=1 phase_states=%u observation_tokens=%u frequency_states=%u model=%s physical_acceptance=0 rollback=R_OVP56_reboot\n",
+                   (unsigned)option->phase_states, (unsigned)option->observation_tokens,
+                   (unsigned)option->frequency_states, option->model_id);
+        }
+#endif
         return;
     }
     c5vrx4_lane_print();
@@ -723,11 +754,37 @@ void c5vrx4_start(void)
     print_state();
 }
 
+#if C5VRX4_RANGE_OPTION_COUNT
+static unsigned next_range_demod(unsigned mode)
+{
+    unsigned next = mode >= C5VRX4_DEMOD_RANGE32 ? mode : C5VRX4_DEMOD_RANGE32;
+    do {
+        next = C5VRX4_DEMOD_RANGE32 + (next - C5VRX4_DEMOD_RANGE32 + 1u) % (C5VRX4_RANGE_OPTION_COUNT + 1u);
+    } while (next >= C5VRX4_DEMOD_RANGE_OPTION0 &&
+             !c5vrx4_range_options[next - C5VRX4_DEMOD_RANGE_OPTION0].selectable);
+    return next;
+}
+#endif
+
 bool c5vrx4_console(int key)
 {
-    if (key == 'g') {
+    if (key == 'g' || key == 'P' || key == 'R'
+#if C5VRX4_RANGE_OPTION_COUNT
+        || key == 'Y'
+#endif
+    ) {
         nvs_handle_t h;
-        unsigned next = (c5vrx4_demodulator() + 1u) % C5VRX4_DEMOD_COUNT;
+        /* P selects corrected PLL96; R selects RANGE32. Both toggle back to
+         * OVP56. Lowercase p keeps its snapshot; g cycles safe values0..4. */
+        unsigned next = key == 'R' ?
+            (c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE32 ? C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_RANGE32) :
+#if C5VRX4_RANGE_OPTION_COUNT
+            key == 'Y' ? next_range_demod(c5vrx4_demodulator()) :
+#endif
+            key == 'P' ?
+            (c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96_IQ_FIXED ?
+             C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_PLL96_IQ_FIXED) :
+            (c5vrx4_demodulator() + 1u) % (C5VRX4_DEMOD_OVP56 + 1u);
         esp_err_t err = nvs_open("c5vrx4", NVS_READWRITE, &h);
         if (err == ESP_OK) {
             err = nvs_set_u8(h, "ref_demod", (uint8_t)next);

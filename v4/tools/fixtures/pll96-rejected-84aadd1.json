@@ -1,0 +1,15 @@
+{
+  "name": "PLL96",
+  "params": [
+    0.8492273739591515,
+    0.20830259999876782,
+    0.14541878423984206,
+    -4574428.470765073,
+    6957108.999887487,
+    0.37855515877213575,
+    8
+  ],
+  "selection_weak_objective": 4.050922335469217,
+  "scope": "96 phase/frequency states, LUT16 pair20 PLL; experimental, not IQ40 PLL",
+  "provenance": "C5VRX by Twotoz and contributors; existing PLL research; https://github.com/Twotoz/C5VRX; https://twotoz.github.io/C5VRX/"
+}

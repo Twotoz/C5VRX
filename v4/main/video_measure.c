@@ -6,7 +6,6 @@ static inline unsigned trajectory_v2_stage1_address(uint8_t previous_phase5,
                                                     uint8_t current_raw);
 static void video_standard_vote(video_standard_t standard, uint16_t period);
 static void cvbs_analyze_locked(const uint8_t *raw, size_t bytes, c5v4_cvbs_stats_t *stats);
-static bool copy_level_snapshot(uint8_t *raw);
 #include "trajectory_v2_lut.h"
 
 /* Exact Phase5 state decode mirrored from the embedded fm.bsasm LUT.  The
@@ -243,19 +242,23 @@ control_metrics_t analyze_control_window(const uint8_t *sample, size_t bytes,
 /* A separate adaptive 5/20-ms supervisor leaves the 50-ms button/menu/AFC timers intact.
  * It copies 204.75 us of completed IQ, never the descriptor currently written.
  * This is control-plane gain/offset correction; live pixels stay in hardware. */
-static bool copy_level_snapshot(uint8_t *raw)
+bool video_copy_iq_snapshot(uint8_t *raw)
 {
     if (s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 4) return false;
     int64_t start = esp_timer_get_time();
     uint32_t before = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
     int active = find_dscr_index(s_rx_dscr_nodes, s_rx_dscr_count, before);
     if (active < 0) return false;
-    /* Verify this is the contiguous circular raw ring before using geometry. */
+    /* Discovery starts at the current DMA descriptor; the stored sequence
+     * can be any rotation of the contiguous physical circular raw ring. */
+    uintptr_t base = (uintptr_t)s_raw_ring;
+    uintptr_t first = (uintptr_t)s_rx_dscr_nodes[0].buffer;
+    if (first < base || first-base >= sizeof(s_raw_ring)) return false;
     size_t total = 0;
     for (int k = 0; k < s_rx_dscr_count; ++k) {
-        if (!s_rx_dscr_nodes[k].length || total > sizeof(s_raw_ring) ||
-            s_rx_dscr_nodes[k].buffer != s_raw_ring + total ||
-            s_rx_dscr_nodes[k].length > sizeof(s_raw_ring)-total) return false;
+        uintptr_t address = (uintptr_t)s_rx_dscr_nodes[k].buffer;
+        if (address < base || !c5v4_snapshot_segment(sizeof(s_raw_ring),
+                first-base, total, address-base, s_rx_dscr_nodes[k].length)) return false;
         total += s_rx_dscr_nodes[k].length;
     }
     if (total != sizeof(s_raw_ring)) return false;
@@ -306,7 +309,7 @@ void cvbs_level_task(void *arg)
             s_agc_mode == ANALOG_AGC_ACTIVE && s_direct_gain_v3.state == DG3_SETTLE;
         if (!c5v4_level_source_ready((uint64_t)start, s_last_gain_write_us,
                 s_last_phy_write_us, lane_stats.last_switch_us, settling) ||
-            !copy_level_snapshot(raw)) { c5v4_level_hw_invalidate(); continue; }
+            !video_copy_iq_snapshot(raw)) { c5v4_level_hw_invalidate(); continue; }
         last_capture_us = start; have_capture = true;
         c5v4_cvbs_stats_t stats;
         cvbs_analyze_locked(raw, C5V4_LEVEL_SAMPLE_BYTES, &stats);

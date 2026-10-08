@@ -1,0 +1,13 @@
+{
+  "grid_proposals": 2986,
+  "unique_grid_evaluations": 2986,
+  "tone_pass": 755,
+  "grid_duplicates": 0,
+  "fit_duplicates": 0,
+  "topology_families": 79,
+  "refined_families": 24,
+  "lsmr_fits": 144,
+  "unique_reconstructions": 432,
+  "finalists": 16,
+  "elapsed_s": 100.52344539994374
+}

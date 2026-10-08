@@ -1,0 +1,256 @@
+{
+  "profile": "safe_range",
+  "selected": "RNG-49c57570d609",
+  "confirmed_range_improvement": false,
+  "final": {
+    "HC50": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 13632,
+      "weak_sinad": 3.0734392069936476,
+      "weak_luma_sinad": 4.026414124747795,
+      "strong_sinad": 4.358634499693581,
+      "strong_detail": 0.5782091570530756
+    },
+    "OVP56": {
+      "usable_cnr": 22,
+      "strong_eligible": true,
+      "weak_missing": 10939,
+      "weak_sinad": 6.091513572666251,
+      "weak_luma_sinad": 14.22895256539325,
+      "strong_sinad": 15.801370737111167,
+      "strong_detail": 0.7269769993392191
+    },
+    "PLL96-IQ-corrected": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 10182,
+      "weak_sinad": 7.3456790620774415,
+      "weak_luma_sinad": 11.597772807565628,
+      "strong_sinad": 8.973361832665203,
+      "strong_detail": 0.36283584508899536
+    },
+    "PLL96-board-fixed": {
+      "usable_cnr": 22,
+      "strong_eligible": false,
+      "weak_missing": 3002,
+      "weak_sinad": 6.525512858356538,
+      "weak_luma_sinad": 11.89028983367543,
+      "strong_sinad": 11.939800489816847,
+      "strong_detail": 0.48450911550566483
+    },
+    "PLL96-rejected-board": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 13632,
+      "weak_sinad": -6.687470008242426,
+      "weak_luma_sinad": -6.68688053415206,
+      "strong_sinad": -6.637605883249531,
+      "strong_detail": -0.35753498469464223
+    },
+    "RANGE32": {
+      "usable_cnr": 10,
+      "strong_eligible": true,
+      "weak_missing": 3713,
+      "weak_sinad": 6.931256955579844,
+      "weak_luma_sinad": 15.88165489387915,
+      "strong_sinad": 15.947556603606685,
+      "strong_detail": 0.7212266964073673
+    },
+    "RNG-49c57570d609": {
+      "usable_cnr": 10,
+      "strong_eligible": true,
+      "weak_missing": 3713,
+      "weak_sinad": 6.931256955579844,
+      "weak_luma_sinad": 15.88165489387915,
+      "strong_sinad": 15.947556603606685,
+      "strong_detail": 0.7212266964073673
+    },
+    "VLP56": {
+      "usable_cnr": 18,
+      "strong_eligible": true,
+      "weak_missing": 9702,
+      "weak_sinad": 5.8712000037444225,
+      "weak_luma_sinad": 15.478871184020553,
+      "strong_sinad": 16.012972693145574,
+      "strong_detail": 0.735480366553523
+    },
+    "floating-PLL-IQ40": {
+      "usable_cnr": 12,
+      "strong_eligible": false,
+      "weak_missing": 3823,
+      "weak_sinad": 10.905903788861425,
+      "weak_luma_sinad": 22.370334499228477,
+      "strong_sinad": 21.46249355904945,
+      "strong_detail": 0.9241909848511958
+    }
+  },
+  "echo_fade": {
+    "HC50": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 4544,
+      "weak_sinad": 1.8152324636263573,
+      "weak_luma_sinad": 3.1510128781767044,
+      "strong_sinad": 4.378131919182232,
+      "strong_detail": 0.4333934624820483
+    },
+    "OVP56": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 4484,
+      "weak_sinad": 2.888901798626093,
+      "weak_luma_sinad": 7.193539098676721,
+      "strong_sinad": 11.809288549265146,
+      "strong_detail": 0.5513260906684703
+    },
+    "PLL96-IQ-corrected": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 2689,
+      "weak_sinad": 4.577829089035266,
+      "weak_luma_sinad": 7.497928859727423,
+      "strong_sinad": 9.501508159179004,
+      "strong_detail": 0.33567126546231396
+    },
+    "PLL96-board-fixed": {
+      "usable_cnr": 30,
+      "strong_eligible": false,
+      "weak_missing": 2571,
+      "weak_sinad": 2.580540131334511,
+      "weak_luma_sinad": 6.011064243616444,
+      "strong_sinad": 11.32717997338639,
+      "strong_detail": 0.43788681763592896
+    },
+    "PLL96-rejected-board": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 4514,
+      "weak_sinad": -6.61306630652864,
+      "weak_luma_sinad": -6.572276339543432,
+      "strong_sinad": -6.6986874017966525,
+      "strong_detail": -0.34014540491824863
+    },
+    "RANGE32": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 3055,
+      "weak_sinad": 3.215510454449741,
+      "weak_luma_sinad": 7.603307764674845,
+      "strong_sinad": 13.923960349098458,
+      "strong_detail": 0.6093620048503003
+    },
+    "RNG-49c57570d609": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 3055,
+      "weak_sinad": 3.215510454449741,
+      "weak_luma_sinad": 7.603307764674845,
+      "strong_sinad": 13.923960349098458,
+      "strong_detail": 0.6093620048503003
+    },
+    "VLP56": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 4372,
+      "weak_sinad": 2.1586670613129657,
+      "weak_luma_sinad": 7.325908948480471,
+      "strong_sinad": 12.21960537198991,
+      "strong_detail": 0.5608376399711614
+    },
+    "floating-PLL-IQ40": {
+      "usable_cnr": 22,
+      "strong_eligible": false,
+      "weak_missing": 2107,
+      "weak_sinad": 8.065931610306132,
+      "weak_luma_sinad": 13.585590878619275,
+      "strong_sinad": 16.78125985201068,
+      "strong_detail": 0.7786714025563027
+    }
+  },
+  "content_holdout": {
+    "HC50": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 6816,
+      "weak_sinad": 3.4783484947144547,
+      "weak_luma_sinad": 4.348514951557218,
+      "strong_sinad": 3.722311895400287,
+      "strong_detail": 0.6679230735785272
+    },
+    "OVP56": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 4253,
+      "weak_sinad": 7.86912472855439,
+      "weak_luma_sinad": 17.52303544261909,
+      "strong_sinad": 11.332217978032753,
+      "strong_detail": 0.8397529390748875
+    },
+    "PLL96-IQ-corrected": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 5729,
+      "weak_sinad": 5.608361415767427,
+      "weak_luma_sinad": 12.665871620589714,
+      "strong_sinad": 5.547307026947011,
+      "strong_detail": 0.4107810877361208
+    },
+    "PLL96-board-fixed": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 178,
+      "weak_sinad": 6.596215639934076,
+      "weak_luma_sinad": 14.316539095276667,
+      "strong_sinad": 7.761341466049636,
+      "strong_detail": 0.6098293534859427
+    },
+    "PLL96-rejected-board": {
+      "usable_cnr": null,
+      "strong_eligible": false,
+      "weak_missing": 6816,
+      "weak_sinad": -6.1196056559949845,
+      "weak_luma_sinad": -6.770428904792431,
+      "strong_sinad": -6.141333558823047,
+      "strong_detail": -0.44764937748924805
+    },
+    "RANGE32": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 34,
+      "weak_sinad": 7.8482500669434705,
+      "weak_luma_sinad": 18.803678974567774,
+      "strong_sinad": 10.781346149898809,
+      "strong_detail": 0.820483257169026
+    },
+    "RNG-49c57570d609": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 34,
+      "weak_sinad": 7.8482500669434705,
+      "weak_luma_sinad": 18.803678974567774,
+      "strong_sinad": 10.781346149898809,
+      "strong_detail": 0.820483257169026
+    },
+    "VLP56": {
+      "usable_cnr": 30,
+      "strong_eligible": true,
+      "weak_missing": 3300,
+      "weak_sinad": 7.907595540168256,
+      "weak_luma_sinad": 18.949707221451906,
+      "strong_sinad": 11.409532779588838,
+      "strong_detail": 0.8420497958533062
+    },
+    "floating-PLL-IQ40": {
+      "usable_cnr": 30,
+      "strong_eligible": false,
+      "weak_missing": 249,
+      "weak_sinad": 12.711828243639046,
+      "weak_luma_sinad": 23.7698760028062,
+      "strong_sinad": 17.729269236657498,
+      "strong_detail": 0.9722446267584292
+    }
+  },
+  "physical_video_acceptance": false,
+  "old_quality_guards_replaced_only_in_this_explicit_range_protocol": true
+}

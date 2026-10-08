@@ -1,5 +1,76 @@
 # Isolated C5VRX-4 integration ledger
 
+## Operator-selected stable default, 2026-10-08
+
+The operator tested RANGE32+ on the C5, reported odd issues and said RANGE32
+is more stable, explicitly requesting RANGE32 as the standard setting.
+This supersedes earlier OVP56-default and RANGE32+-selectable instructions:
+new/missing/invalid saved selections use RANGE32/value7. Explicit saved working
+modes remain respected; failed original PLL96/value5 still falls back to OVP56.
+RANGE32+/value10 is now quarantined to RANGE32 and skipped by Y, like failed
+MAX/value8. Preserve its model and original independent synthetic vetoes as
+negative evidence. OVP56/value4 remains an explicit rollback option.
+The board was restored to persisted RANGE32 after this feedback. The rotated
+snapshot geometry fix was included in the flashed 9155cf7 firmware; no new
+successful actual IQ capture is claimed. Do not infer calibrated range from
+operator feedback, and do not start C5VRX-5 or merge PR187.
+
+
+## Operator-authorized range-priority options
+
+`docs/RANGE_PRIORITY_STUDY.md` records the new explicit range-over-detail
+objective and four completed million-evaluation runs (unique within each run).
+Pinned options start at value8; Y cycles RANGE32 and enabled generated options,
+saves and reboots. R from any range LAB returns to OVP56; g remains0..4.
+RANGE MAX LAB failed the operator's board test (noisy/desynchronized);
+restoring RANGE32 immediately restored a good picture. Value8 is quarantined
+to RANGE32 and Y skips it. Also preserve strong-echo/PAL-recovery vetoes.
+RANGE BAL LAB passes independent synthetic confirmation; board acceptance
+is pending. `docs/SAFE_RANGE_STUDY.md` records four further completed
+million-vector fine-ADC searches, explicit waveform/burst/timing guards and
+45 real C5 assembler proofs. No new replacement qualifies: context/confidence/
+compact select the exact RANGE32 baseline; RNG-58c0e88fcba8 reduces synthetic
+weak misses but fails the frozen PAL V-timing and strong echo-detail gates.
+The operator subsequently explicitly requested a C5 board test of that exact
+candidate. It is pinned as RANGE32+ LAB/value10, an operator-authorized
+independent_range_tradeoff with both vetoes disclosed, not a confirmed/default
+replacement. Preserve value7 RANGE32 and R-to-OVP/RANGE32 rollback. The guarded snapshot
+geometry fix accepts rotated DMA descriptor lists; it is unflashed and no
+successful new live IQ capture is claimed. Preserve both small vetoes and
+the completed negative results rather than moving thresholds after outcomes.
+Do not start C5VRX-5 until the operator says to do so. Preserve
+value7/current RANGE32 and value4/OVP56 rollback, all live-writer gates,
+continuous raw DMA/state, fixed lanes and gain ownership. No merge authorized.
+
+## Operator-authorized RANGE32 lab
+
+`docs/RANGE32_RESULTS.md` supersedes the earlier no-confirmed-replacement
+research result: OVL-49c57570d609 passes independent synthetic PAL/NTSC,
+echo/fade and amplitude/offset guards. Physical acceptance remains pending.
+RANGE32 is value7, uppercase R toggles7/4 with saved-NVS reboot; ordinary g
+still cycles0..4, OVP56 remains default and saved failed PLL96 value5 remains
+quarantined. The winner is phase32/observation32 with analytical transitions
+and learned DAC; it does not use teacher state/context/counter prototypes.
+Preserve all existing DMA, gain ownership, live-writer gates and attribution.
+Do not infer measured range or global optimality from the1.9million completed
+evaluations (per-run deduplicated, cross-run overlap possible).
+
+## Operator-authorized PLL96 lab
+
+`docs/PLL96_LAB.md` records the failed physical value5 experiment. Its I/Q
+encoder was reversed; saved value5 now falls back to OVP56. Value6 is the
+operator-requested corrected 16-phase/6-frequency LAB, selected only through
+uppercase P (also toggles back to OVP56). Lowercase p is the snapshot command;
+g cycles safe values0..4. The repaired LAB recovers synthetic strong H/V pulses
+but still fails strong-picture guards. Preserve this distinction and physical
+failure evidence; build/dataflow proof is not physical RF acceptance.
+`docs/DSP_ARCHITECTURE_DISCOVERY.md` records 200,000 unique compiled behaviours,
+typed formula search and frozen full-frame confirmation. No replacement was
+confirmed. Keep OVP56 default and the fixed positive reference calibration.
+Record flash and board results separately. No live CPU demod or DMA-boundary
+state resets are authorized. This supersedes the absence of a compiled PLL
+candidate recorded in the previous research ledger, not its evidence bounds.
+
 ## Weak-signal research (PR186)
 
 `docs/MEGA_DEMOD_STUDY.md` records 544 hardware-fit candidates and 100,000

@@ -1,0 +1,9 @@
+{
+  "unique_evaluations": 500000,
+  "proposals": 569589,
+  "duplicates": 69589,
+  "tone_pass": 37822,
+  "strong_pass": 29809,
+  "finalists": 16,
+  "elapsed_s": 471.45548939995933
+}

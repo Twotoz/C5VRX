@@ -1,0 +1,12 @@
+{
+  "unique_evaluations": 1000000,
+  "proposals": 1216904,
+  "duplicates": 216904,
+  "tone_pass": 449120,
+  "quick_pass": 445831,
+  "full_screened": 6462,
+  "proxy_eligible": 2186,
+  "families": 63,
+  "finalists": 24,
+  "elapsed_s": 2047.2769434
+}

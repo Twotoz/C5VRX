@@ -1,0 +1,37 @@
+{
+  "scope": "retrospective diagnosis of already failed MAX; not fresh confirmation or physical root-cause proof",
+  "seed": 40401,
+  "stimulus_seed": 140401,
+  "cnrs": [
+    4,
+    6,
+    30
+  ],
+  "standards": [
+    "PAL",
+    "NTSC"
+  ],
+  "rms": 3,
+  "cfo_hz": 1000000,
+  "lane": "fine",
+  "controls": [
+    "OVP56",
+    "VLP56",
+    "RANGE32",
+    "HC50",
+    "original PLL96",
+    "repaired PLL96",
+    "floating IQ40 PLL"
+  ],
+  "candidates": [
+    "f96c6225fc10",
+    "c2510e3dad79"
+  ],
+  "source_sha256": {
+    "validate_range.py": "49d62329ae9ca67062741d72a8b0e6ba6f3a77a8225fa1cc7227771a545ec1f4",
+    "video_metrics.py": "e7c730a9ba5648b4fbd9e20427c7cbb5e4b78eb0282ebc9b9e5f1cdccc89d5a8",
+    "waveforms.py": "3470f687903d0bc1b467811a42d1b645666bb7a433550d0f5cfb95d65d78e3dc",
+    "range_objective.py": "5754a9ee3a2c888b195196ff25d1b74f066a8a3c16d39f67bdd5abe5338b1be4"
+  },
+  "outcome": "MAX has fewer false pulses at weak C/N in this synthetic diagnostic, not more; strong waveform/detail/burst guards reject MAX. False pulses alone do not explain physical failure."
+}

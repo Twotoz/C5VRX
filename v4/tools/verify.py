@@ -14,10 +14,34 @@ PROGRAMS = FIRMWARE / "programs"
 def run(args):
     subprocess.run(args, cwd=ROOT, check=True)
 
+def verify_range_option_gate(cc, directory):
+    """Exercise selectable options even before a research winner is pinned."""
+    fixture = Path(directory) / "range-option-gate"
+    include = fixture / "include"
+    include.mkdir(parents=True)
+    (include / "c5vrx4.h").write_text((INCLUDE / "c5vrx4.h").read_text())
+    (fixture / "pipeline.c").write_text((FIRMWARE / "pipeline.c").read_text())
+    # Metadata-only host fixture. These are never emitted into firmware.
+    (include / "range_options.h").write_text(
+        '#pragma once\n#define C5VRX4_RANGE_OPTION_COUNT 4\n'
+        'typedef struct { const char *label, *model_id; unsigned phase_bits, '
+        'phase_states, observation_tokens, frequency_states, selectable; } c5vrx4_range_option_t;\n'
+        'static const c5vrx4_range_option_t c5vrx4_range_options[] = {\n'
+        '{"TEST0", "fixture0", 2, 4, 4, 64, 0},\n'
+        '{"TEST1", "fixture1", 4, 16, 4, 16, 1},\n'
+        '{"TEST2", "fixture2", 5, 32, 16, 2, 1},\n'
+        '{"TEST3", "fixture3", 8, 256, 4, 1, 1}};\n')
+    target = str(fixture / "gate")
+    run([cc, "-std=c11", "-D_DEFAULT_SOURCE", "-Wall", "-Wextra", "-Werror",
+         f"-I{include}", f"-I{INCLUDE}", "-Itools/phy_lab_stubs", "-Imain",
+         "tools/test_c5vrx4_gate.c", "-pthread", "-o", target])
+    for selection in ("0", "4", "5", "6", "7", "8", "9", "10", "11", "12", "255"):
+        run([target, selection])
+
 def main():
     # Do not silently cross-compile the host regressions with the IDF compiler.
     cc = os.environ.get("C5VRX4_HOST_CC", "gcc")
-    tracked = list(PROGRAMS.glob("*.bsasm")) + [INCLUDE / "cvbs_tables.h"]
+    tracked = list(PROGRAMS.glob("*.bsasm")) + [INCLUDE / "cvbs_tables.h", INCLUDE / "range_options.h"]
     before = {p: p.read_text() for p in tracked}
     run([sys.executable, "tools/generate_phase8.py"])
     assert all(p.read_text() == content for p, content in before.items()), "stale generated program/table"
@@ -123,8 +147,9 @@ def main():
                  f"tools/test_{name}.c", *extra, "-o", target])
             run([target])
             if name == "c5vrx4_gate":
-                for selection in ("0", "1", "2", "3", "4", "255"):
+                for selection in ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "255"):
                     run([target, selection])
+                verify_range_option_gate(cc, td)
         for pinned in ((False, True) if posix else ()):
             target = str(Path(td) / f"phy_{pinned}")
             run([cc, "-pthread", "-std=c11", "-Wall", "-Wextra", "-Werror",
@@ -135,7 +160,7 @@ def main():
         target = str(Path(td) / "unwrap")
         run([cc, "-O3", "-std=c11", "tools/unwrap_oracle.c", "-o", target])
         run([target])
-    for name in ("tools/test_unwrap.py", "tools/test_cvbs.py", "tools/test_agc_mask.py", "tools/test_flash_tools.py", "tools/test_reference_demod.py", "tools/test_vlp56.py", "tools/test_ovp56.py", "tools/test_weak_pair56.py"):
+    for name in ("tools/test_unwrap.py", "tools/test_cvbs.py", "tools/test_agc_mask.py", "tools/test_flash_tools.py", "tools/test_iq_snapshot.py", "tools/test_reference_demod.py", "tools/test_vlp56.py", "tools/test_ovp56.py", "tools/test_weak_pair56.py", "tools/test_pll96.py", "tools/test_range32.py", "tools/test_range_options.py"):
         run([sys.executable, name])
     print(f"PASS: isolated C5VRX-4 integration, {len(cases) + (3 if posix else 1)} C regressions, exhaustive unwrap and source-driven DSP tests")
 
