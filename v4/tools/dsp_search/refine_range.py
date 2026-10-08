@@ -2,6 +2,7 @@
 """Equal bounded fitting effort for range-first C5 architecture finalists."""
 import argparse
 import itertools
+import hashlib
 import json
 from pathlib import Path
 import numpy as np
@@ -22,6 +23,7 @@ def main():
     profile=protocol['profile'];seed=protocol['config_seed']-101
     S.save(a.output/'protocol.json',dict(protocol,refinement_train_seed=seed+111,
         refinement_screen_seed=seed+211,lsmr_cap=48,fits_per_base=6,blends=[.25,.5,1],
+        refinement_source_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')},
         teacher_scope='received-IQ floating phase/frequency targets only during training; true CVBS output fit'))
     train=F.dataset(seed+111);screen=R.cases(seed+211);teacher=D.teachers(train)
     bases=[O.synthesize(r['params']) for r in json.loads((a.search/'frozen.json').read_text())['finalists']]

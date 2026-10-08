@@ -2,6 +2,7 @@
 """Freeze three range-first options; confirm against RANGE32 with fresh signals."""
 import argparse
 import json
+import hashlib
 from pathlib import Path
 import numpy as np
 import engine as S
@@ -36,7 +37,7 @@ def evaluate(models,profile,seed,cnrs,stage,stress=False,rms=3,cfo_hz=1e6,loss_w
                 else:r.update(burst_gain=None,burst_phase_deg=None,burst_phase_jitter_deg=None,
                               burst_amplitude_jitter_pct=None,burst_rmse_ire=None)
                 if loss_windows_us:
-                    recovered=[recovery(y,c,end) for _,end in loss_windows_us]
+                    recovered=[recovery(y,c,end,.5,.5) for _,end in loss_windows_us]
                     locks=[x['first_five_lock_us'] for x in recovered]
                     r.update(recovery_missing=sum(x['missing_first20'] for x in recovered),
                              recovery_valid_lines=sum(x['valid_lines'] for x in recovered),
@@ -70,6 +71,7 @@ def main():
     if a.output.exists():ap.error('fresh independent confirmation directory required')
     a.output.mkdir(parents=True);p=json.loads((a.search/'protocol.json').read_text());profile=p['profile']
     S.save(a.output/'protocol.json',dict(p,confirmation_lane='fine',common_cnr_grid=CNRS,
+         confirmation_source_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')},
          decision='no automatic promotion; freeze once; no runner-up after final veto',
          controls='OVP56,current RANGE32,HC50,original/repaired PLL96,floating IQ40 PLL'))
     models=[]

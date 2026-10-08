@@ -95,6 +95,34 @@ Final range-improvement labels require no worse common usable C/N and weak
 sync than RANGE32, an actual threshold/sync improvement, acceptable echo/fade
 and offset results, and no worse missed recovery lines. Experimental tables
 remain available even after a veto, with that veto visible.
+Recovery uses the same0.5us timing/width bounds for all options and controls:
+first five valid consecutive H pulses among the first20 post-return lines.
+If RANGE32 locks there, the option must lock within one additional64us line.
+
+## Situation-dependent adaptation
+
+The operator also requested a demodulator that adjusts itself to changing
+reception rather than a single fixed quality/range compromise. The current
+search already includes bounded, sample-dependent mechanisms: radius-token
+confidence scales phase/frequency corrections, innovation magnitude adjusts
+loop gain, and confidence can blend output toward the predicted frequency.
+These decisions are compiled into the same immutable transition LUT. They do
+not require CPU sample processing or live LUT replacement.
+
+This is local adaptation, not an accurate instantaneous C/N measurement.
+Large innovations can be noise, genuine video detail or sync transitions;
+IQ radius also depends on gain, fading and clipping. Confidence groups spend
+scarce observation bits, while frequency/history states spend tracking bits.
+The search may therefore reject adaptation in favor of a simpler model. A
+fixed LUT does not imply fixed behavior: its output and next state still
+depend on the observation and current state.
+
+Existing independent echo/fade and carrier-outage cases exercise changing
+conditions and recovery without resetting model state at a DMA boundary.
+Passing them does not establish optimal adaptation to every channel. Any
+subsequent slow policy that switches models would need separate hysteresis,
+continuity and board validation; none is enabled by this search. No global
+mathematical optimum or recovery of absent signal information is claimed.
 
 ## Reproduction
 

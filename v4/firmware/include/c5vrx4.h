@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "range_options.h"
 /* Optional native tracking gate; entirely inert under Direct Gain V5.
  * Startup gain ownership comes from the separate c5vrx4 NVS namespace. */
 void c5vrx4_start(void);
@@ -16,7 +17,10 @@ bool c5vrx4_console(int key);
  * Span75 observers/repair/LUT writers are unavailable in every selection. */
 enum { C5VRX4_DEMOD_HC50, C5VRX4_DEMOD_PHASE8_HR, C5VRX4_DEMOD_GOLDEN,
        C5VRX4_DEMOD_VLP56, C5VRX4_DEMOD_OVP56, C5VRX4_DEMOD_PLL96,
-       C5VRX4_DEMOD_PLL96_IQ_FIXED, C5VRX4_DEMOD_RANGE32, C5VRX4_DEMOD_COUNT };
+       C5VRX4_DEMOD_PLL96_IQ_FIXED, C5VRX4_DEMOD_RANGE32,
+       C5VRX4_DEMOD_RANGE_OPTION0, C5VRX4_DEMOD_RANGE_OPTION1,
+       C5VRX4_DEMOD_RANGE_OPTION2, C5VRX4_DEMOD_RANGE_OPTION3,
+       C5VRX4_DEMOD_COUNT = 8 + C5VRX4_RANGE_OPTION_COUNT };
 unsigned c5vrx4_demodulator(void);
 const char *c5vrx4_demodulator_name(void);
 bool c5vrx4_reference_demod(void);

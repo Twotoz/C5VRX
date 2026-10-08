@@ -10,7 +10,7 @@ import validate_search as Q
 import waveforms as V
 
 
-def recovery(y,c,end_us):
+def recovery(y,c,end_us,timing_us=.35,width_us=.25):
     a,t,_=V.calibrated(y,c);lo=max(3000,-c['calibration'][0])
     expected,width=V.pulses(t);actual,aw=V.pulses(a)
     mask=(width>140)&(width<320)&(expected+lo>=round(end_us*40))
@@ -18,7 +18,7 @@ def recovery(y,c,end_us):
     if not len(actual):return dict(first_five_lock_us=None,missing_first20=len(expected),valid_lines=0)
     j=np.clip(np.searchsorted(actual,expected),0,len(actual)-1);prev=np.maximum(j-1,0)
     j=np.where(abs(actual[prev]-expected)<abs(actual[j]-expected),prev,j)
-    good=(abs(actual[j]-expected)<=14)&(abs(aw[j]-width)<=10)
+    good=(abs(actual[j]-expected)<=round(timing_us*40))&(abs(aw[j]-width)<=round(width_us*40))
     lock=None
     for k in range(max(0,len(good)-4)):
         if np.all(good[k:k+5]):lock=float((expected[k]+lo)/40-end_us);break

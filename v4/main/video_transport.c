@@ -6,6 +6,18 @@ BITSCRAMBLER_PROGRAM(s_vlp56_program, "c5vrx4_vlp56");
 BITSCRAMBLER_PROGRAM(s_ovp56_program, "c5vrx4_ovp56");
 BITSCRAMBLER_PROGRAM(s_pll96_program, "c5vrx4_pll96");
 BITSCRAMBLER_PROGRAM(s_range32_program, "c5vrx4_range32");
+#if C5VRX4_RANGE_OPTION_COUNT >= 1
+BITSCRAMBLER_PROGRAM(s_range_option0, "c5vrx4_range_option0");
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 2
+BITSCRAMBLER_PROGRAM(s_range_option1, "c5vrx4_range_option1");
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 3
+BITSCRAMBLER_PROGRAM(s_range_option2, "c5vrx4_range_option2");
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 4
+BITSCRAMBLER_PROGRAM(s_range_option3, "c5vrx4_range_option3");
+#endif
 BITSCRAMBLER_PROGRAM(s_hc50_program, "c5vrx4_hc50");
 static esp_err_t create_tx_unit(void);
 BITSCRAMBLER_PROGRAM(s_reference_phase8_hr, "c5vrx4_reference_phase8_hr");
@@ -73,6 +85,18 @@ static const void *c5vrx4_selected_program(void)
     case C5VRX4_DEMOD_OVP56: return s_ovp56_program;
     case C5VRX4_DEMOD_PLL96_IQ_FIXED: return s_pll96_program;
     case C5VRX4_DEMOD_RANGE32: return s_range32_program;
+#if C5VRX4_RANGE_OPTION_COUNT >= 1
+    case C5VRX4_DEMOD_RANGE_OPTION0: return s_range_option0;
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 2
+    case C5VRX4_DEMOD_RANGE_OPTION1: return s_range_option1;
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 3
+    case C5VRX4_DEMOD_RANGE_OPTION2: return s_range_option2;
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 4
+    case C5VRX4_DEMOD_RANGE_OPTION3: return s_range_option3;
+#endif
     case C5VRX4_DEMOD_PHASE8_HR: return s_reference_phase8_hr;
     case C5VRX4_DEMOD_GOLDEN: return s_reference_golden;
     default: break;

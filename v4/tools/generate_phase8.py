@@ -384,6 +384,8 @@ def generate():
     generate_pll()
     from generate_range32 import generate as generate_range
     generate_range()
+    from generate_range_options import generate as generate_options
+    generate_options()
     for history in (False, True):
         for transfer, suffix in (("std150", ""), ("legacy", "_legacy"), ("cvbs150", "_cvbs150")):
             name = ('history' if history else 'static') + suffix

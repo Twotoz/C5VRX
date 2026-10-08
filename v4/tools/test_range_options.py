@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""LAB pin admission and independent compiled DMA-stream regression."""
+import copy
+from functools import lru_cache
+import json
+import random
+import unittest
+import bs_model as B
+from generate_range_options import ROOT, identity, render
+
+
+class RangeOptionsTest(unittest.TestCase):
+    def setUp(self):
+        self.model = json.loads((ROOT / 'tools/range32_model.json').read_text())
+        self.option = dict(label='RANGE32 CONTROL', model=self.model,
+                           sha256=identity(self.model), status='independent_synthetic_confirmation')
+
+    def test_tampering_and_unconfirmed_models_refused(self):
+        for mutation in ('lut', 'status', 'schedule'):
+            option = copy.deepcopy(self.option)
+            if mutation == 'lut':
+                option['model']['lut'][0] ^= 1
+            elif mutation == 'status':
+                option['status'] = 'short_proxy_only'
+            else:
+                option['model']['params']['token_bits'] = 7
+            with self.assertRaises(ValueError):
+                render([option])
+        with self.assertRaises(ValueError):
+            render([self.option, self.option])
+
+    def test_encoder_and_state_mask_survive_ring_wrap(self):
+        header, programs = render([self.option])
+        self.assertIn('#define C5VRX4_RANGE_OPTION_COUNT 1', header)
+        source = programs['c5vrx4_range_option0.bsasm']
+        rng = random.Random(731)
+        raw = [rng.randrange(256) for _ in range(70000)]
+        lut = self.model['lut']; state = 0; expected = [0, 0]
+        for sample in raw[::2]:
+            word = lut[state * 32 + (lut[768 + sample] >> 11)]
+            state = (word >> 6) & 31
+            expected.extend([word & 63] * 2)
+        original = B.parse
+        B.parse = lru_cache(maxsize=1)(original)
+        try:
+            stats = {}
+            actual = B.simulate(source, raw, len(raw), stats=stats, wrap_rom=True)
+        finally:
+            B.parse = original
+        self.assertEqual([v & 63 for v in actual], expected[:len(raw)])
+        self.assertEqual(stats['bundles'], len(raw) - 1)
+
+    def test_empty_manifest_exposes_no_option(self):
+        header, programs = render([])
+        self.assertIn('#define C5VRX4_RANGE_OPTION_COUNT 0', header)
+        self.assertEqual(programs, {})
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -388,6 +388,9 @@ void console_diag_task(void *arg)
                            "TEMPORARILY DISABLED (live video only)");
                     printf(" Keys: T/E/p diagnostics, I bounded raw IQ snapshot, d sigRSSI ladder, J CVBS snapshots, r reset counters, l/L lag mark\n"
                            " P PLL96 LAB/OVP56, R RANGE32 LAB/OVP56 (save and reboot), g safe demods\n"
+#if C5VRX4_RANGE_OPTION_COUNT
+                           " Y range LAB options incl. RANGE32 (save and reboot), R rollback to OVP56\n"
+#endif
                            " N/X native AGC toggle (reboot), D Direct Gain V5, a/s/m active/frozen/manual\n"
                            " +/- manual gain, c channel, f AFC, ,/. offset, 0 center, e sample edge\n"
                            " o/v/O menu/standard/BOOT, space/n/tab next, enter/x select\n"

@@ -120,8 +120,18 @@ int main(int argc, char **argv)
            C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_PLL96_IQ_FIXED));
     assert(reboot_calls == 2 && !memcmp(before,m,sizeof(before)));
     assert(c5vrx4_console('R'));
-    assert(saved_demod == (expected == C5VRX4_DEMOD_RANGE32 ? C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_RANGE32));
+    assert(saved_demod == (expected >= C5VRX4_DEMOD_RANGE32 ? C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_RANGE32));
     assert(reboot_calls == 3 && !memcmp(before,m,sizeof(before)));
+#if C5VRX4_RANGE_OPTION_COUNT
+    assert(c5vrx4_console('Y'));
+    unsigned range_next = expected >= C5VRX4_DEMOD_RANGE32 ?
+        C5VRX4_DEMOD_RANGE32 + (expected - C5VRX4_DEMOD_RANGE32 + 1u) % (C5VRX4_RANGE_OPTION_COUNT + 1u) :
+        C5VRX4_DEMOD_RANGE_OPTION0;
+    assert(saved_demod == (int)range_next);
+    assert(reboot_calls == 4 && !memcmp(before,m,sizeof(before)));
+#else
+    assert(!c5vrx4_console('Y'));
+#endif
     munmap(m,0x10000);
     puts("C5VRX-4 Direct Gain LOCK / native gate isolation passed");
 }
