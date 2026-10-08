@@ -1,0 +1,186 @@
+{
+  "selected": null,
+  "confirmed": false,
+  "final": {
+    "HC50": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 3.3386644842348177,
+      "weak_missing": 11360,
+      "failures": [
+        "black_error_ire",
+        "contrast",
+        "fine_detail",
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "strong_detail",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us",
+        "white_error_ire"
+      ]
+    },
+    "OVP56": {
+      "strong_eligible": true,
+      "usable_cnr": 30,
+      "weak_sinad": 6.906089537412212,
+      "weak_missing": 8680,
+      "failures": []
+    },
+    "PLL96-IQ-corrected": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 7.733636766475646,
+      "weak_missing": 8707,
+      "failures": [
+        "fine_detail",
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "strong_detail",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us"
+      ]
+    },
+    "PLL96-board-fixed": {
+      "strong_eligible": false,
+      "usable_cnr": 30,
+      "weak_sinad": 7.396601180814249,
+      "weak_missing": 1937,
+      "failures": [
+        "fine_detail",
+        "strong_detail",
+        "sync_error_ire",
+        "v_jitter_us"
+      ]
+    },
+    "PLL96-rejected-board": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": -6.657686505868556,
+      "weak_missing": 11359,
+      "failures": [
+        "black_error_ire",
+        "contrast",
+        "fine_detail",
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "strong_detail",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us",
+        "white_error_ire"
+      ]
+    },
+    "VLP56": {
+      "strong_eligible": true,
+      "usable_cnr": 30,
+      "weak_sinad": 6.744493242023987,
+      "weak_missing": 7376,
+      "failures": []
+    },
+    "floating-PLL-IQ40": {
+      "strong_eligible": true,
+      "usable_cnr": 14,
+      "weak_sinad": 11.637574341674243,
+      "weak_missing": 2504,
+      "failures": []
+    }
+  },
+  "echo_fade": {
+    "HC50": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 1.844299752184578,
+      "weak_missing": 4544,
+      "failures": [
+        "black_error_ire",
+        "contrast",
+        "fine_detail",
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "strong_detail",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us",
+        "white_error_ire"
+      ]
+    },
+    "OVP56": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 2.987496260371721,
+      "weak_missing": 4477,
+      "failures": [
+        "strong_detail",
+        "sync"
+      ]
+    },
+    "PLL96-IQ-corrected": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 4.7474581895679755,
+      "weak_missing": 2551,
+      "failures": [
+        "fine_detail",
+        "h_width_rmse_us",
+        "strong_detail",
+        "sync",
+        "sync_error_ire"
+      ]
+    },
+    "PLL96-board-fixed": {
+      "strong_eligible": false,
+      "usable_cnr": 30,
+      "weak_sinad": 2.6881092138108924,
+      "weak_missing": 2540,
+      "failures": [
+        "fine_detail",
+        "strong_detail",
+        "sync"
+      ]
+    },
+    "PLL96-rejected-board": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": -6.573741719598966,
+      "weak_missing": 4520,
+      "failures": [
+        "black_error_ire",
+        "contrast",
+        "fine_detail",
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "strong_detail",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us",
+        "white_error_ire"
+      ]
+    },
+    "VLP56": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 2.255353787612021,
+      "weak_missing": 4369,
+      "failures": [
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "strong_detail",
+        "sync",
+        "v_jitter_us"
+      ]
+    },
+    "floating-PLL-IQ40": {
+      "strong_eligible": false,
+      "usable_cnr": 30,
+      "weak_sinad": 8.347763147466182,
+      "weak_missing": 2071,
+      "failures": [
+        "sync"
+      ]
+    }
+  },
+  "physical_video_acceptance": false,
+  "decision": "retain OVP56; no range replacement confirmed"
+}

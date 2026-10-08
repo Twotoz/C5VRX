@@ -25,6 +25,17 @@ formula evolution, generated hardware programs and complete PAL/NTSC waveform
 checks. The 200,000 unique-candidate experiment did not confirm a replacement
 for OVP56. Its leaderboard and Pareto frontier remain available for research.
 
+[Shared-word tracker discovery](docs/OVERLAY_RANGE_SEARCH.md) extends the search
+to LUT16 state architectures, phase-consistent output, fine-detail checks and
+independent IQ-amplitude/carrier-offset validation. It also adds a guarded
+uppercase `I` IQ snapshot export; snapshots are diagnostic, not range proof.
+
+[RANGE32 results](docs/RANGE32_RESULTS.md) records the new independently
+confirmed synthetic winner after1.7million additional LUT evaluations and
+structural/output studies. Uppercase `R` toggles RANGE32 LAB/OVP56 with a reboot.
+It improves weak-waveform and sync metrics while passing strong-picture guards;
+physical video/range acceptance remains pending. OVP56 stays the safe default.
+
 The [weak-signal diagnostic sweep](docs/WEAK_SIGNAL_SWEEP.md) separates C/N
 from ADC occupancy and scores contrast loss with a frozen clean calibration.
 It compares the existing demods without changing firmware or selecting a new
@@ -36,7 +47,7 @@ RF sensitivity or PAL/NTSC lock.
 eight offline FM theory families. Its pinned weak-pair candidate and complete
 seed/scenario protocols are research artifacts; firmware defaults stay OVP56.
 
-OVP56 is the best eligible weak-signal model found by the hardware-constrained
+OVP56 is the retained safe default from the earlier hardware-constrained
 search, with clean absolute DAC-level guards. It retains the VLP56 encoder and
 uses a bounded, video-filter-aware optimized table. The independent confirmation
 shows modest gains at 0-4 dB C/N and some losses at 6-14 dB; it is not a global

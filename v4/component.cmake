@@ -30,3 +30,4 @@ target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_hc50.bsasm")
 
 target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_ovp56.bsasm")
 target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_pll96.bsasm")
+target_bitscrambler_add_src("${C5VRX4_PROGRAM_DIR}/c5vrx4_range32.bsasm")

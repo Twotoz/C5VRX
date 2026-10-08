@@ -1,0 +1,13 @@
+{
+  "train_seed": 21101,
+  "screen_seed": 21201,
+  "selection_seed": 21301,
+  "final_seeds": [
+    21401,
+    21402
+  ],
+  "stress_seed": 21501,
+  "stimulus_variation": true,
+  "selection_envelope": true,
+  "scope": "counter residual grid compared with frozen learned-state families on new independent signals"
+}

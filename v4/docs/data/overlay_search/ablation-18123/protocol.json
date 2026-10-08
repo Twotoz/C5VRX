@@ -1,0 +1,104 @@
+{
+  "seed": 18123,
+  "stimulus_seed": 118123,
+  "params": [
+    0.43706429608458197,
+    0.06339991299276457,
+    0.9958946708989158,
+    1.320331940863313,
+    0.7014120890134898,
+    0.007787935898856698
+  ],
+  "variants": [
+    [
+      "full",
+      {}
+    ],
+    [
+      "no-confidence",
+      {
+        "confidence": false
+      }
+    ],
+    [
+      "no-phase-memory",
+      {
+        "phase_memory": false
+      }
+    ],
+    [
+      "no-frequency-memory",
+      {
+        "frequency_memory": false
+      }
+    ],
+    [
+      "pair20-same-gains",
+      {
+        "stride": 2
+      }
+    ],
+    [
+      "phase-advance-output",
+      {
+        "reconstruction": 1
+      }
+    ],
+    [
+      "frequency-only-output",
+      {
+        "reconstruction": 2
+      }
+    ],
+    [
+      "phase8",
+      {
+        "phase_states": 8
+      }
+    ],
+    [
+      "phase16",
+      {
+        "phase_states": 16
+      }
+    ],
+    [
+      "phase32",
+      {
+        "phase_states": 32
+      }
+    ],
+    [
+      "phase64",
+      {
+        "phase_states": 64
+      }
+    ],
+    [
+      "frequency25000Hz",
+      {
+        "frequency_step_hz": 25000.0
+      }
+    ],
+    [
+      "frequency50000Hz",
+      {
+        "frequency_step_hz": 50000.0
+      }
+    ],
+    [
+      "frequency100000Hz",
+      {
+        "frequency_step_hz": 100000.0
+      }
+    ],
+    [
+      "frequency1050000Hz",
+      {
+        "frequency_step_hz": 1050000.0
+      }
+    ]
+  ],
+  "trace_matches_reference": true,
+  "scope": "offline ablations; pair20 keeps gains per update and changes physical loop bandwidth; no hardware feasibility or range claim"
+}

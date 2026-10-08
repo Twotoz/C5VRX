@@ -1,0 +1,33 @@
+{
+  "config_seed": 15101,
+  "screen_seed": 15201,
+  "selection_seed": 15301,
+  "final_seeds": [
+    15401,
+    15402
+  ],
+  "stress_seed": 15501,
+  "evaluations": 500000,
+  "proxy_detail_gate": true,
+  "robust_envelope": true,
+  "objective": "weak waveform information and pulse recovery subject to strong usable-quality gates",
+  "strong_quality": ">=14dB SINAD, <=1dB OVP loss, signed contrast85..115%, no missing sync; bounded levels/width/jitter",
+  "caveat": "synthetic C/N, not input dBm or physical range; thresholds are engineering criteria",
+  "source_sha256": {
+    "audit_pll96.py": "2c667d9cd386ba21348c5ed48abb03939b568dba21f2915199f1df835ffd6ebd",
+    "engine.py": "51c58d61b8314811394bf38a90147c33d304a77786fd4eb267f88ce261d89da1",
+    "expressions.py": "7687ac5adc0430dc2c50f2cc025e4b31b3332cb5c39261023e372b72f02b3c6b",
+    "hardware.py": "925fd43df0bf5b0159d53c0a5a5f2eb3ab08bac8718b79f5c943bdeba9efb1f7",
+    "leaderboard.py": "4e5d81a15639a615e24e38b19bcc03c5728ddf45e355c40dccdfe446addc66f2",
+    "overlay_fsm.py": "775ce1d420e5e4d0622a0912ce02dd4129ab811b3a647336315084ca778d49ad",
+    "repair_pll96.py": "96e9f43ef16e9bda43745670f86aed203e6ebeafa0ff0db0672f13b8ba21d856",
+    "repair_reconstruction.py": "08023d781cf619ee319ae067800095cc318d9cec3e567d65fe332395e54616d8",
+    "search_overlay.py": "5f8f46389b8631d088f438a96928d9a71069dfb694d61fd6d06f665c4bb60a01",
+    "test_discovery.py": "ec77195d7af851700f11ebd1b597d5196cd7978e8ccfb4d66f64fa021abc7a21",
+    "test_overlay.py": "31d3f82d20eeb738544447dcea4a7e606b7010d8a6e02969f7a9620bd3977a53",
+    "validate_overlay.py": "2104669adda919a1ce12c1d27f73b2c457d7d24022898a02b71e75e2e52783fc",
+    "validate_search.py": "b038d9f7d7a1490cc26da2078f1783a5048c8bb862b694b4a40e1e8fa0f9d4dd",
+    "video_metrics.py": "ae94456b9d86c7c2eff272776d6c9a62166542e5fb166524cfd8a9c802257769",
+    "waveforms.py": "fe6e90e7f494db290b7f4f3b5c73174cdc5bdacceacd64a0bf06e8942453cd7c"
+  }
+}

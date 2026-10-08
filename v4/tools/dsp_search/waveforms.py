@@ -16,12 +16,13 @@ def half_sample(standard,h):
     return h*1280 if standard=='PAL' else ((h*2860+4)//9)*4
 
 
-def raster(standard,fields=2,short=False):
+def raster(standard,fields=2,short=False,stimulus_seed=None):
     pal=standard=='PAL';fh=625 if pal else 525;eq=5 if pal else 6
     total=128 if short else fh*fields
     length=half_sample(standard,total)
     ire=np.zeros(length);region=np.zeros(length,dtype=np.uint8)
     fsc=4433618.75 if pal else 3579545.454545
+    rng=np.random.default_rng(stimulus_seed) if stimulus_seed is not None else None
     h=0
     while h<total:
         pos=(h+(eq if pal else 0))%fh
@@ -42,10 +43,15 @@ def raster(standard,fields=2,short=False):
             x=np.arange(b-a)/FS
             bars=np.minimum((x/(max(1,len(x))/FS)*8).astype(int),7)
             levels=np.array([100,75,50,25,0,15,55,85])
+            amplitude,detail_hz=8,3e6
+            if rng is not None:
+                levels=levels.astype(float)
+                levels[[1,2,3,5,6,7]]=rng.uniform(10,90,6)
+                amplitude=float(rng.uniform(4,10));detail_hz=float(rng.choice([1.2e6,2.2e6,3e6,3.8e6]))
             y=levels[bars].astype(float)
             # Preserve flat black/white patches; other bars test luma/chroma.
             detail=(bars>=5)
-            y+=detail*(8*np.sin(2*np.pi*3.0e6*x)+
+            y+=detail*(amplitude*np.sin(2*np.pi*detail_hz*x)+
                        8*np.sin(2*np.pi*fsc*(x+a/FS)+((-1)**(h//2) if pal else 1)*.6))
             ire[a:b]=y;region[a:b]=1
             region[a:b][bars==0]=4;region[a:b][bars==4]=5
@@ -53,11 +59,11 @@ def raster(standard,fields=2,short=False):
     return ire,region
 
 
-def make_case(standard,seed,cnr,rms=3,short=False,stress=False):
-    ire,region=raster(standard,short=short)
+def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimulus_seed=None,loss_windows_us=(),lane_model=None,include_traces=False):
+    ire,region=raster(standard,short=short,stimulus_seed=stimulus_seed)
     # Integrate FM at 80 MS/s before the existing analog-channel model.
     source=sg.lfilter(sg.firwin(81,6e6,fs=80e6),1,np.repeat(ire,2))
-    freq=1e6+(source-30)*6.7e6/140
+    freq=cfo_hz+(source-30)*6.7e6/140
     z=np.exp(2j*np.pi*np.cumsum(freq)/80e6)
     z=B.D.chan(z)[::2]
     z/=np.sqrt(np.mean(abs(z)**2))
@@ -67,16 +73,25 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False):
     if stress:
         t=np.arange(len(z))/FS
         z=(z+.35*np.exp(.7j)*np.pad(z[:-8],(8,0)))*(1-.6*(.5+.5*np.sin(2*np.pi*t/150e-6)))
+    for start,end in loss_windows_us:
+        if not 0<=start<end<=len(z)/40:raise ValueError('loss interval outside case')
+        z[round(start*40):round(end*40)]=0 # Noise remains; fixed gain, not a simulated AGC.
     def raw(n):
         y=W.iq_at(z,n,cnr,rms)
         if stress:y=y.real*1.05+1j*y.imag+.15-.1j
+        if lane_model:
+            from iq_lanes import quantize
+            return quantize(y,lane_model)
         return B.D.raw_bytes(y).astype(np.uint8)
     clean=raw(np.zeros_like(noise));truth=B.D.goggle(ire)
     ref=W.decode(clean,M.F.load_reference('OVP56'))
     calibration=M.clean_calibration(ref,truth,3000)
     if calibration[1]<=0:raise ValueError('baseline polarity must be positive')
-    return dict(raw=raw(noise),clean=clean,truth=truth,region=region,calibration=calibration,
-                standard=standard,seed=seed,cnr=cnr,rms=rms,stress=stress)
+    result=dict(raw=raw(noise),clean=clean,truth=truth,region=region,calibration=calibration,
+                standard=standard,seed=seed,cnr=cnr,rms=rms,stress=stress,stimulus_seed=stimulus_seed,cfo_hz=cfo_hz,
+                loss_windows_us=loss_windows_us,lane_model=lane_model)
+    if include_traces:result['rx_signal']=z
+    return result
 
 
 def calibrated(y,c):

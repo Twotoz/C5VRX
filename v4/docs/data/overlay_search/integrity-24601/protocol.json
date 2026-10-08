@@ -1,0 +1,6 @@
+{
+  "seed": 24601,
+  "stimulus_seed": 124601,
+  "strong_burst_guards": "gain within0.1 OVP; phase jitter<=max15deg/ref+5; amplitude jitter<=max25%/ref+5; RMSE<=ref+2IRE",
+  "scope": "bit-accurate lane extraction after simplified signed-Q10 ADC; not calibrated RF/AGC or physical colour acceptance"
+}

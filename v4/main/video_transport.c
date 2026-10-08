@@ -5,6 +5,7 @@ static const void *c5vrx4_selected_program(void);
 BITSCRAMBLER_PROGRAM(s_vlp56_program, "c5vrx4_vlp56");
 BITSCRAMBLER_PROGRAM(s_ovp56_program, "c5vrx4_ovp56");
 BITSCRAMBLER_PROGRAM(s_pll96_program, "c5vrx4_pll96");
+BITSCRAMBLER_PROGRAM(s_range32_program, "c5vrx4_range32");
 BITSCRAMBLER_PROGRAM(s_hc50_program, "c5vrx4_hc50");
 static esp_err_t create_tx_unit(void);
 BITSCRAMBLER_PROGRAM(s_reference_phase8_hr, "c5vrx4_reference_phase8_hr");
@@ -71,6 +72,7 @@ static const void *c5vrx4_selected_program(void)
     case C5VRX4_DEMOD_VLP56: return s_vlp56_program;
     case C5VRX4_DEMOD_OVP56: return s_ovp56_program;
     case C5VRX4_DEMOD_PLL96_IQ_FIXED: return s_pll96_program;
+    case C5VRX4_DEMOD_RANGE32: return s_range32_program;
     case C5VRX4_DEMOD_PHASE8_HR: return s_reference_phase8_hr;
     case C5VRX4_DEMOD_GOLDEN: return s_reference_golden;
     default: break;

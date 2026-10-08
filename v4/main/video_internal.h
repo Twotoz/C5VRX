@@ -284,6 +284,8 @@ void lab_reset_correlation(void);
 void lab_print_row(const char *kind, const hw_transport_counters_t *base);
 void p8env_capture_report(void);
 void lab_dump_raw_probe(void);
+bool video_copy_iq_snapshot(uint8_t *raw);
+void video_export_iq_snapshot(void);
 void lab_apply_vendor_gain(uint8_t gain);
 void lab_enter_quiet_baseline(void);
 void lab_run_bandwidth_probe(bool vendor_path);

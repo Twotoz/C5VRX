@@ -115,7 +115,7 @@ def main():
         observed=[]
         for path in a.captures.glob('*.raw'):
             raw=np.frombuffer(path.read_bytes(),np.uint8)
-            if len(raw)%2 or len(raw)<8192:raise ValueError('capture needs contiguous, even Q4/I4 bytes')
+            if len(raw)%2 or len(raw)<8190:raise ValueError('capture needs contiguous, even Q4/I4 bytes')
             for model in [baseline,winner]:
                 y=S.decode(raw,model);np.save(a.output/(path.stem+'-'+model['name']+'.npy'),y)
                 observed.append(dict(capture=path.name,model=model['name'],samples=len(raw),scope='unknown truth; no SINAD/range score'))

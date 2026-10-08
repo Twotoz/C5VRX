@@ -1,0 +1,48 @@
+{
+  "train_seed": 17101,
+  "screen_seed": 17201,
+  "selection_seed": 17301,
+  "final_seeds": [
+    17401,
+    17402
+  ],
+  "stress_seed": 17501,
+  "stimulus_variation": true,
+  "strategy": "exhaustive declared grid + equal-budget filtered DAC refinement; no final reselection",
+  "strong_weights": [
+    2,
+    8,
+    32
+  ],
+  "edge_weights": [
+    1,
+    8
+  ],
+  "blends": [
+    0.25,
+    0.5,
+    1
+  ],
+  "lsmr_iterations": 60,
+  "source_sha256": {
+    "audit_pll96.py": "2c667d9cd386ba21348c5ed48abb03939b568dba21f2915199f1df835ffd6ebd",
+    "engine.py": "51c58d61b8314811394bf38a90147c33d304a77786fd4eb267f88ce261d89da1",
+    "expressions.py": "7687ac5adc0430dc2c50f2cc025e4b31b3332cb5c39261023e372b72f02b3c6b",
+    "hardware.py": "925fd43df0bf5b0159d53c0a5a5f2eb3ab08bac8718b79f5c943bdeba9efb1f7",
+    "leaderboard.py": "ab4c869304c24e10aff9d715e7fe63e5881d56eac93060f46bf0f24a4f0aaada",
+    "overlay_fsm.py": "a2501d76b5b295d9682faa526d263db9667b446371c8bf6e1ba243968186e4ac",
+    "reconstruction.py": "1b5c65471bad47ef32df8f81aa28cbc57259f81a26cb451c39e2ad90263a41e6",
+    "refine_overlay.py": "c127ffe6c2670b7531bfff8116ff0a35f741a060d8cc525e950ab19152c02b0d",
+    "repair_pll96.py": "96e9f43ef16e9bda43745670f86aed203e6ebeafa0ff0db0672f13b8ba21d856",
+    "repair_reconstruction.py": "08023d781cf619ee319ae067800095cc318d9cec3e567d65fe332395e54616d8",
+    "search_overlay.py": "c69ecfb2df164bf59425343f5706f0efe625084edd773d3b375eb21d4f8c3d63",
+    "test_discovery.py": "ec77195d7af851700f11ebd1b597d5196cd7978e8ccfb4d66f64fa021abc7a21",
+    "test_overlay.py": "51c71962428501f5d576a50331c0975c55e87cf88a45bf9ba3f87120bddbe282",
+    "test_reconstruction.py": "91606c1c0a34b20d5431ed2d7f6e78990fce01824937a62acddaf5c6181220a0",
+    "test_video_metrics.py": "9c9d8beb4f38ad7759740950508207af163da481830ec05f01245319db27bb5b",
+    "validate_overlay.py": "840d0c67f57f7f70ef593625ef66a42b345db928383516552a0e93f3942d7f72",
+    "validate_search.py": "b038d9f7d7a1490cc26da2078f1783a5048c8bb862b694b4a40e1e8fa0f9d4dd",
+    "video_metrics.py": "ae94456b9d86c7c2eff272776d6c9a62166542e5fb166524cfd8a9c802257769",
+    "waveforms.py": "2d89e9593975e4c45e9b88e84a11d6ebc9ac8dedb56a69afc3024cc278cbf53f"
+  }
+}

@@ -8,6 +8,11 @@ global optimum, physical range gain or hardware picture acceptance is claimed.
 
 ## Result
 
+The subsequent [shared-word tracker search](OVERLAY_RANGE_SEARCH.md) explores
+LUT16 recursive architectures and phase-consistent reconstruction, with extra
+gain-occupancy/offset and fine-detail guards. Its evidence and decisions are
+separate from this original 200,000-candidate round.
+
 The reproducible run evaluated **200,000 distinct compiled LUT behaviours**
 from 503,072 proposals. It rejected 124,728 invalid/unsupported proposals and
 deduplicated 178,344 equivalent behaviours before evaluation. There were

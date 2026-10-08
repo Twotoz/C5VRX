@@ -1,0 +1,16 @@
+{
+  "seed": 18601,
+  "stimulus_seed": 118601,
+  "loss_windows_us": [
+    [
+      7000,
+      8000
+    ],
+    [
+      26000,
+      27000
+    ]
+  ],
+  "scope": "fixed-IQ-gain carrier outage; no RF AGC, board/goggle or usable-range acceptance",
+  "lock": "first five consecutive H pulses within0.35us timing/0.25us width among first20 recovered lines"
+}

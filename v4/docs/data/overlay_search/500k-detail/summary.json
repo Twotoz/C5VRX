@@ -1,0 +1,203 @@
+{
+  "selected": "OVL-104d60b83090",
+  "confirmed": false,
+  "final": {
+    "HC50": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 3.3421017965448114,
+      "weak_missing": 11360,
+      "failures": [
+        "black_error_ire",
+        "contrast",
+        "fine_detail",
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "strong_detail",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us",
+        "white_error_ire"
+      ]
+    },
+    "OVL-104d60b83090": {
+      "strong_eligible": true,
+      "usable_cnr": 30,
+      "weak_sinad": 7.688813587894233,
+      "weak_missing": 2692,
+      "failures": []
+    },
+    "OVP56": {
+      "strong_eligible": true,
+      "usable_cnr": 30,
+      "weak_sinad": 6.910804517461474,
+      "weak_missing": 8612,
+      "failures": []
+    },
+    "PLL96-IQ-corrected": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 7.722593208861167,
+      "weak_missing": 8728,
+      "failures": [
+        "fine_detail",
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "strong_detail",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us"
+      ]
+    },
+    "PLL96-board-fixed": {
+      "strong_eligible": false,
+      "usable_cnr": 30,
+      "weak_sinad": 7.396495610075507,
+      "weak_missing": 1884,
+      "failures": [
+        "fine_detail",
+        "strong_detail",
+        "sync_error_ire",
+        "v_jitter_us"
+      ]
+    },
+    "PLL96-rejected-board": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": -6.658555012634608,
+      "weak_missing": 11359,
+      "failures": [
+        "black_error_ire",
+        "contrast",
+        "fine_detail",
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "strong_detail",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us",
+        "white_error_ire"
+      ]
+    },
+    "VLP56": {
+      "strong_eligible": true,
+      "usable_cnr": 30,
+      "weak_sinad": 6.750822215199728,
+      "weak_missing": 7402,
+      "failures": []
+    },
+    "floating-PLL-IQ40": {
+      "strong_eligible": true,
+      "usable_cnr": 14,
+      "weak_sinad": 11.644390050898508,
+      "weak_missing": 2434,
+      "failures": []
+    }
+  },
+  "echo_fade": {
+    "HC50": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 1.8457650917645498,
+      "weak_missing": 4544,
+      "failures": [
+        "black_error_ire",
+        "fine_detail",
+        "h_jitter_us",
+        "h_missing",
+        "h_width_rmse_us",
+        "strong_sinad",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains",
+        "white_error_ire"
+      ]
+    },
+    "OVL-104d60b83090": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 2.9508843983120654,
+      "weak_missing": 3217,
+      "failures": [
+        "v_jitter_us",
+        "vertical_trains",
+        "white_error_ire"
+      ]
+    },
+    "OVP56": {
+      "strong_eligible": true,
+      "usable_cnr": null,
+      "weak_sinad": 2.989839650990162,
+      "weak_missing": 4485,
+      "failures": []
+    },
+    "PLL96-IQ-corrected": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 4.6657204475084875,
+      "weak_missing": 2623,
+      "failures": [
+        "fine_detail",
+        "h_missing",
+        "h_width_rmse_us",
+        "strong_sinad",
+        "sync_error_ire",
+        "v_missing",
+        "vertical_trains"
+      ]
+    },
+    "PLL96-board-fixed": {
+      "strong_eligible": false,
+      "usable_cnr": 30,
+      "weak_sinad": 2.6464527859317766,
+      "weak_missing": 2578,
+      "failures": [
+        "fine_detail",
+        "strong_sinad",
+        "vertical_trains"
+      ]
+    },
+    "PLL96-rejected-board": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": -6.5739192175785695,
+      "weak_missing": 4510,
+      "failures": [
+        "black_error_ire",
+        "fine_detail",
+        "h_jitter_us",
+        "h_missing",
+        "h_width_rmse_us",
+        "polarity",
+        "strong_sinad",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains",
+        "white_error_ire"
+      ]
+    },
+    "VLP56": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 2.2507952279223247,
+      "weak_missing": 4356,
+      "failures": [
+        "h_width_rmse_us",
+        "v_jitter_us"
+      ]
+    },
+    "floating-PLL-IQ40": {
+      "strong_eligible": false,
+      "usable_cnr": 30,
+      "weak_sinad": 8.381600446720302,
+      "weak_missing": 2097,
+      "failures": [
+        "vertical_trains"
+      ]
+    }
+  },
+  "physical_video_acceptance": false,
+  "decision": "retain OVP56; no range replacement confirmed"
+}

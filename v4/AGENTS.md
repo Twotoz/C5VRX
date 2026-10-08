@@ -1,5 +1,18 @@
 # Isolated C5VRX-4 integration ledger
 
+## Operator-authorized RANGE32 lab
+
+`docs/RANGE32_RESULTS.md` supersedes the earlier no-confirmed-replacement
+research result: OVL-49c57570d609 passes independent synthetic PAL/NTSC,
+echo/fade and amplitude/offset guards. Physical acceptance remains pending.
+RANGE32 is value7, uppercase R toggles7/4 with saved-NVS reboot; ordinary g
+still cycles0..4, OVP56 remains default and saved failed PLL96 value5 remains
+quarantined. The winner is phase32/observation32 with analytical transitions
+and learned DAC; it does not use teacher state/context/counter prototypes.
+Preserve all existing DMA, gain ownership, live-writer gates and attribution.
+Do not infer measured range or global optimality from the1.9million completed
+evaluations (per-run deduplicated, cross-run overlap possible).
+
 ## Operator-authorized PLL96 lab
 
 `docs/PLL96_LAB.md` records the failed physical value5 experiment. Its I/Q

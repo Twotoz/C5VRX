@@ -2,7 +2,7 @@
 """Compare frozen C5VRX estimators on an actual contiguous Q4/I4 capture.
 
 C5VRX by Twotoz and contributors; see docs/MEGA_DEMOD_STUDY.md for provenance.
-One byte per acquired IQ40 sample: low signed nibble I, high signed nibble Q.
+One byte per acquired IQ40 sample: high signed nibble I, low signed nibble Q.
 This host replay never claims live board throughput or known-picture SINAD.
 """
 import argparse
@@ -23,8 +23,8 @@ def main():
     if a.output.exists():
         ap.error('use a new output directory')
     raw = np.frombuffer(a.input.read_bytes(), dtype=np.uint8)
-    if len(raw) < 8192 or len(raw) % 2:
-        ap.error('need at least 8192 bytes and complete input pairs')
+    if len(raw) < 8190 or len(raw) % 2:
+        ap.error('need at least 8190 bytes and complete input pairs')
     models = json.loads(a.hypotheses.read_text())['winners']
     # Frozen before independent finals. Never tune on the captured test data.
     models = [M.F.load_reference('OVP56')]+[m for m in models if m['family'] in ('pll', 'ml')]

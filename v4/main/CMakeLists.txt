@@ -13,6 +13,7 @@ idf_component_register(
         "video_console.c"
         "video_control.c"
         "video_diagnostics.c"
+        "video_iq_capture.c"
         "video_dco.c"
         "video_drift.c"
         "video_recorder.c"

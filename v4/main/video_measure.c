@@ -6,7 +6,6 @@ static inline unsigned trajectory_v2_stage1_address(uint8_t previous_phase5,
                                                     uint8_t current_raw);
 static void video_standard_vote(video_standard_t standard, uint16_t period);
 static void cvbs_analyze_locked(const uint8_t *raw, size_t bytes, c5v4_cvbs_stats_t *stats);
-static bool copy_level_snapshot(uint8_t *raw);
 #include "trajectory_v2_lut.h"
 
 /* Exact Phase5 state decode mirrored from the embedded fm.bsasm LUT.  The
@@ -243,7 +242,7 @@ control_metrics_t analyze_control_window(const uint8_t *sample, size_t bytes,
 /* A separate adaptive 5/20-ms supervisor leaves the 50-ms button/menu/AFC timers intact.
  * It copies 204.75 us of completed IQ, never the descriptor currently written.
  * This is control-plane gain/offset correction; live pixels stay in hardware. */
-static bool copy_level_snapshot(uint8_t *raw)
+bool video_copy_iq_snapshot(uint8_t *raw)
 {
     if (s_rx_dma_ch < 0 || s_rx_dma_ch >= 3 || s_rx_dscr_count < 4) return false;
     int64_t start = esp_timer_get_time();
@@ -306,7 +305,7 @@ void cvbs_level_task(void *arg)
             s_agc_mode == ANALOG_AGC_ACTIVE && s_direct_gain_v3.state == DG3_SETTLE;
         if (!c5v4_level_source_ready((uint64_t)start, s_last_gain_write_us,
                 s_last_phy_write_us, lane_stats.last_switch_us, settling) ||
-            !copy_level_snapshot(raw)) { c5v4_level_hw_invalidate(); continue; }
+            !video_copy_iq_snapshot(raw)) { c5v4_level_hw_invalidate(); continue; }
         last_capture_us = start; have_capture = true;
         c5v4_cvbs_stats_t stats;
         cvbs_analyze_locked(raw, C5V4_LEVEL_SAMPLE_BYTES, &stats);

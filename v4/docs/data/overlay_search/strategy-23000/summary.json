@@ -1,0 +1,249 @@
+{
+  "work": [
+    {
+      "strategy": "exhaustive-balanced",
+      "start": 23361,
+      "evaluations": 64,
+      "lsmr_fits": 6,
+      "fit_iterations": 72,
+      "evaluation_seconds": 2.337504799827002,
+      "fit_seconds": 2.339288300019689,
+      "observed_wall_seconds": 4.677737000049092,
+      "cost_scope": "evaluation runtime replayed from common cache; fitting runtime measured independently"
+    },
+    {
+      "strategy": "random",
+      "start": 23361,
+      "evaluations": 64,
+      "lsmr_fits": 6,
+      "fit_iterations": 125,
+      "evaluation_seconds": 2.2819569994462654,
+      "fit_seconds": 3.3649784000590444,
+      "observed_wall_seconds": 5.02218750002794,
+      "cost_scope": "evaluation runtime replayed from common cache; fitting runtime measured independently"
+    },
+    {
+      "strategy": "guided",
+      "start": 23361,
+      "evaluations": 64,
+      "lsmr_fits": 6,
+      "fit_iterations": 95,
+      "evaluation_seconds": 2.340253999689594,
+      "fit_seconds": 3.0458059000084177,
+      "observed_wall_seconds": 5.012105799978599,
+      "cost_scope": "evaluation runtime replayed from common cache; fitting runtime measured independently"
+    },
+    {
+      "strategy": "exhaustive-balanced",
+      "start": 23362,
+      "evaluations": 64,
+      "lsmr_fits": 6,
+      "fit_iterations": 111,
+      "evaluation_seconds": 2.2786220007110387,
+      "fit_seconds": 3.3814375000074506,
+      "observed_wall_seconds": 3.9623860999708995,
+      "cost_scope": "evaluation runtime replayed from common cache; fitting runtime measured independently"
+    },
+    {
+      "strategy": "random",
+      "start": 23362,
+      "evaluations": 64,
+      "lsmr_fits": 6,
+      "fit_iterations": 81,
+      "evaluation_seconds": 2.2139736007666215,
+      "fit_seconds": 2.4911415999522433,
+      "observed_wall_seconds": 4.070306799956597,
+      "cost_scope": "evaluation runtime replayed from common cache; fitting runtime measured independently"
+    },
+    {
+      "strategy": "guided",
+      "start": 23362,
+      "evaluations": 64,
+      "lsmr_fits": 6,
+      "fit_iterations": 109,
+      "evaluation_seconds": 2.322316500241868,
+      "fit_seconds": 3.016145599889569,
+      "observed_wall_seconds": 4.953340599895455,
+      "cost_scope": "evaluation runtime replayed from common cache; fitting runtime measured independently"
+    }
+  ],
+  "confirmation": {
+    "HC50": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 3.2073055042010545,
+      "weak_missing": 2272,
+      "failures": [
+        "black_error_ire",
+        "contrast",
+        "fine_detail",
+        "h_jitter_us",
+        "h_missing",
+        "h_width_rmse_us",
+        "strong_detail",
+        "strong_sinad",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains",
+        "white_error_ire"
+      ]
+    },
+    "OVP56": {
+      "strong_eligible": true,
+      "usable_cnr": null,
+      "weak_sinad": 6.547901701869967,
+      "weak_missing": 1894,
+      "failures": []
+    },
+    "PLL96-IQ-corrected": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 7.503147348377257,
+      "weak_missing": 1586,
+      "failures": [
+        "fine_detail",
+        "h_jitter_us",
+        "h_missing",
+        "h_width_rmse_us",
+        "strong_detail",
+        "strong_sinad",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains",
+        "white_error_ire"
+      ]
+    },
+    "PLL96-board-fixed": {
+      "strong_eligible": false,
+      "usable_cnr": 30,
+      "weak_sinad": 6.948471442059694,
+      "weak_missing": 551,
+      "failures": [
+        "fine_detail",
+        "strong_detail",
+        "strong_sinad",
+        "sync_error_ire"
+      ]
+    },
+    "PLL96-rejected-board": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": -6.669425641492097,
+      "weak_missing": 2272,
+      "failures": [
+        "black_error_ire",
+        "contrast",
+        "fine_detail",
+        "h_jitter_us",
+        "h_missing",
+        "h_width_rmse_us",
+        "polarity",
+        "strong_detail",
+        "strong_sinad",
+        "sync",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains",
+        "white_error_ire"
+      ]
+    },
+    "VLP56": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 6.2673488419235355,
+      "weak_missing": 1582,
+      "failures": [
+        "h_width_rmse_us"
+      ]
+    },
+    "exhaustive-balanced-23361": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 0.7110817787424317,
+      "weak_missing": 1563,
+      "failures": [
+        "fine_detail",
+        "h_width_rmse_us",
+        "strong_detail",
+        "strong_sinad",
+        "sync_error_ire",
+        "v_jitter_us",
+        "v_missing",
+        "white_error_ire"
+      ]
+    },
+    "exhaustive-balanced-23362": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 6.344585126251777,
+      "weak_missing": 1695,
+      "failures": [
+        "fine_detail",
+        "h_jitter_us",
+        "h_width_rmse_us",
+        "strong_detail",
+        "strong_sinad",
+        "sync",
+        "v_jitter_us",
+        "v_missing",
+        "vertical_trains"
+      ]
+    },
+    "floating-PLL-IQ40": {
+      "strong_eligible": true,
+      "usable_cnr": 30,
+      "weak_sinad": 11.574507737994761,
+      "weak_missing": 412,
+      "failures": []
+    },
+    "guided-23361": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 7.130921377719335,
+      "weak_missing": 1364,
+      "failures": [
+        "fine_detail",
+        "strong_detail"
+      ]
+    },
+    "guided-23362": {
+      "strong_eligible": false,
+      "usable_cnr": 30,
+      "weak_sinad": 7.176947416351837,
+      "weak_missing": 564,
+      "failures": [
+        "fine_detail",
+        "strong_detail"
+      ]
+    },
+    "random-23361": {
+      "strong_eligible": false,
+      "usable_cnr": 30,
+      "weak_sinad": 6.899128723552717,
+      "weak_missing": 602,
+      "failures": [
+        "fine_detail",
+        "strong_detail",
+        "v_jitter_us"
+      ]
+    },
+    "random-23362": {
+      "strong_eligible": false,
+      "usable_cnr": null,
+      "weak_sinad": 6.303493935542757,
+      "weak_missing": 2138,
+      "failures": [
+        "fine_detail",
+        "h_width_rmse_us",
+        "strong_detail",
+        "vertical_trains"
+      ]
+    }
+  },
+  "scope": "two starts,small matched-work pilot in one finite pool; no general search superiority/global optimum claim"
+}

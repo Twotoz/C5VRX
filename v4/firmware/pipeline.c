@@ -59,7 +59,7 @@ bool c5vrx4_reference_demod(void)
 }
 const char *c5vrx4_demodulator_name(void)
 {
-    static const char *const names[] = {"HC50", "HR50", "GOLDEN50", "VLP56", "OVP56", "PLL96 REJECTED", "PLL96 IQ FIX LAB"};
+    static const char *const names[] = {"HC50", "HR50", "GOLDEN50", "VLP56", "OVP56", "PLL96 REJECTED", "PLL96 IQ FIX LAB", "RANGE32 LAB"};
     return names[c5vrx4_demodulator()];
 }
 
@@ -664,12 +664,15 @@ static void print_state(void)
                c5vrx4_demodulator_name(),
                (c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 || c5vrx4_demodulator() == C5VRX4_DEMOD_OVP56) ? 0u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96_IQ_FIXED ? 3u :
+               c5vrx4_demodulator() == C5VRX4_DEMOD_RANGE32 ? 5u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_GOLDEN ? 5u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_HC50 ? 6u : 8u,
                (c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 || c5vrx4_demodulator() == C5VRX4_DEMOD_OVP56) ? 8u : 16u,
                rf_native_agc_active() ? "native" : "direct_gain_v5");
         if (c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96_IQ_FIXED)
             printf("C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot\n");
+        if (c5vrx4_demodulator() == C5VRX4_DEMOD_RANGE32)
+            printf("C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot\n");
         return;
     }
     c5vrx4_lane_print();
@@ -730,11 +733,13 @@ void c5vrx4_start(void)
 
 bool c5vrx4_console(int key)
 {
-    if (key == 'g' || key == 'P') {
+    if (key == 'g' || key == 'P' || key == 'R') {
         nvs_handle_t h;
-        /* Uppercase P explicitly opts into the corrected experiment. Lowercase
-         * p belongs to the existing snapshot console. g returns to safe modes. */
-        unsigned next = key == 'P' ?
+        /* P selects corrected PLL96; R selects RANGE32. Both toggle back to
+         * OVP56. Lowercase p keeps its snapshot; g cycles safe values0..4. */
+        unsigned next = key == 'R' ?
+            (c5vrx4_demodulator() == C5VRX4_DEMOD_RANGE32 ? C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_RANGE32) :
+            key == 'P' ?
             (c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96_IQ_FIXED ?
              C5VRX4_DEMOD_OVP56 : C5VRX4_DEMOD_PLL96_IQ_FIXED) :
             (c5vrx4_demodulator() + 1u) % (C5VRX4_DEMOD_OVP56 + 1u);
