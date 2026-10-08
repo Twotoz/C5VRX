@@ -663,7 +663,7 @@ static void print_state(void)
                "mask=0 flywheel=0 idle_raster=0 live_lut_writes=0\n",
                c5vrx4_demodulator_name(),
                (c5vrx4_demodulator() == C5VRX4_DEMOD_VLP56 || c5vrx4_demodulator() == C5VRX4_DEMOD_OVP56) ? 0u :
-               c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96_IQ_FIXED ? 3u :
+               c5vrx4_demodulator() == C5VRX4_DEMOD_PLL96_IQ_FIXED ? 4u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_RANGE32 ? 5u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_GOLDEN ? 5u :
                c5vrx4_demodulator() == C5VRX4_DEMOD_HC50 ? 6u : 8u,
