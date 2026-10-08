@@ -1,0 +1,107 @@
+# Range-first follow-up: three experimental picture trade-offs
+
+This extends C5VRX by Twotoz and the C5VRX contributors and the existing
+RANGE32/OVP56/PLL work: https://github.com/Twotoz/C5VRX. The official website
+and Discord invite are https://twotoz.github.io/C5VRX/.
+
+The operator reports that flashed RANGE32 retains an excellent picture and
+clearly improves range. This is positive qualitative hardware feedback, not
+a matched attenuation sweep, numerical RF sensitivity result or global-optimum
+claim. RANGE32 model49c57570d609 from84d6e391 was flashed with verified hashes,
+NVS/PHY backup/preservation and a confirmed RANGE32 boot/heartbeat on COM10.
+App4.0.0-alpha-range32 has ELF SHA256
+69bb16283bcf08a2f453697e95a1b210bfce690e3bca71c7eb7e05d57672638b.
+
+The operator now explicitly prioritizes maximum range over picture quality.
+This **new** study allows intentional strong-signal detail/colour losses that
+would fail the previous RANGE32 confirmation guards. Those earlier results
+and quality requirements remain historical evidence; they are not rewritten.
+OVP56 remains default, R remains the rollback, and the currently flashed
+RANGE32 is left active during offline research. No automatic promotion/merge.
+
+## Declared options and common range screen
+
+| Profile | Strong waveform SINAD floor | Strong contrast | Fine-detail correlation floor | CVBS level-error limit |
+| --- | ---: | ---: | ---: | ---: |
+| Balanced |12dB|70..130%|0.40|10IRE|
+| Range |9dB|60..135%|0.25|15IRE|
+| Extreme |7dB|50..140%|0.10|20IRE|
+
+All retain positive polarity and no missing strong H/V sync. Strong timing
+and width tolerances progressively relax; exact predeclared bounds are in
+`range_objective.py`. Chroma loss is measured and disclosed, not hidden by a
+new noisy per-model calibration. These are engineering experiment choices,
+not guarantees that every operator considers the result acceptable.
+
+**The same usable-picture screen applies to every profile, OVP56 and RANGE32:**
+waveform SINAD>=5dB, positive contrast50..150%, H misses<=2%, at most3
+consecutive missing H pulses, no missing V pulses, two vertical trains,
+H/V timing95<=0.5us and H-width RMSE<=0.5us. Its C/N threshold cannot be
+compared directly with the old, stricter14-versus22dB screen. Fresh matched
+RANGE32 and OVP56 controls are recomputed under this protocol.
+
+The search emphasizes low-band luma information (700kHz) and missed sync,
+allowing loss of high-frequency detail. Constant/erased, inverted and sync-less
+outputs fail the guards. Final confirmation ranks the lowest passing C/N
+before weak pulse losses and luma fidelity; luma SINAD alone cannot qualify a
+model whose usable threshold or sync is worse than current RANGE32.
+
+## Search and independent confirmation
+
+Three independent1,000,000-evaluation runs use seed bases30000,40000,50000
+for Balanced/Range/Extreme. Counts mean distinct actual LUT bytes plus token,
+context and counter schedule within each run; cross-run overlap is possible.
+Proposal, duplicate, tone, quick and detailed-screen counts are separate.
+Evolution uses65% bounded parent mutations and35% fresh structural proposals.
+Observation/state allocations, compact frequency memory and confidence groups
+are explored;20% of fresh proposals use actual next-sample sign context and5%
+use the previously compiled address-coupled counter schedule. Existing negative
+counter/context results motivate bounded exploration rather than assumed gains.
+
+Stages are signed tone checks, approximate low-band information on five
+8192-byte IQ cases, then detailed short-video checks for the top8 proxies per
+topology plus random1/256 audits. The cheap proxy is not full CVBS acceptance.
+Topology diversity is retained in the frozen finalists. Every candidate stays
+inside the already independently interpreted/assembled C5 schedule family:
+LUT16/2KiB/eight slots/two bundles/two lookups/raw32K/IQ40/TX-only/DAC6[D,D]40.
+No CPU live sample processing, transformed ring, boundary reset or gain change.
+
+Finalists receive six capped48-iteration DAC fits and three output blends per
+fit. Non-counter models also test offline received-IQ teacher projections with
+mix0/0.25/0.5; unsupported counter teacher projection is not invented. All
+receive true-CVBS output supervision and the same fitting count/cap.
+The current pinned RANGE32 is included as a control and refinement base.
+
+Fresh full-field fine-lane PAL/NTSC selection includes offsets/occupancies
+**before** freezing one option per profile. Final signals use bases+401/+402,
+echo/fade+501, occupancy/offset+511..514 and carrier outages+531. Imagery and
+noise both vary independently. A veto never substitutes a runner-up from the
+same final data. Complete rows retain legacy PLL96, repaired PLL96, HC50 and
+floating IQ40 PLL controls. Recovery checks compare actual post-return lines;
+intentional carrier absence is not a healthy-video failure.
+
+Final range-improvement labels require no worse common usable C/N and weak
+sync than RANGE32, an actual threshold/sync improvement, acceptable echo/fade
+and offset results, and no worse missed recovery lines. Experimental tables
+remain available even after a veto, with that veto visible.
+
+## Reproduction
+
+Use the pinned research environment, OPENBLAS_NUM_THREADS=1 and
+OMP_NUM_THREADS=1. Output directories must be fresh. From `v4/`:
+
+```
+python tools/dsp_search/search_range.py --output /new/balanced --profile balanced --seed-base 30000 --evaluations 1000000
+python tools/dsp_search/search_range.py --output /new/range --profile range --seed-base 40000 --evaluations 1000000
+python tools/dsp_search/search_range.py --output /new/extreme --profile extreme --seed-base 50000 --evaluations 1000000
+python tools/dsp_search/refine_range.py --search /new/range --output /new/range-refined
+python tools/dsp_search/validate_range.py --search /new/range-refined --output /new/range-confirmed
+python tools/dsp_search/leaderboard.py /new/range/leaderboard.sqlite --pareto
+python tools/dsp_search/test_range_objective.py
+```
+
+Repeat refinement/confirmation for each profile. Large SQLite/teacher artifacts
+stay outside firmware. Results and exact model identities will be recorded once
+the running experiments complete. A synthetic label never replaces a matched
+strong/weak/dropout IQ and goggle comparison; no measured dBm or range gain is
+inferred without calibrated RF and the same source/channel/gain conditions.
