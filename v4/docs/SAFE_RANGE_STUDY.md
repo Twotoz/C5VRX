@@ -58,6 +58,14 @@ sync threshold, farther than2us from every expected sync start), separately
 from missing true pulses and normalized by expected H lines. This diagnostic
 does not change the predeclared selection/gates. Neither pulse count proves
 goggle lock; real sync separators also depend on pulse shape and filtering.
+On the already failed MAX, a retrospective fine-lane diagnostic at seed40401
+finds fewer spurious pulses than RANGE32 at C/N4/6, and none for either at30dB.
+Thus this metric alone does not explain the physical failure. MAX still fails
+the strong waveform, detail, level and colour-burst guards. The same synthetic
+signal can have zero missing sync starts and still have unacceptable video.
+The [retrospective rows](data/range_priority/max_false_sync_diagnostic/metrics.csv)
+are diagnostic reuse of old data, not new confirmation. VLP56 is included
+alongside all other controls in the fresh independent range confirmations.
 
 From `v4/`, with NumPy/SciPy/Numba and BLAS threads fixed to1:
 

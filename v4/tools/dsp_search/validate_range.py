@@ -19,8 +19,9 @@ PINNED=json.loads((Path(__file__).parents[1]/'range32_model.json').read_text())
 
 
 def evaluate(models,profile,seed,cnrs,stage,stress=False,rms=3,cfo_hz=1e6,loss_windows_us=(),pattern='bars'):
-    ref=S.F.load_reference('OVP56')
-    methods=[('OVP56',lambda raw:S.decode(raw,ref)),('RANGE32',lambda raw:O.decode(raw,PINNED))]+V.controls()
+    ref=S.F.load_reference('OVP56');vlp=S.F.load_reference('VLP56')
+    methods=[('OVP56',lambda raw:S.decode(raw,ref)),('VLP56',lambda raw:S.decode(raw,vlp)),
+             ('RANGE32',lambda raw:O.decode(raw,PINNED))]+V.controls()
     methods+=[(m['name'],lambda raw,m=m:O.decode(raw,m)) for m in models];rows=[]
     for standard in ('PAL','NTSC'):
         for cnr in cnrs:
@@ -81,7 +82,7 @@ def main():
              gates='strong reference/burst guards; weak H+V misses <= RANGE32; mean bounded H/V jitter and H width <= RANGE32 + 0.1 us')
              if J.PROFILES[profile].get('reference_guard') else None,
          decision='no automatic promotion; freeze once; no runner-up after final veto',
-         controls='OVP56,current RANGE32,HC50,original/repaired PLL96,floating IQ40 PLL'))
+         controls='OVP56,VLP56,current RANGE32,HC50,original/repaired PLL96,floating IQ40 PLL'))
     models=[]
     for r in json.loads((a.search/'frozen.json').read_text())['finalists']:
         m=r['model'];O.compile_model(m);m['name']='RNG-'+r['id'][:12];models.append(m)
