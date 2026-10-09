@@ -503,3 +503,48 @@ supported self-adapting design remains two programs selected by a robust,
 fold-aware C/N: the robust end analytic (EDGE + AutoFit), the sharp end the
 computed estimator (PAIR + AutoFit). On the board, FusionDemod with the
 phase C/N still needs its first run.
+
+## CVT FusionDemod: built and on the board (2026-10-09, night)
+
+The operator rejected a two-gear gearbox ("echte fusion, smooth"). The
+built design keeps one EDGE state machine (sync-safe, AutoFit) and moves
+only the 6-bit output of every word by alpha, in eighths, between:
+
+- the robust frequency level (alpha 0);
+- the least-squares (state, token) reconstruction (alpha 1).
+
+Alpha follows the median phase C/N. PAIR+AutoFit remains a top gear only
+above a phase C/N of 16.5, where it is still 1.5-3 dB sharper.
+
+`cvt_blend.py` (held-out seeds):
+
+| C/N | best alpha | blend | EDGE | PAIR |
+| --- | ---: | --- | --- | --- |
+| 2 dB | 0.3 | 1 missed / SINAD 4.6 | 2 / 4.0 | 55 missed |
+| 4 dB | 0.8 | 0 / 5.6 | 2 / 4.5 | 29 |
+| 6 dB | 0.45 | 0 / 6.1 | 0 / 5.4 | 16 |
+| 8-30 dB | 1.0 | SINAD 6.6-8.3 | | |
+
+**Analytic alternative to the learned output** (`cvt_mix_vs_learned.py`):
+
+- the Kalman-style innovation term `out = level + mix * kp * e` passes
+  noise straight to the output. Mix 0.5 gives 60 missed sync at 2-6 dB,
+  vs 1 for the learned output;
+- advance/avg outputs are similar;
+- the learned output is best at every level: SINAD 5.1 / 7.0 / 7.6 at
+  2-6 / 8-10 / 13-30 dB.
+
+The learned table stays: it is the computed estimator for the signal model,
+not a fit to one transmitter.
+
+**Board (fw19)**:
+
+- self-test passes;
+- alpha glided to 1/8 on a weak signal by itself;
+- a glide reload first halted the engine for 335 ms, because the software
+  synthesis ran in the window;
+- with per-program pristine caching, per-fit synthesis caching,
+  precomputed words and sentinel checks it takes **5.1 ms**.
+
+Picture continuity across glide steps, a real AutoFit fit and the
+behaviour from near to far still need the operator test with the VTX on.
