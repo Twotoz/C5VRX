@@ -310,6 +310,7 @@ void autofit_observe(const afc2_result_t *r, bool good, bool settled);
 bool autofit_apply_stopped(void);
 bool autofit_take_reload_request(void);
 void cvt_observe(int cnr_x10, bool fresh, int64_t now);
+void autofit_precompute(int kind);
 extern uint32_t s_load_us_last, s_load_us_max;
 void autofit_print(void);
 bool flight_reload_program(void);

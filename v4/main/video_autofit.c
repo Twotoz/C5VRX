@@ -90,34 +90,76 @@ bool autofit_active(void)
 
 /* Halted-engine window of a program load: the transport has called
  * c5v4_fit_set_program(kind), loaded the program and run the self-test. */
+/* Words for a program kind at the current fit and alpha. EDGE synthesis is
+ * cached per fit (software double math, ~100 ms on the C5), so a CVT glide
+ * step only re-blends. Runs outside the halted window when precomputed. */
+static uint16_t s_synth[1024], s_next[1024];
+static bool s_synth_ok, s_next_ok;
+static double s_synth_dev, s_synth_centre;
+static int s_next_kind, s_next_alpha;
+static double s_next_dev, s_next_centre;
+static bool s_next_fit;
+
+static bool build_words(int kind, const uint16_t *pristine, uint16_t out[1024],
+                        int *alpha_out, double *dev_out, double *centre_out)
+{
+    if (kind == C5V4_FIT_EDGE) {
+        double dev = s_fit_valid ? s_dev : EDGE_AF_PINNED_DEVIATION;
+        double centre = s_fit_valid ? s_centre : EDGE_AF_PINNED_CENTRE_HZ;
+        int alpha = s_alpha_target < 0 ? CVT_ALPHA_STEPS / 2 : s_alpha_target;
+        if (!s_synth_ok || s_synth_dev != dev || s_synth_centre != centre) {
+            edge_af_params_t p; edge_af_pinned(&p);
+            if (!edge_af_synthesize(&p, dev, centre, s_synth)) return false;
+            s_synth_ok = true; s_synth_dev = dev; s_synth_centre = centre;
+        }
+        memcpy(out, s_synth, sizeof(s_synth));
+        edge_af_blend(out, (double)alpha / CVT_ALPHA_STEPS);
+        for (unsigned i = 0; i < 1024; ++i)
+            out[i] = (uint16_t)((pristine[i] & 0xe000u) | (out[i] & 0x1fffu));
+        *alpha_out = alpha; *dev_out = dev; *centre_out = centre;
+        return true;
+    }
+    if (!s_fit_valid) return false;              /* pristine PAIR words = nominal fit */
+    pair_af_remap(pristine, s_dev, s_centre, out);
+    *alpha_out = -1; *dev_out = s_dev; *centre_out = s_centre;
+    return true;
+}
+
+/* Prepare the next load's words while video keeps running. */
+void autofit_precompute(int kind)
+{
+    s_next_ok = false;
+    if (!autofit_active()) return;
+    sync_channel();
+    const uint16_t *pristine = c5v4_fit_pristine_for(kind);
+    if (!pristine) return;                       /* first load: done in the window */
+    if (build_words(kind, pristine, s_next, &s_next_alpha, &s_next_dev, &s_next_centre)) {
+        s_next_ok = true; s_next_kind = kind; s_next_fit = s_fit_valid;
+    }
+}
+
+/* Halted-engine window of a program load: the transport has called
+ * c5v4_fit_set_program(kind), loaded the program and run the self-test. */
 bool autofit_apply_stopped(void)
 {
     s_loaded_kind = c5v4_fit_ready();
     s_loaded_valid = false; s_alpha_loaded = -1;
-    if (!autofit_active() || !s_loaded_kind) return false;
-    sync_channel();
-    const uint16_t *pristine = c5v4_fit_pristine();
-    if (s_loaded_kind == C5V4_FIT_EDGE) {
-        /* EDGE: AutoFit transitions (pinned nominal fit until one is
-         * measured) plus the CVT output blend at the current alpha. */
-        double dev = s_fit_valid ? s_dev : EDGE_AF_PINNED_DEVIATION;
-        double centre = s_fit_valid ? s_centre : EDGE_AF_PINNED_CENTRE_HZ;
-        int alpha = s_alpha_target < 0 ? CVT_ALPHA_STEPS / 2 : s_alpha_target;
-        edge_af_params_t p; edge_af_pinned(&p);
-        if (!edge_af_synthesize(&p, dev, centre, s_words)) return false;
-        edge_af_blend(s_words, (double)alpha / CVT_ALPHA_STEPS);
-        for (unsigned i = 0; i < 1024; ++i)
-            s_words[i] = (uint16_t)((pristine[i] & 0xe000u) | (s_words[i] & 0x1fffu));
-        if (!c5v4_fit_write_stopped(s_words)) return false;
-        s_alpha_loaded = alpha;
-        s_loaded_valid = s_fit_valid; s_loaded_dev = dev; s_loaded_centre = centre;
-        ++s_applied;
-        return true;
+    if (!autofit_active() || !s_loaded_kind) { s_next_ok = false; return false; }
+    int alpha; double dev, centre; bool fit;
+    if (s_next_ok && s_next_kind == s_loaded_kind) {
+        memcpy(s_words, s_next, sizeof(s_words));
+        alpha = s_next_alpha; dev = s_next_dev; centre = s_next_centre; fit = s_next_fit;
+    } else {
+        sync_channel();
+        if (!build_words(s_loaded_kind, c5v4_fit_pristine(), s_words, &alpha, &dev, &centre)) {
+            s_next_ok = false; return false;
+        }
+        fit = s_fit_valid;
     }
-    if (!s_fit_valid) return false;              /* pristine PAIR words = nominal fit */
-    pair_af_remap(pristine, s_dev, s_centre, s_words);
+    s_next_ok = false;
     if (!c5v4_fit_write_stopped(s_words)) return false;
-    s_loaded_valid = true; s_loaded_dev = s_dev; s_loaded_centre = s_centre;
+    s_alpha_loaded = alpha;
+    s_loaded_valid = fit; s_loaded_dev = dev; s_loaded_centre = centre;
     ++s_applied;
     return true;
 }

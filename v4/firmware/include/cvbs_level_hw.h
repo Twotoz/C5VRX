@@ -22,6 +22,8 @@ void c5v4_fit_set_program(int kind);
 void c5v4_fit_window(bool open);
 int c5v4_fit_ready(void);
 const uint16_t *c5v4_fit_pristine(void);
+/* Pristine words of a program kind once self-tested this boot, else NULL. */
+const uint16_t *c5v4_fit_pristine_for(int kind);
 bool c5v4_fit_write_stopped(const uint16_t words[1024]);
 void c5v4_fit_print(void);
 bool c5v4_decoder_recenter(int di_mcells, int dq_mcells);

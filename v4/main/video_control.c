@@ -1,5 +1,6 @@
 /* C5VRX-4: control responsibilities. */
 #include "video_internal.h"
+#include "cvbs_level_hw.h"
 
 static int signal_strength_score(const control_metrics_t *m, uint8_t gain);
 static bool copy_recent_endpoints(uint8_t *dst, size_t n);
@@ -606,13 +607,18 @@ void analog_agc_task(void *arg)
          * not in AUTO. */
         autofit_observe(&afc2, afc_valid && cnr_fresh && s_cnr_x10 >= FUSION_FIT_ABOVE_X10,
                         s_afc_video_locked || s_afc_mode != AFC_MODE_AUTO);
-        /* A new VTX fit that differs from the running words: one reload
-         * (rate-limited in autofit_observe), only on a good carrier. */
+        /* A new VTX fit or a CVT glide step: one reload (rate-limited in
+         * video_autofit.c). Words are computed first, while video runs, so
+         * the halted window only loads and writes. */
         cvt_observe(s_cnr_x10, cnr_fresh, control_now_us);
-        if (!s_menu_active && autofit_take_reload_request())
-            printf("AUTOFIT reload ok=%u\n", flight_reload_program());
+        if (!s_menu_active && autofit_take_reload_request()) {
+            bool pair_running = c5vrx4_pair_autofit_demod() || !s_fdemod.edge;
+            autofit_precompute(pair_running ? C5V4_FIT_PAIR : C5V4_FIT_EDGE);
+            printf("AUTOFIT reload ok=%u load_us=%lu\n", flight_reload_program(), (unsigned long)s_load_us_last);
+        }
         if (c5vrx4_edge_autofit_demod() && c5vrx4_fusion_enabled() && !s_menu_active && cnr_fresh &&
             fdemod_step(&s_fdemod, s_cnr_x10, control_now_us)) {
+            autofit_precompute(s_fdemod.edge ? C5V4_FIT_EDGE : C5V4_FIT_PAIR);
             bool ok = flight_swap_program(s_fdemod.edge);
             if (!ok) s_fdemod.edge = !s_fdemod.edge;
             ++s_fdemod_swaps;

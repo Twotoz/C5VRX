@@ -12,6 +12,7 @@
 #include "soc/bitscrambler_struct.h"
 #include "hal/bitscrambler_ll.h"
 #include <stdio.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "esp_err.h"
@@ -77,6 +78,11 @@ void c5v4_level_hw_stop(void)
 static int fit_kind;                  /* C5V4_FIT_* of the program being loaded */
 static bool fit_verified, fit_window;
 static uint16_t fit_pristine[1024], fit_scratch[1024];
+/* Per-program pristine table, self-tested once per boot: later loads (CVT
+ * glide, swaps) only compare against it, keeping the halted window short
+ * (board 2026-10-09: 335 ms with a full software synthesis inside it). */
+static uint16_t kind_pristine[3][1024];
+static bool kind_verified[3];
 static uint32_t fit_loads, fit_writes, fit_faults;
 void c5v4_fit_set_program(int kind) { c5v4_level_hw_lock(); fit_kind = kind; c5v4_level_hw_unlock(); }
 void c5v4_fit_window(bool open) { c5v4_level_hw_lock(); fit_window = open; c5v4_level_hw_unlock(); }
@@ -89,7 +95,9 @@ static void fit_prepare(void)
     if (!fit_kind || bitscrambler_ll_get_lut_width(&BITSCRAMBLER, BITSCRAMBLER_DIR_TX) != 1) return;
     unsigned bad = 0;
     for (unsigned i = 0; i < 1024; ++i) fit_pristine[i] = read_entry(i);
-    if (fit_kind == C5V4_FIT_EDGE) {
+    if (kind_verified[fit_kind]) {
+        for (unsigned i = 0; i < 1024; ++i) if (fit_pristine[i] != kind_pristine[fit_kind][i]) ++bad;
+    } else if (fit_kind == C5V4_FIT_EDGE) {
         edge_af_params_t p; edge_af_pinned(&p);
         if (!edge_af_synthesize(&p, EDGE_AF_PINNED_DEVIATION, EDGE_AF_PINNED_CENTRE_HZ, fit_scratch)) return;
         for (unsigned i = 0; i < 1024; ++i)
@@ -102,6 +110,12 @@ static void fit_prepare(void)
     mapped = mapped && read_entry(40) == fit_pristine[40];
     fit_verified = !bad && mapped;
     ++fit_loads;
+    if (fit_verified && !kind_verified[fit_kind]) {
+        memcpy(kind_pristine[fit_kind], fit_pristine, sizeof(fit_pristine));
+        kind_verified[fit_kind] = true;
+    } else if (fit_verified) {
+        return;                       /* fast path: no log per glide step */
+    }
     printf("AUTOFIT selftest program=%s result=%s mismatched_words=%u write_mapping=%s\n",
            fit_kind == C5V4_FIT_EDGE ? "EDGE" : "PAIR", fit_verified ? "pass" : "refused", bad,
            mapped ? "pass" : "fail");
@@ -110,6 +124,8 @@ static void fit_prepare(void)
 int c5v4_fit_ready(void)
 { c5v4_level_hw_lock(); int k = fit_verified ? fit_kind : 0; c5v4_level_hw_unlock(); return k; }
 const uint16_t *c5v4_fit_pristine(void) { return fit_pristine; }
+const uint16_t *c5v4_fit_pristine_for(int kind)
+{ return kind > 0 && kind < 3 && kind_verified[kind] ? kind_pristine[kind] : NULL; }
 bool c5v4_fit_write_stopped(const uint16_t words[1024])
 {
     c5v4_level_hw_lock();
