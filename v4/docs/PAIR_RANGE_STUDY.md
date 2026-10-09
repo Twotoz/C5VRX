@@ -300,3 +300,75 @@ Continuity of a live swap is not yet measured on the board.
 - **Earlier negatives:** static or adaptive output multipliers, unbias, the
   amplitude objective (more real clicks), lane fusion (PARLIO RX has 8 data
   lines) and the extra-fine lane.
+
+## APEX study (PR #190 review, Twotoz, 2026-10-09)
+
+Scripts: `tools/dsp_search/apex_tiers.py`, `apex_dac.py`, `apex_fades.py`,
+`pair_autofit.py`. Evidence: `docs/data/apex/`. All cases are AFC-centred
+(porch at -436 kHz within 50 kHz), with randomized VTX deviation, DC,
+I/Q and content. Test seeds 461000/462000; confirmation seeds
+471000-473000.
+
+### Three tiers on identical quantized IQ
+
+Tier A is a causal floating PLL (the tuned theory winner, every 40 MS/s
+sample, the same AutoFit output remap):
+
+| C/N | A teacher | A adaptive loop | B EDGE+AF | C PAIR+AF |
+| --- | --- | --- | --- | --- |
+| 2-4 dB | 56-69 missed | **1-9 missed** | 4-5 | 23-66 |
+| 6-8 dB | 4-23 missed | **0, SINAD 6.7-9.2** | 0 / 4.7-5.9 | 0-4 / 6.2-7.9 |
+| 10-30 dB | 0 / **14-16 dB** | 0 / 14-16 | 0 / 5-7 | 0 / 8-10 |
+
+The quantized IQ holds about 6 dB more video SINAD than PAIR reaches, so
+A is far above C.
+
+Teacher ablations locate the loss in the address budget, not in the
+schedule:
+
+- a 50-ns update with retuned gains keeps 14-15 dB;
+- 32 phase states cost about 0.7 dB;
+- 300 kHz frequency steps cost nothing;
+- phase 8 or 4 destroys it;
+- frequency-only output (no innovation term) costs about 7 dB.
+
+A good tracker needs about 5 phase bits, 5 frequency bits and 5
+observation bits. The LUT has 7 state bits plus 3 token bits:
+
+- PAIR has no frequency memory, so it breaks at the edge;
+- EDGE has 4 phases and 8 angles, so it looks grainy.
+
+In the review's terms this is "A >> C, B ~ C": the hardware budget is the
+bottleneck, not the search.
+
+### APEX-DAC (EDGE transitions + learned (state, token) DAC6)
+
+On held-out simulation it is never worse than EDGE:
+
+- missed sync 3 vs 4 at 2 dB and 4 vs 5 at 4 dB;
+- +0.3 to +2.5 dB SINAD;
+- false sync +0.04/line at 2 dB.
+
+On real board static IQ, however, the click increase is **+12.0 vs +0.49**
+(PAIR +12.6). The review's warning is confirmed: an output innovation that
+helps waveform error also passes FM clicks, and the simulation
+underestimates that. Partial blends give a smooth trade-off, not a free
+gain: blend 0.15 adds 0.37 clicks for up to +0.5 dB. **Rejected** by the
+real-IQ veto (it must not exceed RANGE32's +7.53).
+
+### Sub-ms fades
+
+A carrier outage (noise remains) of 50-500 us at C/N 10-30 dB costs every
+program less than half a line beyond the outage itself (under 32 us). EDGE
+recovers best. All 50-ns FSMs meet the review's <1 ms re-stabilization
+criterion in simulation. FusionDemod's 50-ms supervisor therefore does not
+need to react to short fades; it only selects the C/N regime.
+
+### Consequence
+
+Within the 2 KiB / 10-bit budget, the best measured combination is
+FusionDemod with PAIR+AutoFit (sharp, no clicks on a good carrier) and
+EDGE+AutoFit (sync below 7 dB). The single-program APEX goal is not met by
+any tested LUT. Reaching the teacher would need more address bits per
+lookup, which this schedule does not have. The answer is a different
+schedule, not more search.

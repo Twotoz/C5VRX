@@ -1,0 +1,240 @@
+{
+ "train_seeds": [
+  451000,
+  452000
+ ],
+ "test_seeds": [
+  461000,
+  462000
+ ],
+ "strong_weight": 1.0,
+ "regularization": 0.3,
+ "edge_weight": 4.0,
+ "table": {
+  "2/PAIR+AF": {
+   "missed": 66,
+   "sinad": 1.955813339178108,
+   "false": 0.3636363636363636
+  },
+  "2/EDGE+AF": {
+   "missed": 4,
+   "sinad": 4.98676967606495,
+   "false": 0.16666666666666666
+  },
+  "2/APEX-DAC": {
+   "missed": 1,
+   "sinad": 4.338302557017591,
+   "false": 0.2196969696969697
+  },
+  "2/FUSION": {
+   "missed": 4,
+   "sinad": 4.98676967606495,
+   "false": 0.16666666666666666
+  },
+  "2/FUSION-APEX": {
+   "missed": 1,
+   "sinad": 4.338302557017591,
+   "false": 0.2196969696969697
+  },
+  "4/PAIR+AF": {
+   "missed": 23,
+   "sinad": 3.839825905859288,
+   "false": 0.5681818181818182
+  },
+  "4/EDGE+AF": {
+   "missed": 5,
+   "sinad": 4.502109004189768,
+   "false": 0.0909090909090909
+  },
+  "4/APEX-DAC": {
+   "missed": 4,
+   "sinad": 5.0614049720655885,
+   "false": 0.13636363636363633
+  },
+  "4/FUSION": {
+   "missed": 5,
+   "sinad": 4.502109004189768,
+   "false": 0.0909090909090909
+  },
+  "4/FUSION-APEX": {
+   "missed": 4,
+   "sinad": 5.0614049720655885,
+   "false": 0.13636363636363633
+  },
+  "6/PAIR+AF": {
+   "missed": 4,
+   "sinad": 6.186802783555531,
+   "false": 0.4848484848484847
+  },
+  "6/EDGE+AF": {
+   "missed": 0,
+   "sinad": 4.7261529015536645,
+   "false": 0.007575757575757576
+  },
+  "6/APEX-DAC": {
+   "missed": 0,
+   "sinad": 6.089323163512788,
+   "false": 0.015151515151515152
+  },
+  "6/FUSION": {
+   "missed": 0,
+   "sinad": 4.7261529015536645,
+   "false": 0.007575757575757576
+  },
+  "6/FUSION-APEX": {
+   "missed": 0,
+   "sinad": 6.089323163512788,
+   "false": 0.015151515151515152
+  },
+  "8/PAIR+AF": {
+   "missed": 0,
+   "sinad": 7.929937356298706,
+   "false": 0.12121212121212122
+  },
+  "8/EDGE+AF": {
+   "missed": 0,
+   "sinad": 5.901183471541377,
+   "false": 0.0
+  },
+  "8/APEX-DAC": {
+   "missed": 0,
+   "sinad": 7.168364697214965,
+   "false": 0.0
+  },
+  "8/FUSION": {
+   "missed": 0,
+   "sinad": 5.901183471541377,
+   "false": 0.0
+  },
+  "8/FUSION-APEX": {
+   "missed": 0,
+   "sinad": 7.168364697214965,
+   "false": 0.0
+  },
+  "10/PAIR+AF": {
+   "missed": 0,
+   "sinad": 8.385772065578253,
+   "false": 0.03787878787878788
+  },
+  "10/EDGE+AF": {
+   "missed": 0,
+   "sinad": 4.821913160049545,
+   "false": 0.0
+  },
+  "10/APEX-DAC": {
+   "missed": 0,
+   "sinad": 7.167687038516711,
+   "false": 0.0
+  },
+  "10/FUSION": {
+   "missed": 0,
+   "sinad": 8.385772065578253,
+   "false": 0.03787878787878788
+  },
+  "10/FUSION-APEX": {
+   "missed": 0,
+   "sinad": 8.385772065578253,
+   "false": 0.03787878787878788
+  },
+  "13/PAIR+AF": {
+   "missed": 0,
+   "sinad": 7.864594145922919,
+   "false": 0.007575757575757576
+  },
+  "13/EDGE+AF": {
+   "missed": 0,
+   "sinad": 6.954989409002096,
+   "false": 0.0
+  },
+  "13/APEX-DAC": {
+   "missed": 0,
+   "sinad": 8.991767292628873,
+   "false": 0.0
+  },
+  "13/FUSION": {
+   "missed": 0,
+   "sinad": 7.864594145922919,
+   "false": 0.007575757575757576
+  },
+  "13/FUSION-APEX": {
+   "missed": 0,
+   "sinad": 7.864594145922919,
+   "false": 0.007575757575757576
+  },
+  "16/PAIR+AF": {
+   "missed": 0,
+   "sinad": 10.226259334921822,
+   "false": 0.0
+  },
+  "16/EDGE+AF": {
+   "missed": 0,
+   "sinad": 6.3005265892233515,
+   "false": 0.0
+  },
+  "16/APEX-DAC": {
+   "missed": 0,
+   "sinad": 7.85223217968838,
+   "false": 0.0
+  },
+  "16/FUSION": {
+   "missed": 0,
+   "sinad": 10.226259334921822,
+   "false": 0.0
+  },
+  "16/FUSION-APEX": {
+   "missed": 0,
+   "sinad": 10.226259334921822,
+   "false": 0.0
+  },
+  "20/PAIR+AF": {
+   "missed": 0,
+   "sinad": 9.279558484476972,
+   "false": 0.0
+  },
+  "20/EDGE+AF": {
+   "missed": 0,
+   "sinad": 5.557556932766499,
+   "false": 0.0
+  },
+  "20/APEX-DAC": {
+   "missed": 0,
+   "sinad": 8.036076116574383,
+   "false": 0.0
+  },
+  "20/FUSION": {
+   "missed": 0,
+   "sinad": 9.279558484476972,
+   "false": 0.0
+  },
+  "20/FUSION-APEX": {
+   "missed": 0,
+   "sinad": 9.279558484476972,
+   "false": 0.0
+  },
+  "30/PAIR+AF": {
+   "missed": 0,
+   "sinad": 9.807082058655439,
+   "false": 0.0
+  },
+  "30/EDGE+AF": {
+   "missed": 0,
+   "sinad": 5.137827471411215,
+   "false": 0.0
+  },
+  "30/APEX-DAC": {
+   "missed": 0,
+   "sinad": 7.371042067570827,
+   "false": 0.0
+  },
+  "30/FUSION": {
+   "missed": 0,
+   "sinad": 9.807082058655439,
+   "false": 0.0
+  },
+  "30/FUSION-APEX": {
+   "missed": 0,
+   "sinad": 9.807082058655439,
+   "false": 0.0
+  }
+ }
+}
