@@ -14651,11 +14651,12 @@
    },
    "sha256": "249d670670f54bed4b7eebc275b50c1e0a4f2877a135586de0a1881e383da261",
    "status": "independent_range_tradeoff",
-   "selectable": true,
+   "selectable": false,
    "vetoes": [
     "weak_sync_worse_than_EDGE",
     "strong_detail_not_consistently_PAIR",
-    "physical_CVBS_and_timing_unverified"
+    "physical_CVBS_and_timing_unverified",
+    "operator_board_high_amplitude_picture_failure"
    ],
    "evidence": "docs/OMEGA_BELIEF_STUDY.md",
    "experimental_only": true

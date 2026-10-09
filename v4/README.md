@@ -16,12 +16,15 @@ of merging. The V4 alpha workflow and flasher build this project independently.
 
 [Ω belief-state research](docs/OMEGA_BELIEF_STUDY.md) adds a causal folded-IQ
 Bayesian reference, joint recurrent-state/observation/DAC optimization and
-independent confirmation. **OMEGA BELIEF LAB/value13** is an opt-in research
-transducer, not a demonstrated replacement. It runs one shared LUT continuously,
+independent confirmation. **OMEGA BELIEF LAB/value13 is quarantined** after
+the operator reported poor high-amplitude video. Saved value13 falls back
+to RANGE32 and Y skips it; its model and evidence remain reproducible.
+It is not a demonstrated replacement. It runs one shared LUT continuously,
 with no C/N gearbox or CPU sample loop. Stored AutoFit remaps DAC codes only
 at deliberate program load; new fits wait for the next load. Existing defaults
 and rollback modes retain their values. Read the measured vetoes and physical
-test instructions before bench testing this mode.
+test instructions and the [amplitude/counter follow-up](docs/AMPLITUDE_COUNTER_STUDY.md)
+before revisiting this model.
 
 
 The operator-requested [range-priority options](docs/RANGE_PRIORITY_STUDY.md)

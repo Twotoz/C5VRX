@@ -1,0 +1,62 @@
+{
+  "audited_parent": "1604de3c34ba392bd3cb16026eec03ad2206628d",
+  "idf": "v6.0.2",
+  "gcc": "esp-15.2.0_20251204",
+  "assembler": [
+    {
+      "source": "counter/COUNTER_DIFF_EXACT128.bsasm",
+      "source_sha256": "f3cf87cb25f910110bc9f55e54dc328741f36a8a0218c0dd8095aab8df8b4f5a",
+      "assembled_sha256": "2baa5af75f372972b62728122c403844de061b105b3e5eec49eee389d08d57c8",
+      "assembler_exit": 0
+    },
+    {
+      "source": "counter/COUNTER_DIFF_CONTEXT64.bsasm",
+      "source_sha256": "f697ca6dd586c010b85a0678ce1529c16d86cb41964ac304e6310d39c5518b8d",
+      "assembled_sha256": "760885eb0e5e62619303b6b3b8b91b89cd687fa0bd7301af68a2d1d13eacf083",
+      "assembler_exit": 0
+    },
+    {
+      "source": "refined/selected.bsasm",
+      "source_sha256": "639937784ef7ef1228a5f821235a2756a43d90af35508330574056c5bb7d6533",
+      "assembled_sha256": "46a3e9240f03c3f9c6308e67d74f4006febf49670efc00133ee3eda2ca360e9b",
+      "assembler_exit": 0
+    },
+    {
+      "source": "history/selected.bsasm",
+      "source_sha256": "779bfbf54e1b24130a2512c9a42c9cdc8cde503bb4c401539c154605abbc7352",
+      "assembled_sha256": "b4560eca9b7871a4b1f4f02887d06054a238d90675d2d2860530772aa416f5f4",
+      "assembler_exit": 0
+    },
+    {
+      "source": "quality/selected.bsasm",
+      "source_sha256": "2ddc7cf2b38616da2a5a8a65a26785b06431da67a9d21a4f2cf6ce9149bbf697",
+      "assembled_sha256": "143369232a31d0c1611bea63e4b38785d15d0cbbca814b11a376508cf21b2eec",
+      "assembler_exit": 0
+    }
+  ],
+  "firmware": {
+    "c5vrx4.bin": {
+      "bytes": 1304288,
+      "sha256": "9018325d806e46bee86bce0e71e5a092285344f646927e67aa8d4f416bcbadda"
+    },
+    "bootloader/bootloader.bin": {
+      "bytes": 23232,
+      "sha256": "3f62f1f207b6aaee9a1c76968ad84395ca26cdd1b8836c96d05fa57df35b3b4a"
+    },
+    "partition_table/partition-table.bin": {
+      "bytes": 3072,
+      "sha256": "73c0b5c3e5fcba3a151cc70c453c93dd5f4798899e7f2f8cca76da1f32ffc501"
+    }
+  },
+  "independent_stimulus_cases": 224,
+  "paired_model_rows": 1120,
+  "all_pair_iq_hashes_equal": true,
+  "trained_or_analytic_candidates": 28,
+  "counter_tests": 4,
+  "host_c_regressions": 23,
+  "firmware_build_pass": true,
+  "research_tx20_integrated": false,
+  "physical_clock_voltage_range_verified": false,
+  "operator_omega_board_report": "negative; no new raw capture supplied",
+  "scores_synthetic": true
+}

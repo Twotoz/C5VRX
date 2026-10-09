@@ -85,6 +85,14 @@ int main(int argc, char **argv)
         expected = C5VRX4_DEMOD_RANGE32;
 #endif
     assert(c5vrx4_demodulator() == expected);
+#if C5VRX4_RANGE_OPTION_COUNT >= 6
+    if (saved_demod == C5VRX4_DEMOD_RANGE_OPTION5 &&
+        !strcmp(c5vrx4_range_options[5].label, "OMEGA BELIEF LAB") &&
+        !c5vrx4_range_options[5].selectable) {
+        assert(expected == C5VRX4_DEMOD_RANGE32);
+        assert(!c5vrx4_omega_demod());
+    }
+#endif
     assert(c5vrx4_lane_mode() == C5VRX4_LANES_ULTRAFINE && !strcmp(c5vrx4_lane_mode_name(), "fixed_ultrafine"));
     assert(c5vrx4_reference_demod());
     if (c5vrx4_omega_demod()) {

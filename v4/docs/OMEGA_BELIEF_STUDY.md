@@ -1,5 +1,10 @@
 # Ω belief-state demodulation experiment, PR #190
 
+**2026-10-09 operator follow-up: Ω is quarantined after reported poor
+high-amplitude board video. Saved value13 restores RANGE32 and Y skips it.
+The original model/source/results remain intact. See
+[amplitude and counter-history audit](AMPLITUDE_COUNTER_STUDY.md).**
+
 This extends C5VRX by Twotoz and the C5VRX contributors. Canonical source:
 https://github.com/Twotoz/C5VRX ; official site and Discord invite:
 https://twotoz.github.io/C5VRX/ . Audit started at PR head

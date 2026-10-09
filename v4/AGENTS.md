@@ -1,5 +1,17 @@
 # Isolated C5VRX-4 integration ledger
 
+## Ω physical failure follow-up, 2026-10-09
+
+The operator reports ugly video and high-amplitude failures with Ω. Value13
+is quarantined; stored13 restores RANGE32 and Y skips it. Preserve its LUT,
+compiler artifacts and negative evidence. Defaults and EDGE/PAIR/Fusion
+controls are unchanged. Counter-difference/history sources are research only:
+they emit one byte/span and require TX20, not the current duplicate-DAC TX40
+profile. Assembly/dataflow checks cannot establish that new clock profile
+or physical range. Do not silently expose these sources through the old
+transport, promote them on SINAD alone, or restore Ω without new board evidence.
+
+
 ## Operator-approved PAIR range LAB, 2026-10-08
 
 `docs/PAIR_RANGE_STUDY.md` records the PAIR4411 schedule: the decoder address
