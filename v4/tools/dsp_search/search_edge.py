@@ -62,7 +62,7 @@ def screen(seed):
         for std in ('PAL', 'NTSC'):
             cfo = float(rng.uniform(.5e6, 1.5e6)); rms = L.scale(3) * float(rng.uniform(.85, 1.15))
             # Domain randomization: other VTXs, cameras and receiver boards.
-            hw = dict(deviation=float(rng.uniform(.75, 1.35)),
+            hw = dict(deviation=float(rng.uniform(.6, 1.4)),
                       dc=complex(*rng.uniform(-.33, .33, 2)), iq_gain=float(rng.uniform(.95, 1.05)),
                       iq_phase_deg=float(rng.uniform(-3, 3)),
                       pattern=('bars', 'zoneplate', 'checker', 'texture')[int(rng.integers(4))])

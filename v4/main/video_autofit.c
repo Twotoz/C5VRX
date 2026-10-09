@@ -20,6 +20,13 @@
 #define AF_WINDOWS       16u
 #define AF_SPREAD_KHZ    250
 #define AF_RELOAD_GAP_US 30000000LL
+/* Before the first fit on a channel: the nominal transfer (deviation 1,
+ * AFC-centred), not the pinned word fit. The pinned 1.23 came from a wrong
+ * estimate; the AFC sync/porch measurement on board IQ gives about 0.69 for
+ * the operator VTX and reproduces simulated deviations within 1 %
+ * (tools/afc_snapshot_probe.c, 2026-10-09). */
+#define AF_FALLBACK_DEVIATION 1.0
+#define AF_FALLBACK_CENTRE_HZ 1.0e6
 
 typedef struct { uint16_t version, freq_mhz; int32_t dev_x10000, centre_hz; } af_saved_t;
 #define AF_SAVED_VERSION 2u
@@ -99,13 +106,14 @@ static double s_synth_dev, s_synth_centre;
 static int s_next_kind, s_next_alpha;
 static double s_next_dev, s_next_centre;
 static bool s_next_fit;
+static uint16_t s_next_freq;
 
 static bool build_words(int kind, const uint16_t *pristine, uint16_t out[1024],
                         int *alpha_out, double *dev_out, double *centre_out)
 {
     if (kind == C5V4_FIT_EDGE) {
-        double dev = s_fit_valid ? s_dev : EDGE_AF_PINNED_DEVIATION;
-        double centre = s_fit_valid ? s_centre : EDGE_AF_PINNED_CENTRE_HZ;
+        double dev = s_fit_valid ? s_dev : AF_FALLBACK_DEVIATION;
+        double centre = s_fit_valid ? s_centre : AF_FALLBACK_CENTRE_HZ;
         int alpha = s_alpha_target < 0 ? CVT_ALPHA_STEPS / 2 : s_alpha_target;
         if (!s_synth_ok || s_synth_dev != dev || s_synth_centre != centre) {
             edge_af_params_t p; edge_af_pinned(&p);
@@ -134,7 +142,7 @@ void autofit_precompute(int kind)
     const uint16_t *pristine = c5v4_fit_pristine_for(kind);
     if (!pristine) return;                       /* first load: done in the window */
     if (build_words(kind, pristine, s_next, &s_next_alpha, &s_next_dev, &s_next_centre)) {
-        s_next_ok = true; s_next_kind = kind; s_next_fit = s_fit_valid;
+        s_next_ok = true; s_next_kind = kind; s_next_fit = s_fit_valid; s_next_freq = s_freq;
     }
 }
 
@@ -146,11 +154,23 @@ bool autofit_apply_stopped(void)
     s_loaded_valid = false; s_alpha_loaded = -1;
     if (!autofit_active() || !s_loaded_kind) { s_next_ok = false; return false; }
     int alpha; double dev, centre; bool fit;
-    if (s_next_ok && s_next_kind == s_loaded_kind) {
+    /* Use precomputed words only if nothing they depend on changed since
+     * (review 2026-10-09: channel, program, fit and alpha keyed). */
+    sync_channel();
+    bool fresh = s_next_ok && s_next_kind == s_loaded_kind && s_next_freq == s_freq &&
+                 s_next_fit == s_fit_valid;
+    if (fresh && s_loaded_kind == C5V4_FIT_EDGE) {
+        int alpha_now = s_alpha_target < 0 ? CVT_ALPHA_STEPS / 2 : s_alpha_target;
+        double dev = s_fit_valid ? s_dev : AF_FALLBACK_DEVIATION;
+        double centre = s_fit_valid ? s_centre : AF_FALLBACK_CENTRE_HZ;
+        fresh = s_next_alpha == alpha_now && s_next_dev == dev && s_next_centre == centre;
+    } else if (fresh) {
+        fresh = !s_fit_valid || (s_next_dev == s_dev && s_next_centre == s_centre);
+    }
+    if (fresh) {
         memcpy(s_words, s_next, sizeof(s_words));
         alpha = s_next_alpha; dev = s_next_dev; centre = s_next_centre; fit = s_next_fit;
     } else {
-        sync_channel();
         if (!build_words(s_loaded_kind, c5v4_fit_pristine(), s_words, &alpha, &dev, &centre)) {
             s_next_ok = false; return false;
         }
@@ -177,8 +197,10 @@ bool autofit_take_reload_request(void)
 }
 
 /* CVT glide (operator 2026-10-09): alpha follows the median phase C/N of
- * the last five fresh windows; a two-step change reloads at once, a
- * one-step change once it held for 1 s; at most one glide reload per s. */
+ * the last five fresh windows. Every reload is a short halted window whose
+ * analog effect is still unmeasured (review 2026-10-09), so glide calmly:
+ * a two-step change reloads at once, a one-step change once it held for
+ * 3 s, and at most one glide reload every 2 s. */
 void cvt_observe(int cnr_x10, bool fresh, int64_t now)
 {
     if (!c5vrx4_edge_autofit_demod() || !fresh) return;
@@ -190,8 +212,8 @@ void cvt_observe(int cnr_x10, bool fresh, int64_t now)
     if (s_loaded_kind != C5V4_FIT_EDGE || s_alpha_loaded < 0) return;
     int diff = abs(target - s_alpha_loaded);
     if (target != s_alpha_pending) { s_alpha_pending = target; s_alpha_since_us = now; }
-    bool due = diff >= 2 || (diff == 1 && now - s_alpha_since_us >= 1000000LL);
-    if (due && now - s_alpha_reload_us >= 1000000LL) s_cvt_req = true;
+    bool due = diff >= 2 || (diff == 1 && now - s_alpha_since_us >= 3000000LL);
+    if (due && now - s_alpha_reload_us >= 2000000LL) s_cvt_req = true;
 }
 
 void autofit_observe(const afc2_result_t *r, bool good, bool settled)

@@ -33,7 +33,7 @@ def cases(seed, per=4, afc=False):
         for k in range(per):
             std = ('PAL', 'NTSC')[k % 2]
             cfo = float(rng.uniform(.5e6, 1.5e6)); rms = L.scale(3) * float(rng.uniform(.85, 1.15))
-            dev = float(rng.uniform(.75, 1.35))
+            dev = float(rng.uniform(.6, 1.4))
             if afc:  # AFC v2 centres the porch on -436 kHz within its 50 kHz deadband
                 cfo = -436e3 + dev * 1436e3 + float(rng.uniform(-5e4, 5e4))
             hw = dict(deviation=dev, dc=complex(*rng.uniform(-.2, .2, 2)),
