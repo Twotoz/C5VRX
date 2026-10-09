@@ -24,7 +24,10 @@ def teacher_decode(raw, p, dev, centre, stride=1):
     # trace() runs at 40 MS/s (rad per 25 ns); the DAC transfer is per 50 ns.
     out = cn + (2 * freq / stride - cm) / dev
     code = np.rint(np.clip((out * 128 / np.pi - S.H.B.P.OFFSET) * S.H.B.P.SCALE, 0, 63)).astype(int)
-    return S.H.B.D.goggle(np.repeat(S.H.B.DAC_VOLTS[code], stride)[:len(raw)])
+    # Same latency as the LUT executor (2 samples): a fixed calibration lag
+    # otherwise favours the lower-latency teacher (found 2026-10-09).
+    y = np.zeros(len(raw)); y[2:] = np.repeat(S.H.B.DAC_VOLTS[code], stride)[:len(raw) - 2]
+    return S.H.B.D.goggle(y)
 
 
 def score(y, c):

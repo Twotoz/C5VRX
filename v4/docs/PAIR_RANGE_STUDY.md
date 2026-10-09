@@ -372,3 +372,70 @@ EDGE+AutoFit (sync below 7 dB). The single-program APEX goal is not met by
 any tested LUT. Reaching the teacher would need more address bits per
 lookup, which this schedule does not have. The answer is a different
 schedule, not more search.
+
+## APEX 2.0 deep research and a correction (2026-10-09, later the same day)
+
+### Correction: the teacher's "6 dB headroom" was mostly a latency artifact
+
+The LUT executor emits span k's code at samples 2k+2..2k+3. The software
+teachers emitted it at 2k..2k+1, and the scoring uses a fixed calibration
+lag (taken from OVP56). A demod 50 ns earlier therefore scored higher.
+
+An exactly LUT-equivalent quantized FSM matched the LUT's codes on 99.93 %
+of samples, yet scored 1.4 dB higher until its latency was matched. After
+matching it equals the LUT bit for bit in score.
+
+Re-measured with latency matched (`tiers_latency_matched.json`,
+`teacher20.json`):
+
+- **teacher20** (50-ns decisions from sample A only, 6-bit DAC, loop gain
+  scheduled causally from the previous window's envelope C/N, gains tuned
+  on training seeds): 0 missed sync at 4-8 dB and SINAD about 11 dB at
+  >=13 dB, but only with the output innovation term.
+- The 40 MS/s teacher with oracle gain choice: 13-14 dB at strong signal.
+  That gain needs every 40 MS/s sample; the 25-ns single-lookup schedule
+  is already negative.
+
+The earlier statement "about 6 dB more video SINAD than PAIR, address
+budget is the bottleneck" is withdrawn.
+
+### The real frontier: detail vs clicks
+
+On the same held-out strong cases and the real board static captures:
+
+| model | SINAD (C/N >= 13 dB) | real click increase |
+| --- | ---: | ---: |
+| PAIR+AutoFit | 9.3 | 14.3 |
+| teacher20, fast loop + innovation | 9.8-11.4 | 10.8-18.0 |
+| teacher20, innovation clipped to +-0.05..0.1 | 6.3-6.9 | 1.7-5.2 |
+| teacher20, no innovation (click-safe) | 5.7-5.9 | 0.5-1.3 |
+| EDGE+AutoFit | about 5.5-6 | 0.49 |
+
+Detail and click immunity trade along one frontier, and clipping the
+innovation only moves along it. The two LUT models already sit near its two
+ends: PAIR at the detail end, EDGE at the click-safe end. The 10-bit
+address budget is not the limiting factor; the noise/information trade-off
+is.
+
+The best self-adapting policy is therefore an operating point chosen by
+the measured C/N: FusionDemod (PAIR+AutoFit above 9 dB, EDGE+AutoFit below
+7 dB). The real-IQ click veto comes from the only weak capture available,
+which predates working DCO (-2.5 cells DC); it may over-penalize detail
+models and needs new captures with DCO on.
+
+### Other APEX 2.0 results
+
+- **Derotated (state-conditioned) tokens for the second-order loop**
+  (`apex_explore.py`): the decoder address holds the top 1-2 phase bits and
+  the token bins the relative angle, uniform or companded. No gain over
+  absolute tokens. This repeats the first-order negative.
+- **8 phases x 32 frequencies x 4 tokens** (8 state + 2 token bits, legal):
+  - before the latency correction it looked like PAIR detail plus EDGE
+    sync;
+  - as an actual LUT (`apex_unified.py`, PAIR4411 tokens, AutoFit) it gives
+    strong-signal SINAD 6.0, about EDGE's level, with more false sync at
+    2 dB;
+  - the 4 x 32 x 8 EDGE allocation remains the better robust end.
+- **Teacher40 ablations** (stride, phase/frequency quantization) were taken
+  with the unmatched latency. Their relative ordering stands (phase >= 32,
+  frequency steps irrelevant); their absolute values are inflated.
