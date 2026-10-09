@@ -6,7 +6,7 @@ from pathlib import Path
 from compile_overlay import build, cost
 
 ROOT = Path(__file__).resolve().parents[1]
-MAX_OPTIONS = 5
+MAX_OPTIONS = 6
 
 
 def identity(model):
@@ -26,7 +26,7 @@ def identity(model):
 
 def render(options):
     if len(options) > MAX_OPTIONS:
-        raise ValueError('at most five explicit LAB options')
+        raise ValueError('at most six explicit LAB options')
     entries, programs, seen = [], {}, set()
     for index, option in enumerate(options):
         label, model = option['label'], option['model']
@@ -55,8 +55,8 @@ def render(options):
         if type(selectable) is not bool:
             raise ValueError('explicit boolean selection gate required')
         entries.append('    {' + ', '.join([
-            json.dumps(label), json.dumps(digest[:12]), str(phases.bit_length() - 1),
-            str(phases), str(tokens), str(resource['states'] // phases),
+            json.dumps(label), json.dumps(digest[:12]), str(0 if p.get('belief_fsm') else phases.bit_length() - 1),
+            str(0 if p.get('belief_fsm') else phases), str(tokens), str(0 if p.get('belief_fsm') else resource['states'] // phases),
             str(int(selectable)),
         ]) + '},')
         programs[f'c5vrx4_range_option{index}.bsasm'] = build(model)

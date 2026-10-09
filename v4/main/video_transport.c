@@ -21,6 +21,9 @@ BITSCRAMBLER_PROGRAM(s_range_option3, "c5vrx4_range_option3");
 #if C5VRX4_RANGE_OPTION_COUNT >= 5
 BITSCRAMBLER_PROGRAM(s_range_option4, "c5vrx4_range_option4");
 #endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 6
+BITSCRAMBLER_PROGRAM(s_range_option5, "c5vrx4_range_option5");
+#endif
 BITSCRAMBLER_PROGRAM(s_hc50_program, "c5vrx4_hc50");
 static esp_err_t create_tx_unit(void);
 BITSCRAMBLER_PROGRAM(s_reference_phase8_hr, "c5vrx4_reference_phase8_hr");
@@ -98,6 +101,9 @@ static const void *range_option_program(unsigned index)
 #if C5VRX4_RANGE_OPTION_COUNT >= 5
     case 4: return s_range_option4;
 #endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 6
+    case 5: return s_range_option5;
+#endif
     default: return NULL;
     }
 }
@@ -124,6 +130,9 @@ static const void *c5vrx4_selected_program(void)
 #endif
 #if C5VRX4_RANGE_OPTION_COUNT >= 5
     case C5VRX4_DEMOD_RANGE_OPTION4: return s_range_option4;
+#endif
+#if C5VRX4_RANGE_OPTION_COUNT >= 6
+    case C5VRX4_DEMOD_RANGE_OPTION5: return s_range_option5;
 #endif
     case C5VRX4_DEMOD_PHASE8_HR: return s_reference_phase8_hr;
     case C5VRX4_DEMOD_GOLDEN: return s_reference_golden;
@@ -502,6 +511,7 @@ static esp_err_t load_with_fit(const void *program, int kind)
 static int selected_fit_kind(void)
 {
     if (!c5vrx4_autofit_enabled()) return C5V4_FIT_NONE;
+    if (c5vrx4_omega_demod()) return C5V4_FIT_OMEGA;
     if (c5vrx4_edge_autofit_demod()) return s_running_edge ? C5V4_FIT_EDGE : C5V4_FIT_PAIR;
     if (c5vrx4_pair_autofit_demod()) return C5V4_FIT_PAIR;
     return C5V4_FIT_NONE;

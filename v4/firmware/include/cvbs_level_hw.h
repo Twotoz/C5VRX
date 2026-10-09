@@ -17,7 +17,7 @@ bool c5v4_level_hw_lut_verified(void);
 /* AutoFit LUT: written only while the engine is halted between program
  * load and start (c5v4_fit_window). EDGE words are self-tested against the
  * pinned synthesis at load; a failed write restores the pristine table. */
-enum { C5V4_FIT_NONE = 0, C5V4_FIT_EDGE = 1, C5V4_FIT_PAIR = 2 };
+enum { C5V4_FIT_NONE = 0, C5V4_FIT_EDGE = 1, C5V4_FIT_PAIR = 2, C5V4_FIT_OMEGA = 3 };
 void c5v4_fit_set_program(int kind);
 void c5v4_fit_window(bool open);
 int c5v4_fit_ready(void);

@@ -105,6 +105,16 @@ bool c5vrx4_pair_autofit_demod(void)
 #endif
 }
 
+bool c5vrx4_omega_demod(void)
+{
+#if C5VRX4_RANGE_OPTION_COUNT >= 6
+    return c5vrx4_demodulator() == C5VRX4_DEMOD_RANGE_OPTION5 &&
+           !strcmp(c5vrx4_range_options[5].label, "OMEGA BELIEF LAB");
+#else
+    return false;
+#endif
+}
+
 bool c5vrx4_range_demod(void)
 {
     return c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE32;
@@ -753,6 +763,10 @@ static void print_state(void)
             printf("C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot\n");
 #if C5VRX4_RANGE_OPTION_COUNT
         if (c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE_OPTION0) {
+            if (c5vrx4_omega_demod())
+                printf("OMEGA posterior_fsm=1 states=%u tokens=%u program_switching=never calibration=load_only board_acceptance=pending\n",
+                       1024u / c5vrx4_range_options[5].observation_tokens,
+                       (unsigned)c5vrx4_range_options[5].observation_tokens);
             const c5vrx4_range_option_t *option = &c5vrx4_range_options[c5vrx4_demodulator() - C5VRX4_DEMOD_RANGE_OPTION0];
             printf("C5VRX4 range_lab=1 phase_states=%u observation_tokens=%u frequency_states=%u model=%s physical_acceptance=0 rollback=R_OVP56_reboot\n",
                    (unsigned)option->phase_states, (unsigned)option->observation_tokens,

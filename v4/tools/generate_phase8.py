@@ -386,6 +386,8 @@ def generate():
     generate_range()
     from generate_range_options import generate as generate_options
     generate_options()
+    from generate_omega import generate as generate_omega
+    generate_omega()
     for history in (False, True):
         for transfer, suffix in (("std150", ""), ("legacy", "_legacy"), ("cvbs150", "_cvbs150")):
             name = ('history' if history else 'static') + suffix

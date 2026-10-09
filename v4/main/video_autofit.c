@@ -92,7 +92,7 @@ static void sync_channel(void)
 
 bool autofit_active(void)
 {
-    return c5vrx4_autofit_enabled() && (c5vrx4_edge_autofit_demod() || c5vrx4_pair_autofit_demod());
+    return c5vrx4_autofit_enabled() && (c5vrx4_edge_autofit_demod() || c5vrx4_pair_autofit_demod() || c5vrx4_omega_demod());
 }
 
 /* Halted-engine window of a program load: the transport has called
@@ -243,7 +243,9 @@ void autofit_observe(const afc2_result_t *r, bool good, bool settled)
     /* The running words carry another fit: one reload, rate-limited. */
     bool stale = s_loaded_kind && (!s_loaded_valid || fabs(s_dev - s_loaded_dev) > .04 * s_dev ||
                                    fabs(s_centre - s_loaded_centre) > 80e3);
-    if (stale && esp_timer_get_time() - s_last_reload_us >= AF_RELOAD_GAP_US) s_reload_req = true;
+    /* OMEGA keeps one loaded transducer: a new fit is stored for the next
+     * deliberate program load, never requests an in-flight reload. */
+    if (stale && !c5vrx4_omega_demod() && esp_timer_get_time() - s_last_reload_us >= AF_RELOAD_GAP_US) s_reload_req = true;
 }
 
 /* Adaptive receiver supervisor, phase 1 (PR #190 review, 2026-10-09): one
@@ -275,7 +277,7 @@ void autofit_print(void)
     printf("AUTOFIT freq=%u fit=%u dev=%.3f centre_khz=%.0f loaded=%s/%u loaded_dev=%.3f fits=%lu rejects=%lu "
            "stored=%lu applied=%lu reloads=%lu cnr_db=%.1f\n",
            s_freq, s_fit_valid, s_dev, s_centre / 1000.0,
-           s_loaded_kind == C5V4_FIT_EDGE ? "EDGE" : s_loaded_kind == C5V4_FIT_PAIR ? "PAIR" : "none",
+           s_loaded_kind == C5V4_FIT_EDGE ? "EDGE" : s_loaded_kind == C5V4_FIT_PAIR ? "PAIR" : s_loaded_kind == C5V4_FIT_OMEGA ? "OMEGA" : "none",
            s_loaded_valid, s_loaded_dev, (unsigned long)s_fits, (unsigned long)s_rejects,
            (unsigned long)s_stored, (unsigned long)s_applied, (unsigned long)s_reloads, s_cnr_x10 / 10.0);
     if (c5vrx4_edge_autofit_demod())

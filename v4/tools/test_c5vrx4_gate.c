@@ -87,6 +87,11 @@ int main(int argc, char **argv)
     assert(c5vrx4_demodulator() == expected);
     assert(c5vrx4_lane_mode() == C5VRX4_LANES_ULTRAFINE && !strcmp(c5vrx4_lane_mode_name(), "fixed_ultrafine"));
     assert(c5vrx4_reference_demod());
+    if (c5vrx4_omega_demod()) {
+        assert(!c5vrx4_edge_autofit_demod() && !c5vrx4_pair_autofit_demod());
+        assert(!strcmp(c5vrx4_demodulator_name(), "OMEGA BELIEF LAB"));
+        assert(!c5vrx4_sync_flywheel_enabled() && !c5vrx4_line_repair_enabled());
+    }
     assert(c5vrx4_staged_gain_recovery());
     assert(!c5vrx4_dc_recenter_enabled() && !c5vrx4_agc_mask_active());
     assert(!c5vrx4_idle_raster_enabled() && !c5vrx4_sync_flywheel_enabled());

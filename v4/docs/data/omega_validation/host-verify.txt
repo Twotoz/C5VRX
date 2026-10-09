@@ -1,0 +1,855 @@
+Generated c5vrx4_vlp56.bsasm: LUT8, two bundles, bounded pair FM
+Generated c5vrx4_ovp56.bsasm: pinned bounded video fit, LUT8/2KiB, two bundles
+Generated PLL96: pinned phase/frequency PLL, LUT16/2KiB, pair20
+Generated RANGE32 LAB: phase32 first-order, LUT16/2KiB/eight slots/two bundles
+Generated 6 pinned range LAB options; consult each option evidence/status
+OMEGA generated 249d670670f5
+Generated c5vrx4_phase8_static.bsasm: three bundles, trajectory unwrap, fixed CVBS scale
+Generated c5vrx4_phase8_static_legacy.bsasm: three bundles, trajectory unwrap, fixed CVBS scale
+Generated c5vrx4_phase8_static_cvbs150.bsasm: three bundles, trajectory unwrap, fixed CVBS scale
+Generated c5vrx4_phase8_history.bsasm: three bundles, trajectory unwrap, fixed CVBS scale
+Generated c5vrx4_phase8_history_legacy.bsasm: three bundles, trajectory unwrap, fixed CVBS scale
+Generated c5vrx4_phase8_history_cvbs150.bsasm: three bundles, trajectory unwrap, fixed CVBS scale
+Generated c5vrx4_phase8_static_mask.bsasm: native AGC acquisition hold, six slots
+Generated c5vrx4_phase8_static_mask_legacy.bsasm: native AGC acquisition hold, six slots
+Generated c5vrx4_phase8_static_mask_cvbs150.bsasm: native AGC acquisition hold, six slots
+ARC PHY vendor table and IQ correction tests passed
+Demod quality: Phase5 adjacent-winding oracle passed
+Scanner IQ classification and risk scoring passed
+NTSC: 1334668 samples, 2 fields, 1499 DMA nodes; UI lines 29..252 (224 per field) at 15.70..55.70 us; sync, burst, alignment and colour-loop closure OK
+PAL: 1600000 samples, 2 fields, 1811 DMA nodes; UI lines 28..307 (280 per field) at 16.30..56.30 us; sync, burst, alignment and colour-loop closure OK
+hunting regression: 16 lane changes in 1 s, fold_streak 8
+radius boost: entries=1 moves=1 gain=65 p50=39
+stage top: G24 weak -> G25
+stage start overload: G54 -> G47
+direct gain v3 core: OK
+RX control epoch tests passed
+Phase8 envelope: origin-collapse / annulus oracle passed
+settled hold: 0 LUT updates in 5 s of +-1-bin jitter
+PASS CVBS servo: amplitude/CFO sweeps, convergence, electrical slew, fast gain-step recovery, loss hold, epoch and upper-bit preservation
+PASS: multi-descriptor snapshot, wrap order, active exclusion and deadline/lap refusal
+AFC state hygiene (#115 items 4/5): passed
+AFC V2 reference estimator (#115): 48 synthetic PAL/NTSC cases passed
+AFC V2 acquisition decision (#115): passed
+wifi_burst: lowest gain 83 of 83, writes 0, overloads 0
+PASS: protected lanes, freshness, severe coarse overload floor, stale drop refusal, zero-write clean tracking and fixed fine/ultrafine lanes
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=2 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=12 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=HC50 span_ns=50 phase_bits=6 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=HC50 span_ns=50 phase_bits=6 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=HC50 span_ns=50 phase_bits=6 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=HC50 span_ns=50 phase_bits=6 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=HC50 span_ns=50 phase_bits=6 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 ref_demod_next=1 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=HR50 span_ns=50 phase_bits=8 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=HR50 span_ns=50 phase_bits=8 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=HR50 span_ns=50 phase_bits=8 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=HR50 span_ns=50 phase_bits=8 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=HR50 span_ns=50 phase_bits=8 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 ref_demod_next=2 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=GOLDEN50 span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=GOLDEN50 span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=GOLDEN50 span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=GOLDEN50 span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=GOLDEN50 span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 ref_demod_next=3 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=VLP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=VLP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=VLP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=VLP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=VLP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 ref_demod_next=0 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 ref_demod_next=0 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=PLL96 IQ FIX LAB span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=PLL96 IQ FIX LAB span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot
+C5VRX4 pipeline=PLL96 IQ FIX LAB span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot
+C5VRX4 pipeline=PLL96 IQ FIX LAB span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot
+C5VRX4 pipeline=PLL96 IQ FIX LAB span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot
+C5VRX4 ref_demod_next=2 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=3 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=3 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=RANGE BAL LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=c2510e3dad79 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=RANGE BAL LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=c2510e3dad79 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE BAL LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=c2510e3dad79 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE BAL LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=c2510e3dad79 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE BAL LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=c2510e3dad79 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=0 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=11 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=3 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=2 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=12 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=EDGE RANGE LAB span_ns=50 phase_bits=2 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=4 observation_tokens=8 frequency_states=32 model=61ba9157643c physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=EDGE RANGE LAB span_ns=50 phase_bits=2 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=4 observation_tokens=8 frequency_states=32 model=61ba9157643c physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=EDGE RANGE LAB span_ns=50 phase_bits=2 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=4 observation_tokens=8 frequency_states=32 model=61ba9157643c physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=EDGE RANGE LAB span_ns=50 phase_bits=2 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=4 observation_tokens=8 frequency_states=32 model=61ba9157643c physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=EDGE RANGE LAB span_ns=50 phase_bits=2 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=4 observation_tokens=8 frequency_states=32 model=61ba9157643c physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=3 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=13 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=OMEGA BELIEF LAB span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+OMEGA posterior_fsm=1 states=128 tokens=8 program_switching=never calibration=load_only board_acceptance=pending
+C5VRX4 range_lab=1 phase_states=0 observation_tokens=8 frequency_states=0 model=249d670670f5 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=OMEGA BELIEF LAB span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+OMEGA posterior_fsm=1 states=128 tokens=8 program_switching=never calibration=load_only board_acceptance=pending
+C5VRX4 range_lab=1 phase_states=0 observation_tokens=8 frequency_states=0 model=249d670670f5 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=OMEGA BELIEF LAB span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+OMEGA posterior_fsm=1 states=128 tokens=8 program_switching=never calibration=load_only board_acceptance=pending
+C5VRX4 range_lab=1 phase_states=0 observation_tokens=8 frequency_states=0 model=249d670670f5 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=OMEGA BELIEF LAB span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+OMEGA posterior_fsm=1 states=128 tokens=8 program_switching=never calibration=load_only board_acceptance=pending
+C5VRX4 range_lab=1 phase_states=0 observation_tokens=8 frequency_states=0 model=249d670670f5 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=OMEGA BELIEF LAB span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+OMEGA posterior_fsm=1 states=128 tokens=8 program_switching=never calibration=load_only board_acceptance=pending
+C5VRX4 range_lab=1 phase_states=0 observation_tokens=8 frequency_states=0 model=249d670670f5 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=PAIR RANGE LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=e2a8f30af45e physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=2 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=12 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=HC50 span_ns=50 phase_bits=6 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=HC50 span_ns=50 phase_bits=6 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=HC50 span_ns=50 phase_bits=6 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=HC50 span_ns=50 phase_bits=6 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=HC50 span_ns=50 phase_bits=6 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 ref_demod_next=1 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 ref_demod_next=0 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 pipeline=OVP56 span_ns=50 phase_bits=0 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=8 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 ref_demod_next=0 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=PLL96 IQ FIX LAB span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=PLL96 IQ FIX LAB span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot
+C5VRX4 pipeline=PLL96 IQ FIX LAB span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot
+C5VRX4 pipeline=PLL96 IQ FIX LAB span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot
+C5VRX4 pipeline=PLL96 IQ FIX LAB span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 PLL96 lab=1 iq_order_fixed=1 stateful=1 physical_acceptance=0 rollback=P_OVP56_reboot
+C5VRX4 ref_demod_next=2 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=3 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=3 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=TEST1 span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=16 observation_tokens=4 frequency_states=16 model=fixture1 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=TEST1 span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=16 observation_tokens=4 frequency_states=16 model=fixture1 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=TEST1 span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=16 observation_tokens=4 frequency_states=16 model=fixture1 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=TEST1 span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=16 observation_tokens=4 frequency_states=16 model=fixture1 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=TEST1 span_ns=50 phase_bits=4 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=16 observation_tokens=4 frequency_states=16 model=fixture1 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=0 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=10 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=TEST2 span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=16 frequency_states=2 model=fixture2 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=TEST2 span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=16 frequency_states=2 model=fixture2 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=TEST2 span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=16 frequency_states=2 model=fixture2 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=TEST2 span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=16 frequency_states=2 model=fixture2 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=TEST2 span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=32 observation_tokens=16 frequency_states=2 model=fixture2 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=1 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=11 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=TEST3 span_ns=50 phase_bits=8 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=256 observation_tokens=4 frequency_states=1 model=fixture3 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=TEST3 span_ns=50 phase_bits=8 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=256 observation_tokens=4 frequency_states=1 model=fixture3 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=TEST3 span_ns=50 phase_bits=8 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=256 observation_tokens=4 frequency_states=1 model=fixture3 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=TEST3 span_ns=50 phase_bits=8 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=256 observation_tokens=4 frequency_states=1 model=fixture3 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=TEST3 span_ns=50 phase_bits=8 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 range_lab=1 phase_states=256 observation_tokens=4 frequency_states=1 model=fixture3 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=2 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=7 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=3 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=3 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pace_toggle=ignored gain_owner=direct_gain_v5 hint=N_selects_native_on_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 pipeline=RANGE32 LAB span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=native semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0
+C5VRX4 RANGE32 lab=1 phase_states=32 observation_tokens=32 frequency_states=1 model=49c57570d609 physical_acceptance=0 rollback=R_OVP56_reboot
+C5VRX4 ref_demod_next=3 err=host action=reboot
+C5VRX4 ref_demod_next=6 err=host action=reboot
+C5VRX4 ref_demod_next=4 err=host action=reboot
+C5VRX4 ref_demod_next=9 err=host action=reboot
+C5VRX-4 Direct Gain LOCK / native gate isolation passed
+hf4 white=100 slow_carrier=0
+envelope ratio: noise -> 97
+envelope ratio: noise + DC 1.1 cell -> 100
+envelope ratio: carrier (0 dB SNR) -> 146
+envelope ratio: carrier (0 dB SNR) + DC 1.1 cell -> 148
+iq imbalance balanced: g=999/1000 phi=-5/10 deg irr=480/10 dB
+iq imbalance 1 dB/5 deg: g=1119/1000 phi=46/10 deg irr=232/10 dB
+circle DC: carrier -1366/945 vs mean 1364/2755 (true -1400/900)
+PASS: glitch metric, DC centre, DC-cal point, relative filter code, DCO solver, exact Phase8 recentring, DC decision, FFT, noise-width estimate, BW choice and esp-sdr curve/mode fit
+PASS: EDGE AutoFit synthesis, CVT blend and PAIR AutoFit remap bit-exact for all golden fits; fit estimator
+PASS: alpha policy; FusionDemod phase C/N estimator, gain-change-robust hysteresis, panic, dwell
+witness invert=0 bit=2 sep=989 lead=4 lag=0 acq/ms=34.2 acq_us=2.2 share=78 pm gain_min=16 trapped=40..42
+witness invert=1 bit=2 sep=990 lead=4 lag=0 acq/ms=34.2 acq_us=2.2 share=78 pm gain_min=16 trapped=40..42
+PASS: AGC witness finds the acquisition state bit and polarity, lead, walk depth, rate
+PASS idle_raster: 2-s quiet entry, sync / 2-window carrier exit, doubling re-entry hold-off, hysteresis, blockers
+PAL clean: state=1 std=1 acquisitions=1 relocks=0 parity=0 lines_since_clean=0
+PAL clean: lines=3111 clean=3044 fast=3011 vsyncs=9 evals/line=31.2
+PAL clean, no fade window: evals/line=9.8 sampled=2385 locked=1 vsyncs=9
+PAL clean, 7 ms stalls: acquisitions=1 jumps=6 locked=1
+PAL noise-free radius 4, self-gated: fade_detections=0 fade_pm=0 locked=1
+PAL noise-free radius 5, self-gated: fade_detections=0 fade_pm=0 locked=1
+PAL clean, line repair on: concealed=0
+PAL fades align=0: input ok 819/1600 -> output ok 1600/1600 (missing 0, bad width 0, max edge 15)
+PAL fades align=1: input ok 819/1600 -> output ok 1600/1600 (missing 0, bad width 0, max edge 15)
+PAL fades align=2: input ok 819/1600 -> output ok 1600/1600 (missing 0, bad width 0, max edge 15)
+PAL fades: repaired=900 slots=53 v_coasted=1 vsyncs=8 bytes_changed=270909 evals/line=63.8
+PAL deep fade, self-gated align=0: output ok 203/203 (missing 0, bad width 0, max edge 4)
+PAL deep fade, self-gated align=1: output ok 203/203 (missing 0, bad width 0, max edge 4)
+PAL deep fade, self-gated align=2: output ok 203/203 (missing 0, bad width 0, max edge 4)
+PAL deep fade, self-gated: fade_detections=99 fade_pm=0
+PAL mask: writes=286429 flagged=0 repaired=956
+PAL re-lock: relocks=1 acquisitions=1 after: ok 1147/1147 missing 0
+PAL re-lock: 989 H-sync-width pulses over 1093 lines
+PAL weak align=0: input ok 1/1600 -> output ok 1600/1600 (missing 0, bad width 0, max edge 9)
+PAL weak align=1: input ok 0/1600 -> output ok 1600/1600 (missing 0, bad width 0, max edge 9)
+PAL weak align=2: input ok 2/1600 -> output ok 1600/1600 (missing 0, bad width 0, max edge 9)
+PAL weak: repaired=1893 slots=105 clean=1630 relocks=0 acquisitions=1 evals/line=50.8
+PAL weak, budget 128 align=0: output ok 1600/1600 (missing 0, bad width 0, max edge 7)
+PAL weak, budget 128 align=1: output ok 1600/1600 (missing 0, bad width 0, max edge 6)
+PAL weak, budget 128 align=2: output ok 1600/1600 (missing 0, bad width 0, max edge 6)
+PAL weak, budget 128: acquisitions=1 skipped=0 evals/line=50.2
+NTSC clean: state=1 std=2 acquisitions=1 relocks=0 parity=0 lines_since_clean=0
+NTSC clean: lines=2611 clean=2530 fast=2497 vsyncs=9 evals/line=31.7
+NTSC clean, no fade window: evals/line=10.4 sampled=1984 locked=1 vsyncs=9
+NTSC clean, 7 ms stalls: acquisitions=1 jumps=5 locked=1
+NTSC noise-free radius 4, self-gated: fade_detections=0 fade_pm=0 locked=1
+NTSC noise-free radius 5, self-gated: fade_detections=0 fade_pm=0 locked=1
+NTSC clean, line repair on: concealed=0
+NTSC fades align=0: input ok 702/1358 -> output ok 1358/1358 (missing 0, bad width 0, max edge 9)
+NTSC fades align=1: input ok 702/1358 -> output ok 1358/1358 (missing 0, bad width 0, max edge 8)
+NTSC fades align=2: input ok 702/1358 -> output ok 1358/1358 (missing 0, bad width 0, max edge 8)
+NTSC fades: repaired=766 slots=63 v_coasted=2 vsyncs=7 bytes_changed=253869 evals/line=62.4
+NTSC deep fade, self-gated align=0: output ok 171/171 (missing 0, bad width 0, max edge 5)
+NTSC deep fade, self-gated align=1: output ok 171/171 (missing 0, bad width 0, max edge 5)
+NTSC deep fade, self-gated align=2: output ok 171/171 (missing 0, bad width 0, max edge 5)
+NTSC deep fade, self-gated: fade_detections=81 fade_pm=0
+NTSC mask: writes=255929 flagged=0 repaired=771
+NTSC re-lock: relocks=1 acquisitions=1 after: ok 972/972 missing 0
+NTSC re-lock: 832 H-sync-width pulses over 918 lines
+NTSC weak align=0: input ok 2/1358 -> output ok 1358/1358 (missing 0, bad width 0, max edge 8)
+NTSC weak align=1: input ok 2/1358 -> output ok 1358/1358 (missing 0, bad width 0, max edge 7)
+NTSC weak align=2: input ok 2/1358 -> output ok 1358/1358 (missing 0, bad width 0, max edge 7)
+NTSC weak: repaired=1584 slots=124 clean=1430 relocks=0 acquisitions=1 evals/line=49.3
+NTSC weak, budget 128 align=0: output ok 1358/1358 (missing 0, bad width 0, max edge 6)
+NTSC weak, budget 128 align=1: output ok 1358/1358 (missing 0, bad width 0, max edge 6)
+NTSC weak, budget 128 align=2: output ok 1358/1358 (missing 0, bad width 0, max edge 6)
+NTSC weak, budget 128: acquisitions=1 skipped=0 evals/line=48.5
+PAL line repair: concealed=16 no_source=0 late=0  active-picture error 14.26 -> 2.40 codes/span
+PAL line repair mask: concealed=15 flagged=0
+PAL line repair weak: concealed=23 no_source=17  active-picture error 12.34 -> 12.39 codes/span (away from the test picture's hard edges 12.34 -> 12.37)
+NTSC line repair: concealed=15 no_source=0 late=0  active-picture error 14.10 -> 3.08 codes/span
+NTSC line repair mask: concealed=14 flagged=0
+NTSC line repair weak: concealed=11 no_source=15  active-picture error 12.26 -> 12.27 codes/span (away from the test picture's hard edges 12.26 -> 12.26)
+PASS sync_flywheel: clean lines untouched, H and V syncs rebuilt through fades for every span alignment, mask-safe bytes, re-lock after a phase jump, dropout lines repaired
+PHYINV monitor=1 poll_us=50000 ring=64
+PHYLAB refused=unverified_PHY_binary read_only=1
+PHY11P refused=unverified_PHY_binary
+NATIVEHOLD refused=unverified_PHY_binary
+DFILT refused=unverified_PHY_binary
+SIGRSSI refused=unverified_PHY_binary
+PHYTRACK refused=unverified_PHY_binary
+DCO refused=unverified_PHY_binary
+FILTER refused=unverified_PHY_binary
+PREDEMOD_PHY freq=5865 dc_cal_multi=0 dc_cal_mhz=2432 above_last_point=1 pll_track=disabled_by_config
+PREDEMOD_PHY pbus_and_filter=unverified_PHY_binary
+PHYMARK t=100100 events=109
+PHYEV t=100038 gen=4 reg=00000002 old=00000000 new=00000026
+PHYEV t=100039 gen=4 reg=00000002 old=00000000 new=00000027
+PHYEV t=100040 gen=4 reg=00000002 old=00000000 new=00000028
+PHYEV t=100041 gen=4 reg=00000002 old=00000000 new=00000029
+PHYEV t=100042 gen=4 reg=00000002 old=00000000 new=0000002a
+PHYEV t=100043 gen=4 reg=00000002 old=00000000 new=0000002b
+PHYEV t=100044 gen=4 reg=00000002 old=00000000 new=0000002c
+PHYEV t=100045 gen=4 reg=00000002 old=00000000 new=0000002d
+PHYEV t=100046 gen=4 reg=00000002 old=00000000 new=0000002e
+PHYEV t=100047 gen=4 reg=00000002 old=00000000 new=0000002f
+PHYEV t=100048 gen=4 reg=00000002 old=00000000 new=00000030
+PHYEV t=100049 gen=4 reg=00000002 old=00000000 new=00000031
+PHYEV t=100050 gen=4 reg=00000002 old=00000000 new=00000032
+PHYEV t=100051 gen=4 reg=00000002 old=00000000 new=00000033
+PHYEV t=100052 gen=4 reg=00000002 old=00000000 new=00000034
+PHYEV t=100053 gen=4 reg=00000002 old=00000000 new=00000035
+PHYEV t=100054 gen=4 reg=00000002 old=00000000 new=00000036
+PHYEV t=100055 gen=4 reg=00000002 old=00000000 new=00000037
+PHYEV t=100056 gen=4 reg=00000002 old=00000000 new=00000038
+PHYEV t=100057 gen=4 reg=00000002 old=00000000 new=00000039
+PHYEV t=100058 gen=4 reg=00000002 old=00000000 new=0000003a
+PHYEV t=100059 gen=4 reg=00000002 old=00000000 new=0000003b
+PHYEV t=100060 gen=4 reg=00000002 old=00000000 new=0000003c
+PHYEV t=100061 gen=4 reg=00000002 old=00000000 new=0000003d
+PHYEV t=100062 gen=4 reg=00000002 old=00000000 new=0000003e
+PHYEV t=100063 gen=4 reg=00000002 old=00000000 new=0000003f
+PHYEV t=100064 gen=4 reg=00000002 old=00000000 new=00000040
+PHYEV t=100065 gen=4 reg=00000002 old=00000000 new=00000041
+PHYEV t=100066 gen=4 reg=00000002 old=00000000 new=00000042
+PHYEV t=100067 gen=4 reg=00000002 old=00000000 new=00000043
+PHYEV t=100068 gen=4 reg=00000002 old=00000000 new=00000044
+PHYEV t=100069 gen=4 reg=00000002 old=00000000 new=00000045
+PHYEV t=100070 gen=4 reg=00000002 old=00000000 new=00000046
+PHYEV t=100071 gen=4 reg=00000002 old=00000000 new=00000047
+PHYEV t=100072 gen=4 reg=00000002 old=00000000 new=00000048
+PHYEV t=100073 gen=4 reg=00000002 old=00000000 new=00000049
+PHYEV t=100074 gen=4 reg=00000002 old=00000000 new=0000004a
+PHYEV t=100075 gen=4 reg=00000002 old=00000000 new=0000004b
+PHYEV t=100076 gen=4 reg=00000002 old=00000000 new=0000004c
+PHYEV t=100077 gen=4 reg=00000002 old=00000000 new=0000004d
+PHYEV t=100078 gen=4 reg=00000002 old=00000000 new=0000004e
+PHYEV t=100079 gen=4 reg=00000002 old=00000000 new=0000004f
+PHYEV t=100080 gen=4 reg=00000002 old=00000000 new=00000050
+PHYEV t=100081 gen=4 reg=00000002 old=00000000 new=00000051
+PHYEV t=100082 gen=4 reg=00000002 old=00000000 new=00000052
+PHYEV t=100083 gen=4 reg=00000002 old=00000000 new=00000053
+PHYEV t=100084 gen=4 reg=00000002 old=00000000 new=00000054
+PHYEV t=100085 gen=4 reg=00000002 old=00000000 new=00000055
+PHYEV t=100086 gen=4 reg=00000002 old=00000000 new=00000056
+PHYEV t=100087 gen=4 reg=00000002 old=00000000 new=00000057
+PHYEV t=100088 gen=4 reg=00000002 old=00000000 new=00000058
+PHYEV t=100089 gen=4 reg=00000002 old=00000000 new=00000059
+PHYEV t=100090 gen=4 reg=00000002 old=00000000 new=0000005a
+PHYEV t=100091 gen=4 reg=00000002 old=00000000 new=0000005b
+PHYEV t=100092 gen=4 reg=00000002 old=00000000 new=0000005c
+PHYEV t=100093 gen=4 reg=00000002 old=00000000 new=0000005d
+PHYEV t=100094 gen=4 reg=00000002 old=00000000 new=0000005e
+PHYEV t=100095 gen=4 reg=00000002 old=00000000 new=0000005f
+PHYEV t=100096 gen=4 reg=00000002 old=00000000 new=00000060
+PHYEV t=100097 gen=4 reg=00000002 old=00000000 new=00000061
+PHYEV t=100098 gen=4 reg=00000002 old=00000000 new=00000062
+PHYEV t=100099 gen=4 reg=00000002 old=00000000 new=00000063
+PHYEV t=100100 gen=4 reg=00000002 old=00000000 new=00000064
+PHYEV t=100100 gen=4 reg=00000005 old=00000000 new=00000000
+PHY RX lab lifecycle tests passed
+PHYINV monitor=1 poll_us=50000 ring=64
+PHYLAB profile=PKDADC_BIT31_CLEAR verified=1 timeout_ms=10000 persistent=0
+PHYLAB profile=NF_AUTO_FREEZE verified=1 timeout_ms=10000 persistent=0
+PHYLAB profile=STOCK restored=1
+PHYLAB profile=BB_CCA_BIT30_CLEAR verified=1 timeout_ms=10000 persistent=0
+PHYLAB profile=FRONT_BW_ARG0 verified=1 timeout_ms=10000 persistent=0
+PHYLAB profile=DIG_BW_ARG0 verified=1 timeout_ms=10000 persistent=0
+PHYLAB profile=STOCK restored=1
+PHYLAB profile=CHAN_A_ARG0 verified=1 timeout_ms=10000 persistent=0
+PHYLAB profile=CHAN_A_ARG1 verified=1 timeout_ms=10000 persistent=0
+PHYLAB profile=CHAN_B_ARG0 verified=1 timeout_ms=10000 persistent=0
+PHYLAB profile=STOCK restored=1
+PHYLAB profile=CHAN_B_ARG1 verified=1 timeout_ms=10000 persistent=0
+PHYLAB profile=SPUR_SLOT0_BIT13_CLEAR verified=1 timeout_ms=10000 persistent=0
+PHYLAB refused=native_AGC_owner
+PHYLAB refused=transaction_active
+PHY11P_STATE stage=BASELINE flags=07/09
+PHY11P_REG reg=600a7ce4 value=a5a5a5a5 mask=0000001c
+PHY11P_REG reg=600a7030 value=a5a5a5a5 mask=00000020
+PHY11P_REG reg=600a7048 value=a5a5a5a5 mask=00007f00
+PHY11P_REG reg=600a71c4 value=a5a5a5a5 mask=00fe0000
+PHY11P_I2C reg=6 value=1a
+PHY11P_I2C reg=7 value=1b
+PHY11P_I2C reg=8 value=1c
+PHY11P_I2C reg=9 value=1d
+PHY11P_I2C reg=10 value=1e
+PHY11P_I2C reg=11 value=1f
+PHY11P_I2C reg=12 value=20
+PHY11P_I2C reg=13 value=21
+PHY11P apply_verified=1 persistent=0
+PHY11P_STATE stage=ENABLED flags=01/00
+PHY11P_REG reg=600a7ce4 value=a5a5a5b1 mask=0000001c
+PHY11P_REG reg=600a7030 value=a5a5a585 mask=00000020
+PHY11P_REG reg=600a7048 value=a5a5c0a5 mask=00007f00
+PHY11P_REG reg=600a71c4 value=a545a5a5 mask=00fe0000
+PHY11P_I2C reg=6 value=3c
+PHY11P_I2C reg=7 value=3c
+PHY11P_I2C reg=8 value=3c
+PHY11P_I2C reg=9 value=3c
+PHY11P_I2C reg=10 value=3c
+PHY11P_I2C reg=11 value=3c
+PHY11P_I2C reg=12 value=3c
+PHY11P_I2C reg=13 value=3c
+PHY11P restore_verified=1
+PHY11P_STATE stage=RESTORED flags=07/09
+PHY11P_REG reg=600a7ce4 value=a5a5a5a5 mask=0000001c
+PHY11P_REG reg=600a7030 value=a5a5a5a4 mask=00000020
+PHY11P_REG reg=600a7048 value=a5a5a5a5 mask=00007f00
+PHY11P_REG reg=600a71c4 value=a5a5a5a5 mask=00fe0000
+PHY11P_I2C reg=6 value=1a
+PHY11P_I2C reg=7 value=1b
+PHY11P_I2C reg=8 value=1c
+PHY11P_I2C reg=9 value=1d
+PHY11P_I2C reg=10 value=1e
+PHY11P_I2C reg=11 value=1f
+PHY11P_I2C reg=12 value=20
+PHY11P_I2C reg=13 value=21
+PHY11P_STATE stage=BASELINE flags=07/09
+PHY11P_REG reg=600a7ce4 value=a5a5a5a5 mask=0000001c
+PHY11P_REG reg=600a7030 value=a5a5a5a4 mask=00000020
+PHY11P_REG reg=600a7048 value=a5a5a5a5 mask=00007f00
+PHY11P_REG reg=600a71c4 value=a5a5a5a5 mask=00fe0000
+PHY11P_I2C reg=6 value=1a
+PHY11P_I2C reg=7 value=1b
+PHY11P_I2C reg=8 value=1c
+PHY11P_I2C reg=9 value=1d
+PHY11P_I2C reg=10 value=1e
+PHY11P_I2C reg=11 value=1f
+PHY11P_I2C reg=12 value=20
+PHY11P_I2C reg=13 value=21
+PHY11P apply_verified=0 persistent=0
+PHY11P restore_verified=1
+PHY11P_STATE stage=RESTORED flags=07/09
+PHY11P_REG reg=600a7ce4 value=a5a5a5a5 mask=0000001c
+PHY11P_REG reg=600a7030 value=a5a5a5a4 mask=00000020
+PHY11P_REG reg=600a7048 value=a5a5a5a5 mask=00007f00
+PHY11P_REG reg=600a71c4 value=a5a5a5a5 mask=00fe0000
+PHY11P_I2C reg=6 value=1a
+PHY11P_I2C reg=7 value=1b
+PHY11P_I2C reg=8 value=1c
+PHY11P_I2C reg=9 value=1d
+PHY11P_I2C reg=10 value=1e
+PHY11P_I2C reg=11 value=1f
+PHY11P_I2C reg=12 value=20
+PHY11P_I2C reg=13 value=21
+PHY11P_STATE stage=BASELINE flags=07/09
+PHY11P_REG reg=600a7ce4 value=a5a5a5a5 mask=0000001c
+PHY11P_REG reg=600a7030 value=a5a5a5a4 mask=00000020
+PHY11P_REG reg=600a7048 value=a5a5a5a5 mask=00007f00
+PHY11P_REG reg=600a71c4 value=a5a5a5a5 mask=00fe0000
+PHY11P_I2C reg=6 value=1a
+PHY11P_I2C reg=7 value=1b
+PHY11P_I2C reg=8 value=1c
+PHY11P_I2C reg=9 value=1d
+PHY11P_I2C reg=10 value=1e
+PHY11P_I2C reg=11 value=1f
+PHY11P_I2C reg=12 value=20
+PHY11P_I2C reg=13 value=21
+PHY11P apply_verified=1 persistent=0
+PHY11P_STATE stage=ENABLED flags=01/00
+PHY11P_REG reg=600a7ce4 value=a5a5a5b1 mask=0000001c
+PHY11P_REG reg=600a7030 value=a5a5a584 mask=00000020
+PHY11P_REG reg=600a7048 value=a5a5c0a5 mask=00007f00
+PHY11P_REG reg=600a71c4 value=a545a5a5 mask=00fe0000
+PHY11P_I2C reg=6 value=3c
+PHY11P_I2C reg=7 value=3c
+PHY11P_I2C reg=8 value=3c
+PHY11P_I2C reg=9 value=3c
+PHY11P_I2C reg=10 value=3c
+PHY11P_I2C reg=11 value=3c
+PHY11P_I2C reg=12 value=3c
+PHY11P_I2C reg=13 value=3c
+PHY11P restore_verified=0
+NATIVEHOLD completed=100 requested=100 gate_verified=1 restored=1 explicit_gain_index_writes=0 rf_disable_calls=0 hardware_acceptance=pending
+NATIVEHOLD completed=1 requested=1 gate_verified=1 restored=1 explicit_gain_index_writes=0 rf_disable_calls=0 hardware_acceptance=pending
+NATIVEHOLD refused=already_held_or_forced
+NATIVEHOLD refused=already_held_or_forced
+NATIVEHOLD completed=0 requested=1 gate_verified=0 restored=1 explicit_gain_index_writes=0 rf_disable_calls=0 hardware_acceptance=pending
+NATIVEHOLD completed=0 requested=1 gate_verified=0 restored=1 explicit_gain_index_writes=0 rf_disable_calls=0 hardware_acceptance=pending
+NATIVEHOLD completed=0 requested=1 gate_verified=0 restored=0 explicit_gain_index_writes=0 rf_disable_calls=0 hardware_acceptance=pending
+DCO baseline_mcells=1500/-900 base=200/300 jacobian_mcells_per_code=25.0,3.0,-2.0,30.0
+DCO iteration=1 codes=168/326 mcells=778/-56
+DCO iteration=2 codes=137/326 mcells=3/6
+DCO corrected codes=137/326 mcells=3/6 before=1500/-900 persistent=0
+DCO restore_verified=1 search=1 measured=1
+DCO restore_verified=1 search=4 measured=0
+DCO baseline_mcells=1500/-900 base=200/300 jacobian_mcells_per_code=25.0,3.0,-2.0,30.0
+DCO iteration=1 codes=168/326 mcells=778/-56
+DCO iteration=2 codes=137/326 mcells=3/6
+DCO corrected codes=137/326 mcells=3/6 before=1500/-900 persistent=0
+DCO restore_diff block=2 bank=2 saved=200 now=201
+DCO restore_verified=0 search=5 measured=1
+DCO restore_verified=1 search=6 measured=0
+DCO fault at measurement 1: result=3 measured=0 rolled_back=1
+DCO probe_measurement=missing action=rollback
+DCO restore_verified=1 search=7 measured=0
+DCO fault at measurement 2: result=3 measured=0 rolled_back=1
+DCO probe_measurement=missing action=rollback
+DCO restore_verified=1 search=8 measured=0
+DCO fault at measurement 3: result=3 measured=0 rolled_back=1
+DCO baseline_mcells=1500/-900 base=200/300 jacobian_mcells_per_code=25.0,3.0,-2.0,30.0
+DCO iteration=1 codes=168/326 mcells=778/-56
+DCO iteration=2 codes=137/326 mcells=3/6
+DCO corrected codes=137/326 mcells=3/6 before=1500/-900 persistent=0
+DCO restore_verified=1 search=9 measured=1
+DCO probe_measurement=missing action=rollback
+DCO restore_diff block=2 bank=2 saved=200 now=201
+DCO restore_verified=0 search=10 measured=0
+FILTER apply_verified=1 restore_verified=1 persistent=0
+FILTER apply_verified=0 restore_verified=1 persistent=0
+FILTER apply_verified=1 restore_verified=1 persistent=0
+PREDEMOD_PHY freq=5865 dc_cal_multi=0 dc_cal_mhz=2432 above_last_point=1 pll_track=disabled_by_config
+PREDEMOD_DCO b2k1=102 b3k1=103 b2k2=200 b3k2=300
+PREDEMOD_FILTER_BASE valid=1 regs6_13=d0,d1,d2,d3,d4,d5,d6,d7 fixed_code=-1
+PREDEMOD_FILTER regs6_13=d0,d1,d2,d3,d4,d5,d6,d7 cal_f5_fc=00,00,00,00,00,00,00,00 11p=07/09
+SIGRSSI restore_verified=1 words=11
+SIGRSSI refused=bb_agc_gate_held
+SIGRSSI restore_verified=1 words=11
+PHYTRACK call_us=0 freq=5865
+DFILT begin freq=5865 vendor_mode=8 adc_sel=1 adc_word=0xa5a50003 adc_i2c=0x5b spur_slots=0xa5a5a5a4/0xa5a5a5a5/0xa5a5a5a5/0xa5a5a5a5
+DFILT restore_verified=1
+DFILT begin freq=5865 vendor_mode=8 adc_sel=1 adc_word=0xa5a50003 adc_i2c=0x5b spur_slots=0xa5a5a5a4/0xa5a5a5a5/0xa5a5a5a5/0xa5a5a5a5
+DFILT restore_verified=0
+PHYMARK t=40460100 events=184
+PHYEV t=40460038 gen=51 reg=00000002 old=00000000 new=00000026
+PHYEV t=40460039 gen=51 reg=00000002 old=00000000 new=00000027
+PHYEV t=40460040 gen=51 reg=00000002 old=00000000 new=00000028
+PHYEV t=40460041 gen=51 reg=00000002 old=00000000 new=00000029
+PHYEV t=40460042 gen=51 reg=00000002 old=00000000 new=0000002a
+PHYEV t=40460043 gen=51 reg=00000002 old=00000000 new=0000002b
+PHYEV t=40460044 gen=51 reg=00000002 old=00000000 new=0000002c
+PHYEV t=40460045 gen=51 reg=00000002 old=00000000 new=0000002d
+PHYEV t=40460046 gen=51 reg=00000002 old=00000000 new=0000002e
+PHYEV t=40460047 gen=51 reg=00000002 old=00000000 new=0000002f
+PHYEV t=40460048 gen=51 reg=00000002 old=00000000 new=00000030
+PHYEV t=40460049 gen=51 reg=00000002 old=00000000 new=00000031
+PHYEV t=40460050 gen=51 reg=00000002 old=00000000 new=00000032
+PHYEV t=40460051 gen=51 reg=00000002 old=00000000 new=00000033
+PHYEV t=40460052 gen=51 reg=00000002 old=00000000 new=00000034
+PHYEV t=40460053 gen=51 reg=00000002 old=00000000 new=00000035
+PHYEV t=40460054 gen=51 reg=00000002 old=00000000 new=00000036
+PHYEV t=40460055 gen=51 reg=00000002 old=00000000 new=00000037
+PHYEV t=40460056 gen=51 reg=00000002 old=00000000 new=00000038
+PHYEV t=40460057 gen=51 reg=00000002 old=00000000 new=00000039
+PHYEV t=40460058 gen=51 reg=00000002 old=00000000 new=0000003a
+PHYEV t=40460059 gen=51 reg=00000002 old=00000000 new=0000003b
+PHYEV t=40460060 gen=51 reg=00000002 old=00000000 new=0000003c
+PHYEV t=40460061 gen=51 reg=00000002 old=00000000 new=0000003d
+PHYEV t=40460062 gen=51 reg=00000002 old=00000000 new=0000003e
+PHYEV t=40460063 gen=51 reg=00000002 old=00000000 new=0000003f
+PHYEV t=40460064 gen=51 reg=00000002 old=00000000 new=00000040
+PHYEV t=40460065 gen=51 reg=00000002 old=00000000 new=00000041
+PHYEV t=40460066 gen=51 reg=00000002 old=00000000 new=00000042
+PHYEV t=40460067 gen=51 reg=00000002 old=00000000 new=00000043
+PHYEV t=40460068 gen=51 reg=00000002 old=00000000 new=00000044
+PHYEV t=40460069 gen=51 reg=00000002 old=00000000 new=00000045
+PHYEV t=40460070 gen=51 reg=00000002 old=00000000 new=00000046
+PHYEV t=40460071 gen=51 reg=00000002 old=00000000 new=00000047
+PHYEV t=40460072 gen=51 reg=00000002 old=00000000 new=00000048
+PHYEV t=40460073 gen=51 reg=00000002 old=00000000 new=00000049
+PHYEV t=40460074 gen=51 reg=00000002 old=00000000 new=0000004a
+PHYEV t=40460075 gen=51 reg=00000002 old=00000000 new=0000004b
+PHYEV t=40460076 gen=51 reg=00000002 old=00000000 new=0000004c
+PHYEV t=40460077 gen=51 reg=00000002 old=00000000 new=0000004d
+PHYEV t=40460078 gen=51 reg=00000002 old=00000000 new=0000004e
+PHYEV t=40460079 gen=51 reg=00000002 old=00000000 new=0000004f
+PHYEV t=40460080 gen=51 reg=00000002 old=00000000 new=00000050
+PHYEV t=40460081 gen=51 reg=00000002 old=00000000 new=00000051
+PHYEV t=40460082 gen=51 reg=00000002 old=00000000 new=00000052
+PHYEV t=40460083 gen=51 reg=00000002 old=00000000 new=00000053
+PHYEV t=40460084 gen=51 reg=00000002 old=00000000 new=00000054
+PHYEV t=40460085 gen=51 reg=00000002 old=00000000 new=00000055
+PHYEV t=40460086 gen=51 reg=00000002 old=00000000 new=00000056
+PHYEV t=40460087 gen=51 reg=00000002 old=00000000 new=00000057
+PHYEV t=40460088 gen=51 reg=00000002 old=00000000 new=00000058
+PHYEV t=40460089 gen=51 reg=00000002 old=00000000 new=00000059
+PHYEV t=40460090 gen=51 reg=00000002 old=00000000 new=0000005a
+PHYEV t=40460091 gen=51 reg=00000002 old=00000000 new=0000005b
+PHYEV t=40460092 gen=51 reg=00000002 old=00000000 new=0000005c
+PHYEV t=40460093 gen=51 reg=00000002 old=00000000 new=0000005d
+PHYEV t=40460094 gen=51 reg=00000002 old=00000000 new=0000005e
+PHYEV t=40460095 gen=51 reg=00000002 old=00000000 new=0000005f
+PHYEV t=40460096 gen=51 reg=00000002 old=00000000 new=00000060
+PHYEV t=40460097 gen=51 reg=00000002 old=00000000 new=00000061
+PHYEV t=40460098 gen=51 reg=00000002 old=00000000 new=00000062
+PHYEV t=40460099 gen=51 reg=00000002 old=00000000 new=00000063
+PHYEV t=40460100 gen=51 reg=00000002 old=00000000 new=00000064
+PHYEV t=40460100 gen=51 reg=00000005 old=00000000 new=00000000
+PHY RX lab lifecycle tests passed
+PASS cases=524386048 ordinary=503554048 winding=20832000 wrong=0 ambiguous=0 bound=abs(step)<=63/256 turns
+PASS generated routing history=0 iterations=24000 input_bytes=72000 output_bytes=72000 dma_wraps=2
+PASS generated routing history=1 iterations=24000 input_bytes=72000 output_bytes=72000 dma_wraps=2
+PASS noisy_Q4 cases=20000 within_bound=12637 ambiguous=2819 wrong_within_bound=0
+masked native snapshots: 22/26 valid with acquisition bursts
+PASS: STD150/CVBS150/legacy transfers, standard amplitude and explicit CFO limits, unchanged Phase8/winding/routes, PAL/NTSC/CFO snapshots, shrink telemetry and 100 noise refusals
+PASS agc_mask std150: slots=6 holds=529 exact_clean_spans=945 unflagged=bit-exact cadence<=3 bundles/span
+PASS agc_mask cvbs150: slots=6 holds=415 exact_clean_spans=1052 unflagged=bit-exact cadence<=3 bundles/span
+PASS agc_mask legacy: slots=6 holds=529 exact_clean_spans=945 unflagged=bit-exact cadence<=3 bundles/span
+...
+----------------------------------------------------------------------
+Ran 3 tests in 2.192s
+
+OK
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.009s
+
+OK
+PASS reference phase8_hr: 65536 raw pairs, two bundles, [D,D], six-bit DAC
+PASS reference golden: 65536 raw pairs, two bundles, [D,D], six-bit DAC
+PASS VLP56: all 65536 endpoint pairs, LUT8/2KiB, two bundles, [D,D], startup recovery, native selection/menu; HC50 recursion
+PASS OVP56: all 65536 raw pairs, startup state, LUT8/2KiB, two bundles, duplicate DAC6, native routing; defaults/quarantine covered by C gate tests
+PASS experimental WVP56: all 65536 raw pairs, arbitrary startup, LUT8/2KiB, two bundles, duplicate DAC6
+PASS PLL96: 128 startup states x 256 raw bytes; state continuity, DAC6 duplicates, LUT16/2KiB/eight slots/two bundles
+PASS RANGE32: scalar equation,8192 state/raw cases,continuous70k including DMA wraps,DAC6 duplicates
+....
+----------------------------------------------------------------------
+Ran 4 tests in 29.884s
+
+OK
+PASS: isolated C5VRX-4 integration, 23 C regressions, exhaustive unwrap and source-driven DSP tests

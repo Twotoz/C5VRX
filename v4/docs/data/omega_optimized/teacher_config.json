@@ -1,0 +1,8 @@
+{
+ "phases": 32,
+ "frequencies": 32,
+ "lane": "ultrafine",
+ "rms": 3.0,
+ "jump": 0.06,
+ "contamination": 0.015
+}

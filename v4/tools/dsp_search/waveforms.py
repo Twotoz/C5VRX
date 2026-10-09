@@ -17,7 +17,7 @@ def half_sample(standard,h):
 
 
 def raster(standard,fields=2,short=False,stimulus_seed=None,pattern='bars'):
-    if pattern not in ('bars','zoneplate','checker','texture'):raise ValueError('unknown image pattern')
+    if pattern not in ('bars','zoneplate','checker','texture','osd'):raise ValueError('unknown image pattern')
     pal=standard=='PAL';fh=625 if pal else 525;eq=5 if pal else 6
     total=128 if short else fh*fields
     length=half_sample(standard,total)
@@ -61,6 +61,15 @@ def raster(standard,fields=2,short=False,stimulus_seed=None,pattern='bars'):
                     image=50+35*np.sin(2*np.pi*(.25e6*x+4.25e6*x*x/(2*duration))+h*.19)
                 elif pattern=='checker':
                     image=5.+90.*((np.floor((np.arange(len(x))+13*h)/(8+4*(h%5))).astype(int))&1)
+                elif pattern=='osd':
+                    # High-contrast moving C5 glyphs over a textured scene.
+                    glyph=np.array([[1,1,1,0,1,1,1],[1,0,0,0,1,0,0],
+                                    [1,0,0,0,1,1,1],[1,0,0,0,0,0,1],
+                                    [1,1,1,0,1,1,1]],float)
+                    row=((h//2)%40)//4; col=((np.arange(len(x))+13*(h//625))//20)%30
+                    image=45+18*np.sin(2*np.pi*.9e6*x+h*.1)
+                    if row<5:
+                        mask=col<7; image[mask]=5+90*glyph[row,col[mask]]
                 else:
                     prng=rng if rng is not None else np.random.default_rng(h)
                     knots=np.arange(0,len(x)+8,8)
@@ -74,7 +83,7 @@ def raster(standard,fields=2,short=False,stimulus_seed=None,pattern='bars'):
 
 
 def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimulus_seed=None,loss_windows_us=(),lane_model=None,include_traces=False,pattern='bars',
-              deviation=1.,dc=0j,iq_gain=1.,iq_phase_deg=0.):
+              deviation=1.,dc=0j,iq_gain=1.,iq_phase_deg=0.,gain_windows=(),phase_jumps=(),interferers=()):
     # Hardware randomization (defaults = unchanged): VTX deviation scale,
     # receiver DC (fraction of RMS), I/Q gain and phase imbalance.
     ire,region=raster(standard,short=short,stimulus_seed=stimulus_seed,pattern=pattern)
@@ -90,6 +99,13 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimul
     if stress:
         t=np.arange(len(z))/FS
         z=(z+.35*np.exp(.7j)*np.pad(z[:-8],(8,0)))*(1-.6*(.5+.5*np.sin(2*np.pi*t/150e-6)))
+    # Optional independent confirmation stresses, in the received complex
+    # waveform before lane quantization. Existing cases are bit-identical.
+    for start_us, angle in phase_jumps:
+        if not 0 <= start_us < len(z)/40: raise ValueError('phase jump outside case')
+        z[round(start_us*40):] *= np.exp(1j*angle)
+    for amplitude, offset_hz, phase in interferers:
+        z += amplitude*np.exp(1j*(2*np.pi*offset_hz*np.arange(len(z))/FS+phase))
     for start,end in loss_windows_us:
         if not 0<=start<end<=len(z)/40:raise ValueError('loss interval outside case')
         z[round(start*40):round(end*40)]=0 # Noise remains; fixed gain, not a simulated AGC.
@@ -99,6 +115,9 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimul
         if dc or iq_gain!=1. or iq_phase_deg:
             ph=np.radians(iq_phase_deg)
             y=iq_gain*y.real+1j*(y.imag*np.cos(ph)+y.real*np.sin(ph))+dc*rms
+        for start_us,end_us,gain in gain_windows:
+            if not 0 <= start_us < end_us <= len(y)/40 or gain <= 0: raise ValueError('invalid gain window')
+            y[round(start_us*40):round(end_us*40)] *= gain
         if lane_model:
             from iq_lanes import quantize
             return quantize(y,lane_model)

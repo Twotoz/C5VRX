@@ -9,6 +9,7 @@
 #include "predemod.h"
 #include "edge_autofit.h"
 #include "edge_autofit_table.h"
+#include "omega_table.h"
 #include "soc/bitscrambler_struct.h"
 #include "hal/bitscrambler_ll.h"
 #include <stdio.h>
@@ -81,8 +82,8 @@ static uint16_t fit_pristine[1024], fit_scratch[1024];
 /* Per-program pristine table, self-tested once per boot: later loads (CVT
  * glide, swaps) only compare against it, keeping the halted window short
  * (board 2026-10-09: 335 ms with a full software synthesis inside it). */
-static uint16_t kind_pristine[3][1024];
-static bool kind_verified[3];
+static uint16_t kind_pristine[4][1024];
+static bool kind_verified[4];
 static uint32_t fit_loads, fit_writes, fit_faults;
 void c5v4_fit_set_program(int kind) { c5v4_level_hw_lock(); fit_kind = kind; c5v4_level_hw_unlock(); }
 void c5v4_fit_window(bool open) { c5v4_level_hw_lock(); fit_window = open; c5v4_level_hw_unlock(); }
@@ -108,6 +109,10 @@ static void fit_prepare(void)
         for (unsigned i = 0; i < 1024; ++i)
             if ((fit_pristine[i] & 0x1fffu) != fit_scratch[i]) ++bad;
     }
+    if (!kind_verified[fit_kind] && fit_kind == C5V4_FIT_OMEGA) {
+        for (unsigned i = 0; i < 1024; ++i)
+            if (fit_pristine[i] != omega_pristine[i]) ++bad;
+    }
     uint16_t flip = fit_pristine[40] ^ 1u;
     write_entry(40, flip);
     bool mapped = read_entry(40) == flip && read_entry(41) == fit_pristine[41] && read_entry(39) == fit_pristine[39];
@@ -122,7 +127,7 @@ static void fit_prepare(void)
         return;                       /* fast path: no log per glide step */
     }
     printf("AUTOFIT selftest program=%s result=%s mismatched_words=%u write_mapping=%s\n",
-           fit_kind == C5V4_FIT_EDGE ? "EDGE" : "PAIR", fit_verified ? "pass" : "refused", bad,
+           fit_kind == C5V4_FIT_EDGE ? "EDGE" : fit_kind == C5V4_FIT_OMEGA ? "OMEGA" : "PAIR", fit_verified ? "pass" : "refused", bad,
            mapped ? "pass" : "fail");
     if (!fit_verified) ++fit_faults;
 }
@@ -130,7 +135,7 @@ int c5v4_fit_ready(void)
 { c5v4_level_hw_lock(); int k = fit_verified ? fit_kind : 0; c5v4_level_hw_unlock(); return k; }
 const uint16_t *c5v4_fit_pristine(void) { return fit_pristine; }
 const uint16_t *c5v4_fit_pristine_for(int kind)
-{ return kind > 0 && kind < 3 && kind_verified[kind] ? kind_pristine[kind] : NULL; }
+{ return kind > 0 && kind < 4 && kind_verified[kind] ? kind_pristine[kind] : NULL; }
 bool c5v4_fit_write_stopped(const uint16_t words[1024])
 {
     c5v4_level_hw_lock();
@@ -151,7 +156,7 @@ void c5v4_fit_print(void)
 {
     c5v4_level_hw_lock();
     printf("AUTOFIT lut program=%s verified=%u loads=%lu writes=%lu faults=%lu live_writes=never\n",
-           fit_kind == C5V4_FIT_EDGE ? "EDGE" : fit_kind == C5V4_FIT_PAIR ? "PAIR" : "none", fit_verified,
+           fit_kind == C5V4_FIT_EDGE ? "EDGE" : fit_kind == C5V4_FIT_PAIR ? "PAIR" : fit_kind == C5V4_FIT_OMEGA ? "OMEGA" : "none", fit_verified,
            (unsigned long)fit_loads, (unsigned long)fit_writes, (unsigned long)fit_faults);
     c5v4_level_hw_unlock();
 }

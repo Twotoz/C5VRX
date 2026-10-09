@@ -20,7 +20,7 @@ enum { C5VRX4_DEMOD_HC50, C5VRX4_DEMOD_PHASE8_HR, C5VRX4_DEMOD_GOLDEN,
        C5VRX4_DEMOD_PLL96_IQ_FIXED, C5VRX4_DEMOD_RANGE32,
        C5VRX4_DEMOD_RANGE_OPTION0, C5VRX4_DEMOD_RANGE_OPTION1,
        C5VRX4_DEMOD_RANGE_OPTION2, C5VRX4_DEMOD_RANGE_OPTION3,
-       C5VRX4_DEMOD_RANGE_OPTION4,
+       C5VRX4_DEMOD_RANGE_OPTION4, C5VRX4_DEMOD_RANGE_OPTION5,
        C5VRX4_DEMOD_COUNT = 8 + C5VRX4_RANGE_OPTION_COUNT };
 unsigned c5vrx4_demodulator(void);
 const char *c5vrx4_demodulator_name(void);
@@ -28,6 +28,8 @@ bool c5vrx4_reference_demod(void);
 /* RANGE32 and the pinned range options: shared-word trackers designed for a
  * +1 MHz carrier centre (blanking at -436 kHz). AFC centres the VTX there. */
 bool c5vrx4_range_demod(void);
+/* Opt-in free-form posterior-state experiment, no C/N program switching. */
+bool c5vrx4_omega_demod(void);
 /* The pinned EDGE RANGE LAB: its LUT is re-synthesized for the measured VTX. */
 bool c5vrx4_edge_autofit_demod(void);
 /* PAIR RANGE LAB: FusionDemod's sharp program. */

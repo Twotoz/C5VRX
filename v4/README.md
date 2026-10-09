@@ -14,9 +14,19 @@ of merging. The V4 alpha workflow and flasher build this project independently.
 
 ## Offline optimized demod
 
+[Ω belief-state research](docs/OMEGA_BELIEF_STUDY.md) adds a causal folded-IQ
+Bayesian reference, joint recurrent-state/observation/DAC optimization and
+independent confirmation. **OMEGA BELIEF LAB/value13** is an opt-in research
+transducer, not a demonstrated replacement. It runs one shared LUT continuously,
+with no C/N gearbox or CPU sample loop. Stored AutoFit remaps DAC codes only
+at deliberate program load; new fits wait for the next load. Existing defaults
+and rollback modes retain their values. Read the measured vetoes and physical
+test instructions before bench testing this mode.
+
+
 The operator-requested [range-priority options](docs/RANGE_PRIORITY_STUDY.md)
 deliberately allow less detail for stronger weak-signal sync. Uppercase `Y`
-cycles RANGE32 -> RANGE BAL LAB -> PAIR RANGE LAB -> RANGE32 with saved reboot.
+cycles RANGE32 and selectable LAB entries with saved reboot.
 `R` from any range LAB restores OVP56; another `R` selects original RANGE32.
 RANGE MAX failed the operator's physical noise/sync comparison and is
 quarantined: its saved value8 restores RANGE32 and Y skips it. RANGE BAL passes
