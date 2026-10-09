@@ -20,12 +20,11 @@ def phase_cnr_x10(raw):
     p = lut()[np.asarray(raw, np.int64)]
     d = p[2:] - 2 * p[1:-1] + p[:-2]
     d = ((d % 256) + 256 + 128) % 256 - 128
-    hist = np.bincount(np.abs(d), minlength=129); count = len(d); half = count // 2
-    cum = 0; med = 128.
+    hist = np.bincount(np.abs(d), minlength=129); count = len(d)
+    keep = count - count // 20; cum = 0; s2 = 0.
     for b in range(129):
-        if cum + hist[b] > half:
-            med = b - .5 + (half - cum + .5) / hist[b]; break
-        cum += hist[b]
-    med = max(med, .05)
-    sigma = 1.4826 * med * (2 * math.pi / 256); rho = 3. / (sigma * sigma)
-    return int(round(100. * math.log10(rho)))
+        if cum >= keep: break
+        take = min(hist[b], keep - cum); s2 += take * b * b; cum += take
+    var = (s2 / max(cum, 1) + 1. / 12.) / .7546
+    sigma2 = var * (2 * math.pi / 256) ** 2; rho = 3. / max(sigma2, 1e-9)
+    return min(400, int(round(100. * math.log10(rho))))

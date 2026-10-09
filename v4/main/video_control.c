@@ -23,6 +23,7 @@ static uint8_t s_control_sample_buf[CONTROL_SAMPLE_BYTES];
 volatile int s_cnr_x10 = -99;
 fdemod_t s_fdemod = {.edge = true};   /* the selected EDGE program is loaded first */
 uint32_t s_fdemod_swaps;
+uint32_t s_afc_diag[6];   /* ticks, context ok, stationary, window ok, lines, valid */
 
 static volatile int s_last_n_clip = 0;
 
@@ -592,6 +593,14 @@ void analog_agc_task(void *arg)
         bool was_afc_locked = s_afc_video_locked;
         bool afc_valid = afc_window_ok && afc2.lines && afc2.standard &&
             afc2.porch_pairs && afc2.sync_pairs && afc2.burst_x10 >= AFC2_BURST_MIN_X10;
+        /* Board 2026-10-09: AFC reported cfo 0 with real video present;
+         * count where windows fail (RXSUP afc_diag). */
+        ++s_afc_diag[0];
+        if (settle_ticks == 0 && sampled_context == afc_ctx) ++s_afc_diag[1];
+        if (afc2_envelope_stationary(s_control_sample_buf, sizeof(s_control_sample_buf))) ++s_afc_diag[2];
+        if (afc_window_ok) ++s_afc_diag[3];
+        if (afc_window_ok && afc2.lines) ++s_afc_diag[4];
+        if (afc_valid) ++s_afc_diag[5];
         /* Effective C/N from the phase second difference (fusion_demod.h);
          * a window across a gain change is not an observation. */
         /* Board 2026-10-09: V5 toggles G80/G81 ~120 times/s near the edge; a

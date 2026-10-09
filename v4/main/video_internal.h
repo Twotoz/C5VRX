@@ -319,6 +319,7 @@ bool flight_reload_program(void);
 extern volatile int s_cnr_x10;
 extern fdemod_t s_fdemod;
 extern uint32_t s_fdemod_swaps;
+extern uint32_t s_afc_diag[6];
 bool flight_swap_program(bool edge);
 void rx_clock_slip(uint32_t us);
 void lab_run_sample_phase_scan(void);

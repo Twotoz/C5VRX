@@ -53,15 +53,22 @@ static inline int fdemod_phase_cnr_x10(const uint8_t *s, size_t n, const uint8_t
         d = ((d % 256) + 256 + 128) % 256 - 128;
         ++hist[d < 0 ? -d : d]; ++count;
     }
-    uint32_t half = count / 2, cum = 0;
-    double med = 128.;
-    for (unsigned b = 0; b <= 128; ++b) {
-        if (cum + hist[b] > half) { med = b - .5 + (double)(half - cum + .5) / hist[b]; break; }
-        cum += hist[b];
+    /* Variance of d2 with the largest 5 % (clicks) trimmed. Board
+     * 2026-10-09: the median of a clean carrier's |d2| sits in the lowest
+     * bins and jumped 13.1 <-> 18.9 between windows, which kept FusionDemod
+     * on EDGE at strong signal; the trimmed second moment is smooth. A
+     * Gaussian trimmed at its 95 % point keeps 0.7546 of its variance. */
+    uint32_t keep = count - count / 20, cum = 0;
+    double s2 = 0.;
+    for (unsigned b = 0; b <= 128 && cum < keep; ++b) {
+        uint32_t take = hist[b] < keep - cum ? hist[b] : keep - cum;
+        s2 += (double)take * b * b; cum += take;
     }
-    if (med < .05) med = .05;
-    double sigma = 1.4826 * med * (2 * M_PI / 256), rho = 3. / (sigma * sigma);
-    return (int)lrint(100. * log10(rho));
+    double var = (s2 / (cum ? cum : 1) + 1. / 12.) / .7546;   /* + quantization */
+    double sigma2 = var * (2 * M_PI / 256) * (2 * M_PI / 256);
+    double rho = 3. / (sigma2 > 1e-9 ? sigma2 : 1e-9);
+    int x10 = (int)lrint(100. * log10(rho));
+    return x10 > 400 ? 400 : x10;
 }
 
 /* Rician envelope: ratio = (rho + 1)^2 / (2 rho + 1) for C/N rho. */

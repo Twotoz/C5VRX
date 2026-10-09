@@ -253,13 +253,15 @@ void rxsup_print(void)
 {
     printf("RXSUP epoch=%lu/%lu/%lu gain=%u cnr_db=%.1f p50=%d clip_pm=%d coherence=%d "
            "dc_mstep=%d/%d drift_mcells=%d/%d cfo_khz=%d afc=%u/%u iq_skew_pm=%d "
-           "fit=%u dev=%.3f centre_khz=%.0f sphase=%s/%u program=%s actuators=read_only\n",
+           "fit=%u dev=%.3f centre_khz=%.0f sphase=%s/%u program=%s afc_diag=%lu/%lu/%lu/%lu/%lu/%lu actuators=read_only\n",
            (unsigned long)s_profile_generation, (unsigned long)phy_rx_lab_generation(),
            (unsigned long)s_gain_transition_count, s_current_gain, s_cnr_x10 / 10.0, s_v3_p50,
            s_v3_clip_pm, s_v3_coherence, s_v3_dc_i_mstep, s_v3_dc_q_mstep, s_drift_avg[0], s_drift_avg[1],
            s_cfo_khz, (unsigned)s_afc_mode, s_afc_video_locked, s_last_iq_skew_permille,
            s_fit_valid, s_dev, s_centre / 1000.0, sphase_state_name(), s_sphase_auto_ppm,
-           !c5vrx4_edge_autofit_demod() ? c5vrx4_demodulator_name() : s_fdemod.edge ? "EDGE" : "PAIR");
+           !c5vrx4_edge_autofit_demod() ? c5vrx4_demodulator_name() : s_fdemod.edge ? "EDGE" : "PAIR",
+           (unsigned long)s_afc_diag[0], (unsigned long)s_afc_diag[1], (unsigned long)s_afc_diag[2],
+           (unsigned long)s_afc_diag[3], (unsigned long)s_afc_diag[4], (unsigned long)s_afc_diag[5]);
 }
 
 void autofit_print(void)
