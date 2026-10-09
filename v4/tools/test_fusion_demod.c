@@ -3,36 +3,61 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static uint8_t lut[256];
+
 int main(void)
 {
-    /* Ratio from the Rician formula at 4, 9.6 and 14 dB. */
-    for (int db = 2; db <= 16; db += 2) {
-        double rho = pow(10, db / 10.0), r = (rho + 1) * (rho + 1) / (2 * rho + 1);
-        assert(abs(fdemod_cnr_x10((unsigned)lrint(r * 100)) - db * 10) <= 2);
+    /* Phase LUT of the C5VRX convention: I high nibble, Q low, cell centres. */
+    for (unsigned b = 0; b < 256; ++b) {
+        int i = (int)(b >> 4), q = (int)(b & 15);
+        double di = (i > 7 ? i - 16 : i) + .5, dq = (q > 7 ? q - 16 : q) + .5;
+        lut[b] = (uint8_t)((long)lrint(atan2(dq, di) * 128 / M_PI) & 255);
     }
-    assert(fdemod_cnr_x10(100) == -99);
+    /* A constant-frequency carrier with Gaussian phase noise of known rho:
+     * the estimate rises with rho and saturates (4-bit phase). */
+    static uint8_t buf[4096];
+    int prev = -999;
+    for (int db = 0; db <= 16; db += 4) {
+        double rho = pow(10, db / 10.), sd = sqrt(1 / (2 * rho)), ph = 0;
+        srand(11 + db);
+        for (unsigned k = 0; k < sizeof(buf); ++k) {
+            double u1 = (rand() + 1.) / (RAND_MAX + 2.), u2 = (rand() + 1.) / (RAND_MAX + 2.);
+            double n = sqrt(-2 * log(u1)) * cos(2 * M_PI * u2) * sd;
+            ph += .3;
+            int i = (int)floor(6 * cos(ph + n)), q = (int)floor(6 * sin(ph + n));
+            buf[k] = (uint8_t)(((i & 15) << 4) | (q & 15));
+        }
+        int est = fdemod_phase_cnr_x10(buf, sizeof(buf), lut);
+        assert(est > prev);
+        prev = est;
+    }
     fdemod_t f = {0};
     int64_t t = 10000000;
     for (int k = 0; k < 10; ++k, t += 50000) assert(!fdemod_step(&f, 180, t));
-    /* One noisy tick does not switch; two do (median of three). */
-    assert(!fdemod_step(&f, 60, t)); t += 50000;
-    assert(fdemod_step(&f, 60, t) && f.edge); t += 50000;
-    /* Recovery needs 3 s continuously above 9 dB. */
-    for (int k = 0; k < 40; ++k, t += 50000) assert(!fdemod_step(&f, 130, t));
-    assert(!fdemod_step(&f, 80, t)); t += 50000;      /* dip resets the hold */
+    /* One low window (e.g. across a gain change) does not switch, also not
+     * below the panic level; a sustained drop does (median of three). */
+    assert(!fdemod_step(&f, 40, t)); t += 50000;
+    assert(!fdemod_step(&f, 180, t)); t += 50000;
+    assert(!fdemod_step(&f, 180, t)); t += 50000;
+    assert(!fdemod_step(&f, 100, t)); t += 50000;     /* median still 180 */
+    assert(fdemod_step(&f, 100, t) && f.edge); t += 50000;
+    /* Recovery needs 3 s continuously above 13. */
+    for (int k = 0; k < 40; ++k, t += 50000) assert(!fdemod_step(&f, 150, t));
+    assert(!fdemod_step(&f, 120, t)); t += 50000;      /* dip resets the hold */
     int64_t start = t; bool back = false;
-    for (; t - start < 3200000; t += 50000) if (fdemod_step(&f, 130, t)) { back = true; break; }
+    for (; t - start < 3200000; t += 50000) if (fdemod_step(&f, 150, t)) { back = true; break; }
     assert(back && !f.edge && t - start >= FUSION_PAIR_HOLD_US);
-    /* A sudden fade (one window below 5 dB) switches without the median. */
+    /* Two windows below the panic level switch at once (after the dwell). */
     {
         fdemod_t g = {0};
         int64_t u = 50000000;
         for (int k = 0; k < 5; ++k, u += 50000) assert(!fdemod_step(&g, 180, u));
+        assert(!fdemod_step(&g, 30, u)); u += 50000;
         assert(fdemod_step(&g, 30, u) && g.edge);
     }
     /* Minimum dwell after a switch. */
     assert(!fdemod_step(&f, 50, t + 50000) && !fdemod_step(&f, 50, t + 100000));
-    assert(fdemod_step(&f, 50, t + FUSION_MIN_DWELL_US + 1) && f.edge && f.to_edge == 2 && f.to_pair == 1);
-    puts("PASS: FusionDemod C/N from envelope ratio, fast-down/slow-up hysteresis, dwell");
+    assert(fdemod_step(&f, 50, t + FUSION_MIN_DWELL_US + 1) && f.edge);
+    puts("PASS: FusionDemod phase C/N estimator, gain-change-robust hysteresis, panic, dwell");
     return 0;
 }

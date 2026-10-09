@@ -591,24 +591,24 @@ void analog_agc_task(void *arg)
         bool was_afc_locked = s_afc_video_locked;
         bool afc_valid = afc_window_ok && afc2.lines && afc2.standard &&
             afc2.porch_pairs && afc2.sync_pairs && afc2.burst_x10 >= AFC2_BURST_MIN_X10;
-        /* C/N from the envelope about the fitted DC (fusion_demod.h). */
-        {
-            predemod_circle_t circle = {0};
-            int cdi, cdq; unsigned ratio = 0;
-            predemod_circle_sums(s_control_sample_buf, sizeof(s_control_sample_buf), &circle);
-            (void)predemod_circle_dc(&circle, &cdi, &cdq, &ratio);
-            s_cnr_x10 = fdemod_cnr_x10(ratio);
-        }
+        /* Effective C/N from the phase second difference (fusion_demod.h);
+         * a window across a gain change is not an observation. */
+        static uint32_t cnr_gain_epoch;
+        bool cnr_fresh = afc_window_ok && cnr_gain_epoch == s_gain_transition_count;
+        cnr_gain_epoch = s_gain_transition_count;
+        if (cnr_fresh)
+            s_cnr_x10 = fdemod_phase_cnr_x10(s_control_sample_buf, sizeof(s_control_sample_buf),
+                                             c5vrx_phase8_gain_lut);
         /* EDGE AutoFit uses the same windows; it fits only on a good carrier
          * and writes only once AFC no longer retunes (video TRACK) or AFC is
          * not in AUTO. */
-        autofit_observe(&afc2, afc_valid && s_cnr_x10 >= FUSION_FIT_ABOVE_X10,
+        autofit_observe(&afc2, afc_valid && cnr_fresh && s_cnr_x10 >= FUSION_FIT_ABOVE_X10,
                         s_afc_video_locked || s_afc_mode != AFC_MODE_AUTO);
         /* A new VTX fit that differs from the running words: one reload
          * (rate-limited in autofit_observe), only on a good carrier. */
         if (!s_menu_active && s_cnr_x10 >= FUSION_FIT_ABOVE_X10 && autofit_take_reload_request())
             printf("AUTOFIT reload ok=%u\n", flight_reload_program());
-        if (c5vrx4_edge_autofit_demod() && c5vrx4_fusion_enabled() && !s_menu_active &&
+        if (c5vrx4_edge_autofit_demod() && c5vrx4_fusion_enabled() && !s_menu_active && cnr_fresh &&
             fdemod_step(&s_fdemod, s_cnr_x10, control_now_us)) {
             bool ok = flight_swap_program(s_fdemod.edge);
             if (!ok) s_fdemod.edge = !s_fdemod.edge;
