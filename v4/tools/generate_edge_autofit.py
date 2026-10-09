@@ -62,6 +62,19 @@ def main():
     for d, c in GOLDEN_FITS:
         lut = F.synthesize(dict(p, fit_deviation=d, fit_centre_hz=c))['lut']
         g.append('    {' + ','.join(str(v) for v in lut) + '},')
+    g += ['};']
+    pair = next(o for o in json.loads((ROOT / 'tools/range_options.json').read_text())['options']
+                if o['label'] == 'PAIR RANGE LAB')['model']['lut']
+    base = np.array(pair, np.int64)
+    g.append('static const unsigned short pair_af_base[1024] = {' + ','.join(str(v) for v in pair) + '};')
+    g.append('static const unsigned short pair_af_golden[][1024] = {')
+    for d, c in GOLDEN_FITS:
+        code = base & 63
+        out = (code / F.B.P.SCALE + F.B.P.OFFSET) * np.pi / 128
+        cn = 2 * np.pi * F.NOMINAL_CENTRE_HZ / 20e6; cm = 2 * np.pi * c / 20e6
+        o2 = cn + (out - cm) / d
+        c2 = np.rint(np.clip((o2 * 128 / np.pi - F.B.P.OFFSET) * F.B.P.SCALE, 0, 63)).astype(np.int64)
+        g.append('    {' + ','.join(str(int(v)) for v in (base & ~63) | c2) + '},')
     g += ['};', '']
     (ROOT / 'tools/edge_autofit_golden.h').write_text('\n'.join(g), encoding='utf-8')
     print('EDGE AutoFit tables for', G.identity(opt['model'])[:12])

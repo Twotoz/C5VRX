@@ -10,9 +10,13 @@
 #include <stdint.h>
 #include <math.h>
 
-#define FUSION_EDGE_BELOW_X10  90    /* to EDGE below 9.0 dB (median of three) */
+#define FUSION_EDGE_BELOW_X10  70    /* to EDGE below 7.0 dB (median of three) */
 #define FUSION_PANIC_X10       50    /* one window below 5 dB: EDGE at once */
-#define FUSION_PAIR_ABOVE_X10  120   /* to PAIR above 12.0 dB ... */
+/* Crossover measured with AFC-centred randomized VTX/boards (2026-10-09):
+ * PAIR+AutoFit is error-free and sharper from 8 dB up; EDGE+AutoFit keeps
+ * sync 5-30x better below 6 dB. */
+#define FUSION_PAIR_ABOVE_X10  90    /* to PAIR above 9.0 dB ... */
+#define FUSION_FIT_ABOVE_X10   120   /* AutoFit accepts fits only above 12 dB */
 #define FUSION_PAIR_HOLD_US    3000000LL  /* ... held for 3 s */
 #define FUSION_MIN_DWELL_US    1000000LL
 

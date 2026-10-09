@@ -25,5 +25,9 @@ typedef struct {
 void edge_af_pinned(edge_af_params_t *p);
 /* Returns false for an unsupported allocation or fit. */
 bool edge_af_synthesize(const edge_af_params_t *p, double deviation, double centre_hz, uint16_t low13[1024]);
+/* PAIR AutoFit: remap the DAC code (bits 0..5) of the loaded words to this
+ * VTX's deviation and centre; tracking bits stay. Bit-exact with the
+ * research remap (golden test). */
+void pair_af_remap(const uint16_t pristine[1024], double deviation, double centre_hz, uint16_t out[1024]);
 /* Fit from the AFC sync-tip and porch frequencies (kHz, tuned-relative). */
 bool edge_af_fit(int sync_khz, int porch_khz, double *deviation, double *centre_hz);

@@ -70,67 +70,74 @@ void c5v4_level_hw_stop(void)
 {
     c5v4_level_hw_lock(); ready = false; c5v4_level_hw_unlock();
 }
-static bool edge_verified, edge_blocked, edge_program = true;
-/* FusionDemod may load PAIR while EDGE is the selection: no self-test then. */
-void c5v4_edge_set_loaded(bool edge) { c5v4_level_hw_lock(); edge_program = edge; c5v4_level_hw_unlock(); }
-static uint16_t edge_shadow[1024];
-static uint32_t edge_writes, edge_words, edge_faults;
-static uint16_t edge_scratch[1024];
-/* Engine stopped (program just loaded): the pinned synthesis must reproduce
- * every loaded word, then one write/restore proves the host write mapping.
- * A stored fit for this channel is applied here, reliably, before start. */
-static void edge_prepare(void)
+/* AutoFit LUT (EDGE synthesis or PAIR DAC-code remap). Review 2026-10-09
+ * (PR #190): live LUT access while TX runs is unproven (random read-back
+ * recorded above), so fit words are written ONLY while the engine is halted
+ * between program load and start; the transport brackets that window. */
+static int fit_kind;                  /* C5V4_FIT_* of the program being loaded */
+static bool fit_verified, fit_window;
+static uint16_t fit_pristine[1024], fit_scratch[1024];
+static uint32_t fit_loads, fit_writes, fit_faults;
+void c5v4_fit_set_program(int kind) { c5v4_level_hw_lock(); fit_kind = kind; c5v4_level_hw_unlock(); }
+void c5v4_fit_window(bool open) { c5v4_level_hw_lock(); fit_window = open; c5v4_level_hw_unlock(); }
+/* Engine stopped (program just loaded). EDGE: the pinned synthesis must
+ * reproduce every loaded word. Both: one write/restore proves the host
+ * write mapping. */
+static void fit_prepare(void)
 {
-    edge_verified = false;
-    if (!c5vrx4_edge_autofit_demod() || !edge_program || edge_blocked ||
-        bitscrambler_ll_get_lut_width(&BITSCRAMBLER, BITSCRAMBLER_DIR_TX) != 1) return;
-    edge_af_params_t p; edge_af_pinned(&p);
-    if (!edge_af_synthesize(&p, EDGE_AF_PINNED_DEVIATION, EDGE_AF_PINNED_CENTRE_HZ, edge_scratch)) return;
+    fit_verified = false;
+    if (!fit_kind || bitscrambler_ll_get_lut_width(&BITSCRAMBLER, BITSCRAMBLER_DIR_TX) != 1) return;
     unsigned bad = 0;
-    for (unsigned i = 0; i < 1024; ++i) {
-        edge_shadow[i] = read_entry(i);
-        if ((edge_shadow[i] & 0x1fffu) != edge_scratch[i]) ++bad;
+    for (unsigned i = 0; i < 1024; ++i) fit_pristine[i] = read_entry(i);
+    if (fit_kind == C5V4_FIT_EDGE) {
+        edge_af_params_t p; edge_af_pinned(&p);
+        if (!edge_af_synthesize(&p, EDGE_AF_PINNED_DEVIATION, EDGE_AF_PINNED_CENTRE_HZ, fit_scratch)) return;
+        for (unsigned i = 0; i < 1024; ++i)
+            if ((fit_pristine[i] & 0x1fffu) != fit_scratch[i]) ++bad;
     }
-    uint16_t flip = edge_shadow[40] ^ 1u;
+    uint16_t flip = fit_pristine[40] ^ 1u;
     write_entry(40, flip);
-    bool mapped = read_entry(40) == flip && read_entry(41) == edge_shadow[41] && read_entry(39) == edge_shadow[39];
-    write_entry(40, edge_shadow[40]);
-    mapped = mapped && read_entry(40) == edge_shadow[40];
-    edge_verified = !bad && mapped;
-    printf("EDGE_AF startup_selftest=%s mismatched_words=%u write_mapping=%s\n",
-           edge_verified ? "pass" : "refused", bad, mapped ? "pass" : "fail");
-    if (!edge_verified) ++edge_faults;
+    bool mapped = read_entry(40) == flip && read_entry(41) == fit_pristine[41] && read_entry(39) == fit_pristine[39];
+    write_entry(40, fit_pristine[40]);
+    mapped = mapped && read_entry(40) == fit_pristine[40];
+    fit_verified = !bad && mapped;
+    ++fit_loads;
+    printf("AUTOFIT selftest program=%s result=%s mismatched_words=%u write_mapping=%s\n",
+           fit_kind == C5V4_FIT_EDGE ? "EDGE" : "PAIR", fit_verified ? "pass" : "refused", bad,
+           mapped ? "pass" : "fail");
+    if (!fit_verified) ++fit_faults;
 }
-bool c5v4_edge_lut_ready(void)
-{ c5v4_level_hw_lock(); bool v = edge_verified && !edge_blocked; c5v4_level_hw_unlock(); return v; }
-bool c5v4_edge_lut_write(const uint16_t low13[1024])
+int c5v4_fit_ready(void)
+{ c5v4_level_hw_lock(); int k = fit_verified ? fit_kind : 0; c5v4_level_hw_unlock(); return k; }
+const uint16_t *c5v4_fit_pristine(void) { return fit_pristine; }
+bool c5v4_fit_write_stopped(const uint16_t words[1024])
 {
     c5v4_level_hw_lock();
-    bool ok = edge_verified && !edge_blocked &&
-              bitscrambler_ll_get_lut_width(&BITSCRAMBLER, BITSCRAMBLER_DIR_TX) == 1;
-    unsigned changed = 0;
+    bool ok = fit_verified && fit_window;
     for (unsigned i = 0; ok && i < 1024; ++i) {
-        uint16_t word = (uint16_t)((edge_shadow[i] & 0xe000u) | (low13[i] & 0x1fffu));
-        if (word == edge_shadow[i]) continue;
-        if (!write_verified(i, word)) { ok = false; edge_blocked = true; ++edge_faults; break; }
-        edge_shadow[i] = word; ++changed;
+        write_entry(i, words[i]);
+        if (read_entry(i) != words[i]) ok = false;
     }
-    if (ok) { ++edge_writes; edge_words += changed; }
+    if (!ok && fit_verified) {   /* never leave a half-written table */
+        for (unsigned i = 0; i < 1024; ++i) write_entry(i, fit_pristine[i]);
+        ++fit_faults;
+    }
+    if (ok) ++fit_writes;
     c5v4_level_hw_unlock();
     return ok;
 }
-void c5v4_edge_lut_print(void)
+void c5v4_fit_print(void)
 {
     c5v4_level_hw_lock();
-    printf("EDGE_AF lut verified=%u blocked=%u updates=%lu words=%lu faults=%lu retries=%lu\n",
-           edge_verified, edge_blocked, (unsigned long)edge_writes, (unsigned long)edge_words,
-           (unsigned long)edge_faults, (unsigned long)retries);
+    printf("AUTOFIT lut program=%s verified=%u loads=%lu writes=%lu faults=%lu live_writes=never\n",
+           fit_kind == C5V4_FIT_EDGE ? "EDGE" : fit_kind == C5V4_FIT_PAIR ? "PAIR" : "none", fit_verified,
+           (unsigned long)fit_loads, (unsigned long)fit_writes, (unsigned long)fit_faults);
     c5v4_level_hw_unlock();
 }
 void c5v4_level_hw_prepare(void)
 {
     ready = lut_verified = false;
-    edge_prepare();
+    fit_prepare();
     decoder_dc[0] = decoder_dc[1] = 0; /* every program load is pristine */
     /* The donor programs do not use the span75 LUT-bank layout. */
     if (c5vrx4_reference_demod()) return;

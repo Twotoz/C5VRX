@@ -472,49 +472,84 @@ void quiet_tx_interrupts(void)
     PARL_IO.int_ena.val = 0;
 }
 
-/* FusionDemod: PAIR <-> EDGE while live. Same sequence as a menu exit
- * minus the transport restart: load (halts), self-test, AutoFit words
- * written into the stopped engine, reset, run. Board continuity of a live
- * swap is a physical gate (fusion_swaps/tx_empty in the status). */
-bool flight_swap_program(bool edge)
+static bool s_running_edge = true;    /* FusionDemod: which program runs */
+
+static const void *pair_program(void)
 {
 #if C5VRX4_RANGE_OPTION_COUNT
-    const void *pair = NULL, *edge_prog = c5vrx4_selected_program();
     for (unsigned i = 0; i < C5VRX4_RANGE_OPTION_COUNT; ++i)
         if (!strcmp(c5vrx4_range_options[i].model_id, C5VRX4_PAIR_MODEL_ID) &&
             c5vrx4_range_options[i].selectable)
-            pair = range_option_program(i);
-    if (!pair || !c5vrx4_edge_autofit_demod()) return false;
+            return range_option_program(i);
+#endif
+    return NULL;
+}
+
+/* Load a program and apply AutoFit in the halted window (engine stopped
+ * from load until the caller's reset/start). Caller holds the HW lock. */
+static esp_err_t load_with_fit(const void *program, int kind)
+{
+    c5v4_fit_set_program(kind);
+    esp_err_t err = bitscrambler_load_program(s_flight_bs, program);
+    if (err != ESP_OK) return err;
+    c5v4_level_hw_prepare();
+    c5v4_fit_window(true);
+    (void)autofit_apply_stopped();      /* failure leaves the pristine words */
+    c5v4_fit_window(false);
+    return ESP_OK;
+}
+
+static int selected_fit_kind(void)
+{
+    if (!c5vrx4_autofit_enabled()) return C5V4_FIT_NONE;
+    if (c5vrx4_edge_autofit_demod()) return s_running_edge ? C5V4_FIT_EDGE : C5V4_FIT_PAIR;
+    if (c5vrx4_pair_autofit_demod()) return C5V4_FIT_PAIR;
+    return C5V4_FIT_NONE;
+}
+
+static const void *running_program(void)
+{
+    if (c5vrx4_edge_autofit_demod() && !s_running_edge && pair_program()) return pair_program();
+    return c5vrx4_selected_program();
+}
+
+/* Live program change (FusionDemod swap or an AutoFit reload): load with
+ * fit, reset, run. Any failure reloads the previous program; the running
+ * state changes only on success. Continuity of a live load is a physical
+ * gate (review 2026-10-09): count swaps/reloads against tx_empty. */
+static bool live_load(bool edge)
+{
+    if (!c5vrx4_edge_autofit_demod() && !c5vrx4_pair_autofit_demod()) return false;
+    if (c5vrx4_edge_autofit_demod() && !edge && !pair_program()) return false;
+    bool previous = s_running_edge;
     c5v4_level_hw_lock();
-    c5v4_edge_set_loaded(edge);
-    esp_err_t err = bitscrambler_load_program(s_flight_bs, edge ? edge_prog : pair);
-    if (err == ESP_OK) {
-        c5v4_level_hw_prepare();
-        if (edge) (void)edge_autofit_reapply();
-        err = bitscrambler_reset(s_flight_bs);
-        if (err == ESP_OK) err = bitscrambler_start(s_flight_bs);
+    s_running_edge = edge;
+    esp_err_t err = load_with_fit(running_program(), selected_fit_kind());
+    if (err == ESP_OK) err = bitscrambler_reset(s_flight_bs);
+    if (err == ESP_OK) err = bitscrambler_start(s_flight_bs);
+    if (err != ESP_OK) {
+        s_running_edge = previous;
+        esp_err_t back = load_with_fit(running_program(), selected_fit_kind());
+        if (back == ESP_OK) back = bitscrambler_reset(s_flight_bs);
+        if (back == ESP_OK) back = bitscrambler_start(s_flight_bs);
+        printf("FLIGHT_LOAD failed=%s rollback=%s\n", esp_err_to_name(err), esp_err_to_name(back));
     }
     c5v4_level_hw_unlock();
     return err == ESP_OK;
-#else
-    (void)edge;
-    return false;
-#endif
 }
+
+bool flight_swap_program(bool edge) { return c5vrx4_edge_autofit_demod() && live_load(edge); }
+bool flight_reload_program(void) { return live_load(s_running_edge); }
 
 void start_flight_demodulator(void)
 {
-    c5v4_edge_set_loaded(true);   /* the selected program itself */
     c5v4_level_hw_lock();
     ESP_ERROR_CHECK(bitscrambler_enable(s_flight_bs));
-    ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs,
-                      c5vrx4_selected_program()));
-    c5v4_level_hw_prepare();
+    ESP_ERROR_CHECK(load_with_fit(running_program(), selected_fit_kind()));
     if (!c5vrx4_reference_demod() && (!c5v4_level_hw_lut_verified() ||
         (c5vrx4_level_enabled() && !c5v4_level_hw_ready()))) {
         /* A failed addressing probe is repaired from the pristine binary. */
-        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs,
-            c5vrx4_selected_program()));
+        ESP_ERROR_CHECK(bitscrambler_load_program(s_flight_bs, running_program()));
     }
     ESP_ERROR_CHECK(bitscrambler_reset(s_flight_bs));
     ESP_ERROR_CHECK(bitscrambler_start(s_flight_bs));

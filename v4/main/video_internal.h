@@ -301,13 +301,16 @@ void predemod_print(const char *tag, const char *stage, int extra,
 bool predemod_pause(const char *tag, analog_agc_mode_t *saved_mode);
 void predemod_resume(analog_agc_mode_t saved_mode);
 void lab_predemod_status(void);
-/* Realtime EDGE AutoFit (video_autofit.c). */
+/* AutoFit (video_autofit.c): fits on a good carrier, applied only in the
+ * halted-engine window of a program load. */
 #include "afc_v2.h"
 #include "edge_autofit.h"
-void edge_autofit_observe(const afc2_result_t *r, bool valid, bool settled);
-void edge_autofit_set_params(const edge_af_params_t *p);
-bool edge_autofit_reapply(void);
-void edge_autofit_print(void);
+bool autofit_active(void);
+void autofit_observe(const afc2_result_t *r, bool good, bool settled);
+bool autofit_apply_stopped(void);
+bool autofit_take_reload_request(void);
+void autofit_print(void);
+bool flight_reload_program(void);
 #include "fusion_demod.h"
 #include "predemod.h"
 extern volatile int s_cnr_x10;

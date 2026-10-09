@@ -1,36 +1,38 @@
-/* C5VRX by Twotoz/contributors: realtime AutoFit for the EDGE range demod.
+/* C5VRX by Twotoz/contributors: AutoFit for the PAIR and EDGE range demods.
  *
- * The AFC v2 measurement already yields, per completed IQ window, the mean
+ * The AFC v2 measurement yields, per completed IQ window, the mean
  * instantaneous frequency of the sync tip and of the burst-free back porch.
  * Their difference is the VTX deviation (1914 kHz at the search model's
  * nominal transfer), the porch gives the carrier centre. A median of 16
- * windows with a bounded spread re-synthesizes the EDGE LUT (bits 0..12)
- * when the fit moved by >3 % or >50 kHz; the last fit per channel is stored
- * and re-applied at the next boot. The CPU only writes LUT words; the
- * 40 MS/s path stays in the BitScrambler. */
+ * windows with a bounded spread is a fit; fits are taken only on a good
+ * carrier (caller gate), whichever program runs, and stored per channel.
+ *
+ * Review 2026-10-09 (PR #190): words are never written while TX reads the
+ * LUT. The transport applies the fit in the halted-engine window of every
+ * program load (boot, menu exit, FusionDemod swap); a new VTX fit that
+ * differs from the loaded one requests one reload, at most every 30 s. */
 #include "video_internal.h"
-#include "afc_v2.h"
-#include "edge_autofit.h"
 #include "cvbs_level_hw.h"
 #include <math.h>
 #include <stdlib.h>
 
-#define AF_WINDOWS     16u
-#define AF_SPREAD_KHZ  250
-#define AF_MIN_GAP_US  2000000LL
+#define AF_WINDOWS       16u
+#define AF_SPREAD_KHZ    250
+#define AF_RELOAD_GAP_US 30000000LL
 
 typedef struct { uint16_t version, freq_mhz; int32_t dev_x10000, centre_hz; } af_saved_t;
-#define AF_SAVED_VERSION 1u
+#define AF_SAVED_VERSION 2u
 
 static int32_t s_sync[AF_WINDOWS], s_porch[AF_WINDOWS];
 static unsigned s_n;
-static double s_dev, s_centre;
-static bool s_applied, s_boot_tried;
-static uint32_t s_fits, s_updates, s_rejects;
-static int64_t s_last_us;
-static uint16_t s_lut[1024];
-static edge_af_params_t s_params;
-static bool s_params_set;
+static uint16_t s_freq;                 /* channel of s_fit */
+static bool s_fit_valid, s_loaded_valid, s_reload_req;
+static double s_dev, s_centre;          /* fit of this channel */
+static double s_loaded_dev, s_loaded_centre;
+static int s_loaded_kind;
+static uint32_t s_fits, s_rejects, s_stored, s_applied, s_reloads;
+static int64_t s_last_reload_us;
+static uint16_t s_words[1024];
 
 static int cmp_i32(const void *a, const void *b)
 {
@@ -48,39 +50,65 @@ static bool robust(const int32_t *v, int32_t *median)
     return s[3 * AF_WINDOWS / 4] - s[AF_WINDOWS / 4] <= AF_SPREAD_KHZ;
 }
 
-void edge_autofit_set_params(const edge_af_params_t *p)
+static void key_for(uint16_t freq, char key[12]) { snprintf(key, 12, "af%u", (unsigned)freq); }
+
+static void load_channel(uint16_t freq)
 {
-    s_params = *p; s_params_set = true;
-    s_applied = false;              /* re-synthesize with the new rung */
+    char key[12]; af_saved_t sv;
+    key_for(freq, key);
+    s_freq = freq; s_n = 0;
+    s_fit_valid = c5vrx4_blob_load(key, &sv, sizeof(sv)) && sv.version == AF_SAVED_VERSION &&
+                  sv.freq_mhz == freq;
+    if (s_fit_valid) { s_dev = sv.dev_x10000 / 10000.0; s_centre = sv.centre_hz; }
 }
 
-static bool apply(double dev, double centre)
+static void sync_channel(void)
 {
-    if (!s_params_set) { edge_af_pinned(&s_params); s_params_set = true; }
-    if (!edge_af_synthesize(&s_params, dev, centre, s_lut)) return false;
-    if (!c5v4_edge_lut_write(s_lut)) return false;
-    s_dev = dev; s_centre = centre; s_applied = true; ++s_updates;
-    s_last_us = esp_timer_get_time();
+    uint16_t freq = rf_get_frequency_mhz();
+    if (freq != s_freq) load_channel(freq);
+}
+
+bool autofit_active(void)
+{
+    return c5vrx4_autofit_enabled() && (c5vrx4_edge_autofit_demod() || c5vrx4_pair_autofit_demod());
+}
+
+/* Halted-engine window of a program load: the transport has called
+ * c5v4_fit_set_program(kind), loaded the program and run the self-test. */
+bool autofit_apply_stopped(void)
+{
+    s_loaded_kind = c5v4_fit_ready();
+    s_loaded_valid = false;
+    if (!autofit_active() || !s_loaded_kind) return false;
+    sync_channel();
+    if (!s_fit_valid) return false;              /* pristine words = nominal fit */
+    const uint16_t *pristine = c5v4_fit_pristine();
+    if (s_loaded_kind == C5V4_FIT_EDGE) {
+        edge_af_params_t p; edge_af_pinned(&p);
+        if (!edge_af_synthesize(&p, s_dev, s_centre, s_words)) return false;
+        for (unsigned i = 0; i < 1024; ++i)
+            s_words[i] = (uint16_t)((pristine[i] & 0xe000u) | (s_words[i] & 0x1fffu));
+    } else {
+        pair_af_remap(pristine, s_dev, s_centre, s_words);
+    }
+    if (!c5v4_fit_write_stopped(s_words)) return false;
+    s_loaded_valid = true; s_loaded_dev = s_dev; s_loaded_centre = s_centre;
+    ++s_applied;
     return true;
 }
 
-bool edge_autofit_reapply(void)
+bool autofit_take_reload_request(void)
 {
-    return s_applied && apply(s_dev, s_centre);
+    if (!s_reload_req) return false;
+    s_reload_req = false; ++s_reloads; s_last_reload_us = esp_timer_get_time();
+    return true;
 }
 
-void edge_autofit_observe(const afc2_result_t *r, bool valid, bool settled)
+void autofit_observe(const afc2_result_t *r, bool good, bool settled)
 {
-    if (!c5vrx4_edge_autofit_demod() || !c5v4_edge_lut_ready()) return;
-    if (!s_boot_tried) {
-        s_boot_tried = true;
-        af_saved_t sv;
-        if (c5vrx4_blob_load("edge_fit", &sv, sizeof(sv)) && sv.version == AF_SAVED_VERSION &&
-            sv.freq_mhz == rf_get_frequency_mhz() &&
-            apply(sv.dev_x10000 / 10000.0, (double)sv.centre_hz))
-            printf("EDGE_AF restored dev=%.3f centre_khz=%.0f\n", s_dev, s_centre / 1000.0);
-    }
-    if (!valid || !r->sync_pairs || !r->porch_pairs) return;
+    if (!autofit_active()) return;
+    sync_channel();
+    if (!good || !r->sync_pairs || !r->porch_pairs) return;
     s_sync[s_n] = r->sync_khz; s_porch[s_n] = r->porch_khz;
     if (++s_n < AF_WINDOWS) return;
     s_n = 0;
@@ -91,24 +119,33 @@ void edge_autofit_observe(const afc2_result_t *r, bool valid, bool settled)
         return;
     }
     ++s_fits;
-    int64_t now = esp_timer_get_time();
-    bool moved = !s_applied || fabs(dev - s_dev) > .03 * s_dev || fabs(centre - s_centre) > 50e3;
-    if (!moved || !settled || now - s_last_us < AF_MIN_GAP_US) return;
-    if (!apply(dev, centre)) return;
-    printf("EDGE_AF fit dev=%.3f centre_khz=%.0f sync_khz=%ld porch_khz=%ld\n", dev, centre / 1000.0,
-           (long)sync, (long)porch);
-    af_saved_t sv = {AF_SAVED_VERSION, rf_get_frequency_mhz(), (int32_t)lrint(dev * 10000.0), (int32_t)lrint(centre)};
-    (void)c5vrx4_blob_store("edge_fit", &sv, sizeof(sv));
+    if (!settled) return;                  /* AFC may still retune */
+    if (!s_fit_valid || fabs(dev - s_dev) > .03 * s_dev || fabs(centre - s_centre) > 50e3) {
+        s_dev = dev; s_centre = centre; s_fit_valid = true;
+        char key[12]; key_for(s_freq, key);
+        af_saved_t sv = {AF_SAVED_VERSION, s_freq, (int32_t)lrint(dev * 10000.0), (int32_t)lrint(centre)};
+        if (c5vrx4_blob_store(key, &sv, sizeof(sv))) ++s_stored;
+        printf("AUTOFIT fit freq=%u dev=%.3f centre_khz=%.0f sync_khz=%ld porch_khz=%ld\n",
+               s_freq, dev, centre / 1000.0, (long)sync, (long)porch);
+    }
+    /* The running words carry another fit: one reload, rate-limited. */
+    bool stale = s_loaded_kind && (!s_loaded_valid || fabs(s_dev - s_loaded_dev) > .04 * s_dev ||
+                                   fabs(s_centre - s_loaded_centre) > 80e3);
+    if (stale && esp_timer_get_time() - s_last_reload_us >= AF_RELOAD_GAP_US) s_reload_req = true;
 }
 
-void edge_autofit_print(void)
+void autofit_print(void)
 {
-    if (!c5vrx4_edge_autofit_demod()) return;
-    printf("FUSION enabled=%u program=%s cnr_db=%.1f to_edge=%lu to_pair=%lu swaps=%lu\n",
-           c5vrx4_fusion_enabled(), s_fdemod.edge ? "EDGE" : "PAIR", s_cnr_x10 / 10.0,
-           (unsigned long)s_fdemod.to_edge, (unsigned long)s_fdemod.to_pair, (unsigned long)s_fdemod_swaps);
-    printf("EDGE_AF applied=%u dev=%.3f centre_khz=%.0f fits=%lu updates=%lu rejects=%lu rung=%ux%u/out%u kp=%.2f ki=%.2f\n",
-           s_applied, s_dev, s_centre / 1000.0, (unsigned long)s_fits, (unsigned long)s_updates,
-           (unsigned long)s_rejects, s_params.phases, s_params.frequencies, s_params.output, s_params.kp, s_params.ki);
-    c5v4_edge_lut_print();
+    if (!autofit_active()) return;
+    if (c5vrx4_edge_autofit_demod())
+        printf("FUSION enabled=%u program=%s cnr_db=%.1f to_edge=%lu to_pair=%lu swaps=%lu\n",
+               c5vrx4_fusion_enabled(), s_fdemod.edge ? "EDGE" : "PAIR", s_cnr_x10 / 10.0,
+               (unsigned long)s_fdemod.to_edge, (unsigned long)s_fdemod.to_pair, (unsigned long)s_fdemod_swaps);
+    printf("AUTOFIT freq=%u fit=%u dev=%.3f centre_khz=%.0f loaded=%s/%u loaded_dev=%.3f fits=%lu rejects=%lu "
+           "stored=%lu applied=%lu reloads=%lu cnr_db=%.1f\n",
+           s_freq, s_fit_valid, s_dev, s_centre / 1000.0,
+           s_loaded_kind == C5V4_FIT_EDGE ? "EDGE" : s_loaded_kind == C5V4_FIT_PAIR ? "PAIR" : "none",
+           s_loaded_valid, s_loaded_dev, (unsigned long)s_fits, (unsigned long)s_rejects,
+           (unsigned long)s_stored, (unsigned long)s_applied, (unsigned long)s_reloads, s_cnr_x10 / 10.0);
+    c5v4_fit_print();
 }

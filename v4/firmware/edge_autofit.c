@@ -72,6 +72,20 @@ bool edge_af_synthesize(const edge_af_params_t *p, double fit_d, double fit_c, u
     return true;
 }
 
+void pair_af_remap(const uint16_t pristine[1024], double dev, double centre, uint16_t out[1024])
+{
+    const double two_pi = 2 * M_PI;
+    double cn = two_pi * EDGE_AF_NOMINAL_HZ / 20e6, cm = two_pi * centre / 20e6;
+    for (unsigned i = 0; i < 1024; ++i) {
+        unsigned code = pristine[i] & 63u;
+        double o = ((double)code / EDGE_AF_SCALE + EDGE_AF_OFFSET) * M_PI / 128;
+        double o2 = cn + (o - cm) / dev;
+        double v = (o2 * 128 / M_PI - EDGE_AF_OFFSET) * EDGE_AF_SCALE;
+        v = v < 0 ? 0 : v > 63 ? 63 : v;
+        out[i] = (uint16_t)((pristine[i] & ~63u) | (unsigned)rint(v));
+    }
+}
+
 bool edge_af_fit(int sync_khz, int porch_khz, double *deviation, double *centre_hz)
 {
     double d = (double)(porch_khz - sync_khz) / EDGE_AF_SYNC_TO_BLANK_KHZ;

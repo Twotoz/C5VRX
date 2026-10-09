@@ -92,7 +92,11 @@ def main():
     assert "sync_flywheel.c" in (ROOT / "component.cmake").read_text()
     # Line repair: opt-in, needs the flywheel, selectable in SETUP, source bound set.
     assert '"line_fix", true' in pipeline and "return s_line_fix && c5vrx4_sync_flywheel_enabled();" in pipeline
-    assert "    C5VRX4_OPT_LINE_FIX, C5VRX4_OPT_EDGE_GEAR,\n};" in video.replace("\r\n", "\n")
+    assert "    C5VRX4_OPT_LINE_FIX, C5VRX4_OPT_EDGE_GEAR, C5VRX4_OPT_FUSION,\n    C5VRX4_OPT_AUTOFIT,\n};" in video.replace("\r\n", "\n")
+    # FusionDemod/AutoFit (review 2026-10-09): selectable in SETUP, no live LUT writes.
+    assert '"fusion", true' in pipeline and '"autofit", true' in pipeline
+    assert "bool ok = fit_verified && fit_window;" in (ROOT / "firmware/cvbs_level_hw.c").read_text()
+    assert "c5v4_edge_lut_write" not in (ROOT / "firmware/cvbs_level_hw.c").read_text()
     # Edge filter gear: opt-in (main never ran it), selectable in SETUP.
     assert '"edge_gear", false' in pipeline and "!c5vrx4_edge_gear_enabled() ||" in video
     assert "c5vrx4_line_repair_enabled() && reach > RAW_RING_BYTES ? reach - RAW_RING_BYTES : 0u" in video

@@ -14,13 +14,16 @@ void c5v4_level_hw_transport_fault(void);
 unsigned c5v4_level_hw_period(uint32_t context, uint64_t now_us);
 /* Probe result shared with digital DC recentring of the static decoder. */
 bool c5v4_level_hw_lut_verified(void);
-/* EDGE AutoFit LUT (bits 0..12; program token bits kept). Stopped-engine
- * self-test at program load; live rewrites change only differing words,
- * each with read-back retries; a persistent mismatch blocks further writes. */
-bool c5v4_edge_lut_ready(void);
-bool c5v4_edge_lut_write(const uint16_t low13[1024]);
-void c5v4_edge_lut_print(void);
-void c5v4_edge_set_loaded(bool edge);
+/* AutoFit LUT: written only while the engine is halted between program
+ * load and start (c5v4_fit_window). EDGE words are self-tested against the
+ * pinned synthesis at load; a failed write restores the pristine table. */
+enum { C5V4_FIT_NONE = 0, C5V4_FIT_EDGE = 1, C5V4_FIT_PAIR = 2 };
+void c5v4_fit_set_program(int kind);
+void c5v4_fit_window(bool open);
+int c5v4_fit_ready(void);
+const uint16_t *c5v4_fit_pristine(void);
+bool c5v4_fit_write_stopped(const uint16_t words[1024]);
+void c5v4_fit_print(void);
 bool c5v4_decoder_recenter(int di_mcells, int dq_mcells);
 void c5v4_decoder_dc(int dc[2]);
 void c5v4_decoder_print(void);

@@ -61,7 +61,7 @@ enum {
     C5VRX4_OPT_AGC_MASK, C5VRX4_OPT_DC_RECENTER, C5VRX4_OPT_SPHASE,
     C5VRX4_OPT_IDLE_RASTER, C5VRX4_OPT_RADIUS_BOOST, C5VRX4_OPT_SYNC_FW,
     C5VRX4_OPT_LEVEL, C5VRX4_OPT_CVBS, C5VRX4_OPT_HISTORY, C5VRX4_OPT_NATIVE_PATCH, C5VRX4_OPT_HW_DCO,
-    C5VRX4_OPT_LINE_FIX, C5VRX4_OPT_EDGE_GEAR, C5VRX4_OPT_FUSION,
+    C5VRX4_OPT_LINE_FIX, C5VRX4_OPT_EDGE_GEAR, C5VRX4_OPT_FUSION, C5VRX4_OPT_AUTOFIT,
     C5VRX4_OPT_COUNT
 };
 void c5vrx4_options_snapshot(void);
@@ -81,6 +81,9 @@ bool c5vrx4_edge_gear_enabled(void);
 /* FusionDemod (EDGE RANGE LAB selection): PAIR on a good carrier, EDGE with
  * AutoFit near the range edge. Default on; off = pure EDGE. */
 bool c5vrx4_fusion_enabled(void);
+/* AutoFit for the PAIR/EDGE range demods (menu AUTOFIT, default on). */
+bool c5vrx4_autofit_enabled(void);
+bool c5vrx4_pair_autofit_demod(void);
 /* Opaque NVS blob store (c5vrx4/<key>); returns false when absent/short. */
 bool c5vrx4_blob_load(const char *key, void *data, size_t size);
 bool c5vrx4_blob_store(const char *key, const void *data, size_t size);

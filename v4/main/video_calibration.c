@@ -781,5 +781,5 @@ void predemod_correction_print(void)
            c5vrx4_sphase_auto_enabled(), s_sphase_auto_done,
            s_sphase_auto_done ? s_sphase_auto_ppm : 0u, sphase_state_name(), s_sphase_scans);
     c5v4_decoder_print();
-    edge_autofit_print();
+    autofit_print();
 }

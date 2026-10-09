@@ -25,7 +25,7 @@ OUTPUT = ('freq', 'advance', 'avg')
 STATE = {}
 
 
-def cases(seed, per=4):
+def cases(seed, per=4, afc=False):
     import waveforms as V
     import lane_profile as L
     rng = np.random.default_rng(seed); out = []
@@ -33,7 +33,10 @@ def cases(seed, per=4):
         for k in range(per):
             std = ('PAL', 'NTSC')[k % 2]
             cfo = float(rng.uniform(.5e6, 1.5e6)); rms = L.scale(3) * float(rng.uniform(.85, 1.15))
-            hw = dict(deviation=float(rng.uniform(.75, 1.35)), dc=complex(*rng.uniform(-.2, .2, 2)),
+            dev = float(rng.uniform(.75, 1.35))
+            if afc:  # AFC v2 centres the porch on -436 kHz within its 50 kHz deadband
+                cfo = -436e3 + dev * 1436e3 + float(rng.uniform(-5e4, 5e4))
+            hw = dict(deviation=dev, dc=complex(*rng.uniform(-.2, .2, 2)),
                       iq_gain=float(rng.uniform(.97, 1.03)), iq_phase_deg=float(rng.uniform(-2, 2)),
                       pattern=('bars', 'zoneplate', 'checker', 'texture')[int(rng.integers(4))])
             s = int(seed + 37 * cnr + k)

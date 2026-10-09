@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 int main(void)
 {
@@ -18,6 +19,13 @@ int main(void)
         if (bad) printf("fit %u: %u words differ\n", g, bad);
         assert(!bad);
     }
+    for (unsigned g = 0; g < EDGE_AF_GOLDEN_COUNT; ++g) {
+        pair_af_remap(pair_af_base, edge_af_golden_fit[g][0], edge_af_golden_fit[g][1], low);
+        for (unsigned i = 0; i < 1024; ++i) assert(low[i] == pair_af_golden[g][i]);
+    }
+    /* Nominal fit leaves PAIR untouched except rounding at most one code. */
+    pair_af_remap(pair_af_base, 1.0, 1e6, low);
+    for (unsigned i = 0; i < 1024; ++i) assert(abs((int)(low[i] & 63) - (int)(pair_af_base[i] & 63)) <= 1);
     double d, c;
     /* Nominal VTX centred by AFC: blanking -436 kHz, sync -2350 kHz. */
     assert(edge_af_fit(-2350, -436, &d, &c) && fabs(d - 1.0) < .001 && fabs(c - 1e6) < 2e3);
@@ -25,6 +33,6 @@ int main(void)
     assert(!edge_af_fit(-500, -436, &d, &c));      /* no sync separation */
     p.phases = 3;
     assert(!edge_af_synthesize(&p, 1.0, 1e6, low));
-    puts("PASS: EDGE AutoFit C synthesis bit-exact with edge_fsm for all golden fits; fit estimator");
+    puts("PASS: EDGE AutoFit synthesis and PAIR AutoFit remap bit-exact for all golden fits; fit estimator");
     return 0;
 }

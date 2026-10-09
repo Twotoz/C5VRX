@@ -602,8 +602,12 @@ void analog_agc_task(void *arg)
         /* EDGE AutoFit uses the same windows; it fits only on a good carrier
          * and writes only once AFC no longer retunes (video TRACK) or AFC is
          * not in AUTO. */
-        edge_autofit_observe(&afc2, afc_valid && s_cnr_x10 >= FUSION_PAIR_ABOVE_X10,
-                             s_afc_video_locked || s_afc_mode != AFC_MODE_AUTO);
+        autofit_observe(&afc2, afc_valid && s_cnr_x10 >= FUSION_FIT_ABOVE_X10,
+                        s_afc_video_locked || s_afc_mode != AFC_MODE_AUTO);
+        /* A new VTX fit that differs from the running words: one reload
+         * (rate-limited in autofit_observe), only on a good carrier. */
+        if (!s_menu_active && s_cnr_x10 >= FUSION_FIT_ABOVE_X10 && autofit_take_reload_request())
+            printf("AUTOFIT reload ok=%u\n", flight_reload_program());
         if (c5vrx4_edge_autofit_demod() && c5vrx4_fusion_enabled() && !s_menu_active &&
             fdemod_step(&s_fdemod, s_cnr_x10, control_now_us)) {
             bool ok = flight_swap_program(s_fdemod.edge);

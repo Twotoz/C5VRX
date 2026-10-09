@@ -17,9 +17,9 @@ int main(void)
     /* One noisy tick does not switch; two do (median of three). */
     assert(!fdemod_step(&f, 60, t)); t += 50000;
     assert(fdemod_step(&f, 60, t) && f.edge); t += 50000;
-    /* Recovery needs 3 s continuously above 12 dB. */
+    /* Recovery needs 3 s continuously above 9 dB. */
     for (int k = 0; k < 40; ++k, t += 50000) assert(!fdemod_step(&f, 130, t));
-    assert(!fdemod_step(&f, 110, t)); t += 50000;     /* dip resets the hold */
+    assert(!fdemod_step(&f, 80, t)); t += 50000;      /* dip resets the hold */
     int64_t start = t; bool back = false;
     for (; t - start < 3200000; t += 50000) if (fdemod_step(&f, 130, t)) { back = true; break; }
     assert(back && !f.edge && t - start >= FUSION_PAIR_HOLD_US);

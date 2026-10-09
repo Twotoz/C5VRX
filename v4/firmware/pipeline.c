@@ -93,6 +93,18 @@ bool c5vrx4_edge_autofit_demod(void)
 #endif
 }
 
+bool c5vrx4_pair_autofit_demod(void)
+{
+#if C5VRX4_RANGE_OPTION_COUNT
+    unsigned mode = c5vrx4_demodulator();
+    return mode >= C5VRX4_DEMOD_RANGE_OPTION0 &&
+           mode < C5VRX4_DEMOD_RANGE_OPTION0 + C5VRX4_RANGE_OPTION_COUNT &&
+           !strcmp(c5vrx4_range_options[mode - C5VRX4_DEMOD_RANGE_OPTION0].model_id, C5VRX4_PAIR_MODEL_ID);
+#else
+    return false;
+#endif
+}
+
 bool c5vrx4_range_demod(void)
 {
     return c5vrx4_demodulator() >= C5VRX4_DEMOD_RANGE32;
@@ -238,6 +250,13 @@ bool c5vrx4_fusion_enabled(void)
 {
     if (s_fusion < 0) s_fusion = nvs_flag("fusion", true);
     return s_fusion;
+}
+
+static int8_t s_autofit = -1;
+bool c5vrx4_autofit_enabled(void)
+{
+    if (s_autofit < 0) s_autofit = nvs_flag("autofit", true);
+    return s_autofit;
 }
 
 static int8_t s_native_patch = -1;
@@ -524,6 +543,7 @@ static const c5vrx4_option_t s_options[C5VRX4_OPT_COUNT] = {
     [C5VRX4_OPT_LINE_FIX]     = {"LINE REPAIR",   "line_fix",     1, 2, s_off_on},
     [C5VRX4_OPT_EDGE_GEAR]    = {"EDGE FILTER",   "edge_gear",    0, 2, s_off_on},
     [C5VRX4_OPT_FUSION]       = {"FUSION DEMOD",  "fusion",       1, 2, s_off_on},
+    [C5VRX4_OPT_AUTOFIT]      = {"AUTOFIT",       "autofit",      1, 2, s_off_on},
 };
 static uint8_t s_option_boot[C5VRX4_OPT_COUNT];
 static bool s_option_snapshot;
