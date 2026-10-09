@@ -395,7 +395,10 @@ void apply_rx_profile(rx_profile_t profile)
     s_agc_mode = ANALOG_AGC_ACTIVE;
     s_rf_bw_mode = RF_BW_MODE_AUTO;
     apply_rf_bandwidth(true);
-    s_afc_mode = AFC_MODE_OFF;
+    /* Range trackers keep AFC AUTO (centring on their design porch); this
+     * ran after video_start's AUTO and silently forced OFF (board RXSUP
+     * afc=2, 2026-10-09). The offset restarts from 0 either way. */
+    s_afc_mode = c5vrx4_range_demod() ? AFC_MODE_AUTO : AFC_MODE_OFF;
     if (rf_get_frequency_offset_khz() != 0) apply_frequency_offset_khz_tracked(0);
     apply_rx_gain_tracked(rf_get_arc_survival_gain());
     if (rf_native_agc_active()) {
