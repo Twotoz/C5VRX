@@ -134,8 +134,25 @@ void autofit_observe(const afc2_result_t *r, bool good, bool settled)
     if (stale && esp_timer_get_time() - s_last_reload_us >= AF_RELOAD_GAP_US) s_reload_req = true;
 }
 
+/* Adaptive receiver supervisor, phase 1 (PR #190 review, 2026-10-09): one
+ * read-only view of every estimator with the control epoch it belongs to,
+ * before any coordinated actuation is added. Measuring is not changing. */
+void rxsup_print(void)
+{
+    printf("RXSUP epoch=%lu/%lu/%lu gain=%u cnr_db=%.1f p50=%d clip_pm=%d coherence=%d "
+           "dc_mstep=%d/%d drift_mcells=%d/%d cfo_khz=%d afc=%u/%u iq_skew_pm=%d "
+           "fit=%u dev=%.3f centre_khz=%.0f sphase=%s/%u program=%s actuators=read_only\n",
+           (unsigned long)s_profile_generation, (unsigned long)phy_rx_lab_generation(),
+           (unsigned long)s_gain_transition_count, s_current_gain, s_cnr_x10 / 10.0, s_v3_p50,
+           s_v3_clip_pm, s_v3_coherence, s_v3_dc_i_mstep, s_v3_dc_q_mstep, s_drift_avg[0], s_drift_avg[1],
+           s_cfo_khz, (unsigned)s_afc_mode, s_afc_video_locked, s_last_iq_skew_permille,
+           s_fit_valid, s_dev, s_centre / 1000.0, sphase_state_name(), s_sphase_auto_ppm,
+           !c5vrx4_edge_autofit_demod() ? c5vrx4_demodulator_name() : s_fdemod.edge ? "EDGE" : "PAIR");
+}
+
 void autofit_print(void)
 {
+    rxsup_print();
     if (!autofit_active()) return;
     if (c5vrx4_edge_autofit_demod())
         printf("FUSION enabled=%u program=%s cnr_db=%.1f to_edge=%lu to_pair=%lu swaps=%lu\n",
