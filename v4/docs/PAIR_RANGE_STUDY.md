@@ -439,3 +439,20 @@ models and needs new captures with DCO on.
 - **Teacher40 ablations** (stride, phase/frequency quantization) were taken
   with the unmatched latency. Their relative ordering stands (phase >= 32,
   frequency steps irrelevant); their absolute values are inflated.
+
+### Direct reacquisition latency (replaces the sync-count fade estimate)
+
+`apex_fades.py` now measures latency directly. After a carrier outage
+(noise remains) of 50-300 us at C/N 10-30, it finds the first time from
+which the demod's line-averaged |output - truth| is back within 3 IRE of
+the same demod on the same signal without the outage, for one full line.
+Results (`fades_reacquisition.json`, 6 cases per cell):
+
+- PAIR+AF: median and p90 within the first line;
+- EDGE+AF: median within the first line, p90 at most 65 us;
+- RANGE32: median within the first line, p90 at most 175 us;
+- the teacher recovers within the first line.
+
+The resolution is one line (64 us). 500-us outages leave too little
+window after the outage and are not reported. Every 50-ns program
+recovers far inside 1 ms without supervisor action.

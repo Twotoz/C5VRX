@@ -13,6 +13,23 @@ from pathlib import Path
 import numpy as np
 
 
+def reacquire_us(y, y_ref, c, end, margin_ire=3., line=64 * 40):
+    """Direct reacquisition latency: first time after the outage from which
+    the demod's line-averaged |output - truth| is back within margin_ire of
+    the SAME demod on the same signal without the outage, and stays so for
+    one line. Separates recovery from the demod's own sharpness and from
+    noise-driven state divergence (PR #190 review: instrument latency)."""
+    import waveforms as V
+    a, t, _ = V.calibrated(y, c); r, _, _ = V.calibrated(y_ref, c)
+    k = np.ones(line) / line
+    ef = np.convolve(np.abs(a - t), k, mode='valid'); er = np.convolve(np.abs(r - t), k, mode='valid')
+    ok = ef <= er + margin_ire; n = len(ok)
+    for s in range(max(0, end), n - line, 8):
+        if ok[s:s + line].all():
+            return (s - end) / 40.
+    return float('nan')
+
+
 def main():
     import waveforms as V
     import lane_profile as L
@@ -48,21 +65,34 @@ def main():
                                                          n['truth'][65536:98304], 3000)
                 fit = dict(fit_deviation=dev, fit_centre_hz=cfo)
                 inside = fade / 64.
-                for name, y in (('RANGE32', O.decode(c['raw'], r32)), ('PAIR+AF', O.decode(c['raw'], remap(pair, dev, cfo))),
-                                ('EDGE+AF', O.decode(c['raw'], F.synthesize(dict(ep, **fit)))),
-                                ('teacher', T.teacher_decode(c['raw'], p0, dev, cfo))):
+                end_sample = int((1700. + fade) * 40) - 65536
+                ref_raw = n['raw'][65536:98304]
+                demods = (('RANGE32', lambda x: O.decode(x, r32)), ('PAIR+AF', lambda x: O.decode(x, remap(pair, dev, cfo))),
+                          ('EDGE+AF', lambda x: O.decode(x, F.synthesize(dict(ep, **fit)))),
+                          ('teacher', lambda x: T.teacher_decode(x, p0, dev, cfo)))
+                for name, fn in demods:
+                    y = fn(c['raw'])
                     try:
-                        r = waveform(y, E.clamp(c, y)); miss = r['h_missing'] + r['v_missing']
+                        cc = E.clamp(c, y); r = waveform(y, cc); miss = r['h_missing'] + r['v_missing']
                     except Exception:
-                        miss = 30
+                        cc = c; miss = 30
                     out.setdefault(f'{fade}us/C/N{cnr}/{name}', []).append(max(0., miss - inside))
+                    if fade:
+                        out.setdefault(f'{fade}us/C/N{cnr}/{name}/reacq_us', []).append(reacquire_us(y, fn(ref_raw), cc, end_sample))
     table = {k: float(np.mean(v)) for k, v in out.items()}
     Path(sys.argv[1]).write_text(json.dumps(table, indent=1))
     names = ('RANGE32', 'PAIR+AF', 'EDGE+AF', 'teacher')
-    print('fade  C/N | ' + ' | '.join(names) + '   (extra missed sync per case after the outage)')
+    print('fade  C/N | ' + ' | '.join(names) + '   (extra missed sync / median reacquisition us, p90)')
     for fade in (0, 50, 100, 300, 500):
         for cnr in (10, 16, 30):
-            print(f'{fade:4d}us {cnr:3d} | ' + ' | '.join('%5.1f' % table[f'{fade}us/C/N{cnr}/{n}'] for n in names), flush=True)
+            cells = []
+            for n in names:
+                s = '%4.1f' % table[f'{fade}us/C/N{cnr}/{n}']
+                if fade:
+                    v = out[f'{fade}us/C/N{cnr}/{n}/reacq_us']
+                    s += ' / %5.1f p90 %5.1f' % (np.nanmedian(v), np.nanpercentile(v, 90))
+                cells.append(s)
+            print(f'{fade:4d}us {cnr:3d} | ' + ' | '.join(cells), flush=True)
 
 
 if __name__ == '__main__':
