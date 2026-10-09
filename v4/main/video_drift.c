@@ -41,6 +41,13 @@ void predemod_dc_drift_service(void)
         s_drift_n = 0; s_drift_sum[0] = s_drift_sum[1] = 0;
         return;
     }
+    /* Board 2026-10-09: a folded ultrafine carrier (P50 31) read -4975
+     * mcells. Only a clean carrier (circle centre) or receiver noise
+     * (envelope ratio ~1) is a DC measurement; anything between is not. */
+    if (!w.dc_circle && w.envelope_x100 > 130u) {
+        s_drift_n = 0; s_drift_sum[0] = s_drift_sum[1] = 0;
+        return;
+    }
     s_drift_sum[0] += w.dc_i; s_drift_sum[1] += w.dc_q;
     if (++s_drift_n < 4u) return;                 /* ~1 s at the 250 ms tick */
     s_drift_avg[0] = (int)(s_drift_sum[0] / (int32_t)s_drift_n);
