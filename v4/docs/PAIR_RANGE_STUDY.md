@@ -548,3 +548,31 @@ not a fit to one transmitter.
 
 Picture continuity across glide steps, a real AutoFit fit and the
 behaviour from near to far still need the operator test with the VTX on.
+
+### Operator VTX deviation and a re-check of the CVT (2026-10-09, evening)
+
+`tools/afc_snapshot_probe.c` runs the firmware AFC v2 measurement on IQ
+snapshots:
+
+- simulated deviations 0.7 / 1.0 / 1.3 read 0.70 / 1.00 / 1.31, so the
+  scale is right;
+- operator VTX captures read about 0.69 (NTSC, burst 54-61, sync-porch
+  about 1330 kHz), not the 1.23 behind the pinned EDGE fit.
+
+Changes:
+
+- the pre-fit fallback is now nominal (deviation 1.0);
+- screens randomize deviation 0.6-1.4.
+
+`cvt_blend.py` re-run on that range (`cvt_blend_dev0.6-1.4.json`):
+
+| C/N | CVT (missed / SINAD) | PAIR+AF |
+| --- | --- | --- |
+| 4 dB | 3 / 5.4 | 47 missed |
+| 6 dB | 2 / 5.7 | 33 missed |
+| 8 dB | 0 / 6.4 | 5 missed |
+| >= 13 dB | 7.2-8.0 | 8.7-9.7 |
+
+Best alpha is about 0.45 at 2-6 dB, 0.8 at 8 dB and 1.0 above; the
+deployed curve differs by under 0.3 dB SINAD. At low deviation EDGE alone
+misses a little more (3-6 vs 2 at 2-6 dB).
