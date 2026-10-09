@@ -94,10 +94,15 @@ static void fit_prepare(void)
     fit_verified = false;
     if (!fit_kind || bitscrambler_ll_get_lut_width(&BITSCRAMBLER, BITSCRAMBLER_DIR_TX) != 1) return;
     unsigned bad = 0;
-    for (unsigned i = 0; i < 1024; ++i) fit_pristine[i] = read_entry(i);
     if (kind_verified[fit_kind]) {
-        for (unsigned i = 0; i < 1024; ++i) if (fit_pristine[i] != kind_pristine[fit_kind][i]) ++bad;
-    } else if (fit_kind == C5V4_FIT_EDGE) {
+        /* Same embedded program: 32 spread sentinels prove it loaded, the
+         * full table is the cached copy (keeps the halted window short). */
+        memcpy(fit_pristine, kind_pristine[fit_kind], sizeof(fit_pristine));
+        for (unsigned i = 7; i < 1024; i += 32) if (read_entry(i) != fit_pristine[i]) ++bad;
+    } else {
+        for (unsigned i = 0; i < 1024; ++i) fit_pristine[i] = read_entry(i);
+    }
+    if (!kind_verified[fit_kind] && fit_kind == C5V4_FIT_EDGE) {
         edge_af_params_t p; edge_af_pinned(&p);
         if (!edge_af_synthesize(&p, EDGE_AF_PINNED_DEVIATION, EDGE_AF_PINNED_CENTRE_HZ, fit_scratch)) return;
         for (unsigned i = 0; i < 1024; ++i)
