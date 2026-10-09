@@ -107,10 +107,22 @@ WEIGHT = {0: .5, 2: 2., 3: 2., 4: 2., 6: 1.}
 
 
 def clamp(c, y):
-    """Goggle back-porch DC restore: shift offset so the burst/porch mean matches."""
+    """Goggle back-porch DC restore, after aligning this decode's own latency.
+
+    The reference calibration lag comes from another demod; LUT models differ
+    in group delay by up to a span, which biased SINAD between models by up
+    to ~3 dB (found 2026-10-09). A goggle ignores a fixed 50-ns delay, so
+    the lag is re-chosen per decode (+-8 samples, least active-video error)
+    before the back-porch offset is matched."""
     import waveforms as V
-    lag, g, off = c['calibration']; a, t, region = V.calibrated(y, c); m = region == 3
-    return dict(c, calibration=(lag, g, off + (float(np.mean(t[m] - a[m])) if m.any() else 0.)))
+    lag0, g, off0 = c['calibration']; best = None
+    for dl in range(-8, 9):
+        cc = dict(c, calibration=(lag0 + dl, g, off0)); a, t, region = V.calibrated(y, cc)
+        m3 = region == 3; off = off0 + (float(np.mean(t[m3] - a[m3])) if m3.any() else 0.)
+        m1 = region == 1
+        err = float(np.mean(np.abs(a[m1] + (off - off0) - t[m1]))) if m1.any() else 0.
+        if best is None or err < best[0]: best = (err, lag0 + dl, off)
+    return dict(c, calibration=(best[1], g, best[2]))
 
 
 def score(m, cases):

@@ -22,7 +22,11 @@ from scipy.sparse.linalg import LinearOperator, lsmr
 def fit_shared(models, cases, strong_weight=4., regularization=.3, iterations=80, edge_weight=1.):
     import overlay_fsm as O
     import engine as S
+    import search_edge as E
     k = 1024
+    # Fit against each case aligned to this model's own latency (the shared
+    # reference lag is off by up to a span for LUT models; 2026-10-09).
+    cases = [E.clamp(c, O.decode(c['raw'], m)) for m, c in zip(models, cases)]
     ix = [O.model_indices(c['raw'], m, np.array(m['lut'], np.uint16)) for m, c in zip(models, cases)]
     weights = [np.sqrt(strong_weight if c['cnr'] >= 16 else 1.) for c in cases]
     norm = np.sqrt(np.maximum(sum(w * w * np.bincount(a, minlength=k) for a, w in zip(ix, weights)), 1))

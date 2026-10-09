@@ -23,9 +23,13 @@
  * EDGE with a continuously blended output covers everything up to strong
  * signal (cvt_blend.py: better than both gears below 6 dB); PAIR is the top
  * gear only where it is clearly sharper (search model C/N >= 13 dB). */
-#define FUSION_EDGE_BELOW_X10  150   /* back to the CVT below 15 (median of three) */
-#define FUSION_PANIC_X10       110   /* two windows below 11: CVT at once */
-#define FUSION_PAIR_ABOVE_X10  165   /* top gear PAIR above 16.5 ... */
+/* Re-measured with latency-aligned scoring (2026-10-09): PAIR+AutoFit is
+ * 3-7 dB sharper and error-free from search C/N 10-13 dB (phase C/N about
+ * 14.6-16); at 8 dB it still loses sync (4 missed, 0.3 false/line) where
+ * EDGE loses none. */
+#define FUSION_EDGE_BELOW_X10  135   /* back to EDGE below 13.5 (median of three) */
+#define FUSION_PANIC_X10       110   /* two windows below 11: EDGE at once */
+#define FUSION_PAIR_ABOVE_X10  150   /* PAIR above 15 ... */
 #define FUSION_FIT_ABOVE_X10   150   /* AutoFit accepts fits only above 15 */
 #define FUSION_PAIR_HOLD_US    3000000LL  /* ... held for 3 s */
 #define FUSION_MIN_DWELL_US    1000000LL
@@ -69,15 +73,16 @@ static inline int fdemod_cnr_x10(unsigned ratio_x100)
     return (int)lrint(100.0 * log10(rho));
 }
 
-/* CVT output knob alpha(C/N) in eighths: 0.15 at a phase C/N of 7, 1.0 from
- * 13 (per-C/N optimum on held-out randomized cases, cvt_blend.py). */
+/* CVT output knob alpha in eighths. With latency-aligned scoring and a
+ * correctly aligned output fit (cvt_blend, 2026-10-09) alpha changes EDGE
+ * by at most +-0.3 dB below 8 dB, where alpha 0 has the fewest missed and
+ * false syncs, and PAIR takes over above it. Gliding would cost reloads for
+ * no measured gain, so the policy holds alpha at 0 (plain EDGE output). */
 #define CVT_ALPHA_STEPS 8
 static inline int fdemod_alpha_step(int cnr_x10)
 {
-    double a = (cnr_x10 - 60) / 70.0;
-    if (a < .15) a = .15;
-    if (a > 1.) a = 1.;
-    return (int)lrint(a * CVT_ALPHA_STEPS);
+    (void)cnr_x10;
+    return 0;
 }
 
 typedef struct {

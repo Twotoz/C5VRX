@@ -576,3 +576,57 @@ Changes:
 Best alpha is about 0.45 at 2-6 dB, 0.8 at 8 dB and 1.0 above; the
 deployed curve differs by under 0.3 dB SINAD. At low deviation EDGE alone
 misses a little more (3-6 vs 2 at 2-6 dB).
+
+## Second scoring correction and the measured best policy (2026-10-09, late)
+
+### The fixed calibration lag biased every model comparison
+
+The scorer aligned every decode with one reference lag taken from OVP56.
+Delaying the truth by one span, with no change to the demod, raised PAIR
+by 3 dB and EDGE by 0.8 dB, so LUT models with different group delays
+were scored at different misalignments. The cvt_lag "smoothing gain" was
+this artifact.
+
+`search_edge.clamp()` now re-chooses the lag per decode (+-8 samples,
+least active-video error) before matching the back porch. A goggle
+ignores a fixed 50-ns delay. Results:
+
+- delaying the truth no longer changes any score;
+- `apex_dac.fit_shared` fits against per-model aligned cases;
+- the correctly aligned output roughly halves the real-IQ clicks at
+  alpha 1 (14.3 -> 6.7-7.3).
+
+### Corrected numbers
+
+Held-out cases, deviation 0.6-1.4 (`cvt_blend_aligned.json`,
+`cvt_lag_aligned.json`):
+
+| C/N | EDGE+AF (missed / SINAD) | PAIR+AF (missed / SINAD) |
+| --- | --- | --- |
+| 2 dB | 4 / 4.9 | 52 / 2.7 |
+| 4 dB | 5 / 5.9 | 47 / 4.3 |
+| 6 dB | 5 / 6.5 | 31 / 6.1 |
+| 8 dB | 0 / 6.3 | 4 missed, 0.30 false/line / 7.9 |
+| 10 dB | 1 / 6.5 | 3 / 10.0 |
+| 13-30 dB | 0 / 5.3-7.3 | 0 / 10.6-14.3 |
+
+- **Alpha:** changes EDGE by at most +-0.3 dB below 8 dB, where alpha 0
+  has the fewest missed and false syncs. At 13-30 dB alpha 1 adds at most
+  ~1 dB, while PAIR is 3-7 dB ahead.
+- **Smoothing:** fixed-lag output (L = 1, 2 spans) gives no gain once
+  aligned.
+- **Tracker bases** (`cvt_base_search.py`): 8x16 trades 2-6x more missed
+  sync for about +0.5 dB at mid C/N; 16x8 is unusable. A strong-only
+  detail fit adds nothing.
+
+### Policy
+
+FusionDemod with EDGE+AutoFit below a phase C/N of 13.5 and PAIR+AutoFit
+above 15 (3 s hold, median and two-window panic down). Alpha is held at
+0, so there are no glide reloads. The CVT glide machinery stays in the
+firmware but the measured policy does not use it.
+
+Within 10 address bits no single state machine both keeps sync at 4 dB
+(which needs frequency memory) and reaches PAIR's strong-signal detail
+(which needs 32 phases). Two specialized machines with a fold-robust
+selector are the supported design. Board validation is pending.

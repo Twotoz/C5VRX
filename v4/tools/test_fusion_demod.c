@@ -41,11 +41,11 @@ int main(void)
     assert(!fdemod_step(&f, 180, t)); t += 50000;
     assert(!fdemod_step(&f, 100, t)); t += 50000;     /* median still 180 */
     assert(fdemod_step(&f, 100, t) && f.edge); t += 50000;
-    /* Recovery to the PAIR top gear needs 3 s continuously above 16.5. */
-    for (int k = 0; k < 40; ++k, t += 50000) assert(!fdemod_step(&f, 170, t));
-    assert(!fdemod_step(&f, 160, t)); t += 50000;      /* dip resets the hold */
+    /* Recovery to PAIR needs 3 s continuously above 15. */
+    for (int k = 0; k < 40; ++k, t += 50000) assert(!fdemod_step(&f, 160, t));
+    assert(!fdemod_step(&f, 140, t)); t += 50000;      /* dip resets the hold */
     int64_t start = t; bool back = false;
-    for (; t - start < 3200000; t += 50000) if (fdemod_step(&f, 170, t)) { back = true; break; }
+    for (; t - start < 3200000; t += 50000) if (fdemod_step(&f, 160, t)) { back = true; break; }
     assert(back && !f.edge && t - start >= FUSION_PAIR_HOLD_US);
     /* Two windows below the panic level switch at once (after the dwell). */
     {
@@ -58,9 +58,8 @@ int main(void)
     /* Minimum dwell after a switch. */
     assert(!fdemod_step(&f, 50, t + 50000) && !fdemod_step(&f, 50, t + 100000));
     assert(fdemod_step(&f, 50, t + FUSION_MIN_DWELL_US + 1) && f.edge);
-    /* CVT alpha curve: monotone, 0.15..1 in eighths. */
-    assert(fdemod_alpha_step(30) == 1 && fdemod_alpha_step(130) == CVT_ALPHA_STEPS);
-    for (int c = 0; c < 200; c += 5) assert(fdemod_alpha_step(c + 5) >= fdemod_alpha_step(c));
-    puts("PASS: CVT alpha curve; FusionDemod phase C/N estimator, gain-change-robust hysteresis, panic, dwell");
+    /* Measured policy: alpha held at 0 (no glide reloads). */
+    for (int c = 0; c < 250; c += 5) assert(fdemod_alpha_step(c) == 0);
+    puts("PASS: alpha policy; FusionDemod phase C/N estimator, gain-change-robust hysteresis, panic, dwell");
     return 0;
 }
