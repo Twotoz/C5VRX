@@ -630,3 +630,22 @@ Within 10 address bits no single state machine both keeps sync at 4 dB
 (which needs frequency memory) and reaches PAIR's strong-signal detail
 (which needs 32 phases). Two specialized machines with a fold-robust
 selector are the supported design. Board validation is pending.
+
+### Untrained PAIR-structured tracker (`untrained_pair.py`, aligned scoring)
+
+Setup: 32 phases x 32 analytic angle tokens on the PAIR4411 address,
+first-order update with kp, and the phase advance through the nominal
+transfer plus AutoFit. Held-out cases, C/N >= 6 dB, deviation 0.6-1.4.
+
+| model | 8 dB | 10 dB | 13 dB | 16-30 dB | real clicks |
+| --- | --- | --- | --- | --- | ---: |
+| PAIR+AF | 0 / 10.6 | 0 / 10.2 | 0 / 10.0 | 0 / 13.1-14.5 | 6.7 |
+| untrained kp 1.0 | 27 missed / 9.8 | 16 / 11.2 | 6 / 12.8 | 0 / 13.5-16.2 | 16.8 |
+| untrained kp 0.8 | 1 / 8.7 | 0 / 8.9 | 0 / 10.0 | 0 / 10.4-10.7 | 19.7 |
+
+Cells give missed sync / SINAD.
+
+The untrained differentiator matches or beats PAIR's detail only at 16 dB
+and above. It loses sync, or 1.5-4 dB of detail, in the 8-13 dB
+hand-over band, with 2.5-3x the real clicks. The sharp end stays PAIR (the
+computed estimator); the robust end is untrained EDGE.
