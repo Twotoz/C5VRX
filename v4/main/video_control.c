@@ -593,9 +593,11 @@ void analog_agc_task(void *arg)
             afc2.porch_pairs && afc2.sync_pairs && afc2.burst_x10 >= AFC2_BURST_MIN_X10;
         /* Effective C/N from the phase second difference (fusion_demod.h);
          * a window across a gain change is not an observation. */
-        static uint32_t cnr_gain_epoch;
-        bool cnr_fresh = afc_window_ok && cnr_gain_epoch == s_gain_transition_count;
-        cnr_gain_epoch = s_gain_transition_count;
+        /* Board 2026-10-09: V5 toggles G80/G81 ~120 times/s near the edge; a
+         * one-step change does not alter phase noise, a jump does. */
+        static uint8_t cnr_gain;
+        bool cnr_fresh = afc_window_ok && abs((int)s_current_gain - (int)cnr_gain) <= 2;
+        cnr_gain = s_current_gain;
         if (cnr_fresh)
             s_cnr_x10 = fdemod_phase_cnr_x10(s_control_sample_buf, sizeof(s_control_sample_buf),
                                              c5vrx_phase8_gain_lut);

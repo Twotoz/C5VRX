@@ -456,3 +456,50 @@ Results (`fades_reacquisition.json`, 6 cases per cell):
 The resolution is one line (64 us). 500-us outages leave too little
 window after the outage and are not reported. Every 50-ns program
 recovers far inside 1 ms without supervisor action.
+
+## Untrained "CVT" demod and the board C/N fix (2026-10-09, evening)
+
+### Board findings
+
+- **Fusion dropped to EDGE at 23 dB.** On the board the envelope C/N read
+  -7.9 dB on a coherence-100 carrier: the ultrafine lanes fold large
+  amplitudes, so the envelope is not constant. FusionDemod therefore went
+  to EDGE at 23 dB (operator: "never seen such ugly video") and AutoFit
+  never fitted.
+- **Fix: phase-domain C/N.** It uses the phase second difference
+  (var = 3/rho), a robust median and the phase8 LUT. The Python mirror
+  matches a continuous reference within 0.2 dB and reads 21.0 on the strong
+  capture and 3.0 on receiver noise. Lane folding and clicks count as
+  noise, as they do for the demods.
+- **Thresholds come from a per-case crossover** with amplitudes 0.8-1.8x:
+  EDGE below 11, PAIR above 13, AutoFit fits above 15.
+- **Windows with a V5 gain jump of more than 2 steps are skipped.** V5
+  toggles G80/G81 about 120 times per second near the edge.
+- **A second AFC override was found.** `apply_rx_profile()` forced AFC off
+  after start-up; the board now reports AFC AUTO.
+
+### Is one untrained, continuously adapting demod better?
+
+- **Per-sample Kalman weighting (`cvt_explore.py`):** observation
+  reliability from the amplitude of sample A and from the consistency of
+  sample B's signs, plus a soft error limiter. The reliability classes
+  cost angle or frequency resolution in the 10-bit budget and lost to
+  plain 4 x 32 x 8. No gain.
+- **Untrained EDGE (`untrained_edge.py`):** tokens straight from sample A's
+  angle, no learned table. Equal to the pinned EDGE on held-out cases (3 vs
+  4 missed sync at 2-4 dB, SINAD within 0.4 dB, real clicks 0.53 vs 0.49).
+  Training adds nothing at the robust end.
+- **Untrained sharp trackers (`untrained_sharp.py`):** 16-32 phases with
+  analytic tokens and advance or average output give SINAD around 0 dB and
+  48 real clicks, vs PAIR+AutoFit at 9-10 dB.
+  PAIR's learned per-address phasors and DAC are the numerically computed
+  estimator for the FM-plus-lane-quantizer model. Its training data are
+  randomized VTX/boards and it was confirmed on held-out ones, so this is
+  not a fit to one transmitter.
+
+**Conclusion:** within 10 address bits a single program cannot both carry
+per-sample reliability and keep the resolution either end needs. The
+supported self-adapting design remains two programs selected by a robust,
+fold-aware C/N: the robust end analytic (EDGE + AutoFit), the sharp end the
+computed estimator (PAIR + AutoFit). On the board, FusionDemod with the
+phase C/N still needs its first run.
