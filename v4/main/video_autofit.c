@@ -13,6 +13,7 @@
  * differs from the loaded one requests one reload, at most every 30 s. */
 #include "video_internal.h"
 #include "cvbs_level_hw.h"
+#include "edge_autofit_table.h"
 #include <math.h>
 #include <stdlib.h>
 
@@ -33,6 +34,20 @@ static int s_loaded_kind;
 static uint32_t s_fits, s_rejects, s_stored, s_applied, s_reloads;
 static int64_t s_last_reload_us;
 static uint16_t s_words[1024];
+/* CVT output knob (eighths) and its glide control. */
+static int s_alpha_target = -1, s_alpha_loaded = -1, s_alpha_pending = -1;
+static int s_cnr_hist[5];
+static unsigned s_cnr_n;
+static int64_t s_alpha_since_us, s_alpha_reload_us;
+static bool s_cvt_req;
+static uint32_t s_cvt_reloads;
+uint32_t s_load_us_last, s_load_us_max;
+
+static int cmp_int(const void *a, const void *b)
+{
+    int x = *(const int *)a, y = *(const int *)b;
+    return (x > y) - (x < y);
+}
 
 static int cmp_i32(const void *a, const void *b)
 {
@@ -78,19 +93,29 @@ bool autofit_active(void)
 bool autofit_apply_stopped(void)
 {
     s_loaded_kind = c5v4_fit_ready();
-    s_loaded_valid = false;
+    s_loaded_valid = false; s_alpha_loaded = -1;
     if (!autofit_active() || !s_loaded_kind) return false;
     sync_channel();
-    if (!s_fit_valid) return false;              /* pristine words = nominal fit */
     const uint16_t *pristine = c5v4_fit_pristine();
     if (s_loaded_kind == C5V4_FIT_EDGE) {
+        /* EDGE: AutoFit transitions (pinned nominal fit until one is
+         * measured) plus the CVT output blend at the current alpha. */
+        double dev = s_fit_valid ? s_dev : EDGE_AF_PINNED_DEVIATION;
+        double centre = s_fit_valid ? s_centre : EDGE_AF_PINNED_CENTRE_HZ;
+        int alpha = s_alpha_target < 0 ? CVT_ALPHA_STEPS / 2 : s_alpha_target;
         edge_af_params_t p; edge_af_pinned(&p);
-        if (!edge_af_synthesize(&p, s_dev, s_centre, s_words)) return false;
+        if (!edge_af_synthesize(&p, dev, centre, s_words)) return false;
+        edge_af_blend(s_words, (double)alpha / CVT_ALPHA_STEPS);
         for (unsigned i = 0; i < 1024; ++i)
             s_words[i] = (uint16_t)((pristine[i] & 0xe000u) | (s_words[i] & 0x1fffu));
-    } else {
-        pair_af_remap(pristine, s_dev, s_centre, s_words);
+        if (!c5v4_fit_write_stopped(s_words)) return false;
+        s_alpha_loaded = alpha;
+        s_loaded_valid = s_fit_valid; s_loaded_dev = dev; s_loaded_centre = centre;
+        ++s_applied;
+        return true;
     }
+    if (!s_fit_valid) return false;              /* pristine PAIR words = nominal fit */
+    pair_af_remap(pristine, s_dev, s_centre, s_words);
     if (!c5v4_fit_write_stopped(s_words)) return false;
     s_loaded_valid = true; s_loaded_dev = s_dev; s_loaded_centre = s_centre;
     ++s_applied;
@@ -99,9 +124,32 @@ bool autofit_apply_stopped(void)
 
 bool autofit_take_reload_request(void)
 {
+    if (s_cvt_req) {               /* CVT glide step: own 1-s pacing */
+        s_cvt_req = false; s_reload_req = false; ++s_cvt_reloads;
+        s_alpha_reload_us = esp_timer_get_time();
+        return true;
+    }
     if (!s_reload_req) return false;
     s_reload_req = false; ++s_reloads; s_last_reload_us = esp_timer_get_time();
     return true;
+}
+
+/* CVT glide (operator 2026-10-09): alpha follows the median phase C/N of
+ * the last five fresh windows; a two-step change reloads at once, a
+ * one-step change once it held for 1 s; at most one glide reload per s. */
+void cvt_observe(int cnr_x10, bool fresh, int64_t now)
+{
+    if (!c5vrx4_edge_autofit_demod() || !fresh) return;
+    s_cnr_hist[s_cnr_n++ % 5u] = cnr_x10;
+    if (s_cnr_n < 5u) return;
+    int v[5]; memcpy(v, s_cnr_hist, sizeof(v)); qsort(v, 5, sizeof(int), cmp_int);
+    int target = fdemod_alpha_step(v[2]);
+    s_alpha_target = target;
+    if (s_loaded_kind != C5V4_FIT_EDGE || s_alpha_loaded < 0) return;
+    int diff = abs(target - s_alpha_loaded);
+    if (target != s_alpha_pending) { s_alpha_pending = target; s_alpha_since_us = now; }
+    bool due = diff >= 2 || (diff == 1 && now - s_alpha_since_us >= 1000000LL);
+    if (due && now - s_alpha_reload_us >= 1000000LL) s_cvt_req = true;
 }
 
 void autofit_observe(const afc2_result_t *r, bool good, bool settled)
@@ -164,5 +212,9 @@ void autofit_print(void)
            s_loaded_kind == C5V4_FIT_EDGE ? "EDGE" : s_loaded_kind == C5V4_FIT_PAIR ? "PAIR" : "none",
            s_loaded_valid, s_loaded_dev, (unsigned long)s_fits, (unsigned long)s_rejects,
            (unsigned long)s_stored, (unsigned long)s_applied, (unsigned long)s_reloads, s_cnr_x10 / 10.0);
+    if (c5vrx4_edge_autofit_demod())
+        printf("CVT alpha_target=%d/8 alpha_loaded=%d/8 glide_reloads=%lu load_us_last=%lu load_us_max=%lu\n",
+               s_alpha_target, s_alpha_loaded, (unsigned long)s_cvt_reloads,
+               (unsigned long)s_load_us_last, (unsigned long)s_load_us_max);
     c5v4_fit_print();
 }

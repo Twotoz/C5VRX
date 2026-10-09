@@ -25,6 +25,11 @@ typedef struct {
 void edge_af_pinned(edge_af_params_t *p);
 /* Returns false for an unsupported allocation or fit. */
 bool edge_af_synthesize(const edge_af_params_t *p, double deviation, double centre_hz, uint16_t low13[1024]);
+/* CVT output: move the 6-bit code of every word (bits 0..5 of low13)
+ * from its frequency level toward the learned (state, token)
+ * reconstruction by alpha in [0, 1] (nearest DAC level). Transitions are
+ * untouched. Bit-exact with the research blend (golden test). */
+void edge_af_blend(uint16_t low13[1024], double alpha);
 /* PAIR AutoFit: remap the DAC code (bits 0..5) of the loaded words to this
  * VTX's deviation and centre; tracking bits stay. Bit-exact with the
  * research remap (golden test). */

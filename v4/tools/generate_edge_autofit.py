@@ -17,6 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/dsp_search'))
 LABEL = 'EDGE RANGE LAB'
 GOLDEN_FITS = [(1.23, 1.0e6), (0.85, 1.25e6), (1.6, 0.4e6)]
+# CVT detail output: learned (state, token) reconstruction for the pinned
+# EDGE transitions (apex_dac fit, docs/data/apex), blended by alpha.
+LEARNED = ROOT / 'docs/data/apex/cvt_dac_values.npy'
+GOLDEN_ALPHAS = (.25, .5, 1.)
 
 
 def main():
@@ -36,6 +40,9 @@ def main():
         rel = np.clip(rt / max(rt.max(), 1e-9), .2, 1)
     det = ('clip', 'tanh', 'sine', 'softhold').index(p.get('detector', 'clip'))
     out = ('freq', 'advance', 'avg').index(p.get('output', 'freq'))
+    import engine as S
+    levels = S.F.LEVELS; learned = np.load(LEARNED)
+    assert len(levels) == 64 and len(learned) == 1024
     model = F.synthesize(p)
     assert model['lut'] == opt['model']['lut'], 'pinned LUT is not this synthesis'
     r = lambda v: repr(float(v))
@@ -52,7 +59,9 @@ def main():
          f'#define EDGE_AF_OFFSET {r(F.B.P.OFFSET)}', f'#define EDGE_AF_SCALE {r(F.B.P.SCALE)}',
          '#ifdef EDGE_AF_TABLE_DATA',
          'static const double edge_af_obs[8] = {' + ', '.join(r(v) for v in obs) + '};',
-         'static const double edge_af_rel[8] = {' + ', '.join(r(v) for v in rel) + '};', '#endif', '']
+         'static const double edge_af_rel[8] = {' + ', '.join(r(v) for v in rel) + '};',
+         'static const double edge_af_levels[64] = {' + ', '.join(r(v) for v in levels) + '};',
+         'static const double edge_af_learned[1024] = {' + ', '.join(r(v) for v in learned) + '};', '#endif', '']
     (ROOT / 'firmware/include/edge_autofit_table.h').write_text('\n'.join(h), encoding='utf-8')
     g = ['#pragma once', '/* Generated golden EDGE AutoFit LUTs (edge_fsm.synthesize). */',
          f'#define EDGE_AF_GOLDEN_COUNT {len(GOLDEN_FITS)}',
@@ -62,6 +71,15 @@ def main():
     for d, c in GOLDEN_FITS:
         lut = F.synthesize(dict(p, fit_deviation=d, fit_centre_hz=c))['lut']
         g.append('    {' + ','.join(str(v) for v in lut) + '},')
+    g += ['};']
+    g.append(f'#define EDGE_AF_BLEND_COUNT {len(GOLDEN_ALPHAS)}')
+    g.append('static const double edge_af_golden_alpha[] = {' + ', '.join(repr(x) for x in GOLDEN_ALPHAS) + '};')
+    g.append('static const unsigned short edge_af_golden_blend[][1024] = {')
+    lut0 = np.array(F.synthesize(dict(p, fit_deviation=GOLDEN_FITS[0][0], fit_centre_hz=GOLDEN_FITS[0][1]))['lut'], np.int64)
+    for al in GOLDEN_ALPHAS:
+        base = levels[lut0 & 63]
+        codes = S.F.nearest(base + al * (learned - base)).astype(np.int64)
+        g.append('    {' + ','.join(str(int(v)) for v in ((lut0 & 0xffc0) | codes) & 0x1fff) + '},')
     g += ['};']
     pair = next(o for o in json.loads((ROOT / 'tools/range_options.json').read_text())['options']
                 if o['label'] == 'PAIR RANGE LAB')['model']['lut']

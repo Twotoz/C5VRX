@@ -522,6 +522,7 @@ static bool live_load(bool edge)
     if (!c5vrx4_edge_autofit_demod() && !c5vrx4_pair_autofit_demod()) return false;
     if (c5vrx4_edge_autofit_demod() && !edge && !pair_program()) return false;
     bool previous = s_running_edge;
+    int64_t t0 = esp_timer_get_time();
     c5v4_level_hw_lock();
     s_running_edge = edge;
     esp_err_t err = load_with_fit(running_program(), selected_fit_kind());
@@ -535,6 +536,8 @@ static bool live_load(bool edge)
         printf("FLIGHT_LOAD failed=%s rollback=%s\n", esp_err_to_name(err), esp_err_to_name(back));
     }
     c5v4_level_hw_unlock();
+    s_load_us_last = (uint32_t)(esp_timer_get_time() - t0);
+    if (s_load_us_last > s_load_us_max) s_load_us_max = s_load_us_last;
     return err == ESP_OK;
 }
 

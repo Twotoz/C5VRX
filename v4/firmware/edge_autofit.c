@@ -72,6 +72,22 @@ bool edge_af_synthesize(const edge_af_params_t *p, double fit_d, double fit_c, u
     return true;
 }
 
+void edge_af_blend(uint16_t low13[1024], double alpha)
+{
+    if (!(alpha > 0)) return;
+    if (alpha > 1) alpha = 1;
+    for (unsigned i = 0; i < 1024; ++i) {
+        double base = edge_af_levels[low13[i] & 63u];
+        double v = base + alpha * (edge_af_learned[i] - base);
+        unsigned best = 0; double err = fabs(v - edge_af_levels[0]);
+        for (unsigned c = 1; c < 64; ++c) {
+            double d = fabs(v - edge_af_levels[c]);
+            if (d < err) { err = d; best = c; }
+        }
+        low13[i] = (uint16_t)((low13[i] & ~63u) | best);
+    }
+}
+
 void pair_af_remap(const uint16_t pristine[1024], double dev, double centre, uint16_t out[1024])
 {
     const double two_pi = 2 * M_PI;
