@@ -1,0 +1,18 @@
+{
+ "audited_parent": "25dfb78e805ec1b78298de1c3eb9c346f0d1c463",
+ "independent_stimulus_cases": 124,
+ "paired_model_rows": 752,
+ "all_pair_iq_hashes_equal": true,
+ "reference_tests": 5,
+ "sequence_and_compatibility_tests": 3,
+ "host_c_regressions": 23,
+ "generated_sources_assembled": 20,
+ "selected_source_equivalence_raw_bytes": 70000,
+ "reference_runtime": "offline only",
+ "new_firmware_modes": 0,
+ "new_firmware_runtime_changes": false,
+ "new_idf_build": false,
+ "physical_range_verified": false,
+ "hardware_all_range_gates_pass": false,
+ "sequence_selected_epoch": 0
+}

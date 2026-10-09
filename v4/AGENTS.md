@@ -1,5 +1,15 @@
 # Isolated C5VRX-4 integration ledger
 
+## Causal amplitude-aware reference, 2026-10-09
+
+`docs/ADAPTIVE_PARTICLE_STUDY.md` records a continuous-phase particle reference
+inferring amplitude/noise from raw IQ, without runtime true C/N. It improves
+synthetic weak sync but is offline only. Its legal TX40 FSM distillations fail
+across all tested allocations (256x4 through16x64). Direct sequence optimization
+selects epoch0 unchanged after regression; do not present it as a refined win.
+Preserve all results and paired hashes. These methods do not prove global
+hardware impossibility; no new menu/default or physical-range claim is approved.
+
 ## Ω physical failure follow-up, 2026-10-09
 
 The operator reports ugly video and high-amplitude failures with Ω. Value13

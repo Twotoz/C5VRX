@@ -25,7 +25,7 @@ def trace(a, enc, transition):
     return old
 
 
-def fit(sequences, bits=3, layout='4411', seed=1, rounds=5, sync_weight=0.):
+def fit(sequences, bits=3, layout='4411', seed=1, rounds=5, sync_weight=0., feature_scale=None, feature_prior=None):
     from sklearn.cluster import MiniBatchKMeans
     import omega_bayes as B
     T = 1 << bits; S = 1024 // T
@@ -35,11 +35,12 @@ def fit(sequences, bits=3, layout='4411', seed=1, rounds=5, sync_weight=0.):
     # weighted Bayes-risk objective, not a runtime amplitude multiplier.
     w = 1 + sync_weight * np.clip((-hz - .7e6) / 1.2e6, 0, 1) ** 2
     addr = [addresses(c['raw'], layout) for c in sequences]
-    scale = np.array([1, 1, 2, 2, .5, .5, .5, .5, .5, .5, .5, 2, 1, 1.])
+    scale = np.array([1, 1, 2, 2, .5, .5, .5, .5, .5, .5, .5, 2, 1, 1.] if feature_scale is None else feature_scale)
+    if scale.shape != (x.shape[1],): raise ValueError('feature scale dimension')
     cluster = MiniBatchKMeans(n_clusters=S, random_state=seed, batch_size=4096, n_init=3)
     # State zero is the closest learned belief to a diffuse startup prior.
     labels = cluster.fit_predict(x * scale, sample_weight=w); centres = cluster.cluster_centers_
-    prior = np.array([0, 0, 0, 0, 1/3, 1/3, 1/3, .25, .25, .25, .25, 1/12, .5, .3]) * scale
+    prior = np.array([0, 0, 0, 0, 1/3, 1/3, 1/3, .25, .25, .25, .25, 1/12, .5, .3] if feature_prior is None else feature_prior) * scale
     start = np.argmin(np.sum((centres - prior) ** 2, 1)); centres[[0, start]] = centres[[start, 0]]
     labels = cluster.predict(x * scale)
     a = np.concatenate(addr); xx = x * scale

@@ -1,0 +1,7 @@
+{
+ "name": "walk",
+ "particles": 2048,
+ "acceleration": false,
+ "innovation": 0.25,
+ "jump": 0.08
+}

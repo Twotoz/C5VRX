@@ -26,6 +26,12 @@ and rollback modes retain their values. Read the measured vetoes and physical
 test instructions and the [amplitude/counter follow-up](docs/AMPLITUDE_COUNTER_STUDY.md)
 before revisiting this model.
 
+[Amplitude-aware causal model research](docs/ADAPTIVE_PARTICLE_STUDY.md)
+recovers weak sync in an offline IQ-only reference, while its hardware-FSM
+compressions still fail. Models, all five state/observation budgets, direct
+sequence-policy optimization and independent negative evidence are preserved.
+These are not new selectable firmware modes.
+
 
 The operator-requested [range-priority options](docs/RANGE_PRIORITY_STUDY.md)
 deliberately allow less detail for stronger weak-signal sync. Uppercase `Y`

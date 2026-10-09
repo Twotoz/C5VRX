@@ -1,0 +1,28 @@
+{
+ "seed": 2910190,
+ "epochs": 3,
+ "chunk": 64,
+ "history": [
+  {
+   "epoch": 0,
+   "teacher_code_loss": 0.012590023395425878
+  },
+  {
+   "epoch": 1,
+   "teacher_code_loss": 0.018284776525279888,
+   "temperature": 1.4
+  },
+  {
+   "epoch": 2,
+   "teacher_code_loss": 0.016273658047203963,
+   "temperature": 1.15
+  },
+  {
+   "epoch": 3,
+   "teacher_code_loss": 0.015007091469916597,
+   "temperature": 0.8999999999999999
+  }
+ ],
+ "best_loss": 0.012590023395425878,
+ "selected_epoch": 0
+}
