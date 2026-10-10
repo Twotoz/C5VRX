@@ -69,12 +69,12 @@ int main(int argc, char **argv)
     unsigned expected = saved_demod >= 0 && saved_demod < C5VRX4_DEMOD_COUNT && saved_demod != C5VRX4_DEMOD_PLL96 ?
         (unsigned)saved_demod : saved_demod == C5VRX4_DEMOD_PLL96 ?
         C5VRX4_DEMOD_OVP56 : default_demod();
-    /* Missing/invalid selections boot U85 UNTRAINED when present (operator, 2026-10-11). */
+    /* Missing/invalid selections boot U85E UNTRAINED when present (operator, 2026-10-11). */
     if (saved_demod < 0 || saved_demod >= (int)C5VRX4_DEMOD_COUNT) {
         int pair = -1;
 #if C5VRX4_RANGE_OPTION_COUNT
         for (unsigned i = 0; i < C5VRX4_RANGE_OPTION_COUNT; ++i)
-            if (!strcmp(c5vrx4_range_options[i].model_id, "1802e9b175db") && c5vrx4_range_options[i].selectable)
+            if (!strcmp(c5vrx4_range_options[i].model_id, "a7e273cf4a8a") && c5vrx4_range_options[i].selectable)
                 pair = (int)(C5VRX4_DEMOD_RANGE_OPTION0 + i);
 #endif
         assert(expected == (unsigned)(pair >= 0 ? pair : (int)C5VRX4_DEMOD_RANGE32));

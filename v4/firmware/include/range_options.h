@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 /* Generated C5VRX by Twotoz/contributors. Pinned LAB; physical acceptance separate. */
-#define C5VRX4_RANGE_OPTION_COUNT 7
+#define C5VRX4_RANGE_OPTION_COUNT 8
 typedef struct {
     const char *label, *model_id;
     uint8_t phase_bits;
@@ -16,4 +16,5 @@ static const c5vrx4_range_option_t c5vrx4_range_options[] = {
     {"EDGE RANGE LAB", "61ba9157643c", 2, 4, 8, 32, 1},
     {"OMEGA BELIEF LAB", "249d670670f5", 0, 0, 8, 0, 0},
     {"U85 UNTRAINED", "1802e9b175db", 5, 32, 32, 1, 1},
+    {"U85E UNTRAINED", "a7e273cf4a8a", 5, 32, 32, 1, 1},
 };

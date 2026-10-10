@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
-STAGES = ('A40', 'A20', 'Q40c', 'Q40', 'Q20', 'S32', 'T85', 'U85')
+STAGES = tuple(os.environ.get('LEDGER_STAGES', 'A40,A20,Q40c,Q40,Q20,S32,T85,U85').split(','))
 
 
 def out20(v, n):
@@ -71,6 +71,24 @@ def stage(name, analog, raw):
             pq = (np.floor((ph + np.pi) * P / (2 * np.pi)) % P + .5) * 2 * np.pi / P - np.pi
             e = wrap(obs[k] - pq); out[k] = e; ph = wrap(pq + .85 * e)
         return out20(out[1:], n)
+    if name in ('F85E', 'F85Eq'):
+        # Float upper bound of U85E: exact cell angle (or 32-sector for F85Eq),
+        # continuous phase state, origin erasure, output clipped to -4..+8 MHz.
+        lo, hi = (2 * np.pi * f * 50e-9 for f in (-4e6, 8e6))
+        ang = np.angle(a)
+        if name == 'F85Eq':
+            ang = (np.floor((ang + np.pi) * 31 / (2 * np.pi)) % 31 + .5) * 2 * np.pi / 31 - np.pi
+        er = (abs(a.real) <= .5) & (abs(a.imag) <= .5)
+        ph = 0.; out = np.zeros(len(a))
+        for k in range(len(a)):
+            if er[k]: out[k] = 0.; continue
+            e = wrap(ang[k] - ph); out[k] = min(max(e, lo), hi); ph = wrap(ph + .85 * e)
+        return out20(out[1:], n)
+    if name == 'U85E':
+        import untrained_search as U
+        m = U.build(dict(layout='4411', token_bits=5, kp=.85, gamma=0., out='linear', sigma=0.,
+                         range=(-4., 8.), erase=True, erase_r=.8))
+        return O.decode(raw, m)
     if name == 'U85':
         m = json.loads((ROOT / 'tools/range_options.json').read_text())['options'][6]['model']
         return O.decode(raw, m)

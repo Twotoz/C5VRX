@@ -180,6 +180,9 @@ def lookup(D, n):
     if n.startswith('PQ:'):
         _, g, b6 = n.split(':')
         return lambda c: ('pq', (float(g), b6 == '6'))
+    if n == 'U85':
+        m = json.loads((ROOT / 'tools/range_options.json').read_text())['options'][6]['model']
+        return lambda c, m=m: ('lut', m)
     if n == 'RX5808':
         return lambda c: ('analog', None)
     if n.startswith('UP'):

@@ -53,8 +53,21 @@ def key(p):
     k = f"L{p['layout']}-b{p['token_bits']}-kp{p['kp']}-g{p['gamma']}-{p['out']}{p['sigma'] or ''}-{r}"
     if p.get('emax'): k += f"-sat{p['emax']}"
     if p.get('law', 'e') != 'e': k += '-' + p['law']
-    if p.get('erase'): k += '-erase'
+    if p.get('erase'): k += '-erase' + (str(p['erase_r']) if 'erase_r' in p else '')
+    if p.get('obs'): k += '-' + p['obs']
     return k
+
+
+def params_grid_v3():
+    """v3: centroid observations, erasure radius, 64x16 allocation."""
+    out = []
+    for b, kp, er, obs, law, rng in itertools.product(
+            (4, 5), (.75, .85, .95), (.8, 1.2, 1.6), ('sector', 'centroid'), ('e', 'advance'),
+            ((-4., 8.), (-3.5, 7.5))):
+        out.append(dict(layout='4411', token_bits=b, kp=kp, gamma=0., out='linear', sigma=0.,
+                        range=rng, emax=None, law=law, erase=True, erase_r=er,
+                        obs=None if obs == 'sector' else obs))
+    return out
 
 
 def params_grid_v2():
@@ -88,26 +101,31 @@ def build(p):
     bits = C.pair_bits(p['layout'])
     kI, kQ, kIb, kQb = map(int, p['layout'])
     # Address bit j holds raw bit bits[j]; rebuild the raw 16-bit word per address.
-    ang = np.zeros(1024)
+    ang = np.zeros(1024); rad = np.zeros(1024)
     for a in range(1024):
         word = 0
         for j in range(10): word |= ((a >> j) & 1) << bits[j]
         za = _nibble(word, (4, 5, 6, 7), kI) + 1j * _nibble(word, (0, 1, 2, 3), kQ)
         zb = _nibble(word, (12, 13, 14, 15), kIb) + 1j * _nibble(word, (8, 9, 10, 11), kQb)
         z = za + (p['gamma'] * zb / abs(zb) if abs(zb) > 0 else 0)
-        ang[a] = math.atan2(z.imag, z.real)
+        ang[a] = math.atan2(z.imag, z.real); rad[a] = abs(za)
     # Optional erasure token (v2): A samples in the four origin cells carry no
     # usable phase; they get the last token and hold the state.
     erase = p.get('erase', False)
     TA = T - 1 if erase else T
     tok = np.floor((ang + np.pi) * TA / (2 * np.pi)).astype(int) % TA
     if erase:
-        for a in range(1024):
-            word = 0
-            for j in range(10): word |= ((a >> j) & 1) << bits[j]
-            ia = _nibble(word, (4, 5, 6, 7), kI); qa = _nibble(word, (0, 1, 2, 3), kQ)
-            if abs(ia) <= .5 and abs(qa) <= .5: tok[a] = T - 1
+        # v3: erase every cell whose centre radius is below erase_r (cells);
+        # erase_r 0.8 keeps the original four origin cells.
+        er = p.get('erase_r', .8)
+        tok[rad < er] = T - 1
     obs = (np.arange(TA) + .5) * 2 * np.pi / TA - np.pi
+    if p.get('obs') == 'centroid':
+        # v3: observation = circular mean angle of the cells in each token
+        # (conditional mean direction), off the sector lattice.
+        for t in range(TA):
+            mem = (tok == t)
+            if mem.any(): obs[t] = np.angle(np.mean(np.exp(1j * ang[mem])))
     ph = (np.arange(P) + .5) * 2 * np.pi / P - np.pi
     # Output transfer: phase advance per 50 ns (rad) -> DAC code.
     if p['range'] == 'nominal':
@@ -236,6 +254,8 @@ def main():
         if a.top:
             prev = json.loads(Path(a.top).read_text())
             cands = {n: prev['candidates'][n] for n in prev['top']}
+        elif a.grid == 'v3':
+            cands = {key(p): p for p in params_grid_v3()}
         elif a.grid == 'v2':
             cands = {key(p): p for p in params_grid_v2()}
         else:
