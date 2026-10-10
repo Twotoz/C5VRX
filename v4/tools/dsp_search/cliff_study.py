@@ -41,7 +41,8 @@ def make(seed, cnr, std, dev, rms, pattern, lane='ultrafine', extra=None):
         hw['loss_windows_us'] = tuple(sorted(lw))
         hw['phase_jumps'] = tuple((float(rng.uniform(1000, dur - 1000)), float(rng.uniform(-np.pi, np.pi))) for _ in range(2))
     c = V.make_case(std, seed, cnr, rms, short=False, cfo_hz=cfo, stimulus_seed=seed + 1,
-                    lane_model=lane, pattern=pattern, **hw)
+                    lane_model=lane, pattern=pattern, include_traces=os.environ.get('CLIFF_ANALOG') == '1', **hw)
+    c.pop('rx_signal', None)
     c['dev'] = dev
     c['fit'] = dict(fit_deviation=dev * float(rng.uniform(.95, 1.05)), fit_centre_hz=cfo + float(rng.uniform(-5e4, 5e4)))
     if board: c['fit'] = dict(fit_deviation=1.0, fit_centre_hz=1e6)
@@ -146,7 +147,18 @@ def pq_decode(raw, gamma, bits6):
     return B.D.goggle(B.DAC_VOLTS[out])
 
 
+def rx5808_decode(y):
+    """Analog VRX reference (RX5808-style limiter + quadrature discriminator):
+    ideal phase difference of the unquantized IQ at 40 MS/s, no 4-bit lanes,
+    no DAC quantization, then the same goggle input filter."""
+    import overlay_fsm as O
+    y = np.asarray(y, np.complex128)
+    d = np.angle(y[1:] * np.conj(y[:-1]))
+    return O.H.B.D.goggle(np.r_[d[:1], d])
+
+
 def run(kind, model, raw):
+    if kind == 'analog': return rx5808_decode(raw)
     if kind == 'pq': return pq_decode(raw, *model)
     if kind == 'dual': return dual_decode(raw, model)
     if kind == 'hc50':
@@ -168,6 +180,8 @@ def lookup(D, n):
     if n.startswith('PQ:'):
         _, g, b6 = n.split(':')
         return lambda c: ('pq', (float(g), b6 == '6'))
+    if n == 'RX5808':
+        return lambda c: ('analog', None)
     if n.startswith('UP'):
         kp = float(n[2:] or 1) if n[2:] != '1' else 1.
         def mk(c, kp=kp):

@@ -50,7 +50,24 @@ def params_grid():
 
 def key(p):
     r = p['range'] if p['range'] == 'nominal' else '%g..%g' % tuple(p['range'])
-    return f"L{p['layout']}-b{p['token_bits']}-kp{p['kp']}-g{p['gamma']}-{p['out']}{p['sigma'] or ''}-{r}"
+    k = f"L{p['layout']}-b{p['token_bits']}-kp{p['kp']}-g{p['gamma']}-{p['out']}{p['sigma'] or ''}-{r}"
+    if p.get('emax'): k += f"-sat{p['emax']}"
+    if p.get('law', 'e') != 'e': k += '-' + p['law']
+    if p.get('erase'): k += '-erase'
+    return k
+
+
+def params_grid_v2():
+    """v2: saturating phase detector, output law and origin-cell erasure
+    around the U85 operating point (4411, 32 phases, linear range)."""
+    out = []
+    for kp, emax, law, erase, rng in itertools.product(
+            (.75, .85, .95), (None, 1.6, 2.0, 2.4), ('e', 'advance', 'sat'), (False, True),
+            ((-4., 8.), (-4.5, 8.5), (-3.5, 7.5))):
+        if law == 'sat' and not emax: continue
+        out.append(dict(layout='4411', token_bits=5, kp=kp, gamma=0., out='linear', sigma=0.,
+                        range=rng, emax=emax, law=law, erase=erase))
+    return out
 
 
 def _nibble(word, positions, kept):
@@ -79,8 +96,18 @@ def build(p):
         zb = _nibble(word, (12, 13, 14, 15), kIb) + 1j * _nibble(word, (8, 9, 10, 11), kQb)
         z = za + (p['gamma'] * zb / abs(zb) if abs(zb) > 0 else 0)
         ang[a] = math.atan2(z.imag, z.real)
-    tok = np.floor((ang + np.pi) * T / (2 * np.pi)).astype(int) % T
-    obs = (np.arange(T) + .5) * 2 * np.pi / T - np.pi
+    # Optional erasure token (v2): A samples in the four origin cells carry no
+    # usable phase; they get the last token and hold the state.
+    erase = p.get('erase', False)
+    TA = T - 1 if erase else T
+    tok = np.floor((ang + np.pi) * TA / (2 * np.pi)).astype(int) % TA
+    if erase:
+        for a in range(1024):
+            word = 0
+            for j in range(10): word |= ((a >> j) & 1) << bits[j]
+            ia = _nibble(word, (4, 5, 6, 7), kI); qa = _nibble(word, (0, 1, 2, 3), kQ)
+            if abs(ia) <= .5 and abs(qa) <= .5: tok[a] = T - 1
+    obs = (np.arange(TA) + .5) * 2 * np.pi / TA - np.pi
     ph = (np.arange(P) + .5) * 2 * np.pi / P - np.pi
     # Output transfer: phase advance per 50 ns (rad) -> DAC code.
     if p['range'] == 'nominal':
@@ -92,15 +119,26 @@ def build(p):
         def code(theta):
             return np.rint(np.clip((theta - lo_t) / (hi_t - lo_t) * 63, 0, 63))
     grid = np.linspace(lo_t, hi_t, 241)
+    emax = p.get('emax')  # saturating phase detector (v2), None = linear
     lut = np.zeros(1024, np.int64)
     for s in range(P):
         for t in range(T):
+            if erase and t == T - 1:
+                lut[s * T + t] = int(code(0.)) | (s << 6)   # hold phase, output the carrier
+                continue
             e = (obs[t] - ph[s] + np.pi) % (2 * np.pi) - np.pi
-            nxt = int(np.floor((ph[s] + p['kp'] * e + np.pi) * P / (2 * np.pi))) % P
+            u = float(np.clip(e, -emax, emax)) if emax else e
+            target = ph[s] + p['kp'] * u
+            nxt = int(np.floor((target + np.pi) * P / (2 * np.pi))) % P
+            law = p.get('law', 'e')
             if p['out'] == 'mmse':
                 d = (e - grid + np.pi) % (2 * np.pi) - np.pi
                 w = np.exp(-.5 * (d / p['sigma']) ** 2)
                 theta = float(np.sum(w * grid) / np.sum(w))
+            elif law == 'advance':
+                theta = (ph[nxt] - ph[s] + np.pi) % (2 * np.pi) - np.pi
+            elif law == 'sat':
+                theta = u
             else:
                 theta = e
             lut[s * T + t] = int(code(theta)) | (nxt << 6)
@@ -127,6 +165,7 @@ def case_specs(seed, cnrs, devs):
 def shard_main(a):
     os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
     os.environ['CLIFF_BOARD'] = '1'; os.environ['CLIFF_STRESS'] = '1'
+    if 'CTRL-RX5808' in json.loads(Path(a.candidates).read_text()): os.environ['CLIFF_ANALOG'] = '1'
     sys.path.insert(0, str(ROOT / 'tools'))
     import cliff_study as S
     import goggle_lock as G
@@ -138,7 +177,8 @@ def shard_main(a):
     for sp in mine:
         c = S.make(*sp)
         cases.append(dict(spec=sp, raw=c['raw'], clean=c['clean'], truth=c['truth'].astype(np.float32),
-                          region=c['region'], standard=c['standard'], fit=c['fit']))
+                          region=c['region'], standard=c['standard'], fit=c['fit'],
+                          analog=c.get('analog'), analog_clean=c.get('analog_clean')))
     done = {}
     out = Path(a.out)
     if out.exists(): done = json.loads(out.read_text())
@@ -152,7 +192,8 @@ def shard_main(a):
         rows = []
         for c in cases:
             kind, m = maker(c)
-            y = S.run(kind, m, c['raw']); yc = S.run(kind, m, c['clean'])
+            src, srcc = (c['analog'], c['analog_clean']) if kind == 'analog' else (c['raw'], c['clean'])
+            y = S.run(kind, m, src); yc = S.run(kind, m, srcc)
             r = G.measure(y, yc, dict(c, truth=c['truth'].astype(float)))
             rows.append(dict(spec=c['spec'], h=r['h_ok'], hp=r['peak_h_ok'], sinad=r['sinad'],
                              false=r['false_per_line']))
@@ -184,6 +225,7 @@ def main():
     g.add_argument('--seed', type=int, default=700000); g.add_argument('--cnr', default='6,10,20')
     g.add_argument('--dev', default='0.69,1.0,1.4'); g.add_argument('--top', default='')
     g.add_argument('--controls', default='HC50,RANGE32,PAIR_AF,UP1')
+    g.add_argument('--grid', default='v1')
     r = sub.add_parser('report'); r.add_argument('--output', type=Path, required=True)
     a = ap.parse_args()
     if a.cmd == 'shard': return shard_main(a)
@@ -194,6 +236,8 @@ def main():
         if a.top:
             prev = json.loads(Path(a.top).read_text())
             cands = {n: prev['candidates'][n] for n in prev['top']}
+        elif a.grid == 'v2':
+            cands = {key(p): p for p in params_grid_v2()}
         else:
             cands = {key(p): p for p in params_grid()}
         for c in a.controls.split(','):

@@ -109,6 +109,7 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimul
     for start,end in loss_windows_us:
         if not 0<=start<end<=len(z)/40:raise ValueError('loss interval outside case')
         z[round(start*40):round(end*40)]=0 # Noise remains; fixed gain, not a simulated AGC.
+    analog={}
     def raw(n):
         y=W.iq_at(z,n,cnr,rms)
         if stress:y=y.real*1.05+1j*y.imag+.15-.1j
@@ -118,6 +119,7 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimul
         for start_us,end_us,gain in gain_windows:
             if not 0 <= start_us < end_us <= len(y)/40 or gain <= 0: raise ValueError('invalid gain window')
             y[round(start_us*40):round(end_us*40)] *= gain
+        analog['y' if n is noise else 'clean']=y.astype(np.complex64)  # unquantized (reference receivers)
         if lane_model:
             from iq_lanes import quantize
             return quantize(y,lane_model)
@@ -129,7 +131,7 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimul
     result=dict(raw=raw(noise),clean=clean,truth=truth,region=region,calibration=calibration,
                 standard=standard,seed=seed,cnr=cnr,rms=rms,stress=stress,stimulus_seed=stimulus_seed,cfo_hz=cfo_hz,
                 loss_windows_us=loss_windows_us,lane_model=lane_model,pattern=pattern)
-    if include_traces:result['rx_signal']=z
+    if include_traces:result.update(rx_signal=z,analog=analog['y'],analog_clean=analog['clean'])
     return result
 
 
