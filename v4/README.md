@@ -389,3 +389,7 @@ slews by at most 32 mV according to the loaded voltage table. Concurrent LUT arb
 acceptance remain physical gates. It corrects output gain/offset, not IQ DC.
 H/V regeneration/coasting and CPU raw-ring sync repair remain absent.
 See [docs/CVBS_LEVEL.md](docs/CVBS_LEVEL.md) for controls, evidence and limits.
+
+[Bayesian belief ROM and causal history research](docs/BELIEF_ROM_STUDY.md)
+adds hardware-exact input-history sources and joint policy optimization.
+All selected decoders fail acceptance; none is exposed as a new LAB mode.

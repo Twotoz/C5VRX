@@ -1,0 +1,60 @@
+{
+ "seed": 4310190,
+ "selected": "b5_epoch5",
+ "screen": [
+  {
+   "name": "b3_epoch0",
+   "utility": -10.287092229378683
+  },
+  {
+   "name": "b3_epoch1",
+   "utility": -14.234188527118684
+  },
+  {
+   "name": "b3_epoch2",
+   "utility": -15.53465963908469
+  },
+  {
+   "name": "b3_epoch3",
+   "utility": -14.53135709959145
+  },
+  {
+   "name": "b3_epoch4",
+   "utility": -14.492628259874863
+  },
+  {
+   "name": "b3_epoch5",
+   "utility": -14.434003456086463
+  },
+  {
+   "name": "b5_epoch0",
+   "utility": -9.502238178072734
+  },
+  {
+   "name": "b5_epoch1",
+   "utility": -20.10038633017107
+  },
+  {
+   "name": "b5_epoch2",
+   "utility": -15.332815375599317
+  },
+  {
+   "name": "b5_epoch3",
+   "utility": -14.869587892292007
+  },
+  {
+   "name": "b5_epoch4",
+   "utility": -13.111772284453227
+  },
+  {
+   "name": "b5_epoch5",
+   "utility": -8.608042831995142
+  }
+ ],
+ "teacher": "particle",
+ "teacher_observations": "both full IQ bytes",
+ "posterior_sampling_stride": 4,
+ "sync_risk_weight": 8.0,
+ "reseed_unused": true,
+ "projection_geometry": "adaptive"
+}

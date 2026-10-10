@@ -1,0 +1,39 @@
+{
+ "seed": 3210190,
+ "selected": "b4",
+ "screen": [
+  {
+   "name": "b2",
+   "utility": -13.351560977777988,
+   "projection": {
+    "mean_hellinger_distortion": 0.22324082255363464,
+    "states": 256,
+    "tokens": 4,
+    "encoder_contexts": 4,
+    "raw_sample_B_used": false
+   }
+  },
+  {
+   "name": "b3",
+   "utility": -10.305861696211895,
+   "projection": {
+    "mean_hellinger_distortion": 0.22575846314430237,
+    "states": 128,
+    "tokens": 8,
+    "encoder_contexts": 4,
+    "raw_sample_B_used": false
+   }
+  },
+  {
+   "name": "b4",
+   "utility": -9.818593231961625,
+   "projection": {
+    "mean_hellinger_distortion": 0.20269088447093964,
+    "states": 64,
+    "tokens": 16,
+    "encoder_contexts": 4,
+    "raw_sample_B_used": false
+   }
+  }
+ ]
+}

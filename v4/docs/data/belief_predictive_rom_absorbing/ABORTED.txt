@@ -1,0 +1,1 @@
+Training-only failure: diffuse initial prototype is absorbing under nearest-belief projection. Stopped before any independent confirmation. No model promoted. Corrected generator reserves first-observation posterior prototypes; these pre-fix LUTs are negative debugging artifacts, not confirmation evidence.

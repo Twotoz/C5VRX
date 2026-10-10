@@ -34,19 +34,32 @@ def cost(token_bits,context_bits=0,counter_phase=False,pair_layout=None):
 
 def build(m):
     b=int(m['params']['token_bits']);context=m['params'].get('context_bits',0)
+    state_context=m['params'].get('context_state_bits',False)
+    history=m['params'].get('history_observation',False)
+    if history and (context or m['params'].get('counter_phase') or m['params'].get('pair_layout')):
+        raise ValueError('history register schedule is exclusive of other encoders')
+    if state_context and (context!=2 or b not in (2,3,4)):
+        raise ValueError('state-conditioned encoder needs two context bits and >=64 states')
     counter=m['params'].get('counter_phase',False);layout=m['params'].get('pair_layout')
     r=cost(b,context,counter,layout);sb=r['state_bits'];lut=m['lut']
     if len(lut)!=1024 or any(type(v)is not int or not 0<=v<65536 for v in lut):raise ValueError('LUT')
     s='''# C5VRX by Twotoz/contributors: shared-word LUT16 decoder/tracker.
 # IQ40/raw32K/TX-only, unique20 duplicate DAC6 at40M; no CPU sample loop.
 # Source feasibility is not board timing or picture/range acceptance.
-cfg prefetch true
+cfg prefetch '''+('false' if history else 'true')+'''
 cfg eof_on downstream
 cfg trailing_bytes 0
 cfg lut_width_bits 16
 lut '''+' '.join(map(str,lut))+'\n'
     for k in range(4):
         address=('set 24 15,'+chr(10)+'    set 25 11,') if context else ('set 24..25 L,' if counter else 'set 24..25 H,')
+        if state_context:
+            address=f'set 24 L{6+sb-2},'+chr(10)+f'    set 25 L{6+sb-1},'
+        if history:
+            # Current full IQ at32..39; previous A's I/Q signs at23/19.
+            # REG_MEM1 low16 and LUT16 are simultaneously addressable on C5.
+            keep=[36,37,38,39,32,33,34,35,23,19]
+            address=(chr(10)+'    ').join(f'set {16+j} {bit},' for j,bit in enumerate(keep))
         if layout:
             address=(chr(10)+'    ').join(f'set {16+j} {bit},' for j,bit in enumerate(pair_bits(layout)))
         carry=('set 26 L,'+chr(10)+'    set 27..31 L6..L10,') if counter else 'set 26..31 L6..L11,'
@@ -55,7 +68,7 @@ lut '''+' '.join(map(str,lut))+'\n'
     set 0..5 L0..L5,
     set 8..13 L0..L5,
     set 14..15 L12..L13,
-    {'' if layout else 'set 16..23 0..7,'+chr(10)+'    '}{address}
+    {'' if layout or history else 'set 16..23 0..7,'+chr(10)+'    '}{address}
     {carry}
     read 16,
     write 16,

@@ -188,18 +188,49 @@ def pair_indices(raw,lut,b,bits):
 
 def model_codes(raw,m,lut=None):
     p=m['params'];lut=np.array(m['lut'],np.uint16) if lut is None else lut
+    if p.get('context_state_bits'):return state_context_codes(raw,lut,p['token_bits'])[0]
+    if p.get('history_observation'):return history_codes(raw,lut,p['token_bits'])[0]
     if p.get('pair_layout'):return pair_codes(raw,lut,p['token_bits'],np.array(C.pair_bits(p['pair_layout']),np.int64))
     return codes(raw,lut,p['token_bits'],p.get('context_bits',0),p.get('counter_phase',False))
 
 
 def model_indices(raw,m,lut=None):
     p=m['params'];lut=np.array(m['lut'],np.uint16) if lut is None else lut
+    if p.get('context_state_bits'):return state_context_codes(raw,lut,p['token_bits'])[1]
+    if p.get('history_observation'):return history_codes(raw,lut,p['token_bits'])[1]
     if p.get('pair_layout'):return pair_indices(raw,lut,p['token_bits'],np.array(C.pair_bits(p['pair_layout']),np.int64))
     return indices(raw,lut,p['token_bits'],p.get('context_bits',0),p.get('counter_phase',False))
 
 
 def decode(raw,m):
     return H.B.D.goggle(H.B.DAC_VOLTS[model_codes(raw,m)])
+
+
+@njit(cache=True)
+def state_context_codes(raw,lut,b):
+    out=np.zeros(len(raw),np.uint8);result=np.zeros(len(raw)//2-1,np.int64)
+    state=0;sb=10-b;mask=(1<<sb)-1
+    for k in range(len(result)):
+        address=np.int64(raw[2*k])+((state>>(sb-2))<<8)
+        token=np.int64(lut[address])>>(16-b)
+        idx=(state<<b)+token;result[k]=idx
+        value=np.int64(lut[idx]);state=(value>>6)&mask
+        out[2*k+2]=out[2*k+3]=value&63
+    return out,result
+
+
+@njit(cache=True)
+def history_codes(raw,lut,b):
+    out=np.zeros(len(raw),np.uint8);result=np.zeros(len(raw)//2-1,np.int64)
+    state=0;mask=(1<<(10-b))-1
+    for k in range(len(result)):
+        current=int(raw[2*k-4]) if k>=2 else 0
+        previous=int(raw[2*k-6]) if k>=3 else 0
+        address=(current>>4)|((current&15)<<4)|(((previous>>7)&1)<<8)|(((previous>>3)&1)<<9)
+        token=np.int64(lut[address])>>(16-b);idx=(state<<b)+token;result[k]=idx
+        value=np.int64(lut[idx]);state=(value>>6)&mask
+        out[2*k+2]=out[2*k+3]=value&63
+    return out,result
 
 
 @njit(cache=True)

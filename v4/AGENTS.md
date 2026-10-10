@@ -1,5 +1,17 @@
 # Isolated C5VRX-4 integration ledger
 
+## Belief ROM and causal input-history study, 2026-10-10
+
+`docs/BELIEF_ROM_STUDY.md` preserves direct/predictive belief projection,
+joint closed-loop posterior policy optimization, quality-aware compression,
+and a legal prefetch=false input-history schedule. Every selected decoder
+fails the combined weak/strong gates; no menu/default promotion is justified.
+The history schedule is TX40/duplicate DAC6/2KiB/eight slots, not the previous
+TX20 counter experiment. Source/assembler legality is not physical timing.
+The model now honors prefetch=false zero-input initialization. Keep startup
+absorbing-state failures and paired independent hashes; neither local
+projection optimization nor these negative results prove global impossibility.
+
 ## Causal amplitude-aware reference, 2026-10-09
 
 `docs/ADAPTIVE_PARTICLE_STUDY.md` records a continuous-phase particle reference

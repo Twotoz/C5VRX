@@ -1,0 +1,57 @@
+{
+ "seed": 3610190,
+ "selected": "b3_epoch5",
+ "screen": [
+  {
+   "name": "b3_epoch0",
+   "utility": -10.29255542743028
+  },
+  {
+   "name": "b3_epoch1",
+   "utility": -10.804624564952812
+  },
+  {
+   "name": "b3_epoch2",
+   "utility": -10.218345619345804
+  },
+  {
+   "name": "b3_epoch3",
+   "utility": -10.511132079658559
+  },
+  {
+   "name": "b3_epoch4",
+   "utility": -8.41985298386986
+  },
+  {
+   "name": "b3_epoch5",
+   "utility": -7.96445694730296
+  },
+  {
+   "name": "b5_epoch0",
+   "utility": -9.420337644263213
+  },
+  {
+   "name": "b5_epoch1",
+   "utility": -9.848466753702967
+  },
+  {
+   "name": "b5_epoch2",
+   "utility": -21.614235351952544
+  },
+  {
+   "name": "b5_epoch3",
+   "utility": -11.188378103264178
+  },
+  {
+   "name": "b5_epoch4",
+   "utility": -10.076494751165942
+  },
+  {
+   "name": "b5_epoch5",
+   "utility": -14.767186349837843
+  }
+ ],
+ "teacher": "belief_rom full address",
+ "posterior_sampling_stride": 4,
+ "sync_risk_weight": 8.0
+}

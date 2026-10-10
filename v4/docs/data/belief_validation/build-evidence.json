@@ -1,0 +1,16 @@
+{
+  "idf_version": "v6.0.2",
+  "idf_commit": "7101770dc6db2667b3c477cc31365dd1acd6db4e",
+  "firmware_bytes": 1304288,
+  "firmware_sha256": "400fcc34ef2dd948e9d058d512d2d175f5524622cd01aa93a8d8e0bbcd471590",
+  "unit_tests": 12,
+  "host_c_regressions": 23,
+  "board_tested": false,
+  "component_manager_disabled": "No idf_component.yml or dependencies.lock exists in v4; manager PID lookup fails in sandbox namespace. No project build setting changed.",
+  "commands": [
+    "PYTHONPATH=v4/tools:v4/tools/dsp_search OPENBLAS_NUM_THREADS=1 python v4/tools/dsp_search/test_belief_rom.py",
+    "PYTHONPATH=v4/tools:v4/tools/dsp_search OPENBLAS_NUM_THREADS=1 python v4/tools/verify.py",
+    "IDF_COMPONENT_MANAGER=0 idf.py -B /workspace/scratch/90b28e26adac/build-belief build",
+    "IDF_COMPONENT_MANAGER=0 idf.py -B /workspace/scratch/90b28e26adac/build-belief reconfigure build"
+  ]
+}

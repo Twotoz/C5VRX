@@ -1,0 +1,35 @@
+{
+ "seed": 2910190,
+ "selected": "b4_4411",
+ "screen": [
+  {
+   "name": "b3_4411",
+   "utility": -14.341952226304379,
+   "projection": {
+    "mean_hellinger_distortion": 0.05031071387158538,
+    "distinct_next_states": 128
+   }
+  },
+  {
+   "name": "b4_4411",
+   "utility": -10.058491893313274,
+   "projection": {
+    "mean_hellinger_distortion": 0.06250164145260062,
+    "distinct_next_states": 64
+   }
+  },
+  {
+   "name": "b5_4411",
+   "utility": -10.7946238957183,
+   "projection": {
+    "mean_hellinger_distortion": 0.06409940154711052,
+    "distinct_next_states": 32
+   }
+  }
+ ],
+ "projection": "predictive",
+ "grid": {
+  "phases": 64,
+  "frequencies": 33
+ }
+}

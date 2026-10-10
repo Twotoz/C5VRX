@@ -30,6 +30,10 @@ def parse(text):
 
 def simulate(text, raw, count, *, initial=None, start=None, stats=None, wrap_rom=False):
     cfg, lut, blocks, labels = parse(text)
+    # With prefetch disabled the real 64-bit input register starts at zero.
+    # Reads shift new bytes in at the MSB; the flat-stream equivalent has
+    # eight zero bytes before raw[0]. This is dataflow, not FIFO timing.
+    input_start=0 if cfg.get('prefetch','true')=='true' else -8
     out = a = b = look = pos = pc = 0
     if initial is not None: out, a, b, look = initial
     if start is not None: pc = labels[start]
@@ -56,8 +60,8 @@ def simulate(text, raw, count, *, initial=None, start=None, stats=None, wrap_rom
                     elif s[0] in 'olab':
                         v=({'o':out,'l':look,'a':a,'b':b}[s[0]] >> int(s[1:])) & 1
                     else:
-                        bit=int(s); ix=pos+bit//8
-                        v=(int(raw[ix]) >> (bit%8)) & 1 if ix < len(raw) else 0
+                        bit=int(s); ix=pos+input_start+bit//8
+                        v=(int(raw[ix]) >> (bit%8)) & 1 if 0<=ix<len(raw) else 0
                     new |= int(v)<<d
             elif bits[0] == 'read': read=int(bits[1])
             elif bits[0] == 'write': write=int(bits[1])
@@ -79,8 +83,8 @@ def simulate(text, raw, count, *, initial=None, start=None, stats=None, wrap_rom
             elif src[0] in 'olab':
                 v = ({'o':out,'l':look,'a':a,'b':b}[src[0]] >> int(src[1:])) & 1
             else:
-                bit=int(src); ix=pos+bit//8
-                v=(int(raw[ix]) >> (bit%8)) & 1 if ix < len(raw) else 0
+                bit=int(src); ix=pos+input_start+bit//8
+                v=(int(raw[ix]) >> (bit%8)) & 1 if 0<=ix<len(raw) else 0
             if bool(v) == (op == 'if'): next_pc=labels[opcode[2]]
         elif op.startswith(('ldcti','addcti','ldctd')):
             kind = 'addcti' if op.startswith('addcti') else 'ldcti' if op.startswith('ldcti') else 'ldctd'

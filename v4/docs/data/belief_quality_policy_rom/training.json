@@ -1,0 +1,64 @@
+{
+ "seed": 4910190,
+ "selected": "b5_epoch5",
+ "screen": [
+  {
+   "name": "b3_epoch0",
+   "utility": -10.355178072554166
+  },
+  {
+   "name": "b3_epoch1",
+   "utility": -14.636140777848745
+  },
+  {
+   "name": "b3_epoch2",
+   "utility": -15.927626006965754
+  },
+  {
+   "name": "b3_epoch3",
+   "utility": -20.02376507814234
+  },
+  {
+   "name": "b3_epoch4",
+   "utility": -14.466921630533808
+  },
+  {
+   "name": "b3_epoch5",
+   "utility": -14.56132470038184
+  },
+  {
+   "name": "b5_epoch0",
+   "utility": -9.50725066500123
+  },
+  {
+   "name": "b5_epoch1",
+   "utility": -17.461672833806297
+  },
+  {
+   "name": "b5_epoch2",
+   "utility": -14.976605589801393
+  },
+  {
+   "name": "b5_epoch3",
+   "utility": -15.313946029331483
+  },
+  {
+   "name": "b5_epoch4",
+   "utility": -10.95193146033884
+  },
+  {
+   "name": "b5_epoch5",
+   "utility": -9.371582556618426
+  }
+ ],
+ "teacher": "particle",
+ "teacher_observations": "both full IQ bytes",
+ "teacher_endpoint": "A",
+ "posterior_sampling_stride": 4,
+ "sync_risk_weight": 8.0,
+ "reseed_unused": true,
+ "projection_geometry": "adaptive",
+ "history_observation": false,
+ "observation_quality": true,
+ "frequency_memory_weight": 8.0
+}

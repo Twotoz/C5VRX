@@ -1,0 +1,1238 @@
+{
+  "assembler_sha256": "1b293da34636288b77b3cad0b50825b3c04cadb9660475fddbaa4623b8c562e8",
+  "target_sha256": "8ea69d170fa74ae382838d2634aaf9f5cff66c5ee0267cab5c04f1af82e5a19d",
+  "programs": [
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b3_epoch0.bsasm",
+      "source_sha256": "df3c42bf9f1468647052251316374972b2677abc226f8e3afe26bba66c834578",
+      "binary_sha256": "e168c49254e2b53f26c6d47b798e4d12b1c070ebddd6659e7fa85b823bace803",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b3_epoch1.bsasm",
+      "source_sha256": "31e1d673908cddd4a21bee0a3af2c09a1f6edc9eb7c6ba37848f7b9e6ff2a47c",
+      "binary_sha256": "c14507b28f51cf8222b21da8805fe5ae80144ae9f80dad47808cd813a4537210",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b3_epoch2.bsasm",
+      "source_sha256": "778b53e2b3b0ec69b06474c78261bd45df7fc690e5049e2f936bb6b2b289c69c",
+      "binary_sha256": "f13e35d2278d8c0ab528e7e3ffbbdda1bd21fb6a9d3cc76043a1d426dc6c0a26",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b3_epoch3.bsasm",
+      "source_sha256": "07144a35ca070230e8ca498cc87fd2eb976d8dffe45777ef27d61feca78b4d20",
+      "binary_sha256": "8a71d8d4b6875bd852f50b293ba1e13bb22a17474920d56c8469b03029867c1e",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b3_epoch4.bsasm",
+      "source_sha256": "811721f5d0adb886b5f18a6dba801ae217a7d741f492b5d9fef3c191de1c1864",
+      "binary_sha256": "96c95a32beb63e6af7f237b0cdb29628a8838bfbd53a142d4feb9e3df7c1b48a",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b3_epoch5.bsasm",
+      "source_sha256": "19f5256a7d56d80fff08536b8f390088c347ff94e3e9b4bfb9bae651945d24e8",
+      "binary_sha256": "aaadf72a5961c53c7e47fa29d034d16e49d9b6fb024a58b734bf8159bad400f2",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b5_epoch0.bsasm",
+      "source_sha256": "3afeb1ab705871a3a6defcf2de6e967c7a16f50bda0ddd9abb0c7ea1d6312667",
+      "binary_sha256": "ab1284244e2c791653cb0f568d58b69c48b52c3aba21603d1fedd54d4f0137b1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b5_epoch1.bsasm",
+      "source_sha256": "932355d73b3ac75c81ef3e2e0b0b2128a21eb4543e0007118725148ad4754823",
+      "binary_sha256": "203b810fa45875e82f1c9a3100100549f5ba45148401e922d71f73abb007c57a",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b5_epoch2.bsasm",
+      "source_sha256": "395a013b77b50def0a8d29765385a4f2e7a8558c2d9d66aeabcf982e5a815496",
+      "binary_sha256": "a72319a1ce4f25207e18c6b0fd126b4d305dabad4e6fc53767ef876aebe74522",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b5_epoch3.bsasm",
+      "source_sha256": "6a33d2363b197f8c7f59546889ba072d3eec9a6c8711b4ac81c38cd5a30678e9",
+      "binary_sha256": "f7a1f8ae0d41ba39d0faf7292c1e1a8a3d740906a5e309723d3c5df88d2e11c9",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b5_epoch4.bsasm",
+      "source_sha256": "80e0550ea50163512b26e6cbd5739df8f32237ea4573166e0f84c3d31b2d143f",
+      "binary_sha256": "2a5384dec349092f4859d0db1362567f65e97b4214bce725a61250ecf0982a48",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/b5_epoch5.bsasm",
+      "source_sha256": "4da72c86307a37bb5410c4e2750d8b321992a789a56d84210c84f786d07f3653",
+      "binary_sha256": "e05806da78e6663a36ce860d8e8f4dde3d071115dcd42f4c2ae6d764fa03fcdd",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/selected.bsasm",
+      "source_sha256": "4da72c86307a37bb5410c4e2750d8b321992a789a56d84210c84f786d07f3653",
+      "binary_sha256": "e05806da78e6663a36ce860d8e8f4dde3d071115dcd42f4c2ae6d764fa03fcdd",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b3_epoch0.bsasm",
+      "source_sha256": "df3c42bf9f1468647052251316374972b2677abc226f8e3afe26bba66c834578",
+      "binary_sha256": "e168c49254e2b53f26c6d47b798e4d12b1c070ebddd6659e7fa85b823bace803",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b3_epoch1.bsasm",
+      "source_sha256": "cc278ef6c4cb954da18e971cc12f80555bf836d4f8556f6016f92995c0fa7ab6",
+      "binary_sha256": "eabb9b9fc6f369018ac02c2be70b0e9323306467fef8b99f1205ed58c6b4e396",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b3_epoch2.bsasm",
+      "source_sha256": "127351cfc17e6e9798736fe6a54ff63f98fb36bf9223cfeeb01cd45bbd664d89",
+      "binary_sha256": "9c5cb4253c7ad2e92d86421bc8b99a176cca55550d6a9c83543014f1592cab56",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b3_epoch3.bsasm",
+      "source_sha256": "e9639901db34774dd54a4b0879454f452ca4173e9b753437d6895fa7a0a143ab",
+      "binary_sha256": "ec73f36fb92cad2e902a7a384ac4286682eef9fc4f8e46e13cc739869a618184",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b3_epoch4.bsasm",
+      "source_sha256": "3ceffde90659b7d1b6658ab7b85ac7c738ea8af47a291da6db992fd50c91a959",
+      "binary_sha256": "010924fae9230ddbe47a7c63bd63e5ee2a674b013fa24db61eafda4888f70a6b",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b3_epoch5.bsasm",
+      "source_sha256": "a3d03bc6d432c924dacb01859649d02b0382bfb3d05be3e0837b3472fa5b846c",
+      "binary_sha256": "6a0575444daa93c0b12a5745d2fd4656adc2a185c0f168ef4f0dcfd7aa0ac6a9",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b4_epoch0.bsasm",
+      "source_sha256": "5386f8e5a05a3249f342f2bc5e03ea73994a5af3c2fce9fb6f5769250db79c72",
+      "binary_sha256": "22e4f69753411b296788f030f7bcfa96bc869251722fbe5243565f3b311ea295",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b4_epoch1.bsasm",
+      "source_sha256": "d7981f4266e97739d4aea8d854bda10840be909aa90bf1a26e7a06380fa3bc94",
+      "binary_sha256": "ab7486388fa73bde84b6c9728575fd5c481e8cb3fd0780c7094d03be00b8cef0",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b4_epoch2.bsasm",
+      "source_sha256": "56520014fc999e8c29e3f0a8d8d2f9bf94002cfcfbe9d14cccadf750163aa0e5",
+      "binary_sha256": "741ea278a5c032d6591e4ae5106f7789a814e4349bfabd88211fc997caa6028b",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b4_epoch3.bsasm",
+      "source_sha256": "0d5a8554e26584b98e91c7e569387ec87c153c0f04e2fa4e92ae50b3cebfe669",
+      "binary_sha256": "76605e6698d551b693f15f44757420a6daf693e148e34ab32672941784dcf372",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b4_epoch4.bsasm",
+      "source_sha256": "07883156caa05c84b6b75d2fe2e91b0b44c8ad61ab6a85d0462ad4d63f63598d",
+      "binary_sha256": "3e429681f802f8281529d497cfa48c6d5e34e1e1bee85abd9b83064cf3e98c6a",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/b4_epoch5.bsasm",
+      "source_sha256": "89a291a66c42b79c0fcdc56f34fe80c67b239113490d1b11a6cf7e96580fa296",
+      "binary_sha256": "472c91bd377a8d0d7628e5e207fe56a315eb8cd233b3c5faa6dbe27e768a5ba1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/selected.bsasm",
+      "source_sha256": "a3d03bc6d432c924dacb01859649d02b0382bfb3d05be3e0837b3472fa5b846c",
+      "binary_sha256": "6a0575444daa93c0b12a5745d2fd4656adc2a185c0f168ef4f0dcfd7aa0ac6a9",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_rom/b2.bsasm",
+      "source_sha256": "a6d1e9dc06572dc884e8c955b64f846c85a1aa15c7bfd60f8465c5bd72e08a24",
+      "binary_sha256": "466792e94b1b01e662b76ba948243bb6cc2b8a295351b06e7c27c036a0f46641",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_rom/b3.bsasm",
+      "source_sha256": "df3c42bf9f1468647052251316374972b2677abc226f8e3afe26bba66c834578",
+      "binary_sha256": "e168c49254e2b53f26c6d47b798e4d12b1c070ebddd6659e7fa85b823bace803",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_rom/b4.bsasm",
+      "source_sha256": "5386f8e5a05a3249f342f2bc5e03ea73994a5af3c2fce9fb6f5769250db79c72",
+      "binary_sha256": "22e4f69753411b296788f030f7bcfa96bc869251722fbe5243565f3b311ea295",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_rom/selected.bsasm",
+      "source_sha256": "5386f8e5a05a3249f342f2bc5e03ea73994a5af3c2fce9fb6f5769250db79c72",
+      "binary_sha256": "22e4f69753411b296788f030f7bcfa96bc869251722fbe5243565f3b311ea295",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_rom_absorbing/b2.bsasm",
+      "source_sha256": "7a70eef5ca923b54ed177ebcb028ebe75d1b08c317854d925f4017a9a54c35de",
+      "binary_sha256": "ed5bded65517b1936752abd3fa1a8864f53f3d357ddddeaafbd02382766851e6",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_context_rom_absorbing/b3.bsasm",
+      "source_sha256": "67a672b05102387736da69d8992ffbff95d236369b4aa400e7237587d75d96f5",
+      "binary_sha256": "e9216ba55a20b35fcbcb74f3a11422d5afdd30e8b61a7b4717677b677020d1da",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b3_epoch0.bsasm",
+      "source_sha256": "df3c42bf9f1468647052251316374972b2677abc226f8e3afe26bba66c834578",
+      "binary_sha256": "e168c49254e2b53f26c6d47b798e4d12b1c070ebddd6659e7fa85b823bace803",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b3_epoch1.bsasm",
+      "source_sha256": "5e065a75d6f2b8c864dc56d8f4c8f6967d69438d5e994283642b583d1a5e456c",
+      "binary_sha256": "f570eba4090f72655831d807971cdffb1eb18f0c9d87c9d1456ec798ed7d1898",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b3_epoch2.bsasm",
+      "source_sha256": "e3bfee0e085b36c13adaf4a81b9925feecd88e1448eaded63c1f7955eadc730f",
+      "binary_sha256": "3ed1eec3b2e24918ed637a1aa367406c4decedbcc1b6606fcc7af993eba24185",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b3_epoch3.bsasm",
+      "source_sha256": "dbd90d6ae112db22a845195a5b8998a34ea5d92bd2f5f480b51b8138a1b320ad",
+      "binary_sha256": "586fefe3b80da9305819eeac15c036c8a2746a61d72c845b4cad31bb5deb07a8",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b3_epoch4.bsasm",
+      "source_sha256": "1689988e91c410bd0dbdbc46c83156cb216d50d19fabdee3703a816b391884fc",
+      "binary_sha256": "bf9a6c2d6b5700c5a39058c76f086f9db563242f505965c00e77db7fcad75f2d",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b3_epoch5.bsasm",
+      "source_sha256": "67920cfa347ce5b943ef97f24c7e2f88ca114f39d0cfb7de0d8ab39ee6e97249",
+      "binary_sha256": "c78cf98c74856d132c0faf569e1ff501e708e1923b7e8571da84107e19eecf1e",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b5_epoch0.bsasm",
+      "source_sha256": "3afeb1ab705871a3a6defcf2de6e967c7a16f50bda0ddd9abb0c7ea1d6312667",
+      "binary_sha256": "ab1284244e2c791653cb0f568d58b69c48b52c3aba21603d1fedd54d4f0137b1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b5_epoch1.bsasm",
+      "source_sha256": "222f980035ae9d8e0b588a52f5067dd42478133cff251e0d8dcbacfb7c2710b2",
+      "binary_sha256": "d22e166fa6c83cb9aeb793b666ef5e0d75f4ffe2bc71770fc6af15017e97009f",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b5_epoch2.bsasm",
+      "source_sha256": "1eee25c45dac10283fac3d4a98ba6a510faf67412d2ccfab4e2c2f6a81c7e65d",
+      "binary_sha256": "ccb2a5dd33565da0ff658c08811576e36ee5e912a5d018bba5c4ff211995faa9",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b5_epoch3.bsasm",
+      "source_sha256": "7077f32f68d611dfa96215f17a270ab236946acf32b0ed49cf4aebb6b45dfd53",
+      "binary_sha256": "c526d46653e7cbd2c0a2e55c77b5c89ccb61757b7fd65d5f73adcb9ee50c46c6",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b5_epoch4.bsasm",
+      "source_sha256": "d3e29b769bfdd8ec7e474ccd4eea2b080edfb63b3d4aa27f7df580f67a47276a",
+      "binary_sha256": "4f8867ce3c6b78555bf6419b16d275cbdf521389478e789f5b07b9d5be698f26",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/b5_epoch5.bsasm",
+      "source_sha256": "1460e50a55953bcd05f29ce577397c4608e83087df71fe728407045ab1a68c83",
+      "binary_sha256": "aff8a08cc7e27f5b0e5cb9895b095cbdc1cc1ab605f63ec838884908027e9061",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/selected.bsasm",
+      "source_sha256": "d3e29b769bfdd8ec7e474ccd4eea2b080edfb63b3d4aa27f7df580f67a47276a",
+      "binary_sha256": "4f8867ce3c6b78555bf6419b16d275cbdf521389478e789f5b07b9d5be698f26",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b3_epoch0.bsasm",
+      "source_sha256": "cab19a1a3b7fd649ec97454e88eeac7892ce0de7ba29b3a1fca58cbd92ef437c",
+      "binary_sha256": "a44aeadff1bc1f9c42da9a67bf5dc554ccbb5c241cb67ca0f9d2ad55a6e92d33",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b3_epoch1.bsasm",
+      "source_sha256": "2c27510bc549b43b590248c649292c8259a47552d1eb35a4465a5c8e5fe423ff",
+      "binary_sha256": "0c57c620128289e80173de97fcb29e2015e063335dfac0cca7f7d47c94c6a772",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b3_epoch2.bsasm",
+      "source_sha256": "b74f75cbe8a6373f03ba6d56d9b710e9dbebb38e7b997f131d21df5b76830a4b",
+      "binary_sha256": "085edd0c8cf77e116a6a8b1e30dc717ed3380e059b96ceb17c358a0cfe2cce74",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b3_epoch3.bsasm",
+      "source_sha256": "88421c4b1f3cc4280092d0f48bbaefdc4f943e7bb35167a2457a942e758cccb6",
+      "binary_sha256": "a6d662770e81ccfb2dd71480ff4bb3de12405d34df9ad85b9e8fe6afe0cfd161",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b3_epoch4.bsasm",
+      "source_sha256": "39653a262dd79201d5868f32cb2fecdd0d400ef0222bc4fb188c98994fdb1039",
+      "binary_sha256": "41b6dc003048a14786a23843d77df30d33fa4ad5f960645791f973ef60cc7860",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b3_epoch5.bsasm",
+      "source_sha256": "98aa37ee50ffc59de2d22466de5b2b701e59d41cf32ce23e1b0e93bd2eb26442",
+      "binary_sha256": "04d9a61bed31534b88255c1c8fe5549f48510aeda566424c9537f7594b6fb2ba",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b5_epoch0.bsasm",
+      "source_sha256": "c65e034efc0b6cf780dff3e3a95eaa66b2a66d9aa1206e0a46b7f2cc6f9cea4e",
+      "binary_sha256": "95fa4e87f201810133542d21a0216815d65fba41aea6796998f621d2e3d8121f",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b5_epoch1.bsasm",
+      "source_sha256": "ae442db0c7509b39e59a149759ee58020de3abc226888eb78be4319660aa3ed2",
+      "binary_sha256": "e0304f6706b046d74a5731a0919c6ea78cedbfd121e11df804288a1efe06b997",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b5_epoch2.bsasm",
+      "source_sha256": "e05fbc7a4ec758d59c6ffb4896231cd220725520f0d03e27d7aa2b9fd1b3072e",
+      "binary_sha256": "bf5cca2546a2bf7a458a37cb1707b2d050eaa112a90cbc01c3b6e46c0171271f",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b5_epoch3.bsasm",
+      "source_sha256": "af777f52c23791a4c17b3935ee5808573ce8b9c462dea32d3bbe23308dc00bd0",
+      "binary_sha256": "73106a4163b69b4e510b7bc1072aa85405be0b76a72d0d569481a3f90ad6469d",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b5_epoch4.bsasm",
+      "source_sha256": "034f5a27dfb8747cff1ba1f17fdf3add373998d236bf50ed70e31137b293e658",
+      "binary_sha256": "855e6db9fed184ae57e4d5fb4b2d69930058219a9ed3ba7d15272057772130af",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/b5_epoch5.bsasm",
+      "source_sha256": "106a24a9daad0504e3de060d44daae63e5860cf7cae13a876043566ce06f1471",
+      "binary_sha256": "6961ad94845282f8d7f42556646cd0ac0a898ee7c8b69557a68101fc26688b2d",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/selected.bsasm",
+      "source_sha256": "034f5a27dfb8747cff1ba1f17fdf3add373998d236bf50ed70e31137b293e658",
+      "binary_sha256": "855e6db9fed184ae57e4d5fb4b2d69930058219a9ed3ba7d15272057772130af",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b3_epoch0.bsasm",
+      "source_sha256": "df3c42bf9f1468647052251316374972b2677abc226f8e3afe26bba66c834578",
+      "binary_sha256": "e168c49254e2b53f26c6d47b798e4d12b1c070ebddd6659e7fa85b823bace803",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b3_epoch1.bsasm",
+      "source_sha256": "f6f01eff4b058742067cf5eefd927831492b328eb7239f3c0bd5082a09ac6312",
+      "binary_sha256": "4bb4fafb5dd2d997e696d80504ea75f2aee072f72722970c060a062bb4a0254b",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b3_epoch2.bsasm",
+      "source_sha256": "a8cb725cf6beeede9dba8ee8a09cc18c41f3e189ee8f2ae0d91d1396689ad80f",
+      "binary_sha256": "173703c23619166f5d7ba8b1c729b41b1253496a663605d6056df64e8b1e454a",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b3_epoch3.bsasm",
+      "source_sha256": "96641862bcfaa207c8565b677927222fb2e6b59709b6a648b99d2d348da9fcb6",
+      "binary_sha256": "fbf67b6860bd167f1295bd61c745ec8c85a9d714e24893c1627ecb808031ad62",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b3_epoch4.bsasm",
+      "source_sha256": "b8f559c24e6a94083c0c318ca322cfdfe3e506f3f7aba8972f1794ffa806043f",
+      "binary_sha256": "99714426123a9013446e60f87b825e4cb11b56231b2b7aa5a180f17441d44f92",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b3_epoch5.bsasm",
+      "source_sha256": "a6c802358c046d891c89c95dec8f364a4c2968981a4e7a11d813cc3065287fb1",
+      "binary_sha256": "64fbe1d2c14be03d7a3a0c2824e97b558d749fa1c9c30b37ce77dd91271a219d",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b5_epoch0.bsasm",
+      "source_sha256": "3afeb1ab705871a3a6defcf2de6e967c7a16f50bda0ddd9abb0c7ea1d6312667",
+      "binary_sha256": "ab1284244e2c791653cb0f568d58b69c48b52c3aba21603d1fedd54d4f0137b1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b5_epoch1.bsasm",
+      "source_sha256": "d4298ede9660c0522dfdc6885b5dac686724b06aa2613af9e4ebb81668fa7818",
+      "binary_sha256": "b926052053b35de445a90fd57ba29d8cb01bb88eb87c20437a310c0dc4ae18c2",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b5_epoch2.bsasm",
+      "source_sha256": "0ebaa1f9f3716abe83a289f8c50e24898f0dcc31cdcad52c6b4af397ae3f7581",
+      "binary_sha256": "a61e8fdaa46a8113b9515f1cf4367c68cc913cb3fa664fa451d18eb289ae483e",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b5_epoch3.bsasm",
+      "source_sha256": "ac58221709726cbb78fafab9046869209593944ca1c10e4efec1639040242558",
+      "binary_sha256": "3a9f29d5b39a36f39341899b8c725ad6a6d9dc0786c072fe626470f3a6a71c03",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b5_epoch4.bsasm",
+      "source_sha256": "ea764d08b9eb6340f085f2f188f5b43e7aeb3cbe8b9d877650495ce3aa8212ea",
+      "binary_sha256": "1b0b1e992bc54ec381ddfe2fc4eaa41e6a6d9fdfbf16e892426f0b88f3f86b8b",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/b5_epoch5.bsasm",
+      "source_sha256": "d696be10e65a6feca8c0fba425e728c90e9407d6756fd7f55010d9fcc7d28c1a",
+      "binary_sha256": "aeb5e859603f922d38123d3051c8e5d4b8105b41a34e40387b68d6e07452e80c",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/selected.bsasm",
+      "source_sha256": "a6c802358c046d891c89c95dec8f364a4c2968981a4e7a11d813cc3065287fb1",
+      "binary_sha256": "64fbe1d2c14be03d7a3a0c2824e97b558d749fa1c9c30b37ce77dd91271a219d",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b3_epoch0.bsasm",
+      "source_sha256": "df3c42bf9f1468647052251316374972b2677abc226f8e3afe26bba66c834578",
+      "binary_sha256": "e168c49254e2b53f26c6d47b798e4d12b1c070ebddd6659e7fa85b823bace803",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b3_epoch1.bsasm",
+      "source_sha256": "65afdbdbab981335325d50df1e4bad62fc707de4a000f2e95513977ac66d77db",
+      "binary_sha256": "2a238f3b77571e73c230c1361f706fc0a453d7b2b99a58b78c8e21a2e1e5c6f9",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b3_epoch2.bsasm",
+      "source_sha256": "763605271987e50b38db6c00dc86fad02f92bd7d030f5daa569b521a6093ac9c",
+      "binary_sha256": "2f8b41c1a49d02aefc4031947c0599dee3458d3afe94093bf4e6e9c4d465763a",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b3_epoch3.bsasm",
+      "source_sha256": "49f1c7ac36b3f23d83a45542381ee08730f70e0fe43ba1835fffe1c59a8be42a",
+      "binary_sha256": "06e50bd5c69f849a3f69306661d03296dbaebc9c630afe0e35c37e8cda86a5f1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b3_epoch4.bsasm",
+      "source_sha256": "8545ae32b39eeb4f73b6b1b5affb391e91e829bf4b3ee81cdd45392e47ff799e",
+      "binary_sha256": "f5a58b9454ff025fd0c549f22e35aed3235d1544d0fa02646978d40959a229bc",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b3_epoch5.bsasm",
+      "source_sha256": "d178658b30550b8e80ea214c49184ede4737372cca7e8ee98c9ec6db12cedc06",
+      "binary_sha256": "8e086d8cf0b327c476d17ed46e1f82014a981fd2c23a1c4920f1dcf94727f70f",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b5_epoch0.bsasm",
+      "source_sha256": "3afeb1ab705871a3a6defcf2de6e967c7a16f50bda0ddd9abb0c7ea1d6312667",
+      "binary_sha256": "ab1284244e2c791653cb0f568d58b69c48b52c3aba21603d1fedd54d4f0137b1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b5_epoch1.bsasm",
+      "source_sha256": "a6db58d9993fecbded38d5cc652e5296aa829afcfbd39e0325c456b01248b286",
+      "binary_sha256": "fdb5a088bd0ee35db5f8ee1bdea78bf2f0be99cd88e83a0ffadc13af7d5c6855",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b5_epoch2.bsasm",
+      "source_sha256": "d273d2388f313d969d5b93dfaf58ee2e052246be935e5df87387235c5cb38296",
+      "binary_sha256": "ac64f5f721f718fa1e97b9a149f4160bffc991e8c735e7f15869acd3235bc343",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b5_epoch3.bsasm",
+      "source_sha256": "52a618d4a8f45cc15ad11f9eef1f21dc711247df461ab00334c77b73d83f490c",
+      "binary_sha256": "496e53b35322ef8286d10f53b8bb1ef7202ca0c64ca1b52dabce89283ed9e226",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b5_epoch4.bsasm",
+      "source_sha256": "9fa2b4e805228a91ff6f6d93094f706fc120c1acc0b1abdfe1f722d0373bd2ec",
+      "binary_sha256": "33bda384e174c343c4e792eb9895cfe455c1fd57205a4064494e0f26c6ee1aca",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/b5_epoch5.bsasm",
+      "source_sha256": "fef4ba49a987c8782f954a72466cf82956d0e956e297503a24e5f3a043598df2",
+      "binary_sha256": "a28c8ccd8ea2051a51195b57feb2e71249398d50d37b6f3e33ef3f25e918cc5d",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/selected.bsasm",
+      "source_sha256": "3afeb1ab705871a3a6defcf2de6e967c7a16f50bda0ddd9abb0c7ea1d6312667",
+      "binary_sha256": "ab1284244e2c791653cb0f568d58b69c48b52c3aba21603d1fedd54d4f0137b1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b3_epoch0.bsasm",
+      "source_sha256": "1788b6c36fa4bc6c36b117f6e4fcac909a95f55bc5981af0e6f703096b3ca237",
+      "binary_sha256": "c779c48722cc0afc0b5f4df8f7e3bfb21d6230122710acd2653a2e83360ee237",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b3_epoch1.bsasm",
+      "source_sha256": "6c196fbcdd9e1da2c5d8eb343ef5401d538d5f9f8a2df3a8e4556b36a6a2a9ca",
+      "binary_sha256": "3a65f672a04d19f47c648bb8a1e124f1de69228963f2247577abc896f4eac63b",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b3_epoch2.bsasm",
+      "source_sha256": "133901b6d7c01833ef58ce56ef803bdb375ff368c819ac3f0e571612d69b66df",
+      "binary_sha256": "716453424a51f990c02bd1674eb80a8391534e1c09b35ccf7083c799d233cdbd",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b3_epoch3.bsasm",
+      "source_sha256": "c3dc5125d3724918dee6fbd98f14e06c61d69d59500bf73b76d5992ce13a2672",
+      "binary_sha256": "bb242bc8f93f93f4f149d70efdf22c2c956da1300707d8933164656747f3c586",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b3_epoch4.bsasm",
+      "source_sha256": "71aa6f8e68d494631a7008842cdc5c0880d0b85822075eef546c2fb32721e691",
+      "binary_sha256": "5e05f795dea5c22192a83f369ccbbf7e2e1e8dff7edab1b60670461e507bd401",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b3_epoch5.bsasm",
+      "source_sha256": "a07a7c52213e46446412887f33a7ad04a370515792fbe03477eb8a451998c9e3",
+      "binary_sha256": "05e5fbf4ceb5c4eb1326cfb00843c052818c8684514f03c1110996b081816331",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b5_epoch0.bsasm",
+      "source_sha256": "3afeb1ab705871a3a6defcf2de6e967c7a16f50bda0ddd9abb0c7ea1d6312667",
+      "binary_sha256": "ab1284244e2c791653cb0f568d58b69c48b52c3aba21603d1fedd54d4f0137b1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b5_epoch1.bsasm",
+      "source_sha256": "c94e9ebb33f97f31179488ad524fcc559dbdb19dd656d4858ea0301d5ab90363",
+      "binary_sha256": "4ddb4d04226d35ca7a4f43d5f8d845a5369f98bd809a9f37ee8c5ec35dcd2006",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b5_epoch2.bsasm",
+      "source_sha256": "d303df7bf30fec8e86a1b13a560957c36df5c7bf3d0bff9cc966795dd2c18f43",
+      "binary_sha256": "8a3cc9e00b8261a15df501687734a5a80bf2493f39a7e5eb46c2c784588220ec",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b5_epoch3.bsasm",
+      "source_sha256": "2604f9e046d7bc1a33a42b22456171caff63b565382d71532a6180f0307b413c",
+      "binary_sha256": "a1c090632b6c74f6b7d4194b503a3d7ac1ff490bb5919c98f638febf598ab911",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b5_epoch4.bsasm",
+      "source_sha256": "840a3e85a13071c2dabd0e8ec789eb6b9dbce08e1c1ab69420b6f470d1ac98c5",
+      "binary_sha256": "1f0ba2fff51522a81ec1d0a34ff48af84a36cf36e355f16fa771bd1bc65fadd1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/b5_epoch5.bsasm",
+      "source_sha256": "5afc8311763f556d03c821f8f9eada0208fa35bd05c412398fcab6be79fd4d15",
+      "binary_sha256": "dfcc26276f71b1aff61766eab9d6b6bcf85e1a778a579ddc996832841fd37fa8",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/selected.bsasm",
+      "source_sha256": "c3dc5125d3724918dee6fbd98f14e06c61d69d59500bf73b76d5992ce13a2672",
+      "binary_sha256": "bb242bc8f93f93f4f149d70efdf22c2c956da1300707d8933164656747f3c586",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_predictive_rom/b3_4411.bsasm",
+      "source_sha256": "5e7937fb09ce324b054b02e56a0f759578c05ea62225bad1bddfe8cc3e61240e",
+      "binary_sha256": "bc345840022b81249ed43395de2804da5800470617293acfa0bbb1835c642a4e",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_predictive_rom/b4_4411.bsasm",
+      "source_sha256": "b47ecc5d09ccfb2b5c92d5c415ffc37a76a7ac59f3a40115d31eacf7582e9444",
+      "binary_sha256": "d312b269384d20a8600ade54e15e14039854cf5e6495aedffaf1e52d6b591355",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_predictive_rom/b5_4411.bsasm",
+      "source_sha256": "b6fbc571f3aecc454b65a57ddb9e1b48120e7b2dc2fc02965c195cdea94cb890",
+      "binary_sha256": "c7c8bc309ed17744df17cd1c26a12afe142a982e1b1c1623a6f206817b4127fe",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_predictive_rom/selected.bsasm",
+      "source_sha256": "b47ecc5d09ccfb2b5c92d5c415ffc37a76a7ac59f3a40115d31eacf7582e9444",
+      "binary_sha256": "d312b269384d20a8600ade54e15e14039854cf5e6495aedffaf1e52d6b591355",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_predictive_rom_absorbing/b3_4411.bsasm",
+      "source_sha256": "43fe1526cf53fec0b0a29f0b7b0a3baf8c244c1feebb9233a0d3863afcab43d3",
+      "binary_sha256": "a123035d5f6f58d254860c701d5da85fd9daa746b1739e99eb12084735f013c1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_predictive_rom_absorbing/b4_4411.bsasm",
+      "source_sha256": "17835ee53cbae59a4a44259787f7a688a833d79be77254a828f3ef0de197934a",
+      "binary_sha256": "b97ea7d5ef0b0dfc3237f39676733b1735bd93657b583b2719e4ac22b2b86987",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_predictive_rom_absorbing/b5_4411.bsasm",
+      "source_sha256": "82f6e2ce21079696cc2670e630f9dcdbe3d708a30d487ff931e8ba15939b8b9d",
+      "binary_sha256": "c39b22f2054673f2712091c3bbfe2c2985a859312edf381ca36854c79c895059",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b3_epoch0.bsasm",
+      "source_sha256": "df3c42bf9f1468647052251316374972b2677abc226f8e3afe26bba66c834578",
+      "binary_sha256": "e168c49254e2b53f26c6d47b798e4d12b1c070ebddd6659e7fa85b823bace803",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b3_epoch1.bsasm",
+      "source_sha256": "58ed9f08beaef5314712465ca3bdabe3ee225708257ce343614811d4270cefc9",
+      "binary_sha256": "a1cb2caf8c6a9b76fa39d31b51ca08f13ff4634bd94f04886675f093a94df9d4",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b3_epoch2.bsasm",
+      "source_sha256": "cc8d24361569e8f5a411afe529245d8c2d1aca7a49664f216c1afc16678d2a1a",
+      "binary_sha256": "fdbcea37ac59af4a7304558b58eb6b0f48be6459dfc718122fe6382f9b03c0a2",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b3_epoch3.bsasm",
+      "source_sha256": "1082026995ceae71378e62ba1c3622ac94bd8449e805fb4dc6f118fdb23f5b38",
+      "binary_sha256": "87b07dc3dd256485f7a7f277710f02ae73f1aecee7accacb56756c47803ee860",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b3_epoch4.bsasm",
+      "source_sha256": "1c04df04764efcd6e44228a149c3161832450bad0e4056b5c9f557461eb98db4",
+      "binary_sha256": "5133f8538e19d976ee1172a2221ca035d1a0303a5f324efe1dc67d805b523d06",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b3_epoch5.bsasm",
+      "source_sha256": "27f8c0a30af798680049d8d48dc37c1df7ca83cc1907afab85f2a6a781b748c1",
+      "binary_sha256": "7a64a4ae4bc87715999dbfebc71e2a366692a6b22dd08a90ea9529e5b409717c",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b5_epoch0.bsasm",
+      "source_sha256": "3afeb1ab705871a3a6defcf2de6e967c7a16f50bda0ddd9abb0c7ea1d6312667",
+      "binary_sha256": "ab1284244e2c791653cb0f568d58b69c48b52c3aba21603d1fedd54d4f0137b1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b5_epoch1.bsasm",
+      "source_sha256": "17d31d2ce108fd7be65f7ce8895bca7ff6f6feeafca378c0e2b74951a6bbaf86",
+      "binary_sha256": "94e54cec65c6a89eb6042e6b105a021a216a1f0c734695561d9a8ac0e46880e8",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b5_epoch2.bsasm",
+      "source_sha256": "24655ff386f66d4f47b9dfaf6314c6c5a6d55e528d9ed7ea51a7a05884774013",
+      "binary_sha256": "47a2f42a675bfeb4ed695fd908faff64a45890d538bb8aaa7766ff0301cd03b7",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b5_epoch3.bsasm",
+      "source_sha256": "1a2e54c9b775ec69042fa91db7896249b633817651b493dda350b839fe54a5a6",
+      "binary_sha256": "c23c4e5b4872ed2ca7eabf2e08a17e0e838afaf27bbb0fc95483a8d582aa15cb",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b5_epoch4.bsasm",
+      "source_sha256": "f92d141f9e023aebe3087e40951dc95cb4d33acd7293148850bafad39d90cc62",
+      "binary_sha256": "4584d217aae4274bee5e1fe9eea424cdfbaa579703d7c7b7670dd798c8ee2a2e",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/b5_epoch5.bsasm",
+      "source_sha256": "a52051003de59a5896df1033f778949c71a825843c5e432b1e4f2fe41468cbfa",
+      "binary_sha256": "7692778316e57b7354b2e57c1a4bbcee075100d455084673087d225facbcc34f",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/selected.bsasm",
+      "source_sha256": "a52051003de59a5896df1033f778949c71a825843c5e432b1e4f2fe41468cbfa",
+      "binary_sha256": "7692778316e57b7354b2e57c1a4bbcee075100d455084673087d225facbcc34f",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b3_epoch0.bsasm",
+      "source_sha256": "df3c42bf9f1468647052251316374972b2677abc226f8e3afe26bba66c834578",
+      "binary_sha256": "e168c49254e2b53f26c6d47b798e4d12b1c070ebddd6659e7fa85b823bace803",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b3_epoch1.bsasm",
+      "source_sha256": "ed5d868263d3650d3d84cae7c7c3e39b6d22b4f350f69d3720f851e44f8b8930",
+      "binary_sha256": "1ef4cad0c80097b0148acb27cb063b4bfd155a4d3dae1c1199bc0af87f011d42",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b3_epoch2.bsasm",
+      "source_sha256": "8235a3f3c2c154d1bc17f3196d6a92eb6dc76387aca16247839a5d7ef31e2bc5",
+      "binary_sha256": "f436949ee1e9b64387d3554e836ae59b1be71dddfbc379130246ae056f4f229f",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b3_epoch3.bsasm",
+      "source_sha256": "1e30f2270813f9c1525564ea653f24c27f24de16348f42aed1de65944bf4216c",
+      "binary_sha256": "28fe8f7c6444b834d4b7bf189bf1c8cf23f90e2cecf37ff0fd40877b3a43c64b",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b3_epoch4.bsasm",
+      "source_sha256": "064f9299f48dde100694f516de3adf2ef99fcd6051a83b0aee8c6eba405cd2c0",
+      "binary_sha256": "c35eb122da133f8da31a890d497a29c55547b4210614d3cef17a664014c676a4",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b3_epoch5.bsasm",
+      "source_sha256": "2de26516f006dd72983d63d44c8e0d525c34b119583faa66956fe3e1f3af4865",
+      "binary_sha256": "8740c42c8e148d3e27ea5977c973fff8c402e52db4770de0a7632c7ddc7fb90d",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b5_epoch0.bsasm",
+      "source_sha256": "3afeb1ab705871a3a6defcf2de6e967c7a16f50bda0ddd9abb0c7ea1d6312667",
+      "binary_sha256": "ab1284244e2c791653cb0f568d58b69c48b52c3aba21603d1fedd54d4f0137b1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b5_epoch1.bsasm",
+      "source_sha256": "35b4fe8a5864fc71eba9ca65a7eb0d775e0632d692691af6535265bb4d2d9355",
+      "binary_sha256": "8a930c26f8a4a7a48ee6f69043d8cba08b7777a018407aef246ab2206554d3b4",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b5_epoch2.bsasm",
+      "source_sha256": "20356bd617a3d5d85e9a2a646baad2600be295bc5db6e9ffca23749294813d2b",
+      "binary_sha256": "ee0536f558b41817e545bbac2f90436eca042d97d3a7d1de67588da5916f0d66",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b5_epoch3.bsasm",
+      "source_sha256": "b7b891c96b1410eb7e30b472d8956f3c79ba38ac298a5bc2d0f7e045c4c2f145",
+      "binary_sha256": "3a16419ced6b41ca69231918c8727cef9f621476bc43a8a7c7a83ae111ff5b90",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b5_epoch4.bsasm",
+      "source_sha256": "31f47b89272e1f079939e7598db07e9fef6112637bac22ce29bf46634a0d47bd",
+      "binary_sha256": "9a3d2674e05393388b3df6bb1bb8cd97cd09dbbe2bd4a8dabdd88532ed237ef7",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/b5_epoch5.bsasm",
+      "source_sha256": "6c36a40f5d03f74ee16092e23fb9b2a952df0b29e4c6367bd73547733421c2b5",
+      "binary_sha256": "b83330fcfa99e7b9607b6d69e398d987da2c239de83ece5bd8a64e915b551776",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/selected.bsasm",
+      "source_sha256": "6c36a40f5d03f74ee16092e23fb9b2a952df0b29e4c6367bd73547733421c2b5",
+      "binary_sha256": "b83330fcfa99e7b9607b6d69e398d987da2c239de83ece5bd8a64e915b551776",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_rom/b3_4411.bsasm",
+      "source_sha256": "1788b6c36fa4bc6c36b117f6e4fcac909a95f55bc5981af0e6f703096b3ca237",
+      "binary_sha256": "c779c48722cc0afc0b5f4df8f7e3bfb21d6230122710acd2653a2e83360ee237",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_rom/b4_4411.bsasm",
+      "source_sha256": "4f40f452783e441eb12eab7d13cfe18869e07eaa6903c0128eb2f52c1ad6cb0f",
+      "binary_sha256": "fa21c1df8b7b23eaa9600dd8425078bf85b0fbacca5577a73c3664432e546471",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_rom/b5_4411.bsasm",
+      "source_sha256": "3afeb1ab705871a3a6defcf2de6e967c7a16f50bda0ddd9abb0c7ea1d6312667",
+      "binary_sha256": "ab1284244e2c791653cb0f568d58b69c48b52c3aba21603d1fedd54d4f0137b1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_rom/selected.bsasm",
+      "source_sha256": "4f40f452783e441eb12eab7d13cfe18869e07eaa6903c0128eb2f52c1ad6cb0f",
+      "binary_sha256": "fa21c1df8b7b23eaa9600dd8425078bf85b0fbacca5577a73c3664432e546471",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_rom_absorbing/b3_3322.bsasm",
+      "source_sha256": "71f9cd26810d7d52ac98f96f0fb1ca4486ba3d3a54383a9c99f068ae8afb9beb",
+      "binary_sha256": "0b4c354dacad304954c1bcbc1eb3c82d66f9205e3ecfdb3fae0fd37b40b0c511",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_rom_absorbing/b3_4411.bsasm",
+      "source_sha256": "2395420e0da7a80d577364728edce0786704dd62330f121763bffe15cf909ee8",
+      "binary_sha256": "51d15e121acb642168c428e130143965f657a6ebb4c24577c29074792520d830",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_rom_absorbing/b4_3322.bsasm",
+      "source_sha256": "83054018f920c54c6176552038883603264fe65db937d001f53873b4e124a9c2",
+      "binary_sha256": "ee8355c8ac1452b9aa2f79bc62aac977ca2370c3af10ccfda9b43840f4d5e2f1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_rom_absorbing/b4_4411.bsasm",
+      "source_sha256": "38eb850f3723a02793887b17b99648a9f3b2693e9670d789d5c5b92ae78d5415",
+      "binary_sha256": "c88cdfe7ea9e4349d1de73e94ace4fe10a2373ab75731d54cda15f69e5c7ba5a",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_rom_absorbing/b5_4411.bsasm",
+      "source_sha256": "0a4fc8f83f2c4ad825aebb728db74946a8a6615ce830fb4978cac11abc8d0e30",
+      "binary_sha256": "01f87f1ba6fb5f527e88a42e6534141960a74af2821c12bdf7ce08b7dec986ae",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b3_epoch0.bsasm",
+      "source_sha256": "df3c42bf9f1468647052251316374972b2677abc226f8e3afe26bba66c834578",
+      "binary_sha256": "e168c49254e2b53f26c6d47b798e4d12b1c070ebddd6659e7fa85b823bace803",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b3_epoch1.bsasm",
+      "source_sha256": "acabe24d827cd0d3adda1889431c1451271efeba2f1d54e3c446779500bda3e9",
+      "binary_sha256": "5070c5a1db312e43918a42aca5b11f5e82e131ed1a7ff18ac14dd62c2cacc7bd",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b3_epoch2.bsasm",
+      "source_sha256": "223d908bd3f28ae561e5b707436d2bf8510cba35e2dc5d75e800fa2a1c357c3d",
+      "binary_sha256": "90eb2b2c2b26580d2d35ad10974ffe98be504a0d10b6b22dd4a6212ffbc86390",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b3_epoch3.bsasm",
+      "source_sha256": "b5050217e2a48cd179941e596fc78f18b977262a2423f02551f70305301a0c58",
+      "binary_sha256": "a19e68985a23e9e68eea57871ebd9a8366b2e4bb3596bef66ed8c449ae65b128",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b3_epoch4.bsasm",
+      "source_sha256": "596f1432df42e331ab21417b40f097e82157fc18db6d329ef0924c3f907da2ed",
+      "binary_sha256": "6857d8e2bebc34a23496b8151df7066e6646fa3f269c0e9dbf9c41f23eb51820",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b3_epoch5.bsasm",
+      "source_sha256": "26fd696bc4f07d2e90c4a1b9ab25ee952ab1ea748273b1184a8ab56325e522e8",
+      "binary_sha256": "af1eb417e5bca2d872fc5acc9f90ea4d5d5d3e4e2e71e516417701a3fa91d732",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b5_epoch0.bsasm",
+      "source_sha256": "3afeb1ab705871a3a6defcf2de6e967c7a16f50bda0ddd9abb0c7ea1d6312667",
+      "binary_sha256": "ab1284244e2c791653cb0f568d58b69c48b52c3aba21603d1fedd54d4f0137b1",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b5_epoch1.bsasm",
+      "source_sha256": "344a3444ad1d471d03b8b08c453e994f2294b5a604924608c7b415da18295c6d",
+      "binary_sha256": "c6b33ae1d98aa83c489e022326315c7f42ceb10af1898b4af8c4152a6abfb0a9",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b5_epoch2.bsasm",
+      "source_sha256": "5bf3e78da24a2190b6cd541fa4dab289c9f38e3a39d4df905c836a8053bd6e3d",
+      "binary_sha256": "4245f9f1b2a3cadaeaa03dc3be6653c7e34a24994406403d9c50b990f5652b68",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b5_epoch3.bsasm",
+      "source_sha256": "be9e2cf9d0d22c8ef41a3938696be818009855f7068b48e3c92cfbaeaae2b202",
+      "binary_sha256": "6156a517cff28a85c5544899e6c999083ecf3f5cd8a72968752f93fc08bd4ea8",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b5_epoch4.bsasm",
+      "source_sha256": "bb21d2c8b4b735aef15fe36d2506da795b0fc881b349cb04aaacc1923e1dc25e",
+      "binary_sha256": "f93d42d4f01756ca4e3714b24a73cba33a00538e19619684ee8594be1c6d2e3a",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/b5_epoch5.bsasm",
+      "source_sha256": "3a6fac4f4945ad435d5d551370ead004d3031e5fcdb3ab3de3b56e43f55fc18c",
+      "binary_sha256": "2e6be3d7f0c66fd85ce1299694786152fed875fe7d12c34efa10fa3c86077f07",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/selected.bsasm",
+      "source_sha256": "26fd696bc4f07d2e90c4a1b9ab25ee952ab1ea748273b1184a8ab56325e522e8",
+      "binary_sha256": "af1eb417e5bca2d872fc5acc9f90ea4d5d5d3e4e2e71e516417701a3fa91d732",
+      "binary_bytes": 2348,
+      "lut_bytes": 2048
+    }
+  ],
+  "selected": [
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/selected_model.json",
+      "sha256": "4a5d6abd849bf6b95b4b1460db52a2982fa826eacc6ba6877c7a09571ee0d79d",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/selected_model.json",
+      "sha256": "456a04885ca6addcef99878b8c38ba8028c74ca2c12eef04a7f6ff2128035134",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_context_rom/selected_model.json",
+      "sha256": "7c00b7bc7895fdb8946517ddf4df5b32a7e94f6b9c9bba7ad0337a057953e319",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/selected_model.json",
+      "sha256": "45da602ffd0e94f827d1ff3cad3fec5e0b183b2ba25d6c54ee92dbb9c3f78d22",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/selected_model.json",
+      "sha256": "45fd29d16ec3c3f54dba6685176f182688fb5225f93edd63063fc9b1df71c4ad",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/selected_model.json",
+      "sha256": "bff4c4afc9ea0cf4608659e29452b7c7d59285f268607d6f9ad6e0fecc43d61c",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/selected_model.json",
+      "sha256": "0fcc097f1cbd0f0eb7ab59fc71090af6f84889feb81869afb9dee200dd9f11ed",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/selected_model.json",
+      "sha256": "b0b29993454c9ab4fcaf7cadc47894a1d068d87cf3efda48d064d14eda7edb2a",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_predictive_rom/selected_model.json",
+      "sha256": "f512d08521f0c3768c960837fa93e5e28ea65207888f57bbc083b5e552246cb8",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/selected_model.json",
+      "sha256": "64708380be437813d6133722951181d5c94a9cc58bb433c0c5faa374e3dc8170",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/selected_model.json",
+      "sha256": "e620a56a1c002279d721183026b003d1cffe83f5a6af1d25b93ffbc433de67fe",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_rom/selected_model.json",
+      "sha256": "ea289f908c7ab3d6d5bfd713373f3756d204ea7f3fa98fea5f06a11dc6a4ae54",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/selected_model.json",
+      "sha256": "1acfbfde8a0065033d49f006a516e5d9a36f7c188ba923c6dd8cc503e25a5afe",
+      "tested_raw_samples": 70000,
+      "dac6_equivalent": true
+    }
+  ],
+  "confirmation_files": [
+    {
+      "path": "v4/docs/data/belief_adaptive_policy_rom/confirmation.json",
+      "sha256": "a08271af7a284f94ea695ccebd97a9ab8293b65f93e0b4e005ead6f447139226",
+      "seed": 4410190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_context_policy_rom/confirmation.json",
+      "sha256": "0484a4cfebb1e273b177f186f4ccdd20394fc25c1c2da9468b2988df5ca8c133",
+      "seed": 3410190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_context_rom/confirmation.json",
+      "sha256": "2a576fc9f800257eb61bb382b3401319b92747c477136547d1648aea99b55d6b",
+      "seed": 3010190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_endpoint_policy_rom/confirmation.json",
+      "sha256": "2d31cc537e96f0d4e195d0e803ac5a71163277b10dc3c115dd19c7cf44ddaf2b",
+      "seed": 4610190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_history_policy_rom/confirmation.json",
+      "sha256": "220fdfdc29ed9928f69af9688d465f2687171711a4633171ef9e8e281687aa59",
+      "seed": 4810190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_particle_policy_rom/confirmation.json",
+      "sha256": "d2980e73630adc8203e03d9330e9c07959a3234bf636deb1f949508e0f0d95cf",
+      "seed": 4010190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_particle_split_rom/confirmation.json",
+      "sha256": "aaad7e04bcd66da9c767f255ed4153334b6dc86eb05fb901f7832083a6ba9baf",
+      "seed": 4210190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_policy_rom/confirmation.json",
+      "sha256": "1b1e7f86569a2b523e04f495db20d4e1afb3d5d7756a02f10230c5280cfb7275",
+      "seed": 3410190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_predictive_rom/confirmation.json",
+      "sha256": "0d3b0a03f70bc9bcc509132845eafa2e9e1a2e85ce796d644691aea43cb0ecb1",
+      "seed": 3010190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_quality_policy_rom/confirmation.json",
+      "sha256": "b1918760423f34c3c75115f49e540cda4e030a92a28ef25576a38e3635a64064",
+      "seed": 5010190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_quality_split_rom/confirmation.json",
+      "sha256": "57972b8288c66865d105aebbf20934faaa8ef9f728808dd18145b26c82c6609e",
+      "seed": 5210190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_rom/confirmation.json",
+      "sha256": "b6676962090cbcdfa13e11de533966f8db4e36eade439bc573c19b63512a3dc6",
+      "seed": 3010190,
+      "rows": 96
+    },
+    {
+      "path": "v4/docs/data/belief_rom/ablation_b3.json",
+      "sha256": "3872943bec5edbe1d17109ae1b28054decc77b16b0e08c6614a0a18570913636",
+      "seed": 3110190,
+      "rows": 48
+    },
+    {
+      "path": "v4/docs/data/belief_sync_policy_rom/confirmation.json",
+      "sha256": "100f93d03337823e92ab4325b694c3c7ec09b8612437f93606d820d7e2f24220",
+      "seed": 3710190,
+      "rows": 96
+    }
+  ],
+  "independent_iq_count": 248,
+  "benchmark_rows": 1296
+}
