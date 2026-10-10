@@ -174,8 +174,8 @@ relabelled as a continuous oracle controller here.
 | belief_rom | 3010190 | 66 | 66 | 5.58 | 0.797 | 66 |
 | belief_sync_policy_rom | 3710190 | 60 | 54 | 1.77 | 0.598 | 46 |
 
-For a paired control example on history seed4810190: EDGE has2/0 misses at
-2/6dB, while the history ROM has65/64; at30dB PAIR scores10.22dB SINAD,
+For a paired control example on history seed4810190: EDGE has4/1 misses at
+2/6dB, while the history ROM has65/64; at30dB PAIR scores10.23dB SINAD,
 0.943 detail and0 misses versus history4.80,0.748 and65. These are synthetic
 short-record results, not measured receiver dB/range gains.
 
