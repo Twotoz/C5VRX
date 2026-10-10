@@ -1,0 +1,522 @@
+{
+  "summary": {
+    "6/EDGE+AF": {
+      "cases": 2,
+      "sinad_db": 1.3792523713452383,
+      "missed_h": 9,
+      "missed_v": 0,
+      "false_sync_per_line": 0.7047101449275363,
+      "detail": 0.33390338909517936,
+      "active_rmse_ire": 39.482922424516026
+    },
+    "6/PAIR+AF": {
+      "cases": 2,
+      "sinad_db": 2.281604541947809,
+      "missed_h": 10,
+      "missed_v": 0,
+      "false_sync_per_line": 0.29981884057971014,
+      "detail": 0.5522002340754937,
+      "active_rmse_ire": 32.95497834555233
+    },
+    "6/Existing particle": {
+      "cases": 2,
+      "sinad_db": 1.1728281254422814,
+      "missed_h": 5,
+      "missed_v": 0,
+      "false_sync_per_line": 1.556159420289855,
+      "detail": 0.5278723678115186,
+      "active_rmse_ire": 41.08915878966732
+    },
+    "6/IQ receiver AR1 lag8": {
+      "cases": 2,
+      "sinad_db": 1.5739711352102745,
+      "missed_h": 10,
+      "missed_v": 0,
+      "false_sync_per_line": 0.552536231884058,
+      "detail": 0.5849112524305987,
+      "active_rmse_ire": 38.73954665531715
+    }
+  },
+  "rows": [
+    {
+      "seed": 5300413,
+      "cnr": 6,
+      "rms": 3.0,
+      "standard": "PAL",
+      "pattern": "zoneplate",
+      "model": "EDGE+AF",
+      "iq_sha256": "f2aa0236417c33cb36b588441a12cc8cf77c925af239a917a1f539cfb011406b",
+      "seconds": 0.006154100003186613,
+      "metrics": {
+        "sinad": 1.2620667756086172,
+        "contrast": 54.17773700739625,
+        "polarity_ok": true,
+        "large_errors": 168.1167696855684,
+        "h_missing": 6,
+        "v_missing": 0,
+        "v_trains": 0,
+        "h_jitter_us": 2.025,
+        "v_jitter_us": 0.0,
+        "h_width_rmse_us": 2.3209959196051013,
+        "sync_error_ire": 19.316233707148516,
+        "black_error_ire": 9.775221512514653,
+        "white_error_ire": -20.401451903546313,
+        "raw_min": -59.89335678773601,
+        "raw_max": 120.36037674695946,
+        "h_jitter_matched_us": 0.9449999999999996,
+        "v_jitter_matched_us": 1000000.0,
+        "h_expected": 23,
+        "max_h_gap": 2,
+        "expected_v_trains": 0,
+        "false_sync_pulses": 19,
+        "false_sync_per_line": 0.8260869565217391,
+        "detail": 0.21607964333899224,
+        "active_rmse_ire": 34.1606792364208,
+        "active_large_errors_per_1000": 189.88782763216346,
+        "burst": {
+          "burst_gain": 0.10460111878657607,
+          "burst_phase_deg": 35.93290273030785,
+          "burst_phase_jitter_deg": 116.87608983903723,
+          "burst_amplitude_jitter_pct": 184.32106938924366,
+          "burst_rmse_ire": 29.65223834396268
+        },
+        "scored_samples": 59536,
+        "frozen_lag_samples": 28,
+        "recovery": [
+          {
+            "loss_start_us": 281.5999999999999,
+            "loss_end_us": 361.5999999999999,
+            "three_pulse_recovery_us": null,
+            "expected_post_loss_pulses": 8
+          },
+          {
+            "loss_start_us": 781.5999999999999,
+            "loss_end_us": 961.5999999999999,
+            "three_pulse_recovery_us": null,
+            "expected_post_loss_pulses": 8
+          }
+        ]
+      }
+    },
+    {
+      "seed": 5300413,
+      "cnr": 6,
+      "rms": 3.0,
+      "standard": "PAL",
+      "pattern": "zoneplate",
+      "model": "PAIR+AF",
+      "iq_sha256": "f2aa0236417c33cb36b588441a12cc8cf77c925af239a917a1f539cfb011406b",
+      "seconds": 0.0026649999927030876,
+      "metrics": {
+        "sinad": 0.9412636200483009,
+        "contrast": 76.84601391616822,
+        "polarity_ok": true,
+        "large_errors": 154.51155603332435,
+        "h_missing": 7,
+        "v_missing": 0,
+        "v_trains": 0,
+        "h_jitter_us": 2.025,
+        "v_jitter_us": 0.0,
+        "h_width_rmse_us": 2.8952277544262386,
+        "sync_error_ire": 15.266953116203268,
+        "black_error_ire": 3.9584214825446042,
+        "white_error_ire": -17.118592272332737,
+        "raw_min": -94.10039269844883,
+        "raw_max": 156.72768382756522,
+        "h_jitter_matched_us": 1.05,
+        "v_jitter_matched_us": 1000000.0,
+        "h_expected": 23,
+        "max_h_gap": 3,
+        "expected_v_trains": 0,
+        "false_sync_pulses": 9,
+        "false_sync_per_line": 0.391304347826087,
+        "detail": 0.41943044198419766,
+        "active_rmse_ire": 33.386826372284055,
+        "active_large_errors_per_1000": 153.18191914704576,
+        "burst": {
+          "burst_gain": 0.796057095839878,
+          "burst_phase_deg": -29.083306324283093,
+          "burst_phase_jitter_deg": 173.10103336616297,
+          "burst_amplitude_jitter_pct": 67.9240311877625,
+          "burst_rmse_ire": 37.954292822486195
+        },
+        "scored_samples": 59536,
+        "frozen_lag_samples": 25,
+        "recovery": [
+          {
+            "loss_start_us": 281.5999999999999,
+            "loss_end_us": 361.5999999999999,
+            "three_pulse_recovery_us": null,
+            "expected_post_loss_pulses": 8
+          },
+          {
+            "loss_start_us": 781.5999999999999,
+            "loss_end_us": 961.5999999999999,
+            "three_pulse_recovery_us": null,
+            "expected_post_loss_pulses": 8
+          }
+        ]
+      }
+    },
+    {
+      "seed": 5300413,
+      "cnr": 6,
+      "rms": 3.0,
+      "standard": "PAL",
+      "pattern": "zoneplate",
+      "model": "Existing particle",
+      "iq_sha256": "f2aa0236417c33cb36b588441a12cc8cf77c925af239a917a1f539cfb011406b",
+      "seconds": 12.158920799993211,
+      "metrics": {
+        "sinad": 0.3953423080335672,
+        "contrast": 69.87859422184839,
+        "polarity_ok": true,
+        "large_errors": 157.70290244557913,
+        "h_missing": 2,
+        "v_missing": 0,
+        "v_trains": 0,
+        "h_jitter_us": 2.0149999999999997,
+        "v_jitter_us": 0.0,
+        "h_width_rmse_us": 2.820687817165303,
+        "sync_error_ire": 11.04547202592395,
+        "black_error_ire": 1.9877026115568217,
+        "white_error_ire": -20.48282623758326,
+        "raw_min": -85.48515670962539,
+        "raw_max": 137.1659551729453,
+        "h_jitter_matched_us": 0.95,
+        "v_jitter_matched_us": 1000000.0,
+        "h_expected": 23,
+        "max_h_gap": 1,
+        "expected_v_trains": 0,
+        "false_sync_pulses": 39,
+        "false_sync_per_line": 1.6956521739130435,
+        "detail": 0.41638742819185687,
+        "active_rmse_ire": 38.22125546195167,
+        "active_large_errors_per_1000": 164.1492669924478,
+        "burst": {
+          "burst_gain": 0.2089425717096604,
+          "burst_phase_deg": -63.71147792160074,
+          "burst_phase_jitter_deg": 128.60596760761834,
+          "burst_amplitude_jitter_pct": 114.01605565416968,
+          "burst_rmse_ire": 34.58090352103494
+        },
+        "scored_samples": 59536,
+        "frozen_lag_samples": 25,
+        "recovery": [
+          {
+            "loss_start_us": 281.5999999999999,
+            "loss_end_us": 361.5999999999999,
+            "three_pulse_recovery_us": null,
+            "expected_post_loss_pulses": 8
+          },
+          {
+            "loss_start_us": 781.5999999999999,
+            "loss_end_us": 961.5999999999999,
+            "three_pulse_recovery_us": null,
+            "expected_post_loss_pulses": 8
+          }
+        ]
+      }
+    },
+    {
+      "seed": 5300413,
+      "cnr": 6,
+      "rms": 3.0,
+      "standard": "PAL",
+      "pattern": "zoneplate",
+      "model": "IQ receiver AR1 lag8",
+      "iq_sha256": "f2aa0236417c33cb36b588441a12cc8cf77c925af239a917a1f539cfb011406b",
+      "seconds": 78.24668290000409,
+      "metrics": {
+        "sinad": 0.7326451877786028,
+        "contrast": 60.402357110746564,
+        "polarity_ok": true,
+        "large_errors": 160.5415210964794,
+        "h_missing": 6,
+        "v_missing": 0,
+        "v_trains": 0,
+        "h_jitter_us": 2.025,
+        "v_jitter_us": 0.0,
+        "h_width_rmse_us": 1.0760596692399107,
+        "sync_error_ire": 12.911822000513837,
+        "black_error_ire": 6.350657289840665,
+        "white_error_ire": -29.194780890081955,
+        "raw_min": -95.01181137715756,
+        "raw_max": 142.37563975081935,
+        "h_jitter_matched_us": 0.40999999999999925,
+        "v_jitter_matched_us": 1000000.0,
+        "h_expected": 23,
+        "max_h_gap": 4,
+        "expected_v_trains": 0,
+        "false_sync_pulses": 12,
+        "false_sync_per_line": 0.5217391304347826,
+        "detail": 0.44356735833011035,
+        "active_rmse_ire": 37.27466826215032,
+        "active_large_errors_per_1000": 174.70013327410038,
+        "burst": {
+          "burst_gain": 0.05630114099314682,
+          "burst_phase_deg": 115.02529978077341,
+          "burst_phase_jitter_deg": 141.31557387334067,
+          "burst_amplitude_jitter_pct": 130.7655575713575,
+          "burst_rmse_ire": 20.654372940311838
+        },
+        "scored_samples": 59536,
+        "frozen_lag_samples": 30,
+        "recovery": [
+          {
+            "loss_start_us": 281.5999999999999,
+            "loss_end_us": 361.5999999999999,
+            "three_pulse_recovery_us": 48.1,
+            "expected_post_loss_pulses": 8
+          },
+          {
+            "loss_start_us": 781.5999999999999,
+            "loss_end_us": 961.5999999999999,
+            "three_pulse_recovery_us": 88.1,
+            "expected_post_loss_pulses": 8
+          }
+        ]
+      }
+    },
+    {
+      "seed": 5300414,
+      "cnr": 6,
+      "rms": 3.0,
+      "standard": "NTSC",
+      "pattern": "checker",
+      "model": "EDGE+AF",
+      "iq_sha256": "074fe04a8c82711daefff7ddb5f028f46490095a01d5dea77e510485c73bf406",
+      "seconds": 0.005584800004726276,
+      "metrics": {
+        "sinad": 1.4964379670818593,
+        "contrast": 47.69506833917435,
+        "polarity_ok": true,
+        "large_errors": 273.17925288900835,
+        "h_missing": 3,
+        "v_missing": 0,
+        "v_trains": 0,
+        "h_jitter_us": 2.025,
+        "v_jitter_us": 0.0,
+        "h_width_rmse_us": 0.7390470053998435,
+        "sync_error_ire": 16.44201680167951,
+        "black_error_ire": 10.70017068119567,
+        "white_error_ire": -7.4698759205321,
+        "raw_min": -58.87790035772092,
+        "raw_max": 119.52044798583013,
+        "h_jitter_matched_us": 0.825,
+        "v_jitter_matched_us": 1000000.0,
+        "h_expected": 24,
+        "max_h_gap": 2,
+        "expected_v_trains": 0,
+        "false_sync_pulses": 14,
+        "false_sync_per_line": 0.5833333333333334,
+        "detail": 0.45172713485136645,
+        "active_rmse_ire": 44.805165612611255,
+        "active_large_errors_per_1000": 375.3694581280788,
+        "burst": {
+          "burst_gain": 0.09770465143417101,
+          "burst_phase_deg": 7.380892986774269,
+          "burst_phase_jitter_deg": 154.21989163813308,
+          "burst_amplitude_jitter_pct": 111.89913919365203,
+          "burst_rmse_ire": 37.865210416504276
+        },
+        "scored_samples": 59536,
+        "frozen_lag_samples": 28,
+        "recovery": [
+          {
+            "loss_start_us": 281.5999999999999,
+            "loss_end_us": 361.5999999999999,
+            "three_pulse_recovery_us": 33.9,
+            "expected_post_loss_pulses": 8
+          },
+          {
+            "loss_start_us": 781.5999999999999,
+            "loss_end_us": 961.5999999999999,
+            "three_pulse_recovery_us": 5.9,
+            "expected_post_loss_pulses": 8
+          }
+        ]
+      }
+    },
+    {
+      "seed": 5300414,
+      "cnr": 6,
+      "rms": 3.0,
+      "standard": "NTSC",
+      "pattern": "checker",
+      "model": "PAIR+AF",
+      "iq_sha256": "074fe04a8c82711daefff7ddb5f028f46490095a01d5dea77e510485c73bf406",
+      "seconds": 0.002835200008121319,
+      "metrics": {
+        "sinad": 3.6219454638473176,
+        "contrast": 79.23411470780769,
+        "polarity_ok": true,
+        "large_errors": 113.9142703574308,
+        "h_missing": 3,
+        "v_missing": 0,
+        "v_trains": 0,
+        "h_jitter_us": 2.025,
+        "v_jitter_us": 0.0,
+        "h_width_rmse_us": 1.5630023002146192,
+        "sync_error_ire": 10.340057226535471,
+        "black_error_ire": 5.366988223076032,
+        "white_error_ire": -12.926625965016354,
+        "raw_min": -79.77591940390734,
+        "raw_max": 141.29217473890515,
+        "h_jitter_matched_us": 0.425,
+        "v_jitter_matched_us": 1000000.0,
+        "h_expected": 24,
+        "max_h_gap": 2,
+        "expected_v_trains": 0,
+        "false_sync_pulses": 5,
+        "false_sync_per_line": 0.20833333333333334,
+        "detail": 0.6849700261667898,
+        "active_rmse_ire": 32.5231303188206,
+        "active_large_errors_per_1000": 120.28149190710766,
+        "burst": {
+          "burst_gain": 0.7421524527211829,
+          "burst_phase_deg": -25.72701811080569,
+          "burst_phase_jitter_deg": 150.48599586692848,
+          "burst_amplitude_jitter_pct": 86.5680054198059,
+          "burst_rmse_ire": 31.099626687952377
+        },
+        "scored_samples": 59536,
+        "frozen_lag_samples": 25,
+        "recovery": [
+          {
+            "loss_start_us": 281.5999999999999,
+            "loss_end_us": 361.5999999999999,
+            "three_pulse_recovery_us": 97.4,
+            "expected_post_loss_pulses": 8
+          },
+          {
+            "loss_start_us": 781.5999999999999,
+            "loss_end_us": 961.5999999999999,
+            "three_pulse_recovery_us": 69.4,
+            "expected_post_loss_pulses": 8
+          }
+        ]
+      }
+    },
+    {
+      "seed": 5300414,
+      "cnr": 6,
+      "rms": 3.0,
+      "standard": "NTSC",
+      "pattern": "checker",
+      "model": "Existing particle",
+      "iq_sha256": "074fe04a8c82711daefff7ddb5f028f46490095a01d5dea77e510485c73bf406",
+      "seconds": 12.532218699998339,
+      "metrics": {
+        "sinad": 1.9503139428509955,
+        "contrast": 72.83467667303849,
+        "polarity_ok": true,
+        "large_errors": 205.22037086804625,
+        "h_missing": 3,
+        "v_missing": 0,
+        "v_trains": 0,
+        "h_jitter_us": 2.025,
+        "v_jitter_us": 0.0,
+        "h_width_rmse_us": 1.0850581507348767,
+        "sync_error_ire": 5.272889385747429,
+        "black_error_ire": 7.229255716921571,
+        "white_error_ire": -14.242164903300061,
+        "raw_min": -90.15430648138113,
+        "raw_max": 137.7508246661892,
+        "h_jitter_matched_us": 0.075,
+        "v_jitter_matched_us": 1000000.0,
+        "h_expected": 24,
+        "max_h_gap": 2,
+        "expected_v_trains": 0,
+        "false_sync_pulses": 34,
+        "false_sync_per_line": 1.4166666666666667,
+        "detail": 0.6393573074311804,
+        "active_rmse_ire": 43.957062117382975,
+        "active_large_errors_per_1000": 268.7403237156932,
+        "burst": {
+          "burst_gain": 0.3829924606851511,
+          "burst_phase_deg": -69.31034386212448,
+          "burst_phase_jitter_deg": 64.32779228461771,
+          "burst_amplitude_jitter_pct": 72.68780088964228,
+          "burst_rmse_ire": 29.274692296453892
+        },
+        "scored_samples": 59536,
+        "frozen_lag_samples": 25,
+        "recovery": [
+          {
+            "loss_start_us": 281.5999999999999,
+            "loss_end_us": 361.5999999999999,
+            "three_pulse_recovery_us": 33.9,
+            "expected_post_loss_pulses": 8
+          },
+          {
+            "loss_start_us": 781.5999999999999,
+            "loss_end_us": 961.5999999999999,
+            "three_pulse_recovery_us": 260.1,
+            "expected_post_loss_pulses": 8
+          }
+        ]
+      }
+    },
+    {
+      "seed": 5300414,
+      "cnr": 6,
+      "rms": 3.0,
+      "standard": "NTSC",
+      "pattern": "checker",
+      "model": "IQ receiver AR1 lag8",
+      "iq_sha256": "074fe04a8c82711daefff7ddb5f028f46490095a01d5dea77e510485c73bf406",
+      "seconds": 86.78168010000081,
+      "metrics": {
+        "sinad": 2.4152970826419464,
+        "contrast": 68.6749826040081,
+        "polarity_ok": true,
+        "large_errors": 159.3993550120935,
+        "h_missing": 4,
+        "v_missing": 0,
+        "v_trains": 0,
+        "h_jitter_us": 2.025,
+        "v_jitter_us": 0.0,
+        "h_width_rmse_us": 0.06174544517614235,
+        "sync_error_ire": 10.739318076107413,
+        "black_error_ire": 0.1657983755881546,
+        "white_error_ire": -13.616414245781,
+        "raw_min": -74.95496706098834,
+        "raw_max": 147.4117251785035,
+        "h_jitter_matched_us": 0.075,
+        "v_jitter_matched_us": 1000000.0,
+        "h_expected": 24,
+        "max_h_gap": 3,
+        "expected_v_trains": 0,
+        "false_sync_pulses": 14,
+        "false_sync_per_line": 0.5833333333333334,
+        "detail": 0.7262551465310871,
+        "active_rmse_ire": 40.20442504848398,
+        "active_large_errors_per_1000": 192.51231527093597,
+        "burst": {
+          "burst_gain": 0.11294169885168273,
+          "burst_phase_deg": 51.55031398354608,
+          "burst_phase_jitter_deg": 94.15211686607313,
+          "burst_amplitude_jitter_pct": 182.4542646190904,
+          "burst_rmse_ire": 18.158371766814643
+        },
+        "scored_samples": 59536,
+        "frozen_lag_samples": 30,
+        "recovery": [
+          {
+            "loss_start_us": 281.5999999999999,
+            "loss_end_us": 361.5999999999999,
+            "three_pulse_recovery_us": 33.9,
+            "expected_post_loss_pulses": 8
+          },
+          {
+            "loss_start_us": 781.5999999999999,
+            "loss_end_us": 961.5999999999999,
+            "three_pulse_recovery_us": 69.4,
+            "expected_post_loss_pulses": 8
+          }
+        ]
+      }
+    }
+  ]
+}

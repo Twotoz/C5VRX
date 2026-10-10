@@ -32,6 +32,13 @@ compressions still fail. Models, all five state/observation budgets, direct
 sequence-policy optimization and independent negative evidence are preserved.
 These are not new selectable firmware modes.
 
+[Receiver-aware IQ sequence reference](docs/IQ_SEQUENCE_REFERENCE.md) adds an
+offline decoder with persistent receive-filter state, folded-cell likelihoods,
+conditional coloured-noise estimates and explicit delayed-hypothesis ancestry.
+Paired ablations and checksummed physical snapshot replay separate IQ recovery
+from sync continuity. This is numerical inference, not another trained LUT;
+the PR's alpha build retains the existing live demodulators.
+
 
 The operator-requested [range-priority options](docs/RANGE_PRIORITY_STUDY.md)
 deliberately allow less detail for stronger weak-signal sync. Uppercase `Y`
