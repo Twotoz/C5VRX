@@ -35,7 +35,7 @@ static bool s_level_loaded, s_level;
 /* Operator default, 2026-10-08: the independently confirmed PAIR RANGE LAB
  * (found by model id, not table position). Without it, or once quarantined,
  * new/invalid selections use board-proven RANGE32. Saved choices persist. */
-#define C5VRX4_DEFAULT_RANGE_MODEL C5VRX4_PAIR_MODEL_ID
+#define C5VRX4_DEFAULT_RANGE_MODEL "1802e9b175db" /* U85 UNTRAINED */
 static unsigned default_demod(void)
 {
 #if C5VRX4_RANGE_OPTION_COUNT
