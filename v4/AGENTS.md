@@ -1,5 +1,18 @@
 # Isolated C5VRX-4 integration ledger
 
+## Receiver-aware IQ sequence reference
+
+`docs/IQ_SEQUENCE_REFERENCE.md` extends the original PAIR/EDGE, particle and
+belief research with an offline full-byte sequence estimator. It retains
+receiver-filter state and folded-cell likelihoods, approximates coloured noise
+with quantized Gaussian AR(1) moments, and optionally follows delayed ancestry.
+The model is approximate, not an optimal information bound or measured ADC.
+Preserve the complete paired outcomes, including strong-picture regressions,
+the particle-budget convergence checks and input/source hashes. Physical
+replays reset at each checksummed 204.75-us capture; never concatenate them or
+claim known-picture/range scores. No new firmware mode or menu/default is
+promoted. A longer decision delay is not proof of spare realtime compute.
+
 ## Belief ROM and causal input-history study, 2026-10-10
 
 `docs/BELIEF_ROM_STUDY.md` preserves direct/predictive belief projection,

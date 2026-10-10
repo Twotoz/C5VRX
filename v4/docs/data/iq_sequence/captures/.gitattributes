@@ -1,0 +1,2 @@
+# IQ bytes must never undergo Windows newline conversion or text merging.
+*.iq binary
