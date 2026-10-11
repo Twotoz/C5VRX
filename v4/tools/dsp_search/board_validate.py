@@ -70,9 +70,9 @@ def main():
     import overlay_fsm as O
     opts = json.loads((ROOT / 'tools/range_options.json').read_text())['options']
     models = {o['label']: o['model'] for o in opts if o['label'] in ('U85Q UNTRAINED', 'U85E UNTRAINED')}
-    t0 = time.time(); probe = a.out / 'probe.bin'
+    t0 = time.time(); n = 0
     while True:
-        if probe.exists(): probe.unlink()
+        n += 1; probe = a.out / f'probe-{n}.bin'   # the capture tool refuses existing paths
         if snap(a.port, probe):
             p = periodicity(np.fromfile(probe, np.uint8), models['U85Q UNTRAINED'])
             print(f'probe t={time.time() - t0:.0f}s periodicity={p:.2f}', flush=True)
@@ -83,7 +83,7 @@ def main():
     print('VIDEO detected, capturing', flush=True)
     caps = []
     for k in range(a.count):
-        f = a.out / f'iq-{k + 1}.bin'
+        f = a.out / f'iq-{int(time.time())}-{k + 1}.bin'
         if snap(a.port, f): caps.append(np.fromfile(f, np.uint8))
     lines = status(a.port)
     (a.out / 'status.log').write_text('\n'.join(lines), encoding='utf-8')
