@@ -16,6 +16,12 @@ some synthetic echo/fade cases regress. Read [PAIR_DEMOD.md](docs/PAIR_DEMOD.md)
 before the A/B test. The default build keeps the exact #196 demodulator. Build with
 `-DC5VRX5_PAIR_ASSIST=ON` to test U85G on WIDE profiles. This experiment is not ready for production.
 
+The branch also includes an [offline demod architecture search](docs/DEMOD_SEARCH.md).
+It generates phase-only and predictive phase/frequency models within one 2 KiB
+shared LUT, then rejects candidates that lose sync or strong-signal quality.
+Screening uses the actual ADC folding; independent full-field tests gate export.
+Running the search does not change the active firmware demodulator.
+
 ## What it does
 
 - **U85Q demodulator** in the TX BitScrambler: an untrained 32-phase tracker

@@ -450,6 +450,26 @@ hardware-pending draft experiment, not a proven outdoor range fix.
 `-DC5VRX5_PAIR_ASSIST=OFF` is the exact #196 demod control. See
 `v5/docs/PAIR_DEMOD.md` for the assumptions and A/B acceptance gate.
 
+### C5VRX-5 offline demod architecture search (2026-10-11)
+
+`v5/research/demod_search.py` extends PR #190's shared-LUT analytic tracker
+and the confidence-aware predictive idea investigated in PR #55. It explores
+4/5/6-bit observations with 6/5/4 retained bits, phase-only and coarse
+phase/frequency prediction, four pair layouts and confidence/loop parameters.
+One 1024x16 resident LUT, raw IQ40, TX only, two lookups per 50 ns, unique20
+[D,D] at TX40/DAC6; no CPU live sample path or ring-format change. Seven
+retained bits exceed this skeleton's O26..O31 capacity and are rejected.
+New bit wiring is assembler/host evidence only, not physical timing proof.
+Deterministic bounded screening uses actual ADC folding, per-case sync and
+SINAD rejection gates; finalists are frozen before disjoint-seed two-field
+PAL/NTSC echo/fade/envelope tests. Both gates must pass before an offline
+candidate is exported. No firmware promotion is automatic. See
+`v5/docs/DEMOD_SEARCH.md` and `v5/research/data/search_wide_20261011/`.
+First run: 96 distinct LUTs accepted by the ESP32-C5 assembler, 864 screening
+and 168 held-out candidate/case comparisons; no candidate passes both gates,
+no offline winner exported, firmware demod unchanged. Coarse phase/frequency
+history loses too much clean-picture precision in the tested predictive family.
+
 ### Instructions for future pipeline work
 
 1. Search this ledger, the original source paths, `docs/KNOWLEDGE_INDEX.md` and

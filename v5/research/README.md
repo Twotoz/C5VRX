@@ -1,5 +1,11 @@
 # Where can C5VRX-5 firmware still gain range?
 
+For the follow-up automated **architecture search**, see
+[DEMOD_SEARCH.md](../docs/DEMOD_SEARCH.md) and `demod_search.py`. It uses the
+actual ultrafine folding quantizer and per-case sync/quality rejection gates.
+The older tables below retain their original clipped-quantizer assumptions;
+they are not measured receiver sensitivity or a guarantee of field range.
+
 Simulation study, 2026-10-11. `sim.py` models the whole C5VRX-5 chain with
 the **bit-exact U85Q LUT** (two LUT16 lookups per 50 ns, `u85q.bsasm`), the
 C5 analog channel (5th-order, ~20 MHz), unfiltered 80 -> 40 MS/s decimation,
