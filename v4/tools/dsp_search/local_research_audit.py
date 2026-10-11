@@ -24,6 +24,11 @@ def audit(root):
             continue
         if path.name == 'results.json' and 'source_sha256' in report:
             check(path.parent / 'source.py', report['source_sha256'])
+        if 'observer_source_sha256' in report:
+            check(path.parent / 'local_iq_carrier.py', report['observer_source_sha256'])
+        if 'frozen_dataset_sha256' in report:
+            check(root / report['frozen_dataset'] / 'results.json',
+                  report['frozen_dataset_sha256'])
         if path.name == 'c-proof.json':
             check(path.parent / 'local_iq_clock_stream.c', report['source_sha256'])
             check(path.parent / 'stream-rv32imc.s', report['c5_assembly_sha256'])

@@ -1,0 +1,394 @@
+{
+ "seed": 8800190,
+ "repeats": 2,
+ "rows": [
+  {
+   "seed": 8800190,
+   "standard": "PAL",
+   "extra_pre_bw_hz": null,
+   "input_sha256": "98534954b1e5ec404a14b1b0fc4ee99531ea85e762062f3c42378dfe61aabb71",
+   "clock": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 1748.8683319226288,
+    "score": 8.610768275147914,
+    "confidence": 3.77932348405786,
+    "normalized_score": 0.683738847156943,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.14670829806564142,
+    "p95_abs_error_us": 0.14670829806564142,
+    "fraction_within_500ns": 1.0
+   },
+   "estimates": {
+    "sync": {
+     "imaginary_fit": {
+      "frequency_hz": -5070000.0,
+      "signal_power": 12.15373091451961,
+      "relative_imag_residual": 0.0007779452761519181,
+      "two_lag_frequency_hz": -5057667.177224053
+     },
+     "imaginary_error_hz": -50000.0,
+     "long_lag_error_hz": -30000.0,
+     "fixed_noise_model_error_hz": -30000.0
+    },
+    "porch": {
+     "imaginary_fit": {
+      "frequency_hz": -2620000.0,
+      "signal_power": 5.126082659033573,
+      "relative_imag_residual": 0.015663851961904538,
+      "two_lag_frequency_hz": -4649309.254035236
+     },
+     "imaginary_error_hz": 102857.14285714272,
+     "long_lag_error_hz": 2857.142857142724,
+     "fixed_noise_model_error_hz": 2857.142857142724
+    }
+   }
+  },
+  {
+   "seed": 8800190,
+   "standard": "PAL",
+   "extra_pre_bw_hz": 15359000.0,
+   "input_sha256": "c005c168d14e173be7a6d6c14c218b357408bf2f8ebf74537f1af68b9243dcc6",
+   "clock": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 1753.2228917611599,
+    "score": 11.52345479638553,
+    "confidence": 3.599341908764346,
+    "normalized_score": 0.6815411680175444,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.2555722940291162,
+    "p95_abs_error_us": 0.2555722940291162,
+    "fraction_within_500ns": 1.0
+   },
+   "estimates": {
+    "sync": {
+     "imaginary_fit": {
+      "frequency_hz": -5080000.0,
+      "signal_power": 18.46011227217731,
+      "relative_imag_residual": 0.003312713873804012,
+      "two_lag_frequency_hz": -4943954.304915042
+     },
+     "imaginary_error_hz": -60000.0,
+     "long_lag_error_hz": -30000.0,
+     "fixed_noise_model_error_hz": -30000.0
+    },
+    "porch": {
+     "imaginary_fit": {
+      "frequency_hz": -2870000.0,
+      "signal_power": 7.90495427787812,
+      "relative_imag_residual": 0.014240912140353695,
+      "two_lag_frequency_hz": -4306583.623070794
+     },
+     "imaginary_error_hz": -147142.85714285728,
+     "long_lag_error_hz": -147142.85714285728,
+     "fixed_noise_model_error_hz": -147142.85714285728
+    }
+   }
+  },
+  {
+   "seed": 8800207,
+   "standard": "NTSC",
+   "extra_pre_bw_hz": null,
+   "input_sha256": "4d5134a2bf885e65439b723dc76de31949606fb01096f9d6ca6ad76382d9d2f5",
+   "clock": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 612.104256179984,
+    "score": 8.127455414662819,
+    "confidence": 3.8164664397357018,
+    "normalized_score": 0.8094051393040747,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.06093973783216029,
+    "p95_abs_error_us": 0.10538418227660487,
+    "fraction_within_500ns": 1.0
+   },
+   "estimates": {
+    "sync": {
+     "imaginary_fit": {
+      "frequency_hz": -5020000.0,
+      "signal_power": 12.000296334088203,
+      "relative_imag_residual": 0.00514497130036198,
+      "two_lag_frequency_hz": -5152993.05378772
+     },
+     "imaginary_error_hz": 0.0,
+     "long_lag_error_hz": -10000.0,
+     "fixed_noise_model_error_hz": -10000.0
+    },
+    "porch": {
+     "imaginary_fit": {
+      "frequency_hz": -2790000.0,
+      "signal_power": 5.039011215548264,
+      "relative_imag_residual": 0.036732936982212576,
+      "two_lag_frequency_hz": -5002850.283236152
+     },
+     "imaginary_error_hz": -67142.85714285728,
+     "long_lag_error_hz": 32857.142857142724,
+     "fixed_noise_model_error_hz": 32857.142857142724
+    }
+   }
+  },
+  {
+   "seed": 8800207,
+   "standard": "NTSC",
+   "extra_pre_bw_hz": 15359000.0,
+   "input_sha256": "7e1c9caa335aec5cdd0d2271a744cb04b73200fc31377ce569853b52dd7a0a4e",
+   "clock": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 615.5471290951701,
+    "score": 11.842374565795213,
+    "confidence": 3.6665001658337033,
+    "normalized_score": 0.7187568378083801,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.1470115607124569,
+    "p95_abs_error_us": 0.19145600515690148,
+    "fraction_within_500ns": 1.0
+   },
+   "estimates": {
+    "sync": {
+     "imaginary_fit": {
+      "frequency_hz": -5060000.0,
+      "signal_power": 19.440205488631637,
+      "relative_imag_residual": 0.0008885810532629674,
+      "two_lag_frequency_hz": -5360044.948881495
+     },
+     "imaginary_error_hz": -40000.0,
+     "long_lag_error_hz": -20000.0,
+     "fixed_noise_model_error_hz": -10000.0
+    },
+    "porch": {
+     "imaginary_fit": {
+      "frequency_hz": -2700000.0,
+      "signal_power": 11.873453393129799,
+      "relative_imag_residual": 0.005823348724694865,
+      "two_lag_frequency_hz": -2170806.1246745116
+     },
+     "imaginary_error_hz": 22857.142857142724,
+     "long_lag_error_hz": -17142.857142857276,
+     "fixed_noise_model_error_hz": -7142.857142857276
+    }
+   }
+  },
+  {
+   "seed": 8800291,
+   "standard": "PAL",
+   "extra_pre_bw_hz": null,
+   "input_sha256": "8d2f109b1f985f73dd126a6d763296ac1aaa168216f160e60602f1613e7b4547",
+   "clock": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 2338.8800782874714,
+    "score": 9.044149145951117,
+    "confidence": 3.943961221775072,
+    "normalized_score": 0.7168865075426779,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.0029980428131239022,
+    "p95_abs_error_us": 0.002998042813851498,
+    "fraction_within_500ns": 1.0
+   },
+   "estimates": {
+    "sync": {
+     "imaginary_fit": {
+      "frequency_hz": -5020000.0,
+      "signal_power": 11.912695473401445,
+      "relative_imag_residual": 0.00136163146357016,
+      "two_lag_frequency_hz": -5423838.302683329
+     },
+     "imaginary_error_hz": 0.0,
+     "long_lag_error_hz": -80000.0,
+     "fixed_noise_model_error_hz": -80000.0
+    },
+    "porch": {
+     "imaginary_fit": {
+      "frequency_hz": -2700000.0,
+      "signal_power": 5.022151043759403,
+      "relative_imag_residual": 0.006090795732868168,
+      "two_lag_frequency_hz": -3990869.693854573
+     },
+     "imaginary_error_hz": 22857.142857142724,
+     "long_lag_error_hz": -27142.857142857276,
+     "fixed_noise_model_error_hz": -37142.857142857276
+    }
+   }
+  },
+  {
+   "seed": 8800291,
+   "standard": "PAL",
+   "extra_pre_bw_hz": 15359000.0,
+   "input_sha256": "70425f71fea09e805c4804a28aff5f08ff985457c80f5a4b2862f47795230516",
+   "clock": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 2347.771632348774,
+    "score": 12.174780983357715,
+    "confidence": 3.772450541067573,
+    "normalized_score": 0.6796129735526635,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.21929080871923362,
+    "p95_abs_error_us": 0.21929080871923362,
+    "fraction_within_500ns": 1.0
+   },
+   "estimates": {
+    "sync": {
+     "imaginary_fit": {
+      "frequency_hz": -5060000.0,
+      "signal_power": 18.841353212861,
+      "relative_imag_residual": 0.002455050151344934,
+      "two_lag_frequency_hz": -5313113.020459261
+     },
+     "imaginary_error_hz": -40000.0,
+     "long_lag_error_hz": -10000.0,
+     "fixed_noise_model_error_hz": -10000.0
+    },
+    "porch": {
+     "imaginary_fit": {
+      "frequency_hz": -2730000.0,
+      "signal_power": 8.191602960092114,
+      "relative_imag_residual": 0.004507603964471044,
+      "two_lag_frequency_hz": -3099295.2226952673
+     },
+     "imaginary_error_hz": -7142.857142857276,
+     "long_lag_error_hz": -27142.857142857276,
+     "fixed_noise_model_error_hz": -17142.857142857276
+    }
+   }
+  },
+  {
+   "seed": 8800308,
+   "standard": "NTSC",
+   "extra_pre_bw_hz": null,
+   "input_sha256": "519a96f24b4e184d035cb17c1aa66dadbb7014e9a588a4ff536fb948701e0a26",
+   "clock": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 1701.0379774438704,
+    "score": 8.234707816665841,
+    "confidence": 3.8352013131691685,
+    "normalized_score": 0.8517264692988803,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.0898383249850383,
+    "p95_abs_error_us": 0.13428276942948286,
+    "fraction_within_500ns": 1.0
+   },
+   "estimates": {
+    "sync": {
+     "imaginary_fit": {
+      "frequency_hz": -5030000.0,
+      "signal_power": 13.744273764886897,
+      "relative_imag_residual": 0.004094477361015171,
+      "two_lag_frequency_hz": -4957314.1086810585
+     },
+     "imaginary_error_hz": -10000.0,
+     "long_lag_error_hz": -20000.0,
+     "fixed_noise_model_error_hz": -10000.0
+    },
+    "porch": {
+     "imaginary_fit": {
+      "frequency_hz": -2440000.0,
+      "signal_power": 5.202178716791261,
+      "relative_imag_residual": 0.003987009895393492,
+      "two_lag_frequency_hz": -4889269.705433292
+     },
+     "imaginary_error_hz": 282857.1428571427,
+     "long_lag_error_hz": 102857.14285714272,
+     "fixed_noise_model_error_hz": 102857.14285714272
+    }
+   }
+  },
+  {
+   "seed": 8800308,
+   "standard": "NTSC",
+   "extra_pre_bw_hz": 15359000.0,
+   "input_sha256": "5204361024481d9c913520dd878db3a5aa958f82f32a18ce708c92f402c00bbe",
+   "clock": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 1698.1345503017935,
+    "score": 13.82974637155895,
+    "confidence": 3.634539911778147,
+    "normalized_score": 0.8218790882069748,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.027191798011136824,
+    "p95_abs_error_us": 0.061697090877680695,
+    "fraction_within_500ns": 1.0
+   },
+   "estimates": {
+    "sync": {
+     "imaginary_fit": {
+      "frequency_hz": -4970000.0,
+      "signal_power": 22.526583303251115,
+      "relative_imag_residual": 0.002383918280813852,
+      "two_lag_frequency_hz": -4591273.603939934
+     },
+     "imaginary_error_hz": 50000.0,
+     "long_lag_error_hz": 60000.0,
+     "fixed_noise_model_error_hz": 70000.0
+    },
+    "porch": {
+     "imaginary_fit": {
+      "frequency_hz": -2950000.0,
+      "signal_power": 10.627042321786016,
+      "relative_imag_residual": 0.03595482508904832,
+      "two_lag_frequency_hz": -3266688.5818709307
+     },
+     "imaginary_error_hz": -227142.85714285728,
+     "long_lag_error_hz": -187142.85714285728,
+     "fixed_noise_model_error_hz": -187142.85714285728
+    }
+   }
+  }
+ ],
+ "scope": "fresh_paired_filter_mismatch_ablation_not_measured_C5_filter_or_hardware_proof",
+ "gain": "simulator_restores_global_RMS_4.2_after_extra_filter_not_physical_AGC",
+ "noise_model": "fixed_original_10MHz_covariance_even_when_extra_filter_changes_it",
+ "source_sha256": "e25cf4d839cfeb05d6609d45169fc3cf3a05664bc2f3e1ed32e58691d93b5a37"
+}

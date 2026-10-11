@@ -55,10 +55,13 @@ def job(sp):
     if sp.get('pc'):
         import local_pc_prediction as P
         models = [J.baseline()]+P.candidates()
+    if sp.get('pc_confidence'):
+        import local_pc_confidence as P
+        models = [J.baseline()]+P.candidates()
     rows = []
     for m in models:
         decode = K.decode if sp.get('counter') and m['params'].get('counter_phase') else O.decode
-        if sp.get('pc') and m.get('research',{}).get('pc_prediction'):decode=P.decode
+        if (sp.get('pc') or sp.get('pc_confidence')) and m.get('research',{}).get('mode_memory')=='instruction_path':decode=P.decode
         y, yc = decode(c['raw'],m), decode(c['clean'],m)
         r = G.measure(y,yc,c)
         rows.append(dict(name=m['name'],spec=sp,input_sha256=digest,**r))
@@ -78,6 +81,7 @@ def main():
     ap.add_argument('--circular',action='store_true')
     ap.add_argument('--velocity',action='store_true')
     ap.add_argument('--pc',action='store_true')
+    ap.add_argument('--pc-confidence',action='store_true')
     ap.add_argument('--workers',type=int,default=2)
     ap.add_argument('--out',type=Path,required=True)
     a=ap.parse_args(); a.out.mkdir(parents=True,exist_ok=True)
@@ -86,11 +90,12 @@ def main():
         import local_counter_loop as K
         models=[J.baseline()]+K.candidates()
         for sp in scenarios: sp['counter']=True
-    if sum((a.counter,a.circular,a.velocity,a.pc))>1:ap.error('choose one model family')
-    if a.circular or a.velocity or a.pc:
+    if sum((a.counter,a.circular,a.velocity,a.pc,a.pc_confidence))>1:ap.error('choose one model family')
+    if a.circular or a.velocity or a.pc or a.pc_confidence:
         if a.circular:import local_circular_models as R
         elif a.velocity:import local_velocity_models as R
-        else:import local_pc_prediction as R
+        elif a.pc:import local_pc_prediction as R
+        else:import local_pc_confidence as R
         models=[J.baseline()]+R.candidates()
         # Test fixed-prior acquisition off-centre and beyond nominal IQ.
         for i,p in enumerate([dict(cnr=6,dev=1.2,offset=-2e6),
@@ -99,7 +104,7 @@ def main():
             for k,std in enumerate(('PAL','NTSC')):
                 scenarios.append(dict(seed=a.seed+1001+101*i+17*k,standard=std,
                     rms=4.2,pattern=('zoneplate','checker')[k],full=a.full,**p))
-        for sp in scenarios:sp['circular' if a.circular else 'velocity' if a.velocity else 'pc']=True
+        for sp in scenarios:sp['circular' if a.circular else 'velocity' if a.velocity else 'pc' if a.pc else 'pc_confidence']=True
     protocol=dict(seed=a.seed,full=a.full,specs=scenarios,
                   models=models,calibration='per_case_clean_oracle_existing_goggle_model',
                   base='7491a660e26722afbb9dd9e24e69ba381b4f130d',
@@ -109,14 +114,14 @@ def main():
                   ROOT/'tools/dsp_search/waveforms.py',ROOT/'tools/compile_overlay.py']}
     if a.counter:
         protocol['source_hashes']['local_counter_loop.py']=hashlib.sha256(Path(K.__file__).read_bytes()).hexdigest()
-    if a.circular or a.velocity or a.pc:
+    if a.circular or a.velocity or a.pc or a.pc_confidence:
         protocol['source_hashes'][Path(R.__file__).name]=hashlib.sha256(Path(R.__file__).read_bytes()).hexdigest()
     # Archive executable research sources before starting; hashes alone do
     # not preserve older runner versions when another ablation is added.
     snapshot=a.out/'sources';snapshot.mkdir(exist_ok=True)
     sources=[Path(__file__),Path(J.__file__)]
     if a.counter:sources.append(Path(K.__file__))
-    if a.circular or a.velocity or a.pc:sources.append(Path(R.__file__))
+    if a.circular or a.velocity or a.pc or a.pc_confidence:sources.append(Path(R.__file__))
     for p in sources:(snapshot/p.name).write_bytes(p.read_bytes())
     (a.out/'protocol.json').write_text(json.dumps(protocol,indent=1))
     t=time.time(); rows=[]

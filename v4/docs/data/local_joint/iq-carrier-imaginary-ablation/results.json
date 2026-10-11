@@ -1,0 +1,603 @@
+{
+ "frozen_dataset": "iq-carrier-coherence-validation",
+ "rows": [
+  {
+   "seed": 8300190,
+   "standard": "PAL",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "55c50ccfb4698f3e5612a562bec846c6d6ffda0b522902e2b3072dabd31d330e",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -5080000.0,
+     "signal_power": 12.981634685810993,
+     "relative_imag_residual": 0.0013674437610450157,
+     "two_lag_frequency_hz": -4804876.940122859,
+     "error_hz": -60000.0,
+     "long_lag_error_hz": -40000.0,
+     "two_lag_error_hz": 215123.05987714138
+    },
+    "porch": {
+     "frequency_hz": -2900000.0,
+     "signal_power": 6.8737095244305895,
+     "relative_imag_residual": 0.023915491050960434,
+     "two_lag_frequency_hz": -5110828.832276861,
+     "error_hz": -177142.85714285728,
+     "long_lag_error_hz": -237142.85714285728,
+     "two_lag_error_hz": -2387971.6894197185
+    }
+   }
+  },
+  {
+   "seed": 8300207,
+   "standard": "NTSC",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "a09054b420048d311b69eb49a54794c596eb8fc7fd4fc5496b6dd74d4f7cf87a",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -5050000.0,
+     "signal_power": 12.990595973265336,
+     "relative_imag_residual": 0.003827275901079427,
+     "two_lag_frequency_hz": -5893531.947409053,
+     "error_hz": -30000.0,
+     "long_lag_error_hz": 10000.0,
+     "two_lag_error_hz": -873531.9474090533
+    },
+    "porch": {
+     "frequency_hz": -2630000.0,
+     "signal_power": 5.405883064155051,
+     "relative_imag_residual": 0.016193416434795955,
+     "two_lag_frequency_hz": -0.0,
+     "error_hz": 92857.14285714272,
+     "long_lag_error_hz": 92857.14285714272,
+     "two_lag_error_hz": 2722857.1428571427
+    }
+   }
+  },
+  {
+   "seed": 8300291,
+   "standard": "PAL",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "ce2fb8f2897decc18c664724d2dbc5e59d50414e6a977dee1290345aa1fcd66f",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -4930000.0,
+     "signal_power": 13.181211644094587,
+     "relative_imag_residual": 0.005013656075201856,
+     "two_lag_frequency_hz": -4988947.551187664,
+     "error_hz": 90000.0,
+     "long_lag_error_hz": 80000.0,
+     "two_lag_error_hz": 31052.44881233573
+    },
+    "porch": {
+     "frequency_hz": -2960000.0,
+     "signal_power": 4.542433969902782,
+     "relative_imag_residual": 0.004184406756268136,
+     "two_lag_frequency_hz": -2817254.546382657,
+     "error_hz": -237142.85714285728,
+     "long_lag_error_hz": -307142.8571428573,
+     "two_lag_error_hz": -94397.40352551406
+    }
+   }
+  },
+  {
+   "seed": 8300308,
+   "standard": "NTSC",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "ec3cfa712a8dfb79bdc611bd5033631cfdc3cc48ed8d6cac5e73057e4900f469",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -4850000.0,
+     "signal_power": 11.556553251718405,
+     "relative_imag_residual": 0.0017024056457021096,
+     "two_lag_frequency_hz": -5363707.47169643,
+     "error_hz": 170000.0,
+     "long_lag_error_hz": 160000.0,
+     "two_lag_error_hz": -343707.4716964299
+    },
+    "porch": {
+     "frequency_hz": -2580000.0,
+     "signal_power": 5.10301085997189,
+     "relative_imag_residual": 0.0025248246132137313,
+     "two_lag_frequency_hz": -3060297.2393843126,
+     "error_hz": 142857.14285714272,
+     "long_lag_error_hz": 42857.142857142724,
+     "two_lag_error_hz": -337440.0965271699
+    }
+   }
+  },
+  {
+   "seed": 8300392,
+   "standard": "PAL",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "268a29f3b8f0237704eb706a3b60c5a7b631917d6aee744fad7880cfb41ed2bf",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -5090000.0,
+     "signal_power": 13.111854044872231,
+     "relative_imag_residual": 0.00488015624940523,
+     "two_lag_frequency_hz": -4812488.943153089,
+     "error_hz": -70000.0,
+     "long_lag_error_hz": -70000.0,
+     "two_lag_error_hz": 207511.0568469111
+    },
+    "porch": {
+     "frequency_hz": -2660000.0,
+     "signal_power": 5.1326090754072915,
+     "relative_imag_residual": 0.0512852612998349,
+     "two_lag_frequency_hz": -0.0,
+     "error_hz": 62857.142857142724,
+     "long_lag_error_hz": 32857.142857142724,
+     "two_lag_error_hz": 2722857.1428571427
+    }
+   }
+  },
+  {
+   "seed": 8300409,
+   "standard": "NTSC",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "eb9967c4348f96d150e5126c1c0408aae7060e2431cc7f1c8ce4b95982c90f38",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -4940000.0,
+     "signal_power": 11.313992596028449,
+     "relative_imag_residual": 0.007127380265374841,
+     "two_lag_frequency_hz": -4401049.364812231,
+     "error_hz": 80000.0,
+     "long_lag_error_hz": 80000.0,
+     "two_lag_error_hz": 618950.6351877693
+    },
+    "porch": {
+     "frequency_hz": -2480000.0,
+     "signal_power": 5.018310892040187,
+     "relative_imag_residual": 0.06363070355965394,
+     "two_lag_frequency_hz": -3550305.155585058,
+     "error_hz": 242857.14285714272,
+     "long_lag_error_hz": 282857.1428571427,
+     "two_lag_error_hz": -827448.0127279153
+    }
+   }
+  },
+  {
+   "seed": 8300493,
+   "standard": "PAL",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "0d3775eb5e5a1cc972db0a7f0954d6cc3e3ab0776cd4e6e574a63a43b07f509c",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -4960000.0,
+     "signal_power": 13.320373887195808,
+     "relative_imag_residual": 0.004028640835038777,
+     "two_lag_frequency_hz": -5186150.066914242,
+     "error_hz": 60000.0,
+     "long_lag_error_hz": 50000.0,
+     "two_lag_error_hz": -166150.06691424176
+    },
+    "porch": {
+     "frequency_hz": -2620000.0,
+     "signal_power": 6.106123889220086,
+     "relative_imag_residual": 0.017992652694919852,
+     "two_lag_frequency_hz": -4414875.224952048,
+     "error_hz": 102857.14285714272,
+     "long_lag_error_hz": 122857.14285714272,
+     "two_lag_error_hz": -1692018.082094905
+    }
+   }
+  },
+  {
+   "seed": 8300510,
+   "standard": "NTSC",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "721eadd54834006ffd8e2dbe87dcda2cf9d42b0f635eb75a2437f3c4d87be002",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -5060000.0,
+     "signal_power": 13.133554841709325,
+     "relative_imag_residual": 0.001653306427378741,
+     "two_lag_frequency_hz": -4726322.0403318005,
+     "error_hz": -40000.0,
+     "long_lag_error_hz": -60000.0,
+     "two_lag_error_hz": 293677.95966819953
+    },
+    "porch": {
+     "frequency_hz": -2850000.0,
+     "signal_power": 5.03134814077084,
+     "relative_imag_residual": 0.01919359138562564,
+     "two_lag_frequency_hz": -3649173.9176488733,
+     "error_hz": -127142.85714285728,
+     "long_lag_error_hz": -117142.85714285728,
+     "two_lag_error_hz": -926316.7747917306
+    }
+   }
+  },
+  {
+   "seed": 8300594,
+   "standard": "PAL",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "8337042adcabb2be2e89905a129a702a18ff775a354761bf6bb2651e43d64653",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -5060000.0,
+     "signal_power": 12.075632922697782,
+     "relative_imag_residual": 0.013159403680445013,
+     "two_lag_frequency_hz": -4518356.342988405,
+     "error_hz": -40000.0,
+     "long_lag_error_hz": -60000.0,
+     "two_lag_error_hz": 501643.6570115946
+    },
+    "porch": {
+     "frequency_hz": -2630000.0,
+     "signal_power": 7.919832206287657,
+     "relative_imag_residual": 0.00945540013857625,
+     "two_lag_frequency_hz": -3582074.347374426,
+     "error_hz": 92857.14285714272,
+     "long_lag_error_hz": 182857.14285714272,
+     "two_lag_error_hz": -859217.2045172835
+    }
+   }
+  },
+  {
+   "seed": 8300611,
+   "standard": "NTSC",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "7d69a8ba3045adb5e8dcc4fa59941b8fd9a75a0f5217f4296f19500ca887d04c",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -5010000.0,
+     "signal_power": 11.329556259048383,
+     "relative_imag_residual": 0.018796502314683567,
+     "two_lag_frequency_hz": -5189923.234170842,
+     "error_hz": 10000.0,
+     "long_lag_error_hz": 10000.0,
+     "two_lag_error_hz": -169923.23417084198
+    },
+    "porch": {
+     "frequency_hz": -2780000.0,
+     "signal_power": 5.669878660845789,
+     "relative_imag_residual": 0.08140598341109026,
+     "two_lag_frequency_hz": -4664038.001920843,
+     "error_hz": -57142.857142857276,
+     "long_lag_error_hz": 12857.142857142724,
+     "two_lag_error_hz": -1941180.8590636998
+    }
+   }
+  },
+  {
+   "seed": 8300695,
+   "standard": "PAL",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "19c3ae0c8ec14044fd6b80183ad4ca155f54d4fd05ddac8839f5eb898c08cb23",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -5030000.0,
+     "signal_power": 12.842470032919595,
+     "relative_imag_residual": 0.0005513387851653097,
+     "two_lag_frequency_hz": -5191263.226932765,
+     "error_hz": -10000.0,
+     "long_lag_error_hz": 50000.0,
+     "two_lag_error_hz": -171263.22693276498
+    },
+    "porch": {
+     "frequency_hz": -2850000.0,
+     "signal_power": 5.749541770312744,
+     "relative_imag_residual": 0.022965222734614245,
+     "two_lag_frequency_hz": -0.0,
+     "error_hz": -127142.85714285728,
+     "long_lag_error_hz": -97142.85714285728,
+     "two_lag_error_hz": 2722857.1428571427
+    }
+   }
+  },
+  {
+   "seed": 8300712,
+   "standard": "NTSC",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "588c5c9a26c1159de4ac43749db5a2f6d29bf545dfd676e7faa4a30367d48df9",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -5120000.0,
+     "signal_power": 12.301394057622282,
+     "relative_imag_residual": 0.0027697319206432614,
+     "two_lag_frequency_hz": -4911950.839861826,
+     "error_hz": -100000.0,
+     "long_lag_error_hz": -110000.0,
+     "two_lag_error_hz": 108049.16013817396
+    },
+    "porch": {
+     "frequency_hz": -2720000.0,
+     "signal_power": 6.000538343548512,
+     "relative_imag_residual": 0.0118746878647409,
+     "two_lag_frequency_hz": -0.0,
+     "error_hz": 2857.142857142724,
+     "long_lag_error_hz": 42857.142857142724,
+     "two_lag_error_hz": 2722857.1428571427
+    }
+   }
+  },
+  {
+   "seed": 8300796,
+   "standard": "PAL",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "73748b6cea75f5dfc5622bbaf8c085a1b53bf9de097eda781d05dfeedb762487",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -4870000.0,
+     "signal_power": 11.638501264422619,
+     "relative_imag_residual": 0.004357502308280345,
+     "two_lag_frequency_hz": -4631237.512108768,
+     "error_hz": 150000.0,
+     "long_lag_error_hz": 100000.0,
+     "two_lag_error_hz": 388762.48789123166
+    },
+    "porch": {
+     "frequency_hz": -2770000.0,
+     "signal_power": 5.754089598790802,
+     "relative_imag_residual": 0.047878320868621656,
+     "two_lag_frequency_hz": -0.0,
+     "error_hz": -47142.857142857276,
+     "long_lag_error_hz": 12857.142857142724,
+     "two_lag_error_hz": 2722857.1428571427
+    }
+   }
+  },
+  {
+   "seed": 8300813,
+   "standard": "NTSC",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "59ac8c79d8edb0355e7d301dc896ef384cdccb2bc0f1e58b8329b70d613c95f3",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -4950000.0,
+     "signal_power": 11.95677720218806,
+     "relative_imag_residual": 0.013762106145755036,
+     "two_lag_frequency_hz": -5816969.666675748,
+     "error_hz": 70000.0,
+     "long_lag_error_hz": 30000.0,
+     "two_lag_error_hz": -796969.6666757483
+    },
+    "porch": {
+     "frequency_hz": -2710000.0,
+     "signal_power": 5.395827433669961,
+     "relative_imag_residual": 0.011975383266537647,
+     "two_lag_frequency_hz": -5125436.153113159,
+     "error_hz": 12857.142857142724,
+     "long_lag_error_hz": 12857.142857142724,
+     "two_lag_error_hz": -2402579.0102560166
+    }
+   }
+  },
+  {
+   "seed": 8300897,
+   "standard": "PAL",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "beaf13f7602df679076e857afb2291549aa78fa7cda2404b39ba035645289042",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -5100000.0,
+     "signal_power": 11.358846010539088,
+     "relative_imag_residual": 0.006682509371841517,
+     "two_lag_frequency_hz": -4272723.4566803435,
+     "error_hz": -80000.0,
+     "long_lag_error_hz": -40000.0,
+     "two_lag_error_hz": 747276.5433196565
+    },
+    "porch": {
+     "frequency_hz": -2710000.0,
+     "signal_power": 4.59811121257776,
+     "relative_imag_residual": 0.009466813837063702,
+     "two_lag_frequency_hz": -3614121.7763509294,
+     "error_hz": 12857.142857142724,
+     "long_lag_error_hz": -97142.85714285728,
+     "two_lag_error_hz": -891264.6334937867
+    }
+   }
+  },
+  {
+   "seed": 8300914,
+   "standard": "NTSC",
+   "cnr": 6,
+   "offset_hz": -2000000.0,
+   "input_sha256": "d4b88240a23cd0c45bbe548a98ebc1c320ab2ba0d727902dd54e9ca7cc30c81a",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -4950000.0,
+     "signal_power": 12.606610745140571,
+     "relative_imag_residual": 0.002092540001939484,
+     "two_lag_frequency_hz": -5386849.15467042,
+     "error_hz": 70000.0,
+     "long_lag_error_hz": 80000.0,
+     "two_lag_error_hz": -366849.1546704201
+    },
+    "porch": {
+     "frequency_hz": -2580000.0,
+     "signal_power": 5.884624117910656,
+     "relative_imag_residual": 0.01087357650816847,
+     "two_lag_frequency_hz": -4453783.444879647,
+     "error_hz": 142857.14285714272,
+     "long_lag_error_hz": 142857.14285714272,
+     "two_lag_error_hz": -1730926.3020225046
+    }
+   }
+  },
+  {
+   "seed": 8300998,
+   "standard": "PAL",
+   "cnr": 6,
+   "offset_hz": 0.0,
+   "input_sha256": "91508a8643dc6d299807f88c09289cd95558eb6fd6515abc06c672593f675aa5",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -1720000.0,
+     "signal_power": 4.834832705674898,
+     "relative_imag_residual": 0.004128605157088179,
+     "two_lag_frequency_hz": -0.0,
+     "error_hz": 1300000.0,
+     "long_lag_error_hz": 2190000.0,
+     "two_lag_error_hz": 3020000.0
+    },
+    "porch": {
+     "frequency_hz": 5680000.0,
+     "signal_power": 4.418309619173583,
+     "relative_imag_residual": 0.3928268558775175,
+     "two_lag_frequency_hz": 4349854.182472588,
+     "error_hz": 6402857.142857143,
+     "long_lag_error_hz": 5982857.142857143,
+     "two_lag_error_hz": 5072711.32532973
+    }
+   }
+  },
+  {
+   "seed": 8301015,
+   "standard": "NTSC",
+   "cnr": 6,
+   "offset_hz": 0.0,
+   "input_sha256": "7c82cf927efc3e8ff386b574632b2d009b2aeb169643329580b84551997081b8",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -3010000.0,
+     "signal_power": 6.751978364729411,
+     "relative_imag_residual": 0.00807218419641289,
+     "two_lag_frequency_hz": -4281935.751119208,
+     "error_hz": 10000.0,
+     "long_lag_error_hz": 60000.0,
+     "two_lag_error_hz": -1261935.7511192076
+    },
+    "porch": {
+     "frequency_hz": -590000.0,
+     "signal_power": 6.22280593186303,
+     "relative_imag_residual": 0.11204423379896163,
+     "two_lag_frequency_hz": 7552854.129217538,
+     "error_hz": 132857.14285714296,
+     "long_lag_error_hz": 262857.14285714296,
+     "two_lag_error_hz": 8275711.272074681
+    }
+   }
+  },
+  {
+   "seed": 8301099,
+   "standard": "PAL",
+   "cnr": 4,
+   "offset_hz": 0.0,
+   "input_sha256": "323c86d3d4b05b9abb67950e575240c3726970274b86bfd6cab4b895eee3f44c",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -1370000.0,
+     "signal_power": 10.324762427629418,
+     "relative_imag_residual": 0.005982554653461373,
+     "two_lag_frequency_hz": -0.0,
+     "error_hz": -58500.0,
+     "long_lag_error_hz": 191500.0,
+     "two_lag_error_hz": 1311500.0
+    },
+    "porch": {
+     "frequency_hz": 1700000.0,
+     "signal_power": 5.920060261536848,
+     "relative_imag_residual": 0.017988843669004145,
+     "two_lag_frequency_hz": 4632232.069281817,
+     "error_hz": 1690642.8571428573,
+     "long_lag_error_hz": 700642.8571428572,
+     "two_lag_error_hz": 4622874.926424675
+    }
+   }
+  },
+  {
+   "seed": 8301116,
+   "standard": "NTSC",
+   "cnr": 4,
+   "offset_hz": 0.0,
+   "input_sha256": "80c7cc3bc45e7d2d99beb5fd6896615b01473f2e38bc1c3119dfa308edf67ff2",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -2450000.0,
+     "signal_power": 2.027700984656098,
+     "relative_imag_residual": 0.06693319063822907,
+     "two_lag_frequency_hz": -0.0,
+     "error_hz": -1138500.0,
+     "long_lag_error_hz": 1211500.0,
+     "two_lag_error_hz": 1311500.0
+    },
+    "porch": {
+     "frequency_hz": 2530000.0,
+     "signal_power": 6.360376514239837,
+     "relative_imag_residual": 0.13030650782228062,
+     "two_lag_frequency_hz": 2485357.384165621,
+     "error_hz": 2520642.8571428573,
+     "long_lag_error_hz": 610642.8571428572,
+     "two_lag_error_hz": 2476000.241308478
+    }
+   }
+  },
+  {
+   "seed": 8301200,
+   "standard": "PAL",
+   "cnr": 30,
+   "offset_hz": 2000000.0,
+   "input_sha256": "65f339139bdff6c9cb72a24034040b092257d20f472d9797fd209ce6bb113c05",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -1010000.0,
+     "signal_power": 18.137861517091732,
+     "relative_imag_residual": 0.0001665211102992882,
+     "two_lag_frequency_hz": -0.0,
+     "error_hz": 10000.0,
+     "long_lag_error_hz": 0.0,
+     "two_lag_error_hz": 1020000.0
+    },
+    "porch": {
+     "frequency_hz": 1230000.0,
+     "signal_power": 18.579413777351874,
+     "relative_imag_residual": 0.00091363174644875,
+     "two_lag_frequency_hz": 0.0,
+     "error_hz": -47142.85714285704,
+     "long_lag_error_hz": -17142.857142857043,
+     "two_lag_error_hz": -1277142.857142857
+    }
+   }
+  },
+  {
+   "seed": 8301217,
+   "standard": "NTSC",
+   "cnr": 30,
+   "offset_hz": 2000000.0,
+   "input_sha256": "4a9a5ca4bd6ffbd8f14421f916b5ac873ceb51398b035cfad221e94c3c5e1407",
+   "estimates": {
+    "sync": {
+     "frequency_hz": -1010000.0,
+     "signal_power": 18.358221311665073,
+     "relative_imag_residual": 0.0005536143427930637,
+     "two_lag_frequency_hz": -0.0,
+     "error_hz": 10000.0,
+     "long_lag_error_hz": 0.0,
+     "two_lag_error_hz": 1020000.0
+    },
+    "porch": {
+     "frequency_hz": 1290000.0,
+     "signal_power": 18.819873143125342,
+     "relative_imag_residual": 0.0004699408338817494,
+     "two_lag_frequency_hz": 3860280.3675240315,
+     "error_hz": 12857.142857142957,
+     "long_lag_error_hz": 12857.142857142957,
+     "two_lag_error_hz": 2583137.5103811743
+    }
+   }
+  }
+ ],
+ "frozen_dataset_sha256": "6f1f693e276f5efd50b2a6558dc63283b21a37c1dfd7f6f44ac699de0c73c28b",
+ "algebra_cases": 8,
+ "scope": "frozen_received_statistic_ablation_not_fresh_channel_or_C5_proof",
+ "source_sha256": "cdd5a6adace800f529d319f522eb648310e979a248db03baa5e6c963505cf921"
+}

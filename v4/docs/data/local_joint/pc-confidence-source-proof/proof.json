@@ -1,0 +1,66 @@
+{
+ "source_dataflow": {
+  "models": 6,
+  "bytes_per_stream": 8192,
+  "slots": 8,
+  "lut_bytes": 2048,
+  "alternating_controller_worker": true,
+  "zero_change_byte_exact_U85Q": true,
+  "scope": "source_dataflow_not_physical_C5_timing_or_quality"
+ },
+ "assembler_sha256": "1b293da34636288b77b3cad0b50825b3c04cadb9660475fddbaa4623b8c562e8",
+ "target_sha256": "8ea69d170fa74ae382838d2634aaf9f5cff66c5ee0267cab5c04f1af82e5a19d",
+ "official_version": "espressif/esp-idf v6.0.2",
+ "physical_acceptance": false,
+ "programs": [
+  {
+   "name": "PC-CONFIDENCE-r0.8-0.8",
+   "source_sha256": "eccefdebac8421f718924311f904f80d118f5d61770c472d3f4ffc7e4f8ec1d0",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "436f17556ef86358daab6a1baf5ede394ca75a78a2548aac768412cf13256210"
+  },
+  {
+   "name": "PC-CONFIDENCE-r1.6-0.8",
+   "source_sha256": "6bc506e6792ada2f8a76efab6b46538d3f59ddfbd710aa572512fa0fd93d510d",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "d62d507a36056b8c6bb87ce236120a855b45b5f72d51c8a3c0cf7c7970b69772"
+  },
+  {
+   "name": "PC-CONFIDENCE-r2.6-0.8",
+   "source_sha256": "2d1129adff9ecd63f42cab32341c2161ccd8d1aca072af20f7713cf635835e30",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "aabfa32b95ae1b2cb0afd00b77501a9033c52600424b781bd0818c80527d96c0"
+  },
+  {
+   "name": "PC-CONFIDENCE-r3.6-0.8",
+   "source_sha256": "485354d94ffb745eaa33608ffc328f815ca59275fe9a363d8c5a37a2d1d3fcb9",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "0afebf7bccee12569629e8b602d4f4150bcca9af632b73daaf06b7af4da0b642"
+  },
+  {
+   "name": "PC-CONFIDENCE-r0.8-1.6",
+   "source_sha256": "047734d5cd931fdce936dc91a9dd73e2ed445dd9cb02b2921cf1104a02165894",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "26e71a6c06e13dcc8c46c208830a3f5fe6afdd4b6e4b2435c5ba0a527c5b6a35"
+  },
+  {
+   "name": "PC-CONFIDENCE-r1.6-1.6",
+   "source_sha256": "73117ad3f32342d5678df13fbb2a5133730f5c80a61c16fbcbbf92e86b4c7911",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "927f26de1336ccbfbd7556936213311a2df9def8275b34991e46f68f31a37776"
+  }
+ ],
+ "assembler_pass": true
+}

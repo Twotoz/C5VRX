@@ -1,0 +1,155 @@
+{
+ "HC50": {
+  "weak": {
+   "picture": 0.8677746196262065,
+   "sinad": -0.09660294245049439,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.578697533936122,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9244426397864037,
+   "sinad": 5.764240118858055,
+   "vertical": 1.0
+  }
+ },
+ "PC-CONFIDENCE-r0.8-0.8": {
+  "weak": {
+   "picture": 0.974814353314606,
+   "sinad": 1.380280264430351,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.91309483830168,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9856082018940605,
+   "sinad": 6.751486510375207,
+   "vertical": 1.0
+  }
+ },
+ "PC-CONFIDENCE-r0.8-1.6": {
+  "weak": {
+   "picture": 0.9744232819743268,
+   "sinad": 1.3654532131127828,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.91309483830168,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9853847325567582,
+   "sinad": 6.74301390962231,
+   "vertical": 1.0
+  }
+ },
+ "PC-CONFIDENCE-r1.6-0.8": {
+  "weak": {
+   "picture": 0.9583014585297784,
+   "sinad": 1.444003573705797,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.91309483830168,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9761722620170162,
+   "sinad": 6.787899829961176,
+   "vertical": 1.0
+  }
+ },
+ "PC-CONFIDENCE-r1.6-1.6": {
+  "weak": {
+   "picture": 0.955990167025184,
+   "sinad": 1.408689248885463,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.91309483830168,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9748515240143909,
+   "sinad": 6.767720215778127,
+   "vertical": 1.0
+  }
+ },
+ "PC-CONFIDENCE-r2.6-0.8": {
+  "weak": {
+   "picture": 0.6243844933661402,
+   "sinad": 1.3826616350626741,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.819116833899875,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.7853625676377944,
+   "sinad": 6.7125710059929045,
+   "vertical": 1.0
+  }
+ },
+ "PC-CONFIDENCE-r3.6-0.8": {
+  "weak": {
+   "picture": 0.4858246676700911,
+   "sinad": 1.1817058936909985,
+   "vertical": 0.75
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 11.025022791811272,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.7061855243829093,
+   "sinad": 5.400270278599687,
+   "vertical": 0.8571428571428571
+  }
+ },
+ "RANGE32": {
+  "weak": {
+   "picture": 0.48552442212236024,
+   "sinad": 1.6856198515472858,
+   "vertical": 0.625
+  },
+  "strong": {
+   "picture": 0.8296296296296296,
+   "sinad": 7.565339055274382,
+   "vertical": 0.8333333333333334
+  },
+  "all": {
+   "picture": 0.6329980824826186,
+   "sinad": 4.20549951028747,
+   "vertical": 0.7142857142857143
+  }
+ },
+ "U85Q UNTRAINED": {
+  "weak": {
+   "picture": 0.974814353314606,
+   "sinad": 1.380280264430351,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.91309483830168,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9856082018940605,
+   "sinad": 6.751486510375207,
+   "vertical": 1.0
+  }
+ }
+}

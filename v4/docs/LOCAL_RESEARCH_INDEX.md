@@ -21,6 +21,10 @@ observer, integer implementation, CPU estimate and unresolved output design.
 The [carrier acquisition follow-up](LOCAL_IQ_CARRIER_DESIGN.md) records causal
 plateau-frequency estimation, a false-noise admission, a stronger independent
 gate and an oracle bound on how much correct centring could help U85Q sync.
+The [controller and model follow-up](LOCAL_IQ_CONTROLLER_FOLLOWUP.md) records
+automatic correction that restores target sync but harms nominal controls,
+mixed imaginary-covariance estimates and six legal confidence-bank candidates
+without a quality winner.
 
 The strongest result is specific: received-IQ-only H-clock acquisition succeeds
 in 16 fresh off-centre echo/fade cases at 6dB CNR, while U85Q's goggle H-lock
@@ -46,6 +50,9 @@ low-CNR failures and false timing are preserved, not excluded from the archive.
 | `iq-carrier-coherence-validation` | Independent stronger gate; admitted wrong PAL timing still prevents controller promotion |
 | `iq-carrier-pulse-validation`, `iq-carrier-pulse-replay` | Independent full-pulse guard and hash-matched rejection of the known wrong PAL clock; timing limitations remain |
 | `iq-recenter-oracle-bound` | Known-direction settled correction restores much goggle sync, without better active-video fidelity |
+| `iq-acquisition-loop-development`, `iq-acquisition-loop-retry-validation` | Received-only hypothetical controller; fresh retries restore target sync but regress nominal controls |
+| `iq-carrier-imaginary-ablation`, `iq-carrier-filter-mismatch` | Conditional imaginary-covariance algebra and mixed estimator results, including fresh filter-mismatch cases |
+| `pc-confidence-source-proof`, `pc-confidence-confirmation` | Six accepted source schedules; changed confidence radii fail independent quality comparison |
 
 Frozen sources, recorded seeds, input hashes and compiler/assembler hashes
 identify the experiments. Some early formula runs recorded source hashes

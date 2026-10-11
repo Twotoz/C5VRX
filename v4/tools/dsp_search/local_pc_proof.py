@@ -20,9 +20,10 @@ if __name__=='__main__':
     ap.add_argument('--assembler',type=Path,required=True)
     ap.add_argument('--target',type=Path,required=True)
     ap.add_argument('--out',type=Path,required=True)
-    ap.add_argument('--family',choices=('pc','complex'),default='pc')
+    ap.add_argument('--family',choices=('pc','complex','confidence'),default='pc')
     a=ap.parse_args();a.out.mkdir(parents=True,exist_ok=True)
     if a.family=='complex':import local_complex_counter as P
+    if a.family=='confidence':import local_pc_confidence as P
     result=dict(source_dataflow=P.verify(),assembler_sha256=sha(a.assembler),
         target_sha256=sha(a.target),official_version='espressif/esp-idf v6.0.2',
         physical_acceptance=False,programs=[])
