@@ -53,6 +53,8 @@ low-CNR failures and false timing are preserved, not excluded from the archive.
 | `iq-acquisition-loop-development`, `iq-acquisition-loop-retry-validation` | Received-only hypothetical controller; fresh retries restore target sync but regress nominal controls |
 | `iq-carrier-imaginary-ablation`, `iq-carrier-filter-mismatch` | Conditional imaginary-covariance algebra and mixed estimator results, including fresh filter-mismatch cases |
 | `pc-confidence-source-proof`, `pc-confidence-confirmation` | Six accepted source schedules; changed confidence radii fail independent quality comparison |
+| `iq-sync-guard-validation` | Fresh 20-case received-only protection ablation: no sampled H regressions, incomplete recovery at stronger CFO/deviation |
+| `pc-erasure-source-proof`, `pc-erasure-confirmation` | Five accepted exact coarse-prediction schedules; fresh positive sync trade-off with worse luma SINAD, no promotion |
 
 Frozen sources, recorded seeds, input hashes and compiler/assembler hashes
 identify the experiments. Some early formula runs recorded source hashes

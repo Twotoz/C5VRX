@@ -27,7 +27,7 @@ def observation(raw):
                 input_sha256=hashlib.sha256(raw.tobytes()).hexdigest())
 
 
-def run_case(spec, retries=1):
+def run_case(spec, retries=1, protection=None):
     import waveforms as V
     import goggle_lock as G
     events = []
@@ -53,6 +53,10 @@ def run_case(spec, retries=1):
             crop = int(np.random.default_rng(noise_seed+3).integers(0, 240000))
             raw = current['raw'][crop:crop+320000]
             estimate = observation(raw)
+            if protection is not None:
+                estimate['protection'] = protection(estimate)
+                if not estimate['protection']['permit_correction']:
+                    estimate['decision']['proposed_single_step_khz'] = 0
             if estimate['decision']['admitted'] or attempt==retries-1:
                 break
             events.append(dict(epoch=epoch, attempt=attempt, noise_seed=noise_seed,

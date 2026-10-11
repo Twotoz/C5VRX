@@ -1,0 +1,57 @@
+{
+ "source_dataflow": {
+  "models": 5,
+  "bytes_per_stream": 8192,
+  "slots": 8,
+  "lut_bytes": 2048,
+  "scope": "independent_source_dataflow_not_C5_timing_or_quality",
+  "control": "24_angle_zero_prior_not_byte_exact_U85Q"
+ },
+ "assembler_sha256": "1b293da34636288b77b3cad0b50825b3c04cadb9660475fddbaa4623b8c562e8",
+ "target_sha256": "8ea69d170fa74ae382838d2634aaf9f5cff66c5ee0267cab5c04f1af82e5a19d",
+ "official_version": "espressif/esp-idf v6.0.2",
+ "physical_acceptance": false,
+ "programs": [
+  {
+   "name": "PC-ERASURE-p0-0-g0.5",
+   "source_sha256": "74cab0f60fbfbce9833cb0a434b7ced217c13b4722b769d924c7efc6add274da",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "259572c64701d024b3a0cee92433928151e843a65d01fdb1e68053009385b862"
+  },
+  {
+   "name": "PC-ERASURE-p-1-4-g0.5",
+   "source_sha256": "8bd38b35f27d24888a3a50b29f6eb211dae1a21eb486caef34561d86b2d368a3",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "797b69875bc03746833f132a2a881d878adba163cdcf5bd992801ebfba589eb0"
+  },
+  {
+   "name": "PC-ERASURE-p-3-4-g0.5",
+   "source_sha256": "e0edd814d96835adc4b868b71f4d2ddce2a9f6f4e6be8c4f156c00861184176d",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "33dcd900c139dce48cb52ae1d7d153b30b5684467d0c15fb72d8b7d791c19872"
+  },
+  {
+   "name": "PC-ERASURE-p-5-4-g0.5",
+   "source_sha256": "882b895e2b9675259335a5d5d9f1c77603798cfc586a1ca35e52d2bad6190362",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "9645fcae65a8ccc9d44f29673542b7cd8abc76932ee030d349c3cf8293b47946"
+  },
+  {
+   "name": "PC-ERASURE-p-3-4-g0.25",
+   "source_sha256": "d5ee34b8897b5ae24aa4f3bd0c6437b8faea6fe2f7e6ad1a73670f83d4cf314e",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "1b5000de1c26a56d0a1241190a0e069dbeb687070bfcd13e382418c0e1121da2"
+  }
+ ],
+ "assembler_pass": true
+}
