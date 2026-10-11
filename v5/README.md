@@ -21,6 +21,8 @@ It generates phase-only and predictive phase/frequency models within one 2 KiB
 shared LUT, then rejects candidates that lose sync or strong-signal quality.
 Screening uses the actual ADC folding; independent full-field tests gate export.
 Running the search does not change the active firmware demodulator.
+`lut_evolve.py` additionally evolves the complete LUT and arbitrary input-bit
+selection, without requiring angular tokens or phase/frequency state meanings.
 
 ## What it does
 

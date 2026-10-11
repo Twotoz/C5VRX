@@ -11,6 +11,76 @@ the globally optimal demodulator has been found.
 BitScrambler program for each design. All sample processing remains offline
 in this study. The firmware keeps its existing default demodulator.
 
+## Direct LUT evolution: removing the analytic-family restriction
+
+The formula sweep is retained as a baseline, but **`lut_evolve.py` optimizes
+the actual LUT words**. An observation need not be an angular sector. A
+retained state need not represent phase or frequency. Every observation
+token, next-state assignment and six-bit DAC code can change independently.
+All 16,384 bits of the shared LUT are mutable. Sparse DAC moves preserve
+useful candidates; unrestricted word/field redraws permit arbitrary tables.
+
+The ten input address bits are also genes: any ten distinct bits from the
+sixteen raw pair bits may be selected, covering all **8,008 input subsets**.
+The earlier four MSB layouts are seeds rather than restrictions. Exact
+state/token relabeling preserves behavior while allowing non-angular state
+encodings. Random LUTs provide additional starting points. Width niches keep
+4/5/6-token-bit architectures in the population; mutations, elite selection
+and random restarts run for multiple generations, with resumable checkpoints.
+
+This searches the complete word representation **within the existing
+two-lookup program skeleton**, not every program executable by the C5.
+The retained-state carry is still O26..O31, observations use ten selected
+raw bits, and token/state widths remain 4/6, 5/5 and 6/4. Conditional
+instruction schedules, wider state-carry schemes and different transports
+are outside this engine. These are explicit scope boundaries, not a claim
+that those alternatives are physically impossible or that U85Q is optimal.
+
+```sh
+python -m unittest discover -s v5/test -p 'test_lut_evolve.py'
+python v5/research/lut_evolve.py v5/research/data/evolve_wide_20261011 \
+  --population 16 --generations 8 --seed 240011 --jobs 4 --finalists 3
+```
+
+The default budget is 32 population members and 32 offspring generations.
+Increasing it is supported; it does not guarantee a better receiver. Training
+uses six 220,000-sample cases; shortlisted genomes then face all nine longer
+screening cases before freezing. The final 56 two-field cases use **new seeds**
+(511xxx/512xxx etc. training, 521xxx/522xxx/523xxx validation), distinct from
+the previous formula study. No validation metric guides evolution.
+
+`checkpoint.json` includes the full genomes, metrics, RNG state and source
+hashes at each completed generation. `--resume` continues an interrupted run
+with the same population, seed, sources and baseline. Resume is refused after
+finalists have been frozen, to avoid tuning against already viewed final
+results. A new study after inspecting the final rows needs a new holdout.
+
+All observations/outputs/states share the one 1024-word table. Program
+generation adjusts only the legal field wiring and raw input-bit selection,
+with the same eight-block read/write cadence. Tests cover arbitrary tables,
+behavior-preserving state/token permutations, all mutable fields, input
+subset mutation, hash corruption and fresh holdout seeds. No realtime CPU
+model or automatic firmware promotion is added.
+
+The first evolutionary run is archived in `data/evolve_wide_20261011/`:
+**147 genomes over eight offspring generations**, 882 short training
+comparisons, 54 longer screening comparisons and 168 independent full-field
+comparisons. Fifteen host tests pass (the original ten plus five direct-LUT
+tests). A separate set of 57 mutated/random-state programs, including altered
+input selections, assembled successfully for ESP32-C5. Physical timing is
+still untested.
+
+The leading genomes improve weak-case mean luma SINAD by about **0.32 dB in
+the final matrix**, with only about 0.02 dB mean strong-case loss. This avoids
+the earlier predictive family's large strong-image penalty, but the candidates
+still lose up to about **66 percentage points of displayed lines** in individual
+weak/echo cases. They fail the longer screen and independent sync gates. No
+candidate is exported or enabled. Short-crop training did not reveal those
+sync failures; that is a limitation of this first evolutionary run, not a
+reason to loosen the acceptance gate. More generations and longer/broader
+training are needed to search further; these results do not establish a
+hardware or information limit.
+
 ## Search space and hardware gate
 
 Every proposed design uses raw packed Q4/I4 pairs at IQ40, a single TX

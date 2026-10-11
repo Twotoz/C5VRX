@@ -470,6 +470,17 @@ and 168 held-out candidate/case comparisons; no candidate passes both gates,
 no offline winner exported, firmware demod unchanged. Coarse phase/frequency
 history loses too much clean-picture precision in the tested predictive family.
 
+The follow-up `v5/research/lut_evolve.py` removes the analytic-model restriction:
+all 16,384 shared-LUT bits (tokens, next-state assignments, DAC codes) and any
+ten distinct raw pair input bits are genes; all 8,008 input subsets are
+reachable. State/token relabeling is behavior-preserving; state meanings are
+not fixed to phase/frequency. Multi-generation mutation, elite/width niches,
+random restarts and source-hashed resumable checkpoints retain rejected models.
+Scope remains the existing eight-block two-lookup skeleton with O26..O31
+state carry; it is not a proof covering every possible C5 instruction schedule.
+New training/final seeds avoid reusing the previously inspected holdout. See
+`v5/research/data/evolve_wide_20261011/` and `v5/docs/DEMOD_SEARCH.md`.
+
 ### Instructions for future pipeline work
 
 1. Search this ledger, the original source paths, `docs/KNOWLEDGE_INDEX.md` and
