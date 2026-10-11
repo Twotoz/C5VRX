@@ -308,3 +308,10 @@ loses SINAD without gaining robustness; a narrower white side (+7.5 MHz)
 gains +0.08 dB, within noise. U85Q again leads the mixed set (0.882 vs HC50
 0.862, U85E 0.762) with nominal picture 0.997. Across three independent seed
 sets the untrained search has converged on U85Q.
+
+Multipath bound check (12 echo+fade cases, seeds 1010000+): U85Q matches
+its float upper bound (exact angles, continuous phase, same quadrant gain)
+at every C/N - picture 0.57 / 0.95 / 1.00 vs 0.56 / 0.95 / 1.00 at
+6 / 10 / 20 dB - and beats HC50 (0.44 / 0.91 / 1.00). The residual multipath
+loss is in the signal (fades push the instantaneous C/N below threshold),
+not in the LUT compression.
