@@ -280,3 +280,24 @@ universality; U85E stays selectable. Pinned as range option 8
 (`1a09f5c092e8`), bit-exact, built, flashed and active on the board.
 Fold at RMS 8 remains a gain-control matter: a folded sample cannot be
 recognised from its own bits.
+
+## Sharpness vs robustness frontier (v5, new seeds)
+
+51 variants around U85Q on 24 nominal + 72 mixed robustness cases
+(`data/untrained_search/v5-rows.json`, `untrained_v5score.py`):
+
+| model | nominal picture / SINAD | mixed picture / SINAD |
+| --- | --- | --- |
+| **U85Q** (-6..+9 MHz, quadrant gain 0.5) | 0.998 / 3.55 | **0.893** / 1.93 |
+| -5.5..+9 MHz | 0.998 / 3.62 | 0.891 / 1.99 |
+| -5..+9 MHz | 0.998 / 3.71 | 0.876 / 2.11 |
+| -4.5..+8.5 MHz | 0.998 / 3.76 | 0.864 / 2.15 |
+| U85E | 0.995 / 4.26 | 0.706 / 2.48 |
+| HC50 | 0.981 / 2.17 | 0.872 / 0.76 |
+
+The output window sets one trade-off: narrower clips click energy (sharper)
+but also clips sync tips when the carrier is off centre. Quadrant gain 0.5
+beats 0.7/0.85; sector and centroid observations tie. U85Q is the
+robustness-first point of this frontier. A narrower window is only safe once
+the carrier is centred on the board (AFC with the LUT demods), which must be
+measured there.

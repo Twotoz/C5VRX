@@ -183,6 +183,9 @@ def lookup(D, n):
     if n.startswith('PQ:'):
         _, g, b6 = n.split(':')
         return lambda c: ('pq', (float(g), b6 == '6'))
+    if n == 'U85Q':
+        m = json.loads((ROOT / 'tools/range_options.json').read_text())['options'][8]['model']
+        return lambda c, m=m: ('lut', m)
     if n == 'U85E':
         m = json.loads((ROOT / 'tools/range_options.json').read_text())['options'][7]['model']
         return lambda c, m=m: ('lut', m)
