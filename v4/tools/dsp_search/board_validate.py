@@ -26,8 +26,11 @@ def snap(port, path, tries=5):
     retry a few times and report the last error instead of failing silently."""
     err = ''
     for _ in range(tries):
-        p = subprocess.run([sys.executable, str(ROOT / 'tools/capture_iq_snapshot.py'), port, str(path)],
-                           capture_output=True, text=True)
+        try:   # a stuck serial read once blocked the watcher for four hours
+            p = subprocess.run([sys.executable, str(ROOT / 'tools/capture_iq_snapshot.py'), port, str(path)],
+                               capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            err = 'capture timed out'; continue
         out = p.stdout + p.stderr
         if path.exists() and 'Saved' in out: return True
         err = out.strip().splitlines()[-1] if out.strip() else 'no output'
