@@ -1,0 +1,466 @@
+{
+ "seed": 8400190,
+ "repeats": 4,
+ "rows": [
+  {
+   "seed": 8400190,
+   "standard": "PAL",
+   "ideal_correction_khz": 0,
+   "input_sha256": "565d360a588bfda87272345112d96bde531773f4247b8487c0ee7b87b65fac68",
+   "U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.3163934426229508,
+    "missed_per_line": 0.4426229508196721,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.3163934426229508,
+    "peak_missed_per_line": 0.4426229508196721,
+    "peak_v_ok": 1.0,
+    "sinad": 0.6100167577075568
+   }
+  },
+  {
+   "seed": 8400190,
+   "standard": "PAL",
+   "ideal_correction_khz": -1000,
+   "input_sha256": "5773e303ccfffc8f2c2b9cdb5609794d49c91be737fa5fc8c72457775481805b",
+   "U85Q": {
+    "h_ok": 0.989778534923339,
+    "locked": 0.9931856899488927,
+    "false_per_line": 0.3360655737704918,
+    "missed_per_line": 0.26557377049180325,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.989778534923339,
+    "peak_locked": 0.9931856899488927,
+    "peak_false_per_line": 0.3360655737704918,
+    "peak_missed_per_line": 0.26885245901639343,
+    "peak_v_ok": 1.0,
+    "sinad": -0.18591601403391383
+   }
+  },
+  {
+   "seed": 8400190,
+   "standard": "PAL",
+   "ideal_correction_khz": -1500,
+   "input_sha256": "cad7d750c71caa234bd4e9741fa8947bb9b1f614513726191a9c03a0f68d1b17",
+   "U85Q": {
+    "h_ok": 0.9880341880341881,
+    "locked": 1.0,
+    "false_per_line": 0.32131147540983607,
+    "missed_per_line": 0.2721311475409836,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9880341880341881,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.319672131147541,
+    "peak_missed_per_line": 0.2721311475409836,
+    "peak_v_ok": 1.0,
+    "sinad": -1.444660239977729
+   }
+  },
+  {
+   "seed": 8400207,
+   "standard": "NTSC",
+   "ideal_correction_khz": 0,
+   "input_sha256": "f2461363044a3f3afd77a27f0ceb1dc5e2c1012991afb2c38a61d01dbff6b84e",
+   "U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.3510848126232742,
+    "missed_per_line": 0.4635108481262327,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.3510848126232742,
+    "peak_missed_per_line": 0.4635108481262327,
+    "peak_v_ok": 1.0,
+    "sinad": 1.4968997728030589
+   }
+  },
+  {
+   "seed": 8400207,
+   "standard": "NTSC",
+   "ideal_correction_khz": -1000,
+   "input_sha256": "67841edcd0f6a56d3a24145832349b484b8806983bda7e7d9b017b99dcf40c83",
+   "U85Q": {
+    "h_ok": 0.7883064516129032,
+    "locked": 0.7923387096774194,
+    "false_per_line": 0.3333333333333333,
+    "missed_per_line": 0.28402366863905326,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.7903225806451613,
+    "peak_locked": 0.7923387096774194,
+    "peak_false_per_line": 0.32741617357001973,
+    "peak_missed_per_line": 0.28402366863905326,
+    "peak_v_ok": 1.0,
+    "sinad": 1.1341079426261151
+   }
+  },
+  {
+   "seed": 8400207,
+   "standard": "NTSC",
+   "ideal_correction_khz": -1500,
+   "input_sha256": "f7630c4ff11990f081a3ab60e35b9de79abf10973a25f5117a40f1c3f7d11374",
+   "U85Q": {
+    "h_ok": 0.9897540983606558,
+    "locked": 1.0,
+    "false_per_line": 0.358974358974359,
+    "missed_per_line": 0.26627218934911245,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9897540983606558,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.358974358974359,
+    "peak_missed_per_line": 0.2702169625246548,
+    "peak_v_ok": 1.0,
+    "sinad": 1.1627640986737828
+   }
+  },
+  {
+   "seed": 8400291,
+   "standard": "PAL",
+   "ideal_correction_khz": 0,
+   "input_sha256": "3477f374cd85febe064d7b7171cd78959e724ea9bd7df29acb2433d2346a29c0",
+   "U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.31311475409836065,
+    "missed_per_line": 0.4245901639344262,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.31311475409836065,
+    "peak_missed_per_line": 0.4245901639344262,
+    "peak_v_ok": 1.0,
+    "sinad": 0.607216306159263
+   }
+  },
+  {
+   "seed": 8400291,
+   "standard": "PAL",
+   "ideal_correction_khz": -1000,
+   "input_sha256": "edba46879addf9e3e3a71a4e412b9bcc47cdd3135fe2c49c7a6acf816813c50b",
+   "U85Q": {
+    "h_ok": 0.9949066213921901,
+    "locked": 1.0,
+    "false_per_line": 0.32786885245901637,
+    "missed_per_line": 0.25081967213114753,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9949066213921901,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.32459016393442625,
+    "peak_missed_per_line": 0.2540983606557377,
+    "peak_v_ok": 1.0,
+    "sinad": -0.194647445207448
+   }
+  },
+  {
+   "seed": 8400291,
+   "standard": "PAL",
+   "ideal_correction_khz": -1500,
+   "input_sha256": "3c090e35efaa7bce11759f987473ee5a58fa9ba349f9dc035d24e16389f98f56",
+   "U85Q": {
+    "h_ok": 0.9609507640067911,
+    "locked": 0.967741935483871,
+    "false_per_line": 0.34590163934426227,
+    "missed_per_line": 0.25081967213114753,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9474576271186441,
+    "peak_locked": 0.9542372881355933,
+    "peak_false_per_line": 0.34590163934426227,
+    "peak_missed_per_line": 0.25245901639344265,
+    "peak_v_ok": 1.0,
+    "sinad": -1.3937257137401728
+   }
+  },
+  {
+   "seed": 8400308,
+   "standard": "NTSC",
+   "ideal_correction_khz": 0,
+   "input_sha256": "484d6e602f6b4f23c9d5dd36380ccb7ac613c470c961182f7429f3fef0c4bb7a",
+   "U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.3530571992110454,
+    "missed_per_line": 0.47534516765285995,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.3530571992110454,
+    "peak_missed_per_line": 0.47534516765285995,
+    "peak_v_ok": 1.0,
+    "sinad": 1.4934148462453765
+   }
+  },
+  {
+   "seed": 8400308,
+   "standard": "NTSC",
+   "ideal_correction_khz": -1000,
+   "input_sha256": "6baf94557ee8a4f817b6afe6d534671a4e719a382bec8450595556fca625dc8e",
+   "U85Q": {
+    "h_ok": 0.9263803680981595,
+    "locked": 0.9386503067484663,
+    "false_per_line": 0.2938856015779093,
+    "missed_per_line": 0.26627218934911245,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9282786885245902,
+    "peak_locked": 0.9405737704918032,
+    "peak_false_per_line": 0.2879684418145957,
+    "peak_missed_per_line": 0.2682445759368836,
+    "peak_v_ok": 1.0,
+    "sinad": 1.116982025732395
+   }
+  },
+  {
+   "seed": 8400308,
+   "standard": "NTSC",
+   "ideal_correction_khz": -1500,
+   "input_sha256": "f6d61c7cda5c53e263a0bd5567acebe887963b0e2fc8cc28bcbfa12b634ed71c",
+   "U85Q": {
+    "h_ok": 0.7570281124497992,
+    "locked": 0.7670682730923695,
+    "false_per_line": 0.3214990138067061,
+    "missed_per_line": 0.28007889546351084,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.7570281124497992,
+    "peak_locked": 0.7670682730923695,
+    "peak_false_per_line": 0.3155818540433925,
+    "peak_missed_per_line": 0.28007889546351084,
+    "peak_v_ok": 1.0,
+    "sinad": 1.206902427141735
+   }
+  },
+  {
+   "seed": 8400392,
+   "standard": "PAL",
+   "ideal_correction_khz": 0,
+   "input_sha256": "53adb089f2b918104af1b1b493cf7ce831880804432f6df1234742fc3ba1e860",
+   "U85Q": {
+    "h_ok": 0.315359477124183,
+    "locked": 0.3349673202614379,
+    "false_per_line": 0.34590163934426227,
+    "missed_per_line": 0.4672131147540984,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.3158756137479542,
+    "peak_locked": 0.3355155482815057,
+    "peak_false_per_line": 0.34590163934426227,
+    "peak_missed_per_line": 0.4672131147540984,
+    "peak_v_ok": 1.0,
+    "sinad": 0.5600855327806747
+   }
+  },
+  {
+   "seed": 8400392,
+   "standard": "PAL",
+   "ideal_correction_khz": -1000,
+   "input_sha256": "ea54b981f832957dfff981eea2dde43595c54e5ae42e1ed442a477b9d3c5138c",
+   "U85Q": {
+    "h_ok": 0.9829642248722317,
+    "locked": 0.9965928449744463,
+    "false_per_line": 0.3163934426229508,
+    "missed_per_line": 0.2786885245901639,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9846678023850085,
+    "peak_locked": 0.9965928449744463,
+    "peak_false_per_line": 0.31311475409836065,
+    "peak_missed_per_line": 0.2836065573770492,
+    "peak_v_ok": 1.0,
+    "sinad": -0.20908488362982924
+   }
+  },
+  {
+   "seed": 8400392,
+   "standard": "PAL",
+   "ideal_correction_khz": -1500,
+   "input_sha256": "004148f4b3d965e8b2bd8d87a8e03b1e4731285a632921c78f185bb3be478cca",
+   "U85Q": {
+    "h_ok": 0.9387755102040817,
+    "locked": 0.9506802721088435,
+    "false_per_line": 0.30983606557377047,
+    "missed_per_line": 0.25901639344262295,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9355932203389831,
+    "peak_locked": 0.9474576271186441,
+    "peak_false_per_line": 0.30491803278688523,
+    "peak_missed_per_line": 0.260655737704918,
+    "peak_v_ok": 1.0,
+    "sinad": -1.4401531589015342
+   }
+  },
+  {
+   "seed": 8400409,
+   "standard": "NTSC",
+   "ideal_correction_khz": 0,
+   "input_sha256": "931b2d230602b8855d0479fffe4d1b45c0626da3a8244fa6d3c91eb99e3da8ce",
+   "U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.33136094674556216,
+    "missed_per_line": 0.4812623274161736,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.33136094674556216,
+    "peak_missed_per_line": 0.4812623274161736,
+    "peak_v_ok": 1.0,
+    "sinad": 1.482469136424871
+   }
+  },
+  {
+   "seed": 8400409,
+   "standard": "NTSC",
+   "ideal_correction_khz": -1000,
+   "input_sha256": "7c62eaf8240c6f93d9711bf127207bea7cda6319daf6ff6ad8b7a8c0655dd10a",
+   "U85Q": {
+    "h_ok": 0.9896694214876033,
+    "locked": 1.0,
+    "false_per_line": 0.34714003944773175,
+    "missed_per_line": 0.25443786982248523,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9896694214876033,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.33727810650887574,
+    "peak_missed_per_line": 0.25443786982248523,
+    "peak_v_ok": 1.0,
+    "sinad": 1.1205664904892854
+   }
+  },
+  {
+   "seed": 8400409,
+   "standard": "NTSC",
+   "ideal_correction_khz": -1500,
+   "input_sha256": "a77b169bbfc7b8dd9ec66ede4f575a5af9e493801e5c7b00fddcd7a4dd0631a5",
+   "U85Q": {
+    "h_ok": 0.8044806517311609,
+    "locked": 0.8533604887983707,
+    "false_per_line": 0.33925049309664695,
+    "missed_per_line": 0.28994082840236685,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.8044806517311609,
+    "peak_locked": 0.8533604887983707,
+    "peak_false_per_line": 0.33530571992110453,
+    "peak_missed_per_line": 0.29191321499013806,
+    "peak_v_ok": 1.0,
+    "sinad": 1.1938126231601418
+   }
+  },
+  {
+   "seed": 8400493,
+   "standard": "PAL",
+   "ideal_correction_khz": 0,
+   "input_sha256": "85783e39691d6e42630c46000aa3c5b145823655f81ae0abc8f0c393aa903259",
+   "U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.33934426229508197,
+    "missed_per_line": 0.45737704918032784,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.33934426229508197,
+    "peak_missed_per_line": 0.45901639344262296,
+    "peak_v_ok": 1.0,
+    "sinad": 0.6185784277803479
+   }
+  },
+  {
+   "seed": 8400493,
+   "standard": "PAL",
+   "ideal_correction_khz": -1000,
+   "input_sha256": "2b63b76bce4ca9c99abfdecd06f93cb5934d8b6dc667c4f05e11903d0d473f45",
+   "U85Q": {
+    "h_ok": 0.9591836734693877,
+    "locked": 0.9727891156462585,
+    "false_per_line": 0.32459016393442625,
+    "missed_per_line": 0.27704918032786885,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9625850340136054,
+    "peak_locked": 0.9727891156462585,
+    "peak_false_per_line": 0.319672131147541,
+    "peak_missed_per_line": 0.28032786885245903,
+    "peak_v_ok": 1.0,
+    "sinad": -0.1889373237725553
+   }
+  },
+  {
+   "seed": 8400493,
+   "standard": "PAL",
+   "ideal_correction_khz": -1500,
+   "input_sha256": "848f0a011796b85c840d863e68615243108f4562c5d65734cac95337778de0de",
+   "U85Q": {
+    "h_ok": 0.9897959183673469,
+    "locked": 1.0,
+    "false_per_line": 0.32459016393442625,
+    "missed_per_line": 0.27377049180327867,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9914965986394558,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.32131147540983607,
+    "peak_missed_per_line": 0.2754098360655738,
+    "peak_v_ok": 1.0,
+    "sinad": -1.4416775254497283
+   }
+  },
+  {
+   "seed": 8400510,
+   "standard": "NTSC",
+   "ideal_correction_khz": 0,
+   "input_sha256": "47d17160db175df523c2fad21a2bb7626a24885e882fd6840f25124786d134ae",
+   "U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.34714003944773175,
+    "missed_per_line": 0.4556213017751479,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.34714003944773175,
+    "peak_missed_per_line": 0.4556213017751479,
+    "peak_v_ok": 1.0,
+    "sinad": 1.4717369925599757
+   }
+  },
+  {
+   "seed": 8400510,
+   "standard": "NTSC",
+   "ideal_correction_khz": -1000,
+   "input_sha256": "0dc1f929254b5595e3a55fd07e859f5cd014d2bbd3cd9667e4d2586c4af1fecc",
+   "U85Q": {
+    "h_ok": 0.9490835030549898,
+    "locked": 0.9633401221995926,
+    "false_per_line": 0.33136094674556216,
+    "missed_per_line": 0.26429980276134124,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.9490835030549898,
+    "peak_locked": 0.9633401221995926,
+    "peak_false_per_line": 0.32938856015779094,
+    "peak_missed_per_line": 0.26429980276134124,
+    "peak_v_ok": 1.0,
+    "sinad": 1.122918983901149
+   }
+  },
+  {
+   "seed": 8400510,
+   "standard": "NTSC",
+   "ideal_correction_khz": -1500,
+   "input_sha256": "53ff6080689dfb9fecd81d76b45a217b11f70702e645f42c6ac9331203d7f2a4",
+   "U85Q": {
+    "h_ok": 0.993801652892562,
+    "locked": 1.0,
+    "false_per_line": 0.3155818540433925,
+    "missed_per_line": 0.26429980276134124,
+    "v_ok": 1.0,
+    "peak_h_ok": 0.993801652892562,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.3116370808678501,
+    "peak_missed_per_line": 0.26627218934911245,
+    "peak_v_ok": 1.0,
+    "sinad": 1.1963850188723328
+   }
+  }
+ ],
+ "scope": "oracle_direction_settled_RF_bound_not_a_demodulator_or_controller",
+ "calibration": "inherited_per_case_clean_oracle_goggle",
+ "limits": "1000kHz_current_four_step_budget_1500kHz_RF_clamp_no_transient_or_settling_model",
+ "source_sha256": "0de028eb7df334aff754b6b6c1346a2efbc8566f74f37c54a976eb94cdaf97c2"
+}

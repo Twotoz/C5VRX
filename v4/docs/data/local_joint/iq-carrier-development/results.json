@@ -1,0 +1,1205 @@
+{
+ "seed": 8100190,
+ "repeats": 2,
+ "rows": [
+  {
+   "seed": 8100190,
+   "standard": "PAL",
+   "cnr": 6,
+   "deviation": 1.2,
+   "offset_hz": -2000000.0,
+   "stress": "both",
+   "crop_raw_bytes": 172688,
+   "input_sha256": "44f509f9910f54b7e16cfc5b9dfe45b112485b82a060e297e3e4bc8d23a1cc0c",
+   "clock": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 1418.5423512272123,
+    "score": 9.525988328832065,
+    "confidence": 3.7973615850587805,
+    "normalized_score": 0.7510164744292581,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "correct_standard": true,
+   "frequency_estimates": {
+    "sync": {
+     "samples": 52,
+     "covariance_real": [
+      18.346153846153847,
+      10.846153846153847,
+      -2.355769230769231,
+      -12.740384615384617,
+      -14.173076923076923,
+      -9.586538461538462,
+      0.10576923076923078,
+      10.682692307692308,
+      14.778846153846155
+     ],
+     "covariance_imag": [
+      0.0,
+      -10.076923076923077,
+      -14.451923076923078,
+      -10.451923076923077,
+      -0.7692307692307693,
+      9.451923076923077,
+      13.317307692307693,
+      9.336538461538462,
+      -0.7403846153846154
+     ],
+     "adjacent_hz": -4766053.979015995,
+     "long_lag": {
+      "frequency_hz": -5040000.0,
+      "fitted_signal_power": 14.400340082183163,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.010027241883090135
+     },
+     "colored_covariance": {
+      "frequency_hz": -5040000.0,
+      "fitted_signal_power": 14.303287836422847,
+      "fitted_noise_power": 3.5206856116037675,
+      "relative_residual": 0.007113753763882829
+     }
+    },
+    "porch": {
+     "samples": 28,
+     "covariance_real": [
+      7.2142857142857135,
+      6.017857142857142,
+      3.696428571428571,
+      1.375,
+      -0.26785714285714285,
+      -0.9464285714285714,
+      -3.0535714285714284,
+      -4.553571428571428,
+      -4.392857142857142
+     ],
+     "covariance_imag": [
+      0.0,
+      -2.5535714285714284,
+      -3.625,
+      -3.8035714285714284,
+      -4.017857142857142,
+      -3.6607142857142856,
+      -2.589285714285714,
+      -1.1964285714285714,
+      0.8928571428571428
+     ],
+     "adjacent_hz": -2554786.984455675,
+     "long_lag": {
+      "frequency_hz": -2590000.0,
+      "fitted_signal_power": 4.302333221467064,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.01813017269466247
+     },
+     "colored_covariance": {
+      "frequency_hz": -2590000.0,
+      "fitted_signal_power": 4.382879791004946,
+      "fitted_noise_power": 2.951022699246946,
+      "relative_residual": 0.01275121713607124
+     }
+    }
+   },
+   "label_frequency_hz": {
+    "sync": -5020000.0,
+    "porch": -2722857.1428571427
+   },
+   "errors": {
+    "sync": {
+     "adjacent_hz": 253946.02098400518,
+     "long_lag_hz": -20000.0,
+     "colored_covariance_hz": -20000.0
+    },
+    "porch": {
+     "adjacent_hz": 168070.15840146784,
+     "long_lag_hz": 132857.14285714272,
+     "colored_covariance_hz": 132857.14285714272
+    }
+   }
+  },
+  {
+   "seed": 8100207,
+   "standard": "NTSC",
+   "cnr": 6,
+   "deviation": 1.2,
+   "offset_hz": -2000000.0,
+   "stress": "both",
+   "crop_raw_bytes": 182777,
+   "input_sha256": "d84fbd7fb9d0039bf1211b1edcb502c81b97834169e7a723a337a63e6d9c2412",
+   "clock": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 294.26527422492495,
+    "score": 8.869700801762585,
+    "confidence": 3.6419441968682222,
+    "normalized_score": 0.8545513847852009,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "correct_standard": true,
+   "frequency_estimates": {
+    "sync": {
+     "samples": 54,
+     "covariance_real": [
+      17.833333333333332,
+      10.824074074074073,
+      -2.3055555555555554,
+      -12.231481481481481,
+      -13.194444444444443,
+      -6.629629629629629,
+      2.4074074074074074,
+      11.222222222222221,
+      15.333333333333332
+     ],
+     "covariance_imag": [
+      0.0,
+      -10.657407407407407,
+      -14.472222222222221,
+      -8.231481481481481,
+      2.4166666666666665,
+      10.907407407407407,
+      13.759259259259258,
+      7.962962962962963,
+      -1.9814814814814814
+     ],
+     "adjacent_hz": -4950608.077679342,
+     "long_lag": {
+      "frequency_hz": -5190000.0,
+      "fitted_signal_power": 14.061890574212631,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.01024274238501906
+     },
+     "colored_covariance": {
+      "frequency_hz": -5190000.0,
+      "fitted_signal_power": 14.030940537641191,
+      "fitted_noise_power": 3.4895317236985783,
+      "relative_residual": 0.006864883711672606
+     }
+    },
+    "porch": {
+     "samples": 33,
+     "covariance_real": [
+      6.984848484848485,
+      5.5606060606060606,
+      4.106060606060606,
+      1.8484848484848486,
+      -0.3939393939393939,
+      -2.5303030303030303,
+      -4.3939393939393945,
+      -4.757575757575758,
+      -4.757575757575758
+     ],
+     "covariance_imag": [
+      0.0,
+      -2.3333333333333335,
+      -3.515151515151515,
+      -3.2272727272727275,
+      -3.803030303030303,
+      -4.121212121212121,
+      -3.590909090909091,
+      -1.803030303030303,
+      0.5606060606060607
+     ],
+     "adjacent_hz": -2529313.7655680478,
+     "long_lag": {
+      "frequency_hz": -2580000.0,
+      "fitted_signal_power": 4.745653749617506,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.027393843492823977
+     },
+     "colored_covariance": {
+      "frequency_hz": -2580000.0,
+      "fitted_signal_power": 4.801402101085345,
+      "fitted_noise_power": 2.0167209308253513,
+      "relative_residual": 0.020389364055388333
+     }
+    }
+   },
+   "label_frequency_hz": {
+    "sync": -5020000.0,
+    "porch": -2722857.1428571427
+   },
+   "errors": {
+    "sync": {
+     "adjacent_hz": 69391.92232065834,
+     "long_lag_hz": -170000.0,
+     "colored_covariance_hz": -170000.0
+    },
+    "porch": {
+     "adjacent_hz": 193543.37728909496,
+     "long_lag_hz": 142857.14285714272,
+     "colored_covariance_hz": 142857.14285714272
+    }
+   }
+  },
+  {
+   "seed": 8100291,
+   "standard": "PAL",
+   "cnr": 6,
+   "deviation": 1.2,
+   "offset_hz": -2000000.0,
+   "stress": "both",
+   "crop_raw_bytes": 83215,
+   "input_sha256": "08c90378cf2b2259f6dc6d9fb36c8636cbb166f3ddbd34f29321e1bfd07805d4",
+   "clock": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 1295.417741462853,
+    "score": 8.011821179134891,
+    "confidence": 3.6990974494031206,
+    "normalized_score": 0.6561944023472415,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "correct_standard": true,
+   "frequency_estimates": {
+    "sync": {
+     "samples": 53,
+     "covariance_real": [
+      14.839622641509433,
+      10.547169811320755,
+      0.2641509433962264,
+      -8.264150943396226,
+      -11.68867924528302,
+      -8.160377358490566,
+      -0.21698113207547168,
+      8.783018867924527,
+      12.235849056603772
+     ],
+     "covariance_imag": [
+      0.0,
+      -7.89622641509434,
+      -11.10377358490566,
+      -7.764150943396226,
+      0.7735849056603773,
+      8.867924528301886,
+      12.452830188679245,
+      8.415094339622641,
+      -1.0
+     ],
+     "adjacent_hz": -4091185.270075746,
+     "long_lag": {
+      "frequency_hz": -5040000.0,
+      "fitted_signal_power": 11.865714647416914,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.002653644875131521
+     },
+     "colored_covariance": {
+      "frequency_hz": -5030000.0,
+      "fitted_signal_power": 11.816334270356412,
+      "fitted_noise_power": 3.0972891062130192,
+      "relative_residual": 0.0026063880327471256
+     }
+    },
+    "porch": {
+     "samples": 30,
+     "covariance_real": [
+      8.766666666666666,
+      7.533333333333333,
+      4.833333333333333,
+      1.7666666666666666,
+      0.3833333333333333,
+      -0.8833333333333333,
+      -4.183333333333334,
+      -6.05,
+      -5.566666666666666
+     ],
+     "covariance_imag": [
+      0.0,
+      -1.2666666666666666,
+      -3.1,
+      -3.8666666666666667,
+      -3.8833333333333333,
+      -2.783333333333333,
+      -1.8166666666666667,
+      -0.18333333333333332,
+      2.4
+     ],
+     "adjacent_hz": -1060502.8406175703,
+     "long_lag": {
+      "frequency_hz": -2740000.0,
+      "fitted_signal_power": 4.69430192134499,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.08715075661422264
+     },
+     "colored_covariance": {
+      "frequency_hz": -2730000.0,
+      "fitted_signal_power": 4.72306584751765,
+      "fitted_noise_power": 4.336697226823939,
+      "relative_residual": 0.05165138286264038
+     }
+    }
+   },
+   "label_frequency_hz": {
+    "sync": -5020000.0,
+    "porch": -2722857.1428571427
+   },
+   "errors": {
+    "sync": {
+     "adjacent_hz": 928814.7299242541,
+     "long_lag_hz": -20000.0,
+     "colored_covariance_hz": -10000.0
+    },
+    "porch": {
+     "adjacent_hz": 1662354.3022395724,
+     "long_lag_hz": -17142.857142857276,
+     "colored_covariance_hz": -7142.857142857276
+    }
+   }
+  },
+  {
+   "seed": 8100308,
+   "standard": "NTSC",
+   "cnr": 6,
+   "deviation": 1.2,
+   "offset_hz": -2000000.0,
+   "stress": "both",
+   "crop_raw_bytes": 232515,
+   "input_sha256": "5304f07d7ad61641336bde56bb57467a1547cdef6c529661d0efa3d07ae3effe",
+   "clock": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 1392.0832319361887,
+    "score": 8.833063241640673,
+    "confidence": 3.9014786905090952,
+    "normalized_score": 0.8892345545275845,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "correct_standard": true,
+   "frequency_estimates": {
+    "sync": {
+     "samples": 55,
+     "covariance_real": [
+      16.354545454545455,
+      11.745454545454544,
+      1.1636363636363636,
+      -7.6454545454545455,
+      -11.636363636363637,
+      -9.081818181818182,
+      -1.8545454545454545,
+      6.754545454545454,
+      11.045454545454545
+     ],
+     "covariance_imag": [
+      0.0,
+      -9.754545454545454,
+      -14.172727272727272,
+      -9.98181818181818,
+      -0.2818181818181818,
+      7.127272727272727,
+      11.536363636363635,
+      8.727272727272727,
+      0.5636363636363636
+     ],
+     "adjacent_hz": -4412163.774320909,
+     "long_lag": {
+      "frequency_hz": -4890000.0,
+      "fitted_signal_power": 11.9462188111426,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.010619587147580224
+     },
+     "colored_covariance": {
+      "frequency_hz": -4880000.0,
+      "fitted_signal_power": 12.087154070039272,
+      "fitted_noise_power": 4.339421613382346,
+      "relative_residual": 0.009156887144777968
+     }
+    },
+    "porch": {
+     "samples": 30,
+     "covariance_real": [
+      10.566666666666666,
+      6.233333333333333,
+      1.4166666666666667,
+      -1.3833333333333333,
+      -2.466666666666667,
+      -4.65,
+      -6.983333333333333,
+      -6.883333333333333,
+      -5.416666666666667
+     ],
+     "covariance_imag": [
+      0.0,
+      -3.1666666666666665,
+      -5.883333333333333,
+      -6.816666666666666,
+      -5.866666666666666,
+      -3.3833333333333333,
+      -1.1833333333333333,
+      0.85,
+      2.65
+     ],
+     "adjacent_hz": -2992393.744684325,
+     "long_lag": {
+      "frequency_hz": -3070000.0,
+      "fitted_signal_power": 6.299054157842014,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.052724009755808
+     },
+     "colored_covariance": {
+      "frequency_hz": -3070000.0,
+      "fitted_signal_power": 6.2424455078968455,
+      "fitted_noise_power": 3.6583487026228507,
+      "relative_residual": 0.03524043340595577
+     }
+    }
+   },
+   "label_frequency_hz": {
+    "sync": -5020000.0,
+    "porch": -2722857.1428571427
+   },
+   "errors": {
+    "sync": {
+     "adjacent_hz": 607836.2256790912,
+     "long_lag_hz": 130000.0,
+     "colored_covariance_hz": 140000.0
+    },
+    "porch": {
+     "adjacent_hz": -269536.60182718234,
+     "long_lag_hz": -347142.8571428573,
+     "colored_covariance_hz": -347142.8571428573
+    }
+   }
+  },
+  {
+   "seed": 8100392,
+   "standard": "PAL",
+   "cnr": 6,
+   "deviation": 1.2,
+   "offset_hz": 0.0,
+   "stress": "both",
+   "crop_raw_bytes": 140601,
+   "input_sha256": "701f4ecd5bc5e7e23d6328197c691340979a1138be63eb3b42e0766951eafcf9",
+   "clock": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 291.3974040741955,
+    "score": 4.886038022413091,
+    "confidence": 1.9151934690200159,
+    "normalized_score": 0.4112496932692381,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "correct_standard": true,
+   "frequency_estimates": {
+    "sync": {
+     "samples": 54,
+     "covariance_real": [
+      11.759259259259258,
+      8.99074074074074,
+      4.9907407407407405,
+      3.0,
+      0.8703703703703703,
+      -1.5833333333333333,
+      -2.9814814814814814,
+      -2.0462962962962963,
+      -0.7592592592592592
+     ],
+     "covariance_imag": [
+      0.0,
+      -3.25,
+      -4.768518518518518,
+      -5.555555555555555,
+      -5.185185185185185,
+      -3.657407407407407,
+      -2.722222222222222,
+      -0.9722222222222222,
+      1.8518518518518516
+     ],
+     "adjacent_hz": -2208229.1268278887,
+     "long_lag": {
+      "frequency_hz": -2610000.0,
+      "fitted_signal_power": 4.212587751406632,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.20613123148633744
+     },
+     "colored_covariance": {
+      "frequency_hz": -2600000.0,
+      "fitted_signal_power": 4.454627762072838,
+      "fitted_noise_power": 7.139432838703154,
+      "relative_residual": 0.10568844387345495
+     }
+    },
+    "porch": {
+     "samples": 30,
+     "covariance_real": [
+      14.9,
+      10.166666666666666,
+      1.7833333333333332,
+      -3.75,
+      -6.7,
+      -7.6499999999999995,
+      -6.383333333333333,
+      -2.3166666666666664,
+      0.6666666666666666
+     ],
+     "covariance_imag": [
+      0.0,
+      3.533333333333333,
+      3.85,
+      1.25,
+      -4.466666666666667,
+      -8.75,
+      -9.216666666666667,
+      -4.583333333333333,
+      3.4
+     ],
+     "adjacent_hz": 2129381.612197702,
+     "long_lag": {
+      "frequency_hz": 4850000.0,
+      "fitted_signal_power": 5.347177737088001,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.496647321010217
+     },
+     "colored_covariance": {
+      "frequency_hz": 4820000.0,
+      "fitted_signal_power": 5.33825398729306,
+      "fitted_noise_power": 9.529034893834565,
+      "relative_residual": 0.2736558013569778
+     }
+    }
+   },
+   "label_frequency_hz": {
+    "sync": -3020000.0,
+    "porch": -722857.142857143
+   },
+   "errors": {
+    "sync": {
+     "adjacent_hz": 811770.8731721113,
+     "long_lag_hz": 410000.0,
+     "colored_covariance_hz": 420000.0
+    },
+    "porch": {
+     "adjacent_hz": 2852238.7550548445,
+     "long_lag_hz": 5572857.142857143,
+     "colored_covariance_hz": 5542857.142857143
+    }
+   }
+  },
+  {
+   "seed": 8100409,
+   "standard": "NTSC",
+   "cnr": 6,
+   "deviation": 1.2,
+   "offset_hz": 0.0,
+   "stress": "both",
+   "crop_raw_bytes": 196959,
+   "input_sha256": "ffbc9931cecd1e4ff9c997bc56a9dcbdba244b1e23cf6231f9887c1785cc3b27",
+   "clock": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 1513.2655934122145,
+    "score": 5.616249418943558,
+    "confidence": 2.0202462794955034,
+    "normalized_score": 0.43622699222468764,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "correct_standard": true,
+   "frequency_estimates": {
+    "sync": {
+     "samples": 54,
+     "covariance_real": [
+      13.722222222222221,
+      11.277777777777777,
+      8.018518518518517,
+      6.648148148148148,
+      7.12037037037037,
+      6.833333333333333,
+      6.0,
+      5.342592592592593,
+      5.444444444444444
+     ],
+     "covariance_imag": [
+      0.0,
+      -1.4444444444444444,
+      -2.5370370370370368,
+      -3.648148148148148,
+      -4.083333333333333,
+      -4.388888888888888,
+      -5.203703703703703,
+      -6.12037037037037,
+      -6.851851851851851
+     ],
+     "adjacent_hz": -810959.9324155874,
+     "long_lag": {
+      "frequency_hz": -770000.0,
+      "fitted_signal_power": 8.145588468366977,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.005963650054084856
+     },
+     "colored_covariance": {
+      "frequency_hz": -770000.0,
+      "fitted_signal_power": 8.234188041582147,
+      "fitted_noise_power": 5.387639650366009,
+      "relative_residual": 0.0026931971147136423
+     }
+    },
+    "porch": {
+     "samples": 27,
+     "covariance_real": [
+      12.425925925925926,
+      9.481481481481481,
+      3.0555555555555554,
+      -3.462962962962963,
+      -6.444444444444444,
+      -6.0,
+      -3.3518518518518516,
+      1.0185185185185184,
+      2.7962962962962963
+     ],
+     "covariance_imag": [
+      0.0,
+      1.611111111111111,
+      2.111111111111111,
+      0.48148148148148145,
+      -3.833333333333333,
+      -7.018518518518518,
+      -7.666666666666666,
+      -3.9259259259259256,
+      2.6666666666666665
+     ],
+     "adjacent_hz": 1071521.6396352814,
+     "long_lag": {
+      "frequency_hz": 5040000.0,
+      "fitted_signal_power": 4.932478659937357,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.36664808263266224
+     },
+     "colored_covariance": {
+      "frequency_hz": 5000000.0,
+      "fitted_signal_power": 4.763433488038239,
+      "fitted_noise_power": 8.047944018319301,
+      "relative_residual": 0.20813613608319048
+     }
+    }
+   },
+   "label_frequency_hz": {
+    "sync": -3020000.0,
+    "porch": -722857.142857143
+   },
+   "errors": {
+    "sync": {
+     "adjacent_hz": 2209040.0675844126,
+     "long_lag_hz": 2250000.0,
+     "colored_covariance_hz": 2250000.0
+    },
+    "porch": {
+     "adjacent_hz": 1794378.7824924244,
+     "long_lag_hz": 5762857.142857143,
+     "colored_covariance_hz": 5722857.142857143
+    }
+   }
+  },
+  {
+   "seed": 8100493,
+   "standard": "PAL",
+   "cnr": 4,
+   "deviation": 0.69,
+   "offset_hz": 0.0,
+   "stress": false,
+   "crop_raw_bytes": 73330,
+   "input_sha256": "37ad874c812edc7d566627f1dd11bcd6e5d4e171139018a5d2d165449963a80e",
+   "clock": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 927.7422621023044,
+    "score": 5.307574321321874,
+    "confidence": 2.657539294234535,
+    "normalized_score": 0.30932209273198713,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "correct_standard": true,
+   "frequency_estimates": {
+    "sync": {
+     "samples": 54,
+     "covariance_real": [
+      15.944444444444443,
+      13.703703703703702,
+      10.166666666666666,
+      7.148148148148148,
+      5.296296296296296,
+      4.601851851851851,
+      3.8425925925925926,
+      1.6666666666666665,
+      -0.4074074074074074
+     ],
+     "covariance_imag": [
+      0.0,
+      -2.148148148148148,
+      -5.111111111111111,
+      -6.851851851851851,
+      -7.222222222222221,
+      -9.101851851851851,
+      -12.768518518518517,
+      -14.74074074074074,
+      -13.333333333333332
+     ],
+     "adjacent_hz": -989888.8902157366,
+     "long_lag": {
+      "frequency_hz": -1340000.0,
+      "fitted_signal_power": 11.677546468454839,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.03343186648683032
+     },
+     "colored_covariance": {
+      "frequency_hz": -1340000.0,
+      "fitted_signal_power": 11.693661771461782,
+      "fitted_noise_power": 4.219268672531289,
+      "relative_residual": 0.021871225807603693
+     }
+    },
+    "porch": {
+     "samples": 28,
+     "covariance_real": [
+      16.285714285714285,
+      14.5,
+      12.0,
+      11.767857142857142,
+      13.75,
+      13.017857142857142,
+      13.357142857142856,
+      14.946428571428571,
+      14.732142857142856
+     ],
+     "covariance_imag": [
+      0.0,
+      -0.10714285714285714,
+      0.6071428571428571,
+      0.017857142857142856,
+      -1.8928571428571428,
+      -1.5535714285714284,
+      -0.8928571428571428,
+      0.1607142857142857,
+      2.3035714285714284
+     ],
+     "adjacent_hz": -47040.01376792979,
+     "long_lag": {
+      "frequency_hz": 0.0,
+      "fitted_signal_power": 13.36734693877551,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.016935394478947402
+     },
+     "colored_covariance": {
+      "frequency_hz": 0.0,
+      "fitted_signal_power": 13.37128750194378,
+      "fitted_noise_power": 2.710690389259239,
+      "relative_residual": 0.01203128155844251
+     }
+    }
+   },
+   "label_frequency_hz": {
+    "sync": -1311500.0,
+    "porch": 9357.14285714284
+   },
+   "errors": {
+    "sync": {
+     "adjacent_hz": 321611.1097842634,
+     "long_lag_hz": -28500.0,
+     "colored_covariance_hz": -28500.0
+    },
+    "porch": {
+     "adjacent_hz": -56397.15662507263,
+     "long_lag_hz": -9357.14285714284,
+     "colored_covariance_hz": -9357.14285714284
+    }
+   }
+  },
+  {
+   "seed": 8100510,
+   "standard": "NTSC",
+   "cnr": 4,
+   "deviation": 0.69,
+   "offset_hz": 0.0,
+   "stress": false,
+   "crop_raw_bytes": 206568,
+   "input_sha256": "eb68a81de3c6a69d8965eab5a59a0caf02a3c5ee1f96c4b81ec5378e86af72ea",
+   "clock": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 1908.4537875922254,
+    "score": 4.776362889529857,
+    "confidence": 2.187304370080222,
+    "normalized_score": 0.2803604416662452,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "correct_standard": true,
+   "frequency_estimates": {
+    "sync": {
+     "samples": 55,
+     "covariance_real": [
+      17.081818181818182,
+      14.854545454545454,
+      11.418181818181818,
+      9.19090909090909,
+      9.172727272727272,
+      8.48181818181818,
+      5.6,
+      1.309090909090909,
+      -1.5727272727272728
+     ],
+     "covariance_imag": [
+      0.0,
+      -1.3181818181818181,
+      -3.5727272727272728,
+      -6.163636363636363,
+      -8.545454545454545,
+      -9.654545454545454,
+      -10.7,
+      -12.209090909090909,
+      -12.036363636363635
+     ],
+     "adjacent_hz": -563455.9512671317,
+     "long_lag": {
+      "frequency_hz": -1250000.0,
+      "fitted_signal_power": 12.077955054595495,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.010419550271133336
+     },
+     "colored_covariance": {
+      "frequency_hz": -1250000.0,
+      "fitted_signal_power": 12.10267805304766,
+      "fitted_noise_power": 5.050804342508404,
+      "relative_residual": 0.006330563965342723
+     }
+    },
+    "porch": {
+     "samples": 32,
+     "covariance_real": [
+      16.9375,
+      14.96875,
+      13.46875,
+      11.40625,
+      11.359375,
+      12.234375,
+      12.75,
+      12.21875,
+      12.3125
+     ],
+     "covariance_imag": [
+      0.0,
+      -0.40625,
+      0.34375,
+      1.28125,
+      0.734375,
+      0.453125,
+      1.375,
+      1.28125,
+      0.90625
+     ],
+     "adjacent_hz": -172735.40637757286,
+     "long_lag": {
+      "frequency_hz": 90000.0,
+      "fitted_signal_power": 12.283467506231874,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.004107335524267811
+     },
+     "colored_covariance": {
+      "frequency_hz": 90000.0,
+      "fitted_signal_power": 12.356373313367337,
+      "fitted_noise_power": 4.506379312652756,
+      "relative_residual": 0.002599870417805705
+     }
+    }
+   },
+   "label_frequency_hz": {
+    "sync": -1311500.0,
+    "porch": 9357.14285714284
+   },
+   "errors": {
+    "sync": {
+     "adjacent_hz": 748044.0487328683,
+     "long_lag_hz": 61500.0,
+     "colored_covariance_hz": 61500.0
+    },
+    "porch": {
+     "adjacent_hz": -182092.5492347157,
+     "long_lag_hz": 80642.85714285716,
+     "colored_covariance_hz": 80642.85714285716
+    }
+   }
+  },
+  {
+   "seed": 8100594,
+   "standard": "PAL",
+   "cnr": 30,
+   "deviation": 1.2,
+   "offset_hz": 2000000.0,
+   "stress": false,
+   "crop_raw_bytes": 116855,
+   "input_sha256": "bb51f1d9e8fb5dd5e86fab2bfda297c9fa518ce1a52a6b71a3f802d89d9f390e",
+   "clock": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 931.8754329700818,
+    "score": 12.3685694592888,
+    "confidence": 2.6237842809110994,
+    "normalized_score": 0.6819708348811434,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "correct_standard": true,
+   "frequency_estimates": {
+    "sync": {
+     "samples": 53,
+     "covariance_real": [
+      18.31132075471698,
+      18.339622641509433,
+      17.11320754716981,
+      16.27358490566038,
+      14.547169811320755,
+      12.773584905660377,
+      10.273584905660377,
+      7.613207547169811,
+      5.320754716981132
+     ],
+     "covariance_imag": [
+      0.0,
+      -2.7264150943396226,
+      -5.688679245283018,
+      -8.641509433962264,
+      -10.632075471698112,
+      -12.89622641509434,
+      -14.81132075471698,
+      -16.264150943396224,
+      -17.10377358490566
+     ],
+     "adjacent_hz": -939534.1140036999,
+     "long_lag": {
+      "frequency_hz": -1020000.0,
+      "fitted_signal_power": 18.074288874072987,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.00015822439748734596
+     },
+     "colored_covariance": {
+      "frequency_hz": -1020000.0,
+      "fitted_signal_power": 18.09480222460139,
+      "fitted_noise_power": 0.34795910196964586,
+      "relative_residual": 0.00016683074968836263
+     }
+    },
+    "porch": {
+     "samples": 28,
+     "covariance_real": [
+      18.57142857142857,
+      17.785714285714285,
+      17.035714285714285,
+      15.178571428571427,
+      12.267857142857142,
+      9.660714285714285,
+      6.142857142857142,
+      3.125,
+      -0.6607142857142857
+     ],
+     "covariance_imag": [
+      0.0,
+      3.642857142857143,
+      7.071428571428571,
+      10.535714285714285,
+      13.339285714285714,
+      15.053571428571427,
+      16.785714285714285,
+      18.125,
+      18.303571428571427
+     ],
+     "adjacent_hz": 1286132.0908218,
+     "long_lag": {
+      "frequency_hz": 1280000.0,
+      "fitted_signal_power": 18.215119433857343,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.0002955514938170574
+     },
+     "colored_covariance": {
+      "frequency_hz": 1280000.0,
+      "fitted_signal_power": 18.215283535582344,
+      "fitted_noise_power": 0.19760099001493614,
+      "relative_residual": 0.0002544241327556298
+     }
+    }
+   },
+   "label_frequency_hz": {
+    "sync": -1020000.0,
+    "porch": 1277142.857142857
+   },
+   "errors": {
+    "sync": {
+     "adjacent_hz": 80465.88599630015,
+     "long_lag_hz": 0.0,
+     "colored_covariance_hz": 0.0
+    },
+    "porch": {
+     "adjacent_hz": 8989.233678943012,
+     "long_lag_hz": 2857.142857142957,
+     "colored_covariance_hz": 2857.142857142957
+    }
+   }
+  },
+  {
+   "seed": 8100611,
+   "standard": "NTSC",
+   "cnr": 30,
+   "deviation": 1.2,
+   "offset_hz": 2000000.0,
+   "stress": false,
+   "crop_raw_bytes": 237842,
+   "input_sha256": "34f9afaff55a0c90b0891da722d92e7c15b8239365f032356fca8f96ad3a6048",
+   "clock": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 1152.6650242090204,
+    "score": 12.587965648809762,
+    "confidence": 2.645400866868582,
+    "normalized_score": 0.6937034953420356,
+    "lock_declared": true,
+    "products": 1260,
+    "histogram_bins": 128,
+    "stride": 127
+   },
+   "correct_standard": true,
+   "frequency_estimates": {
+    "sync": {
+     "samples": 54,
+     "covariance_real": [
+      18.5,
+      18.166666666666664,
+      17.38888888888889,
+      16.333333333333332,
+      14.555555555555555,
+      12.25,
+      10.101851851851851,
+      7.777777777777778,
+      5.148148148148148
+     ],
+     "covariance_imag": [
+      0.0,
+      -3.1111111111111107,
+      -6.425925925925926,
+      -8.722222222222221,
+      -11.037037037037036,
+      -13.305555555555555,
+      -14.657407407407407,
+      -16.666666666666664,
+      -17.944444444444443
+     ],
+     "adjacent_hz": -1079761.304512322,
+     "long_lag": {
+      "frequency_hz": -1030000.0,
+      "fitted_signal_power": 18.322477984128607,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.0004144418068612126
+     },
+     "colored_covariance": {
+      "frequency_hz": -1030000.0,
+      "fitted_signal_power": 18.334894063111342,
+      "fitted_noise_power": 0.116829420730985,
+      "relative_residual": 0.0003341518992876865
+     }
+    },
+    "porch": {
+     "samples": 34,
+     "covariance_real": [
+      18.794117647058822,
+      18.08823529411765,
+      17.11764705882353,
+      15.220588235294118,
+      13.147058823529411,
+      9.897058823529411,
+      6.544117647058823,
+      2.911764705882353,
+      -0.27941176470588236
+     ],
+     "covariance_imag": [
+      0.0,
+      3.8529411764705883,
+      7.676470588235294,
+      10.573529411764707,
+      13.705882352941176,
+      15.426470588235293,
+      17.073529411764707,
+      18.52941176470588,
+      18.75
+     ],
+     "adjacent_hz": 1336083.585759273,
+     "long_lag": {
+      "frequency_hz": 1280000.0,
+      "fitted_signal_power": 18.62821608943826,
+      "fitted_noise_power": 0.0,
+      "relative_residual": 0.0003077969746107199
+     },
+     "colored_covariance": {
+      "frequency_hz": 1280000.0,
+      "fitted_signal_power": 18.62080289095761,
+      "fitted_noise_power": 0.06553653024524893,
+      "relative_residual": 0.00026082310914431515
+     }
+    }
+   },
+   "label_frequency_hz": {
+    "sync": -1020000.0,
+    "porch": 1277142.857142857
+   },
+   "errors": {
+    "sync": {
+     "adjacent_hz": -59761.30451232195,
+     "long_lag_hz": -10000.0,
+     "colored_covariance_hz": -10000.0
+    },
+    "porch": {
+     "adjacent_hz": 58940.72861641599,
+     "long_lag_hz": 2857.142857142957,
+     "colored_covariance_hz": 2857.142857142957
+    }
+   }
+  }
+ ],
+ "design": {
+  "stride": 127,
+  "training_bytes": 160000,
+  "lags": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ],
+  "frequency_grid_step_hz": 10000,
+  "noise_covariance": [
+   1.0,
+   0.6097010825819538,
+   -0.005660541057764696,
+   -0.1590047860333825,
+   -0.0007807719508196527,
+   0.06210621167147885,
+   0.003219100074554019,
+   -0.025339027468014086,
+   -0.0028639199807356094
+  ]
+ },
+ "scope": "received_only_plateau_frequency_reference_no_retuning_or_C5_timing_proof",
+ "source_sha256": "a790928b7e7cf1ae7c9fffd1e9bed1dc3503b74213b36e3eca33c798bcece7ad"
+}

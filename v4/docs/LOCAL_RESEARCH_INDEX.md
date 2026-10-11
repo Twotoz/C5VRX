@@ -18,6 +18,9 @@ counter, circular, velocity and instruction-path candidates. Rejected source
 schedules and the invalid earlier counter run are retained with their labels.
 Read [the IQ clock design](LOCAL_IQ_CLOCK_DESIGN.md) for the promising timing
 observer, integer implementation, CPU estimate and unresolved output design.
+The [carrier acquisition follow-up](LOCAL_IQ_CARRIER_DESIGN.md) records causal
+plateau-frequency estimation, a false-noise admission, a stronger independent
+gate and an oracle bound on how much correct centring could help U85Q sync.
 
 The strongest result is specific: received-IQ-only H-clock acquisition succeeds
 in 16 fresh off-centre echo/fade cases at 6dB CNR, while U85Q's goggle H-lock
@@ -39,6 +42,9 @@ low-CNR failures and false timing are preserved, not excluded from the archive.
 | `iq-clock-validation` | Independent broad cases, including low-CNR and timing failures |
 | `iq-clock-stress-validation`, `iq-clock-integer-proof` | Fresh 2ms stress acquisition and implementation equivalence |
 | `iq-clock-half-rate`, `iq-clock-half-rate-integer-proof` | Fresh 4ms acquisition, equivalence and static instruction budget |
+| `iq-carrier-development`, `iq-carrier-causal-validation` | Retrospective development, fresh-window estimates and rejected false-noise admission |
+| `iq-carrier-coherence-validation` | Independent stronger gate; admitted wrong PAL timing still prevents controller promotion |
+| `iq-recenter-oracle-bound` | Known-direction settled correction restores much goggle sync, without better active-video fidelity |
 
 Frozen sources, recorded seeds, input hashes and compiler/assembler hashes
 identify the experiments. Some early formula runs recorded source hashes
@@ -86,9 +92,10 @@ No assembly acceptance or host test substitutes for C5 bus/timing measurements.
 
 ## Next investigation: use the clock to aid carrier acquisition
 
-An H clock may provide received-only sync/porch statistics before the existing
-goggle path locks. Test whether this allows safe carrier centring that restores
-the existing demodulator's picture. This is a hypothesis, not a result.
+An H clock can provide useful received-only sync/porch frequency statistics in
+the simulated stress class. The follow-up demonstrates that narrower result
+and an oracle sync benefit, but wrong admitted clocks still prevent a reliable
+automatic controller. Full-pulse and separate porch consistency are next.
 
 The current `rf_set_frequency_offset_khz` in `v4/main/rf.c` clamps to +/-1.5MHz
 and suspends/restores the live path around the PHY write. `video_control.c`
