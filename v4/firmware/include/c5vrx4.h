@@ -65,6 +65,7 @@ enum {
     C5VRX4_OPT_IDLE_RASTER, C5VRX4_OPT_RADIUS_BOOST, C5VRX4_OPT_SYNC_FW,
     C5VRX4_OPT_LEVEL, C5VRX4_OPT_CVBS, C5VRX4_OPT_HISTORY, C5VRX4_OPT_NATIVE_PATCH, C5VRX4_OPT_HW_DCO,
     C5VRX4_OPT_LINE_FIX, C5VRX4_OPT_EDGE_GEAR, C5VRX4_OPT_FUSION, C5VRX4_OPT_AUTOFIT,
+    C5VRX4_OPT_NARROW_BW,
     C5VRX4_OPT_COUNT
 };
 void c5vrx4_options_snapshot(void);
@@ -81,6 +82,9 @@ bool c5vrx4_hw_dco_enabled(void);
  * never ran (boot bug), and switched on it was never shown to extend range;
  * operator 2026-10-07: range with it worse than main. Opt-in. */
 bool c5vrx4_edge_gear_enabled(void);
+/* Narrow BW (operator, 2026-10-11): keep the measured edge filter profile on
+ * permanently instead of the switching edge gear. Default on; U toggles. */
+bool c5vrx4_narrow_bw_enabled(void);
 /* FusionDemod (EDGE RANGE LAB selection): PAIR on a good carrier, EDGE with
  * AutoFit near the range edge. Default on; off = pure EDGE. */
 bool c5vrx4_fusion_enabled(void);

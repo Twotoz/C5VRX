@@ -248,6 +248,13 @@ bool c5vrx4_hw_dco_enabled(void)
     return s_hw_dco;
 }
 
+static int8_t s_narrow_bw = -1;
+bool c5vrx4_narrow_bw_enabled(void)
+{
+    if (s_narrow_bw < 0) s_narrow_bw = nvs_flag("bw_narrow", true);
+    return s_narrow_bw;
+}
+
 static int8_t s_edge_gear = -1;
 bool c5vrx4_edge_gear_enabled(void)
 {
@@ -554,6 +561,7 @@ static const c5vrx4_option_t s_options[C5VRX4_OPT_COUNT] = {
     [C5VRX4_OPT_EDGE_GEAR]    = {"EDGE FILTER",   "edge_gear",    0, 2, s_off_on},
     [C5VRX4_OPT_FUSION]       = {"FUSION DEMOD",  "fusion",       1, 2, s_off_on},
     [C5VRX4_OPT_AUTOFIT]      = {"AUTOFIT",       "autofit",      1, 2, s_off_on},
+    [C5VRX4_OPT_NARROW_BW]    = {"NARROW BW",     "bw_narrow",    1, 2, s_off_on},
 };
 static uint8_t s_option_boot[C5VRX4_OPT_COUNT];
 static bool s_option_snapshot;
@@ -917,6 +925,7 @@ bool c5vrx4_console(int key)
     if (key == '|') return toggle_flag("agc_mask", c5vrx4_agc_mask_enabled(), "agc_mask");
     if (key == '_') return toggle_flag("idle_raster", c5vrx4_idle_raster_enabled(), "idle_raster");
     if (key == 'y') return toggle_flag("radius_boost", c5vrx4_radius_boost_enabled(), "radius_boost");
+    if (key == 'U') return toggle_flag("bw_narrow", c5vrx4_narrow_bw_enabled(), "bw_narrow");
     if (key == 'w') return toggle_flag("sync_fw", c5vrx4_sync_flywheel_enabled(), "sync_fw");
     if (key == 'Z') {
         /* Fixed fine -> fixed ultrafine -> protected V5 lanes -> fixed fine. */

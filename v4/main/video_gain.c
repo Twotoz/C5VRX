@@ -192,6 +192,14 @@ static void direct_gain_v5_bw_gear(const dg3_observation_t *o)
     static uint64_t weak_since, strong_since, exit_us;
     const direct_gain_v3_t *v3 = &s_direct_gain_v3;
     const bool fixed = bw_fixed_calibrated();
+    /* Narrow BW: the measured edge profile is the normal filter. FM threshold
+     * follows the predetection noise bandwidth; ~14 MHz suits every tested
+     * VTX deviation (docs/PICTURE_CLIFF_STUDY.md), so no gear, no switching. */
+    if (c5vrx4_narrow_bw_enabled() && fixed && c5vrx4_bw_edge_code() != C5VRX4_BW_UNCALIBRATED) {
+        if (!rf_fixed_bw_edge_active()) { bw_set_edge(true); ++s_v3_bw_switches; ++s_gain_transition_count; }
+        weak_since = strong_since = 0;
+        return;
+    }
     if (s_rf_bw_mode != RF_BW_MODE_AUTO || !c5vrx4_edge_gear_enabled() ||
         (fixed && c5vrx4_bw_edge_code() == C5VRX4_BW_UNCALIBRATED)) {
         if (fixed && rf_fixed_bw_edge_active()) bw_set_edge(false);
