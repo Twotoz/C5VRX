@@ -301,3 +301,10 @@ beats 0.7/0.85; sector and centroid observations tie. U85Q is the
 robustness-first point of this frontier. A narrower window is only safe once
 the carrier is centred on the board (AFC with the LUT demods), which must be
 measured there.
+
+Asymmetric windows (v6, third seed set, `v6-rows.json`): a wider sync side
+(down to -9 MHz) passes the negative clicks that imitate sync pulses and
+loses SINAD without gaining robustness; a narrower white side (+7.5 MHz)
+gains +0.08 dB, within noise. U85Q again leads the mixed set (0.882 vs HC50
+0.862, U85E 0.762) with nominal picture 0.997. Across three independent seed
+sets the untrained search has converged on U85Q.
