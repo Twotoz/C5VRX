@@ -94,8 +94,6 @@ unsigned s_menu_item;
  * the standalone menu owns TX). */
 volatile bool s_menu_bw_cal_request, s_menu_witness_request;
 
-int s_menu_timeout_ticks;
-
 static const uint8_t s_menu_icons[6][8] = {
     {0x10,0x38,0x54,0x10,0x10,0x38,0x7c,0x00}, /* band / antenna */
     {0x7e,0x42,0x5a,0x5a,0x5a,0x42,0x7e,0x00}, /* channel */
@@ -768,7 +766,6 @@ void video_set_menu_mode(bool active)
          * descriptor allocation to internal heap for normal flight. */
         menu_free_nodes();
     }
-    s_menu_timeout_ticks = 0;
     s_menu_active = active;
 }
 
@@ -778,7 +775,6 @@ void video_open_menu(void)
 {
     if (s_idle.active) {
         idle_raster_abandon(&s_idle);
-        s_menu_timeout_ticks = 0;
         menu_render_menu();
         return;
     }

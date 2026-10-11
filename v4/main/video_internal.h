@@ -379,7 +379,6 @@ extern volatile bool s_menu_bw_cal_request, s_menu_witness_request;
 extern dg3_map_blob_t s_dg3_saved;
 extern bool s_dg3_saved_valid;
 extern uint32_t s_dg3_map_imports, s_dg3_map_saves;
-extern int s_menu_timeout_ticks;
 extern volatile rf_bw_mode_t s_rf_bw_mode;
 extern volatile bool s_current_bw40;
 extern volatile demod_mode_t s_demod_mode;

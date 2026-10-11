@@ -35,7 +35,7 @@ check("BitScrambler source artifacts, including historical Trajectory, remain av
       {f.name for f in bsasm_files} == {"fm.bsasm", "fm_relative_golden.bsasm", "fm_phase5_360.bsasm",
                                       "fm_phase5_fsm_capture.bsasm", "bs_relative_worker_probe.bsasm",
                                       "bs_relative_middle_probe.bsasm", "bs_addctia_probe.bsasm", "fm4.bsasm", "fm_traj.bsasm",
-                                      "fm_phase8_hr_live.bsasm", "fm_phase8_8bit.bsasm", "fm_hc.bsasm"},
+                                      "fm_phase8_hr_live.bsasm", "fm_phase8_8bit.bsasm", "fm_hc.bsasm", "fm_hc50.bsasm"},
       f"found {[f.name for f in bsasm_files]}")
 
 for bsasm_file in bsasm_files:

@@ -258,13 +258,11 @@ static void handle_button_short_click(void)
         if (s_menu_edit) {
             s_menu_item = (s_menu_item + 1u) % (menu_item_count() + 1u);
             menu_render_menu();
-            s_menu_timeout_ticks = 0;
             printf("[BTN: SHORT] Menu item -> %u\n", s_menu_item);
             return;
         }
         s_menu_cursor = (s_menu_cursor + 1) % 6;
         menu_render_menu();
-        s_menu_timeout_ticks = 0;
         printf("[BTN: SHORT] Menu cursor -> %d\n", s_menu_cursor);
     } else {
         rf_cycle_channel_in_band();
@@ -291,7 +289,6 @@ static void open_recovery_menu(void)
     apply_rx_profile(RX_PROFILE_DIRECT_GAIN);
     video_standard_detector_reset();
     s_menu_cursor = 0;
-    s_menu_timeout_ticks = 0;
     settings_save();
     video_open_menu();
     printf("[RECOVERY] GOLDEN + 6BIT@40 + DIRECT GAIN V3 TEST restored; menu %s\n",
@@ -310,7 +307,6 @@ static void handle_button_long_click(void)
             return;
         }
         s_menu_cursor = 0;
-        s_menu_timeout_ticks = 0;
         video_open_menu();
         printf("[BTN: LONG] Menu Opened!\n");
     } else {
@@ -322,19 +318,16 @@ static void handle_button_long_click(void)
                 return;
             }
             menu_render_menu();
-            s_menu_timeout_ticks = 0;
             return;
         }
         if (s_menu_cursor == 2 || s_menu_cursor == 3) {
             s_menu_edit = true;
             s_menu_item = 0;
             menu_render_menu();
-            s_menu_timeout_ticks = 0;
             return;
         }
         if (s_menu_cursor == 4) {
             menu_cycle_standard_mode(); /* re-renders and saves */
-            s_menu_timeout_ticks = 0;
             printf("[MENU: STANDARD] -> %s\n",
                    s_video_std_mode == VIDEO_STD_MODE_AUTO ? "AUTO" :
                    s_video_std_mode == VIDEO_STD_MODE_PAL ? "PAL" : "NTSC");
@@ -397,7 +390,6 @@ static void handle_button_long_click(void)
             break;
         }
         menu_render_menu();
-        s_menu_timeout_ticks = 0;
     }
 }
 
@@ -483,7 +475,6 @@ void analog_agc_task(void *arg)
                     s_menu_cursor == 1 && !btn_scan_fired) {
                     btn_scan_fired = true;
                     channel_auto_search();
-                    s_menu_timeout_ticks = 0;
                 }
             } else if (btn_ticks > 0) {
                 if (!btn_long_fired && btn_ticks >= 2) {
@@ -512,15 +503,6 @@ void analog_agc_task(void *arg)
             seen_profile_generation = s_profile_generation;
             settle_ticks = GAIN_SETTLE_TICKS;
             sync_age_ticks = 40;
-        }
-
-        if (menu_was_active && !IDLE_RASTER_ACTIVE()) {
-            s_menu_timeout_ticks++;
-            if (s_menu_timeout_ticks >= 240) {
-                settings_save();
-                video_set_menu_mode(false);
-                printf("[MENU] Inactivity timeout (12s) -> Live Video\n");
-            }
         }
 
         poll_transport_faults();
