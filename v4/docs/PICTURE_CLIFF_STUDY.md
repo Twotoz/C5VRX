@@ -315,3 +315,18 @@ at every C/N - picture 0.57 / 0.95 / 1.00 vs 0.56 / 0.95 / 1.00 at
 6 / 10 / 20 dB - and beats HC50 (0.44 / 0.91 / 1.00). The residual multipath
 loss is in the signal (fades push the instantaneous C/N below threshold),
 not in the LUT compression.
+
+## Board validation on real video (2026-10-11)
+
+`tools/dsp_search/board_validate.py` waited for real video (A1 5865 MHz,
+U85Q flashed, NARROW BW on, DCO latch) and took 12 snapshots
+(`docs/data/board_validate/report-u85q-2026-10-11.json`). The carrier read
+from the HC50 histogram: sync tip -5.0 MHz, white 6.25 MHz, median 0.
+
+- U85Q window (-6, 9) MHz holds sync and white; U85E's (-3.5, 7.5) clips
+  the sync tip on this real carrier. So the narrower window is not safe:
+  the wide U85Q window stays.
+- Clicks per 1000 samples (same metric for all): U85Q 83.0, U85E 85.7,
+  HC50 101.5. U85Q has the fewest clicks on real IQ too.
+
+Board evidence from one VTX and one position, not range acceptance.

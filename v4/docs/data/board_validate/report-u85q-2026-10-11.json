@@ -1,0 +1,34 @@
+{
+ "captures": 12,
+ "carrier_estimate": {
+  "sync_hz": -5000000.0,
+  "white_hz": 6250000.0,
+  "median_hz": 0.0
+ },
+ "status": [
+  "C5VRX4 pipeline=U85Q UNTRAINED span_ns=50 phase_bits=5 bundles=2 iq_bits=4+4 iq_hz=40000000 dac_hz=40000000 unique_hz=20000000 lut_bits=16 transfer=program_native gain_owner=direct_gain_v5 semantic_sync=unavailable mask=0 flywheel=0 idle_raster=0 live_lut_writes=0"
+ ],
+ "demods": {
+  "U85E UNTRAINED": {
+   "window_mhz": [
+    -3.5,
+    7.5
+   ],
+   "clicks": 85.71887034659822,
+   "sync_inside_window": false,
+   "white_inside_window": true
+  },
+  "U85Q UNTRAINED": {
+   "window_mhz": [
+    -6.0,
+    9.0
+   ],
+   "clicks": 83.03380402225075,
+   "sync_inside_window": true,
+   "white_inside_window": true
+  },
+  "HC50": {
+   "clicks": 101.50834403080871
+  }
+ }
+}
