@@ -60,12 +60,17 @@ def fit_frequency(cov, colored=True):
                 relative_residual=float(residual[best]/max(float(np.sum(abs(observed)**2)), 1e-12)))
 
 
-def estimate(raw, clock, stride=127):
+def estimate(raw, clock, stride=127, full_pulse=False):
     indices = np.arange(0, len(raw)-int(LAGS[-1]), stride)
     # Start-phase is the received contour estimate; no truth delay correction.
     dt = (indices-clock['phase']) % clock['period'] / 40
     masks = dict(sync=(dt>.9)&(dt<3.6),
                  porch=((dt>8.8)&(dt<9.5))|((dt>clock['period']/40-1.3)&(dt<clock['period']/40-.5)))
+    if full_pulse:
+        masks.update(sync_lead=(dt>.8)&(dt<1.6),
+            sync_tail=(dt>3.2)&(dt<4.0),
+            porch_front=(dt>clock['period']/40-1.3)&(dt<clock['period']/40-.5),
+            porch_back=(dt>8.8)&(dt<9.5))
     result = {}
     for label, mask in masks.items():
         ix = indices[mask]
@@ -93,12 +98,22 @@ def decision(clock, frequencies):
         and frequencies['porch']['long_lag']['relative_residual'] < .15
         and frequencies['sync']['samples'] >= 40
         and frequencies['porch']['samples'] >= 20)
+    if 'sync_lead' in frequencies:
+        # Predeclared before seed8500190: two interior sync regions should
+        # represent the same tone, as should the front and burst-free back porch.
+        groups = ('sync_lead', 'sync_tail', 'porch_front', 'porch_back')
+        admitted = admitted and all(frequencies[group]['samples'] >= 8 for group in groups)
+        admitted = admitted and all(frequencies[group]['long_lag']['relative_residual'] < .15
+                                    for group in groups)
+        def frequency(group):return frequencies[group]['colored_covariance']['frequency_hz']
+        admitted = admitted and abs(frequency('sync_lead')-frequency('sync_tail')) < 600000
+        admitted = admitted and abs(frequency('porch_front')-frequency('porch_back')) < 800000
     return dict(admitted=bool(admitted), separation_hz=separation,
                 proposed_single_step_khz=int(np.clip(np.round(
                     (porch['frequency_hz']+436000)/1000), -250, 250)) if admitted else 0)
 
 
-def study(seed, repeats, out, causal=False, null_count=16):
+def study(seed, repeats, out, causal=False, null_count=16, full_pulse=False):
     import waveforms as V
     conditions = [(6, 1.2, -2e6, 'both')]*repeats + [
         (6, 1.2, 0., 'both'), (4, .69, 0., False), (30, 1.2, 2e6, False)]
@@ -116,7 +131,7 @@ def study(seed, repeats, out, causal=False, null_count=16):
             carrier_clock = dict(clock)
             if causal:
                 carrier_clock['phase'] = (clock['phase']-160000) % clock['period']
-            frequencies = estimate(raw[160000:] if causal else raw, carrier_clock)
+            frequencies = estimate(raw[160000:] if causal else raw, carrier_clock, full_pulse=full_pulse)
             gate = decision(clock, frequencies)
             # Labels are never given to estimate/fit_frequency. Model plateau
             # frequencies are evaluation labels; filter/transients can differ.
@@ -148,7 +163,7 @@ def study(seed, repeats, out, causal=False, null_count=16):
         carrier_clock = dict(clock)
         if causal:
             carrier_clock['phase'] = (clock['phase']-160000) % clock['period']
-        frequencies = estimate(raw[160000:] if causal else raw[:160000], carrier_clock)
+        frequencies = estimate(raw[160000:] if causal else raw[:160000], carrier_clock, full_pulse=full_pulse)
         nulls.append(dict(clock=clock, frequency_estimates=frequencies,
             input_sha256=hashlib.sha256(raw.tobytes()).hexdigest(),
             decision=decision(clock, frequencies)))
@@ -156,6 +171,7 @@ def study(seed, repeats, out, causal=False, null_count=16):
     target.mkdir(parents=True, exist_ok=True)
     result = dict(seed=seed, repeats=repeats, rows=rows, noise_only_controls=nulls,
         causal_fresh_frequency_window=causal,
+        full_pulse_consistency_gate=full_pulse,
         design=dict(stride=127, training_bytes=160000, lags=LAGS.tolist(),
             frequency_grid_step_hz=10000, noise_covariance=noise_covariance().tolist()),
         scope='received_only_plateau_frequency_reference_no_retuning_or_C5_timing_proof',
@@ -172,5 +188,6 @@ if __name__ == '__main__':
     parser.add_argument('--out', default='iq-carrier-development')
     parser.add_argument('--causal', action='store_true')
     parser.add_argument('--nulls', type=int, default=16)
+    parser.add_argument('--full-pulse', action='store_true')
     args = parser.parse_args()
-    study(args.seed, args.repeats, args.out, args.causal, args.nulls)
+    study(args.seed, args.repeats, args.out, args.causal, args.nulls, args.full_pulse)

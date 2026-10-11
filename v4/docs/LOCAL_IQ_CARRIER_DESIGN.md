@@ -72,7 +72,7 @@ guarantee and does not cover interference, DC or a different physical filter.
 Crucially, the broad controls still contain an admitted4dB PAL case with1.304us
 timing error and700.6kHz porch-frequency error. A coherent plateau fit is not
 sufficient to establish the right H start. Automatic RF correction remains
-unapproved by the evidence. Next test: require frequency consistency across
+unapproved by the evidence. This motivates testing frequency consistency across
 the leading and trailing interior of the full4.7us sync pulse, plus separate
 front/back porch evidence, using new data and independent validation.
 
@@ -135,3 +135,38 @@ each historical directory determines its historical rule; running the current
 tool on an older seed does not reproduce the older decision logic automatically.
 The research goal remains open: no globally best model, complete CVBS output,
 color acceptance or physical range improvement has been demonstrated.
+
+## Full-pulse consistency follow-up
+
+Before seed8500190, freeze four additional regions: sync interior0.8..1.6us
+and3.2..4.0us; separate front porch(-1.3..-0.5us) and back porch8.8..9.5us.
+Each must have at least eight sampled positions and a long-lag tone-fit
+residual below0.15. The two sync-frequency estimates must differ by less than
+600kHz; the two porch estimates by less than800kHz. These are declared initial
+engineering thresholds, not validated C5/VTX tolerances.
+
+Independent seed8500190 admits all16 new stress cases and none of64 new noise
+controls. Mean stress porch-frequency error is124.9kHz. Four ordinary/strong
+control cases pass timing within500ns; one bad nominal PAL clock is rejected.
+One admitted nominal NTSC clock still has0.620us median /0.665us p95 timing
+error, although its porch-frequency error is only47.1kHz. Therefore frequency
+acquisition admission and permission to synthesize H sync are different gates:
+this result cannot justify pulse replacement aligned to that clock.
+
+Replay seed8300190 with the new guard retains all16 stress admissions and
+rejects the previously admitted4dB PAL case with1.304us clock error and700.6kHz
+porch error. All22 replayed received-input hashes match the frozen original.
+This replay verifies the known failure; it is not independent confirmation.
+Results and executed sources are in `iq-carrier-pulse-validation` and
+`iq-carrier-pulse-replay`. Earlier failures remain unchanged in their directories.
+
+```powershell
+python v4/tools/dsp_search/local_iq_carrier.py --seed 8500190 --repeats 8 --causal --nulls 64 --full-pulse --out replay-full-pulse
+```
+
+Six plateau covariance sets now require432 bytes of complex int32 sums plus
+counts, instead of the earlier two-set144-byte estimate. No corresponding
+integer C carrier kernel or scoring deadline has been demonstrated. Broad
+low-CNR, narrow-filter mismatch, clock drift and structured interference remain
+open, as does the closed-loop settled retuning trajectory. The stronger guard
+is a research candidate, not a promoted automatic RF or CVBS feature.
