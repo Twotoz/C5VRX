@@ -1,5 +1,21 @@
 # Isolated C5VRX-4 integration ledger
 
+## Untrained U85E, NARROW BW and DCO latch, 2026-10-10/11
+
+`docs/PICTURE_CLIFF_STUDY.md` models the goggle's sync lock over full fields
+and shows the operator's "whole picture drops out" as tracker slips of the
+trained PAIR/RANGE32 on other VTX deviations and off-centre carriers. The
+operator asked for untrained models only: `untrained_search.py` chooses among
+closed-form formulas (no fitted LUT entry) with held-out confirmation; the
+information ledger (`info_ledger.py`) locates losses and clicks. U85 (value14)
+and U85E (value15, origin-cell erasure) are pinned; new/invalid selections
+boot U85E (`a7e273cf4a8a`). The operator then chose a permanent narrow analog
+filter: NVS `bw_narrow` (default on, menu NARROW BW, serial U) applies the
+measured edge profile instead of the switching edge gear, superseding the
+">= 24 MHz normal profile" rule. DCO auto-search no longer runs on a channel
+where a carrier was seen this boot. All flashed to the operator's board; no
+flight result yet. Synthetic results are not measured range.
+
 ## Belief ROM and causal input-history study, 2026-10-10
 
 `docs/BELIEF_ROM_STUDY.md` preserves direct/predictive belief projection,
