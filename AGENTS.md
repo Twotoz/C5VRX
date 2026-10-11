@@ -431,6 +431,25 @@ flywheel, level servo or idle raster. NVS namespace `c5vrx5`. CI:
 for the flasher's C5VRX-5 tab. Board: runs and holds video; range is not
 yet measured. Evidence: `v5/docs/FINDINGS.md`.
 
+### C5VRX-5 U85G stacked experiment (2026-10-11)
+
+Branch `codex/c5vrx5-field-demod` extends PR #196 at `8819b695c7a9`.
+Opt-in (build default OFF) near-origin-only PAIR4411 sample-B direction
+assistance is generated offline
+in `v5/tools/gen_pair_demod.py`; WIDE profile only, same U85Q transition/DAC
+words, eight blocks/two lookups per 50 ns, raw IQ40/32 KiB ring, unique20
+[D,D] at TX40/DAC6. Other profiles keep U85Q; no in-flight transition.
+This extends Twotoz/contributors' PR #190 analytic shared-LUT research.
+252-formula screening and independent full-raster/echo/fade tests are in
+`v5/research/data/pair_*.json`; rejected candidates are retained. Some
+synthetic sync cases regress despite improved luma. The inherited clipped
+Q4 model is now distinguished from actual sign-preserving ADC bits 9,6,5,4
+folding (`sim.quantize_iq`, 1024-code exhaustive test, separate 48-row
+`pair_ultrafine.json` cross-check with an additional regression). This remains a
+hardware-pending draft experiment, not a proven outdoor range fix.
+`-DC5VRX5_PAIR_ASSIST=OFF` is the exact #196 demod control. See
+`v5/docs/PAIR_DEMOD.md` for the assumptions and A/B acceptance gate.
+
 ### Instructions for future pipeline work
 
 1. Search this ledger, the original source paths, `docs/KNOWLEDGE_INDEX.md` and

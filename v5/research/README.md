@@ -295,3 +295,14 @@ CNRS=0,2,4,8,12,16,20,25 python range_study.py strong data/strong.json
 
 Needs numpy, scipy and numba. `data/tracker_luts.json` holds the kp variant
 LUTs (generated with the C5VRX-4 untrained generator of PR #190).
+
+## 10. Demodulator follow-up: U85G (draft, opt-in)
+
+The stacked #196 follow-up screened 252 analytic formulas and built a
+near-origin-only PAIR4411 decoder that uses B's signs. Independent full
+PAL/NTSC rasters show small AWGN gains on wide VTXs, but a synthetic echo
+case regresses badly in sync. It is consequently **OFF by default**, not
+a claimed field-range fix. See [PAIR_DEMOD.md](../docs/PAIR_DEMOD.md) for
+numbers, rejected candidates, the generator, reproducible data and the
+physical A/B gate. Medium/narrow firmware profiles keep U85Q even in an
+opt-in build.

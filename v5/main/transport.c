@@ -29,10 +29,18 @@ BITSCRAMBLER_PROGRAM(s_u85q, "u85q");
  * (v5/research, docs/FINDINGS.md). */
 BITSCRAMBLER_PROGRAM(s_u85q_kp060, "u85q_kp060");
 BITSCRAMBLER_PROGRAM(s_u85q_kp050, "u85q_kp050");
+#ifdef C5VRX5_PAIR_ASSIST
+/* Near-origin-only pair assistance. Same schedule and physical FM/DAC window
+ * as U85Q; unvalidated on hardware. Chosen only at startup by profile.c. */
+BITSCRAMBLER_PROGRAM(s_u85g, "u85g");
+#endif
 static volatile int s_tracker = TRACKER_KP085;
 static bool s_started;   /* live TX running (set once at boot) */
 static const void *tracker_program(int t)
 {
+#ifdef C5VRX5_PAIR_ASSIST
+    if (t == TRACKER_PAIR085) return s_u85g;
+#endif
     return t == TRACKER_KP050 ? s_u85q_kp050 : t == TRACKER_KP060 ? s_u85q_kp060 : s_u85q;
 }
 
@@ -230,7 +238,11 @@ esp_err_t transport_start(void)
  * DMA and BitScrambler ordering are the proven ones. */
 bool transport_set_tracker(int tracker)
 {
-    if (tracker != TRACKER_KP085 && tracker != TRACKER_KP060 && tracker != TRACKER_KP050) return false;
+    bool valid = tracker == TRACKER_KP085 || tracker == TRACKER_KP060 || tracker == TRACKER_KP050;
+#ifdef C5VRX5_PAIR_ASSIST
+    valid = valid || tracker == TRACKER_PAIR085;
+#endif
+    if (!valid) return false;
     if (tracker == s_tracker) return true;
     if (s_started && !s_menu_active) {
         printf("TRACKER change refused: live video\n");
@@ -241,6 +253,12 @@ bool transport_set_tracker(int tracker)
 }
 
 int transport_tracker(void) { return s_tracker; }
+const char *transport_demod_name(void)
+{
+    return s_tracker == TRACKER_PAIR085 ? "U85G_KP085_EXPERIMENTAL" :
+           s_tracker == TRACKER_KP060 ? "U85Q_KP060" :
+           s_tracker == TRACKER_KP050 ? "U85Q_KP050" : "U85Q_1a09f5c092e8";
+}
 
 /* Live -> menu: stop the producer once; the menu raster takes TX. */
 void transport_stop_tx(void)

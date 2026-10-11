@@ -15,8 +15,8 @@ extern volatile const char *s_boot_stage;
 
 static void status(void)
 {
-    printf("C5VRX5 version=%s demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v5 "
-           "uptime_s=%lld heap_internal=%u\n", esp_app_get_description()->version,
+    printf("C5VRX5 version=%s demod=%s lane=ultrafine gain_owner=direct_gain_v5 "
+           "uptime_s=%lld heap_internal=%u\n", esp_app_get_description()->version, transport_demod_name(),
            esp_timer_get_time() / 1000000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     control_print();
     receiver_print();

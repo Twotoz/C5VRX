@@ -115,8 +115,22 @@ def raster(standard, seed, fields=2):
     return ire, region
 
 
+def quantize_iq(y, quantizer='clip'):
+    """Packed Q4/I4. 'clip' preserves the inherited study; 'ultrafine'
+    models actual sign-preserving ADC bits {9,6,5,4}, including folding.
+    One decoded cell is 16 ADC counts. Physical ADC headroom is assumed.
+    """
+    def component(v):
+        if quantizer == 'clip':
+            return np.clip(np.floor(v), -8, 7).astype(np.int64) & 15
+        if quantizer != 'ultrafine': raise ValueError('unknown quantizer')
+        adc = np.clip(np.floor(16 * v), -512, 511).astype(np.int64)
+        return ((adc >> 4) & 7) | (((adc >> 9) & 1) << 3)
+    return ((component(y.real) << 4) | component(y.imag)).astype(np.uint8)
+
+
 def make_case(seed, cnr_db, standard='PAL', deviation=1.0, rms=4.2, filter_hz=None,
-              porch_hz=PORCH_HZ, offset_hz=0.0, fields=2):
+              porch_hz=PORCH_HZ, offset_hz=0.0, fields=2, echoes=(), fades=(), quantizer="clip"):
     """Raw IQ bytes (noisy and noise-free) plus the goggle-filtered truth.
     filter_hz: -3 dB full width of an extra 4th-order analog filter (None =
     the C5's normal ~20 MHz channel only). offset_hz: residual AFC error."""
@@ -125,7 +139,19 @@ def make_case(seed, cnr_db, standard='PAL', deviation=1.0, rms=4.2, filter_hz=No
     source = sg.lfilter(sg.firwin(81, 6e6, fs=F80), 1, np.repeat(ire, 2))
     # Blanking (0 IRE) sits at the porch target; sync -40, white +100 IRE.
     freq = porch_hz + offset_hz + deviation * source / 140 * DEV_PP
-    z = sg.sosfilt(CHAN, np.exp(2j * np.pi * np.cumsum(freq) / F80))[::2]
+    carrier = np.exp(2j * np.pi * np.cumsum(freq) / F80)
+    # Synthetic propagation stress only. Keep the same reference CVBS: echoes
+    # must not be calibrated away by replacing the truth with distorted video.
+    direct = carrier.copy()
+    for delay_ns, amplitude, phase_rad in echoes:
+        delay = int(round(delay_ns * 1e-9 * F80))
+        if delay < 1: raise ValueError('echo delay must be at least one RF sample')
+        carrier[delay:] += amplitude * np.exp(1j * phase_rad) * direct[:-delay]
+    for start_ms, duration_ms, depth_db in fades:
+        a = int(start_ms * 1e-3 * F80)
+        b = min(len(carrier), a + int(duration_ms * 1e-3 * F80))
+        carrier[a:b] *= 10 ** (depth_db / 20.)
+    z = sg.sosfilt(CHAN, carrier)[::2]
     z /= np.sqrt(np.mean(abs(z) ** 2))
     n = sg.sosfilt(CHAN, (rng.normal(size=2 * len(z)) + 1j * rng.normal(size=2 * len(z))) / np.sqrt(2))[::2]
     n /= np.sqrt(np.mean(abs(n) ** 2))
@@ -139,9 +165,7 @@ def make_case(seed, cnr_db, standard='PAL', deviation=1.0, rms=4.2, filter_hz=No
             # 40 MS/s after the channel filter that already limits aliasing.
             y = sg.sosfilt(pre, y)
         y *= rms / np.sqrt(np.mean(abs(y) ** 2))   # Direct Gain V5 holds the radius
-        i = np.clip(np.floor(y.real), -8, 7).astype(int)
-        q = np.clip(np.floor(y.imag), -8, 7).astype(int)
-        return (((i & 15) << 4) | (q & 15)).astype(np.uint8)
+        return quantize_iq(y, quantizer)
 
     truth = sg.sosfilt(GOGGLE, ire)
     return dict(raw=quantize(n), clean=quantize(np.zeros_like(n)), truth=truth, region=region,

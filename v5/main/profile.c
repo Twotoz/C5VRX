@@ -77,6 +77,12 @@ bool profile_set(int p)
         f = rf_filter();            /* uncalibrated: keep what is set */
     }
     int tracker = p == PROFILE_KP050 ? TRACKER_KP050 : p == PROFILE_KP060 ? TRACKER_KP060 : TRACKER_KP085;
+#ifdef C5VRX5_PAIR_ASSIST
+    /* Narrow/medium deviations keep U85Q: assistance can worsen goggle
+     * lock despite better luma SINAD. WIDE is measured at startup; no
+     * in-flight demodulator or filter switch is introduced. */
+    if (p == PROFILE_WIDE) tracker = TRACKER_PAIR085;
+#endif
     if (!transport_set_tracker(tracker)) return false;   /* refuses while TX is live */
     if ((!rf_filter_equal(rf_filter(), f) || !rf_filter_applied()) && !rf_set_filter(f)) {
         printf("PROFILE error: filter code=%d skirt=%u not applied (read back code=%d skirt=%d)\n", f.code, f.skirt,

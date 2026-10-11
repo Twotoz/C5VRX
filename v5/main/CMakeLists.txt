@@ -12,6 +12,13 @@ target_bitscrambler_add_src("u85q.bsasm")
 target_bitscrambler_add_src("u85q_kp060.bsasm")
 target_bitscrambler_add_src("u85q_kp050.bsasm")
 
+# This stacked PR is an experimental A/B build. OFF uses #196's exact LUTs.
+option(C5VRX5_PAIR_ASSIST "Use experimental U85G on measured wide VTX profiles" OFF)
+if(C5VRX5_PAIR_ASSIST)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE C5VRX5_PAIR_ASSIST=1)
+    target_bitscrambler_add_src("u85g.bsasm")
+endif()
+
 # Filter capacitor and DC DAC access uses PHY internals recovered from this
 # exact ESP-IDF 6.0.2 libphy; any other PHY binary builds with them refused.
 set(C5_PHY_ARCHIVE "$ENV{IDF_PATH}/components/esp_phy/lib/esp32c5/libphy.a")

@@ -7,6 +7,15 @@ C5VRX-5 is the simplest and best C5VRX so far: one demodulator, no
 experimental options. Everything that is in it earned its place on the
 board or in held-out tests (see [docs/FINDINGS.md](docs/FINDINGS.md)).
 
+## Experimental stacked PR
+
+This branch contains an opt-in **U85G near-origin pair assistance** test on the freshly
+measured WIDE VTX profile. Other profiles keep U85Q. The physical
+pipeline is unchanged; outdoor range improvement is not measured, and
+some synthetic echo/fade cases regress. Read [PAIR_DEMOD.md](docs/PAIR_DEMOD.md)
+before the A/B test. The default build keeps the exact #196 demodulator. Build with
+`-DC5VRX5_PAIR_ASSIST=ON` to test U85G on WIDE profiles. This experiment is not ready for production.
+
 ## What it does
 
 - **U85Q demodulator** in the TX BitScrambler: an untrained 32-phase tracker
