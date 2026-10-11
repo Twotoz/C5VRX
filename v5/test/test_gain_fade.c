@@ -79,6 +79,7 @@ static uint64_t run(double steady_db, profile_t level, uint64_t total_us, uint64
     uint64_t t;
     /* Settle on the steady carrier (0.8 s). */
     dg_reset(&g, &table, 60);
+    g.learn_enabled = true;    /* a confirmed VTX throughout */
     t = 1000;
     for (unsigned n = 0; n < 4000; ++n, t += TICK_US) {
         dg_observation_t o = observe(steady_db, g.current_gain, t);
@@ -155,6 +156,24 @@ int main(void)
         printf("sustained %3.0f dB step: picture back %.2f ms later, %u writes, end G%u\n", s_depth,
                step_cost[d] == UINT64_MAX ? -1.0 : step_cost[d] / 1000.0, writes, gk);
         check("sustained step recovers", step_cost[d] != UINT64_MAX);
+    }
+    /* No confirmed VTX (receiver noise, VTX off): the map must not learn,
+     * whatever the coherence test says. */
+    {
+        s_depth = -12;
+        (void)run(s_steady, step_down, 400000, 10000, &writes, &gk);
+        uint32_t with_vtx = g.learned;
+        dg_reset(&g, &table, 60);           /* learn_enabled stays false */
+        const uint32_t kept = g.learned;    /* a reset on the same table keeps the map */
+        uint64_t t = 1000;
+        for (unsigned n = 0; n < 6000; ++n, t += TICK_US) {
+            double lv = n < 3000 ? s_steady : s_steady - 12;
+            dg_observation_t o = observe(lv, g.current_gain, t);
+            (void)dg_tick(&g, &o);
+        }
+        printf("map learning: %u with a confirmed VTX, %u new without (refused %u)\n", with_vtx, g.learned - kept,
+               g.learn_refused);
+        check("no map learning without a confirmed VTX", g.learned == kept && g.learn_refused > 0);
     }
 #ifdef EXPECT_FADE_HOLD
     check("sustained step: at most ~the 10 ms hold more than without it", step_cost[0] <= 25000 && step_cost[1] <= 15000);

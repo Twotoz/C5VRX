@@ -37,6 +37,10 @@ static void check(const char *name, int ok, const char *detail)
 /* Simulates `seconds` of reception of a VTX whose porch sits `vtx_khz` away
  * from the target; estimate noise `sigma_khz`. Returns the final residual
  * error, sets *locked and *corrections. Offset clamp as rf_set_offset_khz. */
+/* plant_sign = +1: raising the offset lowers the estimate (the sign the
+ * firmware assumes); -1: the opposite (never confirmed on hardware, C5VRX-4
+ * INTEGRATION.md "VTX sign/reference calibration pending"). */
+static int s_plant_sign = 1;
 static int run(int vtx_khz, double sigma_khz, double seconds, int *locked, unsigned *corrections)
 {
     afc2_ctrl_t c;
@@ -50,7 +54,7 @@ static int run(int vtx_khz, double sigma_khz, double seconds, int *locked, unsig
     for (unsigned w = 0; w < (unsigned)(seconds * 20.0); ++w) {
         afc2_ctrl_sync(&c, ctx, own);
         own = false;
-        int err = vtx_khz - offset;
+        int err = vtx_khz - s_plant_sign * offset;
         afc2_result_t r;
         memset(&r, 0, sizeof(r));
         r.lines = 8; r.standard = 2; r.polarity = -1; r.burst_x10 = 40; r.sync_pairs = 200; r.porch_pairs = 300;
@@ -71,7 +75,7 @@ static int run(int vtx_khz, double sigma_khz, double seconds, int *locked, unsig
         }
     }
     *locked = lock;
-    return vtx_khz - offset;
+    return vtx_khz - s_plant_sign * offset;
 }
 
 int main(void)
@@ -95,6 +99,18 @@ int main(void)
         snprintf(detail, sizeof(detail), "residual=%d corrections=%u", res, n);
         check(name, n <= 1u, detail);
     }
+    /* The offset sign was never confirmed on hardware: with the plant
+     * inverted, the AFC must still centre (and not walk to the clamp). */
+    s_plant_sign = -1;
+    const int inv[] = {300, -300, 900, -900, 1450, -1450, 2000, -2000};
+    for (unsigned k = 0; k < sizeof(inv) / sizeof(inv[0]); ++k) {
+        int locked; unsigned n;
+        int res = run(inv[k], 40.0, 30.0, &locked, &n);
+        snprintf(name, sizeof(name), "inverted offset sign, VTX %+5d kHz: centred", inv[k]);
+        snprintf(detail, sizeof(detail), "residual=%d kHz locked=%d corrections=%u", res, locked, n);
+        check(name, abs(res) <= AFC2_CTRL_DEADBAND_KHZ + 20 && locked, detail);
+    }
+    s_plant_sign = 1;
     printf("%s: %u checks, %u failures\n", s_fail ? "FAIL" : "PASS", s_run, s_fail);
     return s_fail ? 1 : 0;
 }

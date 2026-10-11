@@ -24,70 +24,55 @@ flight video.
   - sampling phase, and whether DC is held for the current gain;
   - IQ statistics and transport faults;
   - verdict lines and the dropouts of this boot.
-- **`R`: one `FIELD_DIAG` line per second.** Each line holds: picture share
-  (AFC-measured windows with burst-confirmed sync), gain/max/RF stage,
-  observer p50/coherence/origin/clip, AFC offset, and chain flags.
-- **`FIELD_DIAG_EVENT`** is printed at every dropout, with no command
-  needed. It gives the evidence category and the record of the last second
-  with a picture next to the first second without one.
-  - `CALIBRATION_OR_PHY`: filter not read back, sampling phase unsettled,
-    no DC for the gain in use, or a DMA/BitScrambler fault.
-  - `POSSIBLE_PROPAGATION_FADE`: the carrier had >= 6 gain steps of
-    headroom and was gone within ~2 s.
-  - `AT_RF_FLOOR`: already at the gain maximum with a weak carrier, then
-    noise-like IQ.
-  - `DEMOD_CLIFF`: the IQ is still coherent and carrier-like, but sync is
-    lost.
-  - `UNKNOWN`: none of the above fits.
+- **`R`: one `FIELD_DIAG` line per second.** `sync_valid_pct` means
+  burst-confirmed AFC sync / **all** control observations.
+  `measurement_coverage_pct` means measurable / all observations;
+  `sync_given_measured_pct` is the conditional success rate. Ten measurable
+  successes in twenty observations reports 50/50/100, not 100% video.
+  Failed snapshot copies count as missing evidence. None measures displayed
+  picture, moving luma, chroma quality or SINAD.
+- **`FIELD_TRACE`: automatic bounded onset capture.** The first observation
+  losing sync evidence after a confirmed one freezes up to 16 observations
+  before, the onset, and 16 afterwards. Actual `t_ms` timestamps and a
+  zero-based `trigger` index are printed. This reuses the **existing nominal
+  50-ms AFC cadence**; it can capture one-window losses that 1-Hz summaries
+  hide, but cannot resolve every 5–20-ms fade or detect a picture cliff
+  that retains AFC sync. Never infer continuous IQ coverage from this log.
+  The recorder uses fixed memory, no extra IQ copies/FFT/PHY writes, and
+  console-only output. Slow USB preserves the oldest unread capture and
+  increments `skipped` for new onsets; no producer waits for the console.
+  Menu, calibration, channel changes and >200-ms observation gaps cut the
+  history; a partial event is then printed without joining different contexts.
+  Each point includes frequency/profile, requested filter/BW, filter readback
+  status, RF/BB/fine tuple, gain writes/fade holds/overloads, p50/p95,
+  origin/rail, coherence, model C/N validity, CFO/requested offset, AFC,
+  sampling/DC state and transport-fault deltas. These are asynchronous
+  observer summaries, not an atomic or calibrated raw-power measurement.
+- **`FIELD_DIAG_EVENT`: 1-Hz evidence-loss categories**, not physical causes:
+  `CALIBRATION_OR_PHY`, `FAST_EVIDENCE_LOSS`, `AT_RF_FLOOR`,
+  `DEMOD_CLIFF`, `UNKNOWN`. Missing coverage or unknown model C/N stays
+  UNKNOWN. Coherent IQ with missing sync takes precedence over gain headroom.
+  FAST_EVIDENCE_LOSS can include fading, shadowing, VTX changes or other
+  failures; it does not diagnose ground reflection. DEMOD_CLIFF is a replay
+  candidate, not proof that U85Q caused the loss.
 
-These categories are hypotheses for the next test. They are not a measured
-cause, not dBm, and not range.
+Capture goggles or terminated CVBS separately: firmware does not know whether
+recognisable moving image information remains. Read-back verifies code/skirt,
+**not independently BW20/BW40 analog response**. C/N is a simulation-derived
+coherence model, not dBm, measured noise figure or independently validated RF C/N.
 
 ## Open-field physics, before blaming the receiver
 
-These are textbook two-ray numbers, not measurements (`v5/research/README.md`,
-section 7).
-
-- **Low antennas lose range in the open.** With VTX and receiver both at
-  ~1 m, the ground reflection cancels the direct ray beyond ~77 m. The extra
-  loss is +6 dB at 500 m and +12 dB at 1 km. Each 6 dB halves the range.
-- **Indoors is not comparable.** Indoor paths are short, and reflections
-  fill the gaps.
-- **Polarisation costs about 3 dB.** The XIAO antenna is linear and FPV VTX
-  antennas are usually RHCP.
-- **What helps:**
-  - put the receiver antenna high and clear of your body;
-  - fly instead of walking the VTX on the ground;
-  - use a matched 5.8 GHz antenna.
-- **What does not help:** a different LUT does not change this.
-
-`D` and `R` report a C/N estimate (`cn_est_x10`). It is a model value from
-the phase coherence and the active filter class, not dBm. Compare it
-between runs. It also feeds the dropout classes and the AFC gate: the AFC
-retunes only from ~6 dB, logged as `[AFC]`. If FIELD_DIAG shows
-`afc_step=1` just before dropouts on an older build, the old weak-signal
-retune was involved.
-
-A `QUANTISER_LIMITED` verdict in `D` (VTX off, gain at the table maximum)
-means the receiver noise is below one ultrafine step. Then the 4-bit
-capture, not the antenna, sets the floor, and an LNA in front would help.
-
-## Antenna first
-
-These conclusions come from the model in `v5/research/README.md`, section 9.
-
-1. **Do not use the bundled 2.4 GHz FPC antenna.** It is a 2.4 GHz part.
-   Use a 5.8 GHz antenna with a U.FL lead.
-2. **Use RHCP when the VTX is RHCP.** Besides 3 dB of polarisation gain, an
-   RHCP antenna rejects the ground bounce, which comes back left-handed. In
-   the model a linear antenna reaches ~0.4-0.55 km and an RHCP omni
-   ~1.1-1.25 km (25 mW).
-3. **For distance, use an aimed RHCP patch (8+ dBi).** In the model that
-   gives ~3 km.
-4. **A/B test at one fixed spot.** Wait 10 s and press `D`; the
-   `RANGE_DIAG last_10s` line gives the median C/N estimate and the gain.
-   Change one thing and repeat. A higher C/N, or a lower gain at the same
-   C/N, means the setup is better.
+Two-ray/Fresnel fading, antenna clearance and polarisation are possible
+explanations, not established causes for this board. Models in
+`v5/research/README.md` and `field_antenna.py` use assumed ground, antennas
+and receiver threshold. Their predicted distances and inferred noise figure
+are **not measured C5 WBFM sensitivity**; Wi-Fi PER sensitivity cannot establish
+that threshold. Identify the actual supplied FPC antenna before calling it
+2.4-GHz-only. Test a known-good 5.8-GHz antenna with matching polarisation,
+clear of the body, then repeat antenna-height/location A/B/A. A repeatable
+change suggests propagation or antenna effects, which a conducted test separates.
+A quantiser verdict is likewise a hypothesis requiring captured-IQ validation.
 
 ## Record every run
 
@@ -132,8 +117,17 @@ Repeat each comparison A/B/A (or ABBA) so that drift and fading average out.
    - For each firmware (C5VRX-3 main, C5VRX-5 default, PR #196 matched) and
      a reference receiver, find the attenuation where the picture stops
      being usable.
-   - Use the same objective criterion every time: `picture_pct`, plus your
-     own view of the picture.
+   - Sweep the last 8–12 dB in 0.5–1 dB steps up and down, with repeated,
+     randomised runs and the same moving test pattern. Record actual
+     attenuation, raw IQ (`I`), `D/R/T`, and filmed goggles or properly
+     75-ohm-terminated CVBS. Use the same recognisable-moving-picture
+     criterion, measuring luma if available; sync evidence is separate.
+   - Track carrier/IQ, recovered video-information, and output/goggle-loss
+     thresholds independently. Static remaining visible is not NO SIGNAL.
+   - Repeat low- and wide-deviation VTXs, DEFAULT/MATCHED/WIDE profiles
+     and carrier offsets ±0.5/±1 MHz during explicit bench setup only.
+     Replay the same pre/post-cliff IQ with bit-exact U85Q and a floating
+     FM reference before choosing another real-time DSP implementation.
    - Randomise the order and repeat each setting.
 7. **IQ lane bench test (optional, on the ground).** `L` compares raw IQ on
    the ultrafine, fine and coarse lanes at the same gain, filter and
@@ -144,8 +138,7 @@ Repeat each comparison A/B/A (or ABBA) so that drift and fading average out.
 
 ## Reading the result
 
-- **Height or position changes the picture** → propagation (ground
-  reflection, Fresnel zone). Fix placement; long term, use antenna
+- **Height or position changes the picture** → possible spatial propagation or antenna effect. Fix placement; long term, use antenna
   diversity.
 - **Same loss in the conducted test, independent of height** → receiver
   sensitivity or configuration. Look at the `D` gain tuple at the edge,
@@ -153,11 +146,27 @@ Repeat each comparison A/B/A (or ABBA) so that drift and fading average out.
 - **Dropouts are mostly `DEMOD_CLIFF`** (coherent IQ, no sync) → a
   demodulator, AFC or sync problem that IQ captures can show. Only this
   case justifies more DSP work.
-- **Dropouts are mostly `AT_RF_FLOOR`** → the signal is below the receiver
-  noise. Improve the RF link (antenna, height, polarisation, VTX power),
+- **Dropouts are mostly `AT_RF_FLOOR`** → possible receiver-floor evidence; verify with controlled RF/IQ. Improve the RF link (antenna, height, polarisation, VTX power),
   not the LUT.
 - **The other antenna fixes it** → antenna mismatch, polarisation, or a
   connector problem.
 
 Claim a range improvement only from a reproducible conducted attenuation
 margin, or from a lower dropout rate under comparable logged conditions.
+
+## Merge evidence still required
+
+Host tests and compilation verify diagnostic semantics and recorder bounds;
+they do not prove extra attenuation tolerance or cure the reported picture
+cliff. Flash and check VTX-off/on startup, fresh/valid calibration, correct
+active profile and zero later disruptive calibration. Measure observer timing,
+stack headroom and transport faults with slow/disconnected USB. Complete a
+repeatable conducted attenuation A/B plus matched outdoor A/B.
+
+Bench-verify RF offset in both directions and actual BW/passband/ENBW, wide
+VTX sync-tip/white margins, CVBS levels/loading, and per-gain DC validity after
+filter/profile changes (`dco_same_context` currently ignores filter/BW fields).
+No intrusive DC search, sampling slip, lane switch or tracker replacement is
+permitted as an automatic live correction. There are no physical measurements
+attached to this diagnostic fix; the underlying RF/FM/DSP/output cause remains
+unresolved until those captures exist.

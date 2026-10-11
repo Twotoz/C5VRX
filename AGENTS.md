@@ -385,9 +385,16 @@ read-back best setting, nonzero noise bandwidth and a successful NVS write.
 Passive FIELD_DIAG (`v5/main/diag.c`, `diag_logic.h`, host test
 `v5/test/test_diag.c`, `v5/tools/field_diag_compare.py`, protocol
 `v5/docs/FIELD_TEST.md`): per-second records from existing statistics and a
-dropout classifier (CALIBRATION_OR_PHY / POSSIBLE_PROPAGATION_FADE /
+dropout classifier (CALIBRATION_OR_PHY / FAST_EVIDENCE_LOSS /
 AT_RF_FLOOR / DEMOD_CLIFF / UNKNOWN), evidence categories, not causes or
-dBm. Console `L` is a bench-only raw-IQ lane comparison (ultrafine / fine /
+dBm. Coverage and sync use all control observations, with conditional sync
+reported separately; AFC sync is not displayed-image quality. `diag_trace.h`
+keeps bounded timestamped 16-pre/16-post onset observations at the existing
+nominal 50-ms control cadence, including gain/tuple/filter/profile and counters.
+Console-only output, oldest unread event retained with skip count; gaps and
+ownership/retunes cut history. Faster fades and a luma cliff retaining sync
+still need IQ/CVBS captures. Unknown coverage/C/N stays UNKNOWN; coherent IQ
+gets a DSP/output investigation before any headroom/fade hypothesis. Console `L` is a bench-only raw-IQ lane comparison (ultrafine / fine /
 coarse, ABBA, behind a status screen); production stays fixed ultrafine.
 Channels above 5885 MHz (R8, E6-E8) are flagged out of the documented C5
 range. AFC re-acquisition retunes only at a C/N estimate >= 6 dB
@@ -409,9 +416,9 @@ link model (`v5/research/field_antenna.py`, README section 9, textbook
 physics): at FPV grazing angles the ground bounce of an RHCP VTX returns in
 the opposite hand, so an RHCP receive antenna rejects it while a linear one
 gets the full two-ray nulls (model: ~0.4-0.55 km linear vs ~1.1-1.25 km RHCP
-omni vs ~3 km 8 dBi RHCP patch at 25 mW). The XIAO's bundled FPC antenna
-is listed as a 2.4 GHz part; ESP32-C5 5 GHz sensitivity (-92.5 dBm, 11a
-6 Mbps) implies a ~5 dB NF, so the chip is not the open-field limit. WIDE profile (filter class >= 16 MHz, kp 0.85, deviation
+omni vs ~3 km 8 dBi RHCP patch at 25 mW). Identify the actual bundled FPC antenna before asserting its band.
+The link model's RF threshold/NF inferred from Wi-Fi PER sensitivity is an
+assumption, not measured C5 WBFM sensitivity or proof that RF is not limiting. WIDE profile (filter class >= 16 MHz, kp 0.85, deviation
 >= 1.6; filter blob v3): the board VTX swung -5.0..+6.25 MHz (deviation
 ~1.7), and the 12 MHz default clips wide VTXs (bit-exact U85Q,
 `v5/research/data/wide.txt`: 1.7 3.64 vs 3.26 dB at 16 MHz, 2.0 8.03 vs
@@ -420,7 +427,30 @@ re-arm (`v5/main/afc_ctrl.h` `AFC2_CTRL_REARM_WINDOWS`, host test
 `v5/test/test_afc.c`): the 4 x 250 kHz budget only came back after a lost
 lock, so a VTX > 1 MHz off never centred or locked (0.2-0.45 MHz residual
 all session); it now re-arms after 3 s while unlocked, and the offset clamp
-is +-2.5 MHz (was 1.5; vendor helper range not yet hardware-tested).
+is +-2.5 MHz (was 1.5; vendor helper range not yet hardware-tested). AFC
+offset sign self-check (`AFC2_CTRL_SIGN_CHECK_KHZ`, NVS `afc_sign`, `T`
+afc_sign): the sign was never hardware-confirmed (C5VRX-4 INTEGRATION.md),
+and with the opposite sign the AFC walked to the clamp (host test: 2.8-4.5
+MHz residual); after a step >= 150 kHz the next stable estimate must move
+toward the target, else the sign flips and is stored. DC startup: a failed
+probe is no longer recorded as a noise floor (it marked every lower row
+FLOOR in NVS and stopped the bar half way); the floor end now completes the
+bar with an explanation. With the VTX on at boot, missing DC rows (the high
+gain rows used far out) are measured on a quiet channel >= 40 MHz away with
+an exact, checked restore (startup only): before, they stayed uncorrected
+(~1.1 cell, C5VRX-4 video_dco.c), which in the stress matrix broke the
+goggle line lock at 4 dB C/N (lines shifting in bands). Codes measured on
+another channel are assumed close (baseband offsets per gain row); live
+drift nudges trim the rest; board confirmation pending. Direct Gain learns
+its gain map only with a confirmed VTX (burst-confirmed sync within 500 ms,
+`learn_enabled`): the coherence test alone passes plain 4-bit noise through
+the 12/10 MHz filters, so VTX-off noise ratios were learned and persisted;
+map version 4 drops such maps once. The map is saved every 30 s when it
+changed. Gain map preset (`v5/main/gain_map_preset.h`, built by
+`v5/tools/gain_map_preset.py` from console `M` GAINMAP lines of measured
+boards, host test `v5/test/test_gain_preset.c`): a lowest-confidence prior
+for boards without a saved map; empty until board data exists (not
+simulated: RF-stage/BB dB values are not known well enough to model).
 Stress matrix `v5/research/situations.py` (README section 11): -0.75 /
 -1.0 MHz residual already costs the picture at 4 dB C/N; long echoes hurt
 all profiles alike (no equaliser possible). Profile gains (+1.7 / +3.2 dB) are SIMULATION only (`v5/research`);
@@ -495,6 +525,16 @@ or enable them before legal hardware mapping and physical validation. See
 `predictive_full_20261011`, `oracle_full_20261011` and `DEMOD_SEARCH.md`.
 
 ### Instructions for future pipeline work
+
+IQLaneFusion research extends U85 and the older adaptive-lane/history work:
+`v5/docs/IQLANE_FUSION.md`, `v5/research/iq_lane_fusion.py`. Exact Q10 cell
+likelihoods, mathematical bitset/gain screening, factorized phase/frequency
+reference, route-transition replay and a fixed-context compressed BS experiment
+are host research. Console J enables a read-only shadow with explicit assumed
+contexts, off by default and no actuators. Full posterior and compressed BS
+program are not equivalent. Preserve the negative fade comparison. Safe live
+arbitrary routing/decoder handover, hardware timing and range remain unproved;
+do not treat model-only proposals or unused counters as physical validation.
 
 1. Search this ledger, the original source paths, `docs/KNOWLEDGE_INDEX.md` and
    `docs/pr-derived-findings.md` before proposing a CPU, source, DMA, DSP or DAC

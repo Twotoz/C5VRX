@@ -95,6 +95,7 @@ bool receiver_pause(const char *tag);
 void receiver_resume(void);
 void receiver_set_gain(uint8_t gain);
 void receiver_print(void);
+void receiver_print_map(void);   /* console M: GAINMAP line */
 
 /* ---- control.c ---- */
 extern volatile bool s_menu_active;
@@ -175,6 +176,13 @@ void diag_window(bool measured, bool video_valid, bool afc_step);   /* control t
 void diag_poll(void);                   /* console task: prints queued records */
 void diag_report(void);                 /* console D */
 void diag_toggle_stream(void);          /* console R */
+
+/* ---- lane_shadow.c: opt-in analytic model proposals, no actuator ---- */
+void lane_shadow_toggle(void);         /* console J */
+void lane_shadow_window(const uint8_t *raw, size_t bytes, uint32_t epoch,
+                       uint32_t gain_epoch, bool valid);
+void lane_shadow_print(void);
+void lane_shadow_poll(void);
 
 /* ---- settings.c ---- */
 void settings_load(void);

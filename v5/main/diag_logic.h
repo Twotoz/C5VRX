@@ -1,32 +1,11 @@
 /* C5VRX-5 by Twotoz and the C5VRX contributors: pure part of the passive
  * field diagnostics (diag.c; host test v5/test/test_diag.c).
  *
- * diag.c summarises each second of live reception from statistics the
- * receiver already computes (control-window AFC result, gain observer)
- * into one record. The C/N estimate comes from the observer coherence and
- * the active filter class (cn_estimate.h, a model table), because the
- * coherence of plain noise itself depends on the filter width. When the picture drops out, the records just before
- * and at the dropout are classified into an evidence category. The
- * categories are hypotheses for the operator, not a proven physical
- * cause, and none of them is a calibrated dBm or range figure:
- *
- *  CALIBRATION_OR_PHY        the chain itself was not in its intended state
- *                            (filter not applied, sampling phase unsettled,
- *                            no DC correction for the gain in use, DMA or
- *                            BitScrambler faults, an AFC retune);
- *  POSSIBLE_PROPAGATION_FADE the carrier had clear analog-gain headroom and
- *                            disappeared within ~2 s, faster than distance
- *                            explains (ground-reflection null, body or
- *                            antenna shadowing, polarisation);
- *  AT_RF_FLOOR               already at the gain table maximum with a weak
- *                            carrier before the dropout, and a C/N estimate
- *                            at or below ~2 dB at it: the signal sank into
- *                            the receiver noise;
- *  DEMOD_CLIFF               the C/N estimate stays >= 6 dB (well above the
- *                            simulated usable threshold) while the picture
- *                            is lost: tracker, AFC or sync loss rather than
- *                            missing RF;
- *  UNKNOWN                   none of the above fits. */
+ * Reports AFC sync evidence and model-derived C/N, never recognisable
+ * moving picture quality, luma SINAD, dBm or a proven physical cause.
+ * FAST_EVIDENCE_LOSS can include fades, shadowing, VTX power changes or
+ * sampling/measurement failures. DEMOD_CLIFF is only a candidate for replay.
+ */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -43,7 +22,7 @@ enum {
 static inline const char *diag_category_name(int c)
 {
     static const char *const names[DIAG_CATEGORIES] = {"UNKNOWN", "CALIBRATION_OR_PHY",
-        "POSSIBLE_PROPAGATION_FADE", "AT_RF_FLOOR", "DEMOD_CLIFF"};
+        "FAST_EVIDENCE_LOSS", "AT_RF_FLOOR", "DEMOD_CLIFF"};
     return c >= 0 && c < DIAG_CATEGORIES ? names[c] : "?";
 }
 
@@ -60,8 +39,18 @@ static inline const char *diag_category_name(int c)
 #define DIAG_F_OUT_OF_SPEC     0x20u   /* channel above the documented C5 range */
 
 typedef struct {
+    uint32_t t_ms;          /* observation time, ms; wraps after ~49 days */
     uint32_t t_s;           /* uptime, s */
-    uint8_t video_pct;      /* AFC-measured windows with burst-confirmed sync, % */
+    uint8_t video_pct;      /* sync-valid / ALL observation windows, % */
+    uint8_t coverage_pct;   /* measurable / ALL observation windows, % */
+    uint8_t sync_measured_pct; /* sync-valid / measurable, % */
+    uint8_t measured;       /* event observation had usable AFC measurement */
+    uint16_t frequency_mhz;
+    uint8_t profile, filter_skirt, filter_bw20;
+    int8_t filter_code;
+    uint8_t rf_code, bb_code, fine_code;
+    int16_t p95, cfo_khz;
+    uint32_t gain_writes, fade_holds, overloads, faults;
     uint8_t gain, gain_max; /* mean gain index of the second, table maximum */
     uint8_t rf_stage;       /* vendor RF stage of the gain */
     int16_t p50;            /* observer envelope median (ultrafine cells^2 x16) */
@@ -74,8 +63,8 @@ typedef struct {
 
 /* Thresholds on the C/N estimate (per 20 MHz; simulated usable-picture
  * threshold ~1-5 dB, v5/research/README.md). */
-#define DIAG_VIDEO_OK_PCT     50u   /* a second with a picture */
-#define DIAG_VIDEO_LOST_PCT   5u    /* a second without (no confirmed sync) */
+#define DIAG_VIDEO_OK_PCT     50u   /* majority of windows have sync evidence */
+#define DIAG_VIDEO_LOST_PCT   5u    /* very little confirmed sync evidence */
 #define DIAG_FLOOR_CN_X10     20    /* at or below: at the receiver noise */
 #define DIAG_WEAK_CN_X10      80    /* below: a weak carrier */
 #define DIAG_CLIFF_CN_X10     60    /* at or above: RF still clearly there */
@@ -83,6 +72,17 @@ typedef struct {
 
 static inline bool diag_video_ok(const diag_record_t *r) { return r->video_pct >= DIAG_VIDEO_OK_PCT; }
 static inline bool diag_video_lost(const diag_record_t *r) { return r->video_pct <= DIAG_VIDEO_LOST_PCT; }
+
+static inline uint8_t diag_pct(unsigned part, unsigned total)
+{
+    return total ? (uint8_t)(part * 100u / total) : 0u;
+}
+static inline void diag_coverage(diag_record_t *r, unsigned windows, unsigned measured, unsigned sync)
+{
+    r->coverage_pct = diag_pct(measured, windows);
+    r->video_pct = diag_pct(sync, windows);
+    r->sync_measured_pct = diag_pct(sync, measured);
+}
 
 /* rec[0..n-1] oldest first; rec[n-1] is the first second without a
  * picture. Needs at least one second with a picture before it. */
@@ -98,13 +98,16 @@ static inline int diag_classify(const diag_record_t *rec, unsigned n)
     /* Chain state in the seconds from the last picture to the dropout. */
     for (unsigned k = (unsigned)last_ok; k < n; ++k)
         if (rec[k].flags & DIAG_F_CHAIN) return DIAG_CALIBRATION_OR_PHY;
-    /* Picture lost within ~2 s while the gain still had headroom: the
-     * carrier fell faster than any distance change explains. */
+    /* Missing/unusable AFC observations cannot diagnose a DSP or RF floor. */
+    if (drop->coverage_pct < DIAG_VIDEO_OK_PCT) return DIAG_UNKNOWN;
+    if (drop->cn_x10 == -990) return DIAG_UNKNOWN;
+    /* RF-like structure remains: check decoding/output before propagation. */
+    if (drop->cn_x10 >= DIAG_CLIFF_CN_X10) return DIAG_DEMOD_CLIFF;
+    /* Rapid evidence loss with gain headroom; physical cause unknown. */
     bool fast = (int)n - 1 - last_ok <= 2;
     if (fast && ok->gain + DIAG_FADE_HEADROOM <= ok->gain_max) return DIAG_PROPAGATION_FADE;
     bool at_max_before = ok->gain + 1u >= ok->gain_max;
     if (at_max_before && ok->cn_x10 < DIAG_WEAK_CN_X10 && drop->cn_x10 <= DIAG_FLOOR_CN_X10)
         return DIAG_AT_RF_FLOOR;
-    if (drop->cn_x10 >= DIAG_CLIFF_CN_X10) return DIAG_DEMOD_CLIFF;
     return DIAG_UNKNOWN;
 }

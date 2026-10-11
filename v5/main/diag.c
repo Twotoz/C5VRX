@@ -3,12 +3,12 @@
  * Nothing here touches the receive chain: no retune, gain, filter, DC,
  * lane or tracker write, and no extra IQ copy. The control task hands over
  * per 50 ms window it already processed whether the AFC could measure it
- * and whether it held burst-confirmed sync; video_pct counts the measured
- * windows only. The gain observer's statistics are read as they are; each
- * second becomes one diag_record_t (diag_logic.h) in a 64-entry ring. When
- * the picture drops out, the seconds before it are classified once. All
- * printing happens in the console task (diag_poll), never in the control
- * task, so a slow or absent USB host cannot stall AFC or the observers.
+ * and whether it held burst-confirmed sync. Coverage and sync use ALL
+ * observation windows as denominator; conditional sync is reported separately.
+ * A bounded recorder preserves 16 pre-onset and 16 post-onset observations
+ * at the existing control cadence (nominal 50 ms, actual timestamps printed).
+ * These are sparse IQ/AFC observations, not continuous image-quality samples.
+ * Console printing never blocks the control task or the hardware datapath.
  *
  *   FIELD_DIAG        one line per second, after console R (stream toggle)
  *   FIELD_DIAG_EVENT  dropout start (category) and end (duration), always
@@ -20,6 +20,7 @@
 #include <string.h>
 #include "cn_estimate.h"
 #include "diag_logic.h"
+#include "diag_trace.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "phy.h"
@@ -38,6 +39,7 @@ typedef struct {
 
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static diag_record_t s_hist[DIAG_HISTORY];
+static diag_trace_t s_trace;
 static uint32_t s_seq;                  /* records written */
 static diag_event_t s_events[DIAG_EVENTS];
 static uint32_t s_event_seq;
@@ -54,6 +56,7 @@ static struct {
     bool afc_step;
 } s_acc;
 static bool s_in_dropout;
+static uint32_t s_segment_start_seq;
 static uint32_t s_seen_faults;
 
 static uint8_t chain_flags(uint8_t gain, uint32_t faults)
@@ -68,23 +71,48 @@ static uint8_t chain_flags(uint8_t gain, uint32_t faults)
     return f;
 }
 
-static void close_second(int64_t now)
+/* Read-only metadata. Quantised envelope/coherence are existing observer
+ * statistics, NOT calibrated raw ADC power or independent C/N confidence. */
+static void snapshot(diag_record_t *r, uint8_t gain, uint32_t faults)
 {
     const arc_gain_table_t *table = rf_gain_table();
+    arc_gain_tuple_t tuple = {0};
+    bool tuple_ok = arc_gain_tuple_decode(table, gain, &tuple);
+    const rf_filter_t f = rf_filter();
+    r->gain = gain;
+    r->gain_max = table->max_index;
+    r->rf_stage = tuple_ok ? tuple.rf_stage : 0xff;
+    r->rf_code = tuple.rf_code;
+    r->bb_code = tuple.bb_code;
+    r->fine_code = tuple.fine_code;
+    r->frequency_mhz = rf_frequency_mhz();
+    r->profile = (uint8_t)profile_active();
+    r->filter_code = f.code;
+    r->filter_skirt = f.skirt;
+    r->filter_bw20 = f.bw20;
+    r->offset_khz = (int16_t)rf_offset_khz();
+    r->cfo_khz = (int16_t)s_cfo_khz;
+    r->p95 = (int16_t)s_obs_p95;
+    r->gain_writes = s_gain.writes;
+    r->fade_holds = s_gain.fade_holds;
+    r->overloads = s_gain.overloads;
+    r->faults = faults;
+    r->flags = chain_flags(gain, faults);
+}
+
+static void close_second(int64_t now)
+{
     diag_record_t r = {0};
     r.t_s = (uint32_t)(now / 1000000);
-    r.video_pct = s_acc.measured ? (uint8_t)(s_acc.video * 100u / s_acc.measured) : 0u;
-    r.gain = (uint8_t)((s_acc.gain_sum + s_acc.windows / 2u) / s_acc.windows);
-    r.gain_max = table->max_index;
-    arc_gain_tuple_t tuple;
-    r.rf_stage = arc_gain_tuple_decode(table, r.gain, &tuple) ? tuple.rf_stage : 0xff;
+    r.t_ms = (uint32_t)(now / 1000);
+    diag_coverage(&r, s_acc.windows, s_acc.measured, s_acc.video);
+    snapshot(&r, (uint8_t)((s_acc.gain_sum + s_acc.windows / 2u) / s_acc.windows), s_acc.faults);
     r.coherence = (int16_t)(s_acc.coh / (long)s_acc.windows);
     r.cn_x10 = (int16_t)cn_estimate_x10(r.coherence, calibration_filter_class_mhz());
     r.p50 = (int16_t)(s_acc.p50 / (long)s_acc.windows);
     r.origin_pm = (int16_t)(s_acc.origin / (long)s_acc.windows);
     r.clip_pm = (int16_t)(s_acc.clip / (long)s_acc.windows);
-    r.offset_khz = (int16_t)rf_offset_khz();
-    r.flags = chain_flags(r.gain, s_acc.faults) | (s_acc.afc_step ? DIAG_F_AFC_STEP : 0u);
+    r.flags |= s_acc.afc_step ? DIAG_F_AFC_STEP : 0u;
 
     taskENTER_CRITICAL(&s_lock);
     s_hist[s_seq % DIAG_HISTORY] = r;
@@ -93,7 +121,8 @@ static void close_second(int64_t now)
 
     if (!s_in_dropout && diag_video_lost(&r)) {
         diag_record_t look[DIAG_LOOKBACK];
-        unsigned n = s_seq < DIAG_LOOKBACK ? s_seq : DIAG_LOOKBACK;
+        unsigned available = s_seq - s_segment_start_seq;
+        unsigned n = available < DIAG_LOOKBACK ? available : DIAG_LOOKBACK;
         for (unsigned k = 0; k < n; ++k) look[k] = s_hist[(s_seq - n + k) % DIAG_HISTORY];
         int last_ok = -1;
         for (int k = (int)n - 2; k >= 0; --k) if (diag_video_ok(&look[k])) { last_ok = k; break; }
@@ -119,13 +148,38 @@ static void close_second(int64_t now)
 void diag_window(bool measured, bool video_valid, bool afc_step)
 {
     const int64_t now = esp_timer_get_time();
+    const bool owned = s_menu_active || s_scan_active || receiver_paused();
+    static uint32_t trace_faults, trace_epoch;
+    const uint32_t faults_now = transport_fault_count();
+    diag_record_t point = {0};
+    point.t_ms = (uint32_t)(now / 1000);
+    point.t_s = (uint32_t)(now / 1000000);
+    point.measured = measured;
+    diag_coverage(&point, 1u, measured, measured && video_valid);
+    snapshot(&point, s_current_gain, faults_now - trace_faults);
+    trace_faults = faults_now;
+    point.flags |= afc_step ? DIAG_F_AFC_STEP : 0u;
+    point.coherence = (int16_t)s_obs_coherence;
+    point.cn_x10 = (int16_t)cn_estimate_x10(point.coherence, calibration_filter_class_mhz());
+    point.p50 = (int16_t)s_obs_p50;
+    point.origin_pm = (int16_t)s_obs_origin_pm;
+    point.clip_pm = (int16_t)s_obs_clip_pm;
+    /* Retunes are context boundaries, including a channel changed to the
+     * same frequency. Never attach old pre-trigger evidence to a new link. */
+    bool boundary = trace_epoch != s_control_epoch;
+    trace_epoch = s_control_epoch;
+    taskENTER_CRITICAL(&s_lock);
+    if (boundary) diag_trace_boundary(&s_trace);
+    diag_trace_push(&s_trace, &point, owned);
+    taskEXIT_CRITICAL(&s_lock);
     /* A gap (scan, stalled task) is not a second of reception. */
     if (!s_acc.start_us || now - s_acc.start_us > 2000000) {
         memset(&s_acc, 0, sizeof(s_acc));
         s_acc.start_us = now;
         s_in_dropout = false;
+        s_segment_start_seq = s_seq;
     }
-    if (s_menu_active || s_scan_active || receiver_paused()) s_acc.owned = true;
+    if (owned || boundary) s_acc.owned = true;
     ++s_acc.windows;
     s_acc.measured += measured;
     s_acc.afc_step |= afc_step;
@@ -141,7 +195,7 @@ void diag_window(bool measured, bool video_valid, bool afc_step)
     s_seen_faults = faults;
     /* A second the menu, a calibration or the scanner owned says nothing
      * about the RF link; it also ends any dropout bookkeeping. */
-    if (s_acc.owned) s_in_dropout = false;
+    if (s_acc.owned) { s_in_dropout = false; s_segment_start_seq = s_seq; }
     else close_second(now);
     memset(&s_acc, 0, sizeof(s_acc));
     s_acc.start_us = now;
@@ -150,11 +204,19 @@ void diag_window(bool measured, bool video_valid, bool afc_step)
 /* ---- Console side --------------------------------------------------------- */
 static void print_record(const char *tag, const diag_record_t *r)
 {
-    printf("%s t=%lu video_pct=%u gain=%u max=%u rf_stage=%u p50=%d coherence=%d origin_pm=%d clip_pm=%d "
-           "cn_est_x10=%d offset_khz=%d afc=%u afc_step=%u filter_ok=%u sphase_ok=%u dc_ok=%u fault=%u in_spec=%u\n", tag,
-           (unsigned long)r->t_s, r->video_pct, r->gain, r->gain_max, r->rf_stage, r->p50, r->coherence, r->origin_pm,
-           r->clip_pm, r->cn_x10, r->offset_khz, !!(r->flags & DIAG_F_AFC_LOCKED), !!(r->flags & DIAG_F_AFC_STEP), !(r->flags & DIAG_F_FILTER_MISMATCH),
-           !(r->flags & DIAG_F_SPHASE_BAD), !(r->flags & DIAG_F_NO_DC), !!(r->flags & DIAG_F_FAULT),
+    printf("%s t=%lu t_ms=%lu sync_valid_pct=%u measurement_coverage_pct=%u sync_given_measured_pct=%u "
+           "gain=%u max=%u rf_stage=%u rf_code=%u bb=%u fine=%u p50=%d p95=%d coherence=%d origin_pm=%d clip_pm=%d "
+           "cn_est_x10=%d cn_model_valid=%u offset_khz=%d cfo_khz=%d afc=%u afc_step=%u filter_ok=%u "
+           "filter_code=%d skirt=%u bw20_requested=%u freq=%u profile=%s sphase_ok=%u dc_ok=%u "
+           "fault=%u faults_delta=%lu gain_writes=%lu fade_holds=%lu overloads=%lu in_spec=%u\n", tag,
+           (unsigned long)r->t_s, (unsigned long)r->t_ms, r->video_pct, r->coverage_pct, r->sync_measured_pct,
+           r->gain, r->gain_max, r->rf_stage, r->rf_code, r->bb_code, r->fine_code,
+           r->p50, r->p95, r->coherence, r->origin_pm, r->clip_pm, r->cn_x10, r->cn_x10 != CN_UNKNOWN_X10,
+           r->offset_khz, r->cfo_khz, !!(r->flags & DIAG_F_AFC_LOCKED), !!(r->flags & DIAG_F_AFC_STEP),
+           !(r->flags & DIAG_F_FILTER_MISMATCH), r->filter_code, r->filter_skirt, r->filter_bw20,
+           r->frequency_mhz, profile_name(r->profile), !(r->flags & DIAG_F_SPHASE_BAD),
+           !(r->flags & DIAG_F_NO_DC), !!(r->flags & DIAG_F_FAULT), (unsigned long)r->faults,
+           (unsigned long)r->gain_writes, (unsigned long)r->fade_holds, (unsigned long)r->overloads,
            !(r->flags & DIAG_F_OUT_OF_SPEC));
 }
 
@@ -163,7 +225,7 @@ static void print_event(const diag_event_t *e)
     printf("FIELD_DIAG_EVENT dropout t=%lu category=%s duration_s=%s%lu channel=%s freq=%u profile=%s\n",
            (unsigned long)e->t_s, diag_category_name(e->category), e->open ? ">=" : "",
            (unsigned long)(e->open ? (uint32_t)(esp_timer_get_time() / 1000000) - e->t_s : e->duration_s),
-           rf_channel()->name, rf_frequency_mhz(), profile_name(profile_active()));
+           "snapshot", e->drop.frequency_mhz, profile_name(e->drop.profile));
     print_record("FIELD_DIAG_EVENT last_ok", &e->last_ok);
     print_record("FIELD_DIAG_EVENT drop", &e->drop);
 }
@@ -174,8 +236,40 @@ void diag_toggle_stream(void)
     printf("FIELD_DIAG stream=%u (one line per second; R toggles)\n", s_stream);
 }
 
+/* Console drains one frozen event without holding the lock during USB I/O.
+ * Producer keeps the oldest unread event; a slow host loses NEW events,
+ * never reception. No large stack copy, no unbounded producer-side queue. */
+static void print_trace(void)
+{
+    unsigned count, trigger;
+    uint32_t sequence, skipped;
+    taskENTER_CRITICAL(&s_lock);
+    bool ready = s_trace.ready;
+    count = s_trace.count;
+    trigger = s_trace.trigger;
+    sequence = s_trace.sequence;
+    skipped = s_trace.skipped;
+    taskEXIT_CRITICAL(&s_lock);
+    if (!ready) return;
+    printf("FIELD_TRACE onset id=%lu samples=%u trigger=%u skipped=%lu "
+           "cadence=control_nominal_50ms evidence=afc_sync_not_picture cn=model_only\n",
+           (unsigned long)sequence, count, trigger, (unsigned long)skipped);
+    for (unsigned k = 0; k < count; ++k) {
+        diag_record_t r;
+        taskENTER_CRITICAL(&s_lock);
+        r = s_trace.event[k];
+        taskEXIT_CRITICAL(&s_lock);
+        print_record("FIELD_TRACE", &r);
+    }
+    printf("FIELD_TRACE end id=%lu\n", (unsigned long)sequence);
+    taskENTER_CRITICAL(&s_lock);
+    s_trace.ready = false;
+    taskEXIT_CRITICAL(&s_lock);
+}
+
 void diag_poll(void)
 {
+    print_trace();
     static uint32_t printed_seq, printed_events, printed_closed;
     uint32_t seq, events;
     diag_record_t r;
@@ -249,8 +343,9 @@ void diag_report(void)
     VERDICT(!calibration_sphase_settled(), "CALIBRATION_OR_PHY sampling phase not settled (repaired at boot only)");
     VERDICT(!calibration_dc_ok(g), "NOT_CALIBRATED DC correction missing for this gain (VTX off at boot fills it)");
     VERDICT(!rf_freq_in_spec(mhz), "UNKNOWN out-of-spec channel: compare with a channel <= 5885 MHz");
-    VERDICT(g >= table->max_index && cn <= DIAG_FLOOR_CN_X10,
+    VERDICT(g >= table->max_index && cn != CN_UNKNOWN_X10 && cn <= DIAG_FLOOR_CN_X10,
             "POSSIBLE_RF_FLOOR table maximum and C/N estimate <= 2 dB (no carrier, or at the receiver noise)");
+    VERDICT(cn == CN_UNKNOWN_X10, "UNKNOWN C/N model has no carrier evidence; not measured RF sensitivity");
     VERDICT(g >= table->max_index && cn > DIAG_FLOOR_CN_X10 && cn < DIAG_WEAK_CN_X10,
             "WEAK_CARRIER table maximum, C/N estimate 2-8 dB: near the usable-picture threshold");
     VERDICT(g >= table->max_index && s_obs_p50 <= 4 && s_obs_origin_pm >= 650,
@@ -261,8 +356,10 @@ void diag_report(void)
 #undef VERDICT
 
     /* History: last 60 s and the dropouts of this boot. */
-    diag_record_t h[DIAG_HISTORY];
-    diag_event_t ev[DIAG_EVENTS];
+    /* Console task is the sole caller; keep expanded records off its
+     * 6-KiB stack (printf and USB/NVS frames need headroom). */
+    static diag_record_t h[DIAG_HISTORY];
+    static diag_event_t ev[DIAG_EVENTS];
     uint32_t seq, events, drops[DIAG_CATEGORIES];
     taskENTER_CRITICAL(&s_lock);
     seq = s_seq;
@@ -291,10 +388,9 @@ void diag_report(void)
             for (unsigned b = a2; b > 0 && cn[b - 1] > cn[b]; --b) { int t2 = cn[b]; cn[b] = cn[b - 1]; cn[b - 1] = t2; }
         for (unsigned a2 = 1; a2 < m; ++a2)
             for (unsigned b = a2; b > 0 && gn[b - 1] > gn[b]; --b) { int t2 = gn[b]; gn[b] = gn[b - 1]; gn[b - 1] = t2; }
-        if (m) printf("RANGE_DIAG last_10s seconds=%u cn_est_x10 median=%d min=%d gain median=%d (lower gain or higher "
-                      "C/N at the same spot = a better antenna/placement)\n", m, cn[m / 2], cn[0], gn[m / 2]);
+        if (m) printf("RANGE_DIAG last_10s seconds=%u cn_est_x10 median=%d min=%d gain median=%d (model only; compare repeated controlled setups)\n", m, cn[m / 2], cn[0], gn[m / 2]);
     }
-    printf("RANGE_DIAG history seconds=%u video_ok_pct=%u at_max_gain_pct=%u dropouts=%lu", n, n ? ok * 100u / n : 0u,
+    printf("RANGE_DIAG history seconds=%u sync_evidence_ok_pct=%u at_max_gain_pct=%u dropouts=%lu", n, n ? ok * 100u / n : 0u,
            n ? max_gain * 100u / n : 0u, (unsigned long)events);
     for (int c = 0; c < DIAG_CATEGORIES; ++c) printf(" %s=%lu", diag_category_name(c), (unsigned long)drops[c]);
     printf("\n");

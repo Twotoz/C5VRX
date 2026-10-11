@@ -51,11 +51,24 @@ jobs:
         shell: bash
         working-directory: v5/test
         run: |
-          for t in test_quiet test_profile test_diag test_afc; do
+          for t in test_quiet test_profile test_diag test_afc test_lane_shadow; do
             cc -O2 -std=c11 -Wall -Wextra -Werror -I../main "$t.c" -lm -o "/tmp/$t" && "/tmp/$t" | tail -1
           done
           cc -O2 -std=c11 -Wall -Wextra -Werror -DEXPECT_FADE_HOLD -I../main test_gain_fade.c \
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_fade && /tmp/test_gain_fade | tail -1
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_gain_preset.c \
+            ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_preset && /tmp/test_gain_preset | tail -1
+      - name: Diagnostic log semantics
+        run: python3 v5/test/test_field_diag_compare.py
+      - name: Analytic IQ lane reference
+        shell: bash
+        run: |
+          python3 -m venv /tmp/iqf-test-env
+          /tmp/iqf-test-env/bin/pip install numpy scipy numba
+          OPENBLAS_NUM_THREADS=1 /tmp/iqf-test-env/bin/python v5/test/test_iq_lane_fusion.py
+          OPENBLAS_NUM_THREADS=1 /tmp/iqf-test-env/bin/python v5/research/build_lane_shadow.py --check
+          python3 "$IDF_PATH/tools/bsasm.py" v5/research/iq_lane_mixed468.bsasm /tmp/iq_lane_mixed468.bsbin \
+            -c "$IDF_PATH/components/esp_driver_bitscrambler/bsasm_targets/esp32c5.json"
       - name: Build C5VRX-5
         shell: bash
         working-directory: v5

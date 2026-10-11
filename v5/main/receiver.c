@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "esp_timer.h"
+#include "gain_map_preset.h"
 #include "phase8_gain_lut.h"
 #include "phy.h"
 #include "rf.h"
@@ -25,7 +26,7 @@ static volatile bool s_paused;
 static volatile uint32_t s_overload_state;   /* 0 free, 1 writing, 2 published */
 static dg_observation_t s_overload;
 static uint32_t s_overload_gain_epoch, s_overload_control_epoch, s_overload_phy;
-static uint32_t s_map_imports;
+static uint32_t s_map_imports, s_preset_imports;
 
 bool receiver_active(void)
 {
@@ -144,6 +145,10 @@ static void observer_task(void *arg)
             /* A fresh boot starts from the persisted map, not the model. */
             if (!s_gain.learned && s_gain_map_saved_valid && dg_import_map(&s_gain, &s_gain_map_saved))
                 ++s_map_imports;
+            else if (!s_gain.learned && GAIN_MAP_PRESET_BOARDS &&
+                     dg_import_preset(&s_gain, c5vrx5_gain_map_preset_q10, GAIN_MAP_PRESET_MAX_INDEX + 1u,
+                                      GAIN_MAP_PRESET_MAX_INDEX, GAIN_MAP_PRESET_BAND5))
+                ++s_preset_imports;
             seen_control = control;
             seen_table = table;
             seen_phy = phy;
@@ -173,6 +178,10 @@ static void observer_task(void *arg)
         s_obs_clip_pm = o.clip_pm;
         s_obs_coherence = o.coherence;
         if (phy != phy_generation() || phy_busy()) continue;
+        /* Learn the gain map only from a real VTX: burst-confirmed sync seen
+         * by the AFC within the last 500 ms (never from receiver noise). */
+        const int64_t video = s_last_video_us;
+        s_gain.learn_enabled = video != 0 && t0 - video < 500000;
         apply_target(dg_tick(&s_gain, &o), control, phy);
         uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
         if (us > s_obs_us_max) s_obs_us_max = us;
@@ -198,11 +207,26 @@ void receiver_start(void)
 void receiver_print(void)
 {
     printf("GAIN owner=direct_gain_v5 gain=%u state=%u p50=%d p95=%d coherence=%d origin_pm=%d clip_pm=%d "
-           "writes=%lu holds=%lu overloads=%lu bursts=%lu fade_holds=%lu damp=%lu map_learned=%lu map_imports=%lu "
+           "writes=%lu holds=%lu overloads=%lu bursts=%lu fade_holds=%lu damp=%lu map_learned=%lu learn_refused=%lu "
+           "map_imports=%lu preset_imports=%lu "
            "obs_windows=%lu obs_us_max=%lu\n",
            s_current_gain, (unsigned)s_gain.state, s_obs_p50, s_obs_p95, s_obs_coherence,
            s_obs_origin_pm, s_obs_clip_pm, (unsigned long)s_gain.writes, (unsigned long)s_gain.holds,
            (unsigned long)s_gain.overloads, (unsigned long)s_gain.bursts_ignored, (unsigned long)s_gain.fade_holds,
-           (unsigned long)s_gain.damp_events, (unsigned long)s_gain.learned,
-           (unsigned long)s_map_imports, (unsigned long)s_obs_windows, (unsigned long)s_obs_us_max);
+           (unsigned long)s_gain.damp_events, (unsigned long)s_gain.learned, (unsigned long)s_gain.learn_refused,
+           (unsigned long)s_map_imports, (unsigned long)s_preset_imports, (unsigned long)s_obs_windows,
+           (unsigned long)s_obs_us_max);
+}
+
+/* Console M: the learned map on one line, for gain_map_preset.py. */
+void receiver_print_map(void)
+{
+    dg_map_blob_t blob;
+    unsigned n = dg_export_map(&s_gain, &blob);
+    printf("GAINMAP v=%u max=%u band5=%u freq=%u entries=%u", DG_MAP_VERSION, blob.max_index, blob.band5,
+           rf_frequency_mhz(), n);
+    for (unsigned k = 0; k <= blob.max_index && k < DG_STATES; ++k)
+        if (blob.confidence[k] && blob.power_q10[k])
+            printf(" %u:%u:%u:%u", k, blob.power_q10[k], blob.confidence[k], blob.uncertainty_pm[k]);
+    printf("\n");
 }

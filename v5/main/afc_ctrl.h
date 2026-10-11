@@ -37,6 +37,14 @@
  * (v5/test/test_afc.c), which costs the picture at weak signal
  * (v5/research/situations.py: -0.75 / -1.0 MHz residual at 4 dB C/N). */
 #define AFC2_CTRL_REARM_WINDOWS    60u
+/* Offset sign check. The sign of "raise the offset to lower the estimate"
+ * was never confirmed on hardware (C5VRX-4 INTEGRATION.md: "VTX
+ * sign/reference calibration pending"); with the opposite sign every step
+ * walked the carrier away, up to the offset clamp. After a step of at least
+ * this size, the next stable estimate must have moved toward the target by
+ * at least half the step; if it moved away by that much the sign flips.
+ * Smaller steps are not judged (estimate noise ~20-40 kHz). */
+#define AFC2_CTRL_SIGN_CHECK_KHZ   150
 #define AFC2_NATIVE_LOST_WINDOWS   4u
 
 /* Acquisition lock must be sticky. A changed CFO while otherwise receiving
@@ -51,6 +59,8 @@ static inline bool afc2_native_lock(bool locked, bool valid, bool centred,
     return valid && centred && fresh >= AFC2_CTRL_SAMPLES;
 }
 
+enum { AFC2_SIGN_UNVERIFIED, AFC2_SIGN_CONFIRMED, AFC2_SIGN_FLIPPED };
+
 typedef enum {
     AFC2_REF_PORCH = 0,
     AFC2_REF_SYNC_MID,
@@ -64,6 +74,10 @@ typedef struct {
     uint8_t standard;
     uint8_t corrections;
     uint16_t since_correction;   /* observed windows since the last correction */
+    int8_t sign;                 /* +1 / -1 offset direction; 0 = +1 (unverified) */
+    uint8_t sign_state;          /* AFC2_SIGN_* */
+    bool sign_check;             /* a judged step awaits the next stable estimate */
+    int32_t check_med, check_step;
     afc2_ref_t ref;
     /* Design porch frequency of the active demodulator (kHz relative to the
      * tuned frequency). Shared-word range trackers (RANGE32/PAIR/EDGE) are
@@ -77,7 +91,9 @@ static inline void afc2_ctrl_reset(afc2_ctrl_t *c, uint32_t context, bool new_ac
     c->n = 0;
     c->polarity = 0;
     c->standard = 0;
-    if (new_acquisition) c->corrections = 0;
+    /* Our own retune keeps the pending sign check; anything else (channel,
+     * PHY restore, lost lock) makes the judged estimate meaningless. */
+    if (new_acquisition) { c->corrections = 0; c->sign_check = false; }
 }
 
 /* Returns true when the context changed (samples discarded). A context change
@@ -157,12 +173,27 @@ static inline bool afc2_ctrl_decide(afc2_ctrl_t *c, bool eligible, int32_t *step
     int32_t med;
     if (c->corrections >= AFC2_CTRL_MAX_CORRECTIONS && c->since_correction >= AFC2_CTRL_REARM_WINDOWS)
         c->corrections = 0;     /* still not centred: another bounded burst */
-    if (!eligible || c->corrections >= AFC2_CTRL_MAX_CORRECTIONS ||
-        !afc2_ctrl_stable(c, &med)) return false;
+    if (!afc2_ctrl_stable(c, &med)) return false;
+    if (c->sign_check) {
+        /* Did the last step move the estimate toward the target? */
+        int32_t delta = med - c->check_med, half = c->check_step / 2;
+        if ((c->check_step > 0 && delta <= -half) || (c->check_step < 0 && delta >= -half))
+            c->sign_state = AFC2_SIGN_CONFIRMED;
+        else if ((c->check_step > 0 && delta >= half) || (c->check_step < 0 && delta <= half)) {
+            c->sign = c->sign < 0 ? 1 : -1;
+            c->sign_state = AFC2_SIGN_FLIPPED;
+            c->corrections = 0;    /* the wrong-way step is undone from a fresh budget */
+        }
+        c->sign_check = false;
+    }
+    if (!eligible || c->corrections >= AFC2_CTRL_MAX_CORRECTIONS) return false;
     if (med <= AFC2_CTRL_DEADBAND_KHZ && med >= -AFC2_CTRL_DEADBAND_KHZ) return false;
     int32_t step = med > AFC2_CTRL_MAX_STEP_KHZ ? AFC2_CTRL_MAX_STEP_KHZ :
                    med < -AFC2_CTRL_MAX_STEP_KHZ ? -AFC2_CTRL_MAX_STEP_KHZ : med;
-    *step_khz = step;
+    c->sign_check = step >= AFC2_CTRL_SIGN_CHECK_KHZ || step <= -AFC2_CTRL_SIGN_CHECK_KHZ;
+    c->check_med = med;
+    c->check_step = step;
+    *step_khz = c->sign < 0 ? -step : step;
     ++c->corrections;
     c->since_correction = 0;
     c->n = 0;

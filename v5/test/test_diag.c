@@ -15,6 +15,7 @@
 #include <string.h>
 #include "cn_estimate.h"
 #include "diag_logic.h"
+#include "diag_trace.h"
 
 #define MAX_GAIN 83u
 
@@ -25,6 +26,8 @@ static diag_record_t rec(uint8_t video, uint8_t gain, int coherence, uint8_t fla
     diag_record_t r;
     memset(&r, 0, sizeof(r));
     r.video_pct = video;
+    r.coverage_pct = 100;
+    r.measured = true;
     r.gain = gain;
     r.gain_max = MAX_GAIN;
     r.coherence = (int16_t)coherence;
@@ -48,7 +51,7 @@ int main(void)
     /* Fast fade: strong carrier 20 steps below the maximum, gone in 1 s. */
     {
         diag_record_t r[] = {rec(100, 50, 92, DIAG_F_AFC_LOCKED), rec(100, 52, 91, DIAG_F_AFC_LOCKED),
-                             rec(0, MAX_GAIN, 50, 0)};
+                             rec(0, MAX_GAIN, 60, 0)};
         expect("fast fade", r, 3, DIAG_PROPAGATION_FADE);
     }
     /* Fade with a one-second partial picture between: still within 2 s. */
@@ -60,13 +63,13 @@ int main(void)
      * noise-like IQ. */
     {
         diag_record_t r[] = {rec(100, 76, 88, 0), rec(100, 81, 84, 0), rec(90, MAX_GAIN, 82, 0),
-                             rec(0, MAX_GAIN, 55, 0)};
+                             rec(0, MAX_GAIN, 60, 0)};
         expect("rf floor", r, 4, DIAG_AT_RF_FLOOR);
     }
     /* Long gap since the last picture with headroom then: not "fast". */
     {
         diag_record_t r[] = {rec(100, 60, 90, 0), rec(30, 75, 70, 0), rec(20, 80, 66, 0), rec(10, 82, 60, 0),
-                             rec(0, MAX_GAIN, 50, 0)};
+                             rec(0, MAX_GAIN, 60, 0)};
         expect("slow loss with headroom -> unknown", r, 5, DIAG_UNKNOWN);
     }
     /* Coherent carrier but no confirmed sync: demod / sync cliff. */
@@ -78,20 +81,20 @@ int main(void)
     {
         const uint8_t flags[] = {DIAG_F_FILTER_MISMATCH, DIAG_F_SPHASE_BAD, DIAG_F_NO_DC, DIAG_F_FAULT, DIAG_F_AFC_STEP};
         for (unsigned k = 0; k < sizeof(flags); ++k) {
-            diag_record_t r[] = {rec(100, 50, 92, 0), rec(0, MAX_GAIN, 50, flags[k])};
+            diag_record_t r[] = {rec(100, 50, 92, 0), rec(0, MAX_GAIN, 60, flags[k])};
             expect("chain flag at dropout", r, 2, DIAG_CALIBRATION_OR_PHY);
-            diag_record_t q[] = {rec(100, 50, 92, flags[k]), rec(0, MAX_GAIN, 50, 0)};
+            diag_record_t q[] = {rec(100, 50, 92, flags[k]), rec(0, MAX_GAIN, 60, 0)};
             expect("chain flag at last picture", q, 2, DIAG_CALIBRATION_OR_PHY);
         }
     }
     /* Informational flags are not chain faults. */
     {
-        diag_record_t r[] = {rec(100, 50, 92, DIAG_F_OUT_OF_SPEC | DIAG_F_AFC_LOCKED), rec(0, MAX_GAIN, 50, DIAG_F_OUT_OF_SPEC)};
+        diag_record_t r[] = {rec(100, 50, 92, DIAG_F_OUT_OF_SPEC | DIAG_F_AFC_LOCKED), rec(0, MAX_GAIN, 60, DIAG_F_OUT_OF_SPEC)};
         expect("out of spec is informational", r, 2, DIAG_PROPAGATION_FADE);
     }
     /* A chain flag before the last picture does not count. */
     {
-        diag_record_t r[] = {rec(100, 50, 92, DIAG_F_FAULT), rec(100, 50, 92, 0), rec(0, MAX_GAIN, 50, 0)};
+        diag_record_t r[] = {rec(100, 50, 92, DIAG_F_FAULT), rec(100, 50, 92, 0), rec(0, MAX_GAIN, 60, 0)};
         expect("old fault ignored", r, 3, DIAG_PROPAGATION_FADE);
     }
     /* At the maximum, middling coherence at the dropout: ambiguous. */
@@ -102,12 +105,12 @@ int main(void)
     /* Strong carrier before at the maximum (antenna disconnected, say):
      * coherence was not weak, so not the floor. */
     {
-        diag_record_t r[] = {rec(100, MAX_GAIN, 95, 0), rec(0, MAX_GAIN, 50, 0)};
+        diag_record_t r[] = {rec(100, MAX_GAIN, 95, 0), rec(0, MAX_GAIN, 60, 0)};
         expect("strong at max then noise", r, 2, DIAG_UNKNOWN);
     }
     /* No picture before: not a dropout at all. */
     {
-        diag_record_t r[] = {rec(0, MAX_GAIN, 50, 0), rec(30, MAX_GAIN, 60, 0), rec(0, MAX_GAIN, 50, 0)};
+        diag_record_t r[] = {rec(0, MAX_GAIN, 60, 0), rec(30, MAX_GAIN, 60, 0), rec(0, MAX_GAIN, 60, 0)};
         expect("no picture before", r, 3, DIAG_UNKNOWN);
         expect("single record", r, 1, DIAG_UNKNOWN);
     }
@@ -169,6 +172,80 @@ int main(void)
             ++s_fail;
             printf("FAIL filter ordering\n");
         }
+    }
+    /* Coverage regression: ten successes in twenty windows is 50%,
+     * never 100% overall sync. No measurement is UNKNOWN, not RF floor. */
+    {
+        diag_record_t r = {0};
+        diag_coverage(&r, 20, 10, 10);
+        ++s_run;
+        if (r.video_pct != 50 || r.coverage_pct != 50 || r.sync_measured_pct != 100) ++s_fail;
+        diag_coverage(&r, 20, 0, 0);
+        ++s_run;
+        if (r.video_pct || r.coverage_pct || r.sync_measured_pct) ++s_fail;
+        diag_coverage(&r, 0, 0, 0);
+        ++s_run;
+        if (r.video_pct || r.coverage_pct || r.sync_measured_pct) ++s_fail;
+        diag_record_t q[] = {rec(100, MAX_GAIN, 82, 0), rec(0, MAX_GAIN, 60, 0)};
+        q[1].coverage_pct = 0;
+        expect("missing evidence", q, 2, DIAG_UNKNOWN);
+        q[1].coverage_pct = 100;
+        q[1].cn_x10 = CN_UNKNOWN_X10;
+        expect("unknown CN is not an RF floor", q, 2, DIAG_UNKNOWN);
+        q[0].gain = 50;
+        q[1].cn_x10 = 90;
+        expect("coherent IQ takes precedence over headroom", q, 2, DIAG_DEMOD_CLIFF);
+    }
+    /* Recorder: first onset, a single 50-ms loss/recovery, chronological
+     * pre/post history, bounded wrap, slow console, ownership and gap. */
+    {
+        diag_trace_t trace = {0};
+        diag_record_t r = rec(100, 50, 92, 0);
+        for (unsigned k = 0; k < 40; ++k) {
+            r.t_ms = k * 50;
+            diag_trace_push(&trace, &r, false);
+        }
+        r.t_ms = 2000; r.video_pct = 0;
+        diag_trace_push(&trace, &r, false);
+        ++s_run;
+        if (!trace.active || trace.trigger != DIAG_TRACE_PRE || trace.event[trace.trigger].t_ms != 2000 ||
+            trace.event[0].t_ms != 1200) ++s_fail;
+        for (unsigned k = 1; k <= DIAG_TRACE_POST; ++k) {
+            r.t_ms = 2000 + k * 50; r.video_pct = 100;
+            diag_trace_push(&trace, &r, false);
+        }
+        ++s_run;
+        if (!trace.ready || trace.active || trace.count != DIAG_TRACE_SIZE || trace.event[trace.trigger + 1].t_ms != 2050)
+            ++s_fail;
+        r.t_ms += 50; r.video_pct = 0;
+        diag_trace_push(&trace, &r, false);
+        ++s_run;
+        if (trace.skipped != 1 || trace.event[trace.trigger].t_ms != 2000) ++s_fail;
+        trace.ready = false;
+        r.video_pct = 100; r.t_ms += 50;
+        diag_trace_push(&trace, &r, true);
+        r.video_pct = 0; r.t_ms += 50;
+        diag_trace_push(&trace, &r, false);
+        ++s_run;
+        if (trace.active || trace.ready) ++s_fail;
+        r.video_pct = 100; r.t_ms += 50;
+        diag_trace_push(&trace, &r, false);
+        r.video_pct = 0; r.t_ms += 1000;
+        diag_trace_push(&trace, &r, false);
+        ++s_run;
+        if (trace.active) ++s_fail;
+        /* Timestamp wrap is not a time gap. Missing measurement triggers
+         * evidence loss but retains measured=0 for an UNKNOWN verdict. */
+        memset(&trace, 0, sizeof(trace));
+        r.video_pct = 100; r.measured = true; r.t_ms = UINT32_MAX - 20;
+        diag_trace_push(&trace, &r, false);
+        r.t_ms = 29; r.measured = false; r.video_pct = 0;
+        diag_trace_push(&trace, &r, false);
+        ++s_run;
+        if (!trace.active || trace.event[trace.trigger].measured) ++s_fail;
+        diag_trace_boundary(&trace);
+        ++s_run;
+        if (!trace.ready || trace.active || trace.had_sync || trace.count != 2) ++s_fail;
     }
     printf("%s: %u checks, %u failures\n", s_fail ? "FAIL" : "PASS", s_run, s_fail);
     return s_fail ? 1 : 0;

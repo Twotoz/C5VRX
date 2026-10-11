@@ -39,6 +39,9 @@ static uint8_t s_window[CONTROL_BYTES];
 static uint8_t s_pal_votes, s_ntsc_votes;
 static uint8_t s_last_std = 0xFF;      /* last stable standard (NVS) */
 static unsigned s_afc_corrections, s_afc_weak_skips;
+/* Learned offset sign (afc_ctrl.h sign check), persisted once observed. */
+static volatile int8_t s_afc_sign = 1;
+static volatile uint8_t s_afc_sign_state;
 
 static void standard_reset(void)
 {
@@ -234,7 +237,8 @@ static uint32_t afc_context(void)
 static void control_task(void *arg)
 {
     (void)arg;
-    afc2_ctrl_t afc = {.target_khz = AFC_PORCH_TARGET_KHZ};
+    afc2_ctrl_t afc = {.target_khz = AFC_PORCH_TARGET_KHZ, .sign = s_afc_sign};
+    uint8_t seen_sign_state = afc.sign_state;
     bool own_write = false;
     uint8_t afc_lost = 0;
     unsigned settle = RETUNE_SETTLE_TICKS, btn = 0, boot_grace = 20, menu_idle = 0, menu_refresh = 0;
@@ -248,7 +252,10 @@ static void control_task(void *arg)
         /* BOOT button: short = next channel (menu: next item); 0.6 s = menu
          * (menu: do the selected item). */
         /* A calibration status screen owns the picture: no menu, no idle exit. */
-        if (menu_status_active()) { btn = 0; long_fired = false; menu_idle = 0; continue; }
+        if (menu_status_active()) {
+            lane_shadow_window(NULL, 0, afc_context(), s_gain_epoch, false);
+            btn = 0; long_fired = false; menu_idle = 0; continue;
+        }
         if (boot_grace) { --boot_grace; btn = 0; long_fired = false; }
         else if (gpio_get_level(BOOT_BUTTON) == 0) {
             ++btn;
@@ -282,6 +289,8 @@ static void control_task(void *arg)
         uint32_t gain_epoch = s_gain_epoch, ctx = afc_context();
         if (s_scan_active || !copy_control_window(s_window, sizeof(s_window))) {
             afc2_ctrl_invalidate(&afc);
+            diag_window(false, false, false); /* failed copies count as missing evidence */
+            lane_shadow_window(NULL, 0, ctx, gain_epoch, false);
             continue;
         }
         metrics_t m = measure_window(s_window, sizeof(s_window));
@@ -331,7 +340,17 @@ static void control_task(void *arg)
             }
             phy_end_actuator();
         }
+        if (afc.sign_state != seen_sign_state) {
+            seen_sign_state = afc.sign_state;
+            s_afc_sign_state = afc.sign_state;
+            printf("[AFC] offset sign %s: %+d\n", afc.sign_state == AFC2_SIGN_FLIPPED ? "FLIPPED" : "confirmed",
+                   afc.sign < 0 ? -1 : 1);
+            int8_t sign = afc.sign < 0 ? -1 : 1;
+            if (sign != s_afc_sign) { s_afc_sign = sign; (void)blob_store("afc_sign", &sign, 1); }
+        }
         diag_window(window_ok, valid, own_write);   /* own_write: an AFC step this window */
+        lane_shadow_window(s_window, sizeof(s_window), ctx, gain_epoch,
+                           window_ok && !own_write && gain_epoch == s_gain_epoch && ctx == afc_context());
         if (s_afc_locked && !was_locked)
             printf("[VIDEO] locked %s %u MHz %s offset_khz=%d gain=%u\n", rf_channel()->name,
                    rf_channel()->freq_mhz, r.standard == 2 ? "PAL" : "NTSC", rf_offset_khz(), s_current_gain);
@@ -349,6 +368,8 @@ void control_start(void)
     };
     gpio_config(&cfg);
     if (!blob_load("last_std", &s_last_std, 1)) s_last_std = 0xFF;
+    int8_t sign;
+    if (blob_load("afc_sign", &sign, 1) && (sign == 1 || sign == -1)) s_afc_sign = sign;
     s_commands = xQueueCreate(16, sizeof(int));
     ESP_ERROR_CHECK(s_commands ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xTaskCreate(control_task, "control", 6144, NULL, 3, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
@@ -357,9 +378,12 @@ void control_start(void)
 void control_print(void)
 {
     printf("CONTROL channel=%s freq=%u offset_khz=%d cfo_khz=%d afc_locked=%u afc_corrections=%u "
-           "afc_weak_skips=%u standard=%s detected=%s signal=%d menu=%u deviation_x100=%d mode=%s tracker=%d\n",
+           "afc_weak_skips=%u afc_sign=%+d(%s) standard=%s detected=%s signal=%d menu=%u deviation_x100=%d mode=%s "
+           "tracker=%d\n",
            rf_channel()->name, rf_frequency_mhz(), rf_offset_khz(), s_cfo_khz, s_afc_locked,
-           s_afc_corrections, s_afc_weak_skips, s_std_mode == STD_MODE_AUTO ? "AUTO" : s_std_mode == STD_MODE_PAL ? "PAL" : "NTSC",
+           s_afc_corrections, s_afc_weak_skips, s_afc_sign,
+           s_afc_sign_state == AFC2_SIGN_FLIPPED ? "flipped" : s_afc_sign_state == AFC2_SIGN_CONFIRMED ? "confirmed" :
+           "unverified", s_std_mode == STD_MODE_AUTO ? "AUTO" : s_std_mode == STD_MODE_PAL ? "PAL" : "NTSC",
            s_detected_std_valid ? (s_detected_std == VIDEO_STD_PAL ? "PAL" : "NTSC") : "none",
            s_signal_strength, s_menu_active, profile_deviation_x100(rf_channel_index()),
            profile_name(profile_active()), transport_tracker());

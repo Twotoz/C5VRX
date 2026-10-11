@@ -302,6 +302,26 @@ CNRS=0,2,4,8,12,16,20,25 python range_study.py strong data/strong.json
 Needs numpy, scipy and numba. `data/tracker_luts.json` holds the kp variant
 LUTs (generated with the C5VRX-4 untrained generator of PR #190).
 
+## Diagnostic cliff follow-up (PR #196, 2026-10-11)
+
+Operator clarification: the image becomes static abruptly; the analog feed
+remains, with no goggles NO SIGNAL indication. This does not establish whether
+RF/FM threshold, tracking, filter/CFO or CVBS/goggle decoding is responsible.
+The passive diagnostic fix separates all-window AFC sync evidence from
+measurement coverage and conditional sync. It adds bounded timestamped pre/post
+onset records at the existing nominal 50-ms control cadence, not extra live DSP.
+These metrics cannot measure recognisable picture/luma quality or resolve every
+sub-50-ms fade. Unknown evidence stays UNKNOWN; FAST_EVIDENCE_LOSS is not a
+propagation diagnosis. C/N, noise figure and distance from the simulations are
+model assumptions, not independently measured RF sensitivity. Identify the
+actual supplied antenna before assigning it a band or loss.
+
+See `v5/docs/FIELD_TEST.md` for repeated 0.5–1-dB conducted attenuation sweeps,
+independent IQ/video/output thresholds, real-IQ floating/bit-exact replay and
+outdoor antenna/height A/B/A. RF offset readback, analog BW/passband and DC
+validity across profiles still require bench measurements. No measured range
+gain or physical picture-cliff fix is claimed by the diagnostic code.
+
 ## 10. Demodulator follow-up: U85G (draft, opt-in)
 
 The stacked #196 follow-up screened 252 analytic formulas and built a

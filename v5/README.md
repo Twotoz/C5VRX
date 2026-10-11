@@ -3,9 +3,11 @@
 Analog 5.8 GHz FPV receiver on one Seeed Studio XIAO ESP32-C5 with a passive
 6-bit resistor DAC: live FM video in, composite PAL/NTSC out for goggles.
 
-C5VRX-5 is the simplest and best C5VRX so far: one demodulator, no
-experimental options. Everything that is in it earned its place on the
-board or in held-out tests (see [docs/FINDINGS.md](docs/FINDINGS.md)).
+C5VRX-5 uses one live demodulator. Its receive-chain evidence is recorded in
+[docs/FINDINGS.md](docs/FINDINGS.md). Console `J` additionally enables the
+read-only [IQLaneFusion research shadow](docs/IQLANE_FUSION.md): analytic
+model proposals, off by default, with no lane/gain/decoder actuator. This
+research is not a demonstrated video or range improvement.
 
 ## Experimental stacked PR
 
@@ -52,6 +54,9 @@ research target, not live C5 firmware or measured outdoor range.
 - **Field diagnostics** (serial `D`, `R`): what is really active, and why
   each dropout happened as far as the receiver can tell
   ([docs/FIELD_TEST.md](docs/FIELD_TEST.md)).
+- **DC correction for every gain row, also with the VTX on**: missing rows
+  are measured once at startup on a quiet channel, so far-out (high gain)
+  reception has no uncorrected DC.
 - **Automatic receive-chain care**: per-gain DC correction, DC drift
   tracking, sampling-phase check, AFC that centres the VTX.
 - **Simple menu**: band, channel, scan, video standard, exit.
