@@ -45,8 +45,9 @@ echo "Fetching GitHub releases for Pages firmware mirror..."
 gh api --paginate --slurp "repos/${REPO}/releases?per_page=100" \
   | jq 'add // []' > "${tmp_dir}/all-releases.json"
 
-# Keep a bounded history of normal firmware plus recent PR prereleases.
-# Legacy archive releases are intentionally excluded.
+# Keep a bounded history of C5VRX-3 releases plus the C5VRX-5 channel
+# (versioned main builds and unmerged PR builds). Legacy archive, C5VRX-3 PR
+# and C5VRX-4 alpha releases are no longer offered by the flasher.
 jq '
   [ .[] | select(.draft == false) ] as $all
   | ($all
@@ -55,17 +56,12 @@ jq '
       | reverse
       | .[:20]) as $versions
   | ($all
-      | map(select(.prerelease == true and (.tag_name | test("^pr-[0-9]+$"))))
-      | sort_by(.published_at)
-      | reverse
-      | .[:3]) as $prs
+      | map(select(.tag_name | test("^c5vrx5-v5\\.[0-9]+\\.[0-9]+$")))
+      | sort_by(.published_at) | reverse | .[:20]) as $v5
   | ($all
-      | map(select(.prerelease == true and (.tag_name | test("^c5vrx4-(alpha|pr-[0-9]+)$"))))
-      | sort_by(.published_at) | reverse) as $alphas
-  | ($all
-      | map(select(.prerelease == true and (.tag_name | test("^c5vrx4-v4\\.[0-9]+\\.[0-9]+-alpha\\.[0-9]+$"))))
-      | sort_by(.published_at) | reverse | .[:20]) as $alpha_versions
-  | ($versions + $prs + $alpha_versions + $alphas)
+      | map(select(.prerelease == true and (.tag_name | test("^c5vrx5-pr-[0-9]+$"))))
+      | sort_by(.published_at) | reverse) as $v5_prs
+  | ($versions + $v5 + $v5_prs)
 ' "${tmp_dir}/all-releases.json" > "${tmp_dir}/selected-releases.json"
 
 count="$(jq 'length' "${tmp_dir}/selected-releases.json")"

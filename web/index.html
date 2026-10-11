@@ -68,9 +68,9 @@
 <div class="panel">
 
           <div class="sources" role="group" aria-label="Firmware source">
-            <button id="tabGithub" aria-pressed="true" class="source-button active">Releases</button>
-            <button id="tabPr" aria-pressed="false" class="source-button">PR Builds</button>
-            <button id="tabAlpha" aria-pressed="false" class="source-button">C5VRX-4 Alpha</button>
+            <button id="tabGithub" aria-pressed="true" class="source-button active">C5VRX-3</button>
+            <button id="tabPr" aria-pressed="false" class="source-button" hidden>PR Builds</button>
+            <button id="tabAlpha" aria-pressed="false" class="source-button">C5VRX-5</button>
             <button id="tabLocal" aria-pressed="false" class="source-button">Local File</button>
           </div>
 
@@ -169,22 +169,22 @@
             </div>
           </div>
 
-          <!-- C5VRX-4 Alpha Pane -->
+          <!-- C5VRX-5 Pane -->
           <div id="paneAlpha" class="tab-pane">
             <div id="alphaBuildWarning" class="warning-box">
-              <strong>⚠ C5VRX-4 / Alpha firmware <span id="alphaBuildNumber">
+              <strong>C5VRX-5 firmware <span id="alphaBuildNumber">
 </span>
 </strong>
-              <span>Test the experimental C5VRX-4 receiver. Alpha builds may be unstable or produce broken video; range improvements are not yet verified. Choose the latest main alpha or an unmerged PR build. Use Full firmware when switching from C5VRX-3.</span>
+              <span>C5VRX-5: the untrained U85Q demodulator, fixed ultrafine IQ, Direct Gain V5 and a narrow analog filter that calibrates itself once with the VTX off. Choose the latest build or an unmerged PR build. Use Full firmware when switching from another generation.</span>
             </div>
 
             <div class="field">
-              <label for="selectAlphaBuild">Alpha build</label>
+              <label for="selectAlphaBuild">Build</label>
               <div class="select-row">
                 <select id="selectAlphaBuild" class="form-control">
-                  <option value="">Loading alpha builds…</option>
+                  <option value="">Loading C5VRX-5 builds…</option>
                 </select>
-                <button id="btnRefreshAlphaBuilds" class="action" title="Refresh alpha builds">
+                <button id="btnRefreshAlphaBuilds" class="action" title="Refresh C5VRX-5 builds">
                   Refresh
                 </button>
               </div>

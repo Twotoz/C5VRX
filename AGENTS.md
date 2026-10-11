@@ -351,6 +351,22 @@ For branch-only documents, use `git show <recorded revision>:<path>` or the
 canonical repository at that revision. Never invent a same-named main file or
 silently merge an experiment's assumptions into the production contract.
 
+### C5VRX-5: the distilled receiver (`v5/`)
+
+Operator decision 2026-10-11: a separate, simple generation with only what
+PR #190 showed to help. MODEM_DIAG fixed ultrafine Q4/I4 -> PARLIO RX40 ->
+raw 32 KiB ring -> TX BitScrambler U85Q (model `1a09f5c092e8`: untrained
+32-phase tracker, PAIR4411 shared word, origin quadrant tokens, -6..+9 MHz;
+two bundles, LUT16, unique CVBS20 as [D,D] at TX40) -> 6-bit DAC. Direct
+Gain V5 (fixed lane, staged recovery, persisted map), per-gain DC hold with
+the carrier latch, DC drift nudges, sampling-phase check, AFC centring the
+porch on -1.0 MHz (matched to the U85Q window, simulation; was -436 kHz), and one measured narrow-filter sweep (>= 14 MHz, lowest noise
+bandwidth, VTX off). No options menu, labs, native AGC, AutoFit/Fusion,
+flywheel, level servo or idle raster. NVS namespace `c5vrx5`. CI:
+`.github/workflows/c5vrx5.yml` publishes `c5vrx5-v5.0.N` and `c5vrx5-pr-N`
+for the flasher's C5VRX-5 tab. Board: runs and holds video; range is not
+yet measured. Evidence: `v5/docs/FINDINGS.md`.
+
 ### Instructions for future pipeline work
 
 1. Search this ledger, the original source paths, `docs/KNOWLEDGE_INDEX.md` and

@@ -222,7 +222,7 @@ function handleLocalFile(file) {
 async function fetchReleases() {
   selectRelease.innerHTML = '<option value="">Fetching firmware index...</option>';
   selectPrBuild.innerHTML = '<option value="">Fetching PR builds...</option>';
-  selectAlphaBuild.innerHTML = '<option value="">Fetching alpha builds...</option>';
+  selectAlphaBuild.innerHTML = '<option value="">Fetching C5VRX-5 builds...</option>';
 
   let data = null;
   try {
@@ -265,11 +265,9 @@ async function fetchReleases() {
 
   githubReleases = productionReleases;
   githubPrBuilds = prBuilds;
-  githubAlphaBuilds = data.filter(rel => rel.prerelease && /^c5vrx4-(?:alpha|pr-[0-9]+|v4\.[0-9]+\.[0-9]+-alpha\.[0-9]+)$/.test(rel.tag_name || ""))
-    .sort((a, b) => (Number(/^c5vrx4-pr-/.test(a.tag_name)) - Number(/^c5vrx4-pr-/.test(b.tag_name))) || new Date(b.published_at || 0) - new Date(a.published_at || 0));
-  if (githubAlphaBuilds.some(rel => rel.tag_name.startsWith("c5vrx4-v"))) {
-    githubAlphaBuilds = githubAlphaBuilds.filter(rel => rel.tag_name !== "c5vrx4-alpha");
-  }
+  // C5VRX-5: versioned main builds first (newest first), then unmerged PR builds.
+  githubAlphaBuilds = data.filter(rel => /^c5vrx5-(?:pr-[0-9]+|v5\.[0-9]+\.[0-9]+)$/.test(rel.tag_name || ''))
+    .sort((a, b) => (Number(/^c5vrx5-pr-/.test(a.tag_name)) - Number(/^c5vrx5-pr-/.test(b.tag_name))) || new Date(b.published_at || 0) - new Date(a.published_at || 0));
   log(`Available: ${githubReleases.length} versioned release(s), ${githubPrBuilds.length} experimental PR build(s).`);
 
   populateReleaseDropdown();
@@ -283,11 +281,9 @@ function populateAlphaBuildDropdown() {
   githubAlphaBuilds.forEach((rel, index) => {
     const opt = document.createElement('option');
     opt.value = index;
-    opt.textContent = rel.tag_name.startsWith('c5vrx4-v')
-      ? `C5VRX-4 ${rel.tag_name.slice('c5vrx4-'.length)}${index === 0 ? ' (Latest alpha)' : ''}`
-      : rel.tag_name === 'c5vrx4-alpha'
-      ? 'C5VRX-4 Alpha — latest main'
-      : `C5VRX-4 Alpha — PR #${rel.tag_name.split('-').pop()} / unmerged`;
+    opt.textContent = rel.tag_name.startsWith('c5vrx5-v')
+      ? `C5VRX-5 ${rel.tag_name.slice('c5vrx5-'.length)}${index === 0 ? ' (Latest)' : ''}`
+      : `C5VRX-5 — PR #${rel.tag_name.split('-').pop()} / unmerged`;
     selectAlphaBuild.appendChild(opt);
   });
   selectAlphaBuild.disabled = githubAlphaBuilds.length === 0;
@@ -295,7 +291,7 @@ function populateAlphaBuildDropdown() {
     selectAlphaBuild.value = '0';
     onAlphaBuildSelected();
   } else {
-    selectAlphaBuild.innerHTML = '<option value="">No alpha builds published yet</option>';
+    selectAlphaBuild.innerHTML = '<option value="">No C5VRX-5 builds published yet</option>';
     alphaBuildDetails.style.display = 'none';
   }
 }
@@ -449,7 +445,7 @@ function getSelectedRemoteBuild() {
 function findApplicationAsset(assets) {
   // GitHub returns release assets in upload order. Never use the first .bin:
   // bootloader.bin is commonly uploaded before the application image.
-  return assets.find(asset => /^c5vrx(?:[34])?\.bin$/i.test(asset.name || '')) ||
+  return assets.find(asset => /^c5vrx(?:[345])?\.bin$/i.test(asset.name || '')) ||
     assets.find(asset => {
       const name = (asset.name || '').toLowerCase();
       return name.endsWith('.bin') &&
@@ -559,7 +555,8 @@ btnFlash.addEventListener('click', async () => {
     }
   }
 
-  if (activeSource === 'alpha' && !window.confirm('Flash C5VRX-4 Alpha? This experimental firmware may fail to boot or produce broken video. Use Full firmware when switching generations.')) return;
+  if (activeSource === 'alpha' && /^c5vrx5-pr-/.test(getSelectedRemoteBuild().release?.tag_name || '') &&
+      !window.confirm('Flash an unmerged C5VRX-5 PR build? It may fail to boot or produce broken video.')) return;
 
   isFlashing = true;
   syncDeviceControls();

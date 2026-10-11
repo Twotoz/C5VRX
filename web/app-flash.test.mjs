@@ -34,11 +34,11 @@ function harness(sourceName, packageType = 'merged', confirmed = true) {
   vm.runInContext(`
     activeSource = ${JSON.stringify(sourceName)};
     isConnected = true; esploader = mockLoader;
-    const rel = { tag_name: 'c5vrx4-v4.0.0-alpha.1', prerelease: true, assets: [
+    const rel = { tag_name: 'c5vrx5-pr-1', prerelease: true, assets: [
       { name: 'bootloader.bin', local_url: 'firmware/alpha/bootloader.bin', size: 4 },
       { name: 'partition-table.bin', local_url: 'firmware/alpha/partition-table.bin', size: 4 },
-      { name: 'c5vrx4.bin', local_url: 'firmware/alpha/c5vrx4.bin', size: 4 },
-      { name: 'c5vrx4_merged.bin', local_url: 'firmware/alpha/c5vrx4_merged.bin', size: 4 }
+      { name: 'c5vrx5.bin', local_url: 'firmware/alpha/c5vrx5.bin', size: 4 },
+      { name: 'c5vrx5_merged.bin', local_url: 'firmware/alpha/c5vrx5_merged.bin', size: 4 }
     ] };
     githubReleases = [rel]; githubPrBuilds = [rel]; githubAlphaBuilds = [rel];
   `, context);
@@ -49,7 +49,7 @@ for (const remote of ['github', 'pr', 'alpha']) {
   test(`${remote} Full firmware downloads the merged binary at 0x0`, async () => {
     const h = harness(remote);
     await h.click();
-    assert.deepEqual(h.downloads, ['https://c5vrx.com/firmware/alpha/c5vrx4_merged.bin']);
+    assert.deepEqual(h.downloads, ['https://c5vrx.com/firmware/alpha/c5vrx5_merged.bin']);
     assert.equal(h.flashes.length, 1);
     assert.equal(h.flashes[0].fileArray[0].address, 0);
     assert.ok(!h.alerts.some(x => x.startsWith('Flashing error:')));
@@ -58,7 +58,7 @@ for (const remote of ['github', 'pr', 'alpha']) {
 test('alpha App only downloads the application at 0x10000', async () => {
   const h = harness('alpha', 'app_only');
   await h.click();
-  assert.deepEqual(h.downloads, ['https://c5vrx.com/firmware/alpha/c5vrx4.bin']);
+  assert.deepEqual(h.downloads, ['https://c5vrx.com/firmware/alpha/c5vrx5.bin']);
   assert.equal(h.flashes[0].fileArray[0].address, 0x10000);
 });
 test('alpha Full firmware falls back to all three flash parts', async () => {

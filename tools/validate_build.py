@@ -552,15 +552,15 @@ check("web flasher prefers same-origin Pages firmware mirror",
       "corsproxy.io" not in web_app)
 check("Pages deploy builds firmware mirror from trusted main",
       'workflow_run:' in web_workflow and
-      '"C5VRX-3 Production CI"' in web_workflow and '"C5VRX-4 Experimental Build"' in web_workflow and
+      '"C5VRX-3 Production CI"' in web_workflow and '"C5VRX-5 Build"' in web_workflow and
       "ref: main" in web_workflow and
       "tools/prepare_pages_site.sh pages-site" in web_workflow and
       "path: pages-site/" in web_workflow)
 prepare_pages = read(ROOT / "tools" / "prepare_pages_site.sh")
-check("Pages mirror includes versioned releases and active PR prereleases",
+check("Pages mirror includes versioned releases and the C5VRX-5 channel",
       "gh release download" in prepare_pages and
       "local_url" in prepare_pages and
-      "^pr-[0-9]+$" in prepare_pages and
+      "^c5vrx5-pr-[0-9]+$" in prepare_pages and
       ".[:20]" in prepare_pages)
 check("same-repo PR firmware is published only as an explicit prerelease",
       "publish-pr-build:" in workflow and

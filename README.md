@@ -18,6 +18,14 @@
 
 ---
 
+## C5VRX-5
+
+[`v5/`](v5/README.md) is C5VRX-5: the untrained U85Q demodulator (board-validated
+on real video), fixed ultrafine IQ, Direct Gain V5, a per-board narrow analog
+filter and a simple band/channel/scan menu, without experimental options.
+Flash it from the **C5VRX-5** tab of the web flasher. Findings:
+[`v5/docs/FINDINGS.md`](v5/docs/FINDINGS.md).
+
 ## Current firmware
 
 The `main` build defaults to the live adjacent Phase8 demodulator and

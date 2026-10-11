@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parent.parent
 def firmware_input(path, generation):
     if path.endswith('.md'):
         return False
+    if generation == '5':   # C5VRX-5 is self-contained in v5/
+        return path.startswith('v5/') or path in ('.github/workflows/c5vrx5.yml',
+                                                  'tools/firmware_input_hash.py')
     return (path.startswith(('main/', 'managed_components/'))
             or path in ('CMakeLists.txt', 'partitions.csv', 'dependencies.lock',
                         'tools/firmware_input_hash.py')
@@ -20,8 +23,8 @@ def firmware_input(path, generation):
 
 def main():
     generation = sys.argv[1]
-    if generation not in ('3', '4'):
-        raise SystemExit('Expected generation 3 or 4')
+    if generation not in ('3', '4', '5'):
+        raise SystemExit('Expected generation 3, 4 or 5')
     paths = subprocess.check_output(
         ['git', '-c', f'safe.directory={ROOT}', 'ls-files', '-z'], cwd=ROOT
     ).decode().split('\0')
