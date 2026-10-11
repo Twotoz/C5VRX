@@ -1,4 +1,4 @@
-# PR #190: reusable receiver findings
+# PRs #190 and #192: reusable receiver findings
 
 This is a selective knowledge extraction from [PR #190](https://github.com/Twotoz/C5VRX/pull/190),
 reviewed on 2026-10-11 at
@@ -13,6 +13,14 @@ PR #190 targets `codex/c5vrx4-pll-lab`, not main. Its inherited V4 integration,
 firmware, generated LUTs, search outputs, tools and changing defaults are not
 imported here. The source artifacts remain accessible at the pinned revision.
 This document does not change production behavior or establish measured RF range.
+
+The sequence-reference follow-up [PR #192](https://github.com/Twotoz/C5VRX/pull/192)
+is reviewed separately at
+[`c758f05afeb7a953fbc4d915906f046f13566841`](https://github.com/Twotoz/C5VRX/commit/c758f05afeb7a953fbc4d915906f046f13566841).
+It is stacked on an earlier #190 revision (`49b9269`), not the latest U85Q
+work. Its reference decoder and capture/data artifacts are also not imported.
+See [other recent PR findings](recent-pr-receiver-findings.md) for complementary
+DC/gain, build-identity, AFC and direct-IQ timing evidence.
 
 ## Read the evidence at the right level
 
@@ -191,6 +199,50 @@ Sources: [Omega verdict](https://github.com/Twotoz/C5VRX/blob/7491a660e26722afbb
 [amplitude/counter failures](https://github.com/Twotoz/C5VRX/blob/7491a660e26722afbb9dd9e24e69ba381b4f130d/v4/docs/AMPLITUDE_COUNTER_STUDY.md),
 [particle reference/compression](https://github.com/Twotoz/C5VRX/blob/7491a660e26722afbb9dd9e24e69ba381b4f130d/v4/docs/ADAPTIVE_PARTICLE_STUDY.md),
 [belief-ROM failures and validation manifests](https://github.com/Twotoz/C5VRX/blob/7491a660e26722afbb9dd9e24e69ba381b4f130d/v4/docs/BELIEF_ROM_STUDY.md).
+
+## 7. PR #192: receiver-aware inference is useful, but still not a winner
+
+The offline sequence reference retains alternative phase/frequency trajectories,
+receiver-filter memory and inferred amplitude/noise regimes. Its likelihood
+integrates all analog intervals mapping to a folded ADC code, including rail
+tails, rather than assigning one signed-cell centre. This provides a useful
+experiment to separate observation loss from estimator/model limitations.
+The synthetic filter ordering is not a verified physical tap model; conditional
+AR(1) noise matches only the first correlation, and Gaussian moment compression
+is approximate. A richer model alone does not guarantee better recovery.
+
+The optional eight-raw-sample (200 ns) ancestry estimate uses observations through
+the declared availability time. It is genuine fixed-lag inference, not merely
+shifting a causal output. Missing startup/tail samples stay unavailable, without
+injected sync or old-line copies. Extra latency does not create extra hardware
+lookups. At 512 hypotheses the persistent arrays alone occupy about 116 KiB;
+this is not a current-LUT implementation or a demonstrated realtime CPU path.
+
+On independent synthetic confirmation at 6 dB, the delayed reference scores
+7.51 dB waveform SINAD with zero missed/false H-sync, against PAIR's 7.15 dB
+and three misses. However, active-picture RMSE is worse (23.44 vs 20.89 IRE)
+and detail correlation lower (.714 vs .733). At 30 dB its SINAD drops to 10.26
+against PAIR's 15.62; the existing particle reference is better at 2 dB. Tested
+PAL transient pulse recovery improves, but aggregate stressed picture quality
+does not beat PAIR. No overall replacement qualifies.
+
+The full-IQ versus PAIR4411-bit ablation isolates discarded observation bits;
+more bits help some cases but do not remove finite-inference/model losses.
+Increasing hypotheses from 512 to 2,048 improves a development result without
+reaching the comparator. This is budget sensitivity, not an optimality bound.
+One independent nominal clean record freezes calibration and each decoder's lag
+across confirmation records; its absolute scores cannot be mixed with earlier
+per-record calibration results.
+
+Four archived physical fixtures contain only 8,190 bytes / 204.75 us each,
+predate later DCO changes and have no known-video truth. Checksummed replay
+proves reproducibility, not a picture gain. Keep snapshots separate across gaps:
+concatenating them or relaxing copy guards cannot establish continuous dropout
+recovery. Short records without a vertical interval cannot prove V-sync, and
+three-pulse reacquisition is not actual goggle lock. The reported exact-head
+IDF CI builds existing live demodulators, not the offline estimator.
+
+Source: [sequence-reference study, results and reproduction](https://github.com/Twotoz/C5VRX/blob/c758f05afeb7a953fbc4d915906f046f13566841/v4/docs/IQ_SEQUENCE_REFERENCE.md).
 
 ## Next evidence that would justify a separate implementation PR
 

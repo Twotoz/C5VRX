@@ -48,9 +48,11 @@ overload and long sessions still need dedicated tests.
 
 ## Demodulator and gain notes
 
-- [PR #190 receiver findings](docs/pr190-key-findings.md) preserves selected
+- [PR #190/#192 receiver findings](docs/pr190-key-findings.md) preserves selected
   C5VRX/Twotoz/contributor research, scoring corrections, board observations and
   failed experiments with pinned sources; it does not change firmware defaults.
+- [Other recent PR findings](docs/recent-pr-receiver-findings.md) adds DC/gain
+  recovery, build-identity corrections, AFC placement and direct-IQ timing research.
 - [Direct Gain V3 design](docs/direct-gain-v3-core.md) describes the Q4
   observer, gain model, settle logic, and known hardware tuning limits that
   Direct Gain V4 builds on.

@@ -33,7 +33,8 @@ Modern C5VRX
 | Subject | Start here |
 |---|---|
 | Cross-PR canonical findings, corrected assumptions, hardware failures, and experiment disposition through PR #77 | [pr-derived-findings.md](pr-derived-findings.md) |
-| PR #190: scoring corrections, shared-LUT limits, frontend/controller faults, U85Q capture evidence and rejected V4 demod experiments | [pr190-key-findings.md](pr190-key-findings.md) |
+| PRs #190/#192: scoring corrections, shared-LUT limits, frontend/controller faults, U85Q captures, sequence inference and rejected V4 experiments | [pr190-key-findings.md](pr190-key-findings.md) |
+| Other recent PRs: immediate DC hold, staged gain recovery, build identity, U85Q AFC placement and direct-IQ timing limits | [recent-pr-receiver-findings.md](recent-pr-receiver-findings.md) |
 | Phase5-360 comprehensive findings, MODEM_DIAG lane analysis, Counter-A subtraction, and PR #83-#94 resolution | [phase5-360-comprehensive-findings.md](phase5-360-comprehensive-findings.md) |
 | Phase5-360 architecture specification, 2-bit quadrant oracle, and 16-bit word packing | [phase5_360_architecture.md](../tools/phase5_360_architecture.md) |
 | Golden360 / Adjacent50 exact-capacity proof, one-middle-bit impossibility result, and reproducible oracle | [golden360-feasibility.md](golden360-feasibility.md) |
