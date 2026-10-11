@@ -253,3 +253,30 @@ every weak case; 12 MHz costs 0.4-0.9 dB strong at deviation 1.0-1.4;
 10 MHz breaks deviation 1.4. The board already has a measured edge profile
 (`edge_nbw_khz=15359`, ~1.3 dB less noise) that the V5 edge gear can select,
 but the gear is off by default and switches with a PHY glitch.
+
+## Robustness and U85Q (2026-10-11)
+
+`robust_check.py` (impairments outside the search envelope) found U85E
+failing echo + fading (picture 0.13 vs HC50 0.81), off-centre carriers
+(+-2 MHz, 0.75) and amplitudes that fold the lanes (RMS 8, 0.69). Cause of
+the multipath failure: when the signal itself fades, samples land in the
+origin cells while noise is low, so they still carry the quadrant; erasure
+discarded it and held the phase for long stretches, losing sync. The
+Kalman view is a coarse observation, not an empty one: v4 maps the origin
+cells to four quadrant tokens with their own gain (`quad_kp`).
+
+Mixed robustness set (72 cases: nominal, echo/fade, carrier +-2 MHz, DC,
+I/Q 1.4/20 deg, CW spur; `v4r2-summary.json`, new seeds):
+
+| model | picture | SINAD |
+| --- | ---: | ---: |
+| **U85Q** (kp 0.85, quadrant gain 0.5, -6..+9 MHz) | **0.878** | 1.72 |
+| HC50 | 0.832 | 0.60 |
+| U85E | 0.736 | 2.30 |
+
+On the nominal held-out set (144 cases) U85Q keeps picture 0.998 (equal to
+U85E) at 0.66 dB less SINAD (3.98 vs 4.64). Chosen as the default for
+universality; U85E stays selectable. Pinned as range option 8
+(`1a09f5c092e8`), bit-exact, built, flashed and active on the board.
+Fold at RMS 8 remains a gain-control matter: a folded sample cannot be
+recognised from its own bits.
