@@ -1,0 +1,1128 @@
+{
+ "seed": 7500190,
+ "training_bytes": 80000,
+ "rows": [
+  {
+   "spec": {
+    "seed": 7500190,
+    "standard": "PAL",
+    "cnr": -2,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 145492,
+   "training_bytes": 80000,
+   "input_sha256": "544576cbf0ffbd9728a559e0e1068e288e9b580da050c34d58a9da65e877d2a4",
+   "estimate": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 379.0370168495847,
+    "score": 3.2257043822455285,
+    "confidence": 3.014624869610034,
+    "normalized_score": 0.1891428304839476,
+    "lock_declared": false,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 379.0370168495847,
+     "score": 3.2257043822455285,
+     "confidence": 3.014624869610034,
+     "normalized_score": 0.1891428304839476,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 732.4799848551622,
+     "score": 2.3562207162220763,
+     "confidence": 2.2068392634805143,
+     "normalized_score": 0.13815967078821906,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 62,
+    "median_abs_error_us": 1.3240745787603374,
+    "p95_abs_error_us": 1.3240745787603374,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 62,
+    "median_abs_error_us": 1.8240745787603374,
+    "p95_abs_error_us": 1.8240745787603374,
+    "fraction_within_500ns": 0.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 0.9622641509433962,
+    "locked": 1.0,
+    "false_per_line": 0.6914893617021277,
+    "missed_per_line": 0.4148936170212766,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.5531914893617021,
+    "peak_missed_per_line": 0.5212765957446809,
+    "peak_v_ok": 0.0,
+    "sinad": -9.286292544214449
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500207,
+    "standard": "NTSC",
+    "cnr": -2,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 159326,
+   "training_bytes": 80000,
+   "input_sha256": "e796f08ca16ae67a0801308b111c11c1daa6a68b80f8759cb5f0b529d93f0add",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 847.4914915704617,
+    "score": 3.713073652071861,
+    "confidence": 2.952407188344729,
+    "normalized_score": 0.22290728140540125,
+    "lock_declared": false,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 501.7463037437161,
+     "score": 2.768368183400929,
+     "confidence": 2.178487797506832,
+     "normalized_score": 0.1661936938274252,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 847.4914915704617,
+     "score": 3.713073652071861,
+     "confidence": 2.952407188344729,
+     "normalized_score": 0.22290728140540125,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.23728728926103598,
+    "p95_abs_error_us": 0.28173173370548055,
+    "fraction_within_500ns": 1.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.262712710738964,
+    "p95_abs_error_us": 0.3071571551834086,
+    "fraction_within_500ns": 1.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 0.9122807017543859,
+    "locked": 1.0,
+    "false_per_line": 0.6526315789473685,
+    "missed_per_line": 0.47368421052631576,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.6947368421052632,
+    "peak_missed_per_line": 0.5368421052631579,
+    "peak_v_ok": 0.0,
+    "sinad": -5.13925566168179
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500291,
+    "standard": "PAL",
+    "cnr": 0,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 36156,
+   "training_bytes": 80000,
+   "input_sha256": "aefcb11d7992ce08bb1edc1a00fc0fa52378f235bc54de0bdfa2637d243713c4",
+   "estimate": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 2343.249523513391,
+    "score": 3.0372379906088076,
+    "confidence": 2.435189817448506,
+    "normalized_score": 0.17559485810867145,
+    "lock_declared": false,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 2343.249523513391,
+     "score": 3.0372379906088076,
+     "confidence": 2.435189817448506,
+     "normalized_score": 0.17559485810867145,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 1675.519108591587,
+     "score": 1.8394924505891719,
+     "confidence": 1.7117906379135335,
+     "normalized_score": 0.10634840498239397,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 62,
+    "median_abs_error_us": 2.381238087834936,
+    "p95_abs_error_us": 2.381238087834936,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 62,
+    "median_abs_error_us": 1.881238087834936,
+    "p95_abs_error_us": 1.881238087834936,
+    "fraction_within_500ns": 0.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 0.9615384615384616,
+    "locked": 1.0,
+    "false_per_line": 0.6021505376344086,
+    "missed_per_line": 0.20430107526881722,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.9615384615384616,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.6344086021505376,
+    "peak_missed_per_line": 0.20430107526881722,
+    "peak_v_ok": 0.0,
+    "sinad": -7.38812784530142
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500308,
+    "standard": "NTSC",
+    "cnr": 0,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 27423,
+   "training_bytes": 80000,
+   "input_sha256": "bea648e51e481864734f0370bd12a025994d0e30b14eb8f44bb68209625ac536",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 502.39605071634105,
+    "score": 3.127262276428219,
+    "confidence": 2.0741927397401616,
+    "normalized_score": 0.18547719100844523,
+    "lock_declared": false,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 345.69389936622645,
+     "score": 2.815230560818655,
+     "confidence": 2.4688263418952805,
+     "normalized_score": 0.16697066325314958,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 502.39605071634105,
+     "score": 3.127262276428219,
+     "confidence": 2.0741927397401616,
+     "normalized_score": 0.18547719100844523,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 1.0762098432029403,
+    "p95_abs_error_us": 1.120654287647385,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 1.5762098432029403,
+    "p95_abs_error_us": 1.620654287647385,
+    "fraction_within_500ns": 0.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 0.9814814814814815,
+    "locked": 1.0,
+    "false_per_line": 0.5578947368421052,
+    "missed_per_line": 0.22105263157894736,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.7052631578947368,
+    "peak_missed_per_line": 0.2631578947368421,
+    "peak_v_ok": 0.0,
+    "sinad": -3.3686785268223085
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500392,
+    "standard": "PAL",
+    "cnr": 2,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 232649,
+   "training_bytes": 80000,
+   "input_sha256": "f8dab706b3d18374f8e7ad41270f66528748e373130674d7fe0f7683eb92ae2c",
+   "estimate": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 319.37912537550466,
+    "score": 5.029866459895434,
+    "confidence": 2.830805372732387,
+    "normalized_score": 0.2863900651901906,
+    "lock_declared": true,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 319.37912537550466,
+     "score": 5.029866459895434,
+     "confidence": 2.830805372732387,
+     "normalized_score": 0.2863900651901906,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 532.4987234259535,
+     "score": 3.49438115894689,
+     "confidence": 2.9640796873902535,
+     "normalized_score": 0.19896274700123517,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 62,
+    "median_abs_error_us": 0.10947813438760931,
+    "p95_abs_error_us": 0.10947813438760931,
+    "fraction_within_500ns": 1.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 62,
+    "median_abs_error_us": 0.39052186561239066,
+    "p95_abs_error_us": 0.39052186561239066,
+    "fraction_within_500ns": 1.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.2127659574468085,
+    "missed_per_line": 0.06382978723404255,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.2553191489361702,
+    "peak_missed_per_line": 0.07446808510638298,
+    "peak_v_ok": 0.0,
+    "sinad": -4.74432142960752
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500409,
+    "standard": "NTSC",
+    "cnr": 2,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 12001,
+   "training_bytes": 80000,
+   "input_sha256": "53ad632b4915cff945888d56d4f8c28c6756caec7882e4fba56e6493a4f89866",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 753.6100251523452,
+    "score": 4.041608782138779,
+    "confidence": 2.5800885790077883,
+    "normalized_score": 0.23704997706166578,
+    "lock_declared": true,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 614.1794327729473,
+     "score": 1.9394306315203613,
+     "confidence": 2.064814864954859,
+     "normalized_score": 0.11375222380413148,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 753.6100251523452,
+     "score": 4.041608782138779,
+     "confidence": 2.5800885790077883,
+     "normalized_score": 0.23704997706166578,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.9874728510300941,
+    "p95_abs_error_us": 1.0319172954745386,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.487472851030094,
+    "p95_abs_error_us": 0.5319172954745386,
+    "fraction_within_500ns": 0.6666666666666666
+   },
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.3626373626373626,
+    "missed_per_line": 0.0989010989010989,
+    "v_ok": 1.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.46153846153846156,
+    "peak_missed_per_line": 0.0989010989010989,
+    "peak_v_ok": 1.0,
+    "sinad": -0.8873992039358202
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500493,
+    "standard": "PAL",
+    "cnr": 4,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 70785,
+   "training_bytes": 80000,
+   "input_sha256": "821f58dea63768ef8f5bcbc25a48bb2bedba36387ea8327a200970279236b550",
+   "estimate": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 871.7781500604856,
+    "score": 5.28925303440253,
+    "confidence": 2.3911016353729817,
+    "normalized_score": 0.2893040765619197,
+    "lock_declared": true,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 871.7781500604856,
+     "score": 5.28925303440253,
+     "confidence": 2.3911016353729817,
+     "normalized_score": 0.2893040765619197,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 1112.3458823574404,
+     "score": 2.932419042117229,
+     "confidence": 2.265714060155613,
+     "normalized_score": 0.16039330649420222,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.6805462484880991,
+    "p95_abs_error_us": 0.6805462484880991,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 1.180546248488099,
+    "p95_abs_error_us": 1.180546248488099,
+    "fraction_within_500ns": 0.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.02127659574468085,
+    "missed_per_line": 0.02127659574468085,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.031914893617021274,
+    "peak_missed_per_line": 0.02127659574468085,
+    "peak_v_ok": 0.0,
+    "sinad": -1.7706048223525648
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500510,
+    "standard": "NTSC",
+    "cnr": 4,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 39010,
+   "training_bytes": 80000,
+   "input_sha256": "5c251a2d0de51343f54d74905a22b4a42399efeddc9898a7a5d8f49bc5c1a9af",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 1703.3672100630274,
+    "score": 4.354108967800522,
+    "confidence": 2.132340882800249,
+    "normalized_score": 0.23930923049754022,
+    "lock_declared": true,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 1536.158658314614,
+     "score": 3.3413493217271424,
+     "confidence": 2.245775059006231,
+     "normalized_score": 0.18364623874122432,
+     "lock_declared": false,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 1703.3672100630274,
+     "score": 4.354108967800522,
+     "confidence": 2.132340882800249,
+     "normalized_score": 0.23930923049754022,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.845291362686595,
+    "p95_abs_error_us": 0.8897358071310396,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.345291362686595,
+    "p95_abs_error_us": 0.38973580713103956,
+    "fraction_within_500ns": 1.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.0851063829787234,
+    "missed_per_line": 0.0,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.10638297872340426,
+    "peak_missed_per_line": 0.010638297872340425,
+    "peak_v_ok": 0.0,
+    "sinad": 2.6201555295179224
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500594,
+    "standard": "PAL",
+    "cnr": 6,
+    "deviation": 1.2,
+    "offset": -2000000.0,
+    "stress": "both"
+   },
+   "crop_raw_bytes": 204229,
+   "training_bytes": 80000,
+   "input_sha256": "0ed45e759ca0de62a7a0430c2f4f7cd9f26641f60b9dcdab37dfcce184a11a88",
+   "estimate": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 600.7727483628973,
+    "score": 8.996803868752838,
+    "confidence": 3.8133970786002402,
+    "normalized_score": 0.7134524454146803,
+    "lock_declared": true,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 600.7727483628973,
+     "score": 8.996803868752838,
+     "confidence": 3.8133970786002402,
+     "normalized_score": 0.7134524454146803,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 961.5616151144123,
+     "score": 3.6639768979878933,
+     "confidence": 2.6050377030982004,
+     "normalized_score": 0.2905557702431861,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 62,
+    "median_abs_error_us": 0.644318709072104,
+    "p95_abs_error_us": 0.6443187090724678,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 62,
+    "median_abs_error_us": 0.14431870907210395,
+    "p95_abs_error_us": 0.14431870907246774,
+    "fraction_within_500ns": 1.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.3723404255319149,
+    "missed_per_line": 0.46808510638297873,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.3723404255319149,
+    "peak_missed_per_line": 0.46808510638297873,
+    "peak_v_ok": 0.0,
+    "sinad": 0.5933117096606676
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500611,
+    "standard": "NTSC",
+    "cnr": 6,
+    "deviation": 1.2,
+    "offset": -2000000.0,
+    "stress": "both"
+   },
+   "crop_raw_bytes": 153570,
+   "training_bytes": 80000,
+   "input_sha256": "591b970410c6d4c7598ebb7fa3c729f1c0c0176c6336cbc964359508470e474e",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 1528.7866999209364,
+    "score": 8.151135364742924,
+    "confidence": 3.733664224491907,
+    "normalized_score": 0.799439486695769,
+    "lock_declared": true,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 1387.550135793615,
+     "score": 3.71203298354047,
+     "confidence": 2.490148932838576,
+     "normalized_score": 0.3640653246657191,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 1528.7866999209364,
+     "score": 8.151135364742924,
+     "confidence": 3.733664224491907,
+     "normalized_score": 0.799439486695769,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.48077860913447806,
+    "p95_abs_error_us": 0.5252230535789226,
+    "fraction_within_500ns": 0.6666666666666666
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.025223053578923783,
+    "p95_abs_error_us": 0.0636658353099665,
+    "fraction_within_500ns": 1.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.26595744680851063,
+    "missed_per_line": 0.44680851063829785,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.26595744680851063,
+    "peak_missed_per_line": 0.44680851063829785,
+    "peak_v_ok": 0.0,
+    "sinad": 1.4733671345448782
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500695,
+    "standard": "PAL",
+    "cnr": 30,
+    "deviation": 1.2,
+    "offset": 2000000.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 83362,
+   "training_bytes": 80000,
+   "input_sha256": "806d3a4c11a62d25986cf54ddab1090102ff6db53f9f6128b79f76e350219e23",
+   "estimate": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 1140.381867001888,
+    "score": 12.080770323422893,
+    "confidence": 2.664280935185758,
+    "normalized_score": 0.6683763149966052,
+    "lock_declared": true,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 1140.381867001888,
+     "score": 12.080770323422893,
+     "confidence": 2.664280935185758,
+     "normalized_score": 0.6683763149966052,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 1493.9206755712564,
+     "score": 7.318393815730604,
+     "confidence": 2.331031280311581,
+     "normalized_score": 0.4048948005217977,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.4595466750470223,
+    "p95_abs_error_us": 0.4595466750470223,
+    "fraction_within_500ns": 1.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.04045332495297771,
+    "p95_abs_error_us": 0.04045332495297771,
+    "fraction_within_500ns": 1.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.0,
+    "missed_per_line": 0.0,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.0,
+    "peak_missed_per_line": 0.0,
+    "peak_v_ok": 0.0,
+    "sinad": 13.666595768790401
+   }
+  },
+  {
+   "spec": {
+    "seed": 7500712,
+    "standard": "NTSC",
+    "cnr": 30,
+    "deviation": 1.2,
+    "offset": 2000000.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 12405,
+   "training_bytes": 80000,
+   "input_sha256": "0c735dbf939b128e22e545f0976432b156f9970657b49d69be6c8304fa616e9f",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 332.2163973199462,
+    "score": 8.866362173013531,
+    "confidence": 3.258066213518697,
+    "normalized_score": 0.48433394811506664,
+    "lock_declared": true,
+    "products": 1270,
+    "histogram_bins": 128,
+    "stride": 63
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 2505.0627589510923,
+     "score": 5.036011563596284,
+     "confidence": 2.4914764411791643,
+     "normalized_score": 0.2750971949661181,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 332.2163973199462,
+     "score": 8.866362173013531,
+     "confidence": 3.258066213518697,
+     "normalized_score": 0.48433394811506664,
+     "lock_declared": true,
+     "products": 1270,
+     "histogram_bins": 128,
+     "stride": 63
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.5526321552205502,
+    "p95_abs_error_us": 0.5970765996649947,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "known_model_FIR_delay_adjusted_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.0526321552205502,
+    "p95_abs_error_us": 0.09707659966499478,
+    "fraction_within_500ns": 1.0
+   },
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.0,
+    "missed_per_line": 0.0,
+    "v_ok": 1.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.0,
+    "peak_missed_per_line": 0.0,
+    "peak_v_ok": 1.0,
+    "sinad": 18.29215607183918
+   }
+  }
+ ],
+ "noise_only_controls": [
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 564.7674537547908,
+   "score": 3.6922361320569044,
+   "confidence": 3.470552786053129,
+   "normalized_score": 0.22057198775635112,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 2183.954374692205,
+   "score": 2.4819056184726236,
+   "confidence": 1.8332230846444593,
+   "normalized_score": 0.14964725516119415,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 363.9789159113374,
+   "score": 2.394676594777041,
+   "confidence": 2.467610671811403,
+   "normalized_score": 0.14804260698860158,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 1774.915000840948,
+   "score": 3.077758399376745,
+   "confidence": 2.375814384653236,
+   "normalized_score": 0.18257523318270194,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 415.08229037083845,
+   "score": 2.952742107993601,
+   "confidence": 2.5135075388228363,
+   "normalized_score": 0.1850289868827095,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 311.80054566218905,
+   "score": 3.557371908632299,
+   "confidence": 2.9782932009374203,
+   "normalized_score": 0.21073101935552122,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 1808.0872674546995,
+   "score": 3.2694325166392124,
+   "confidence": 2.170999908492082,
+   "normalized_score": 0.19722506512762075,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 698.5022706875066,
+   "score": 2.5687285325048412,
+   "confidence": 2.10475469832771,
+   "normalized_score": 0.15299372678709133,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 270.42586054968825,
+   "score": 2.9562266995922672,
+   "confidence": 2.7359267448916267,
+   "normalized_score": 0.18238561615167256,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 115.36100465507879,
+   "score": 2.5823208765728745,
+   "confidence": 2.4718928174161623,
+   "normalized_score": 0.1561614929406957,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 1424.079451479176,
+   "score": 2.6786384961700556,
+   "confidence": 2.630582189655029,
+   "normalized_score": 0.16715988846425092,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 539.2131903143429,
+   "score": 2.1701547995077712,
+   "confidence": 2.861173534396539,
+   "normalized_score": 0.12695640496452484,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 656.6809400307549,
+   "score": 2.912516308472938,
+   "confidence": 3.022201484635002,
+   "normalized_score": 0.1760456766341741,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 1561.9125552415312,
+   "score": 2.6027288082484086,
+   "confidence": 2.6868375604316554,
+   "normalized_score": 0.15084495899582342,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "PAL",
+   "period": 2560.0,
+   "phase": 1650.5893983671556,
+   "score": 3.377579115377365,
+   "confidence": 2.505318124059317,
+   "normalized_score": 0.22199065758573996,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 2091.207347294679,
+   "score": 3.3132331515401843,
+   "confidence": 2.8967639899075692,
+   "normalized_score": 0.20062967159948666,
+   "lock_declared": false,
+   "products": 1270,
+   "histogram_bins": 128,
+   "stride": 63
+  }
+ ],
+ "detector_inputs": "received_raw_IQ_only_design_standard_priors",
+ "calibration": "clock_has_no_truth_fit_U85Q_baseline_has_clean_oracle",
+ "scope": "offline_H_observer_not_complete_demod_not_C5_CPU_or_DMA_acceptance",
+ "source_sha256": "802bb0a1a8dab35c306b03638730f05a2f86b50539d41126a12364e093600c6b"
+}

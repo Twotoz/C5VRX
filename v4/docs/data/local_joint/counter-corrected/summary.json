@@ -1,0 +1,121 @@
+{
+ "COUNTER-LOOP-kp0.85-q0.25-increment": {
+  "weak": {
+   "picture": 0.9409490890241001,
+   "sinad": -0.12112351870637622,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.666648148464525,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9704745445120501,
+   "sinad": 6.772762314879074,
+   "vertical": 1.0
+  }
+ },
+ "COUNTER-LOOP-kp0.85-q0.5-increment": {
+  "weak": {
+   "picture": 0.9624007433177906,
+   "sinad": -0.2757054981099696,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.666648148464525,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9812003716588953,
+   "sinad": 6.6954713251772775,
+   "vertical": 1.0
+  }
+ },
+ "COUNTER-LOOP-kp0.85-q0.5-innovation": {
+  "weak": {
+   "picture": 0.9613257313732134,
+   "sinad": -0.29114127793872513,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.56172572801146,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9806628656866067,
+   "sinad": 6.635292225036367,
+   "vertical": 1.0
+  }
+ },
+ "COUNTER-LOOP-kp1-q0.5-increment": {
+  "weak": {
+   "picture": 0.9313710923745333,
+   "sinad": -0.7505395623707084,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 12.597587600443315,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9656855461872667,
+   "sinad": 5.923524019036304,
+   "vertical": 1.0
+  }
+ },
+ "HC50": {
+  "weak": {
+   "picture": 0.969031334477271,
+   "sinad": -1.789684393689616,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 14.41385673342244,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9845156672386355,
+   "sinad": 6.3120861698664115,
+   "vertical": 1.0
+  }
+ },
+ "RANGE32": {
+  "weak": {
+   "picture": 0.4994834710743802,
+   "sinad": 1.2287924102119867,
+   "vertical": 0.625
+  },
+  "strong": {
+   "picture": 0.7457191780821918,
+   "sinad": 6.131204903104408,
+   "vertical": 0.75
+  },
+  "all": {
+   "picture": 0.622601324578286,
+   "sinad": 3.679998656658197,
+   "vertical": 0.6875
+  }
+ },
+ "U85Q UNTRAINED": {
+  "weak": {
+   "picture": 0.9624007433177906,
+   "sinad": -0.28607445092468126,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 14.47444763791211,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9812003716588953,
+   "sinad": 7.094186593493714,
+   "vertical": 1.0
+  }
+ }
+}

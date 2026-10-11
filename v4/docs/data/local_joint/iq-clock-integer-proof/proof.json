@@ -1,0 +1,256 @@
+{
+ "rows": [
+  {
+   "seed": 7600190,
+   "standard": "PAL",
+   "phase_difference_ns": -1.3423750567426396,
+   "fixed_timing": {
+    "lines": 62,
+    "median_abs_error_us": 0.2779249622646603,
+    "p95_abs_error_us": 0.2779249622646603,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 222026,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600207,
+   "standard": "NTSC",
+   "phase_difference_ns": -0.6436049682520206,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.24824957206745352,
+    "p95_abs_error_us": 0.2926940165118981,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 144452,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600291,
+   "standard": "PAL",
+   "phase_difference_ns": -1.1904302118864507,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.28772378094217854,
+    "p95_abs_error_us": 0.28772378094217854,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 201006,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600308,
+   "standard": "NTSC",
+   "phase_difference_ns": -1.4273192508710508,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.09253165411492432,
+    "p95_abs_error_us": 0.1369760985593689,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 161390,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600392,
+   "standard": "PAL",
+   "phase_difference_ns": -0.520687012738108,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.025528992519684834,
+    "p95_abs_error_us": 0.025528992519684834,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 195652,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600409,
+   "standard": "NTSC",
+   "phase_difference_ns": -0.8076434310680725,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.09719324179459932,
+    "p95_abs_error_us": 0.14163768623904388,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 143424,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600493,
+   "standard": "PAL",
+   "phase_difference_ns": -0.7859116100746633,
+   "fixed_timing": {
+    "lines": 62,
+    "median_abs_error_us": 0.10996516194718424,
+    "p95_abs_error_us": 0.10996516194718424,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 217540,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600510,
+   "standard": "NTSC",
+   "phase_difference_ns": -0.43861962671485344,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.026202569274840926,
+    "p95_abs_error_us": 0.05953590260816555,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 146516,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600594,
+   "standard": "PAL",
+   "phase_difference_ns": -0.7807333684070272,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.01983371769238147,
+    "p95_abs_error_us": 0.019833717692745268,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 201188,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600611,
+   "standard": "NTSC",
+   "phase_difference_ns": -1.0509583614975782,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.25390132519298164,
+    "p95_abs_error_us": 0.2983457696374262,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 142844,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600695,
+   "standard": "PAL",
+   "phase_difference_ns": -0.666353285294008,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.1094610776679474,
+    "p95_abs_error_us": 0.1094610776679474,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 204162,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600712,
+   "standard": "NTSC",
+   "phase_difference_ns": -2.1996306054916204,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.160683480599738,
+    "p95_abs_error_us": 0.20512792504418256,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 158526,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600796,
+   "standard": "PAL",
+   "phase_difference_ns": -0.935874530421188,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.10847259839138132,
+    "p95_abs_error_us": 0.10847259839138132,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 196848,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600813,
+   "standard": "NTSC",
+   "phase_difference_ns": -0.9753218541163733,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.20600938104932426,
+    "p95_abs_error_us": 0.2504538254937688,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 165170,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600897,
+   "standard": "PAL",
+   "phase_difference_ns": -1.6822235349820858,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.11009131198952674,
+    "p95_abs_error_us": 0.11009131198952674,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 177112,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  },
+  {
+   "seed": 7600914,
+   "standard": "NTSC",
+   "phase_difference_ns": -1.000536420968956,
+   "fixed_timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.16892446088951943,
+    "p95_abs_error_us": 0.21336890533396397,
+    "fraction_within_500ns": 1.0
+   },
+   "max_abs_hist_sum": 167272,
+   "sampled_pairs": 1270,
+   "histogram_bytes": 3072,
+   "chunk_equivalence": true
+  }
+ ],
+ "phase_difference_max_abs_ns": 2.1996306054916204,
+ "bounds": {
+  "max_product_abs": 450,
+  "max_pairs_2ms": 1270,
+  "worst_bin_abs_bound": 146304000,
+  "int32_max": 2147483647
+ },
+ "scope": "integer_histogram_equivalence_no_CPU_timing_no_DMA_acceptance",
+ "source_hashes": {
+  "local_iq_clock_integer.py": "823c6beefed6b1e549b4933742153eb9782b9c3995bf60b1b4514112b75a387d",
+  "local_iq_clock.py": "62e3189182db02b208ec6d636a008094d31ba47ecbd3211082732ea3ad51eeff"
+ }
+}

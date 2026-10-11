@@ -1,0 +1,78 @@
+[
+ {
+  "standard": "PAL",
+  "ring_bytes": 32768,
+  "nominal_line_bytes": "2560",
+  "aligned_line_pattern": [
+   2560
+  ],
+  "maximum_rounding_ns": 0.0,
+  "immutable_repeat_lines": 64,
+  "immutable_repeat_bytes": 163840,
+  "repeat_ms": 4.096,
+  "descriptor_lower_bound": 128,
+  "descriptor_bytes_lower_bound_at_12_bytes": 1536,
+  "caveat": "H_only_geometry_not_safe_DMA_or_valid_CVBS"
+ },
+ {
+  "standard": "NTSC",
+  "ring_bytes": 32768,
+  "nominal_line_bytes": "22880/9",
+  "aligned_line_pattern": [
+   2544,
+   2540,
+   2544,
+   2540,
+   2544,
+   2540,
+   2544,
+   2540,
+   2544
+  ],
+  "maximum_rounding_ns": 44.44444444444444,
+  "immutable_repeat_lines": 9216,
+  "immutable_repeat_bytes": 23429120,
+  "repeat_ms": 585.728,
+  "descriptor_lower_bound": 18432,
+  "descriptor_bytes_lower_bound_at_12_bytes": 221184,
+  "caveat": "H_only_geometry_not_safe_DMA_or_valid_CVBS"
+ },
+ {
+  "standard": "PAL-commensurate-experimental",
+  "ring_bytes": 30720,
+  "nominal_line_bytes": "2560",
+  "aligned_line_pattern": [
+   2560
+  ],
+  "maximum_rounding_ns": 0.0,
+  "immutable_repeat_lines": 12,
+  "immutable_repeat_bytes": 30720,
+  "repeat_ms": 0.768,
+  "descriptor_lower_bound": 24,
+  "descriptor_bytes_lower_bound_at_12_bytes": 288,
+  "caveat": "H_only_geometry_not_safe_DMA_or_valid_CVBS"
+ },
+ {
+  "standard": "NTSC-commensurate-experimental",
+  "ring_bytes": 22880,
+  "nominal_line_bytes": "22880/9",
+  "aligned_line_pattern": [
+   2544,
+   2540,
+   2544,
+   2540,
+   2544,
+   2540,
+   2544,
+   2540,
+   2544
+  ],
+  "maximum_rounding_ns": 44.44444444444444,
+  "immutable_repeat_lines": 9,
+  "immutable_repeat_bytes": 22880,
+  "repeat_ms": 0.572,
+  "descriptor_lower_bound": 18,
+  "descriptor_bytes_lower_bound_at_12_bytes": 216,
+  "caveat": "H_only_geometry_not_safe_DMA_or_valid_CVBS"
+ }
+]

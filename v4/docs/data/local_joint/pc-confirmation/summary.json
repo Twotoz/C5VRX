@@ -1,0 +1,104 @@
+{
+ "HC50": {
+  "weak": {
+   "picture": 0.855443891611013,
+   "sinad": -0.05069448587784775,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.5683727552312,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9173965094920072,
+   "sinad": 5.786048617454602,
+   "vertical": 1.0
+  }
+ },
+ "PC-PRED-scale0": {
+  "weak": {
+   "picture": 0.958388403739002,
+   "sinad": 1.397508170509921,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.886806771476515,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9762219449937154,
+   "sinad": 6.750064713781318,
+   "vertical": 1.0
+  }
+ },
+ "PC-PRED-scale0.5": {
+  "weak": {
+   "picture": 0.9280456460610498,
+   "sinad": 1.3777198949414045,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.53736833172529,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9588832263205999,
+   "sinad": 6.588997796420213,
+   "vertical": 1.0
+  }
+ },
+ "PC-PRED-scale1": {
+  "weak": {
+   "picture": 0.6992736166392328,
+   "sinad": 1.209439981366997,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 12.45688868437837,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.8281563523652758,
+   "sinad": 6.029775139800441,
+   "vertical": 1.0
+  }
+ },
+ "RANGE32": {
+  "weak": {
+   "picture": 0.493065100011694,
+   "sinad": 1.6847187080860402,
+   "vertical": 0.625
+  },
+  "strong": {
+   "picture": 0.7094017094017094,
+   "sinad": 7.556166761718004,
+   "vertical": 0.8333333333333334
+  },
+  "all": {
+   "picture": 0.585780789750272,
+   "sinad": 4.201053588214025,
+   "vertical": 0.7142857142857143
+  }
+ },
+ "U85Q UNTRAINED": {
+  "weak": {
+   "picture": 0.958388403739002,
+   "sinad": 1.397508170509921,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.886806771476515,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9762219449937154,
+   "sinad": 6.750064713781318,
+   "vertical": 1.0
+  }
+ }
+}

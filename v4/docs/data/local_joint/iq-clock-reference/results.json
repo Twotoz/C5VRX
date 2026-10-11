@@ -1,0 +1,952 @@
+{
+ "seed": 7300190,
+ "training_bytes": 80000,
+ "rows": [
+  {
+   "spec": {
+    "seed": 7300190,
+    "standard": "PAL",
+    "cnr": -2,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 200930,
+   "training_bytes": 80000,
+   "input_sha256": "928e2cc71aa0388379ca165ab376a0f018ae907596a25b4b14630d6fb56014b7",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 713.2367336555927,
+    "score": 2.247179134464094,
+    "confidence": 2.3551464626344614,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 918.4610638946178,
+     "score": 1.9350789541666271,
+     "confidence": 2.1348616578035293,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 713.2367336555927,
+     "score": 2.247179134464094,
+     "confidence": 2.3551464626344614,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 20.980918341389366,
+    "p95_abs_error_us": 30.993043104665965,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": false,
+   "baseline_U85Q": {
+    "h_ok": 0.9814814814814815,
+    "locked": 1.0,
+    "false_per_line": 0.5425531914893617,
+    "missed_per_line": 0.4148936170212766,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.5,
+    "peak_locked": 0.5172413793103449,
+    "peak_false_per_line": 0.5957446808510638,
+    "peak_missed_per_line": 0.5212765957446809,
+    "peak_v_ok": 0.0,
+    "sinad": -9.313602634255298
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300207,
+    "standard": "NTSC",
+    "cnr": -2,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 101479,
+   "training_bytes": 80000,
+   "input_sha256": "9ad0159c93fb43b62137a35841a034b30c1b9dd592ec7e34c3aca14abafc08ba",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 461.61580414582875,
+    "score": 4.116285959200718,
+    "confidence": 2.9008570042175164,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 1456.6488414141045,
+     "score": 1.389749507751655,
+     "confidence": 2.3449044091328104,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 461.61580414582875,
+     "score": 4.116285959200718,
+     "confidence": 2.9008570042175164,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 6.193172881423385,
+    "p95_abs_error_us": 6.237617325867818,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "baseline_U85Q": {
+    "h_ok": 0.7192982456140351,
+    "locked": 1.0,
+    "false_per_line": 0.7368421052631579,
+    "missed_per_line": 0.3157894736842105,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.3508771929824561,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.6421052631578947,
+    "peak_missed_per_line": 0.3684210526315789,
+    "peak_v_ok": 0.0,
+    "sinad": -5.064806978337183
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300291,
+    "standard": "PAL",
+    "cnr": 0,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 159286,
+   "training_bytes": 80000,
+   "input_sha256": "da9d905534026cc9e72b0d64920e2617c8dab65198aa4753d388616abf434956",
+   "estimate": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 2237.6124780446867,
+    "score": 2.468519269268363,
+    "confidence": 2.7854596418436866,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 2237.6124780446867,
+     "score": 2.468519269268363,
+     "confidence": 2.7854596418436866,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 1307.688587514034,
+     "score": 2.226306307014659,
+     "confidence": 1.6825621744873154,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 62,
+    "median_abs_error_us": 5.990311951117474,
+    "p95_abs_error_us": 5.990311951117474,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "baseline_U85Q": {
+    "h_ok": 0.9807692307692307,
+    "locked": 1.0,
+    "false_per_line": 0.4838709677419355,
+    "missed_per_line": 0.22580645161290322,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.6451612903225806,
+    "peak_missed_per_line": 0.24731182795698925,
+    "peak_v_ok": 0.0,
+    "sinad": -7.285200723117998
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300308,
+    "standard": "NTSC",
+    "cnr": 0,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 224347,
+   "training_bytes": 80000,
+   "input_sha256": "811c4ae9bd1dcc8497ccd8062b31b3aae690a64bb84c041dd6f819169fe24474",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 874.7556545676653,
+    "score": 2.8116280973329144,
+    "confidence": 1.9399568208529612,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 1566.1425971747553,
+     "score": 1.732957270078082,
+     "confidence": 2.494509444435511,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 874.7556545676653,
+     "score": 2.8116280973329144,
+     "confidence": 1.9399568208529612,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 26.0005530802529,
+    "p95_abs_error_us": 26.044997524697344,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "baseline_U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.6481481481481481,
+    "false_per_line": 0.6382978723404256,
+    "missed_per_line": 0.18085106382978725,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.9259259259259259,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.6914893617021277,
+    "peak_missed_per_line": 0.20212765957446807,
+    "peak_v_ok": 0.0,
+    "sinad": -3.2844119478792937
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300392,
+    "standard": "PAL",
+    "cnr": 2,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 212548,
+   "training_bytes": 80000,
+   "input_sha256": "278ab6315e6132ae059c0a4daaa1dc4b4fe4533e16bfb9008f68da5558320aeb",
+   "estimate": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 1402.636449132477,
+    "score": 2.3393537384477927,
+    "confidence": 2.28014562175968,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 1402.636449132477,
+     "score": 2.3393537384477927,
+     "confidence": 2.28014562175968,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 1946.2775871135866,
+     "score": 2.2587650612966006,
+     "confidence": 1.668420962061545,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 62,
+    "median_abs_error_us": 27.334088771688403,
+    "p95_abs_error_us": 27.334088771688403,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.23655913978494625,
+    "missed_per_line": 0.043010752688172046,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.24731182795698925,
+    "peak_missed_per_line": 0.043010752688172046,
+    "peak_v_ok": 0.0,
+    "sinad": -4.798323572205879
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300409,
+    "standard": "NTSC",
+    "cnr": 2,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 41403,
+   "training_bytes": 80000,
+   "input_sha256": "54668421de3fcd552e2aef97618d7f60c61a8e76c5f1e2f6366cba804c9d15ad",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 751.148789306346,
+    "score": 3.8744917296632733,
+    "confidence": 2.4446965393502835,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 632.3783548930205,
+     "score": 1.0420498533170583,
+     "confidence": 1.6063911537092315,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 751.148789306346,
+     "score": 3.8744917296632733,
+     "confidence": 2.4446965393502835,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 26.690724711786203,
+    "p95_abs_error_us": 26.735169156230647,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "baseline_U85Q": {
+    "h_ok": 0.9622641509433962,
+    "locked": 1.0,
+    "false_per_line": 0.24468085106382978,
+    "missed_per_line": 0.07446808510638298,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.9622641509433962,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.2872340425531915,
+    "peak_missed_per_line": 0.07446808510638298,
+    "peak_v_ok": 0.0,
+    "sinad": -0.7559967901826113
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300493,
+    "standard": "PAL",
+    "cnr": 4,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 79414,
+   "training_bytes": 80000,
+   "input_sha256": "db7034ba277bf821b516e2fb80947ad30538157260c26371941158dc336c9b93",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 413.83960756631785,
+    "score": 2.6211053460080582,
+    "confidence": 2.636253437473087,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 2481.535924634304,
+     "score": 2.3598389223133607,
+     "confidence": 2.084408186506146,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 413.83960756631785,
+     "score": 2.6211053460080582,
+     "confidence": 2.636253437473087,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 62,
+    "median_abs_error_us": 16.18178758862058,
+    "p95_abs_error_us": 28.381787588620615,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": false,
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.043010752688172046,
+    "missed_per_line": 0.0,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.043010752688172046,
+    "peak_missed_per_line": 0.0,
+    "peak_v_ok": 0.0,
+    "sinad": -1.6726058408679747
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300510,
+    "standard": "NTSC",
+    "cnr": 4,
+    "deviation": 0.69,
+    "offset": 0.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 74640,
+   "training_bytes": 80000,
+   "input_sha256": "94bc0a7f7c797f58413c68e3eec6ba60fb148ff1ded6a70b939347a3434defb4",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 1829.3490665254194,
+    "score": 5.661806708059521,
+    "confidence": 3.0333490365436884,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 1453.3024102013699,
+     "score": 1.7178386558605065,
+     "confidence": 2.7846501144160216,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 1829.3490665254194,
+     "score": 5.661806708059521,
+     "confidence": 3.0333490365436884,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 4.9670599964681,
+    "p95_abs_error_us": 5.011504440912544,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.06382978723404255,
+    "missed_per_line": 0.02127659574468085,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.07446808510638298,
+    "peak_missed_per_line": 0.02127659574468085,
+    "peak_v_ok": 0.0,
+    "sinad": 2.4965324662444193
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300594,
+    "standard": "PAL",
+    "cnr": 6,
+    "deviation": 1.2,
+    "offset": -2000000.0,
+    "stress": "both"
+   },
+   "crop_raw_bytes": 111599,
+   "training_bytes": 80000,
+   "input_sha256": "49e66f3fe91f6c5a915b1bec9e2ba8013fcba2c37421193781ddcec6f6b8d33c",
+   "estimate": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 1043.8402088557252,
+    "score": 4.366495249288856,
+    "confidence": 3.207369577265647,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 1043.8402088557252,
+     "score": 4.366495249288856,
+     "confidence": 3.207369577265647,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 1473.4019728970081,
+     "score": 2.9931232360761406,
+     "confidence": 2.7616900532781705,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.02899477860701154,
+    "p95_abs_error_us": 0.02899477860701154,
+    "fraction_within_500ns": 1.0
+   },
+   "correct_standard": true,
+   "baseline_U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.19148936170212766,
+    "missed_per_line": 0.46808510638297873,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.19148936170212766,
+    "peak_missed_per_line": 0.46808510638297873,
+    "peak_v_ok": 0.0,
+    "sinad": 0.5522045181973388
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300611,
+    "standard": "NTSC",
+    "cnr": 6,
+    "deviation": 1.2,
+    "offset": -2000000.0,
+    "stress": "both"
+   },
+   "crop_raw_bytes": 178997,
+   "training_bytes": 80000,
+   "input_sha256": "7de6c8f57e9edf3de401b21d082d4a01dba7515cff458f9b05cc52677dcd5e5f",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 1517.1554447567266,
+    "score": 5.248742906363741,
+    "confidence": 2.5585555093872827,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 1295.077034892772,
+     "score": 1.5805948723663574,
+     "confidence": 2.9247741234006037,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 1517.1554447567266,
+     "score": 5.248742906363741,
+     "confidence": 2.5585555093872827,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 0.30944167447345877,
+    "p95_abs_error_us": 0.35388611891790334,
+    "fraction_within_500ns": 1.0
+   },
+   "correct_standard": true,
+   "baseline_U85Q": {
+    "h_ok": 0.0,
+    "locked": 0.0,
+    "false_per_line": 0.30851063829787234,
+    "missed_per_line": 0.4574468085106383,
+    "v_ok": 0.0,
+    "peak_h_ok": 0.0,
+    "peak_locked": 0.0,
+    "peak_false_per_line": 0.30851063829787234,
+    "peak_missed_per_line": 0.4574468085106383,
+    "peak_v_ok": 0.0,
+    "sinad": 1.5468280223505224
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300695,
+    "standard": "PAL",
+    "cnr": 30,
+    "deviation": 1.2,
+    "offset": 2000000.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 115226,
+   "training_bytes": 80000,
+   "input_sha256": "e5d4a5725ce622e056c62e007d23bce99ed8f4cc42ed13c0da5556cf4caf3e62",
+   "estimate": {
+    "standard": "PAL",
+    "period": 2560.0,
+    "phase": 228.3592356309933,
+    "score": 6.520737616072579,
+    "confidence": 2.635341281463841,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 228.3592356309933,
+     "score": 6.520737616072579,
+     "confidence": 2.635341281463841,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 327.0164442389149,
+     "score": 4.318468067366348,
+     "confidence": 2.3134200599585695,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 62,
+    "median_abs_error_us": 6.258980890774547,
+    "p95_abs_error_us": 6.25898089077491,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.0,
+    "missed_per_line": 0.0,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.0,
+    "peak_missed_per_line": 0.0,
+    "peak_v_ok": 0.0,
+    "sinad": 13.734601657595192
+   }
+  },
+  {
+   "spec": {
+    "seed": 7300712,
+    "standard": "NTSC",
+    "cnr": 30,
+    "deviation": 1.2,
+    "offset": 2000000.0,
+    "stress": false
+   },
+   "crop_raw_bytes": 106330,
+   "training_bytes": 80000,
+   "input_sha256": "63e33bc23e2b3ee1fafd4a5a218cf66ed65c8bae01352b8de8a4fc5ddf145a9c",
+   "estimate": {
+    "standard": "NTSC",
+    "period": 2542.222222222222,
+    "phase": 692.0701162690194,
+    "score": 10.059568959580165,
+    "confidence": 2.4192157968747687,
+    "products": 1250,
+    "histogram_bins": 128,
+    "stride": 64
+   },
+   "choices": [
+    {
+     "standard": "PAL",
+     "period": 2560.0,
+     "phase": 321.33653350575537,
+     "score": 3.901072492277375,
+     "confidence": 4.081261542536686,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    },
+    {
+     "standard": "NTSC",
+     "period": 2542.222222222222,
+     "phase": 692.0701162690194,
+     "score": 10.059568959580165,
+     "confidence": 2.4192157968747687,
+     "products": 1250,
+     "histogram_bins": 128,
+     "stride": 64
+    }
+   ],
+   "timing": {
+    "lines": 63,
+    "median_abs_error_us": 6.118419573391856,
+    "p95_abs_error_us": 6.1628640178363,
+    "fraction_within_500ns": 0.0
+   },
+   "correct_standard": true,
+   "baseline_U85Q": {
+    "h_ok": 1.0,
+    "locked": 1.0,
+    "false_per_line": 0.0,
+    "missed_per_line": 0.0,
+    "v_ok": 0.0,
+    "peak_h_ok": 1.0,
+    "peak_locked": 1.0,
+    "peak_false_per_line": 0.0,
+    "peak_missed_per_line": 0.0,
+    "peak_v_ok": 0.0,
+    "sinad": 17.907955867665606
+   }
+  }
+ ],
+ "noise_only_controls": [
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 1642.929684419221,
+   "score": 3.0753832256779385,
+   "confidence": 2.6647773243487642,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 2117.771903053397,
+   "score": 3.1808763079853657,
+   "confidence": 2.23423748282823,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 1749.1388900832621,
+   "score": 2.291400660577133,
+   "confidence": 1.6645139397033821,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 1551.3201279428524,
+   "score": 3.017783542602163,
+   "confidence": 2.1694145563150338,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 720.8930069934368,
+   "score": 4.057093090347655,
+   "confidence": 2.499324073657756,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 771.4306476827691,
+   "score": 3.7982304904002673,
+   "confidence": 2.8670528455691326,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 673.8729189456021,
+   "score": 1.5776602350149584,
+   "confidence": 1.877069670026264,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 1233.3983842095342,
+   "score": 3.5381606898973987,
+   "confidence": 2.553561739228048,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 554.239266307672,
+   "score": 2.978402295477923,
+   "confidence": 2.3995109653000655,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 751.7944398939402,
+   "score": 2.3125362396909734,
+   "confidence": 2.774680392679536,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 181.27311000282592,
+   "score": 3.3892848815318337,
+   "confidence": 2.2821714909758413,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 1270.146342515349,
+   "score": 2.6151220619292683,
+   "confidence": 1.967557157735295,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 218.05628674390542,
+   "score": 5.0447078290784315,
+   "confidence": 3.930277560532717,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 1602.9407121140414,
+   "score": 4.0958139035160706,
+   "confidence": 2.682706846628999,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 1087.299852853903,
+   "score": 2.54945618647935,
+   "confidence": 2.436794250643965,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  },
+  {
+   "standard": "NTSC",
+   "period": 2542.222222222222,
+   "phase": 1952.8853651188224,
+   "score": 2.8508374395090907,
+   "confidence": 3.1994672023916677,
+   "products": 1250,
+   "histogram_bins": 128,
+   "stride": 64
+  }
+ ],
+ "detector_inputs": "received_raw_IQ_only_design_standard_priors",
+ "calibration": "clock_has_no_truth_fit_U85Q_baseline_has_clean_oracle",
+ "scope": "offline_H_observer_not_complete_demod_not_C5_CPU_or_DMA_acceptance",
+ "source_sha256": "8b8531f9451b53bbd055de739c5d0814d422af9a645274c5cbf880e38eeb80e5"
+}

@@ -1,0 +1,42 @@
+{
+ "source_dataflow": {
+  "models": 3,
+  "bytes_per_stream": 8192,
+  "slots": 8,
+  "lut_bytes": 2048,
+  "alternating_controller_worker": true,
+  "zero_scale_byte_exact_U85Q": true,
+  "status": "host_dataflow_only_branches_need_assembler_and_board_timing"
+ },
+ "assembler_sha256": "1b293da34636288b77b3cad0b50825b3c04cadb9660475fddbaa4623b8c562e8",
+ "target_sha256": "8ea69d170fa74ae382838d2634aaf9f5cff66c5ee0267cab5c04f1af82e5a19d",
+ "official_version": "espressif/esp-idf v6.0.2",
+ "physical_acceptance": false,
+ "programs": [
+  {
+   "name": "PC-PRED-scale0",
+   "source_sha256": "12f9331807d8bcde246fa3dfdc8df1d32a0993b9ce677ecafa4f9c6c3b48e165",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "436f17556ef86358daab6a1baf5ede394ca75a78a2548aac768412cf13256210"
+  },
+  {
+   "name": "PC-PRED-scale0.5",
+   "source_sha256": "545446f3ef615acbaa2b898b2c90925e7f59a06b0a5cbc3ddd46b3610ca51a44",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "490890556402a88afa8fc54f312a1917ef696fb75770c5e0017591809a086b53"
+  },
+  {
+   "name": "PC-PRED-scale1",
+   "source_sha256": "739bd49d56cbc10d9a5457a268c42e22c4d12454af7d120333a42b911dc4d020",
+   "exit_code": 0,
+   "assembler_output": "Written 8 instructions and 1024 32-bit words of LUT.\n",
+   "binary_bytes": 2348,
+   "binary_sha256": "373908fb5157be807daf3a12d7ff21c83215590545c0a4d224ad8070c244a76c"
+  }
+ ],
+ "assembler_pass": true
+}

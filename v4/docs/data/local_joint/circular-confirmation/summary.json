@@ -1,0 +1,155 @@
+{
+ "CIRC-cauchy-0.15-prior0": {
+  "weak": {
+   "picture": 0.7623035700561982,
+   "sinad": 1.5806469184373944,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 0.6666666666666666,
+   "sinad": 9.274029733179285,
+   "vertical": 0.6666666666666666
+  },
+  "all": {
+   "picture": 0.7213163257463991,
+   "sinad": 4.877810981898205,
+   "vertical": 0.8571428571428571
+  }
+ },
+ "CIRC-cauchy-0.5-prior0": {
+  "weak": {
+   "picture": 0.4982014197923289,
+   "sinad": 1.3597994714084447,
+   "vertical": 0.625
+  },
+  "strong": {
+   "picture": 0.5,
+   "sinad": 4.261011566216935,
+   "vertical": 0.5
+  },
+  "all": {
+   "picture": 0.4989722398813308,
+   "sinad": 2.603176083469226,
+   "vertical": 0.5714285714285714
+  }
+ },
+ "CIRC-circular-0-prior0": {
+  "weak": {
+   "picture": 0.9871758278892531,
+   "sinad": 1.1508387978179908,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.711583330997838,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9926719016510018,
+   "sinad": 6.5340150263236385,
+   "vertical": 1.0
+  }
+ },
+ "CIRC-circular-0-prior1e+06": {
+  "weak": {
+   "picture": 0.8920586674751219,
+   "sinad": 1.5334129096577522,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.83910272624005,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9383192385572124,
+   "sinad": 6.807279973907308,
+   "vertical": 1.0
+  }
+ },
+ "CIRC-consistent-0-prior0": {
+  "weak": {
+   "picture": 0.8902152610411211,
+   "sinad": 1.3442518931477698,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.902502433231717,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9372658634520692,
+   "sinad": 6.726359267469462,
+   "vertical": 1.0
+  }
+ },
+ "CIRC-consistent-0-prior1e+06": {
+  "weak": {
+   "picture": 0.49446393219525775,
+   "sinad": 2.0688404057973893,
+   "vertical": 0.9375
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.85647517702983,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.7111222469687187,
+   "sinad": 7.120683879182721,
+   "vertical": 0.9642857142857143
+  }
+ },
+ "HC50": {
+  "weak": {
+   "picture": 0.7915378337171887,
+   "sinad": -0.07399622671419359,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.5667942453601,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.8808787621241079,
+   "sinad": 5.772056832746218,
+   "vertical": 1.0
+  }
+ },
+ "RANGE32": {
+  "weak": {
+   "picture": 0.49077543887390185,
+   "sinad": 1.6977483042016368,
+   "vertical": 0.5625
+  },
+  "strong": {
+   "picture": 0.82707622298066,
+   "sinad": 7.564772559789979,
+   "vertical": 0.8333333333333334
+  },
+  "all": {
+   "picture": 0.6349043463482268,
+   "sinad": 4.212187270882355,
+   "vertical": 0.6785714285714286
+  }
+ },
+ "U85Q UNTRAINED": {
+  "weak": {
+   "picture": 0.9871413481830129,
+   "sinad": 1.3907901182757012,
+   "vertical": 1.0
+  },
+  "strong": {
+   "picture": 1.0,
+   "sinad": 13.902952995055665,
+   "vertical": 1.0
+  },
+  "all": {
+   "picture": 0.9926521989617216,
+   "sinad": 6.753145636895687,
+   "vertical": 1.0
+  }
+ }
+}

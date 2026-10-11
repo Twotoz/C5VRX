@@ -1,0 +1,3 @@
+# Preserve the exact executed source bytes used by research SHA-256 records.
+docs/data/local_joint/** -text whitespace=cr-at-eol
+tools/dsp_search/local_* -text whitespace=cr-at-eol

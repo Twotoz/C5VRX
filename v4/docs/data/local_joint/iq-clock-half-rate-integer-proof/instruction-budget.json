@@ -1,0 +1,8 @@
+{
+ "steady_path_instructions": 122,
+ "multiply_instructions": 14,
+ "stride": 127,
+ "pairs_per_second": 314960.6299212598,
+ "instruction_fraction_if_one_IPC_240MHz": 0.1601049868766404,
+ "scope": "static_path_count_not_physical_cycle_measurement_excludes_scoring_contention_and_preemption"
+}

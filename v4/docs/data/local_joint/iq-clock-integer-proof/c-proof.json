@@ -1,0 +1,92 @@
+{
+ "stride": 63,
+ "cases": [
+  {
+   "case": "random",
+   "chunk": 1,
+   "byte_exact": true,
+   "output_sha256": "58437aebb99ca3be92b9e43a0a16392261af05687c6081934826d50cfc83e4ea"
+  },
+  {
+   "case": "random",
+   "chunk": 2,
+   "byte_exact": true,
+   "output_sha256": "58437aebb99ca3be92b9e43a0a16392261af05687c6081934826d50cfc83e4ea"
+  },
+  {
+   "case": "random",
+   "chunk": 63,
+   "byte_exact": true,
+   "output_sha256": "58437aebb99ca3be92b9e43a0a16392261af05687c6081934826d50cfc83e4ea"
+  },
+  {
+   "case": "random",
+   "chunk": 64,
+   "byte_exact": true,
+   "output_sha256": "58437aebb99ca3be92b9e43a0a16392261af05687c6081934826d50cfc83e4ea"
+  },
+  {
+   "case": "random",
+   "chunk": 4092,
+   "byte_exact": true,
+   "output_sha256": "58437aebb99ca3be92b9e43a0a16392261af05687c6081934826d50cfc83e4ea"
+  },
+  {
+   "case": "random",
+   "chunk": 8191,
+   "byte_exact": true,
+   "output_sha256": "58437aebb99ca3be92b9e43a0a16392261af05687c6081934826d50cfc83e4ea"
+  },
+  {
+   "case": "random",
+   "chunk": 80000,
+   "byte_exact": true,
+   "output_sha256": "58437aebb99ca3be92b9e43a0a16392261af05687c6081934826d50cfc83e4ea"
+  },
+  {
+   "case": "maximum_product",
+   "chunk": 1,
+   "byte_exact": true,
+   "output_sha256": "60a5623e412bbb7139dea92240706a7638a83f10a96b35245ae77bc8355af345"
+  },
+  {
+   "case": "maximum_product",
+   "chunk": 2,
+   "byte_exact": true,
+   "output_sha256": "60a5623e412bbb7139dea92240706a7638a83f10a96b35245ae77bc8355af345"
+  },
+  {
+   "case": "maximum_product",
+   "chunk": 63,
+   "byte_exact": true,
+   "output_sha256": "60a5623e412bbb7139dea92240706a7638a83f10a96b35245ae77bc8355af345"
+  },
+  {
+   "case": "maximum_product",
+   "chunk": 64,
+   "byte_exact": true,
+   "output_sha256": "60a5623e412bbb7139dea92240706a7638a83f10a96b35245ae77bc8355af345"
+  },
+  {
+   "case": "maximum_product",
+   "chunk": 4092,
+   "byte_exact": true,
+   "output_sha256": "60a5623e412bbb7139dea92240706a7638a83f10a96b35245ae77bc8355af345"
+  },
+  {
+   "case": "maximum_product",
+   "chunk": 8191,
+   "byte_exact": true,
+   "output_sha256": "60a5623e412bbb7139dea92240706a7638a83f10a96b35245ae77bc8355af345"
+  },
+  {
+   "case": "maximum_product",
+   "chunk": 80000,
+   "byte_exact": true,
+   "output_sha256": "60a5623e412bbb7139dea92240706a7638a83f10a96b35245ae77bc8355af345"
+  }
+ ],
+ "source_sha256": "0c6928e52a52f10ea2c204b457d3135134cce84cdaccd4d1d8c186d03aa79acd",
+ "c5_assembly_sha256": "790acc3419da2106f4b3f9db66992c58a4f72c893b833fea6370b5c04f9177a8",
+ "scope": "host_C_semantics_and_C5_cross_compile_not_CPU_cycles_or_DMA_acceptance"
+}

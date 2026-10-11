@@ -1,0 +1,34 @@
+{
+ "source_dataflow": {
+  "models": 3,
+  "bytes_per_stream": 8192,
+  "lut_bytes": 2048,
+  "slots": 8,
+  "status": "source_dataflow_only_not_assembler_or_physical_acceptance"
+ },
+ "assembler_sha256": "1b293da34636288b77b3cad0b50825b3c04cadb9660475fddbaa4623b8c562e8",
+ "target_sha256": "8ea69d170fa74ae382838d2634aaf9f5cff66c5ee0267cab5c04f1af82e5a19d",
+ "official_version": "espressif/esp-idf v6.0.2",
+ "physical_acceptance": false,
+ "programs": [
+  {
+   "name": "COMPLEX-CTR-N1-scale4",
+   "source_sha256": "dc8778353499731724b80a1c115a94f7dba41eacd3be23147eb2d64d2aa2f1a4",
+   "exit_code": 1,
+   "assembler_output": "Traceback (most recent call last):\n  File \"C:\\Users\\leonb\\c5vrx4-research-assembler-v6.0.2\\bsasm.py\", line 1009, in <module>\n    out_data = insts_to_binary(insts, meta, lut)\n  File \"C:\\Users\\leonb\\c5vrx4-research-assembler-v6.0.2\\bsasm.py\", line 907, in insts_to_binary\n    check_input_compatible(inst['mux'][i], inst['mux'][j])\n    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\leonb\\c5vrx4-research-assembler-v6.0.2\\bsasm.py\", line 447, in check_input_compatible\n    raise bsasm_syntax_error(in1['ele'], in2['ele'], err)\nbsasm_syntax_error: Line 24 col 4: \"set 0..5 L6..L11\" and line 26 col 4: \"set 20..24 B11..B15\": {'line': 26, 'column': 4, 'text': 'set 20..24 B11..B15', 'more_in_instruction': True, 'is_label': False, 'is_meta': False}\n"
+  },
+  {
+   "name": "COMPLEX-CTR-N2-scale4",
+   "source_sha256": "1a83ba60bf9d7499f641a7a1b4991772dd9f052137b665bad23cd5b3d7e7abc3",
+   "exit_code": 1,
+   "assembler_output": "Traceback (most recent call last):\n  File \"C:\\Users\\leonb\\c5vrx4-research-assembler-v6.0.2\\bsasm.py\", line 1009, in <module>\n    out_data = insts_to_binary(insts, meta, lut)\n  File \"C:\\Users\\leonb\\c5vrx4-research-assembler-v6.0.2\\bsasm.py\", line 907, in insts_to_binary\n    check_input_compatible(inst['mux'][i], inst['mux'][j])\n    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\leonb\\c5vrx4-research-assembler-v6.0.2\\bsasm.py\", line 447, in check_input_compatible\n    raise bsasm_syntax_error(in1['ele'], in2['ele'], err)\nbsasm_syntax_error: Line 24 col 4: \"set 0..5 L6..L11\" and line 26 col 4: \"set 20..24 B11..B15\": {'line': 26, 'column': 4, 'text': 'set 20..24 B11..B15', 'more_in_instruction': True, 'is_label': False, 'is_meta': False}\n"
+  },
+  {
+   "name": "COMPLEX-CTR-N4-scale4",
+   "source_sha256": "83fac61eb862aa8dcd98bc94fede642b14116150a90d91b79d5880a6985f685b",
+   "exit_code": 1,
+   "assembler_output": "Traceback (most recent call last):\n  File \"C:\\Users\\leonb\\c5vrx4-research-assembler-v6.0.2\\bsasm.py\", line 1009, in <module>\n    out_data = insts_to_binary(insts, meta, lut)\n  File \"C:\\Users\\leonb\\c5vrx4-research-assembler-v6.0.2\\bsasm.py\", line 907, in insts_to_binary\n    check_input_compatible(inst['mux'][i], inst['mux'][j])\n    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\leonb\\c5vrx4-research-assembler-v6.0.2\\bsasm.py\", line 447, in check_input_compatible\n    raise bsasm_syntax_error(in1['ele'], in2['ele'], err)\nbsasm_syntax_error: Line 24 col 4: \"set 0..5 L6..L11\" and line 26 col 4: \"set 20..24 B11..B15\": {'line': 26, 'column': 4, 'text': 'set 20..24 B11..B15', 'more_in_instruction': True, 'is_label': False, 'is_meta': False}\n"
+  }
+ ],
+ "assembler_pass": false
+}

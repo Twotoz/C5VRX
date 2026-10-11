@@ -14,6 +14,13 @@ of merging. The V4 alpha workflow and flasher build this project independently.
 
 ## Offline optimized demod
 
+[Direct-IQ clock and demod research](docs/LOCAL_RESEARCH_INDEX.md) preserves
+formula failures, source-feasibility proofs and a sparse IQ timing observer.
+The observer retains H timing in fresh off-centre echo/fade simulations where
+U85Q loses goggle sync; broader weak-signal failures remain. Its integer C
+accumulator cross-compiles for C5, but complete CVBS repair, physical CPU
+timing and range improvement remain unproven. These are research artifacts.
+
 [Ω belief-state research](docs/OMEGA_BELIEF_STUDY.md) adds a causal folded-IQ
 Bayesian reference, joint recurrent-state/observation/DAC optimization and
 independent confirmation. **OMEGA BELIEF LAB/value13 is quarantined** after
