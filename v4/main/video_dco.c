@@ -285,6 +285,14 @@ void predemod_dco_service(void)
         }
         s_quiet_last = no_carrier;
     }
+    /* A carrier seen on this channel this boot makes "quiet" ambiguous: at the
+     * range edge a weak FM carrier has a noise-like envelope and no sync measure
+     * exists for the LUT demods, so a search would step gain and DC under live
+     * video (board log 2026-10-09, phase C/N 2-5 dB). Searches then wait for a
+     * retune or reboot; the cached per-gain codes stay in use. */
+    static uint16_t s_carrier_freq;
+    if (!no_carrier && now - s_quiet_eval_us < 1000000LL) s_carrier_freq = freq;
+    if (s_carrier_freq == freq && no_carrier) { no_carrier = false; ++s_dco_carrier_refusals; }
     if (!no_carrier) s_quiet_since_us = 0;
     else if (!s_quiet_since_us) s_quiet_since_us = now;
     no_carrier = no_carrier && now - s_quiet_since_us >= CAL_QUIET_US;
