@@ -78,12 +78,19 @@ void c5v4_level_hw_stop(void)
  * between program load and start; the transport brackets that window. */
 static int fit_kind;                  /* C5V4_FIT_* of the program being loaded */
 static bool fit_verified, fit_window;
-static uint16_t fit_pristine[1024], fit_scratch[1024];
+/* The EDGE self-test synthesizes into `original`: fit_prepare runs with the
+ * level servo stopped (ready=false), and c5v4_level_hw_prepare re-reads
+ * `original` right after it. Saves 2 KB of the internal SRAM the menu's DMA
+ * descriptors need (board 2026-10-11: menu ESP_ERR_NO_MEM at 21.5 KB free). */
+static uint16_t fit_pristine[1024];
+#define fit_scratch original
 /* Per-program pristine table, self-tested once per boot: later loads (CVT
  * glide, swaps) only compare against it, keeping the halted window short
  * (board 2026-10-09: 335 ms with a full software synthesis inside it). */
-static uint16_t kind_pristine[4][1024];
+static uint16_t kind_pristine[2][1024];   /* EDGE, PAIR; OMEGA is omega_pristine in flash */
 static bool kind_verified[4];
+static uint16_t *kind_cache(int kind)
+{ return kind == C5V4_FIT_OMEGA ? (uint16_t *)omega_pristine : kind_pristine[kind - 1]; }
 static uint32_t fit_loads, fit_writes, fit_faults;
 void c5v4_fit_set_program(int kind) { c5v4_level_hw_lock(); fit_kind = kind; c5v4_level_hw_unlock(); }
 void c5v4_fit_window(bool open) { c5v4_level_hw_lock(); fit_window = open; c5v4_level_hw_unlock(); }
@@ -98,7 +105,7 @@ static void fit_prepare(void)
     if (kind_verified[fit_kind]) {
         /* Same embedded program: 32 spread sentinels prove it loaded, the
          * full table is the cached copy (keeps the halted window short). */
-        memcpy(fit_pristine, kind_pristine[fit_kind], sizeof(fit_pristine));
+        memcpy(fit_pristine, kind_cache(fit_kind), sizeof(fit_pristine));
         for (unsigned i = 7; i < 1024; i += 32) if (read_entry(i) != fit_pristine[i]) ++bad;
     } else {
         for (unsigned i = 0; i < 1024; ++i) fit_pristine[i] = read_entry(i);
@@ -121,7 +128,8 @@ static void fit_prepare(void)
     fit_verified = !bad && mapped;
     ++fit_loads;
     if (fit_verified && !kind_verified[fit_kind]) {
-        memcpy(kind_pristine[fit_kind], fit_pristine, sizeof(fit_pristine));
+        if (fit_kind != C5V4_FIT_OMEGA)   /* OMEGA equals its flash table (checked above) */
+            memcpy(kind_cache(fit_kind), fit_pristine, sizeof(fit_pristine));
         kind_verified[fit_kind] = true;
     } else if (fit_verified) {
         return;                       /* fast path: no log per glide step */
@@ -135,7 +143,7 @@ int c5v4_fit_ready(void)
 { c5v4_level_hw_lock(); int k = fit_verified ? fit_kind : 0; c5v4_level_hw_unlock(); return k; }
 const uint16_t *c5v4_fit_pristine(void) { return fit_pristine; }
 const uint16_t *c5v4_fit_pristine_for(int kind)
-{ return kind > 0 && kind < 4 && kind_verified[kind] ? kind_pristine[kind] : NULL; }
+{ return kind > 0 && kind < 4 && kind_verified[kind] ? kind_cache(kind) : NULL; }
 bool c5v4_fit_write_stopped(const uint16_t words[1024])
 {
     c5v4_level_hw_lock();
