@@ -26,6 +26,7 @@ def make(seed, cnr, std, dev, rms, pattern, lane='ultrafine', extra=None):
     hw = dict(deviation=dev, dc=complex(*rng.uniform(-.15, .15, 2)),
               iq_gain=float(rng.uniform(.97, 1.03)), iq_phase_deg=float(rng.uniform(-2, 2)))
     hw.update(extra or {})
+    if os.environ.get('CLIFF_PREBW'): hw['pre_bw_hz'] = float(os.environ['CLIFF_PREBW'])
     if os.environ.get('CLIFF_STRESS') == '1':
         # Flight dynamics: V5 hunting (+-1 dB steps every ~10 ms), two
         # 50-300 us carrier fades per field, and two multipath phase jumps.
@@ -180,6 +181,9 @@ def lookup(D, n):
     if n.startswith('PQ:'):
         _, g, b6 = n.split(':')
         return lambda c: ('pq', (float(g), b6 == '6'))
+    if n == 'U85E':
+        m = json.loads((ROOT / 'tools/range_options.json').read_text())['options'][7]['model']
+        return lambda c, m=m: ('lut', m)
     if n == 'U85':
         m = json.loads((ROOT / 'tools/range_options.json').read_text())['options'][6]['model']
         return lambda c, m=m: ('lut', m)

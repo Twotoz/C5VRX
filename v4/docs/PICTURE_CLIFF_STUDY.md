@@ -221,3 +221,35 @@ origin erasure (U85E) is at its own float bound below 14 dB. The only
 measured information left is sample B (+0.5..1.1 dB), which the schedule
 cannot read beyond its sign bits, and strong-signal phase resolution.
 A fixed second-order loop trades strong-signal detail for weak-signal gain.
+
+## More routes tested (ledger 7)
+
+- One lookup per IQ40 sample (both samples, coarse 5-bit sample in the
+  address): collapses (lock 0.23-0.66). With full 4-bit samples +0.5 dB mid
+  C/N but lock 0.50 at 4 dB. Dead end, as the earlier 25-ns study found.
+- DAC bytes [previous, current] instead of duplicated: no change (the goggle
+  input filter already smooths the hold).
+- Frequency tracker without phase state (25-ns A-B difference, IIR):
+  worse at every C/N.
+
+## The predetection bandwidth is the largest remaining lever
+
+FM threshold depends on the noise bandwidth before demodulation. Carson's
+rule for deviation 0.69 video is ~13-14 MHz; the board runs ~19.4 MHz
+(noise bandwidth 20.7 MHz). `waveforms.make_case(pre_bw_hz=...)` adds a
+4th-order analog low-pass before the lanes (gain loop restores the RMS).
+21 cases per bandwidth (`data/prebw/`), U85E:
+
+| filter | lock 2 dB | lock 4 dB | mean SINAD | RX5808 ref SINAD |
+| --- | ---: | ---: | ---: | ---: |
+| ~20 MHz (board now) | 0.66 | 0.92 | 4.26 | 1.34 |
+| 16 MHz | 0.78 | 0.99 | 4.46 | 2.22 |
+| 14 MHz | 0.95 | 0.99 | 4.55 | 2.80 |
+| 12 MHz | 0.98 | 0.99 | 4.50 | 3.10 |
+| 10 MHz | 0.62 | 0.99 | 4.25 | 3.51 |
+
+Per deviation, 14 MHz costs <= 0.3 dB at 20 dB C/N for every VTX and helps
+every weak case; 12 MHz costs 0.4-0.9 dB strong at deviation 1.0-1.4;
+10 MHz breaks deviation 1.4. The board already has a measured edge profile
+(`edge_nbw_khz=15359`, ~1.3 dB less noise) that the V5 edge gear can select,
+but the gear is off by default and switches with a PHY glitch.

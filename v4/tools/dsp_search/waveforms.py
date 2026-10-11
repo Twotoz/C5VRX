@@ -83,7 +83,7 @@ def raster(standard,fields=2,short=False,stimulus_seed=None,pattern='bars'):
 
 
 def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimulus_seed=None,loss_windows_us=(),lane_model=None,include_traces=False,pattern='bars',
-              deviation=1.,dc=0j,iq_gain=1.,iq_phase_deg=0.,gain_windows=(),phase_jumps=(),interferers=()):
+              deviation=1.,dc=0j,iq_gain=1.,iq_phase_deg=0.,gain_windows=(),phase_jumps=(),interferers=(),pre_bw_hz=None):
     # Hardware randomization (defaults = unchanged): VTX deviation scale,
     # receiver DC (fraction of RMS), I/Q gain and phase imbalance.
     ire,region=raster(standard,short=short,stimulus_seed=stimulus_seed,pattern=pattern)
@@ -110,8 +110,13 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimul
         if not 0<=start<end<=len(z)/40:raise ValueError('loss interval outside case')
         z[round(start*40):round(end*40)]=0 # Noise remains; fixed gain, not a simulated AGC.
     analog={}
+    pre=sg.butter(4,pre_bw_hz/2,fs=FS,output='sos') if pre_bw_hz else None
     def raw(n):
         y=W.iq_at(z,n,cnr,rms)
+        if pre is not None:
+            # Narrower analog channel filter before the lanes; the gain loop
+            # restores the same total amplitude (rms) at the ADC.
+            y=sg.sosfilt(pre,y);y*=rms/np.sqrt(np.mean(abs(y)**2))
         if stress:y=y.real*1.05+1j*y.imag+.15-.1j
         if dc or iq_gain!=1. or iq_phase_deg:
             ph=np.radians(iq_phase_deg)

@@ -84,6 +84,36 @@ def stage(name, analog, raw):
             if er[k]: out[k] = 0.; continue
             e = wrap(ang[k] - ph); out[k] = min(max(e, lo), hi); ph = wrap(ph + .85 * e)
         return out20(out[1:], n)
+    if name.startswith('C25'):
+        # One update per IQ40 sample from a coarse sample (keep kI/kQ top bits
+        # of each signed nibble), origin erased, continuous phase (bound),
+        # output = per-sample advance x2 at 40 MS/s unique. C25:kp:kI:kQ
+        _, kp, kI, kQ = name.split(':'); kp = float(kp); kI = int(kI); kQ = int(kQ)
+        def coarse(x, k):
+            v = np.floor(x - .5).astype(int); st = 1 << (4 - k)
+            return (np.floor(v / st) + .5) * st
+        zz = coarse(z.real, kI) + 1j * coarse(z.imag, kQ)
+        lo, hi = (2 * np.pi * f * 25e-9 for f in (-4e6, 8e6))
+        ang = np.angle(zz); er = (abs(zz.real) <= (1 << (4 - kI)) / 2) & (abs(zz.imag) <= (1 << (4 - kQ)) / 2)
+        ph = 0.; out = np.zeros(len(zz))
+        for k in range(len(zz)):
+            if er[k]: continue
+            e = wrap(ang[k] - ph); out[k] = min(max(e, lo), hi); ph = wrap(ph + kp * e)
+        return O.H.B.D.goggle(np.r_[out[:1], out[:-1]])
+    if name.startswith('FD'):
+        # Frequency tracker, no phase state: d = 25-ns phase difference
+        # angle(B A*) per span (exact cells, bound), origin-erased, IIR
+        # f' = f + a (d - f); output f' (x2 to 50-ns scale). FD:a
+        a_ = float(name.split(':')[1])
+        zz = z[:2 * (len(z) // 2)]; A_, B_ = zz[0::2], zz[1::2]
+        d = np.angle(B_ * np.conj(A_))
+        er = ((abs(A_.real) <= .5) & (abs(A_.imag) <= .5)) | ((abs(B_.real) <= .5) & (abs(B_.imag) <= .5))
+        lo, hi = (2 * np.pi * f * 25e-9 for f in (-4e6, 8e6))
+        f = 0.; out = np.zeros(len(d))
+        for k in range(len(d)):
+            if not er[k]: f += a_ * (min(max(d[k], lo), hi) - f)
+            out[k] = 2 * f
+        return out20(out[1:], n)
     if name.startswith('FAB'):
         # Both IQ40 samples: 1st-order loop updated with A then B (gain kp
         # each, 25-ns steps), origin cells erased; output = phase advance over
@@ -130,6 +160,19 @@ def stage(name, analog, raw):
             ph = wrap(pred + kp * e); fr = min(max(fr + ki * e, lo), hi)
             out[k] = min(max(fr + mix * e, lo), hi)
         return out20(out[1:], n)
+    if name == 'U85Ei':
+        # U85E codes, DAC bytes [previous, current] instead of [current, current].
+        import untrained_search as U
+        m = U.build(dict(layout='4411', token_bits=5, kp=.85, gamma=0., out='linear', sigma=0.,
+                         range=(-3.5, 7.5), emax=None, law='advance', erase=True, erase_r=.8, obs='centroid'))
+        c = O.model_codes(raw, m).astype(np.int64).copy()
+        c[2::2] = c[1:-1:2]   # first byte of each span repeats the previous span's code
+        return O.H.B.D.goggle(O.H.B.DAC_VOLTS[c])
+    if name == 'U85E7':
+        import untrained_search as U
+        m = U.build(dict(layout='4411', token_bits=5, kp=.85, gamma=0., out='linear', sigma=0.,
+                         range=(-3.5, 7.5), emax=None, law='advance', erase=True, erase_r=.8, obs='centroid'))
+        return O.decode(raw, m)
     if name == 'U85E':
         import untrained_search as U
         m = U.build(dict(layout='4411', token_bits=5, kp=.85, gamma=0., out='linear', sigma=0.,
