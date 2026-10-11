@@ -21,10 +21,19 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def snap(port, path):
-    p = subprocess.run([sys.executable, str(ROOT / 'tools/capture_iq_snapshot.py'), port, str(path)],
-                       capture_output=True, text=True)
-    return path.exists() and 'Saved' in (p.stdout + p.stderr)
+def snap(port, path, tries=5):
+    """Console output can interleave with the snapshot ('data before header');
+    retry a few times and report the last error instead of failing silently."""
+    err = ''
+    for _ in range(tries):
+        p = subprocess.run([sys.executable, str(ROOT / 'tools/capture_iq_snapshot.py'), port, str(path)],
+                           capture_output=True, text=True)
+        out = p.stdout + p.stderr
+        if path.exists() and 'Saved' in out: return True
+        err = out.strip().splitlines()[-1] if out.strip() else 'no output'
+        time.sleep(2)
+    print(f'snapshot failed: {err[:120]}', flush=True)
+    return False
 
 
 def periodicity(raw, m):
