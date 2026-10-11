@@ -23,6 +23,11 @@ Screening uses the actual ADC folding; independent full-field tests gate export.
 Running the search does not change the active firmware demodulator.
 `lut_evolve.py` additionally evolves the complete LUT and arbitrary input-bit
 selection, without requiring angular tokens or phase/frequency state meanings.
+The follow-up explores 2..10-bit observation tokens and up to eight retained
+state bits using unused DAC padding. Its 434-genome full-field run found no
+passing LUT. A separate floating predictive host reference passes synthetic
+quality/sync gates with +2.6..3.1 dB mean weak-case luma SINAD gain. This is a
+research target, not live C5 firmware or measured outdoor range.
 
 ## What it does
 

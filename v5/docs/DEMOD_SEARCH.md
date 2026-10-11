@@ -24,17 +24,17 @@ The ten input address bits are also genes: any ten distinct bits from the
 sixteen raw pair bits may be selected, covering all **8,008 input subsets**.
 The earlier four MSB layouts are seeds rather than restrictions. Exact
 state/token relabeling preserves behavior while allowing non-angular state
-encodings. Random LUTs provide additional starting points. Width niches keep
-4/5/6-token-bit architectures in the population; mutations, elite selection
+encodings. Random LUTs provide additional starting points. Width niches now keep
+2..10-token-bit architectures in the population; mutations, elite selection
 and random restarts run for multiple generations, with resumable checkpoints.
 
 This searches the complete word representation **within the existing
 two-lookup program skeleton**, not every program executable by the C5.
-The retained-state carry is still O26..O31, observations use ten selected
-raw bits, and token/state widths remain 4/6, 5/5 and 6/4. Conditional
-instruction schedules, wider state-carry schemes and different transports
-are outside this engine. These are explicit scope boundaries, not a claim
+Observations still use ten selected raw bits. Conditional instruction
+schedules and different transports remain outside this engine. These are explicit scope boundaries, not a claim
 that those alternatives are physically impossible or that U85Q is optimal.
+
+Original short-crop pilot command, using the earlier revision recorded below:
 
 ```sh
 python -m unittest discover -s v5/test -p 'test_lut_evolve.py'
@@ -44,10 +44,10 @@ python v5/research/lut_evolve.py v5/research/data/evolve_wide_20261011 \
 
 The default budget is 32 population members and 32 offspring generations.
 Increasing it is supported; it does not guarantee a better receiver. Training
-uses six 220,000-sample cases; shortlisted genomes then face all nine longer
-screening cases before freezing. The final 56 two-field cases use **new seeds**
-(511xxx/512xxx etc. training, 521xxx/522xxx/523xxx validation), distinct from
-the previous formula study. No validation metric guides evolution.
+now uses **all nine full-field screening cases** instead of short crops.
+`--fast-training` retains the old diagnostic mode explicitly. The final 56
+two-field cases use **new seeds**, controlled by `--case-seed-offset`; never
+reuse a viewed holdout for another tuning round. No final metric guides evolution.
 
 `checkpoint.json` includes the full genomes, metrics, RNG state and source
 hashes at each completed generation. `--resume` continues an interrupted run
@@ -80,6 +80,112 @@ sync failures; that is a limitation of this first evolutionary run, not a
 reason to loosen the acceptance gate. More generations and longer/broader
 training are needed to search further; these results do not establish a
 hardware or information limit.
+
+## Full-field follow-up and wider state carry
+
+The original six-bit retained-state limit belonged to the old output-register
+wiring, not to the LUT or the C5 as a whole. The generator now uses O14..O15
+(unused padding bits of the second six-bit DAC byte) to retain two additional
+bits. Those bits do not alter O0..O5 or the duplicated O8..O13 DAC codes.
+No new read/write span, RX preprocessing, extra LUT or CPU sample loop is used.
+
+| Token bits | Retained state bits | Carry location |
+| --- | --- | --- |
+| 2 | 8 | O26..O31 plus O14..O15 |
+| 3 | 7 | O26..O31 plus O14 |
+| 4..9 | 6..1 | O26 upward |
+| 10 | 0 | Stateless two-lookup mapping |
+
+All nine widths assemble with the ESP32-C5 capability file. Host tests verify
+state/token relabeling for every width, padding wiring and the stateless
+mapping. This is still host/assembler evidence: the new physical carry needs
+a continuous-stream timing/soak test before live use. A one-bit token/nine-bit
+state design is outside this generator's carry wiring; it is not ruled out
+for every possible BitScrambler program.
+
+The wider search retains a niche for every width, with analytic seeds and
+random state machines for each. Full-field training is now the default, and
+the minimum population is 18 to preserve exploration across those niches.
+The old 147-genome short-crop study used the implementation at PR head
+`ac450af38b47288c6847bc1bfa0ff77728e2ff1d`; its original source hashes and
+negative results remain intact. It must not be relabeled as full-field training.
+
+```sh
+python v5/research/lut_evolve.py v5/research/data/evolve_full_20261011 \
+  --population 32 --generations 12 --seed 250011 --case-seed-offset 900000 \
+  --jobs 4 --finalists 3
+```
+
+This follow-up uses fresh 1111xxx/1112xxx/1113xxx/1114xxx/1115xxx training seeds
+and 1121xxx/1122xxx/1123xxx final seeds (see exact integers in `protocol.json`).
+Before finalists are frozen, no held-out metrics are read. The per-case sync
+and strong-picture rejection gates remain unchanged.
+
+## Full-field results and a predictive host reference
+
+The expanded run in `data/evolve_full_20261011/` evaluated **434 genomes**:
+3,906 full-field training comparisons, 54 screening comparisons and 168
+held-out comparisons. None passed both gates. The best final mean weak gain
+was only +0.007 dB; two finalists lost 11.775 percentage points of displayed
+lines. The third avoided that sync regression but gained just +0.0004 dB.
+This is a negative result for this bounded evolutionary experiment, not a
+limit on demodulation from the received samples.
+
+To test that distinction, `floating_oracle.py` and `predictive_oracle.py`
+operate directly on both full folded Q4 samples with floating state. They
+extend the earlier Alpha/PLL investigations (#53–55) and adjacent-pair work;
+“oracle” here means a host reference, **not an optimality bound**. They do
+not consume the reference raster in the decoder or regenerate sync. Both
+emit duplicated six-bit DAC codes at the same 20-MS/s unique output rate.
+They use the same received bytes and U85Q control as the LUT studies, but
+**do not obey the live two-lookup/state-storage constraints**.
+
+The first-order reference screened 12 parameter combinations on nine full
+fields and froze one before 56 new two-field cases (seed offset 1,200,000).
+Its +1.557 dB mean weak and +1.414 dB mean strong luma SINAD gains came with
+31.338 percentage points of worst displayed-line loss. It failed the sync
+gate and cannot be promoted.
+
+The second-order model retains phase and angular frequency. At each 25-ns
+sample it predicts `phase + omega`, wraps the IQ phase innovation, corrects
+phase by `kp * innovation`, and updates frequency by `beta * innovation`.
+Near-origin samples reduce the frequency correction. Frequency is clipped
+to the per-sample Nyquist interval. Output averages either phase advances
+or updated frequency over two samples, without rewrapping the pair sum.
+The initial frequency is the fixed -1 MHz blanking/AFC prior. It is not an
+input from the true raster timing. Source code records the exact operations.
+
+Eighteen parameter combinations were screened on nine full fields. The
+three best were frozen **before** generating 56 two-field held-out cases
+(seed offset 1,500,000), for 162 screening and 168 final comparisons.
+All three pass the existing per-case quality/sync tolerances and mean-gain
+gate on this synthetic matrix:
+
+| Frozen order | kp / beta | Output | Mean weak SINAD gain | Mean strong gain | Worst SINAD delta | Worst displayed-line delta |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| 1 | 0.70 / 0.05 | Phase advance | +2.866 dB | +1.624 dB | -0.084 dB | -2.686 percentage points |
+| 2 | 0.85 / 0.05 | Phase advance | +2.566 dB | +1.813 dB | -0.446 dB | -2.686 percentage points |
+| 3 | 0.70 / 0.30 | Frequency | +3.096 dB | +0.760 dB | -0.352 dB | -0.171 percentage points |
+
+Order 1 was the leading design selected by screening. Order 3 has the
+largest final mean gain, but declaring it a new independently selected
+winner would require a fresh holdout. Passing allows small regressions;
+it does not mean every case improves or that sync loss is zero.
+
+```sh
+python v5/research/floating_oracle.py v5/research/data/oracle_full_20261011
+python v5/research/predictive_oracle.py v5/research/data/predictive_full_20261011
+```
+
+These archives preserve protocol/source hashes, all screen rows, frozen
+parameters and every final row. **Luma SINAD gain is not measured RF
+sensitivity or outdoor distance.** The result demonstrates room above U85Q
+in this simulation and gives a concrete predictive target for hardware
+approximation. Continuous floating phase/frequency and both full Q4 samples
+have not been mapped into a legal realtime C5 program. No new firmware model
+is exported or enabled. Counter-assisted and alternative instruction schedules
+remain possible follow-up work; their timing, quantization, clean/chroma
+quality and measured RF performance still require validation.
 
 ## Search space and hardware gate
 

@@ -11,7 +11,7 @@ import lut_evolve as E
 class LutEvolveTest(unittest.TestCase):
     def test_arbitrary_words_and_input_bits_are_supported(self):
         rng = np.random.default_rng(71)
-        for tb in (4, 5, 6):
+        for tb in range(2,11):
             g = E.Genome(tb, [0, 2, 4, 6, 8, 10, 12, 14, 1, 3],
                          rng.integers(65536, size=1024, dtype=np.uint16))
             self.assertEqual(E.Genome.restore(g.record()).id, g.id)
@@ -25,7 +25,7 @@ class LutEvolveTest(unittest.TestCase):
     def test_state_and_token_relabeling_preserve_behavior(self):
         rng = np.random.default_rng(73)
         raw = rng.integers(256, size=4096, dtype=np.uint8)
-        for tb in (4, 5, 6):
+        for tb in range(2,11):
             g = E.Genome(tb, rng.choice(16, 10, replace=False).tolist(),
                          rng.integers(65536, size=1024, dtype=np.uint16))
             nt, ns = 1 << tb, 1 << (10 - tb)
@@ -51,7 +51,7 @@ class LutEvolveTest(unittest.TestCase):
     def test_reject_invalid_or_corrupted_genomes(self):
         g = E.seeded(E.D.Design())
         with self.assertRaises(ValueError):
-            E.Genome(3, g.bits, g.lut)
+            E.Genome(1, g.bits, g.lut)
         with self.assertRaises(ValueError):
             E.Genome(5, [0] * 10, g.lut)
         record = g.record()
@@ -63,8 +63,17 @@ class LutEvolveTest(unittest.TestCase):
         screen = {r['seed'] for r in E.case_specs('screen')}
         validation = {r['seed'] for r in E.case_specs('validation')}
         previous = {r['seed'] for r in E.D.case_specs('screen') + E.D.case_specs('validation')}
+        previous |= {r['seed']+300000 for r in E.D.case_specs('screen')+E.D.case_specs('validation')}
         self.assertFalse(screen & validation)
         self.assertFalse((screen | validation) & previous)
+
+    def test_padding_state_carry_and_stateless_program(self):
+        for tb in (2,3):
+            text=E.synthesize(E.phase_seed(tb))
+            self.assertIn(f'set {22+tb}..25 O14..O{17-tb}',text)
+        text=E.synthesize(E.phase_seed(10))
+        self.assertIn('set 16..25 L6..L15,',text)
+        self.assertNotIn(' O26',text)
 
 
 if __name__ == '__main__':

@@ -476,10 +476,23 @@ ten distinct raw pair input bits are genes; all 8,008 input subsets are
 reachable. State/token relabeling is behavior-preserving; state meanings are
 not fixed to phase/frequency. Multi-generation mutation, elite/width niches,
 random restarts and source-hashed resumable checkpoints retain rejected models.
-Scope remains the existing eight-block two-lookup skeleton with O26..O31
-state carry; it is not a proof covering every possible C5 instruction schedule.
+Scope remains the existing eight-block two-lookup skeleton; the follow-up
+uses O26..O31 plus unconnected O14..O15 padding for up to eight state bits; it is not a proof covering every possible C5 instruction schedule.
 New training/final seeds avoid reusing the previously inspected holdout. See
 `v5/research/data/evolve_wide_20261011/` and `v5/docs/DEMOD_SEARCH.md`.
+
+The full-field follow-up searches token widths 2..10, with a niche and seeds
+for every width. Archive `evolve_full_20261011` preserves 434 genomes, 3,906
+training/54 screening/168 final comparisons; no candidate passes. All nine
+widths assemble, but padding state carry is hardware-pending.
+`floating_oracle.py` and `predictive_oracle.py` are host-only full-Q4 references,
+not realtime C5 programs or optimality bounds. The first-order model fails sync.
+Three frozen second-order predictors pass 56 fresh two-field cases each:
+mean weak luma SINAD +2.566..3.096 dB, strong +0.760..1.813 dB. The screen-leading
+model is kp=.7, beta=.05, phase-advance output (+2.866 dB weak). Gates permit
+small regressions. Do not translate these gains into RF sensitivity/distance,
+or enable them before legal hardware mapping and physical validation. See
+`predictive_full_20261011`, `oracle_full_20261011` and `DEMOD_SEARCH.md`.
 
 ### Instructions for future pipeline work
 
