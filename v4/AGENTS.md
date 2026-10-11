@@ -9,7 +9,9 @@ operator asked for untrained models only: `untrained_search.py` chooses among
 closed-form formulas (no fitted LUT entry) with held-out confirmation; the
 information ledger (`info_ledger.py`) locates losses and clicks. U85 (value14)
 and U85E (value15, origin-cell erasure) are pinned; new/invalid selections
-boot U85E (`a7e273cf4a8a`). The operator then chose a permanent narrow analog
+boot U85E (`a7e273cf4a8a`); after robustness checks (multipath, carrier
+offset, DC, CW spur) U85Q (value16, origin quadrant tokens, -6..+9 MHz,
+`1a09f5c092e8`) replaced it as the default, U85E stays selectable. The operator then chose a permanent narrow analog
 filter: NVS `bw_narrow` (default on, menu NARROW BW, serial U) applies the
 measured edge profile instead of the switching edge gear, superseding the
 ">= 24 MHz normal profile" rule. DCO auto-search no longer runs on a channel
