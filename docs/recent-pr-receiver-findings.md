@@ -83,8 +83,9 @@ IQ radius until folding hurts detail.
 
 #193 reports board boot/menu/video acceptance but still lists post-flash watchdog
 reset startup as an unresolved issue and first-boot calibration/flight comparisons
-as pending. Its V5 packaging, website/channel changes and claims about a ceiling
-are not a production contract or proof of a global C5 information limit.
+as pending at the reviewed revision. #193 was subsequently merged into main
+as `ffcea524ba69438457390686940328d3842944d8`; its packaging is now in main.
+The open physical gates and lack of a global C5 information-limit proof remain.
 
 Sources: [#193 findings at `59aee50b26651ec23db98bb2971fcd0b7e0c6745`](https://github.com/Twotoz/C5VRX/blob/59aee50b26651ec23db98bb2971fcd0b7e0c6745/v5/docs/FINDINGS.md),
 [#193 board status](https://github.com/Twotoz/C5VRX/pull/193).
@@ -133,6 +134,29 @@ remain unresolved; an H-clock result does not authorize synthetic picture repair
 Sources: [#195 timing design at `d9e4d26c155d89cded5f464d4a99e41bf49ea68e`](https://github.com/Twotoz/C5VRX/blob/d9e4d26c155d89cded5f464d4a99e41bf49ea68e/v4/docs/LOCAL_IQ_CLOCK_DESIGN.md),
 [rejected demod/source ledger](https://github.com/Twotoz/C5VRX/blob/d9e4d26c155d89cded5f464d4a99e41bf49ea68e/v4/docs/LOCAL_DEMOD_RESEARCH.md),
 [reproduction and actuator bounds](https://github.com/Twotoz/C5VRX/blob/d9e4d26c155d89cded5f464d4a99e41bf49ea68e/v4/docs/LOCAL_RESEARCH_INDEX.md).
+
+### Carrier follow-up before closing #195
+
+Reviewed again at `2e9929ee43791f0a9625bc49928b5588358a35b4`. Correlated noise
+biases adjacent-product angles even when H timing is correct. On 16 fresh
+stress cases, plateau covariance fitting reduced mean porch-frequency error
+from 792.5 kHz to roughly 115 kHz; the simpler long-lag-only fit was as accurate
+as the model-dependent colored-noise fit. An earlier gate admitted noise, and
+a revised gate still admitted a wrong 4 dB PAL clock. Full-pulse consistency
+rejected that known failure on hash-matched replay and retained 16 new stress
+cases, but an admitted nominal NTSC clock still had 0.665 us p95 timing error.
+Frequency-acquisition admission therefore cannot authorize H-pulse synthesis.
+Zero admissions in 64 fresh noise controls is not a rare-false-alarm bound.
+
+Eight separate full-field oracle cases tested known-direction 1 MHz RF centring
+before filtering: mean goggle H lock rose from 3.94% to 94.75%, while luma SINAD
+fell from 1.04 to 0.46 dB. This isolates a possible acquisition benefit without
+establishing better active picture or a working received-only controller.
+The experiment omits the actual stepped/settled PHY trajectory. The carrier
+estimator remains Python research, without an integer kernel, measured deadline,
+physical filter validation or connected closed-loop retuning.
+
+Source: [latest carrier design and negative controls](https://github.com/Twotoz/C5VRX/blob/2e9929ee43791f0a9625bc49928b5588358a35b4/v4/docs/LOCAL_IQ_CARRIER_DESIGN.md).
 
 ## Other reviewed PRs and scope decisions
 
