@@ -201,3 +201,23 @@ observations add ~0.05 dB. Held-out confirmation on 144 new cases
 U85E is pinned as range option 7 (`a7e273cf4a8a`), bit-exact with the host
 model, built with ESP-IDF 6.0.2, flashed and active on the operator's board
 (NVS/PHY preserved). U85 stays selectable for A/B. No flight result yet.
+
+## Where the remaining information is (ledgers 2-6, 24 cases, seed 900000)
+
+Float upper bounds on the same 4-bit sample-A stream (picture / SINAD dB at
+4 / 10 / 20 dB):
+
+| model | 4 dB | 10 dB | 20 dB | note |
+| --- | --- | --- | --- | --- |
+| F85E float U85E (exact angle) | 0.99 / -0.1 | 1.00 / 4.5 | 1.00 / 9.8 | bound of the U85E algorithm |
+| U85E LUT | 0.97 / 0.0 | 1.00 / 4.3 | 1.00 / 8.9 | within 0.2 dB below 14 dB; lattice costs ~0.9 dB at 20 dB |
+| 2nd-order PLL (kp .5, ki .08) | 0.96 / 1.6 | 1.00 / 5.5 | 1.00 / 5.9 | weak gain, strong loss, lower lock |
+| amplitude-weighted 2nd ring | no gain | | | only the origin cells carry no phase |
+| both IQ40 samples (A and B, kp .7) | 0.99 / -0.1 | 1.00 / 5.2 | 1.00 / 10.0 | +0.5..1.1 dB, fewer clicks; needs 4 lookups per span |
+| B as sign quadrant only (fits PAIR4411) | 0.99 / -0.2 | 1.00 / 4.7 | 1.00 / 8.8 | marginal |
+
+Conclusion: within the 10-bit, two-lookup schedule the first-order loop with
+origin erasure (U85E) is at its own float bound below 14 dB. The only
+measured information left is sample B (+0.5..1.1 dB), which the schedule
+cannot read beyond its sign bits, and strong-signal phase resolution.
+A fixed second-order loop trades strong-signal detail for weak-signal gain.

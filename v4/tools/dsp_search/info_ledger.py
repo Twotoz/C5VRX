@@ -84,6 +84,52 @@ def stage(name, analog, raw):
             if er[k]: out[k] = 0.; continue
             e = wrap(ang[k] - ph); out[k] = min(max(e, lo), hi); ph = wrap(ph + .85 * e)
         return out20(out[1:], n)
+    if name.startswith('FAB'):
+        # Both IQ40 samples: 1st-order loop updated with A then B (gain kp
+        # each, 25-ns steps), origin cells erased; output = phase advance over
+        # the 50-ns span, clipped to -4..+8 MHz. FAB:kp
+        parts = name.split(':'); kp = float(parts[1]); kb = float(parts[2]) if len(parts) > 2 else kp
+        lo, hi = (2 * np.pi * f * 50e-9 for f in (-4e6, 8e6))
+        zz = z[:2 * (len(z) // 2)].copy()
+        if name.startswith('FABs'):  # B only as its sign quadrant (PAIR4411 address bits)
+            zz[1::2] = np.sign(zz[1::2].real) * 3 + 1j * np.sign(zz[1::2].imag) * 3
+        ang = np.angle(zz); er = (abs(zz.real) <= .5) & (abs(zz.imag) <= .5)
+        ph = 0.; out = np.zeros(len(zz) // 2); prev = 0.
+        for k in range(len(zz)):
+            if not er[k]:
+                e = wrap(ang[k] - ph); ph = wrap(ph + (kb if k & 1 else kp) * e)
+            if k & 1:
+                out[k // 2] = min(max(wrap(ph - prev), lo), hi); prev = ph
+        return out20(out[1:], n)
+    if name.startswith('F85W'):
+        # Amplitude-weighted 1st-order loop: origin cells erased; the second
+        # ring (centre radius ~1.6) uses gain w*0.85 and outputs w*e (shrink
+        # toward the carrier); outer cells as F85E. F85W:w
+        w = float(name.split(':')[1])
+        lo, hi = (2 * np.pi * f * 50e-9 for f in (-3.5e6, 7.5e6))
+        ang = np.angle(a); r = np.maximum(abs(a.real), abs(a.imag))
+        er = r <= .5; ring = (r <= 1.5) & ~er
+        ph = 0.; out = np.zeros(len(a))
+        for k in range(len(a)):
+            if er[k]: continue
+            e = wrap(ang[k] - ph); g = w if ring[k] else 1.
+            out[k] = min(max(g * e, lo), hi); ph = wrap(ph + .85 * g * e)
+        return out20(out[1:], n)
+    if name.startswith('F2E'):
+        # Float 2nd-order PLL upper bound: phase + frequency state, origin
+        # erasure (coast on the frequency), output = frequency + innovation
+        # share, clipped to -3.5..+7.5 MHz. F2E:kp:ki:mix
+        _, kp, ki, mix = name.split(':'); kp, ki, mix = float(kp), float(ki), float(mix)
+        lo, hi = (2 * np.pi * f * 50e-9 for f in (-3.5e6, 7.5e6))
+        ang = np.angle(a); er = (abs(a.real) <= .5) & (abs(a.imag) <= .5)
+        ph = 0.; fr = 0.; out = np.zeros(len(a))
+        for k in range(len(a)):
+            pred = ph + fr
+            if er[k]: ph = wrap(pred); out[k] = min(max(fr, lo), hi); continue
+            e = wrap(ang[k] - pred)
+            ph = wrap(pred + kp * e); fr = min(max(fr + ki * e, lo), hi)
+            out[k] = min(max(fr + mix * e, lo), hi)
+        return out20(out[1:], n)
     if name == 'U85E':
         import untrained_search as U
         m = U.build(dict(layout='4411', token_bits=5, kp=.85, gamma=0., out='linear', sigma=0.,
