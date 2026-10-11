@@ -55,7 +55,34 @@ def key(p):
     if p.get('law', 'e') != 'e': k += '-' + p['law']
     if p.get('erase'): k += '-erase' + (str(p['erase_r']) if 'erase_r' in p else '')
     if p.get('obs'): k += '-' + p['obs']
+    if p.get('quad_kp') is not None: k += f"-quad{p['quad_kp']}" + ('s' if p.get('quad_out') == 'scaled' else '')
     return k
+
+
+def params_grid_v4():
+    """v4: origin quadrant tokens (coarse observation, own gain) and wider
+    output windows for off-centre carriers."""
+    out = []
+    for qk, kp, rng, obs in itertools.product((.3, .5, .7, .85), (.8, .85, .9),
+            ((-3.5, 7.5), (-4., 8.), (-4.5, 8.5), (-5., 9.)), ('sector', 'centroid')):
+        out.append(dict(layout='4411', token_bits=5, kp=kp, gamma=0., out='linear', sigma=0.,
+                        range=rng, emax=None, law='advance', erase=True, erase_r=.8,
+                        obs=None if obs == 'sector' else obs, quad_kp=qk))
+    return out
+
+
+def mixed_specs(seed):
+    """Nominal board/stress cases plus impairments outside the v1-v3 envelope."""
+    out = []
+    conds = [{}, {}, dict(stress='both'), dict(stress=True), dict(_cfo_extra=2e6), dict(_cfo_extra=-2e6),
+             dict(dc=[.3, -.2]), dict(iq_gain=1.4, iq_phase_deg=20.), dict(interferers=((.3, 3.1e6, 0.),))]
+    i = 0
+    for cnr in (4., 6., 10., 20.):
+        for dev in (.69, 1.2):
+            for ci, cond in enumerate(conds):
+                std = ('PAL', 'NTSC')[i % 2]; pat = ('texture', 'bars', 'zoneplate', 'checker')[i % 4]
+                out.append([seed + 101 * i, cnr, std, dev, 4.2, pat, 'ultrafine', cond]); i += 1
+    return out
 
 
 def params_grid_v3():
@@ -112,9 +139,16 @@ def build(p):
     # Optional erasure token (v2): A samples in the four origin cells carry no
     # usable phase; they get the last token and hold the state.
     erase = p.get('erase', False)
-    TA = T - 1 if erase else T
+    quad = p.get('quad_kp') is not None   # v4: origin cells as 4 coarse quadrant tokens
+    TA = T - 4 if quad else T - 1 if erase else T
     tok = np.floor((ang + np.pi) * TA / (2 * np.pi)).astype(int) % TA
-    if erase:
+    if quad:
+        # v4: an origin cell still carries its quadrant (+-45 deg). Tokens
+        # T-4..T-1 = quadrant of the origin cells, observed with gain quad_kp.
+        org = rad < p.get('erase_r', .8)
+        qd = (np.floor((ang + np.pi) / (np.pi / 2)).astype(int)) % 4
+        tok[org] = TA + qd[org]
+    elif erase:
         # v3: erase every cell whose centre radius is below erase_r (cells);
         # erase_r 0.8 keeps the original four origin cells.
         er = p.get('erase_r', .8)
@@ -141,18 +175,26 @@ def build(p):
     lut = np.zeros(1024, np.int64)
     for s in range(P):
         for t in range(T):
-            if erase and t == T - 1:
+            if not quad and erase and t == T - 1:
                 lut[s * T + t] = int(code(0.)) | (s << 6)   # hold phase, output the carrier
                 continue
-            e = (obs[t] - ph[s] + np.pi) % (2 * np.pi) - np.pi
+            if quad and t >= TA:
+                o = (t - TA + .5) * np.pi / 2 - np.pi        # quadrant centre angle
+                e = (o - ph[s] + np.pi) % (2 * np.pi) - np.pi
+                gain = p['quad_kp']
+            else:
+                e = (obs[t] - ph[s] + np.pi) % (2 * np.pi) - np.pi
+                gain = p['kp']
             u = float(np.clip(e, -emax, emax)) if emax else e
-            target = ph[s] + p['kp'] * u
+            target = ph[s] + gain * u
             nxt = int(np.floor((target + np.pi) * P / (2 * np.pi))) % P
             law = p.get('law', 'e')
             if p['out'] == 'mmse':
                 d = (e - grid + np.pi) % (2 * np.pi) - np.pi
                 w = np.exp(-.5 * (d / p['sigma']) ** 2)
                 theta = float(np.sum(w * grid) / np.sum(w))
+            elif quad and t >= TA and p.get('quad_out', 'advance') == 'scaled':
+                theta = gain * e
             elif law == 'advance':
                 theta = (ph[nxt] - ph[s] + np.pi) % (2 * np.pi) - np.pi
             elif law == 'sat':
@@ -249,11 +291,14 @@ def main():
     if a.cmd == 'shard': return shard_main(a)
     if a.cmd == 'grid':
         a.output.mkdir(parents=True, exist_ok=True)
-        specs = case_specs(a.seed, [float(x) for x in a.cnr.split(',')], [float(x) for x in a.dev.split(',')])
+        specs = (mixed_specs(a.seed) if a.cnr == 'mixed' else
+                 case_specs(a.seed, [float(x) for x in a.cnr.split(',')], [float(x) for x in a.dev.split(',')]))
         (a.output / 'specs.json').write_text(json.dumps(specs))
         if a.top:
             prev = json.loads(Path(a.top).read_text())
             cands = {n: prev['candidates'][n] for n in prev['top']}
+        elif a.grid == 'v4':
+            cands = {key(p): p for p in params_grid_v4()}
         elif a.grid == 'v3':
             cands = {key(p): p for p in params_grid_v3()}
         elif a.grid == 'v2':

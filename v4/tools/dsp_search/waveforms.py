@@ -98,7 +98,8 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimul
     noise/=np.sqrt(np.mean(abs(noise)**2))
     if stress:
         t=np.arange(len(z))/FS
-        z=(z+.35*np.exp(.7j)*np.pad(z[:-8],(8,0)))*(1-.6*(.5+.5*np.sin(2*np.pi*t/150e-6)))
+        if stress!='fade':z=z+.35*np.exp(.7j)*np.pad(z[:-8],(8,0))
+        if stress!='echo':z=z*(1-.6*(.5+.5*np.sin(2*np.pi*t/150e-6)))
     # Optional independent confirmation stresses, in the received complex
     # waveform before lane quantization. Existing cases are bit-identical.
     for start_us, angle in phase_jumps:
@@ -117,7 +118,7 @@ def make_case(standard,seed,cnr,rms=3,short=False,stress=False,cfo_hz=1e6,stimul
             # Narrower analog channel filter before the lanes; the gain loop
             # restores the same total amplitude (rms) at the ADC.
             y=sg.sosfilt(pre,y);y*=rms/np.sqrt(np.mean(abs(y)**2))
-        if stress:y=y.real*1.05+1j*y.imag+.15-.1j
+        if stress is True:y=y.real*1.05+1j*y.imag+.15-.1j
         if dc or iq_gain!=1. or iq_phase_deg:
             ph=np.radians(iq_phase_deg)
             y=iq_gain*y.real+1j*(y.imag*np.cos(ph)+y.real*np.sin(ph))+dc*rms

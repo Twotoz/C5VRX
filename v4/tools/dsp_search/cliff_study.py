@@ -26,6 +26,8 @@ def make(seed, cnr, std, dev, rms, pattern, lane='ultrafine', extra=None):
     hw = dict(deviation=dev, dc=complex(*rng.uniform(-.15, .15, 2)),
               iq_gain=float(rng.uniform(.97, 1.03)), iq_phase_deg=float(rng.uniform(-2, 2)))
     hw.update(extra or {})
+    cfo += hw.pop('_cfo_extra', 0.)
+    if isinstance(hw.get('dc'), list): hw['dc'] = complex(*hw['dc'])  # JSON-safe specs
     if os.environ.get('CLIFF_PREBW'): hw['pre_bw_hz'] = float(os.environ['CLIFF_PREBW'])
     if os.environ.get('CLIFF_STRESS') == '1':
         # Flight dynamics: V5 hunting (+-1 dB steps every ~10 ms), two
