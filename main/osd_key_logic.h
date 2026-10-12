@@ -234,10 +234,11 @@ static inline unsigned osd_key_descriptors(const osd_layout_t *l)
     return n + osd_key_zero_pieces(l->frame_words - at);
 }
 
-/* GPIOs the receiver owns (rf.c IQ, transport.c DAC, BOOT, USB, flash/PSRAM). */
+/* GPIOs the receiver owns (rf.c IQ, transport.c DAC, BOOT and D0 buttons,
+ * USB, flash/PSRAM). */
 static inline bool osd_key_gpio_free(int gpio)
 {
-    static const int used[] = {1, 0, 25, 7, 2, 5, 3, 4, 23, 24, 11, 12, 8, 9, 28, 13, 14};
+    static const int used[] = {27, 0, 25, 7, 2, 5, 3, 4, 23, 24, 11, 12, 8, 9, 28, 1, 13, 14};
     if (gpio < 0 || gpio > 28 || (gpio >= 16 && gpio <= 22)) return false;
     for (unsigned k = 0; k < sizeof(used) / sizeof(used[0]); ++k) if (used[k] == gpio) return false;
     return true;

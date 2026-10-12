@@ -19,6 +19,10 @@
 #include "rf.h"
 
 #define BOOT_BUTTON      GPIO_NUM_28    /* XIAO ESP32-C5 BOOT */
+/* External menu button: XIAO header D0 to GND (internal pull-up), the same
+ * as BOOT. D0 is free since IQ bit Q0 moved to GPIO27 (rf.c). GPIO1 is no
+ * strap pin, so holding it at reset changes nothing. */
+#define EXT_BUTTON       GPIO_NUM_1
 #define TICK_MS          50
 #define LONG_TICKS       12             /* 0.6 s */
 #define MENU_IDLE_TICKS  600            /* 30 s without a press closes the menu */
@@ -337,15 +341,15 @@ static void control_task(void *arg)
         int c;
         for (unsigned k = 0; k < 8 && xQueueReceive(s_commands, &c, 0) == pdTRUE; ++k) command(c, &menu_idle);
 
-        /* BOOT button: short = next channel (menu: next item); 0.6 s = menu
-         * (menu: do the selected item). */
+        /* BOOT or D0 button: short = next channel (menu: next item); 0.6 s =
+         * menu (menu: do the selected item). */
         /* A calibration status screen owns the picture: no menu, no idle exit. */
         if (menu_status_active()) {
             s_auto_candidate.candidate = false;
             btn = 0; long_fired = false; menu_idle = 0; continue;
         }
         if (boot_grace) { --boot_grace; btn = 0; long_fired = false; }
-        else if (gpio_get_level(BOOT_BUTTON) == 0) {
+        else if (gpio_get_level(BOOT_BUTTON) == 0 || gpio_get_level(EXT_BUTTON) == 0) {
             ++btn;
             menu_idle = 0;
             if (btn >= LONG_TICKS && !long_fired) {
@@ -489,7 +493,7 @@ static void control_task(void *arg)
 void control_start(void)
 {
     const gpio_config_t cfg = {
-        .pin_bit_mask = 1ULL << BOOT_BUTTON,
+        .pin_bit_mask = (1ULL << BOOT_BUTTON) | (1ULL << EXT_BUTTON),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .intr_type = GPIO_INTR_DISABLE,
