@@ -16,6 +16,20 @@ const fields = (line, target = {}) => {
   return target;
 };
 
+// What the tracker runs now (CONTROL rescue=/kp_now_x100=/program_now= or
+// the latest applied RESCUE line), not the AUTO setting.
+const rescueNow = c => {
+  const kp = Number.parseInt(c.kp_now_x100 ?? c.kp_x100, 10);
+  if (!Number.isInteger(kp) || kp < 0 || !c.program_now) return '';
+  const tracker = `kp ${(kp / 100).toFixed(2)} · ${c.program_now}`;
+  const cn = Number.parseInt(c.cn_x10, 10);
+  const dev = Number.parseInt(c.deviation_live_x100, 10);
+  const detail = [Number.isInteger(cn) && cn >= 0 ? `C/N ${(cn / 10).toFixed(1)} dB` : '',
+    Number.isInteger(dev) ? (dev > 0 ? `deviation ${(dev / 100).toFixed(2)}` : 'deviation not measured') : '']
+    .filter(Boolean).join(' · ');
+  return `${c.rescue === 'ON' ? 'RESCUE' : 'NORMAL'} · ${tracker}${detail ? ` (${detail})` : ''}`;
+};
+
 export class ReceiverConsole {
   constructor() { this.reset(); }
 
@@ -114,6 +128,15 @@ export class ReceiverConsole {
     } else if ((match = line.match(/^KP ladder (OFF|AUTO kp \+ LP|AUTO kp)/))) {
       this.control.kp_auto = match[1] === 'OFF' ? '0' : match[1] === 'AUTO kp' ? '1' : '2';
       events.add('changed');
+    } else if ((match = line.match(/^RESCUE (\S+) .*result=applied/))) {
+      // An automatic kp/LP change the firmware applied (control.c rescue_report).
+      const f = fields(line);
+      Object.assign(this.control, {
+        rescue: ['ON', 'STEP'].includes(match[1]) ? 'ON' : 'OFF',
+        kp_now_x100: f.kp_x100, program_now: f.program, cn_x10: f.cn_x10,
+        deviation_live_x100: f.deviation_live_x100
+      });
+      events.add('changed');
     } else if ((match = line.match(/^PROFILE live switch (ON|OFF)/))) {
       this.profile.live = match[1] === 'ON';
     } else if (line.startsWith('[MENU] closed')) {
@@ -159,6 +182,7 @@ export class ReceiverConsole {
       stage: this.heartbeat.stage || '',
       gain: this.heartbeat.gain || '',
       kpMode: Number.isInteger(kp) ? KP_MODES[kp] || '' : '',
+      rescueNow: rescueNow(c),
       profile: c.mode || this.profile.active || '',
       liveProfile: this.profile.live,
       scan: scan.active ? `SCANNING · ${scan.candidates} WITH VIDEO`

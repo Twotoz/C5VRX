@@ -547,6 +547,7 @@ function receiverValues(v) {
     calibrate: v.busy ? 'RUNNING · VIDEO STOPPED' : v.stage || v.statusAt ? 'READY' : '',
     scan: v.scan,
     kpMode: v.kpMode,
+    rescueNow: v.rescueNow,
     liveProfile: v.liveProfile === undefined ? '' : v.liveProfile ? 'ON' : 'OFF · REPORT ONLY',
     profile: v.profile
   };

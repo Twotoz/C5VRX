@@ -52,6 +52,23 @@ static unsigned s_afc_corrections, s_afc_weak_skips;
  * (both set auto off). */
 static kp_ladder_t s_kp;
 static kp_switch_guard_t s_auto_candidate;
+
+/* Rescue = U85Q-LP or a tracker calmer than kp 0.75. On a strong carrier
+ * every curve sits at kp 0.75-0.85 (kp_ladder.h), so those are normal. */
+#define RESCUE_LEVEL 3              /* kp 0.70 */
+static bool is_rescue(int level, bool lp) { return lp || level >= RESCUE_LEVEL; }
+
+/* One line per automatic kp/LP change, so the operator can see rescue
+ * enter and leave (web menu "Rescue now"). C/N is the ladder's smoothed
+ * estimate; deviation -1 means not measured this session (wide row:
+ * kp 0.85 at the floor and LP only between ~2 and 8.5 dB). */
+static void rescue_report(int level, bool lp, bool was_rescue, bool applied)
+{
+    const bool rescue = is_rescue(level, lp);
+    printf("RESCUE %s kp_x100=%d program=%s cn_x10=%d deviation_live_x100=%d result=%s\n",
+           rescue ? (was_rescue ? "STEP" : "ON") : was_rescue ? "OFF" : "NORMAL_STEP", 85 - 5 * level, lp ? "U85Q-LP" : "U85Q",
+           (int)(s_kp.cn_q4 / 16), profile_live_deviation_x100(), applied ? "applied" : "refused");
+}
 static uint8_t s_kp_auto;
 static int s_saved_kp_auto = -1;
 static bool s_mode_reset_pending;
@@ -472,8 +489,11 @@ static void control_task(void *arg)
             uint8_t level = kp_ladder_update_lp(&s_kp, cn_x10, window_ok,
                                                 profile_live_deviation_x100(), now, s_kp_auto == 2);
             bool usable = window_ok && ctx == afc_context();
-            if (kp_switch_confirm(&s_auto_candidate, level, s_kp.lp, ctx, usable, now))
+            if (kp_switch_confirm(&s_auto_candidate, level, s_kp.lp, ctx, usable, now)) {
+                const bool from_rescue = is_rescue(transport_kp_level(), transport_lp());
                 s_mode_reset_pending = !transport_apply_auto(level, s_kp.lp);  /* kp + LP in one guarded restart */
+                rescue_report(level, s_kp.lp, from_rescue, !s_mode_reset_pending);
+            }
         } else {
             s_auto_candidate.candidate = false;
             if (!s_kp_auto) {
@@ -509,11 +529,14 @@ void control_start(void)
     ESP_ERROR_CHECK(xTaskCreate(control_task, "control", 6144, NULL, 3, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
 }
 
+static bool rescue_active(void) { return is_rescue(transport_kp_level(), transport_lp()); }
+
 void control_print(void)
 {
     printf("CONTROL channel=%s freq=%u offset_khz=%d cfo_khz=%d afc_locked=%u afc_corrections=%u "
            "afc_weak_skips=%u afc_sign=%+d(%s) standard=%s detected=%s signal=%d menu=%u deviation_x100=%d mode=%s "
-           "kp_auto=%u%s kp_steps=%lu lp_switches=%lu busy=%u\n",
+           "kp_auto=%u%s kp_steps=%lu lp_switches=%lu rescue=%s kp_now_x100=%d program_now=%s cn_x10=%d "
+           "deviation_live_x100=%d busy=%u\n",
            rf_channel()->name, rf_frequency_mhz(), rf_offset_khz(), s_cfo_khz, s_afc_locked,
            s_afc_corrections, s_afc_weak_skips, s_afc_sign,
            s_afc_sign_state == AFC2_SIGN_FLIPPED ? "flipped" : s_afc_sign_state == AFC2_SIGN_CONFIRMED ? "confirmed" :
@@ -522,6 +545,8 @@ void control_print(void)
            s_signal_strength, s_menu_active, profile_deviation_x100(rf_channel_index()),
            profile_name(profile_active()), s_kp_auto,
            s_kp_auto && transport_kp_level() < 0 ? "(inactive: kp level unverified)" : "", (unsigned long)s_kp.steps,
-           (unsigned long)s_kp.lp_switches, menu_status_active());
+           (unsigned long)s_kp.lp_switches, rescue_active() ? "ON" : "OFF",
+           transport_kp_level() < 0 ? -1 : 85 - 5 * transport_kp_level(), transport_program_name(),
+           s_kp.cn_init ? (int)(s_kp.cn_q4 / 16) : -1, profile_live_deviation_x100(), menu_status_active());
 }
 

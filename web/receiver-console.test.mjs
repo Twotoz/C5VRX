@@ -134,3 +134,17 @@ test('busy-gated keys are exactly the keys the console routes to command()', asy
   const keys = new Set([...routed.matchAll(/case '([^'])'/g)].map(m => m[1]));
   assert.deepEqual([...MENU_COMMAND_KEYS].sort(), [...keys].sort());
 });
+
+test('rescue now follows CONTROL and applied RESCUE lines, not the AUTO setting', () => {
+  const state = new ReceiverConsole();
+  state.push('C5VRX5 version=v5.0.9 demod=U85Q\nCONTROL channel=R1 freq=5658 menu=0 kp_auto=2 rescue=OFF kp_now_x100=85 program_now=U85Q cn_x10=180 deviation_live_x100=-1\n');
+  assert.equal(state.view().kpMode, 'AUTO kp+LP');
+  assert.equal(state.view().rescueNow, 'NORMAL · kp 0.85 · U85Q (C/N 18.0 dB · deviation not measured)');
+  const events = state.push('RESCUE ON kp_x100=70 program=U85Q-LP cn_x10=52 deviation_live_x100=98 result=applied\n');
+  assert.ok(events.includes('changed'));
+  assert.equal(state.view().rescueNow, 'RESCUE · kp 0.70 · U85Q-LP (C/N 5.2 dB · deviation 0.98)');
+  state.push('RESCUE OFF kp_x100=85 program=U85Q cn_x10=120 deviation_live_x100=98 result=refused\n');
+  assert.equal(state.view().rescueNow, 'RESCUE · kp 0.70 · U85Q-LP (C/N 5.2 dB · deviation 0.98)');
+  state.push('RESCUE OFF kp_x100=85 program=U85Q cn_x10=120 deviation_live_x100=98 result=applied\n');
+  assert.equal(state.view().rescueNow, 'NORMAL · kp 0.85 · U85Q (C/N 12.0 dB · deviation 0.98)');
+});
