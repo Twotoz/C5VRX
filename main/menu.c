@@ -323,6 +323,14 @@ void menu_close(void)
     ++s_control_epoch;
 }
 
+/* Restart the open raster from its first node (OSD key co-start). */
+void menu_restart_chain(void)
+{
+    if (!s_menu_active) return;
+    transport_stop_chain();
+    transport_start_chain(node(0));
+}
+
 void menu_set_standard_mode(std_mode_t mode)
 {
     s_std_mode = mode;

@@ -15,6 +15,7 @@
 #include "esp_timer.h"
 #include "phase8_gain_lut.h"
 #include "phy.h"
+#include "osd_key.h"
 #include "rf.h"
 
 #define BOOT_BUTTON      GPIO_NUM_28    /* XIAO ESP32-C5 BOOT */
@@ -294,6 +295,9 @@ static void command(int c, unsigned *menu_idle)
                "refused (needs a verified level and live video)");
         break;
     }
+    case 'O': case '<': case '>': case ',': case '.': case '+': case '-':
+        osd_key_command(c);
+        break;
     case 'g': {
         unsigned next = (transport_output() + 1u) % 4u;
         bool ok = transport_set_output(next);

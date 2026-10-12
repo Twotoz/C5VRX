@@ -330,3 +330,36 @@ reserve refuses normal/wide candidates; the global C/N proxy also
 underestimates wide strong-carrier confidence. This prototype therefore
 does not qualify a universal automatic OUTPUT servo. White percentiles
 from a few lines cannot guarantee headroom for a subsequent bright scene.
+
+## OSD key bench, step 1 (2026-10-12, firmware build only)
+
+Goal: a real overlay (signal, sync, debug text from the C5) on top of the
+recovered video without touching the demodulator. The composite waveform
+only exists inside the TX BitScrambler (U85Q uses both bundles; in LUT16
+mode the counter shares the LUT address bits), so the overlay is a second,
+separate 1-bit key stream mixed after the DAC: key pin -> Schottky diode ->
+resistor -> DAC node. A 1 adds white; a 0 leaves the diode blocking, so the
+tested DAC network is not loaded.
+
+- Key source: I2S0 DOUT from `I2S_CLK_SRC_PLL_240M`, 40 MHz mclk (integer
+  /6), 20 MHz bclk: one key bit per two DAC samples, from the same PLL as
+  PARLIO TX (`PLL_F240M/6`), so key and video cannot drift.
+- Owned GDMA chain as in `transport.c`: 625 descriptors (one PAL frame
+  line each) pointing at shared 160-byte row buffers, suc_eof cleared,
+  interrupts off. The IDF driver only configures clock, slots and pin.
+- `transport_start_chain` starts the key and the menu/status raster in one
+  interrupt-free instant; the remaining offset is a fixed hardware latency,
+  set with console `< > , .` (dx, 50 ns steps) and `+ -` (dy, lines).
+- Scope: PAL menu/status raster only (we generate its sync). NTSC is
+  refused (its menu loop is no whole number of 32-bit key words). Live
+  video never gets a key: that needs genlock to the VTX (step 2: sync
+  positions from the existing ring snapshots, `main/afc.h`, plus a per-field
+  re-render of the text for the VTX crystal offset).
+- Host test `test/test_osd_key.c` checks every key bit of the bench
+  pattern against the actual PAL menu raster: all on UI samples, never on
+  sync, burst, blanking or a vertical-interval half-line.
+
+Not yet shown: I2S start/latency on the board, the bit order on the wire,
+GDMA load next to PARLIO (`tx_empty`, `rx_overflow` in `T`), the mixing
+resistor value, and goggle behaviour. GPIO2 (default key pin) is a strap and
+may not be reachable on every board; change `OSD_KEY_GPIO` in `main/osd_key.c`.

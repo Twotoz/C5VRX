@@ -18,6 +18,7 @@
 #include "kp_switch_guard.h"
 #include "transport_recovery.h"
 #include "output_level.h"
+#include "osd_key.h"
 #include "hal/parlio_ll.h"
 #include "kp_tables.h"
 #include "snapshot.h"
@@ -577,12 +578,19 @@ void transport_start_chain(dma_descriptor_t *first)
         printf("TRANSPORT ERROR: menu TX timeout, USB remains available\n");
         return;
     }
+    /* OSD key bench (osd_key.c): both run from PLL_F240M; start them in one
+     * interrupt-free instant so their offset is a fixed hardware latency. */
+    osd_key_prime();
+    UBaseType_t irq = portSET_INTERRUPT_MASK_FROM_ISR();
     parlio_ll_tx_start(&PARL_IO, true);
     parlio_ll_tx_enable_clock(&PARL_IO, true);
+    osd_key_go();
+    portCLEAR_INTERRUPT_MASK_FROM_ISR(irq);
 }
 
 void transport_stop_chain(void)
 {
+    osd_key_stop();
     if (s_tx_enabled && disable_tx() != ESP_OK) s_transport_fault = true;
 }
 
