@@ -48,6 +48,7 @@ static unsigned s_chunk_count, s_node_count;
 static uint32_t *s_content;          /* bufs x OSD_KEY_CONTENT_WORDS */
 static uint32_t *s_zero;             /* OSD_KEY_ZERO_WORDS */
 static unsigned s_bufs;
+static bool s_dma_quiet = true;     /* false: GDMA never confirmed idle, never free */
 static uint32_t s_starts, s_refused;
 static const char *s_reason = "off";
 
@@ -99,6 +100,7 @@ static esp_err_t create_i2s(void)
 
 static void free_chain(void)
 {
+    if (!s_dma_quiet) return;   /* GDMA may still read it: keep (leak) rather than free */
     for (unsigned k = 0; k < s_chunk_count; ++k) { heap_caps_free(s_chunks[k]); s_chunks[k] = NULL; }
     heap_caps_free(s_content);
     heap_caps_free(s_zero);
@@ -134,6 +136,7 @@ static bool append_zero(uint32_t words)
  * layout table (~10 KiB) lives only during the build. */
 static esp_err_t build_chain(void)
 {
+    if (!s_dma_quiet) return ESP_ERR_INVALID_STATE;
     free_chain();
     osd_layout_t *l = heap_caps_malloc(sizeof(*l), MALLOC_CAP_INTERNAL);
     if (!l) return ESP_ERR_NO_MEM;
@@ -198,7 +201,7 @@ void osd_key_prime(void)
     if (err != ESP_OK) {
         ++s_refused;
         s_reason = err == ESP_ERR_NO_MEM ? "no_memory" : err == ESP_ERR_INVALID_SIZE ? "layout_refused" :
-                   "i2s_unavailable";
+                   !s_dma_quiet ? "dma_stop_timeout" : "i2s_unavailable";
         printf("OSDKEY refused: %s\n", esp_err_to_name(err));
         return;
     }
@@ -246,9 +249,23 @@ void osd_key_stop(void)
     if (!s_i2s) return;
     park_pin();
     i2s_ll_tx_stop(&I2S0);
-    if (s_dma_ch >= 0) AHB_DMA.channel[s_dma_ch].out.out_link.outlink_stop_chn = 1;
-    esp_rom_delay_us(5);   /* no descriptor fetch in flight before the chain may be freed */
     s_running = false;
+    if (s_dma_ch < 0) return;
+    /* The chain may be freed only once GDMA is idle: wait (bounded) for
+     * the out state machine and descriptor fetch to settle, then reset. */
+    AHB_DMA.channel[s_dma_ch].out.out_link.outlink_stop_chn = 1;
+    int64_t deadline = esp_timer_get_time() + 1000;
+    while ((AHB_DMA.channel[s_dma_ch].out.out_state.out_state_chn ||
+            AHB_DMA.channel[s_dma_ch].out.out_state.out_dscr_state_chn) && esp_timer_get_time() < deadline) {}
+    s_dma_quiet = !AHB_DMA.channel[s_dma_ch].out.out_state.out_state_chn &&
+                  !AHB_DMA.channel[s_dma_ch].out.out_state.out_dscr_state_chn;
+    AHB_DMA.channel[s_dma_ch].out.out_conf0.out_rst_chn = 1;
+    AHB_DMA.channel[s_dma_ch].out.out_conf0.out_rst_chn = 0;
+    if (!s_dma_quiet) {
+        ++s_refused;
+        s_reason = "dma_stop_timeout";
+        printf("OSDKEY GDMA did not go idle; key buffers kept (not freed), key refused until reboot\n");
+    }
 }
 
 void osd_key_print(void)
