@@ -29,12 +29,13 @@
 #include "soc/gpio_sig_map.h"
 #include "soc/i2s_struct.h"
 #include "menu_font.h"
+#include "board_pins.h"
 #include "osd_key.h"
 #include "osd_key_logic.h"
 
-/* Key output: XIAO header D10 (GPIO10, not a strap pin). The IQ bit that
- * used it moved to GPIO2 (rf.c s_iq_pins). */
-#define OSD_KEY_GPIO 10
+/* Key output: XIAO header D10 (GPIO10, not a strap pin), free only when
+ * the bench is built (CONFIG_C5VRX_OSD_KEY moves IQ bit I0 to GPIO2). */
+#define OSD_KEY_GPIO C5VRX_OSD_KEY_GPIO
 #define I2S0_GDMA_PERIPH 3   /* SOC_GDMA_TRIG_PERIPH_I2S0 */
 
 static i2s_chan_handle_t s_i2s;
@@ -270,6 +271,7 @@ void osd_key_stop(void)
 
 void osd_key_print(void)
 {
+    if (!C5VRX_OSD_KEY) { printf("OSDKEY built=0 (CONFIG_C5VRX_OSD_KEY off; IQ I0 on GPIO10)\n"); return; }
     printf("OSDKEY armed=%u running=%u gpio=%d dx_bits=%d dx_ns=%d dy_lines=%d std=%s ntsc_key_grid=%u "
            "descriptors=%u buffers=%u starts=%lu refused=%lu state=%s key=I2S0_PLL240_20MHz "
            "scope=menu_status_raster_only\n",
@@ -282,6 +284,10 @@ void osd_key_print(void)
  * the open raster with the key (the picture blinks once). */
 void osd_key_command(int c)
 {
+    if (!C5VRX_OSD_KEY) {   /* default build: compiled, never armed; D10 carries IQ bit I0 */
+        printf("OSDKEY disabled in this build (untested bench; enable CONFIG_C5VRX_OSD_KEY)\n");
+        return;
+    }
     if (c == 'O') {
         s_armed = !s_armed;
         menu_raster_set_key_grid(s_armed);

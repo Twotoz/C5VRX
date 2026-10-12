@@ -1,6 +1,7 @@
 /* C5VRX-5 by Twotoz and the C5VRX contributors: receive-only RF front end.
  * From legacy/c5vrx4/main/rf.c (C5VRX-2 wifi5.c lineage), native-AGC, lab and
  * adaptive-lane paths removed. */
+#include "board_pins.h"
 #include "rf.h"
 #include "phy.h"
 #include <stdio.h>
@@ -43,15 +44,8 @@ static const char *TAG = "c5vrx5_rf";
 
 /* PARLIO RX data pins, in data-bit order: Q on bits 0..3, I on 4..7.
  * Matrix-routed MODEM_DIAG outputs read back by PARLIO RX; leave them
- * unconnected. Two moved off the XIAO header (DAC pins unchanged): I bit 0
- * from D10 (GPIO10) to GPIO2 so D10 carries the OSD key (osd_key.c), and
- * Q bit 0 from D0 (GPIO1) to GPIO27 so D0 is a second menu button
- * (control.c). GPIO27 also drives the yellow user LED (active low): it
- * glows faintly with the IQ bits. */
-static const gpio_num_t s_iq_pins[8] = {
-    GPIO_NUM_27, GPIO_NUM_0, GPIO_NUM_25, GPIO_NUM_7,
-    GPIO_NUM_2, GPIO_NUM_5, GPIO_NUM_3, GPIO_NUM_4,
-};
+ * unconnected (board_pins.h). */
+static const gpio_num_t s_iq_pins[8] = C5VRX_IQ_PINS;
 /* Ultrafine lane: sign bit 9 plus ADC bits 6..4, i.e. 16-code steps in a
  * +-128 window (+12 dB over the coarse {9,8,7,6} slice, an exact
  * power-of-two scale inside the window). Q on DIAG[4,5,6,9], I on

@@ -1,0 +1,13 @@
+menu "C5VRX-5"
+
+config C5VRX_OSD_KEY
+    bool "OSD key bench (untested; moves IQ bit I0 off header D10)"
+    default n
+    help
+        Builds the OSD key bench (osd_key.c, console O) as usable: a 1-bit
+        I2S key on header D10, mixed after the DAC through a diode and a
+        resistor, over the menu/status raster only. To free D10, IQ bit I0
+        moves from GPIO10 to GPIO2. Off (default): O only reports that the
+        bench is disabled and I0 stays on GPIO10. Board-untested.
+
+endmenu

@@ -15,14 +15,15 @@
 #include "esp_timer.h"
 #include "phase8_gain_lut.h"
 #include "phy.h"
+#include "board_pins.h"
 #include "osd_key.h"
 #include "rf.h"
 
 #define BOOT_BUTTON      GPIO_NUM_28    /* XIAO ESP32-C5 BOOT */
 /* External menu button: XIAO header D0 to GND (internal pull-up), the same
- * as BOOT. D0 is free since IQ bit Q0 moved to GPIO27 (rf.c). GPIO1 is no
- * strap pin, so holding it at reset changes nothing. */
-#define EXT_BUTTON       GPIO_NUM_1
+ * as BOOT. D0 is free since IQ bit Q0 moved to GPIO27 (board_pins.h).
+ * GPIO1 is no strap pin, so holding it at reset changes nothing. */
+#define EXT_BUTTON       ((gpio_num_t)C5VRX_EXT_BUTTON_GPIO)
 #define TICK_MS          50
 #define LONG_TICKS       12             /* 0.6 s */
 #define MENU_IDLE_TICKS  600            /* 30 s without a press closes the menu */

@@ -333,6 +333,11 @@ from a few lines cannot guarantee headroom for a subsequent bright scene.
 
 ## OSD key bench, step 1 (2026-10-12, firmware build only)
 
+Off by default: the bench is compiled into every build but only usable with
+`CONFIG_C5VRX_OSD_KEY` (menuconfig "C5VRX-5", default n, untested). Default
+builds keep IQ bit I0 on GPIO10 (D10) as before; console `O` only reports
+that the bench is disabled.
+
 Goal: a real overlay (signal, sync, debug text from the C5) on top of the
 recovered video without touching the demodulator. The composite waveform
 only exists inside the TX BitScrambler (U85Q uses both bundles; in LUT16
@@ -370,10 +375,11 @@ tested DAC network is not loaded.
   interval; dx/dy move the frame exactly.
 
 Wiring (XIAO ESP32-C5, 14 castellated pins: D0-D10, 5V, GND, 3V3): key on
-header D10 (GPIO10). To free header pins two IQ bits moved to GPIOs that
-are not on the edge (no wiring; MODEM_DIAG out and PARLIO RX in through the
-GPIO matrix): I0 (MODEM_DIAG 14) from GPIO10 to GPIO2, and Q0 (MODEM_DIAG 4)
-from GPIO1 to GPIO27, which also drives the yellow user LED (active low,
+header D10 (GPIO10), in `CONFIG_C5VRX_OSD_KEY` builds only. Pins live in
+`main/board_pins.h`. IQ bits need no wiring (MODEM_DIAG out and PARLIO RX in
+through the GPIO matrix), so they may sit on GPIOs that are not on the edge:
+I0 (MODEM_DIAG 14) moves from GPIO10 to GPIO2 only in OSD builds, and Q0
+(MODEM_DIAG 4) moves from GPIO1 to GPIO27 in every build, which also drives the yellow user LED (active low,
 so it glows faintly). D0 (GPIO1, no strap) is now a second menu button to
 GND (internal pull-up), the same as BOOT. The DAC pins are unchanged. The IQ
 pins are GPIO-matrix routes only; a different pad may shift the read

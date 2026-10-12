@@ -18,6 +18,7 @@
 #include "kp_switch_guard.h"
 #include "transport_recovery.h"
 #include "output_level.h"
+#include "board_pins.h"
 #include "osd_key.h"
 #include "hal/parlio_ll.h"
 #include "kp_tables.h"
@@ -110,8 +111,7 @@ static esp_err_t prepare_rx(void)
         .clk_out_gpio_num = -1,
         .valid_gpio_num = -1,
         /* Same order as rf.c s_iq_pins: Q bits 0..3, I bits 4..7. */
-        .data_gpio_nums = {GPIO_NUM_27, GPIO_NUM_0, GPIO_NUM_25, GPIO_NUM_7,
-                           GPIO_NUM_2, GPIO_NUM_5, GPIO_NUM_3, GPIO_NUM_4},
+        .data_gpio_nums = C5VRX_IQ_PINS,
         .flags = {.free_clk = true, .clk_gate_en = false, .allow_pd = false},
     };
     esp_err_t err = parlio_new_rx_unit(&cfg, &s_rx);

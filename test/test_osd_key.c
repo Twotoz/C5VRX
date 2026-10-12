@@ -172,8 +172,12 @@ int main(void)
     unsigned last = 0;
     for (unsigned k = 0; k < OSD_KEY_CONTENT_WORDS * 32u; ++k) if (osd_key_get_bit(c, k)) last = k;
     check("content run holds the pattern at the largest phase", last == 31u + OSD_KEY_UI_BITS - 1u);
-    check("key GPIO check: GPIO10 (D10) free, DAC/IQ/USB/flash/BOOT pins not",
-          osd_key_gpio_free(10) && !osd_key_gpio_free(2) && !osd_key_gpio_free(27) && !osd_key_gpio_free(9) && !osd_key_gpio_free(1) && !osd_key_gpio_free(13) &&
+    /* Default build: I0 on GPIO10, so D10 is not free for a key; with
+     * -DCONFIG_C5VRX_OSD_KEY=1 I0 moves to GPIO2 and D10 is the key. */
+    check(C5VRX_OSD_KEY ? "key GPIO check (OSD build): D10 free, GPIO2/27/DAC/USB/flash/BOOT/D0 not"
+                        : "key GPIO check (default build): D10 and GPIO27 carry IQ, no key pin",
+          osd_key_gpio_free(10) == (C5VRX_OSD_KEY != 0) && osd_key_gpio_free(2) == !C5VRX_OSD_KEY &&
+          !osd_key_gpio_free(27) && !osd_key_gpio_free(1) && !osd_key_gpio_free(9) && !osd_key_gpio_free(13) &&
           !osd_key_gpio_free(18) && !osd_key_gpio_free(28) && !osd_key_gpio_free(-1));
     printf("%s: %u checks, %u failures\n", s_fail ? "FAIL" : "PASS", s_run, s_fail);
     return s_fail ? 1 : 0;

@@ -587,10 +587,12 @@ position to ~725 (limit 300), the board's repeated `unsettled` pattern. DC row
 held during scans; final qualification in the live TX context. Board repeats
 pending; no normalized gate (phasefix6 failed board repeat scans).
 
-OSD key bench, step 1 (2026-10-12, `main/osd_key.c`, `osd_key_logic.h`, host test
-`test/test_osd_key.c`, `docs/FINDINGS.md`): a separate 1-bit key on I2S0 DOUT
-(XIAO header D10 = GPIO10; IQ bit I0 moved from GPIO10 to GPIO2 to free it,
-and Q0 from GPIO1 to GPIO27/user LED so header D0 is a second menu button
+OSD key bench, step 1 (2026-10-12, `main/osd_key.c`, `osd_key_logic.h`, pins in
+`main/board_pins.h`, host test `test/test_osd_key.c`, `docs/FINDINGS.md`;
+compiled always, usable only with `CONFIG_C5VRX_OSD_KEY`, default off and
+untested): a separate 1-bit key on I2S0 DOUT (XIAO header D10 = GPIO10;
+only OSD builds move IQ bit I0 from GPIO10 to GPIO2 to free it; every build
+moves Q0 from GPIO1 to GPIO27/user LED so header D0 is a second menu button
 like BOOT; DAC pins unchanged) from PLL_F240M (20 MHz bclk, coherent with PARLIO TX),
 owned GDMA chain laid out from the menu raster itself, mixed after the DAC
 through a Schottky diode + resistor (a low key never loads the tested

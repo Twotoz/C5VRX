@@ -32,6 +32,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include "board_pins.h"
 #include "menu_raster.h"
 
 #define OSD_KEY_SAMPLES_PER_BIT 2u
@@ -234,12 +235,14 @@ static inline unsigned osd_key_descriptors(const osd_layout_t *l)
     return n + osd_key_zero_pieces(l->frame_words - at);
 }
 
-/* GPIOs the receiver owns (rf.c IQ, transport.c DAC, BOOT and D0 buttons,
- * USB, flash/PSRAM). */
+/* GPIOs the receiver owns (board_pins.h IQ, transport.c DAC, BOOT and D0
+ * buttons, USB, flash/PSRAM). */
 static inline bool osd_key_gpio_free(int gpio)
 {
-    static const int used[] = {27, 0, 25, 7, 2, 5, 3, 4, 23, 24, 11, 12, 8, 9, 28, 1, 13, 14};
+    static const int iq[] = C5VRX_IQ_PINS;
+    static const int other[] = {23, 24, 11, 12, 8, 9, 28, C5VRX_EXT_BUTTON_GPIO, 13, 14};
     if (gpio < 0 || gpio > 28 || (gpio >= 16 && gpio <= 22)) return false;
-    for (unsigned k = 0; k < sizeof(used) / sizeof(used[0]); ++k) if (used[k] == gpio) return false;
+    for (unsigned k = 0; k < sizeof(iq) / sizeof(iq[0]); ++k) if (iq[k] == gpio) return false;
+    for (unsigned k = 0; k < sizeof(other) / sizeof(other[0]); ++k) if (other[k] == gpio) return false;
     return true;
 }

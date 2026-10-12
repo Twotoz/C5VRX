@@ -71,6 +71,8 @@ jobs:
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_preset && /tmp/test_gain_preset | tail -1
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_osd_key.c \
             ../main/menu_raster.c -lm -o /tmp/test_osd_key && /tmp/test_osd_key | tail -1
+          cc -O2 -std=c11 -Wall -Wextra -Werror -DCONFIG_C5VRX_OSD_KEY=1 -I../main test_osd_key.c \
+            ../main/menu_raster.c -lm -o /tmp/test_osd_key_on && /tmp/test_osd_key_on | tail -1
       - name: Diagnostic log semantics
         run: python3 test/test_field_diag_compare.py
       - name: Analytic IQ lane reference
