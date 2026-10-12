@@ -1,0 +1,83 @@
+{
+  "design": {
+    "program": "main/awd6.bsasm",
+    "generator": "tools/gen_awd_demod.py",
+    "program_sha256": "a9b72338b58240ec4d8bd4990540b72aeb6cd5e9c9fa2d84660bf03cf3962a2a"
+  },
+  "sources": {
+    "awd_study.py": "f96a63e808e7121bf510bffa7ba8aaba7b627a0ad112a2927958ac41a348d9d7",
+    "sim.py": "e0607b2a45b799fd1ec5e599e33a8b48465cb34596f71725e7f82b3b2f03de78",
+    "situations.py": "63b7c3ed8ac17d81a36c46dabc9aef1960e380f637a419828fcda5813fbdbfa0",
+    "demod_search.py": "2b0a1d220714f5abce234c09ed0cc8465d98404dcb70621332f9faa694e9c2bc",
+    "bs_emu.py": "d1f01c332e9ccc4076e683b8597b544ecdb3f6f740cf80f3fc466d8a505aedf2",
+    "gen_awd_demod.py": "3c05f589865b52410ae05ba5ec468900ba2c908c63411917e6048bb7eacf59f3"
+  },
+  "validation_seed_offset": 4200000,
+  "matrix_seeds": [
+    61,
+    62
+  ],
+  "situations": {
+    "clean": {},
+    "offset+0.5": {
+      "offset_hz": 500000.0
+    },
+    "offset-0.5": {
+      "offset_hz": -500000.0
+    },
+    "offset+1.5": {
+      "offset_hz": 1500000.0
+    },
+    "offset-1.5": {
+      "offset_hz": -1500000.0
+    },
+    "echo0.3us": {
+      "echo": [
+        0.5,
+        3e-07
+      ]
+    },
+    "echo1.0us": {
+      "echo": [
+        0.7,
+        1e-06
+      ]
+    },
+    "fade3ms": {
+      "fade": [
+        0.003,
+        0.04,
+        -30.0,
+        0.006
+      ]
+    },
+    "dc0.5": {
+      "dc": 0.5
+    },
+    "dc1.0": {
+      "dc": 1.0
+    },
+    "iq": {
+      "iq": [
+        1.5,
+        10.0
+      ]
+    },
+    "spur+3MHz": {
+      "spur": [
+        3000000.0,
+        -10
+      ]
+    },
+    "fade1ms": {
+      "fade": [
+        0.001,
+        0.007,
+        -30.0,
+        0.004
+      ]
+    }
+  },
+  "baseline": "U85Q variant of the firmware profile (WIDE/DEFAULT u85q, KP060, KP050)",
+  "evidence": "synthetic luma SINAD and goggle-model lock; host emulator; no RF/range claim"
+}

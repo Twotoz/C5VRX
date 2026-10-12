@@ -59,10 +59,16 @@ esp_err_t transport_start(void);
 void transport_stop_tx(void);
 void transport_resume_live(void);
 void transport_start_chain(dma_descriptor_t *first);
-enum { TRACKER_KP085, TRACKER_KP060, TRACKER_KP050, TRACKER_PAIR085 };
+enum { TRACKER_KP085, TRACKER_KP060, TRACKER_KP050, TRACKER_PAIR085, TRACKER_AWD6 };
 bool transport_set_tracker(int tracker);
 int transport_tracker(void);
 const char *transport_demod_name(void);
+/* Demodulator choice for the WIDE profile (NVS "demod"): 0 U85Q, 1 AWD6.
+ * Read at boot; changing it persists and reboots (console W). */
+enum { DEMOD_U85Q, DEMOD_AWD6 };
+int demod_choice(void);
+void demod_load(void);
+void demod_toggle(void);
 void transport_stop_chain(void);
 void transport_poll_faults(void);
 uint32_t transport_fault_count(void);

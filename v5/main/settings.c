@@ -2,6 +2,7 @@
  * namespace c5vrx5, separate from older generations). */
 #include "receiver.h"
 #include <stdio.h>
+#include "esp_system.h"
 #include "nvs.h"
 #include "rf.h"
 
@@ -50,4 +51,27 @@ void settings_load(void)
     if (!blob_load("settings", &s, sizeof(s)) || s.version != SETTINGS_VERSION) return;
     if (s.channel < FPV_CHANNELS) (void)rf_set_channel(s.channel);
     if (s.std_mode <= STD_MODE_PAL) s_std_mode = (std_mode_t)s.std_mode;
+}
+
+/* WIDE-profile demodulator. A missing or unknown key is U85Q, so a board
+ * without the key behaves exactly as before. The program is only chosen
+ * when TX is not live (profile_set), hence persist + reboot. */
+static uint8_t s_demod = DEMOD_U85Q;
+
+int demod_choice(void) { return s_demod; }
+
+void demod_load(void)
+{
+    uint8_t v;
+    s_demod = blob_load("demod", &v, 1) && v == DEMOD_AWD6 ? DEMOD_AWD6 : DEMOD_U85Q;
+    printf("DEMOD wide=%s (console W toggles and reboots)\n", s_demod == DEMOD_AWD6 ? "AWD6" : "U85Q");
+}
+
+void demod_toggle(void)
+{
+    uint8_t v = s_demod == DEMOD_AWD6 ? DEMOD_U85Q : DEMOD_AWD6;
+    if (!blob_store("demod", &v, 1)) return;
+    printf("DEMOD wide=%s stored, rebooting\n", v == DEMOD_AWD6 ? "AWD6" : "U85Q");
+    fflush(stdout);
+    esp_restart();
 }

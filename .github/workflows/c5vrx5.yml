@@ -69,6 +69,11 @@ jobs:
           OPENBLAS_NUM_THREADS=1 /tmp/iqf-test-env/bin/python v5/research/build_lane_shadow.py --check
           python3 "$IDF_PATH/tools/bsasm.py" v5/research/iq_lane_mixed468.bsasm /tmp/iq_lane_mixed468.bsbin \
             -c "$IDF_PATH/components/esp_driver_bitscrambler/bsasm_targets/esp32c5.json"
+      - name: AWD6 demodulator (generator, emulator, schedule, assembler)
+        shell: bash
+        run: |
+          OPENBLAS_NUM_THREADS=1 /tmp/iqf-test-env/bin/python v5/tools/gen_awd_demod.py --check
+          OPENBLAS_NUM_THREADS=1 /tmp/iqf-test-env/bin/python v5/test/test_awd_demod.py
       - name: Build C5VRX-5
         shell: bash
         working-directory: v5

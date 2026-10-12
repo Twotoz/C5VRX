@@ -32,6 +32,7 @@ void app_main(void)
     /* The receive profile (filter class + tracker) of this channel is
      * chosen before live TX starts; it never changes under live video. */
     profile_load();
+    demod_load();
     profile_boot();
     s_boot_stage = "transport";
     ESP_ERROR_CHECK(transport_start());

@@ -11,6 +11,9 @@ idf_component_register(
 target_bitscrambler_add_src("u85q.bsasm")
 target_bitscrambler_add_src("u85q_kp060.bsasm")
 target_bitscrambler_add_src("u85q_kp050.bsasm")
+# AWD6 adaptive-wrap demodulator (tools/gen_awd_demod.py). Opt-in at run time
+# for the WIDE profile (console W, NVS "demod"); U85Q stays the default.
+target_bitscrambler_add_src("awd6.bsasm")
 
 # This stacked PR is an experimental A/B build. OFF uses #196's exact LUTs.
 option(C5VRX5_PAIR_ASSIST "Use experimental U85G on measured wide VTX profiles" OFF)

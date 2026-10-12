@@ -29,6 +29,12 @@ BITSCRAMBLER_PROGRAM(s_u85q, "u85q");
  * (v5/research, docs/FINDINGS.md). */
 BITSCRAMBLER_PROGRAM(s_u85q_kp060, "u85q_kp060");
 BITSCRAMBLER_PROGRAM(s_u85q_kp050, "u85q_kp050");
+/* AWD6 (tools/gen_awd_demod.py): 6-bit endpoint phase step in counter A,
+ * +/-half-turn ambiguity resolved around a slowly tracked window centre,
+ * same -6..+9 MHz DAC window, read16/write16 per pair. Opt-in for WIDE
+ * (console W); host-emulator/assembler evidence only, board timing and
+ * picture still to be measured (v5/docs/AWD6.md). */
+BITSCRAMBLER_PROGRAM(s_awd6, "awd6");
 #ifdef C5VRX5_PAIR_ASSIST
 /* Near-origin-only pair assistance. Same schedule and physical FM/DAC window
  * as U85Q; unvalidated on hardware. Chosen only at startup by profile.c. */
@@ -38,6 +44,7 @@ static volatile int s_tracker = TRACKER_KP085;
 static bool s_started;   /* live TX running (set once at boot) */
 static const void *tracker_program(int t)
 {
+    if (t == TRACKER_AWD6) return s_awd6;
 #ifdef C5VRX5_PAIR_ASSIST
     if (t == TRACKER_PAIR085) return s_u85g;
 #endif
@@ -238,7 +245,8 @@ esp_err_t transport_start(void)
  * DMA and BitScrambler ordering are the proven ones. */
 bool transport_set_tracker(int tracker)
 {
-    bool valid = tracker == TRACKER_KP085 || tracker == TRACKER_KP060 || tracker == TRACKER_KP050;
+    bool valid = tracker == TRACKER_KP085 || tracker == TRACKER_KP060 || tracker == TRACKER_KP050 ||
+                 tracker == TRACKER_AWD6;
 #ifdef C5VRX5_PAIR_ASSIST
     valid = valid || tracker == TRACKER_PAIR085;
 #endif
@@ -255,7 +263,8 @@ bool transport_set_tracker(int tracker)
 int transport_tracker(void) { return s_tracker; }
 const char *transport_demod_name(void)
 {
-    return s_tracker == TRACKER_PAIR085 ? "U85G_KP085_EXPERIMENTAL" :
+    return s_tracker == TRACKER_AWD6 ? "AWD6_EXPERIMENTAL" :
+           s_tracker == TRACKER_PAIR085 ? "U85G_KP085_EXPERIMENTAL" :
            s_tracker == TRACKER_KP060 ? "U85Q_KP060" :
            s_tracker == TRACKER_KP050 ? "U85Q_KP050" : "U85Q_1a09f5c092e8";
 }

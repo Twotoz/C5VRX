@@ -83,6 +83,9 @@ bool profile_set(int p)
      * in-flight demodulator or filter switch is introduced. */
     if (p == PROFILE_WIDE) tracker = TRACKER_PAIR085;
 #endif
+    /* AWD6 only where the host holdout supports it: wide VTXs (WIDE
+     * profile). Narrow/default profiles keep their U85Q variant. */
+    if (p == PROFILE_WIDE && demod_choice() == DEMOD_AWD6) tracker = TRACKER_AWD6;
     if (!transport_set_tracker(tracker)) return false;   /* refuses while TX is live */
     if ((!rf_filter_equal(rf_filter(), f) || !rf_filter_applied()) && !rf_set_filter(f)) {
         printf("PROFILE error: filter code=%d skirt=%u not applied (read back code=%d skirt=%d)\n", f.code, f.skirt,

@@ -31,6 +31,15 @@ passing LUT. A separate floating predictive host reference passes synthetic
 quality/sync gates with +2.6..3.1 dB mean weak-case luma SINAD gain. This is a
 research target, not live C5 firmware or measured outdoor range.
 
+## Experimental AWD6 demodulator (opt-in)
+
+[AWD6](docs/AWD6.md) is a new TX BitScrambler demodulator for **wide VTXs**:
+the 50-ns phase step from counter A, with its half-turn ambiguity resolved
+around a slowly tracked centre. Same pipeline, cadence and DAC window as
+U85Q. Console `W` selects it for the WIDE profile (stored, reboots); every
+other profile keeps U85Q. Host simulation only so far; not yet tested on a
+board and no range claim.
+
 ## What it does
 
 - **U85Q demodulator** in the TX BitScrambler: an untrained 32-phase tracker

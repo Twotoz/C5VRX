@@ -66,6 +66,7 @@ static void help(void)
            "  J analytic IQLaneFusion shadow on/off (model proposals only, no RF writes),\n"
            "  I IQ snapshot, o menu open/close, n/x menu next/select, c next channel, b next band, s scan,\n"
            "  F calibrate (startup steps again; video stops), L bench IQ lane comparison (video stops ~3 s),\n"
+           "  W WIDE-profile demod U85Q/AWD6 (experimental; stores and reboots),\n"
            "  ` reboot to USB download (flashing)\n");
 }
 
@@ -111,6 +112,7 @@ static void console_task(void *arg)
             case 'R': diag_toggle_stream(); break;
             case 'L': lane_compare_request(); break;
             case 'J': lane_shadow_toggle(); break;
+            case 'W': demod_toggle(); break;
             case 'h': case '?': help(); break;
             case 'o': case 'n': case 'x': case 'c': case 'b': case 's': {
                 int command = c;
