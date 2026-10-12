@@ -589,16 +589,19 @@ pending; no normalized gate (phasefix6 failed board repeat scans).
 
 OSD key bench, step 1 (2026-10-12, `main/osd_key.c`, `osd_key_logic.h`, host test
 `test/test_osd_key.c`, `docs/FINDINGS.md`): a separate 1-bit key on I2S0 DOUT
-from PLL_F240M (20 MHz bclk, coherent with PARLIO TX), owned 625-descriptor
-GDMA chain, mixed after the DAC through a diode + resistor (a low key never
-loads the tested network). Extends the C5VRX-1 "OSD without an OSD chip"
-idea (`legacy/c5vrx1/research/video-output.md`) without a CPU stage in the
-video path, and reuses the menu raster/font. Co-started with the PAL
-menu/status raster only (console `O`, offsets `< > , . + -`); NTSC refused;
-live video never gets a key (step 2 genlock: sync from ring snapshots,
-`main/afc.h`). The on-chip analog comparator cannot be the sync detector:
-its fixed pads GPIO9/GPIO8 are DAC bits 5/4. Firmware build and host test
-only; board timing, bit order, GDMA load and goggle behaviour are unproven.
+(GPIO2 = XIAO pad A1) from PLL_F240M (20 MHz bclk, coherent with PARLIO TX),
+owned GDMA chain laid out from the menu raster itself, mixed after the DAC
+through a Schottky diode + resistor (a low key never loads the tested
+network). Extends the C5VRX-1 "OSD without an OSD chip" idea
+(`legacy/c5vrx1/research/video-output.md`) without a CPU stage in the video
+path, and reuses the menu raster/font. Co-started with the menu/status
+raster only (console `O`, offsets `< > , . + -`), PAL and NTSC; while armed
+the NTSC menu loop is 1,334,656 samples (whole key words, -9 ppm), else the
+tested raster. Live video never gets a key (step 2 genlock: sync from ring
+snapshots, `main/afc.h`). The on-chip analog comparator cannot be the sync
+detector: its fixed pads GPIO9/GPIO8 are DAC bits 5/4. Firmware build and
+host test only; board timing, bit order, GDMA load and goggle behaviour are
+unproven.
 
 ### Instructions for future pipeline work
 

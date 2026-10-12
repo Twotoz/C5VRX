@@ -6,10 +6,32 @@
  * half-line time (11440/9 samples) to a DMA word, never each line independently.
  * Within a cycle the longest edge error is 44.45 ns. The four-frame NTSC
  * loop adds only 0.25 ppm period error (see the carrier adjustment below). */
+static bool s_key_grid;
+
+/* OSD key bench (osd_key_logic.h): its 1-bit I2S stream loops on whole
+ * 32-bit words (64 samples). PAL (1,600,000 samples) already does; the
+ * default NTSC loop (1,334,668) does not, so with the key armed the NTSC
+ * loop is 1,334,656 samples (-9 ppm line rate, same <= 2-sample edge
+ * rounding). Off: the tested raster, bit for bit. */
+void menu_raster_set_key_grid(bool on) { s_key_grid = on; }
+bool menu_raster_key_grid(void) { return s_key_grid; }
+
+uint32_t menu_frame_samples(video_standard_t standard)
+{
+    return standard == VIDEO_STD_PAL ? 1600000u : s_key_grid ? 1334656u : 1334668u;
+}
+
+/* Colour carrier cycles in one frame loop (closes the burst phase). */
+static double frame_cycles(video_standard_t standard)
+{
+    return standard == VIDEO_STD_PAL ? 177345.0 : s_key_grid ? 119437.0 : 119438.0;
+}
+
 uint32_t menu_half_sample(video_standard_t standard, unsigned half)
 {
-    return standard == VIDEO_STD_PAL ? half * 1280u :
-           ((half * 2860u + 4u) / 9u) * 4u;
+    if (standard == VIDEO_STD_PAL) return half * 1280u;
+    if (s_key_grid) return (uint32_t)(((uint64_t)half * 333664u + 525u) / 1050u) * 4u;
+    return ((half * 2860u + 4u) / 9u) * 4u;
 }
 
 void menu_raster_init(menu_raster_t *r, video_standard_t standard)
@@ -19,9 +41,7 @@ void menu_raster_init(menu_raster_t *r, video_standard_t standard)
      * The menu itself is monochrome.  The resulting offsets are only
      * +6.25 Hz for PAL and about +10.7 Hz for NTSC, while reducing the cyclic
      * descriptor allocation from ~76 KiB to less than 20 KiB. */
-    const double frequency = standard == VIDEO_STD_PAL ?
-                             177345.0 * 40000000.0 / 1600000.0 :
-                             119438.0 * 40000000.0 / 1334668.0;
+    const double frequency = frame_cycles(standard) * 40000000.0 / menu_frame_samples(standard);
     const unsigned burst_start = standard == VIDEO_STD_PAL ? 224u : 212u;
     const unsigned burst_samples = standard == VIDEO_STD_PAL ? 90u : 100u;
     memset(r, 20, sizeof(*r));
@@ -77,8 +97,7 @@ bool menu_raster_emit(const menu_raster_t *r, video_standard_t standard,
         /* Carrier phase from absolute sample time, including at loop wrap.
          * Phase bins quantize only the burst start phase; samples within each
          * burst retain the exact PAL/NTSC carrier frequency. */
-        double cycles = pal ? (double)start * 177345.0 / 1600000.0 :
-                              (double)start * 119438.0 / 1334668.0;
+        double cycles = (double)start * frame_cycles(standard) / menu_frame_samples(standard);
         cycles += pal ? ((h / 2) & 1u ? -0.375 : 0.375) : 0.5;
         int phase = (int)floor(cycles * MENU_PHASES + 0.5);
         unsigned frame = h / 1250;

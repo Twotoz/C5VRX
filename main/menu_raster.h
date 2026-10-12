@@ -59,6 +59,10 @@ void menu_raster_init(menu_raster_t *raster, video_standard_t standard);
 bool menu_raster_emit(const menu_raster_t *raster, video_standard_t standard,
                       menu_segment_fn emit, void *ctx);
 uint32_t menu_half_sample(video_standard_t standard, unsigned half);
+uint32_t menu_frame_samples(video_standard_t standard);
+/* NTSC loop on whole 64-sample words while the OSD key is armed (menu_raster.c). */
+void menu_raster_set_key_grid(bool on);
+bool menu_raster_key_grid(void);
 
 static inline unsigned menu_prefix_bytes(video_standard_t standard)
 {

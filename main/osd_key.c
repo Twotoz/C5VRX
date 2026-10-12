@@ -2,16 +2,19 @@
  * (osd_key_logic.h). I2S0 DOUT carries a 1-bit key that transport.c starts
  * in the same interrupt-free instant as the menu/status raster on PARLIO TX;
  * both run from PLL_F240M, so the key cannot drift against the raster.
- * Only the menu/status raster ever gets a key: live video has no genlock
- * yet (step 2), and every TX stop parks the key pin low first.
+ * PAL and NTSC (NTSC on the key grid of menu_raster.c while armed). Only
+ * the menu/status raster ever gets a key: live video has no genlock yet
+ * (step 2), and every TX stop parks the key pin low first.
  *
  * Hardware (bench, not on the tested board): OSD_KEY_GPIO -> Schottky diode
- * (anode at the GPIO) -> resistor -> DAC output node. Start high (a few kOhm)
- * and lower it until the white is readable; a low key never conducts.
+ * (anode at the GPIO) -> resistor -> DAC output node (CVBS_OUT). Start at
+ * 470 ohm and go down to ~150 ohm for full white; never below 120 ohm.
+ * A low key never conducts, so the DAC levels stay as tested.
  *
- * The owned key chain follows transport.c: 625 GDMA descriptors (one per
- * PAL frame line) with cleared suc_eof and quiet interrupts, so the IDF I2S
- * driver only configures clock, slots and pin and never runs its own DMA. */
+ * The owned key chain follows transport.c (cleared suc_eof, quiet
+ * interrupts): zero runs from one shared buffer and one content run per UI
+ * scanline, laid out from the menu raster itself (osd_key_walk). The IDF
+ * I2S driver only configures clock, slots and pin. */
 #include "receiver.h"
 #include <stdio.h>
 #include <string.h>
@@ -38,12 +41,17 @@ static i2s_chan_handle_t s_i2s;
 static int s_dma_ch = -1;
 static bool s_armed, s_primed, s_running;
 static int s_dx, s_dy;
-static dma_descriptor_t *s_nodes;
-static uint32_t *s_rows;     /* OSD_ROW_TYPES key lines */
+#define NODE_CHUNK 128u              /* 128 x 12 B = 1536 B, like menu.c */
+#define NODE_CHUNKS 16u              /* up to 2048 descriptors */
+static dma_descriptor_t *s_chunks[NODE_CHUNKS];
+static unsigned s_chunk_count, s_node_count;
+static uint32_t *s_content;          /* bufs x OSD_KEY_CONTENT_WORDS */
+static uint32_t *s_zero;             /* OSD_KEY_ZERO_WORDS */
+static unsigned s_bufs;
 static uint32_t s_starts, s_refused;
 static const char *s_reason = "off";
 
-static uint32_t *row_buf(osd_row_t t) { return s_rows + (size_t)t * OSD_KEY_PAL_LINE_WORDS; }
+static dma_descriptor_t *node(unsigned k) { return &s_chunks[k / NODE_CHUNK][k % NODE_CHUNK]; }
 
 static void park_pin(void)
 {
@@ -89,44 +97,90 @@ static esp_err_t create_i2s(void)
     return ESP_OK;
 }
 
-static void render_rows(void)
-{
-    for (unsigned t = 0; t < OSD_ROW_TYPES; ++t) osd_key_render_row(row_buf((osd_row_t)t), (osd_row_t)t, s_dx, s_font8x8);
-    sync_dma_c2m(s_rows, OSD_ROW_TYPES * OSD_KEY_PAL_LINE_BYTES);
-}
-
-static void link_rows(void)
-{
-    for (unsigned j = 0; j < OSD_KEY_PAL_LINES; ++j) s_nodes[j].buffer = row_buf(osd_key_row_at(j, s_dy));
-    sync_dma_c2m(s_nodes, OSD_KEY_PAL_LINES * sizeof(dma_descriptor_t));
-}
-
-static esp_err_t build_chain(void)
-{
-    if (!s_nodes) s_nodes = heap_caps_aligned_alloc(64u, OSD_KEY_PAL_LINES * sizeof(dma_descriptor_t),
-                                                    MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
-    if (!s_rows) s_rows = heap_caps_aligned_alloc(64u, OSD_ROW_TYPES * OSD_KEY_PAL_LINE_BYTES,
-                                                  MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    if (!s_nodes || !s_rows) return ESP_ERR_NO_MEM;
-    for (unsigned j = 0; j < OSD_KEY_PAL_LINES; ++j) {
-        dma_descriptor_t *d = &s_nodes[j];
-        memset(d, 0, sizeof(*d));
-        d->dw0.size = OSD_KEY_PAL_LINE_BYTES;
-        d->dw0.length = OSD_KEY_PAL_LINE_BYTES;
-        d->dw0.owner = 1;
-        d->next = &s_nodes[(j + 1u) % OSD_KEY_PAL_LINES];
-    }
-    render_rows();
-    link_rows();
-    return ESP_OK;
-}
-
 static void free_chain(void)
 {
-    heap_caps_free(s_nodes);
-    heap_caps_free(s_rows);
-    s_nodes = NULL;
-    s_rows = NULL;
+    for (unsigned k = 0; k < s_chunk_count; ++k) { heap_caps_free(s_chunks[k]); s_chunks[k] = NULL; }
+    heap_caps_free(s_content);
+    heap_caps_free(s_zero);
+    s_content = s_zero = NULL;
+    s_chunk_count = s_node_count = s_bufs = 0;
+}
+
+static bool append(const void *buffer, uint32_t words)
+{
+    unsigned k = s_node_count;
+    if (k / NODE_CHUNK >= s_chunk_count || words == 0u || words * 4u > 4092u) return false;
+    dma_descriptor_t *d = node(k);
+    memset(d, 0, sizeof(*d));
+    d->dw0.size = words * 4u;
+    d->dw0.length = words * 4u;
+    d->dw0.owner = 1;
+    d->buffer = (void *)buffer;
+    ++s_node_count;
+    return true;
+}
+
+static bool append_zero(uint32_t words)
+{
+    for (; words; ) {
+        uint32_t n = words > OSD_KEY_ZERO_WORDS ? OSD_KEY_ZERO_WORDS : words;
+        if (!append(s_zero, n)) return false;
+        words -= n;
+    }
+    return true;
+}
+
+/* Lay the key out from the open menu raster, then build the chain. The
+ * layout table (~10 KiB) lives only during the build. */
+static esp_err_t build_chain(void)
+{
+    free_chain();
+    osd_layout_t *l = heap_caps_malloc(sizeof(*l), MALLOC_CAP_INTERNAL);
+    if (!l) return ESP_ERR_NO_MEM;
+    const menu_raster_t *raster = menu_raster_get();
+    osd_key_walk_begin(l, raster, s_video_std);
+    esp_err_t err = ESP_OK;
+    const unsigned line = s_video_std == VIDEO_STD_PAL ? 2560u : 2542u;
+    if (!menu_raster_emit(raster, s_video_std, osd_key_walk, l) ||
+        !osd_key_layout(l, menu_frame_samples(s_video_std), line, s_dx, s_dy))
+        err = ESP_ERR_INVALID_SIZE;
+    unsigned nodes = err == ESP_OK ? osd_key_descriptors(l) : 0u;
+    if (err == ESP_OK && (nodes + NODE_CHUNK - 1u) / NODE_CHUNK > NODE_CHUNKS) err = ESP_ERR_INVALID_SIZE;
+    while (err == ESP_OK && s_chunk_count * NODE_CHUNK < nodes) {
+        dma_descriptor_t *c = heap_caps_aligned_alloc(64u, NODE_CHUNK * sizeof(dma_descriptor_t),
+                                                      MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
+        if (!c) err = ESP_ERR_NO_MEM;
+        else s_chunks[s_chunk_count++] = c;
+    }
+    if (err == ESP_OK) {
+        s_bufs = l->bufs;
+        s_content = heap_caps_aligned_alloc(64u, (s_bufs ? s_bufs : 1u) * OSD_KEY_CONTENT_WORDS * 4u,
+                                            MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+        s_zero = heap_caps_aligned_alloc(64u, OSD_KEY_ZERO_WORDS * 4u, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+        if (!s_content || !s_zero) err = ESP_ERR_NO_MEM;
+    }
+    if (err == ESP_OK) {
+        memset(s_zero, 0, OSD_KEY_ZERO_WORDS * 4u);
+        for (unsigned b = 0; b < s_bufs; ++b)
+            osd_key_render(s_content + (size_t)b * OSD_KEY_CONTENT_WORDS, (osd_row_t)l->buf[b].type,
+                           l->buf[b].phase, s_font8x8);
+        uint32_t at = 0;
+        bool ok = true;
+        for (unsigned k = 0; ok && k < l->lines; ++k) {
+            ok = (l->run[k].word == at || append_zero(l->run[k].word - at)) &&
+                 append(s_content + (size_t)l->run[k].buf * OSD_KEY_CONTENT_WORDS, OSD_KEY_CONTENT_WORDS);
+            at = l->run[k].word + OSD_KEY_CONTENT_WORDS;
+        }
+        if (ok && at < l->frame_words) ok = append_zero(l->frame_words - at);
+        if (!ok || s_node_count != nodes) err = ESP_ERR_INVALID_STATE;
+    }
+    heap_caps_free(l);
+    if (err != ESP_OK) { free_chain(); return err; }
+    for (unsigned k = 0; k < s_node_count; ++k) node(k)->next = node((k + 1u) % s_node_count);
+    sync_dma_c2m(s_zero, OSD_KEY_ZERO_WORDS * 4u);
+    sync_dma_c2m(s_content, s_bufs * OSD_KEY_CONTENT_WORDS * 4u);
+    for (unsigned k = 0; k < s_chunk_count; ++k) sync_dma_c2m(s_chunks[k], NODE_CHUNK * sizeof(dma_descriptor_t));
+    return ESP_OK;
 }
 
 /* transport_start_chain, before the raster starts: load the key FIFO. */
@@ -134,12 +188,17 @@ void osd_key_prime(void)
 {
     s_primed = false;
     if (!s_armed) return;
-    if (s_video_std != VIDEO_STD_PAL) { ++s_refused; s_reason = "ntsc_refused"; return; }
+    if (s_video_std == VIDEO_STD_NTSC && !menu_raster_key_grid()) {   /* raster built before arming */
+        ++s_refused;
+        s_reason = "ntsc_grid_missing";
+        return;
+    }
     esp_err_t err = create_i2s();
     if (err == ESP_OK) err = build_chain();
     if (err != ESP_OK) {
         ++s_refused;
-        s_reason = err == ESP_ERR_NO_MEM ? "no_memory" : "i2s_unavailable";
+        s_reason = err == ESP_ERR_NO_MEM ? "no_memory" : err == ESP_ERR_INVALID_SIZE ? "layout_refused" :
+                   "i2s_unavailable";
         printf("OSDKEY refused: %s\n", esp_err_to_name(err));
         return;
     }
@@ -152,7 +211,7 @@ void osd_key_prime(void)
     AHB_DMA.channel[s_dma_ch].out.out_conf0.out_rst_chn = 1;
     AHB_DMA.channel[s_dma_ch].out.out_conf0.out_rst_chn = 0;
     __asm__ __volatile__("fence iorw, iorw" ::: "memory");
-    AHB_DMA.out_link_addr[s_dma_ch].val = (uint32_t)&s_nodes[0];
+    AHB_DMA.out_link_addr[s_dma_ch].val = (uint32_t)node(0);
     AHB_DMA.channel[s_dma_ch].out.out_link.outlink_start_chn = 1;
     esp_rom_delay_us(20);            /* GDMA fills the I2S TX FIFO */
     /* tx_update now (bounded), so the co-start below is a single store. */
@@ -194,17 +253,21 @@ void osd_key_stop(void)
 
 void osd_key_print(void)
 {
-    printf("OSDKEY armed=%u running=%u gpio=%d dx_bits=%d dx_ns=%d dy_lines=%d std=%s starts=%lu refused=%lu "
-           "state=%s key=I2S0_PLL240_20MHz scope=menu_status_raster_only\n",
+    printf("OSDKEY armed=%u running=%u gpio=%d dx_bits=%d dx_ns=%d dy_lines=%d std=%s ntsc_key_grid=%u "
+           "descriptors=%u buffers=%u starts=%lu refused=%lu state=%s key=I2S0_PLL240_20MHz "
+           "scope=menu_status_raster_only\n",
            s_armed, s_running, OSD_KEY_GPIO, s_dx, s_dx * 50, s_dy, s_video_std == VIDEO_STD_PAL ? "PAL" : "NTSC",
-           (unsigned long)s_starts, (unsigned long)s_refused, s_reason);
+           menu_raster_key_grid(), s_node_count, s_bufs, (unsigned long)s_starts, (unsigned long)s_refused, s_reason);
 }
 
-/* Control task: O arms/disarms; < > coarse and , . fine dx; + - dy. */
+/* Control task: O arms/disarms; < > coarse and , . fine dx; + - dy.
+ * Arming switches the NTSC menu raster to the key grid; any change restarts
+ * the open raster with the key (the picture blinks once). */
 void osd_key_command(int c)
 {
     if (c == 'O') {
         s_armed = !s_armed;
+        menu_raster_set_key_grid(s_armed);
         if (!s_armed) {
             osd_key_stop();
             free_chain();
@@ -212,7 +275,7 @@ void osd_key_command(int c)
         } else {
             s_reason = s_menu_active ? "armed" : "armed_waiting_for_menu";
         }
-        if (s_armed && s_menu_active) menu_restart_chain();   /* co-start; the picture blinks once */
+        if (s_menu_active) menu_restart_chain();   /* rebuilds the raster on the right grid */
         osd_key_print();
         return;
     }
@@ -228,9 +291,6 @@ void osd_key_command(int c)
     }
     s_dx = osd_key_clamp(dx, OSD_KEY_DX_MAX);
     s_dy = osd_key_clamp(dy, OSD_KEY_DY_MAX);
-    /* Running chain: rows and line pointers change in place; at most one
-     * frame mixes old and new positions. Bench offsets only. */
-    if (s_rows && s_nodes) { render_rows(); link_rows(); }
+    if (s_armed && s_menu_active) menu_restart_chain();
     osd_key_print();
 }
-

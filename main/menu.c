@@ -323,11 +323,18 @@ void menu_close(void)
     ++s_control_epoch;
 }
 
-/* Restart the open raster from its first node (OSD key co-start). */
+const menu_raster_t *menu_raster_get(void) { return &s_raster; }
+
+/* Rebuild and restart the open raster (OSD key co-start; the key grid of
+ * menu_raster.c may have changed). Keeps the old chain if memory is short. */
 void menu_restart_chain(void)
 {
     if (!s_menu_active) return;
     transport_stop_chain();
+    if (build_chain(s_video_std) != ESP_OK) {
+        menu_raster_set_key_grid(false);
+        ESP_ERROR_CHECK(build_chain(s_video_std));
+    }
     transport_start_chain(node(0));
 }
 

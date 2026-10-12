@@ -344,22 +344,38 @@ tested DAC network is not loaded.
 - Key source: I2S0 DOUT from `I2S_CLK_SRC_PLL_240M`, 40 MHz mclk (integer
   /6), 20 MHz bclk: one key bit per two DAC samples, from the same PLL as
   PARLIO TX (`PLL_F240M/6`), so key and video cannot drift.
-- Owned GDMA chain as in `transport.c`: 625 descriptors (one PAL frame
-  line each) pointing at shared 160-byte row buffers, suc_eof cleared,
-  interrupts off. The IDF driver only configures clock, slots and pin.
+- Owned GDMA chain as in `transport.c` (suc_eof cleared, interrupts off):
+  zero runs from one shared 1 KiB buffer and one 26-word content run per UI
+  scanline. The layout is taken from the menu raster itself (where the
+  emitter sends each UI row), so no line formula can disagree with it.
+  Content runs are shared per row type and bit phase: PAL 1131 descriptors
+  and 10 buffers (~15 KiB), NTSC 908 descriptors and 83 buffers (~20 KiB),
+  allocated only while armed.
+- NTSC: the default menu loop (1,334,668 samples) is no whole number of
+  32-bit key words. While the key is armed the NTSC menu raster uses a
+  1,334,656-sample loop (-9 ppm line rate, colour carrier closed over 119437
+  cycles, +~1 Hz; lines stay 2540/2544 samples, edge rounding <= 2
+  samples). Disarmed, the tested raster is unchanged bit for bit.
 - `transport_start_chain` starts the key and the menu/status raster in one
   interrupt-free instant; the remaining offset is a fixed hardware latency,
-  set with console `< > , .` (dx, 50 ns steps) and `+ -` (dy, lines).
-- Scope: PAL menu/status raster only (we generate its sync). NTSC is
-  refused (its menu loop is no whole number of 32-bit key words). Live
-  video never gets a key: that needs genlock to the VTX (step 2: sync
-  positions from the existing ring snapshots, `main/afc.h`, plus a per-field
-  re-render of the text for the VTX crystal offset).
-- Host test `test/test_osd_key.c` checks every key bit of the bench
-  pattern against the actual PAL menu raster: all on UI samples, never on
-  sync, burst, blanking or a vertical-interval half-line.
+  set with console `< > , .` (dx, 50 ns steps) and `+ -` (dy, lines). Each
+  change rebuilds both chains and restarts them (the picture blinks).
+- Scope: menu/status raster only (we generate its sync). Live video never
+  gets a key: that needs genlock to the VTX (step 2: sync positions from the
+  existing ring snapshots, `main/afc.h`, plus a per-field re-render of the
+  text for the VTX crystal offset).
+- Host test `test/test_osd_key.c` assembles the key frame exactly as the
+  chain emits it and checks every bit against the actual PAL and NTSC menu
+  rasters: all on UI samples, never on sync, burst, blanking or the vertical
+  interval; dx/dy move the frame exactly.
+
+Wiring (XIAO ESP32-C5): key on GPIO2 = pad A1 (Arduino variant
+`XIAO_ESP32C5`: A1 = 2). Model of the 6-bit network into 75 ohm, Schottky
+Vf 0.35 V: blanking (code 20) 0.33 V; with the key 470 ohm +0.19 V,
+330 ohm +0.27 V, 220 ohm +0.38 V, 150 ohm +0.53 V (14 mA from the pin).
+Start at 470 ohm; ~150-220 ohm for readable white; never below 120 ohm.
 
 Not yet shown: I2S start/latency on the board, the bit order on the wire,
-GDMA load next to PARLIO (`tx_empty`, `rx_overflow` in `T`), the mixing
-resistor value, and goggle behaviour. GPIO2 (default key pin) is a strap and
-may not be reachable on every board; change `OSD_KEY_GPIO` in `main/osd_key.c`.
+GDMA load next to PARLIO (`tx_empty`, `rx_overflow` in `T`), goggle lock on
+the -9 ppm NTSC loop, the mixing resistor value, and goggle behaviour.
+GPIO2 is a strap pin; the diode keeps it unloaded at reset.

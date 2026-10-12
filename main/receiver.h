@@ -160,7 +160,8 @@ bool menu_open(void);
 void menu_close(void);
 void menu_render(void);
 void menu_set_standard_mode(std_mode_t mode);
-void menu_restart_chain(void);              /* open raster from node 0 (OSD key bench) */
+void menu_restart_chain(void);              /* rebuild + restart the open raster (OSD key bench) */
+const menu_raster_t *menu_raster_get(void);
 void status_screen(const char *title, const char *line1, const char *line2, int percent);
 void status_screen_end(void);
 bool menu_status_active(void);
