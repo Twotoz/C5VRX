@@ -41,10 +41,13 @@
 
 static const char *TAG = "c5vrx5_rf";
 
-/* PARLIO RX data pins, in data-bit order: Q on bits 0..3, I on 4..7. */
+/* PARLIO RX data pins, in data-bit order: Q on bits 0..3, I on 4..7.
+ * Matrix-routed MODEM_DIAG outputs read back by PARLIO RX; leave them
+ * unconnected. I bit 0 moved from GPIO10 (header D10) to GPIO2 (pad A1) so
+ * D10 carries the OSD key (osd_key.c); the DAC pins are unchanged. */
 static const gpio_num_t s_iq_pins[8] = {
     GPIO_NUM_1, GPIO_NUM_0, GPIO_NUM_25, GPIO_NUM_7,
-    GPIO_NUM_10, GPIO_NUM_5, GPIO_NUM_3, GPIO_NUM_4,
+    GPIO_NUM_2, GPIO_NUM_5, GPIO_NUM_3, GPIO_NUM_4,
 };
 /* Ultrafine lane: sign bit 9 plus ADC bits 6..4, i.e. 16-code steps in a
  * +-128 window (+12 dB over the coarse {9,8,7,6} slice, an exact

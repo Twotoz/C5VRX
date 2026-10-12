@@ -71,7 +71,7 @@ static void help(void)
            "  I IQ snapshot, o menu open/close, n/x menu next/select, c next channel, b next band, s scan,\n"
            "  v video standard AUTO/NTSC/PAL, e close menu (web menu direct controls),\n"
            "  F calibrate (startup steps again; video stops), L bench IQ lane comparison (video stops ~3 s),\n"
-           "  O OSD key bench on/off (I2S key on GPIO2/A1, menu/status raster only, PAL+NTSC), < > , . key x, + - key y,\n"
+           "  O OSD key bench on/off (I2S key on D10/GPIO10, menu/status raster only, PAL+NTSC), < > , . key x, + - key y,\n"
            "  ` reboot to USB download (flashing)\n");
 }
 

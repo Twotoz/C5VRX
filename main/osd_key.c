@@ -32,9 +32,9 @@
 #include "osd_key.h"
 #include "osd_key_logic.h"
 
-/* Key output. GPIO2 is a strap pin; the diode keeps it unloaded at reset.
- * Change this for a board where another free GPIO is reachable. */
-#define OSD_KEY_GPIO 2
+/* Key output: XIAO header D10 (GPIO10, not a strap pin). The IQ bit that
+ * used it moved to GPIO2 (rf.c s_iq_pins). */
+#define OSD_KEY_GPIO 10
 #define I2S0_GDMA_PERIPH 3   /* SOC_GDMA_TRIG_PERIPH_I2S0 */
 
 static i2s_chan_handle_t s_i2s;

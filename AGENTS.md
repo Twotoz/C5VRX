@@ -589,7 +589,8 @@ pending; no normalized gate (phasefix6 failed board repeat scans).
 
 OSD key bench, step 1 (2026-10-12, `main/osd_key.c`, `osd_key_logic.h`, host test
 `test/test_osd_key.c`, `docs/FINDINGS.md`): a separate 1-bit key on I2S0 DOUT
-(GPIO2 = XIAO pad A1) from PLL_F240M (20 MHz bclk, coherent with PARLIO TX),
+(XIAO header D10 = GPIO10; IQ bit I0 moved from GPIO10 to GPIO2/pad A1 to
+free it, DAC pins unchanged) from PLL_F240M (20 MHz bclk, coherent with PARLIO TX),
 owned GDMA chain laid out from the menu raster itself, mixed after the DAC
 through a Schottky diode + resistor (a low key never loads the tested
 network). Extends the C5VRX-1 "OSD without an OSD chip" idea

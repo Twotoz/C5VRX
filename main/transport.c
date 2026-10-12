@@ -111,7 +111,7 @@ static esp_err_t prepare_rx(void)
         .valid_gpio_num = -1,
         /* Same order as rf.c s_iq_pins: Q bits 0..3, I bits 4..7. */
         .data_gpio_nums = {GPIO_NUM_1, GPIO_NUM_0, GPIO_NUM_25, GPIO_NUM_7,
-                           GPIO_NUM_10, GPIO_NUM_5, GPIO_NUM_3, GPIO_NUM_4},
+                           GPIO_NUM_2, GPIO_NUM_5, GPIO_NUM_3, GPIO_NUM_4},
         .flags = {.free_clk = true, .clk_gate_en = false, .allow_pd = false},
     };
     esp_err_t err = parlio_new_rx_unit(&cfg, &s_rx);

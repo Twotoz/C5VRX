@@ -369,8 +369,12 @@ tested DAC network is not loaded.
   rasters: all on UI samples, never on sync, burst, blanking or the vertical
   interval; dx/dy move the frame exactly.
 
-Wiring (XIAO ESP32-C5): key on GPIO2 = pad A1 (Arduino variant
-`XIAO_ESP32C5`: A1 = 2). Model of the 6-bit network into 75 ohm, Schottky
+Wiring (XIAO ESP32-C5): key on header D10 (GPIO10). To free it, IQ bit I0
+(MODEM_DIAG 14 on the ultrafine lane) moved from GPIO10 to GPIO2 (pad A1,
+unconnected like the other IQ pins); the DAC pins are unchanged. The IQ
+pins are GPIO-matrix routes only; a different pad may shift the read
+instant by a pad delay, which the per-boot sampling-phase check covers
+(board confirmation pending). Model of the 6-bit network into 75 ohm, Schottky
 Vf 0.35 V: blanking (code 20) 0.33 V; with the key 470 ohm +0.19 V,
 330 ohm +0.27 V, 220 ohm +0.38 V, 150 ohm +0.53 V (14 mA from the pin).
 Start at 470 ohm; ~150-220 ohm for readable white; never below 120 ohm.
@@ -378,4 +382,3 @@ Start at 470 ohm; ~150-220 ohm for readable white; never below 120 ohm.
 Not yet shown: I2S start/latency on the board, the bit order on the wire,
 GDMA load next to PARLIO (`tx_empty`, `rx_overflow` in `T`), goggle lock on
 the -9 ppm NTSC loop, the mixing resistor value, and goggle behaviour.
-GPIO2 is a strap pin; the diode keeps it unloaded at reset.
