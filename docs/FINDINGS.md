@@ -672,12 +672,17 @@ Full reproduction, assumptions, figures and negative results:
   guarded verified restart/rollback and shared cooldown. Compare OSD/live
   restart/LCD reset and scope loaded CVBS. Following operator clarification,
   automatic black PAL/NTSC NO SIGNAL raster is now implemented after four
-  observed negative windows / 200 ms; first confirmed sync resumes live.
+  observed negative windows / 8 ms; first confirmed sync resumes live.
   RX/gain continue, missing copies and busy contexts do not count as loss.
+  A nominal 2 ms integer sync watchdog uses 8190-byte snapshots, independently
+  of the 50 ms gain/AFC cadence. Prewarm the raster while live runs; reuse
+  prepared timing. Actual work/gap/coverage/stack is in `VIDEO_WATCH`.
+  81920 placed clean PAL/NTSC/colour/BW/deviation scenes pass, along with noise
+  and false-pulse rejection. CPU deadlines/weak-signal coverage need hardware.
   Handoff is bounded but interrupted, not camera-field aligned. Last-field
   freeze needs a new decoded-video capture path and much more native RAM.
 - Issues #199/#200 closed against merged fixes and recorded board success.
   #201/#213 remain open for actual RF/luma/display and LCD validation.
 
-17 host C test executables, five diagnostic-log tests and warning-free IDF
+18 host C test executables, five diagnostic-log tests and warning-free IDF
 6.0.2 build pass. New code has not been flashed; COM10 is currently absent.

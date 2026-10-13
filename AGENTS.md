@@ -630,10 +630,15 @@ initial LP hold and unnecessary sentinel envelope work. Fixes preserve
 hardware streaming and verified restart. Four-seed physical-ADC comparisons
 show several-dB offset/filter mismatch losses; the apparent deviation-1.7
 filter benefit did not survive held-out tests. No measured RF range claim.
-Issue #213: automatic black PAL/NTSC NO SIGNAL raster after >=200 ms and
+Issue #213: automatic black PAL/NTSC NO SIGNAL raster after >=8 ms and
 four observed sync-negative windows; first confirmed sync resumes live.
 Missing copies/settle/other owners are not loss. RX/gain continue; raster
-ownership is separate from the interactive menu. 300 ms recovery grace,
+ownership is separate from the interactive menu. Nominal 2 ms watchdog uses
+8190-byte proven snapshots, integer unwrapped-phase bins and timed plateau/
+porch evidence, separate from the unchanged 50 ms gain/AFC cadence. Raster
+prewarms while live runs; no allocation/burst regeneration on normal loss
+entry. `VIDEO_WATCH` logs actual timing/coverage/stack, not a hard deadline
+promise. 12 ms recovery grace,
 one-second failure backoff, descriptor reuse, bounded restart/rollback.
 Manual `B` remains an unchanged live-only restart A/B. Do not trigger from
 AFC lock loss alone or claim seamless camera alignment/affected-LCD cure:

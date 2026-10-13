@@ -7,13 +7,13 @@ int main(void)
     video_loss_t p = {0};
     assert(!video_loss_update(&p, 1, true, true, false, 0, false));
     for (unsigned k = 1; k < 4; ++k)
-        assert(!video_loss_update(&p, 1, true, true, false, k * 50000u, false));
-    assert(video_loss_update(&p, 1, true, true, false, 200000, false));
-    assert(video_loss_update(&p, 1, true, false, false, 250000, true));
-    assert(!video_loss_update(&p, 1, true, true, true, 300000, true));
+        assert(!video_loss_update(&p, 1, true, true, false, k * 2000u, false));
+    assert(video_loss_update(&p, 1, true, true, false, 8000, false));
+    assert(video_loss_update(&p, 1, true, false, false, 10000, true));
+    assert(!video_loss_update(&p, 1, true, true, true, 12000, true));
     for (unsigned k = 1; k < 6; ++k)
-        assert(!video_loss_update(&p, 1, true, true, false, 300000 + k * 50000u, false));
-    assert(video_loss_update(&p, 1, true, true, false, 600000, false));
+        assert(!video_loss_update(&p, 1, true, true, false, 12000 + k * 2000u, false));
+    assert(video_loss_update(&p, 1, true, true, false, 24000, false));
     /* Missing copies alone never manufacture camera-sync loss. */
     p = (video_loss_t){0};
     for (unsigned k = 0; k < 100; ++k)

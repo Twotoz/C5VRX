@@ -173,6 +173,7 @@ void status_screen(const char *title, const char *line1, const char *line2, int 
 void status_screen_end(void);
 bool menu_status_active(void);
 bool no_signal_active(void);
+bool no_signal_prepare(void);
 bool no_signal_show(void);
 bool no_signal_end(int level, bool lp);
 

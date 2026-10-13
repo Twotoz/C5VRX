@@ -30,6 +30,7 @@ volatile int s_menu_cursor;
 /* Status screen: a full-screen message on the menu raster (calibration). */
 static volatile bool s_status;
 static volatile bool s_no_signal;
+static bool s_prepare_no_signal;
 static uint32_t s_no_signal_entries, s_no_signal_returns;
 static char s_status_title[40], s_status_line1[48], s_status_line2[48];
 static volatile int s_status_percent;
@@ -145,7 +146,7 @@ void menu_render(void)
     char buf[32];
     const fpv_channel_t *ch = rf_channel();
     if (s_status) { render_status(); return; }
-    if (s_no_signal) {
+    if (s_no_signal || s_prepare_no_signal) {
         memset(s_raster.ui, DAC_IDLE_CODE, sizeof(s_raster.ui));
         text("NO SIGNAL", (MENU_UI_WIDTH - 16 * 9) / 2, 20, UI_WHITE, 2);
         sync_dma_c2m(s_raster.ui, sizeof(s_raster.ui));
@@ -353,22 +354,25 @@ void menu_set_standard_mode(std_mode_t mode)
 
 bool no_signal_active(void) { return s_no_signal; }
 
+bool no_signal_prepare(void)
+{
+    if (s_no_signal) return true;
+    if (s_menu_active || s_status || receiver_paused() || calibration_in_startup() || transport_faulted()) return false;
+    if (s_node_count && s_video_std == menu_standard()) return true;
+    s_prepare_no_signal = true;
+    esp_err_t err = build_chain(menu_standard());
+    s_prepare_no_signal = false;
+    if (err != ESP_OK) { free_nodes(); return false; }
+    return true; /* prepared while live still runs; no TX/BS/PHY mutation */
+}
+
 bool no_signal_show(void)
 {
     if (s_no_signal) return true;
     if (s_menu_active || s_status || receiver_paused() || calibration_in_startup() || transport_faulted() ||
         transport_kp_level() < 0 || transport_kp_target() < 0) return false;
-    s_no_signal = true; /* render black active picture with NO SIGNAL */
-    video_standard_t standard = menu_standard();
-    esp_err_t err = ESP_OK;
-    if (s_node_count && s_video_std == standard) menu_render(); /* reuse prepared DMA timing */
-    else err = build_chain(standard);
-    if (err != ESP_OK) {
-        s_no_signal = false;
-        free_nodes();
-        printf("NO_SIGNAL refused=memory_or_chain error=%s\n", esp_err_to_name(err));
-        return false; /* never stop working live TX for an allocation failure */
-    }
+    if (!no_signal_prepare()) { printf("NO_SIGNAL refused=not_prepared\n"); return false; }
+    s_no_signal = true;
     transport_stop_tx(); /* RX stays live: gain and camera-sync detector continue */
     transport_start_chain(node(0));
     if (transport_faulted()) { s_no_signal = false; return false; }

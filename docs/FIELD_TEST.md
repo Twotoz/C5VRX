@@ -170,13 +170,15 @@ Repeat each comparison A/B/A (or ABBA) so that drift and fading average out.
 ### LCD No Signal recovery (issue #213)
 
 PR #212 automatically supplies black PAL/NTSC NO SIGNAL video after four
-observed negative sync windows spanning >=200 ms; it resumes on the first
+observed negative sync windows spanning >=8 ms; it resumes on the first
 confirmed sync. RX/gain stay active. Watch `NO_SIGNAL` transitions and
 `VIDEO_OUTPUT source=NO_SIGNAL/LIVE/MENU/OFF`. Test strong startup, VTX off
 and return, short fades, weak video and both standards. Confirm that absent
 copies, B/W single-sync windows, menu/calibration and retunes do not falsely
 replace the picture. Measure detection/handoff/display recovery latency and
-75-ohm-loaded H/V levels. The handoff has restart gaps; seamless LCD lock
+75-ohm-loaded H/V levels. `VIDEO_WATCH` reports actual maximum work/sample
+time, inter-check gaps, coverage and stack watermark for the nominal 2 ms
+watchdog; verify under USB/observer load and weak RF. The handoff has restart gaps; seamless LCD lock
 through every fade has not been established.
 
 On the ground, PR #212's `B` restarts only verified live transport without

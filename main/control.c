@@ -10,6 +10,7 @@
 #include "kp_switch_guard.h"
 #include "profile_logic.h"
 #include "video_loss.h"
+#include "video_sync.h"
 #include "cn_estimate.h"
 #include "analog_video_detect.h"
 #include "driver/gpio.h"
@@ -40,6 +41,8 @@ volatile int64_t s_last_video_us;
 QueueHandle_t s_commands;
 
 static uint8_t s_window[CONTROL_BYTES];
+static uint8_t s_video_window[VIDEO_SYNC_BYTES];
+static struct { uint32_t windows, copied, sync, max_work_us, max_sample_us, max_gap_us, stack_watermark; int64_t last_us; } s_video_watch;
 static uint8_t s_pal_votes, s_ntsc_votes;
 static uint8_t s_last_std = 0xFF;      /* last stable standard (NVS) */
 static unsigned s_afc_corrections, s_afc_weak_skips;
@@ -342,11 +345,65 @@ static void control_task(void *arg)
     bool long_fired = false, was_locked = false, ladder_was_active = true;
     video_loss_t video_loss = {0};
     int64_t raster_retry_us = 0;
+    int64_t prepare_retry_us = 0, next_control_us = esp_timer_get_time();
     int seen_profile = profile_active();
     uint32_t seen_phy = phy_generation(), seen_control = s_control_epoch;
     uint32_t seen_restart_errors = transport_restart_errors();
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(TICK_MS));
+        vTaskDelay(pdMS_TO_TICKS(2));
+        int64_t watch_start = esp_timer_get_time();
+        uint32_t video_context = afc_context(), video_gain = s_gain_epoch;
+        if (video_loss.initialized && video_loss.context != video_context) s_video_watch.last_us = 0;
+        bool watch_eligible = !s_menu_active && !menu_status_active() && !calibration_in_startup() &&
+                              !s_scan_active && !receiver_paused() && !phy_busy() && !transport_faulted();
+        if (watch_eligible) {
+            if (s_video_watch.last_us && watch_start - s_video_watch.last_us > s_video_watch.max_gap_us)
+                s_video_watch.max_gap_us = (uint32_t)(watch_start - s_video_watch.last_us);
+            s_video_watch.last_us = watch_start;
+            ++s_video_watch.windows;
+            /* Prewarm before a fade; later entry only switches prepared DMA.
+             * PHY ownership also prevents calibration from taking TX here. */
+            if (!no_signal_active() && watch_start >= prepare_retry_us && phy_try_actuator(phy_generation())) {
+                bool prepared = no_signal_prepare();
+                phy_end_actuator();
+                prepare_retry_us = prepared ? watch_start + 50000 : watch_start + 1000000;
+            }
+            int64_t sample_start = esp_timer_get_time();
+            vTaskSuspendAll();
+            bool snapshot = copy_snapshot(s_video_window);
+            (void)xTaskResumeAll();
+            bool observed = snapshot && video_gain == s_gain_epoch && video_context == afc_context() &&
+                            !phy_busy() && esp_timer_get_time() - s_last_gain_write_us >= 500;
+            bool sync = observed && video_sync_present(s_video_window, sizeof(s_video_window), c5vrx_phase8_gain_lut);
+            observed = observed && video_gain == s_gain_epoch && video_context == afc_context() && !phy_busy() &&
+                       !receiver_paused() && !calibration_in_startup() && !s_menu_active;
+            s_video_watch.copied += observed;
+            s_video_watch.sync += observed && sync;
+            int64_t watch_now = esp_timer_get_time();
+            uint32_t sample_us = (uint32_t)(watch_now - sample_start);
+            if (sample_us > s_video_watch.max_sample_us) s_video_watch.max_sample_us = sample_us;
+            bool want = video_loss_update(&video_loss, video_context, true, observed, sync,
+                                          (uint64_t)watch_now, no_signal_active());
+            if (watch_now >= raster_retry_us && want != no_signal_active() && phy_try_actuator(phy_generation())) {
+                int level = s_kp_auto ? (int)s_kp.level : transport_kp_target();
+                bool lp = s_kp_auto ? s_kp.lp : transport_lp();
+                bool ok = want ? no_signal_show() : no_signal_end(level, lp);
+                phy_end_actuator();
+                raster_retry_us = ok ? 0 : watch_now + 1000000;
+            }
+            uint32_t took = (uint32_t)(esp_timer_get_time() - watch_start);
+            if (took > s_video_watch.max_work_us) s_video_watch.max_work_us = took;
+            s_video_watch.stack_watermark = (uint32_t)uxTaskGetStackHighWaterMark(NULL);
+        } else {
+            s_video_watch.last_us = 0;
+            (void)video_loss_update(&video_loss, video_context, false, false, false,
+                                   (uint64_t)watch_start, no_signal_active());
+        }
+        /* Keep gain/AFC/ladder/button/menu timing at its original 50 ms.
+         * Fast raster ownership stays on this same task, never a racing ISR. */
+        int64_t control_now = esp_timer_get_time();
+        if (control_now < next_control_us) continue;
+        next_control_us = control_now + TICK_MS * 1000;
         int c;
         for (unsigned k = 0; k < 8 && xQueueReceive(s_commands, &c, 0) == pdTRUE; ++k) command(c, &menu_idle);
 
@@ -439,24 +496,6 @@ static void control_task(void *arg)
         if (copied) s_cfo_khz = r.porch_pairs ? r.porch_khz : 0;
         /* Burst or line timing confirmed the syncs (afc2_measure). */
         bool valid = window_ok && r.lines && r.standard && r.porch_pairs && r.sync_pairs;
-        /* Display sync evidence does not require AFC envelope stationarity
-         * or AFC lock. Short B/W windows often contain only one sync. */
-        afc2_result_t display = r;
-        if (ladder_ok && !window_ok) display = afc2_measure(s_window, sizeof(s_window), c5vrx_phase8_gain_lut);
-        bool display_sync = display.lines && display.standard && display.sync_pairs && display.porch_pairs;
-        bool display_eligible = !s_menu_active && !calibration_in_startup() && !receiver_paused() &&
-                                !phy_busy() && !transport_faulted() && program_ok;
-        bool want_raster = video_loss_update(&video_loss, ctx, display_eligible, ladder_ok,
-                                             display_sync, (uint64_t)now, no_signal_active());
-        if (display_eligible && now >= raster_retry_us && want_raster != no_signal_active() &&
-            phy_try_actuator(phy_generation())) {
-            int level = s_kp_auto ? (int)s_kp.level : transport_kp_target();
-            bool lp = s_kp_auto ? s_kp.lp : transport_lp();
-            bool ok = want_raster ? no_signal_show() : no_signal_end(level, lp);
-            raster_retry_us = ok ? 0 : now + 1000000; /* no rapid allocation/restart retries */
-            phy_end_actuator();
-            continue; /* ownership changed; never actuate from this old snapshot */
-        }
         if (valid) { s_last_video_us = now; standard_vote(r.standard); profile_observe(&r); }
         bool was = s_afc_locked;
         if (copied) s_afc_locked = afc2_native_lock(s_afc_locked, valid, afc2_ctrl_can_lock(&afc, true), afc.n, &afc_lost);
@@ -585,6 +624,10 @@ void control_print_beat(void)
 
 void control_print(void)
 {
+    printf("VIDEO_WATCH windows=%lu copied=%lu sync=%lu max_sample_us=%lu max_work_us=%lu max_gap_us=%lu stack_watermark=%lu\n",
+           (unsigned long)s_video_watch.windows, (unsigned long)s_video_watch.copied, (unsigned long)s_video_watch.sync,
+           (unsigned long)s_video_watch.max_sample_us, (unsigned long)s_video_watch.max_work_us,
+           (unsigned long)s_video_watch.max_gap_us, (unsigned long)s_video_watch.stack_watermark);
     printf("CONTROL channel=%s freq=%u offset_khz=%d cfo_khz=%d afc_locked=%u afc_corrections=%u "
            "afc_weak_skips=%u afc_sign=%+d(%s) standard=%s detected=%s signal=%d menu=%u deviation_x100=%d mode=%s "
            "kp_auto=%u%s kp_steps=%lu lp_switches=%lu busy=%u\n"

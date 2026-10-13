@@ -2,9 +2,9 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
-#define VIDEO_LOSS_US 200000u
+#define VIDEO_LOSS_US 8000u
 #define VIDEO_LOSS_WINDOWS 4u
-#define VIDEO_RECOVERY_GRACE_US 300000u
+#define VIDEO_RECOVERY_GRACE_US 12000u
 typedef struct { uint32_t context; uint64_t last_sync, grace_until; unsigned bad; bool initialized; } video_loss_t;
 static inline bool video_loss_update(video_loss_t *p, uint32_t context, bool eligible,
                                      bool observed, bool sync, uint64_t now, bool active)

@@ -161,17 +161,24 @@ valid CVBS. The affected display and loaded measurements remain unavailable.
 
 **Automatic receiver-side NO SIGNAL raster:** following the operator's
 clarification, the receiver now substitutes real black PAL/NTSC video with
-white NO SIGNAL text after four observed sync-negative windows and >=200 ms
+white NO SIGNAL text after four observed sync-negative windows and >=8 ms
 since the last confirmed sync. It returns on the first newly confirmed sync,
 without waiting for AFC lock. Missing copies are unknown; settle/retune,
 menu, scan, calibration and paused/faulted contexts do not count as loss.
-This uses raw burst/line-timing evidence even when AFC's stationary-envelope
-gate fails. Alternating short B/W windows do not trigger replacement.
-Recovery has a 300 ms entry grace; failed transitions back off one second.
+The fast watchdog has a nominal 2 ms sleep between checks, independently of
+the 50 ms gain/AFC/ladder cadence, but uses the same task to serialize TX
+ownership. It copies 8190 raw IQ bytes (204.75 us, multiple whole line
+periods) with overwrite/time proof and averages unwrapped adjacent phase
+steps into 200 ns bins. It requires sync-like plateaus, matching front/back
+porch and repeated PAL/NTSC line spacing; no burst/FPU/AFC lock prerequisite.
+Every raw sample placement is tested, so short B/W window alignment no longer
+causes the display decision. Recovery entry grace is 12 ms; failed
+transitions back off one second. Missing/stale samples remain unknown.
 
 RX and gain remain running while standalone cyclic DMA feeds the raster.
 Use the selected PAL/NTSC mode or the detected/last remembered standard in
-AUTO. Prepare/allocate before stopping TX; failed allocation preserves live
+AUTO. Prewarm/allocate the raster while live still runs, before a fade;
+failed allocation preserves live
 output. Keep descriptor memory after recovery for reuse on subsequent fades.
 Menu/calibration can take over the same raster; their usual close resumes
 live. On repeated fades with the same standard, reuse the prepared DMA timing
@@ -182,9 +189,12 @@ defer during fallback. `NO_SIGNAL` transition counters and `VIDEO_OUTPUT`
 source/standard make substitution distinct from a transport fault.
 
 This is a sampled H-sync absence heuristic, not proof of moving-picture loss
-or vertical sync. The 50 ms loop cannot cover sub-field fades. TX takeover
+or vertical sync. `VIDEO_WATCH` reports coverage, maximum sample/work time,
+maximum inter-check gap and task stack watermark; prewarm/transition work
+and scheduling can exceed the nominal 2 ms sleep. TX takeover
 and return are halted transitions with gaps and no camera-field alignment;
-no seamless sync-insertion or affected-LCD no-relock claim is made. Repeated
+no hard real-time bound, seamless sync-insertion or affected-LCD no-relock
+claim is made. Repeated
 weak-picture transitions, false replacement, actual detection/return latency,
 loaded levels and monitor lock still require bench validation. The manual
 `B` split remains useful when the screen itself works but live cannot acquire.
@@ -227,7 +237,11 @@ and 40 actual-C gate summaries alongside LP/ladder/LUT/output invariants.
 `cn_envelope.txt` is normalized from malformed UTF-16 export to readable
 UTF-8 without changing values. Added production loss-policy tests and actual
 PAL/NTSC raster emission checks for frame timing, sync/burst, DAC bounds and
-DMA alignment. Host tests and IDF 6.0.2 build pass. This PR
+DMA alignment. The fast sync detector passes 81920 clean quantized
+PAL/NTSC/colour/BW/polarity/deviation/sample-placement scenes, plus black
+picture, fast FM, single-pulse/wrong-period rejection and 512 noise windows.
+These fixtures do not validate weak-RF sensitivity or actual C5 CPU deadlines.
+Host tests and IDF 6.0.2 build pass. This PR
 is not flashed: COM10 is absent. Copy rates, AFC/profile transitions, LCD
 A/B and attenuation tolerance need hardware; no measured range gain or LCD
 cure is claimed.
