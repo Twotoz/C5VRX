@@ -14,10 +14,17 @@ def fnv1a(data):
     return value
 
 
+def record_line(line):
+    # Independent console tasks can join a STATUS prefix and capture record
+    # on one line. Drop only the prefix; payload integrity remains checked.
+    at = line.find('IQSNAP_')
+    return line[at:].strip() if at >= 0 else line.strip()
+
+
 def decode(lines):
     metadata=None;data=bytearray()
     for line in lines:
-        line=line.strip()
+        line=record_line(line)
         if line.startswith('IQSNAP_BEGIN '):
             if metadata is not None:raise ValueError('second capture header')
             metadata=dict(re.findall(r'(\w+)=(\w+)',line))
@@ -51,7 +58,7 @@ def main():
         while time.monotonic()<end:
             buffer+=s.read(4096)
             while b'\n' in buffer:
-                line,buffer=buffer.split(b'\n',1);line=line.decode('ascii',errors='replace').strip();lines.append(line)
+                line,buffer=buffer.split(b'\n',1);line=record_line(line.decode('ascii',errors='replace'));lines.append(line)
                 if line.startswith(('IQSNAP_END','IQSNAP_REFUSED')):
                     raw,metadata=decode(lines)
                     metadata.update(timestamp_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),

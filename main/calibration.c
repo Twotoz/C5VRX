@@ -584,6 +584,11 @@ static void dco_context(dco_table_t *t, uint16_t freq)
 
 static bool dco_same_context(const dco_table_t *a, const dco_table_t *b)
 {
+    /* Filter fields are recorded but shared across profiles today. This is
+     * an assumption, not measured equivalence; DCO_CONTEXT prints both
+     * settings so a range capture can expose it. Rejecting the table here
+     * alone would discard all per-gain correction after a live profile
+     * switch, without a safe live replacement calibration. */
     return a->version == b->version && a->freq == b->freq && a->lo == b->lo && a->hi == b->hi &&
            a->band5 == b->band5 && a->iq_scale_sel == b->iq_scale_sel;
 }
@@ -1286,6 +1291,12 @@ void calibration_print(void)
            dco_template_rows(), s_dco_seed_mhz, (unsigned long)s_dco_seeds, stored, DCO_SLOTS);
     for (unsigned k = 0; k < DCO_SLOTS; ++k) if (s_dco_index.freq[k]) printf(" %u", s_dco_index.freq[k]);
     printf("\n");
+    printf("DCO_CONTEXT table_freq=%u table_bw20=%u table_code=%d table_skirt=%d "
+           "active_freq=%u active_bw20=%u active_code=%d active_skirt=%u filter_same=%u\n",
+           s_dco.freq, (unsigned)s_dco.filter_bw20, (int)s_dco.filter_code, (int)s_dco.filter_skirt,
+           rf_frequency_mhz(), (unsigned)f.bw20, f.code, (unsigned)f.skirt,
+           (unsigned)(s_dco.filter_bw20 == f.bw20 && s_dco.filter_code == f.code &&
+                      s_dco.filter_skirt == (int)f.skirt));
     printf("SPHASE state=%s excess_mc2=%d limit=%d white_pm=%d dc_mcell=%d/%d scans=%u "
            "best=%d worst=%d contrast=%u rx_div=%lu carrier_qualified=%u live_limit=%d carrier_checks=%u "
            "carrier_scans=%u moved=%u false_alarms=%u strikes=%u\n", s_sphase_state,
