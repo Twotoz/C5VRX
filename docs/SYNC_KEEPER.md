@@ -150,6 +150,43 @@ goggle models' lack of extra luma range does not answer this LCD-muting issue.
 
 ## Acceptance before enabling a keeper by default
 
+## Root synthesis and detector prototype (2026-10-13)
+
+The operator clarified that repair must activate only when necessary: clean
+camera sync stays untouched, and repair ends once reliable sync returns.
+Tracking is a lightweight observer; it does not imply continuous replacement.
+
+`main/sync_synth.h` replaces the archived flywheel's per-sample 64-bit
+residual multiply/divide with an exact quotient/remainder walk. It needs no
+precomputed full-field raster or large phase-template bank. `test_sync_synth.c`
+compares 12,875,488 phase codes, including negative residuals and wrapping,
+against the archived expression. All match; invalid intervals write nothing.
+This removes expensive arithmetic but is not a physical CPU timing measurement.
+
+An unintegrated draft of the full root flywheel is being tested with unwrapped
+25-ns phase detection, whole-pulse admission, actual 4092/32-byte DMA geometry
+and the root U85Q-LP decoder at both byte parities. A clean synthetic carrier
+is byte-for-byte unchanged. In the first passing pulse-only experiment, every
+tested PAL/NTSC H/V pulse survives deep fades and weak reception; the root LP
+edge bound is 15 samples (375 ns), rather than the archived raw-DAC checker.
+
+**Stronger acceptance currently fails:** comparing every true active IQ sample
+finds a 1-2-sample overwrite immediately before a vertical interval. Centering
+the detector removes part of a systematic early-edge bias but does not yet
+eliminate the last sample. Pulse count alone therefore does not establish
+content preservation. This draft is not built into firmware or enabled.
+Clock/field uncertainty and repair boundaries need further work.
+
+Protecting the full optional 8190-byte watchdog window also left insufficient
+write opportunity in some modeled descriptor phases (PAL 1523/1600 pulses,
+versus 1600/1600 with the normal 4092-byte observer reservation). A future
+integration must either provide another source/consumer geometry or make the
+optional black-raster watcher and the real-snow keeper mutually exclusive;
+it cannot silently feed synthetic sync back into raw observers. The 512-byte
+TX-prefetch guard in this model is an assumption requiring physical validation.
+
+### Physical acceptance
+
 Use the affected LCD and a scope/reference monitor. Capture raw IQ and
 terminated CVBS simultaneously through strong startup, gradual attenuation,
 short/deep fades, VTX off/return and PAL/NTSC. Establish which layer goes
