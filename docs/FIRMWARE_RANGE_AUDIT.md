@@ -174,7 +174,10 @@ Use the selected PAL/NTSC mode or the detected/last remembered standard in
 AUTO. Prepare/allocate before stopping TX; failed allocation preserves live
 output. Keep descriptor memory after recovery for reuse on subsequent fades.
 Menu/calibration can take over the same raster; their usual close resumes
-live. Automatic profile/filter switches and intrusive background calibration
+live. On repeated fades with the same standard, reuse the prepared DMA timing
+chain rather than recalculating burst/line timing. Live return loads the
+current ladder kp/LP target in its one verified restart. Automatic
+profile/filter switches and intrusive background calibration
 defer during fallback. `NO_SIGNAL` transition counters and `VIDEO_OUTPUT`
 source/standard make substitution distinct from a transport fault.
 

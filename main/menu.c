@@ -359,7 +359,10 @@ bool no_signal_show(void)
     if (s_menu_active || s_status || receiver_paused() || calibration_in_startup() || transport_faulted() ||
         transport_kp_level() < 0 || transport_kp_target() < 0) return false;
     s_no_signal = true; /* render black active picture with NO SIGNAL */
-    esp_err_t err = build_chain(menu_standard());
+    video_standard_t standard = menu_standard();
+    esp_err_t err = ESP_OK;
+    if (s_node_count && s_video_std == standard) menu_render(); /* reuse prepared DMA timing */
+    else err = build_chain(standard);
     if (err != ESP_OK) {
         s_no_signal = false;
         free_nodes();
