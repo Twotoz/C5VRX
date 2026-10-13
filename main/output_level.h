@@ -4,10 +4,12 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
-#define OUTPUT_LEVELS 4
+#define OUTPUT_LEVELS 9
 static inline uint16_t output_entry(uint16_t value, unsigned level, bool *clipped)
 {
-    static const int pivot[OUTPUT_LEVELS] = {21, 13, 16, 19};
+    /* Keep the existing 1.0..2.5x maps; extend their half-step contrast
+     * curve through 5.0x. Saturation is always limited to DAC6 bits. */
+    static const int pivot[OUTPUT_LEVELS] = {21, 13, 16, 19, 22, 25, 28, 31, 34};
     if (level >= OUTPUT_LEVELS) level = 0;
     int twice = 2 * pivot[level] + ((int)level + 2) * ((int)(value & 63u) - 21);
     /* Round to nearest code, including negative values before saturation. */

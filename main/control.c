@@ -7,6 +7,7 @@
 #include <string.h>
 #include "afc_ctrl.h"
 #include "kp_ladder.h"
+#include "output_level.h"
 #include "kp_switch_guard.h"
 #include "profile_logic.h"
 #include "video_loss.h"
@@ -240,7 +241,7 @@ static void menu_action(void)
     case MENU_CHANNEL: rf_next_channel(); after_retune(); break;
     case MENU_SCAN: scan(); break;
     case MENU_CALIBRATE: menu_close(); filter_request(); return;   /* runs once the menu is closed */
-    case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % 4u); break;
+    case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
     case MENU_VIDEO:
         cycle_video_standard();
         break;
@@ -329,7 +330,7 @@ static void command(int c, unsigned *menu_idle)
         break;
     }
     case 'g': {
-        unsigned next = (transport_output() + 1u) % 4u;
+        unsigned next = (transport_output() + 1u) % OUTPUT_LEVELS;
         bool ok = transport_set_output(next);
         printf("OUTPUT manual %s result=%s wait_ms=%lu%s\n", transport_output_name(),
                ok ? "applied" : "refused", (unsigned long)transport_switch_wait_ms(),

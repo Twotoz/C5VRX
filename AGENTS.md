@@ -490,6 +490,8 @@ and shared 5-second restart guard; high gains may clip wide VTXs. The operator
 explicitly requested persistence on 2026-10-13: PR #212 saves the output only
 after a verified applied restart, including menu exit, and restores it before
 live TX starts. Failed/refused changes do not replace the saved level.
+The same request extends the selectable range to 1.0..5.0x in 0.5x steps;
+the four existing maps remain identical and higher levels retain DAC6 clipping.
 Automatic output-level servo
 is simulation-only (`research/output_level.py`): ideal sync/white references
 are not a proven live estimator or measured HDZero compatibility. Fresh
