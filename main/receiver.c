@@ -51,11 +51,14 @@ void receiver_native_toggle(void)
         printf("NATIVE_AGC toggle refused=busy_or_startup\n");
         return;
     }
-    s_native_enabled = !s_native_enabled;
+    const bool enabled = !s_native_enabled;
     s_native_control = s_control_epoch;
     s_native_phy = phy_generation();
     s_native_next = 0;
-    dg_reset(&s_gain, rf_gain_table(), s_current_gain);
+    /* The observer owns the gain model. Toggling without an analog change
+     * must not reset that model from the control task while it is sampled. */
+    __sync_synchronize();
+    s_native_enabled = enabled;
     phy_end_actuator();
     printf("NATIVE_AGC enabled=%u period_us=%u timeout_us=%u boot_default=OFF ram_only=1 bench=1\n",
            s_native_enabled, NATIVE_PERIOD_US, NATIVE_TIMEOUT_US);
@@ -64,14 +67,22 @@ void receiver_native_toggle(void)
 static bool native_tick(uint32_t control, uint32_t phy)
 {
     if (!s_native_enabled) return false;
+    /* The toggle publishes its mode while holding this same lease. A timer
+     * wake before it releases must defer, not turn contention into an RF
+     * fault. Keep ownership through the recursive RF acquisition and model
+     * publication, so a mode change cannot race an opened window. */
+    if (!phy_try_actuator(phy)) return true;
+    if (!s_native_enabled) { phy_end_actuator(); return false; }
+    if (s_paused || s_menu_active) { phy_end_actuator(); return true; }
     if (control != s_native_control || phy != s_native_phy || calibration_in_startup()) {
         s_native_enabled = false;
         dg_reset(&s_gain, rf_gain_table(), s_current_gain);
+        phy_end_actuator();
         printf("NATIVE_AGC disabled=context_changed owner=direct_gain_v5\n");
         return false;
     }
     int64_t now = esp_timer_get_time();
-    if (now < s_native_next) return true;
+    if (now < s_native_next) { phy_end_actuator(); return true; }
     s_native_next = now + NATIVE_PERIOD_US; /* no catch-up scan burst after a pause */
     s_native_scanning = true;
     uint8_t applied = s_current_gain;
@@ -90,10 +101,12 @@ static bool native_tick(uint32_t control, uint32_t phy)
         ++s_native_faults;
         s_native_enabled = false;
         if (result == RF_NATIVE_RESTORE_FAILED) s_paused = true;
-        printf("NATIVE_AGC disabled=result_%u owner=%s open_us=%lu\n", (unsigned)result,
-               s_paused ? "FAULT_PAUSED" : "direct_gain_v5", (unsigned long)opened);
     }
     s_native_scanning = false;
+    phy_end_actuator();
+    if (result != RF_NATIVE_LANDING)
+        printf("NATIVE_AGC disabled=result_%u owner=%s open_us=%lu\n", (unsigned)result,
+               s_paused ? "FAULT_PAUSED" : "direct_gain_v5", (unsigned long)opened);
     return s_native_enabled || s_paused;
 }
 

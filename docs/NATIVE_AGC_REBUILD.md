@@ -132,6 +132,22 @@ explain the second refusal. Do not describe this as a working native controller.
 
 The next diagnostic build reports context, PHY ownership and forced PBUS
 readback separately. Its refusal-only register snapshots occur before any
-AGC handoff; serial output occurs after releasing PHY ownership. Guards stay
-in place until actual forced-gain readback explains the refusal. These new
-diagnostics have not yet been flashed or measured on the board.
+AGC handoff. Guards stay in place until the actual refusal is explained.
+
+After flashing the immutable `5225dde` application, the board returned to
+ready/live state. At A1, 5865 MHz, zero offset, it reported
+`refusal=phy_busy_or_generation expected=75 actual=75` and zero open time.
+The disabled line appeared before the toggle acknowledgement. This reveals
+a mode-publication race: the control task published native mode while still
+holding the PHY lease; the observer could preempt it, fail that same lease
+and treat temporary contention as an acquisition fault. Captures are under
+`research/data/native_refusal_2026-10-13/after-5225dde/`.
+
+The correction serializes the observer's native decision through the same
+recursive PHY lease. Contention defers without opening or incrementing an
+attempt/fault, and mode/context is rechecked after acquisition. The observer
+keeps ownership through RF restoration and gain-model publication. The
+control toggle no longer resets the observer-owned model. RF refusal-only
+diagnostics never run inside an open AGC window, but their caller can retain
+the outer decision lease. The correction still requires a new build and
+board test; it does not establish native landing or exactly one acquisition.

@@ -89,6 +89,7 @@ jobs:
           python3 test/test_field_diag_compare.py
           python3 test/test_iq_snapshot.py
           python3 test/test_settings.py
+          python3 test/test_native_owner.py
       - name: Analytic IQ lane reference
         shell: bash
         run: |
