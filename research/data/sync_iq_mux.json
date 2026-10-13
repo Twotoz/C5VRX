@@ -1,0 +1,140 @@
+{
+  "baseline": "574d155",
+  "assumptions": "one seed, physical ADC, oracle source timing, no CPU/DMA/LCD proof",
+  "rows": [
+    {
+      "standard": "PAL",
+      "cn_db": 0,
+      "phase_error_us": 0.0,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 0.0,
+      "interior_dac_changed_pct": 0.0,
+      "interior_dac_mean_abs_change": 0.0
+    },
+    {
+      "standard": "PAL",
+      "cn_db": 0,
+      "phase_error_us": 0.5,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 0.9620627743050938,
+      "interior_dac_changed_pct": 0.0,
+      "interior_dac_mean_abs_change": 0.0
+    },
+    {
+      "standard": "PAL",
+      "cn_db": 0,
+      "phase_error_us": 2.0,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 3.858890809948132,
+      "interior_dac_changed_pct": 0.7354365573543656,
+      "interior_dac_mean_abs_change": 0.04457589594575896
+    },
+    {
+      "standard": "PAL",
+      "cn_db": 4,
+      "phase_error_us": 0.0,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 0.0,
+      "interior_dac_changed_pct": 0.0,
+      "interior_dac_mean_abs_change": 0.0
+    },
+    {
+      "standard": "PAL",
+      "cn_db": 4,
+      "phase_error_us": 0.5,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 0.9612315467482377,
+      "interior_dac_changed_pct": 0.0,
+      "interior_dac_mean_abs_change": 0.0
+    },
+    {
+      "standard": "PAL",
+      "cn_db": 4,
+      "phase_error_us": 2.0,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 3.846256151083921,
+      "interior_dac_changed_pct": 0.7302476823024768,
+      "interior_dac_mean_abs_change": 0.043617683686176835
+    },
+    {
+      "standard": "NTSC",
+      "cn_db": 0,
+      "phase_error_us": 0.0,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 0.0,
+      "interior_dac_changed_pct": 0.0,
+      "interior_dac_mean_abs_change": 0.0
+    },
+    {
+      "standard": "NTSC",
+      "cn_db": 0,
+      "phase_error_us": 0.5,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 0.9751614787886655,
+      "interior_dac_changed_pct": 0.0,
+      "interior_dac_mean_abs_change": 0.0
+    },
+    {
+      "standard": "NTSC",
+      "cn_db": 0,
+      "phase_error_us": 2.0,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 3.89861728715635,
+      "interior_dac_changed_pct": 0.7555153890334133,
+      "interior_dac_mean_abs_change": 0.04666120477043143
+    },
+    {
+      "standard": "NTSC",
+      "cn_db": 4,
+      "phase_error_us": 0.0,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 0.0,
+      "interior_dac_changed_pct": 0.0,
+      "interior_dac_mean_abs_change": 0.0
+    },
+    {
+      "standard": "NTSC",
+      "cn_db": 4,
+      "phase_error_us": 0.5,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 0.9721185367911974,
+      "interior_dac_changed_pct": 0.0,
+      "interior_dac_mean_abs_change": 0.0
+    },
+    {
+      "standard": "NTSC",
+      "cn_db": 4,
+      "phase_error_us": 2.0,
+      "oracle_source_timing": true,
+      "hardware_streaming": false,
+      "active_iq_changed_pct": 3.8900970495634395,
+      "interior_dac_changed_pct": 0.7618500625021116,
+      "interior_dac_mean_abs_change": 0.04529291530119261
+    }
+  ],
+  "static_rx_ring_schedule": [
+    {
+      "standard": "PAL",
+      "repeat_frames": 64,
+      "descriptor_lower_bound_bytes": 480000,
+      "three_nodes_per_line_estimate_bytes": 1440000
+    },
+    {
+      "standard": "NTSC",
+      "repeat_frames": 8192,
+      "descriptor_lower_bound_bytes": 51609600,
+      "three_nodes_per_line_estimate_bytes": 154828800
+    }
+  ]
+}

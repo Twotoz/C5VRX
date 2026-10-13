@@ -257,6 +257,21 @@ static void command(int c, unsigned *menu_idle)
         return;
     }
     switch (c) {
+    case 'N': {
+        bool enabled = !no_signal_enabled();
+        if (!enabled && no_signal_active()) {
+            if (receiver_paused() || !phy_try_actuator(phy_generation())) {
+                printf("NO_SIGNAL toggle refused=busy\n");
+                break;
+            }
+            (void)no_signal_end(s_kp_auto ? (int)s_kp.level : transport_kp_target(),
+                                s_kp_auto ? s_kp.lp : transport_lp());
+            phy_end_actuator();
+        }
+        no_signal_enable(enabled);
+        printf("NO_SIGNAL fallback=%s boot_default=OFF (OFF preserves actual live snow)\n", enabled ? "ON" : "OFF");
+        break;
+    }
     case 'B': {
         const bool owned = !receiver_paused() && !s_scan_active && !s_menu_active &&
                            phy_try_actuator(phy_generation());
@@ -354,7 +369,7 @@ static void control_task(void *arg)
         int64_t watch_start = esp_timer_get_time();
         uint32_t video_context = afc_context(), video_gain = s_gain_epoch;
         if (video_loss.initialized && video_loss.context != video_context) s_video_watch.last_us = 0;
-        bool watch_eligible = !s_menu_active && !menu_status_active() && !calibration_in_startup() &&
+        bool watch_eligible = no_signal_enabled() && !s_menu_active && !menu_status_active() && !calibration_in_startup() &&
                               !s_scan_active && !receiver_paused() && !phy_busy() && !transport_faulted();
         if (watch_eligible) {
             if (s_video_watch.last_us && watch_start - s_video_watch.last_us > s_video_watch.max_gap_us)

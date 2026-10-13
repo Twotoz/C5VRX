@@ -169,7 +169,8 @@ Repeat each comparison A/B/A (or ABBA) so that drift and fading average out.
 
 ### LCD No Signal recovery (issue #213)
 
-PR #212 automatically supplies black PAL/NTSC NO SIGNAL video after four
+PR #212 defaults to real live snow: black replacement is OFF. For its
+opt-in black-raster bench, press `N`; it supplies PAL/NTSC NO SIGNAL after four
 observed negative sync windows spanning >=8 ms; it resumes on the first
 confirmed sync. RX/gain stay active. Watch `NO_SIGNAL` transitions and
 `VIDEO_OUTPUT source=NO_SIGNAL/LIVE/MENU/OFF`. Test strong startup, VTX off

@@ -127,11 +127,20 @@ probes.
 - Measure actual offset drift before changing acquisition-only AFC to live
   tracking that can follow weak-signal porch bias. Offset sweep losses do
   not prove drift on this board.
-- Lower observer C/N cadence needs explicit freshness/gain/PHY-context
-  checks. Startup missing DCO rows do not prove persistent failure. Both
-  need further evidence before changing policy.
+- Supplied startup log exposes gain_obs/IDLE starvation before any fast-sync
+  checks run. Keep 200-us gain wakes with cheap measurements and an 800-us
+  runnable-batch budget / one-tick block; full C/N has 20-ms cadence and gain/PHY/control/table guards,
+  expires after 40 ms. Hardware scheduling validation remains pending.
+  Startup missing DCO rows likewise do not prove persistent failure.
 
 ## Issue #213: LCD acquisition versus live transport restart
+
+Latest operator requirement supersedes automatic black replacement: retain
+real received snow/weak picture while repairing sync. Black fallback now
+defaults OFF every boot; `N` enables it only as a bench option. Its fast
+watch/prewarm are inactive while OFF. The keeper is not implemented live;
+see [real-snow sync keeper investigation](SYNC_KEEPER.md) for the DMA-IQ
+prototype, camera-clock/descriptor constraints and physical acceptance.
 
 OSD supplies synthetic H/V/burst with 20-code sync depth. Live sync scales
 with VTX deviation and OUTPUT; issue #200's low-deviation case has only
@@ -159,8 +168,8 @@ and transition gaps, comparing a monitor that displays snow. Repeat strong
 startup, attenuation, VTX off and return. Zero transport faults do not prove
 valid CVBS. The affected display and loaded measurements remain unavailable.
 
-**Automatic receiver-side NO SIGNAL raster:** following the operator's
-clarification, the receiver now substitutes real black PAL/NTSC video with
+**Opt-in receiver-side NO SIGNAL raster:** with bench key `N` enabled,
+the receiver substitutes real black PAL/NTSC video with
 white NO SIGNAL text after four observed sync-negative windows and >=8 ms
 since the last confirmed sync. It returns on the first newly confirmed sync,
 without waiting for AFC lock. Missing copies are unknown; settle/retune,

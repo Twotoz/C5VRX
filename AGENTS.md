@@ -630,7 +630,18 @@ initial LP hold and unnecessary sentinel envelope work. Fixes preserve
 hardware streaming and verified restart. Four-seed physical-ADC comparisons
 show several-dB offset/filter mismatch losses; the apparent deviation-1.7
 filter benefit did not survive held-out tests. No measured RF range claim.
-Issue #213: automatic black PAL/NTSC NO SIGNAL raster after >=8 ms and
+Issue #213: latest operator requires real snow/weak picture preservation.
+Black fallback defaults OFF every boot; `N` is its opt-in bench toggle.
+`docs/SYNC_KEEPER.md` / `research/sync_iq_mux.py` explore DMA synthetic-IQ
+sync/blanking plus unmodified active RX IQ. Exact-timing host cases preserve
+active information; 2 us drift overwrites ~4%, so true clock/field tracking
+and live source/prefetch proofs are mandatory. No live keeper/LCD cure.
+Supplied startup log shows gain_obs starving IDLE before any fast-sync checks.
+Keep 200-us gain/sentinel cadence; bound runnable gain batches at 800 us with
+a one-tick block. Full context-guarded envelope every 20 ms, expiry 40 ms.
+Uniform 1-ms sampling failed the modeled sustained-drop recovery bound
+(52 ms versus 20.4 ms); it is not selected. Board validation pending.
+Opt-in black PAL/NTSC NO SIGNAL raster after >=8 ms and
 four observed sync-negative windows; first confirmed sync resumes live.
 Missing copies/settle/other owners are not loss. RX/gain continue; raster
 ownership is separate from the interactive menu. Nominal 2 ms watchdog uses

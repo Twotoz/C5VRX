@@ -5,9 +5,10 @@ Follow-up after PR #211/main `14e190d9`: [firmware range audit](../docs/FIRMWARE
 ADC offset/filter comparisons and 40 actual-C eligibility summaries expose
 avoidable configuration losses and preserve negative results. Reproduced
 B/W AFC, fade history, phase-gated gain/profile and DMA-tail copy defects
-have bounded fixes. Issue #213 gets automatic black PAL/NTSC NO SIGNAL
-fallback plus a manual live-only restart A/B; seamless handoff and physical
-range/LCD improvements remain unvalidated.
+have bounded fixes. Issue #213 now defaults to real live snow; `N` opts into
+black fallback for bench tests. [Real-snow sync keeper](../docs/SYNC_KEEPER.md)
+includes a host IQ-mux prototype, timing-error losses and live DMA/field-clock
+requirements. No live keeper or physical LCD/range improvement is established.
 The older studies below retain their original assumptions and results.
 
 Simulation study, 2026-10-11. `sim.py` models the whole C5VRX-5 chain with

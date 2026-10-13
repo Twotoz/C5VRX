@@ -684,5 +684,24 @@ Full reproduction, assumptions, figures and negative results:
 - Issues #199/#200 closed against merged fixes and recorded board success.
   #201/#213 remain open for actual RF/luma/display and LCD validation.
 
-18 host C test executables, five diagnostic-log tests and warning-free IDF
-6.0.2 build pass. New code has not been flashed; COM10 is currently absent.
+19 host C test executables, five diagnostic-log tests and warning-free IDF
+6.0.2 build pass. No controlled range/LCD acceptance test exists.
+
+### Operator clarification and watchdog log (2026-10-13)
+
+Operator confirms the monitor's own No Signal message at range, and wants
+real snow/weak image fragments with repaired sync, not generated content.
+Black fallback now defaults OFF; `N` is an opt-in bench mode. See
+`docs/SYNC_KEEPER.md`: synthetic-IQ blanking plus real active IQ is a host
+prototype, not live firmware. Exact timing preserves active IQ and interior
+DAC in these cases; 2 us timing error replaces about 4% of active IQ.
+
+Supplied startup log: repeated IDLE watchdog/gain_obs reports before any
+VIDEO_WATCH sample, gain_obs 97427 windows by uptime 38 s, calibration delayed
+until around that time, control_copy failures 0 / max 25 us. CPU saturation
+is distinct from a measured RF desensitization or LCD diagnosis. Timer now
+wakes gain/sentinel at 200 us, with mostly cheap gain-only measurements and
+800-us runnable-batch budget / one-tick block. Uniform 1-ms sampling was
+rejected (modeled sustained -22 dB recovery 52 ms versus 20.4). Full envelope
+every 20 ms has context/age guard (40-ms expiry). Watchdog remains
+enabled; the next board log must verify idle/startup and CPU headroom.

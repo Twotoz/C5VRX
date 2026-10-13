@@ -1,11 +1,12 @@
 /* C5VRX-5 by Twotoz and the C5VRX contributors: Direct Gain V5 runtime.
- * A 200 us timer wakes the observer (one fresh completed RX descriptor per
- * window, never the one GDMA is writing) and a sentinel that catches a
- * clipped envelope between observer windows. Only this file writes gain. */
+ * A 200 us timer wakes sentinel/gain; full C/N runs every 20 ms with
+ * context/age validation. Bound a continuously runnable observer batch so
+ * IDLE/calibration get time even if notifications accumulate. */
 #include "receiver.h"
 #include <stdio.h>
 #include <string.h>
 #include "cn_estimate.h"
+#include "cn_observation.h"
 #include "esp_timer.h"
 #include "gain_map_preset.h"
 #include "phase8_gain_lut.h"
@@ -29,6 +30,9 @@ static volatile uint32_t s_overload_state;   /* 0 free, 1 writing, 2 published *
 static dg_observation_t s_overload;
 static uint32_t s_overload_gain_epoch, s_overload_control_epoch, s_overload_phy;
 static uint32_t s_map_imports, s_preset_imports;
+static volatile cn_observation_t s_cn;
+static volatile uint32_t s_cn_sequence;
+static uint32_t s_cn_windows;
 
 bool receiver_active(void)
 {
@@ -88,7 +92,14 @@ int receiver_obs_cn_x10(void)
 {
     /* Envelope model (cn_estimate.h); a fixed IQ point has no envelope to
      * judge and read 14-20 dB in the coherence model with no VTX at all. */
-    return s_obs_stuck ? CN_UNKNOWN_X10 : cn_estimate_env_x10(s_obs_env_ratio_x100, calibration_filter_class_mhz());
+    uint32_t seq = s_cn_sequence;
+    __sync_synchronize();
+    cn_observation_t o = s_cn;
+    __sync_synchronize();
+    if ((seq & 1u) || seq != s_cn_sequence || s_obs_stuck ||
+        !cn_observation_fresh(&o, (uint64_t)esp_timer_get_time(), s_gain_epoch, s_control_epoch,
+                             phy_generation(), rf_table_generation())) return CN_UNKNOWN_X10;
+    return cn_estimate_env_x10(o.ratio, calibration_filter_class_mhz());
 }
 
 static void tick_cb(void *arg)
@@ -131,8 +142,17 @@ static void observer_task(void *arg)
     uint32_t seen_control = UINT32_MAX, seen_table = UINT32_MAX, seen_phy = UINT32_MAX;
     bool was_active = false;
     int last_node = -1;
+    int64_t runnable_since = esp_timer_get_time();
     for (;;) {
+        int64_t before_wait = esp_timer_get_time();
+        if (before_wait - runnable_since >= 800) {
+            /* taskYIELD cannot let priority-0 IDLE run. A real block can.
+             * Do not disable/feed its watchdog to hide CPU saturation. */
+            vTaskDelay(1);
+            before_wait = runnable_since = esp_timer_get_time();
+        }
         (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+        if (esp_timer_get_time() - before_wait >= 100) runnable_since = esp_timer_get_time();
         if (!receiver_active()) {
             was_active = false;
             if (__sync_bool_compare_and_swap(&s_overload_state, 2u, 1u))
@@ -172,15 +192,27 @@ static void observer_task(void *arg)
         if (node == last_node) continue;
         last_node = node;
         const int64_t t0 = esp_timer_get_time();
-        dg_observation_t o = dg_measure(sample, sizeof(sample), c5vrx_phase8_gain_lut, (uint64_t)t0);
+        cn_observation_t previous_cn = s_cn; /* sole writer: observer */
+        bool measure_cn = !cn_observation_fresh(&previous_cn, (uint64_t)t0, gain_epoch, control, phy, table) ||
+                          (uint64_t)t0 - previous_cn.us >= CN_OBSERVE_PERIOD_US;
+        dg_observation_t o = measure_cn ? dg_measure(sample, sizeof(sample), c5vrx_phase8_gain_lut, (uint64_t)t0) :
+                                         dg_measure_gain(sample, sizeof(sample), c5vrx_phase8_gain_lut, (uint64_t)t0);
         s_obs_p50 = o.p50;
         s_obs_p95 = o.p95;
         s_obs_origin_pm = o.origin_pm;
         s_obs_clip_pm = o.clip_pm;
         s_obs_coherence = o.coherence;
         s_obs_stuck = dg_stuck(&o);
-        s_obs_env_ratio_x100 = o.env_ratio_x100;
-        if (phy != phy_generation() || phy_busy()) continue;
+        if (phy != phy_generation() || phy_busy() || gain_epoch != s_gain_epoch || control != s_control_epoch) continue;
+        if (measure_cn) {
+            ++s_cn_sequence;
+            __sync_synchronize();
+            s_cn = (cn_observation_t){gain_epoch, control, phy, table, (uint64_t)t0, o.env_ratio_x100};
+            s_obs_env_ratio_x100 = o.env_ratio_x100;
+            __sync_synchronize();
+            ++s_cn_sequence;
+            ++s_cn_windows;
+        }
         /* Learn the gain map only from a real VTX: burst-confirmed sync seen
          * by the AFC within the last 500 ms (never from receiver noise). */
         const int64_t video = s_last_video_us;
@@ -209,6 +241,8 @@ void receiver_start(void)
 
 void receiver_print(void)
 {
+    printf("CN_OBSERVER windows=%lu period_us=%u max_age_us=%u\n", (unsigned long)s_cn_windows,
+           CN_OBSERVE_PERIOD_US, CN_OBSERVE_MAX_AGE_US);
     printf("GAIN owner=direct_gain_v5 gain=%u state=%u p50=%d p95=%d coherence=%d env_x100=%d stuck=%u cn_x10=%d origin_pm=%d clip_pm=%d "
            "writes=%lu holds=%lu overloads=%lu bursts=%lu fade_holds=%lu damp=%lu map_learned=%lu learn_refused=%lu "
            "map_imports=%lu preset_imports=%lu "

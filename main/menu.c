@@ -30,6 +30,7 @@ volatile int s_menu_cursor;
 /* Status screen: a full-screen message on the menu raster (calibration). */
 static volatile bool s_status;
 static volatile bool s_no_signal;
+static bool s_no_signal_enabled; /* default live snow: never hide camera information automatically */
 static bool s_prepare_no_signal;
 static uint32_t s_no_signal_entries, s_no_signal_returns;
 static char s_status_title[40], s_status_line1[48], s_status_line2[48];
@@ -353,6 +354,8 @@ void menu_set_standard_mode(std_mode_t mode)
 }
 
 bool no_signal_active(void) { return s_no_signal; }
+bool no_signal_enabled(void) { return s_no_signal_enabled; }
+void no_signal_enable(bool enabled) { s_no_signal_enabled = enabled; }
 
 bool no_signal_prepare(void)
 {

@@ -30,7 +30,9 @@
 
 unsigned char phy_param[2048];     /* arc_phy.c reference; unused for the 5 GHz table */
 
+#ifndef TICK_US
 #define TICK_US 200u
+#endif
 static direct_gain_t g;
 static arc_gain_table_t table;
 static double s_db[DG_STATES];
