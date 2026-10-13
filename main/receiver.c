@@ -96,7 +96,9 @@ int receiver_obs_cn_x10(void)
     __sync_synchronize();
     cn_observation_t o = s_cn;
     __sync_synchronize();
-    if ((seq & 1u) || seq != s_cn_sequence || s_obs_stuck ||
+    if ((seq & 1u) || seq != s_cn_sequence || s_obs_stuck || !receiver_active() ||
+        !cn_gain_settled((uint64_t)esp_timer_get_time(), (uint64_t)s_last_gain_write_us,
+                         s_gain.state == DG_SETTLE) ||
         !cn_observation_fresh(&o, (uint64_t)esp_timer_get_time(), s_gain_epoch, s_control_epoch,
                              phy_generation(), rf_table_generation())) return CN_UNKNOWN_X10;
     return cn_estimate_env_x10(o.ratio, calibration_filter_class_mhz());
@@ -193,8 +195,10 @@ static void observer_task(void *arg)
         last_node = node;
         const int64_t t0 = esp_timer_get_time();
         cn_observation_t previous_cn = s_cn; /* sole writer: observer */
-        bool measure_cn = !cn_observation_fresh(&previous_cn, (uint64_t)t0, gain_epoch, control, phy, table) ||
-                          (uint64_t)t0 - previous_cn.us >= CN_OBSERVE_PERIOD_US;
+        bool measure_cn = cn_gain_settled((uint64_t)t0, (uint64_t)s_last_gain_write_us,
+                                         s_gain.state == DG_SETTLE) &&
+                         (!cn_observation_fresh(&previous_cn, (uint64_t)t0, gain_epoch, control, phy, table) ||
+                          (uint64_t)t0 - previous_cn.us >= CN_OBSERVE_PERIOD_US);
         dg_observation_t o = measure_cn ? dg_measure(sample, sizeof(sample), c5vrx_phase8_gain_lut, (uint64_t)t0) :
                                          dg_measure_gain(sample, sizeof(sample), c5vrx_phase8_gain_lut, (uint64_t)t0);
         s_obs_p50 = o.p50;

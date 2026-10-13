@@ -4,6 +4,13 @@
 #include <stdint.h>
 #define CN_OBSERVE_PERIOD_US 20000u
 #define CN_OBSERVE_MAX_AGE_US 40000u
+/* Do not cache transition AM as carrier noise. The gain owner must also
+ * have finished its measured settling state, which may exceed this floor. */
+#define CN_GAIN_SETTLE_US 500u
+static inline bool cn_gain_settled(uint64_t now, uint64_t written, bool settling)
+{
+    return !settling && now >= written && now - written >= CN_GAIN_SETTLE_US;
+}
 typedef struct {
     uint32_t gain, control, phy, table;
     uint64_t us;

@@ -56,6 +56,12 @@ increased modeled -22 dB step recovery from 20.4 to 52 ms and failed the
 existing recovery limit, so it is not selected. This addresses the diagnosed starvation path,
 but actual CPU headroom and absence of new warnings need the next board log.
 
+C/N now also refuses measurements during Direct Gain's measured settling state
+and for at least 500 us after a gain write. Otherwise a transient envelope
+could be cached as poor carrier C/N for the following 20 ms. The same rule
+applies at cache publication and consumption; unknown/paused/busy evidence is
+not used to justify a correction. Host boundaries and the firmware build pass.
+
 ## The required output behavior
 
 Learn line period, phase, field phase and PAL/NTSC parity from trustworthy
