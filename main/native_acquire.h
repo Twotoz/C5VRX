@@ -9,6 +9,19 @@
 #define NATIVE_TIMEOUT_US 60u
 #define NATIVE_STILL_US 2u
 #define NATIVE_MAX_GAP_US 2u
+/* Pinned PHY RX-command BB field is nine bits: low seven are gain, bit
+ * eight is channel-mode context; bit seven must be zero. Check the expected
+ * context before stripping it. The current live bench uses prefix 0x100;
+ * this helper does not establish support for other RF/BW contexts. */
+static inline bool native_acquire_pack_pbus(uint16_t rf, uint16_t bb,
+    uint16_t fine, uint16_t expected_bb_prefix, uint32_t *word)
+{
+    if (!word || (expected_bb_prefix != 0 && expected_bb_prefix != 0x100u) ||
+        rf > 511u || (bb & ~127u) != expected_bb_prefix ||
+        (fine & ~7u) != 0xd0u) return false;
+    *word = ((uint32_t)rf << 12) | ((uint32_t)(bb & 127u) << 4) | (fine & 7u);
+    return true;
+}
 typedef struct {
     uint32_t last_us, stable_since;
     uint32_t gain; /* observed packed RF/BB/fine tuple; no table search while open */

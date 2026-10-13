@@ -24,6 +24,10 @@ SYMBOLS = (
     "phy_set_rx_pbus_freq", "phy_nrx_freq_set", "phy_bb_cfo_cfg", "phy_iq_swap_set",
     "phy_ckgen_5g_cal", "phy_freq_mem_change_5g_", "phy_set_rfpll_freq",
     "phy_freq_band_reg_set", "phy_pbus_force_mode",
+    "phy_agc_reg_init_new", "bb_agc_reg_update", "phy_set_pbus_reg",
+    "phy_rx_gain_force", "rx_gain_force", "phy_wr_rx_gain_mem",
+    "phy_set_pbus_mem", "phy_set_pbus_mem_5g", "phy_set_pbus_mem_2g", "phy_write_pbus_mem",
+    "phy_wifi_fbw_sel", "phy_bb_cbw_chan_cfg",
 )
 
 

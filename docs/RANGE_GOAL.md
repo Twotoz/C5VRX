@@ -13,11 +13,25 @@ Distinguish simulation, firmware implementation and physical validation.
 
 ## Work remaining
 
+- [ ] Operator addition (2026-10-14): find the simplest effective DC-bias
+      workaround without repeated quiet-channel calibration. Compare existing
+      hardware DC tracking, offset-insensitive discrimination and safely
+      qualified live estimation. Preserve real weak video; quantify the noise,
+      near-zero-CFO and quantizer-floor limits instead of promising immunity.
+- [ ] Operator addition (2026-10-14): monitor sampling timing and adjust it
+      when needed. Establish observable evidence, avoid confusing RF/DC noise
+      with timing faults, and prove a bounded correction that preserves live
+      video. Review the existing startup sampling-phase search and report-only
+      in-flight monitor before selecting an automatic actuator. Inspection
+      found that the existing live monitor also starts a disruptive three-
+      position scan; its divider pulse lacks a proven phase rollback contract.
+
 - [ ] Finish observer CPU/freshness review, including gain-settling windows;
       verify build/CI and subsequently startup/IDLE behavior on the board.
       Software guards and pinned build/CI pass. Short current-board captures
-      show ready heartbeats without watchdog output; the exact installed head
-      and a full startup/attenuation recording remain unverified.
+      show ready heartbeats without watchdog output. Board application
+      `b0b4147` is checksum-verified; a full startup/attenuation recording
+      remains unverified.
 - [ ] Investigate gradual range loss: distinguish flat RX IQ, stopped/flat
       CVBS, gain/DC changes and the monitor muting an otherwise live waveform.
       The supplied startup log does not settle this question.
@@ -28,11 +42,13 @@ Distinguish simulation, firmware implementation and physical validation.
       Software bench implementation: `~`, nominal 20 ms, exclusive observer
       owner, PBUS tuple readback, bounded window and gain/DC rollback. Boot RF
       context only; arbitrary context and physical single-scan proof pending.
-      Actual board toggles refuse before opening, including at zero offset.
-      After the operator reported download mode, immutable build `5225dde`
-      was flashed with verified data and a settings backup. Console output
-      after USB reset is not yet available; physical reset was requested.
-      Native acquisition on this new build remains unmeasured.
+      Actual board toggles still refuse before opening. On `b0b4147`, A1,
+      gain 83, the refusal is BB readback `0x17f` versus a seven-bit table
+      value `0x7f`: the pinned vendor RX command supplies channel-mode bit
+      eight. The fix verifies that context bit before normalizing the gain;
+      physical acquisition after this fix remains unmeasured. Normal boot
+      after software download was recovered by clearing only the documented
+      LP_AON forced-download field; no physical reset is now pending.
 - [ ] Select and implement a feasible PAL/NTSC sync keeper that preserves
       actual received snow and weak picture fragments. Establish camera timing,
       horizontal/vertical holdover, source freshness and DMA safety. Compare
@@ -57,7 +73,8 @@ Distinguish simulation, firmware implementation and physical validation.
 - [ ] Verify the operator's additional output request: 1.0..5.0x in 0.5x
       steps, persisted only after a verified change and restored at boot.
       Production settings save/reboot and all DAC/kp-map host tests pass;
-      physical reboot and loaded-output checks remain unverified.
+      a physical reboot into `b0b4147` preserved A2 and OUTPUT 2.0x. Loaded
+      output measurements across all levels remain unverified.
 
 ## Acceptance
 

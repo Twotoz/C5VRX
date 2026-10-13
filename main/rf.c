@@ -85,9 +85,10 @@ static bool s_native_vendor_valid;
 static bool native_tuple(uint32_t *word)
 {
     uint16_t rf = phy_pbus_rd(8, 1), bb = phy_pbus_rd(0, 2), fine = phy_pbus_rd(1, 2);
-    if (rf > 511u || bb > 127u || (fine & ~7u) != 0xd0u) return false;
-    *word = ((uint32_t)rf << 12) | ((uint32_t)bb << 4) | (fine & 7u);
-    return true;
+    /* Only called after the validated 5865/BW40/zero-offset bench guard.
+     * Vendor RX commands carry channel-mode bit eight in this readback.
+     * Keep that mode check; gain tables contain just the low seven bits. */
+    return native_acquire_pack_pbus(rf, bb, fine, 0x100u, word);
 }
 #endif
 

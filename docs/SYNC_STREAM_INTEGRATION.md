@@ -60,6 +60,41 @@ be disambiguated by descriptor indices: refuse writes and establish a fresh
 epoch. Byte-rate/time bounds also reject an unobserved lap even if indices
 look unchanged. Do not deduce absolute laps merely from modulo subtraction.
 
+`main/dma_progress.h` now provides this pure progress adapter. It validates
+the complete 8*4092+32 layout and physical address links, including rotated
+discovery, and bootstraps a shared **relative** data epoch from RX/TX BF0
+captures. It never claims the number of hardware laps before that capture.
+The current RX descriptor and all older startup IQ remain unqualified;
+`source_fresh_from` begins at its end. Every rebootstrap gets a different
+epoch, so keeper/ledger/scratch work from the old epoch must be discarded.
+
+Its ambiguity test includes the previous descriptor's entire position
+uncertainty: `max_motion + previous_descriptor_bytes < ring`. Consequently
+a repeated long-node index after approximately 717 us can already be
+ambiguous, even though less than 819.2 us elapsed. FIFO/burst reserves and
+the full first-to-last capture window also enter that bound. A broad initial
+RX/TX capture cannot choose a previous-lap TX origin merely by modulo;
+its possible next-lap interpretation is refused. Frequent same-node polls
+also accumulate a bounded-clock stall deadline rather than hiding a stall.
+
+The exported object carries actual descriptor `rx_lo/rx_hi/tx_lo/tx_hi`,
+prefetch-adjusted TX upper bound, startup/overwrite source floor, protected
+long observer-node beginning, first/last timestamps, generation, epoch and
+an explicit `valid` flag. Descriptor, clock, generation, timestamp, jump,
+stall or lap faults latch the whole pair unusable; a partially successful
+RX update is never committed when TX fails. The adapter requires externally
+proved clock/geometry/FIFO limits and running ownership. Those booleans are
+not evidence that the hardware proofs have happened.
+
+`test/test_dma_progress.c` passed 36000 independent continuous-position
+captures at nominal 40 MS/s, rotated RX/TX discovery and 16/24-KiB modeled
+lag, plus explicit tail-wrap, startup freshness, skew, hidden lap, stall,
+unknown-capacity, invalid address, generation and overflow cases. This
+validates the arithmetic/state API, not physical lag or actual prefetched
+bytes. Live transport integration still needs a lease-held BF0 reader with
+first-read timestamp and a verified transport generation, followed by
+`dma_progress_update()` and `sync_stream_admit()` before each bounded commit.
+
 At a sampled instant, let:
 
 - `Rlo` be RX's validated completed boundary;
@@ -262,7 +297,7 @@ before returning. Gain/native pulses also invalidate measurements that span
 their change; holdover timing can remain if the same camera/channel is still
 the context, but the disturbed raw interval cannot qualify recovery.
 
-Use the stable-frequency study for all eight levels and all four output
+Use the stable-frequency study for all eight levels and all nine output
 settings. At low kp the old -6-MHz carrier fails, and exact DAC zero is not
 always reachable. A template must target verified output behavior; choosing
 another frequency is preferable to an unproved live decoder rewrite.

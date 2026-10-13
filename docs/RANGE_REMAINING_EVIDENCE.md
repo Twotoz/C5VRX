@@ -79,11 +79,63 @@ physical comparison against these fields in forced/DCO-held and native modes;
 a hardware-native word need not satisfy the setter's format merely because
 the setter uses it. A refused acquisition with zero open time is not a native
 scan or a test of native sensitivity. `research/native_agc_evidence.py` now
-prints 34 functions covering the earlier seven, the address helper,
+prints 46 functions covering the earlier seven, the address helper,
 force/debug/work helpers and offset/channel call paths, plus the verified
 jump table, with the exact archive SHA guard.
 
+Further pinned disassembly shows that `phy_set_pbus_mem_5g` constructs the
+hardware receive command lists with literal `0x0019a1ff`, including in its
+standard RX sequence. The corresponding nine-bit value field
+`(literal >> 9) & 511` equals `0xd0`. The 2.4-GHz path uses the same literal,
+and `phy_wr_rx_gain_mem` supplies the fine index in gain-memory bits 24–26.
+This supports the same fine prefix in hardware-driven reception, although
+the exact instruction/gain-memory injection contract is still an inference
+until matched with physical PBUS reads. Do not relax the prefix guard merely
+because the direct setter was originally the only decoded function.
+
+There is also a restoration ordering question: `phy_force_rx_gain` writes the
+configured index and force bit; the subsequent DCO hook immediately snapshots
+PBUS and freezes those words in debug mode. Final tuple checks and one rollback
+detect a wrong held tuple, but cannot guarantee that a hardware gain update
+had landed before it was frozen. If physical readback shows that failure,
+confirm two desired actual tuple reads with a bounded wait before invoking the
+DCO hook. Do not bypass the check by writing assumed PBUS gain words. Existing
+vendor work-mode code itself permits a temporary G50 force for 2 us, so no
+instantaneous hardware-update assumption follows from its register store.
+
 ## AFC offset versus the saved native RF context
+
+The later `b0b4147` board attempt at A1/5865 MHz, zero offset and G83 reached
+the forced-readback check: RF was `0x1e7`, BB `0x17f`, fine `0x0d0`, whereas
+the calibrated packed tuple was `0x001e77f0`. BB contained the expected low
+seven bits `0x7f` plus `0x100`; rejecting any BB word above 127 prevented the
+acquisition from opening. Forced registers and RF-disabled gates were intact.
+
+Pinned `phy_chip_set_chan` stores whether its vendor channel-mode argument is
+nonzero at `phy_param+0x122`, and passes it into the PBUS command-list builder.
+`phy_set_pbus_mem_5g` shifts this flag by 17 and combines it with BB command
+base `0x000801ff`. The nine-bit command value therefore has prefix `0x100`
+when the flag is one. This is a vendor channel-mode flag: `phy_wifi_fbw_sel`
+only writes 0x600a0874 and does not update `phy_param+0x122`. It must not be
+assumed to follow arbitrary software filter-BW selections.
+
+The narrowly justified correction accepts exactly prefix `0x100` in the
+existing validated 5865-MHz/BW40/zero-offset bench, retains BB bit-7 rejection,
+and extracts the low seven BB bits for table comparison. It does not relax
+RF/fine checks or justify opening native on a different channel/BW. This
+explains the first actual tuple-format refusal, not a completed native scan.
+
+Reproduce the independent instruction-dataflow check in the pinned IDF image:
+
+```sh
+python3 research/native_pbus_contract.py
+```
+
+It uses `$IDF_PATH/components/esp_phy/lib/esp32c5/libphy.a`, refuses any archive
+except SHA256 `dbf33c418c8d408d4005c849d12a1432deea82e2e5e57de3c8ddf914d104fffb`,
+and checks the actual vendor assembly rather than reproducing the firmware
+normalizer. The check passes. Firmware restoration and landing remain board
+acceptance tasks.
 
 The pinned `phy_chip_set_chan_offset` rounds the requested kHz value with
 `(offset + 2) & ~3`, stores the signed 16-bit result at `phy_param + 0x1e`,

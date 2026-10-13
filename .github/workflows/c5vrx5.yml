@@ -67,9 +67,10 @@ jobs:
           done
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_native_acquire.c ../main/arc_phy.c -o /tmp/test_native_acquire
           /tmp/test_native_acquire
+          python3 ../research/native_pbus_contract.py
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_synth.c -o /tmp/test_sync_synth
           /tmp/test_sync_synth
-          for t in test_sync_repair_ledger test_sync_stream_guard; do
+          for t in test_sync_repair_ledger test_sync_stream_guard test_dma_progress; do
             cc -O2 -std=c11 -Wall -Wextra -Werror -I../main "$t.c" -o "/tmp/$t"
             "/tmp/$t"
           done

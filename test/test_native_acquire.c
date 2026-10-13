@@ -13,7 +13,29 @@ int main(void)
         assert(arc_gain_tuple_decode(&table, (uint8_t)g, &t));
         assert(arc_gain_from_pbus(&table, t.rf_code, t.bb_code, 0xd0u | t.fine_code, &actual));
         assert(actual == g);
+        for (unsigned prefix = 0; prefix <= 0x100u; prefix += 0x100u) {
+            uint32_t packed = 0;
+            assert(native_acquire_pack_pbus(t.rf_code, t.bb_code | prefix,
+                0xd0u | t.fine_code, prefix, &packed));
+            assert(packed == t.packed_state);
+            assert(arc_gain_from_pbus(&table, packed >> 12, (packed >> 4) & 127u,
+                0xd0u | (packed & 7u), &actual) && actual == g);
+        }
     }
+    for (unsigned prefix = 0; prefix <= 0x100u; prefix += 0x100u)
+        for (unsigned bb = 0; bb < 1024u; ++bb) {
+            uint32_t packed = 0xdeadbeef;
+            bool valid = native_acquire_pack_pbus(0x1e7, bb, 0xd0, prefix, &packed);
+            assert(valid == ((bb & ~127u) == prefix));
+            assert(packed == (valid ? 0x1e7000u | ((bb & 127u) << 4) : 0xdeadbeef));
+        }
+    uint32_t packed = 0;
+    assert(native_acquire_pack_pbus(0x1e7, 0x17f, 0xd0, 0x100, &packed));
+    assert(packed == 0x1e77f0); /* actual G83 BW40 board readback */
+    assert(!native_acquire_pack_pbus(512, 0x17f, 0xd0, 0x100, &packed));
+    assert(!native_acquire_pack_pbus(0x1e7, 0x17f, 0x1d0, 0x100, &packed));
+    assert(!native_acquire_pack_pbus(0x1e7, 0x17f, 0xd0, 0x180, &packed));
+    assert(!native_acquire_pack_pbus(0x1e7, 0x17f, 0xd0, 0x100, NULL));
     uint8_t actual = 255;
     assert(!arc_gain_from_pbus(&table, 511, 3, 0xd0, &actual));
     assert(!arc_gain_from_pbus(&table, 24, 7, 0, &actual));
@@ -45,6 +67,6 @@ int main(void)
     assert(native_acquire_observe(&a, 5, false, true, 40) == NATIVE_WAIT);
     assert(native_acquire_observe(&a, 6, false, true, 40) == NATIVE_WAIT);
     assert(native_acquire_observe(&a, 7, false, true, 40) == NATIVE_LANDING);
-    puts("PASS: all 84 PBUS gains, invalid/ambiguous tuples, native start/landing/timeout/gap/restart");
+    puts("PASS: all 84 gains in both PBUS contexts, malformed/context-mismatch tuples, native start/landing/timeout/gap/restart");
     return 0;
 }
