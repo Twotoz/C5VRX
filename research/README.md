@@ -1,5 +1,14 @@
 # Where can C5VRX-5 firmware still gain range?
 
+Follow-up after PR #211/main `14e190d9`: [firmware range audit](../docs/FIRMWARE_RANGE_AUDIT.md)
+(PR #212). Actual-C policy export, 1414 synthetic scenes, four-seed physical
+ADC offset/filter comparisons and 40 actual-C eligibility summaries expose
+avoidable configuration losses and preserve negative results. Reproduced
+B/W AFC, fade history, phase-gated gain/profile and DMA-tail copy defects
+have bounded fixes. Issue #213 gets a manual live-only restart A/B; a
+seamless sync keeper and physical range/LCD improvements remain unvalidated.
+The older studies below retain their original assumptions and results.
+
 Simulation study, 2026-10-11. `sim.py` models the whole C5VRX-5 chain with
 the **bit-exact U85Q LUT** (two LUT16 lookups per 50 ns, `u85q.bsasm`), the
 C5 analog channel (5th-order, ~20 MHz), unfiltered 80 -> 40 MS/s decimation,

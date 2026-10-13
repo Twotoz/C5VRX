@@ -253,6 +253,15 @@ static void command(int c, unsigned *menu_idle)
         return;
     }
     switch (c) {
+    case 'B': {
+        const bool owned = !receiver_paused() && !s_scan_active && !s_menu_active &&
+                           phy_try_actuator(phy_generation());
+        bool ok = owned && transport_bench_restart();
+        if (owned) phy_end_actuator();
+        printf("LCD_AB request=live_only result=%s wait_ms=%lu\n", ok ? "applied" : "refused_or_failed",
+               (unsigned long)transport_switch_wait_ms());
+        break;
+    }
     case 'o': if (s_menu_active) menu_close(); else if (menu_open()) s_menu_cursor = 0; break;
     case 'e': menu_close(); break;  /* idempotent web-menu EXIT */
     case 'v': cycle_video_standard(); break;
@@ -430,13 +439,13 @@ static void control_task(void *arg)
         if (valid) { s_last_video_us = now; standard_vote(r.standard); profile_observe(&r); }
         bool was = s_afc_locked;
         if (copied) s_afc_locked = afc2_native_lock(s_afc_locked, valid, afc2_ctrl_can_lock(&afc, true), afc.n, &afc_lost);
-        if (was && !s_afc_locked) afc2_ctrl_reset(&afc, ctx, true);
+        if (was && !s_afc_locked) afc2_ctrl_reacquire(&afc);
         /* Re-acquisition retunes only on a strong carrier: at the range edge
          * the porch estimate is pulled toward the receiver centre and would
          * walk the offset the wrong way (cn_estimate.h, afc_bias.py). A weak
          * window still feeds the estimate history, it just cannot step. */
         const int cn_x10 = receiver_obs_cn_x10();
-        if (!s_afc_locked && window_ok && m.q_phase >= 55 && !s_menu_active &&
+        if (!s_afc_locked && valid && !s_menu_active &&
             phy_try_actuator(phy_generation())) {
             int32_t step = 0;
             const bool strong = receiver_obs_cn_x10() >= AFC_MIN_CN_X10;   /* envelope C/N model */
@@ -529,6 +538,13 @@ void control_start(void)
     else s_saved_kp_auto = s_kp_auto; /* an explicitly saved OFF wins */
     s_commands = xQueueCreate(16, sizeof(int));
     ESP_ERROR_CHECK(s_commands ? ESP_OK : ESP_ERR_NO_MEM);
+    /* The static zero-initialized ladder skipped its first reset because
+     * the transport was already active. That left the adaptive LP hold at
+     * zero on a normal boot (board log after PR 211). */
+    kp_ladder_reset(&s_kp);
+    const int actual = transport_kp_level();
+    if (actual >= 0) s_kp.level = (uint8_t)actual;
+    s_kp.lp = transport_lp();
     ESP_ERROR_CHECK(xTaskCreate(control_task, "control", 6144, NULL, 3, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
 }
 

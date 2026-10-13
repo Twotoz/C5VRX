@@ -23,6 +23,7 @@
 #include "hal/parlio_ll.h"
 #include "kp_tables.h"
 #include "snapshot.h"
+#include "control_window.h"
 #include "soc/ahb_dma_struct.h"
 #include "soc/bitscrambler_struct.h"
 #include "soc/parl_io_struct.h"
@@ -61,12 +62,17 @@ static unsigned s_output, s_verified_output, s_output_clipped;
 static int s_verified_level;
 static bool s_verified_lp, s_have_verified;
 static uint32_t s_restart_errors, s_rollbacks, s_rollback_fail;
+static uint32_t s_bench_restarts, s_bench_restart_fail, s_bench_restart_us;
 #define LIVE_TX_NODES ((RAW_RING_BYTES + 4091u) / 4092u)
 DMA_ATTR __attribute__((aligned(64))) static dma_descriptor_t s_live_tx_nodes[LIVE_TX_NODES];
 int s_rx_dma_ch = -1, s_tx_dma_ch = -1;
 ring_node_t s_rx_nodes[MAX_RING_DESCRIPTORS];
 int s_rx_node_count;
 static uint32_t s_tx_empty, s_rx_overflow, s_dma_faults, s_bs_overload;
+static struct {
+    uint32_t calls, not_ready, source_invalid, pointer_invalid, lapped, timed_out;
+    uint32_t max_us, max_advance;
+} s_control_copy;
 
 void sync_dma_c2m(const void *addr, size_t size)
 {
@@ -644,6 +650,24 @@ void transport_resume_live(void)
     kp_switch_mark(&s_switch_guard, esp_timer_get_time());
 }
 
+/* Manual bench A/B only: no synthetic raster, no settings changes. The
+ * control task serializes this with menu/program actions and holds the PHY
+ * actuator lock. Reuse the verified restart, rollback and shared cooldown. */
+bool transport_bench_restart(void)
+{
+    int64_t began = esp_timer_get_time();
+    if (s_menu_active || !s_started || !s_have_verified || !s_lut_known ||
+        s_transport_fault || !kp_switch_ready(&s_switch_guard, began)) return false;
+    ++s_bench_restarts;
+    bool ok = resume_live(s_lut_live);
+    int64_t finished = esp_timer_get_time();
+    kp_switch_mark(&s_switch_guard, finished);
+    s_bench_restart_us = (uint32_t)(finished - began);
+    if (!ok) ++s_bench_restart_fail;
+    ++s_control_epoch;
+    return ok;
+}
+
 void transport_poll_faults(void)
 {
     if (PARL_IO.int_raw.tx_fifo_rempty_int_raw) { ++s_tx_empty; PARL_IO.int_clr.tx_fifo_rempty_int_clr = 1; }
@@ -669,6 +693,9 @@ uint32_t transport_fault_count(void)
 
 void transport_print(void)
 {
+    printf("LCD_AB live_restarts=%lu failed=%lu last_us=%lu\n",
+           (unsigned long)s_bench_restarts, (unsigned long)s_bench_restart_fail,
+           (unsigned long)s_bench_restart_us);
     printf("OUTPUT level=%s boot_default=1.0x clipped_lut_entries=%u recovery_errors=%lu rollbacks=%lu "
            "rollback_fail=%lu fault_latched=%u live=%u\n", transport_output_name(), s_output_clipped,
            (unsigned long)s_restart_errors, (unsigned long)s_rollbacks, (unsigned long)s_rollback_fail,
@@ -683,6 +710,12 @@ void transport_print(void)
            (unsigned long)transport_switch_wait_ms(), (unsigned long)s_kp_switches, (unsigned long)s_kp_restart_fail, (unsigned long)s_kp_restart_us,
            (unsigned long)s_prog_verify_fail,
            (unsigned long)s_prog_restart_fail, (unsigned long)s_prog_restart_us);
+    printf("CONTROL_COPY calls=%lu not_ready=%lu source_invalid=%lu pointer_invalid=%lu "
+           "lapped=%lu timed_out=%lu max_us=%lu max_advance=%lu\n",
+           (unsigned long)s_control_copy.calls, (unsigned long)s_control_copy.not_ready,
+           (unsigned long)s_control_copy.source_invalid, (unsigned long)s_control_copy.pointer_invalid,
+           (unsigned long)s_control_copy.lapped, (unsigned long)s_control_copy.timed_out,
+           (unsigned long)s_control_copy.max_us, (unsigned long)s_control_copy.max_advance);
 }
 
 int ring_node_index(uint32_t addr)
@@ -694,10 +727,19 @@ int ring_node_index(uint32_t addr)
 
 static uint32_t rx_active_addr(void) { return AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val; }
 
+static bool completed_plan(int active, size_t need, control_copy_plan_t *out)
+{
+    if (active < 0 || s_rx_node_count > MAX_RING_DESCRIPTORS) return false;
+    size_t lengths[MAX_RING_DESCRIPTORS];
+    for (int k = 0; k < s_rx_node_count; ++k) lengths[k] = s_rx_nodes[k].length;
+    return control_copy_plan(lengths, (unsigned)s_rx_node_count, (unsigned)active, need, out);
+}
+
 /* The newest completed descriptor, copied and proven not lapped. */
 bool copy_control_window(uint8_t *dst, size_t bytes)
 {
-    if (s_rx_dma_ch < 0 || s_rx_node_count < 3) return false;
+    ++s_control_copy.calls;
+    if (s_rx_dma_ch < 0 || s_rx_node_count < 3) { ++s_control_copy.not_ready; return false; }
     /* The control task (priority 3) was preempted mid-copy by the gain
      * observer (same priority, up to ~0.5 ms per window) and the sentinel
      * (4) often enough that 30-44 % of control windows failed the overrun
@@ -707,10 +749,21 @@ bool copy_control_window(uint8_t *dst, size_t bytes)
     vTaskSuspendAll();
     int64_t start = esp_timer_get_time();
     int active = ring_node_index(rx_active_addr());
-    int idx = active < 0 ? -1 : (active - 1 + s_rx_node_count) % s_rx_node_count;
-    uint8_t *src = idx < 0 ? NULL : s_rx_nodes[idx].buffer;
-    if (!src || s_rx_nodes[idx].length < bytes || src < s_raw_ring ||
+    if (active < 0) {
+        ++s_control_copy.pointer_invalid;
+        (void)xTaskResumeAll();
+        return false;
+    }
+    control_copy_plan_t plan;
+    if (!completed_plan(active, bytes, &plan)) {
+        ++s_control_copy.source_invalid;
+        (void)xTaskResumeAll();
+        return false;
+    }
+    uint8_t *src = s_rx_nodes[plan.index].buffer;
+    if (!src || src < s_raw_ring ||
         src + bytes > s_raw_ring + sizeof(s_raw_ring)) {
+        ++s_control_copy.source_invalid;
         (void)xTaskResumeAll();
         return false;
     }
@@ -719,12 +772,14 @@ bool copy_control_window(uint8_t *dst, size_t bytes)
     int after = ring_node_index(rx_active_addr());
     const int64_t took = esp_timer_get_time() - start;
     (void)xTaskResumeAll();
-    uint64_t safe_bytes = 0;
-    for (int k = 0; k < s_rx_node_count; ++k)
-        if (k != active && k != idx) safe_bytes += s_rx_nodes[k].length;
+    if ((uint64_t)took > s_control_copy.max_us) s_control_copy.max_us = (uint32_t)took;
     int advance = after < 0 ? s_rx_node_count : (after - active + s_rx_node_count) % s_rx_node_count;
-    return after >= 0 && after != idx && advance < s_rx_node_count - 1 &&
-           (uint64_t)took < safe_bytes * 1000000ULL / IQ_RATE_HZ;
+    if (after < 0) { ++s_control_copy.pointer_invalid; return false; }
+    if ((uint32_t)advance > s_control_copy.max_advance) s_control_copy.max_advance = (uint32_t)advance;
+    if ((unsigned)advance >= plan.distance) { ++s_control_copy.lapped; return false; }
+    if (!control_copy_current(&plan, (unsigned)s_rx_node_count, (unsigned)active, (unsigned)after,
+                              (uint64_t)took, IQ_RATE_HZ)) { ++s_control_copy.timed_out; return false; }
+    return true;
 }
 
 /* Four separated 64-byte regions of the newest completed descriptor. */
@@ -735,17 +790,37 @@ bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node)
     int64_t start = esp_timer_get_time();
     int active = ring_node_index(rx_active_addr());
     if (active < 0) return false;
-    int idx = (active - 1 + s_rx_node_count) % s_rx_node_count;
-    uint8_t *src = s_rx_nodes[idx].buffer;
-    if (!src || s_rx_nodes[idx].length < CONTROL_BYTES || src < s_raw_ring ||
+    control_copy_plan_t plan;
+    if (!completed_plan(active, CONTROL_BYTES, &plan)) return false;
+    uint8_t *src = s_rx_nodes[plan.index].buffer;
+    if (!src || src < s_raw_ring ||
         src + CONTROL_BYTES > s_raw_ring + sizeof(s_raw_ring)) return false;
     for (unsigned r = 0; r < PROBE_REGIONS; ++r) {
         sync_dma_m2c(src + offset[r], PROBE_REGION_BYTES);
         memcpy(dst + r * PROBE_REGION_BYTES, src + offset[r], PROBE_REGION_BYTES);
     }
-    if (esp_timer_get_time() - start > 300) return false;
-    if (node) *node = idx;
-    return ring_node_index(rx_active_addr()) != idx;
+    const uint64_t took = (uint64_t)(esp_timer_get_time() - start);
+    const int after = ring_node_index(rx_active_addr());
+    if (took > 300 || after < 0 || !control_copy_current(&plan, (unsigned)s_rx_node_count,
+        (unsigned)active, (unsigned)after, took, IQ_RATE_HZ)) return false;
+    if (node) *node = (int)plan.index;
+    return true;
+}
+
+bool copy_sentinel_window(uint8_t dst[64])
+{
+    if (s_rx_dma_ch < 0 || s_rx_node_count < 3) return false;
+    const int64_t start = esp_timer_get_time();
+    const int active = ring_node_index(rx_active_addr());
+    control_copy_plan_t plan;
+    if (!completed_plan(active, 1984u + 64u, &plan)) return false;
+    uint8_t *src = s_rx_nodes[plan.index].buffer;
+    if (!src || src < s_raw_ring || src + 2048u > s_raw_ring + sizeof(s_raw_ring)) return false;
+    sync_dma_m2c(src + 1984u, 64u);
+    memcpy(dst, src + 1984u, 64u);
+    const int after = ring_node_index(rx_active_addr());
+    return after >= 0 && control_copy_current(&plan, (unsigned)s_rx_node_count,
+        (unsigned)active, (unsigned)after, (uint64_t)(esp_timer_get_time() - start), IQ_RATE_HZ);
 }
 
 /* 8190 contiguous bytes (204.75 us) ending where the active descriptor

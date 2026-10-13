@@ -167,6 +167,16 @@ Repeat each comparison A/B/A (or ABBA) so that drift and fading average out.
 
 ## Reading the result
 
+### LCD No Signal recovery (issue #213)
+
+On the ground, PR #212's `B` restarts only verified live transport without
+OSD or configuration changes. Compare with brief OSD on/off and LCD input
+reset, each from an independently reproduced failure. Save `T/D` before and
+after, including `LCD_AB`, faults/rollback and OUTPUT. Scope H/V and
+sync/porch/white into the actual 75-ohm load. Record display, VTX/camera,
+PAL/NTSC and output level. The command interrupts video, shares the five-second
+cooldown and refuses busy/faulted states. See [the full audit](FIRMWARE_RANGE_AUDIT.md).
+
 - **Height or position changes the picture** → possible spatial propagation or antenna effect. Fix placement; long term, use antenna
   diversity.
 - **Same loss in the conducted test, independent of height** → receiver

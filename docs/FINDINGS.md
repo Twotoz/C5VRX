@@ -640,3 +640,40 @@ depended on C/N window availability.
 These are simulation-derived decision estimates, not independently measured
 RF C/N. After flashing, compare VTX-off and close-VTX logs, kp selection,
 `afc_locked`, and `obs_us_max` to check the added observer cost on the C5.
+
+### Deep firmware range audit after PR #211 (2026-10-13, PR #212)
+
+Full reproduction, assumptions, figures and negative results:
+`docs/FIRMWARE_RANGE_AUDIT.md`. Main baseline `14e190d9` / v5.0.109.
+
+- The B/W AFC line-period fallback was unreachable: pass two dropped
+  no-burst runs. Raw-IQ regression fails 9/19 baseline checks, passes 19/19
+  after retaining shape-confirmed runs with timed polarity evidence.
+- Four misses dropped native lock and fully reset AFC before its 20-miss
+  grace. Reacquire now preserves measurement/sign history; fresh valid sync
+  and strong C/N are mandatory for any correction.
+- Gain HOLD/profile/carrier-DC phase-coherence gates rejected clean fast FM.
+  Retain amplitude/clip, settled gain, actual sync/deviation/envelope gates;
+  remove the waveform-dependent veto. Strong deviation-2.0 probe eligibility
+  at 12 MHz rises from 28-32% to about 85% in actual-C synthetic probes.
+  Remaining filter-AM envelope C/N bias is recorded, not assumed fixed.
+- Short 32-byte RX tail could never supply a full control window. New
+  descriptor selection and exact pointer/time proofs cover control,
+  observer and sentinel. `CONTROL_COPY` separates remaining failure causes.
+- Initialize LP's adaptive hold on boot; skip unused envelope moments in
+  sentinel. Hardware copy rates/observer timing remain to be measured.
+- Four-seed physical-ADC model: deviation 1.0 residual offset +/-1.5 MHz
+  costs 3.0-4.8 dB in the synthetic threshold. Deviation 2.0 normal-12 versus
+  wide-16 MHz at actual LP targets costs about 3 dB. Do not add overlapping
+  losses or treat these as measured sensitivity/distance improvement.
+  Deviation-1.7 apparent filter benefit did not survive held-out tests;
+  simply increasing ADC level is not a large robust win.
+- Issue #213: `B` is manual unchanged live-only restart, without OSD, using
+  guarded verified restart/rollback and shared cooldown. Compare OSD/live
+  restart/LCD reset and scope loaded CVBS. No automatic NO SIGNAL raster:
+  current architecture lacks demonstrated gapless camera-aligned handoff.
+- Issues #199/#200 closed against merged fixes and recorded board success.
+  #201/#213 remain open for actual RF/luma/display and LCD validation.
+
+15 host C test executables, five diagnostic-log tests and warning-free IDF
+6.0.2 build pass. New code has not been flashed; COM10 is currently absent.

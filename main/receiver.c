@@ -11,7 +11,6 @@
 #include "phase8_gain_lut.h"
 #include "phy.h"
 #include "rf.h"
-#include "soc/ahb_dma_struct.h"
 
 direct_gain_t s_gain;
 volatile uint8_t s_current_gain = 62u;
@@ -109,16 +108,8 @@ static void sentinel_task(void *arg)
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         if (!receiver_active() || s_overload_state || s_rx_dma_ch < 0 || s_rx_node_count < 2) continue;
         uint32_t gain_epoch = s_gain_epoch, control = s_control_epoch, phy = phy_generation();
-        int active = ring_node_index(AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val);
-        if (active < 0) continue;
-        int idx = (active - 1 + s_rx_node_count) % s_rx_node_count;
-        uint8_t *src = s_rx_nodes[idx].buffer;
-        if (!src || s_rx_nodes[idx].length < CONTROL_BYTES) continue;
-        sync_dma_m2c(src + 1984u, sizeof(sample));
-        memcpy(sample, src + 1984u, sizeof(sample));
-        if (ring_node_index(AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val) == idx ||
-            gain_epoch != s_gain_epoch) continue;
-        dg_observation_t o = dg_measure(sample, sizeof(sample), c5vrx_phase8_gain_lut,
+        if (!copy_sentinel_window(sample) || gain_epoch != s_gain_epoch) continue;
+        dg_observation_t o = dg_measure_gain(sample, sizeof(sample), c5vrx_phase8_gain_lut,
                                         (uint64_t)esp_timer_get_time());
         if (o.clip_pm < 125u && o.p95 < 95u) continue;
         if (control != s_control_epoch || phy != phy_generation() || phy_busy()) continue;

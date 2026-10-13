@@ -258,7 +258,7 @@ void profile_observe(const afc2_result_t *r)
     }
     if (s_dev.result_x100 >= 0 || !r->sync_pairs || !r->porch_pairs || !s_afc_locked) return;
     ++s_observed;
-    if (s_obs_p50 < 13 || s_obs_p50 > 32 || s_obs_coherence < 80 || s_obs_clip_pm || s_gain.state != DG_HOLD) {
+    if (!dev_gain_usable(s_obs_p50, (unsigned)s_obs_clip_pm, s_gain.state == DG_HOLD)) {
         ++s_gated;
         return;
     }

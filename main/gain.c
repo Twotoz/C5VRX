@@ -64,8 +64,8 @@ static void prepare_lut(void)
     s_lut_ready = true;
 }
 
-dg_observation_t dg_measure(const uint8_t *samples, size_t bytes,
-                            const uint8_t phase8_lut[256], uint64_t observed_us)
+static dg_observation_t measure(const uint8_t *samples, size_t bytes,
+                                const uint8_t phase8_lut[256], uint64_t observed_us, bool envelope)
 {
     dg_observation_t r = {.observed_us = observed_us};
     if (!samples || !bytes || !phase8_lut) return r;
@@ -78,13 +78,15 @@ dg_observation_t dg_measure(const uint8_t *samples, size_t bytes,
     uint64_t spp = 0;
     for (size_t n = 0; n < bytes; ++n) {
         uint8_t raw = samples[n], power = s_power[raw];
-        const int x = 2 * ((int8_t)(raw & 240u) >> 4) + 1;
-        const int y = 2 * ((int8_t)((raw & 15u) << 4) >> 4) + 1;
-        const int p = x * x + y * y;
-        sx += x; sy += y;
-        sxx += x * x; syy += y * y; sxy += x * y;
-        sxp += x * p; syp += y * p;
-        spp += (unsigned)(p * p);
+        if (envelope) {
+            const int x = 2 * ((int8_t)(raw & 240u) >> 4) + 1;
+            const int y = 2 * ((int8_t)((raw & 15u) << 4) >> 4) + 1;
+            const int p = x * x + y * y;
+            sx += x; sy += y;
+            sxx += x * x; syy += y * y; sxy += x * y;
+            sxp += x * p; syp += y * p;
+            spp += (unsigned)(p * p);
+        }
         ++hist[power];
         origin += s_flags[raw] & 1u;
         clip += (s_flags[raw] >> 1) & 1u;
@@ -120,20 +122,34 @@ dg_observation_t dg_measure(const uint8_t *samples, size_t bytes,
     /* Envelope C/N: integer raw moments in the existing sample loop, then
      * translate the moments to the window's DC centre once per probe.
      * No per-sample floating point or extra passes in the fast observer. */
-    const double inv = 1.0 / (double)bytes;
-    const double mx = (double)sx * inv, my = (double)sy * inv;
-    const double dc2 = mx * mx + my * my;
-    const double mp_raw = (double)(sxx + syy) * inv;
-    const double mp = mp_raw - dc2;
-    const double mp2 = (double)spp * inv - 4.0 * (mx * (double)sxp + my * (double)syp) * inv
+    if (envelope) {
+        const double inv = 1.0 / (double)bytes;
+        const double mx = (double)sx * inv, my = (double)sy * inv;
+        const double dc2 = mx * mx + my * my;
+        const double mp_raw = (double)(sxx + syy) * inv;
+        const double mp = mp_raw - dc2;
+        const double mp2 = (double)spp * inv - 4.0 * (mx * (double)sxp + my * (double)syp) * inv
                     + 4.0 * (mx * mx * (double)sxx + 2.0 * mx * my * (double)sxy + my * my * (double)syy) * inv
                     + 2.0 * dc2 * mp_raw - 3.0 * dc2 * dc2;
-    const double var = mp2 - mp * mp;
-    const double ratio = mp <= 0.0 ? 0.0 : var > 0.0 ? 100.0 * mp * mp / var : 65535.0;
-    r.env_ratio_x100 = (uint16_t)(ratio > 65535.0 ? 65535.0 : ratio + .5);
+        const double var = mp2 - mp * mp;
+        const double ratio = mp <= 0.0 ? 0.0 : var > 0.0 ? 100.0 * mp * mp / var : 65535.0;
+        r.env_ratio_x100 = (uint16_t)(ratio > 65535.0 ? 65535.0 : ratio + .5);
+    }
     int span = i_max - i_min > q_max - q_min ? i_max - i_min : q_max - q_min;
     r.span = (uint8_t)(span < 0 ? 0 : span);
     return r;
+}
+
+dg_observation_t dg_measure(const uint8_t *samples, size_t bytes,
+                            const uint8_t phase8_lut[256], uint64_t observed_us)
+{
+    return measure(samples, bytes, phase8_lut, observed_us, true);
+}
+
+dg_observation_t dg_measure_gain(const uint8_t *samples, size_t bytes,
+                                 const uint8_t phase8_lut[256], uint64_t observed_us)
+{
+    return measure(samples, bytes, phase8_lut, observed_us, false);
 }
 
 static dg_transition_t transition_kind(const direct_gain_t *g, uint8_t from, uint8_t to)
@@ -165,7 +181,11 @@ static bool carrier(const dg_observation_t *o)
 
 static bool healthy(const dg_observation_t *o)
 {
-    return carrier(o) && o->p50 >= BAND_LO && o->p50 <= BAND_HI &&
+    /* Gain health is envelope placement, not FM phase-step speed. The
+     * old coherence gate could leave a clean fast-FM carrier in ACQUIRE/
+     * VERIFY forever and block profile/DC work that requires DG_HOLD.
+     * Learning keeps its separate confirmed-carrier safeguards. */
+    return o->p50 >= BAND_LO && o->p50 <= BAND_HI &&
            o->p95 <= BAND_P95 && o->clip_pm < BAND_CLIP_PM && o->origin_pm <= 250;
 }
 

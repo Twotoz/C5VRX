@@ -111,5 +111,8 @@ bool dg_import_map(direct_gain_t *g, const dg_map_blob_t *blob);
 bool dg_import_preset(direct_gain_t *g, const uint16_t *power_q10, unsigned count, uint8_t max_index, uint8_t band5);
 dg_observation_t dg_measure(const uint8_t *samples, size_t bytes,
                             const uint8_t phase8_lut[256], uint64_t observed_us);
+/* Same gain evidence, without unused envelope/C/N work for the sentinel. */
+dg_observation_t dg_measure_gain(const uint8_t *samples, size_t bytes,
+                                 const uint8_t phase8_lut[256], uint64_t observed_us);
 uint8_t dg_tick(direct_gain_t *g, const dg_observation_t *o);
 void dg_sync_applied(direct_gain_t *g, uint8_t gain, uint64_t write_us);

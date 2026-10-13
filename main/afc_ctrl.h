@@ -131,6 +131,15 @@ static inline void afc2_ctrl_miss(afc2_ctrl_t *c)
     if (++c->misses > AFC2_CTRL_MAX_MISSES) afc2_ctrl_invalidate(c);
 }
 
+/* Loss of sync re-arms corrections, not measurement history. Four missing
+ * windows can drop the lock before the 20-window missing-evidence limit;
+ * clearing the history here defeated that limit after every short fade. */
+static inline void afc2_ctrl_reacquire(afc2_ctrl_t *c)
+{
+    c->corrections = 0;
+    c->since_correction = 0;
+}
+
 static inline void afc2_ctrl_observe(afc2_ctrl_t *c, const afc2_result_t *r)
 {
     if (c->since_correction < 0xffffu) ++c->since_correction;

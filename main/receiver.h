@@ -58,6 +58,7 @@ extern int s_rx_node_count;
 esp_err_t transport_start(void);
 void transport_stop_tx(void);
 void transport_resume_live(void);
+bool transport_bench_restart(void); /* issue #213: live-only, unchanged verified configuration */
 void transport_start_chain(dma_descriptor_t *first);
 /* One tracker topology (U85Q / U85Q-LP); a profile only picks the filter
  * and the kp level the pipeline starts from (kp_tables.h). */
@@ -86,6 +87,7 @@ int ring_node_index(uint32_t addr);
 /* Copies that RX cannot have overwritten (false = stale, retry). */
 bool copy_control_window(uint8_t *dst, size_t bytes);
 bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node);
+bool copy_sentinel_window(uint8_t dst[64]);
 bool copy_snapshot(uint8_t *dst);
 bool copy_recent_endpoints(uint8_t *dst, size_t n);
 void rx_clock_slip(uint32_t us);

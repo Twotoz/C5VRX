@@ -763,7 +763,7 @@ static bool dco_carrier_search(bool manual)
 {
     const uint8_t g = s_current_gain;
     if (!manual && g <= ARC_VENDOR_GAIN_MAX && s_dco.e[g].valid == DCO_ROW_OK) return false;
-    if (s_gain.state != DG_HOLD || g < s_dco.lo || g > s_dco.hi || s_obs_coherence < 80 || s_obs_clip_pm) return false;
+    if (s_gain.state != DG_HOLD || g < s_dco.lo || g > s_dco.hi || s_obs_clip_pm) return false;
     window_stats_t w;
     if (!collect(16, &w) || !w.dc_circle || w.envelope_x100 < DCO_CARRIER_RATIO_X100) return false;
     if (!receiver_pause("DCO_CARRIER")) return false;

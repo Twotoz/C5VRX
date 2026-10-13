@@ -622,6 +622,19 @@ and host tests; board check pending.
 
 ### Instructions for future pipeline work
 
+PR #212 after main `14e190d9`: `docs/FIRMWARE_RANGE_AUDIT.md`, actual-C
+`research/range_policy.c`, 1414 scene/40 gate evidence rows. Reproduced B/W
+AFC prefilter rejection, lost-lock reset bypassing missed-window grace,
+picture-dependent gain/profile gates, short RX-tail copy selection, zero
+initial LP hold and unnecessary sentinel envelope work. Fixes preserve
+hardware streaming and verified restart. Four-seed physical-ADC comparisons
+show several-dB offset/filter mismatch losses; the apparent deviation-1.7
+filter benefit did not survive held-out tests. No measured RF range claim.
+Issue #213 `B` is a manual unchanged live-only restart A/B, not automatic
+keep-alive. OSD supplies sync AND resets transport; loaded CVBS/affected-LCD
+recovery remain unvalidated. Do not synthesize NO SIGNAL from AFC loss alone
+or claim seamless camera-aligned raster handoff.
+
 IQLaneFusion research extends U85 and the older adaptive-lane/history work:
 `docs/IQLANE_FUSION.md`, `research/iq_lane_fusion.py`. Exact Q10 cell
 likelihoods, mathematical bitset/gain screening, factorized phase/frequency

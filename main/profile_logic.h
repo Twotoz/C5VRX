@@ -122,6 +122,13 @@ static inline int profile_base_level_for(int p) { return (85 - profile_base_kp_x
 #define DEV_MONITOR_PERIOD_US    30000000LL
 #define DEV_MONITOR_TIMEOUT_US   120000000LL
 #define DEV_MONITOR_MIN_CN_X10   80          /* 8 dB: 2 dB above the AFC retune gate */
+/* Phase-step coherence is waveform-dependent, even for a clean constant-
+ * envelope carrier. Envelope C/N supplies the separate noise-quality gate;
+ * keep the actual gain/clip gates without reintroducing coherence here. */
+static inline bool dev_gain_usable(int p50, unsigned clip_pm, bool held)
+{
+    return held && p50 >= 13 && p50 <= 32 && clip_pm == 0;
+}
 #define DEV_STORE_DELTA_X100     3           /* NVS: ignore smaller changes ... */
 #define DEV_STORE_GAP_US         300000000LL /* ... and rewrite at most every 5 min */
 
