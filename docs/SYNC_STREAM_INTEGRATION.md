@@ -35,6 +35,22 @@ is the **end** of its current descriptor plus a verified bound for bytes
 already prefetched into GDMA/BitScrambler/PARLIO. The host's 512-byte guard
 is an assumption; declaring it constant does not prove it.
 
+The pinned IDF's ESP32-C5 `soc/ahb_dma_struct.h` does explicitly document
+`in_dscr_bf0` as current RX descriptor x already fetched, `out_dscr_bf0` as
+current TX descriptor y already fetched, and `out_dscr` as the next y+1.
+Its RX/TX L1 FIFO count fields are seven-bit **byte** counts. This supports
+the descriptor interpretation, but does not by itself bound the entire
+prefetch path, queued input, outstanding burst or register-sampling skew.
+`soc/parl_io_struct.h` also exposes 19-bit RX FIFO written/read bit counters
+and a TX FIFO read bit counter. They can help measure backlog/actual lag,
+after confirming reset/wrap semantics on the continuous root stream.
+The current public [ESP32-C5 Technical Reference Manual](https://documentation.espressif.com/esp32-c5_technical_reference_manual_en.pdf)
+download identifies itself as Version 1.1. Chapters 5, 43 and 44 document the
+GDMA, PARLIO and BitScrambler architectures, but the inspected architecture
+sections do not establish a complete 512-byte prefetch bound. A seven-bit
+L1 FIFO count alone is insufficient to establish all downstream/in-flight
+buffering. No hardware size is inferred from that count's bit width here.
+
 Use actual descriptor addresses and validated buffer/length/next pointers
 to unwrap independent monotonically increasing absolute RX/TX coordinates.
 Require the observed producer to be ahead of consumer by less than one ring
@@ -52,8 +68,14 @@ At a sampled instant, let:
 - `C` be the beginning of the protected newest completed long observer node;
 - `delta` be a conservative advance for the entire admitted CPU section.
 
+Use the timestamp of the **first** RX/TX register read. Individual registers
+are read sequentially; using a timestamp after the final read would hide
+movement between those observations. Include elapsed acquisition/lease time
+in the snapshot age. Establish the lease before selecting source/frontiers,
+and revalidate generation under it before the final admitted commit.
+
 An admitted write [a,b) must satisfy `a >= Thi + delta`, `b <= C`, and
-`a >= Rhi + delta - ring_bytes`; its detection inputs must be original,
+`a >= Rhi + delta + rx_backlog - ring_bytes`; its detection inputs must be original,
 complete and not overwritten. Include cache-line maintenance overlap in
 these bounds. A preflight check is needed **before** stores: discovering
 afterward that TX crossed a partial write cannot undo transmitted corruption.
@@ -67,6 +89,16 @@ consumer bounds. `test/test_sync_stream_guard.c` passes adversarial tail,
 lap, observer, stale-source and uint64 multiplication-overflow cases. The
 caller must still supply **proved** inputs; a configured number is not WCET.
 
+The guard now explicitly requires a proved RX burst/backlog bound as well as
+TX prefetch. A queued RX FIFO can drain into RAM faster than the 40-MS/s input
+cadence, particularly across the 32-byte tail. `rate * elapsed` alone misses
+that advance. Its `rx_backlog_bytes` reserve must cover pending/in-flight
+bytes beyond the descriptor bound, and `rx_burst_proven=false` refuses writes.
+The synthetic 128/512-byte test reserves are not claimed hardware capacities.
+Added 60000 adversarial fixtures independently recompute accepted cache-line
+and source lifetimes with 128-bit arithmetic; all 832 accepted intervals
+obeyed the worst-position constraints. Near-uint64 overflow is refused.
+
 Prefer a two-stage whole-pulse commit: synthesize into an owned <=1280-byte
 scratch area outside the critical section, then acquire exclusive raw
 ownership, take fresh hardware frontiers, revalidate context/source lifetime
@@ -76,6 +108,14 @@ absolute samples have not been overwritten or changed by another owner.
 This avoids a long phase-generation loop modifying DMA-visible bytes while
 preemptible. It requires a separate emitter/planner API; pointing the existing
 ring function at a small scratch buffer does not preserve its indexing contract.
+
+Before a partial scratch copy, refresh/invalidate the destination's complete
+rounded cache lines from current RX memory, then perform the copy and flush.
+Flushing a dirty cache line with neighbors retained from a previous ring lap
+can otherwise overwrite genuine adjacent IQ that the patch/ledger never
+intended to modify. Both M2C refresh and C2M completion belong in the admitted
+time/lifetime interval. The actual C5 SRAM/cache policy must be verified;
+passing interval arithmetic does not establish cache coherence.
 
 Neither scheduler suspension nor a post-copy pointer check prevents interrupt
 delays from exposing a half-written pulse to TX. A genuinely short interrupt-
