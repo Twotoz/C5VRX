@@ -650,6 +650,20 @@ void transport_resume_live(void)
     kp_switch_mark(&s_switch_guard, esp_timer_get_time());
 }
 
+/* RX stayed active while the loss raster owned TX. Load the ladder's latest
+ * target in the required exit restart, rather than briefly restoring an old
+ * non-LP program then waiting five seconds for another restart. Publish only
+ * after the usual full verification; rollback restores the verified target. */
+bool transport_resume_raster(int level, bool lp)
+{
+    if (!no_signal_active() || s_started || s_transport_fault || level < 0 || level >= KP_LEVELS)
+        return false;
+    s_prog_lp = lp;
+    bool ok = resume_live(kp_tables[level]);
+    kp_switch_mark(&s_switch_guard, esp_timer_get_time());
+    return ok;
+}
+
 /* Manual bench A/B only: no synthetic raster, no settings changes. The
  * control task serializes this with menu/program actions and holds the PHY
  * actuator lock. Reuse the verified restart, rollback and shared cooldown. */

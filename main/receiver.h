@@ -59,6 +59,7 @@ esp_err_t transport_start(void);
 void transport_stop_tx(void);
 void transport_resume_live(void);
 bool transport_bench_restart(void); /* issue #213: live-only, unchanged verified configuration */
+bool transport_resume_raster(int level, bool lp); /* confirmed ladder target at raster exit */
 void transport_start_chain(dma_descriptor_t *first);
 /* One tracker topology (U85Q / U85Q-LP); a profile only picks the filter
  * and the kp level the pipeline starts from (kp_tables.h). */
@@ -173,7 +174,7 @@ void status_screen_end(void);
 bool menu_status_active(void);
 bool no_signal_active(void);
 bool no_signal_show(void);
-bool no_signal_end(void);
+bool no_signal_end(int level, bool lp);
 
 /* ---- profile.c ---- */
 #include "afc.h"

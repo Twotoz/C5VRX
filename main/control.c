@@ -450,7 +450,9 @@ static void control_task(void *arg)
                                              display_sync, (uint64_t)now, no_signal_active());
         if (display_eligible && now >= raster_retry_us && want_raster != no_signal_active() &&
             phy_try_actuator(phy_generation())) {
-            bool ok = want_raster ? no_signal_show() : no_signal_end();
+            int level = s_kp_auto ? (int)s_kp.level : transport_kp_target();
+            bool lp = s_kp_auto ? s_kp.lp : transport_lp();
+            bool ok = want_raster ? no_signal_show() : no_signal_end(level, lp);
             raster_retry_us = ok ? 0 : now + 1000000; /* no rapid allocation/restart retries */
             phy_end_actuator();
             continue; /* ownership changed; never actuate from this old snapshot */

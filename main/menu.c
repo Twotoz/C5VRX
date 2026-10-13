@@ -356,7 +356,8 @@ bool no_signal_active(void) { return s_no_signal; }
 bool no_signal_show(void)
 {
     if (s_no_signal) return true;
-    if (s_menu_active || s_status || receiver_paused() || calibration_in_startup() || transport_faulted()) return false;
+    if (s_menu_active || s_status || receiver_paused() || calibration_in_startup() || transport_faulted() ||
+        transport_kp_level() < 0 || transport_kp_target() < 0) return false;
     s_no_signal = true; /* render black active picture with NO SIGNAL */
     esp_err_t err = build_chain(menu_standard());
     if (err != ESP_OK) {
@@ -374,11 +375,11 @@ bool no_signal_show(void)
     return true;
 }
 
-bool no_signal_end(void)
+bool no_signal_end(int level, bool lp)
 {
     if (!s_no_signal) return true;
     transport_stop_chain();
-    transport_resume_live(); /* bounded verified restart, same selected output/program */
+    bool applied = transport_resume_raster(level, lp);
     s_no_signal = false;
     ++s_control_epoch; /* RX was restarted; discard pre-restart control evidence */
     /* Keep descriptors reserved for the next fade, avoiding allocation churn.
@@ -386,5 +387,5 @@ bool no_signal_end(void)
     ++s_no_signal_returns;
     printf("NO_SIGNAL active=0 standard=%s entries=%lu returns=%lu fault=%u\n", std_name(s_video_std),
            (unsigned long)s_no_signal_entries, (unsigned long)s_no_signal_returns, transport_faulted());
-    return !transport_faulted();
+    return applied;
 }
