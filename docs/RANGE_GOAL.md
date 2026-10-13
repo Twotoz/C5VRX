@@ -15,6 +15,9 @@ Distinguish simulation, firmware implementation and physical validation.
 
 - [ ] Finish observer CPU/freshness review, including gain-settling windows;
       verify build/CI and subsequently startup/IDLE behavior on the board.
+      Software guards and pinned build/CI pass. Short current-board captures
+      show ready heartbeats without watchdog output; the exact installed head
+      and a full startup/attenuation recording remain unverified.
 - [ ] Investigate gradual range loss: distinguish flat RX IQ, stopped/flat
       CVBS, gain/DC changes and the monitor muting an otherwise live waveform.
       The supplied startup log does not settle this question.
@@ -25,11 +28,18 @@ Distinguish simulation, firmware implementation and physical validation.
       Software bench implementation: `~`, nominal 20 ms, exclusive observer
       owner, PBUS tuple readback, bounded window and gain/DC rollback. Boot RF
       context only; arbitrary context and physical single-scan proof pending.
+      Actual board toggles refuse before opening, including at zero offset.
+      Diagnostic build `5f099ec` is published and checksum-verified locally;
+      explicit flash approval is pending. Direct Gain remains the actual owner.
 - [ ] Select and implement a feasible PAL/NTSC sync keeper that preserves
       actual received snow and weak picture fragments. Establish camera timing,
       horizontal/vertical holdover, source freshness and DMA safety. Compare
       alternatives before choosing; the current host IQ-mux oracle is not
       streaming firmware.
+      The tracked root candidate now passes nominal and +/-50-ppm PAL/NTSC
+      pulse/content tests, source provenance and loss-counter/saturation tests.
+      Digital synthesis across other kp levels has separate evidence; full
+      pulse transitions, measured CPU/DMA timing and LCD acceptance remain gates.
 - [ ] Reassess remaining range losses using actual firmware policy and held-out
       evidence, especially envelope C/N bias, deviation/filter matching,
       sampling phase and gain/DC behavior. Implement supported improvements;
@@ -42,6 +52,10 @@ Distinguish simulation, firmware implementation and physical validation.
 - [ ] Update issues 201/213 with literal evidence. Close only issues whose
       requested behavior is actually complete; monitor sync preservation is
       not complete merely because black fallback works.
+- [ ] Verify the operator's additional output request: 1.0..5.0x in 0.5x
+      steps, persisted only after a verified change and restored at boot.
+      Production settings save/reboot and all DAC/kp-map host tests pass;
+      physical reboot and loaded-output checks remain unverified.
 
 ## Acceptance
 

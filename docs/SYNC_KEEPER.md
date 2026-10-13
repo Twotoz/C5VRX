@@ -170,12 +170,12 @@ is byte-for-byte unchanged. In the first passing pulse-only experiment, every
 tested PAL/NTSC H/V pulse survives deep fades and weak reception; the root LP
 edge bound is 15 samples (375 ns), rather than the archived raw-DAC checker.
 
-**Stronger acceptance currently fails:** comparing every true active IQ sample
+**Earlier negative result:** comparing every true active IQ sample
 finds a 1-2-sample overwrite immediately before a vertical interval. Centering
-the detector removes part of a systematic early-edge bias but does not yet
-eliminate the last sample. Pulse count alone therefore does not establish
-content preservation. This draft is not built into firmware or enabled.
-Clock/field uncertainty and repair boundaries need further work.
+the detector removed part of a systematic early-edge bias but did not alone
+eliminate the last sample. Pulse count alone therefore did not establish
+content preservation. The corrections and acceptance below supersede this
+failed draft; the candidate remains excluded from streaming firmware.
 
 Protecting the full optional 8190-byte watchdog window also left insufficient
 write opportunity in some modeled descriptor phases (PAL 1523/1600 pulses,
@@ -187,16 +187,22 @@ TX-prefetch guard in this model is an assumption requiring physical validation.
 
 ### Physical acceptance
 
-### Nominal-clock host candidate now passing
+### Nominal and +/-50 ppm camera-clock host candidate now passing
 
 `main/sync_flywheel.{c,h}` is a host candidate, excluded from firmware's
 component source list. `test/test_sync_flywheel.c` now passes the nominal
 PAL/NTSC cases with the actual root kp-0/U85Q-LP LUT and both pair parities:
 all 1600 / 1358 expected H/V pulses in the faded and weak windows, <=15
-samples (375 ns) edge error, no clean-carrier edits, exact preservation of
-5,966,595 / 4,933,925 active IQ samples and their decoded DAC samples, and
-unmodified pass-through within half a field after clean reception returns.
-These counts are synthetic evidence, not the affected LCD or a CPU deadline.
+samples (375 ns) edge error, no clean-carrier edits, exact active-IQ and
+decoded-DAC preservation, and unmodified pass-through within half a field
+after clean reception returns. CI executes the identical assertions at
+0, +50 and -50 ppm source-clock error; no pulse-edge or content tolerance
+was relaxed. Exact active-IQ counts for PAL / NTSC are 5,966,595 / 4,933,925
+at nominal timing, 5,963,710 / 4,933,700 at +50 ppm and
+5,963,705 / 4,933,700 at -50 ppm. Maximum repaired edges in the clock-only candidate across both byte
+parities were 13 samples nominal and 14 samples at either offset; the
+provenance/coasting corrections below retain the same 15-sample gate. These are
+synthetic results, not the affected LCD or a measured CPU deadline.
 
 Corrections retain the observed V-edge offset; field time coasts from a genuine
 broad-pulse edge fitted using both edges, rather than following H PLL noise.
@@ -205,16 +211,90 @@ not steer the weak-signal PLL. Holdover frequency uses a bounded fit over
 qualified edges, with Q16 sample timing instead of Q8. Repair tip synthesis
 targets the root LUT's known DAC-zero frequency instead of copying a damaged
 RF slope. Test NTSC timing uses exact 572/9 us; the archive's rounded 63.5556
-us added a model clock offset. A 50-ns V-edge uncertainty guard is included.
+us added a model clock offset. The V-edge uncertainty guard is now 25 ns after independent edge refinement.
 
-**Still failing:** explicit +50 and -50 ppm camera-clock probes preserve all
-tested pulses but can overwrite 1-2 active IQ samples at a field boundary.
-The latest all-edge frequency fit also exposes pulse-edge errors in an offset
-case. Nominal tests therefore do not authorize live integration or default
-enable. Source-clock uncertainty, arbitrary kp/output settings, prolonged
-loss, false self-observation, descriptor lifetimes/prefetch and measured CPU
-timing remain required gates. The legacy 2.5-s reset also remains in the host
-candidate and must be replaced with tested ongoing holdover/reacquisition.
+The sparse 32-line frequency measurements and stride-three V-pulse width
+estimate were the remaining clock defects: a biased V reference could drift
+into active picture or move the decoded sync beyond the unchanged edge gate.
+Holdover fitting now accumulates already-detected genuine clean fast-path H
+edges on every line; only the fit division runs every 32 lines. Level reads
+remain sparse. The first and last qualified genuine broad pulses each supply
+an independently refined rising/falling-edge midpoint; their mean supplies
+the next field anchor, with one 25-ns inward guard. Accumulators reset on
+acquisition and phase re-lock. Clean-path detection costs 35.5 / 36.6 modeled
+evaluations per PAL / NTSC line, below the existing 40-evaluation test budget.
+That proxy does not measure ESP32 execution time or interrupt latency.
+
+**Open gates:** root kp-0 is the only complete keeper test here. The separate
+actual-LUT feasibility audit finds that the fixed -6-MHz synthetic tip is
+unusable at kp 0.60 / 0.55 / 0.50; a correct clock does not solve this output
+problem. Other kp/output settings, prolonged loss and source-standard changes,
+live observer source freshness, descriptor lifetimes/prefetch and measured
+CPU timing still require proof. Host provenance and loss-duration behavior
+now have the additional checks below; these do not prove physical DMA safety
+or unlimited source-clock holdover. Normal 4092-byte observer protection passes; the optional
+8190-byte black-watcher reservation still fails available write opportunity.
+No live integration or default enable is authorized by these host results.
+
+### Provenance, continuous loss and bounded reacquisition
+
+The root candidate now embeds the bounded `sync_repair_ledger.h` interval
+ledger. Every admitted complete synthetic write is recorded **before** it
+changes the ring, including porch bytes. Detector windows qualify their
+entire byte footprint, including the previous phase byte. Acquisition,
+normal/vertical detection, sampled pulse checks, tip/porch learning, clock
+fits, V-parity decisions and phase re-lock all refuse repaired bytes as
+camera evidence. Qualification occurs at bounded function/gap boundaries,
+not at every phase-table read. The previous-line re-lock search walks only
+original gaps, so it cannot lock onto the keeper's own H pulse.
+
+`sfw_run` now receives two explicit frontiers: `avail_end` is the observer-
+protected older analysis ceiling; `rx_complete` is actual completed RX.
+Only bytes proved overwritten by the latter expire provenance. Ledger
+capacity exhaustion merges all tainted spans conservatively; it cannot
+reclassify synthesized input as original. The host fixture also rejects
+an impossible RX ceiling, refuses a wholly tainted acquisition histogram,
+checks exact wrap expiry and verifies state reset. Normal ring geometry
+never exhausts the ledger in these cases. These bounds do not establish
+in-flight physical DMA, cache coherency or actual TX prefetch limits.
+
+Loss duration no longer resets the last known PAL/NTSC line/field clock to
+acquisition. A six-field pure-noise fixture injects both the former
+40,000-line cutoff and `UINT32_MAX - 2` into the lost counter, then returns
+a real camera at a 0.37-line phase offset. At nominal and +/-50 ppm, every
+holdover H/V pulse passes the same output gate, every active snow IQ sample
+and both actual LP parities stay exact, there is still one initial
+acquisition, and only the genuine shifted camera produces one re-lock.
+The lost counter saturates safely. This exercises the duration-state
+transition and approximately 0.1-s noisy holdover, **not** 2.5-s source-clock
+drift, temperature drift, standard changes or indefinite LCD lock.
+
+Recovery checks reuse the cheap normal-pulse proof every coasting line;
+noisy tips cannot steer the PLL. A wider local search runs at one in eight
+lines, and independent original-gap re-lock uses a 16-sample coarse stride
+before refining a detected edge and verifying its full width. That stride
+cannot skip a qualifying >=150-sample normal sync. This preserves the
+existing clean-return and shifted-phase gates while avoiding a full dense
+search on every known bad line.
+
+Counters now separate actual nine-step `lowm` calls from extra adjacent
+phase steps used by acquisition, level and tip checks. At nominal timing,
+the weak fixture falls from 120.3 / 117.5 aggregate budget units per PAL /
+NTSC line to 50.5 / 51.3; the latter comprises 36.6 / 36.8 `lowm` calls and
+13.9 / 14.5 additional phase steps. Pure loss falls from 153.6 / 152.4 to
+62.2 / 62.0 units, comprising 57.1 / 56.4 `lowm` calls plus 5.1 / 5.5
+steps. These are whole-fixture averages, including clean intervals and
+acquisition. Synthesis, cache maintenance, scheduler/interrupt latency and
+transport work are outside these counts. They are **not** proof of a
+240-MHz C5 CPU deadline; actual worst-case measurements remain mandatory.
+
+The hot nine-step detector also uses an equivalent branchless phase wrap
+and explicitly unrolls its fixed loop. `research/sync_lowm_cost.py` verifies
+the wrapping arithmetic and 32,768 random/ring-boundary probes against the
+earlier detector. Its isolated pinned RV32 `-O2` probe emits 112 dynamic
+instructions rather than 144-153; this excludes the full keeper's extra
+instrumentation and surrounding work. The complete PAL/NTSC clock and
+content matrix also passes with this arithmetic change.
 
 The candidate implements a brief recovery qualification, not continuous
 sync replacement on a good camera. Operator intent is repair only when

@@ -19,15 +19,29 @@
 #define WIN_UNLOCKED   96
 #define CLEAN_ERR      6
 #define LOCK_CLEAN     32u
-#define LOST_LINES     40000u /* ~2.5 s: the idle raster has taken over by then */
 #define RELOCK_EVERY   8u
 #define RELOCK_AFTER   16u
 #define MAX_LAG        (4u * 2560u + 4096u)
 #define NEED_LINE      420u   /* window + a normal pulse (field phase known) */
 #define NEED_V_ACQ     2700u  /* + a broad pulse here or half a line later */
-#define V_EDGE_GUARD   2u     /* one genuine edge, uncertain by <=2 samples */
+#define V_EDGE_GUARD   1u     /* fit multiple genuine edges, round inward */
 
 static uint32_t s_evals;
+static uint32_t s_lowm, s_steps;
+
+static void store_evals(sync_flywheel_t *f)
+{
+    f->evals = s_evals;
+    f->lowm_evals = s_lowm;
+    f->phase_steps = s_steps;
+}
+
+static bool original(sync_flywheel_t *f, uint64_t begin, uint64_t end)
+{
+    bool ok = sync_repair_ledger_original(&f->repairs, begin, end, f->evidence_end);
+    if (!ok && f->evidence_refused != UINT32_MAX) ++f->evidence_refused;
+    return ok;
+}
 
 static inline uint8_t ph_at(const sfw_ring_t *r, uint64_t k)
 {
@@ -36,14 +50,14 @@ static inline uint8_t ph_at(const sfw_ring_t *r, uint64_t k)
 
 static inline int wrap8(int d)
 {
-    d &= 255;
-    return d >= 128 ? d - 256 : d;
+    return (int)(((unsigned)d + 128u) & 255u) - 128;
 }
 
 /* Per-25-ns unwrapped phase step. Summing adjacent steps avoids aliasing
  * wide-deviation picture into an apparent negative sync plateau. */
 static inline int step3(const sfw_ring_t *r, uint64_t k)
 {
+    ++s_steps;
     return wrap8((int)ph_at(r, k) - (int)ph_at(r, k - 1u));
 }
 
@@ -51,11 +65,13 @@ static inline int step3(const sfw_ring_t *r, uint64_t k)
 static SFW_HOT bool lowm(const sync_flywheel_t *f, const sfw_ring_t *r, uint64_t k)
 {
     ++s_evals;
+    ++s_lowm;
     int total = 0;
     /* Center on the tested sample. The legacy [-3,+6] window made the
      * detected edge two samples early and could overwrite the last real
      * picture samples before the vertical interval. */
     int previous = ph_at(r, k - 5u);
+#pragma GCC unroll 9
     for (unsigned j = 0; j < 9u; ++j) {
         int phase = ph_at(r, k - 4u + j);
         total += wrap8(phase - previous);
@@ -74,10 +90,11 @@ static inline bool span_high(const sync_flywheel_t *f, const sfw_ring_t *r, uint
 
 /* A kept pulse must decode clean span by span, not only on average: n
  * single spans across [a, a + len) must all be at sync level. */
-static bool clean_pulse(const sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t len,
+static bool clean_pulse(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t len,
                         unsigned n)
 {
     uint32_t stride = (len - 12u) / n;
+    if (!original(f, a + 4u, a + 14u + (n - 1u) * stride)) return false;
     for (unsigned i = 0; i < n; ++i)
         if (span_high(f, r, a + 9u + i * stride)) return false;
     return true;
@@ -140,6 +157,9 @@ static void synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t 
     const uint32_t mask = r->ring_bytes - 1u;
     sync_synth_t state;
     if (!sync_synth_init(&state, (uint16_t)p0, (int32_t)resid, n)) return;
+    /* The record precedes every write. Overflow conservatively taints the
+     * merged span; synthesized bytes never become camera-clock evidence. */
+    if (!sync_repair_ledger_record(&f->repairs, a, b)) return;
     for (uint32_t k = 0; k < n1; ++k)
         r->ring[(uint32_t)(a + k) & mask] = s_cell[sync_synth_next(&state, step1)];
     for (uint32_t k = 0; k < n2; ++k)
@@ -200,6 +220,9 @@ static void start_track(sync_flywheel_t *f, uint64_t start, uint32_t nominal)
     f->clean_since_acq = 0;
     f->lines_since_clean = 0;
     f->v_valid = false;
+    f->v_observed = false;
+    f->v_observed_n = 0;
+    f->v_observed_sum = 0;
     f->v_end_q16 = 0;
     f->relock_have = false;
     f->rebuild_lines = 0;
@@ -222,6 +245,11 @@ static void acquire(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
     while (f->scan_pos < end && s_evals < budget) {
         uint64_t k = f->scan_pos;
         f->scan_pos += 3u;
+        if (!original(f, k - 5u, k + 5u)) {
+            f->acq_run = 0;
+            f->acq_have_last = false;
+            continue;
+        }
         if (f->acq_phase == 0) {
             ++s_evals;
             ++f->acq_hist[step3(r, k) + 128];
@@ -287,9 +315,15 @@ static pulse_t classify(uint32_t w, uint32_t inside)
 
 /* Leading edge (high -> low) nearest the prediction within +-win, refined to
  * one sample; returns the classified pulse. */
-static pulse_t find_pulse(const sync_flywheel_t *f, const sfw_ring_t *r, uint64_t pred,
+static pulse_t find_pulse(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t pred,
                           int win, uint64_t avail_end, int *found, uint32_t *width)
 {
+    if (pred + (uint64_t)win + 8u > avail_end) return P_NONE;
+    /* Include the independent falling-edge refinement's +/-6-sample
+     * search and lowm's phase predecessor/lookahead, not only width reads. */
+    uint64_t end = pred + (uint64_t)win + 1310u;
+    if (end > avail_end) end = avail_end;
+    if (!original(f, pred - (uint64_t)win - 8u, end)) return P_NONE;
     bool prev = lowm(f, r, pred - (uint64_t)win - 3u);
     for (int e = -win; e <= win; e += 3) {
         uint64_t k = pred + (uint64_t)(int64_t)e;
@@ -313,8 +347,9 @@ static pulse_t find_pulse(const sync_flywheel_t *f, const sfw_ring_t *r, uint64_
     return P_NONE;
 }
 
-static bool steady_tip(const sfw_ring_t *r, uint64_t start)
+static bool steady_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t start)
 {
+    if (!original(f, start + 59u, start + 92u)) return false;
     int sum = 0, squares = 0;
     for (unsigned k = 0; k < 32u; ++k) {
         int d = step3(r, start + 60u + k);
@@ -324,24 +359,13 @@ static bool steady_tip(const sfw_ring_t *r, uint64_t start)
     return 32 * squares - sum * sum <= 32 * 32 * 64;
 }
 
-static void learn_levels(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t start)
+static void observe_clock(sync_flywheel_t *f, uint64_t start)
 {
-    int s = 0, b = 0, ss = 0, bb = 0;
-    for (unsigned k = 0; k < 128u; ++k) {
-        int d = step3(r, start + 30u + k); s += d; ss += d * d;
-    }
-    for (unsigned k = 0; k < 48u; ++k) {
-        uint64_t at = k < 32u ? start - 60u + k : start + 192u + (k - 32u);
-        int d = step3(r, at); b += d; bb += d * d;
-    }
-    s_evals += 176u;
-    /* At weak RF the circular phase slope is biased toward zero. A plausible
-     * line width alone cannot qualify a new frequency/level: relearning it
-     * there would weaken the generated sync precisely when it is needed.
-     * Retain the last stable levels unless both plateaux have <=8 phase-bin
-     * standard deviation. Quantized strong cells still pass this guard. */
-    if (128 * ss - s * s > 128 * 128 * 64 || 48 * bb - b * b > 48 * 48 * 64) return;
-    /* Fit holdover frequency over many genuine clean lines. Freezing the
+    /* Reuse the edge already detected on each clean fast-path line; no extra
+     * phase reads are needed. Accumulate all edges but divide only every 32
+     * lines. Sparse endpoint fitting biased the coast clock enough to move
+     * a repaired field boundary into the last real picture samples.
+     * Fit holdover frequency over many genuine clean lines. Freezing the
      * most recent bang-bang PLL period would freeze its quantization jitter
      * too, accumulating timing error across a faded field. */
     if (!f->clock_known) {
@@ -362,7 +386,7 @@ static void learn_levels(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t start
             f->clock_xx += (uint64_t)lines * lines;
             f->clock_y += residual;
             f->clock_xy += (int64_t)lines * residual;
-            if (lines >= 128u && f->clock_n >= 5u) {
+            if (lines >= 128u && f->clock_n >= 5u && (lines & 31u) == 0u) {
                 /* Fit all qualified edges, not just two quantized endpoints.
                  * This suppresses their noise without storing a history array. */
                 int64_t numerator = (int64_t)f->clock_n * f->clock_xy - (int64_t)f->clock_x * f->clock_y;
@@ -381,6 +405,28 @@ static void learn_levels(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t start
             }
         }
     }
+}
+
+static void learn_levels(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t start)
+{
+    if (!original(f, start + 29u, start + 158u) ||
+        !original(f, start - 61u, start - 28u) ||
+        !original(f, start + 191u, start + 208u)) return;
+    int s = 0, b = 0, ss = 0, bb = 0;
+    for (unsigned k = 0; k < 128u; ++k) {
+        int d = step3(r, start + 30u + k); s += d; ss += d * d;
+    }
+    for (unsigned k = 0; k < 48u; ++k) {
+        uint64_t at = k < 32u ? start - 60u + k : start + 192u + (k - 32u);
+        int d = step3(r, at); b += d; bb += d * d;
+    }
+    s_evals += 176u;
+    /* At weak RF the circular phase slope is biased toward zero. A plausible
+     * line width alone cannot qualify a new frequency/level: relearning it
+     * there would weaken the generated sync precisely when it is needed.
+     * Retain the last stable levels unless both plateaux have <=8 phase-bin
+     * standard deviation. Quantized strong cells still pass this guard. */
+    if (128 * ss - s * s > 128 * 128 * 64 || 48 * bb - b * b > 48 * 48 * 64) return;
     /* Consecutive differences telescope: quantized endpoint errors do not
      * accumulate as they did in the archived every-third-sample average. */
     int sq4 = s * 16 / 128, bq4 = b * 16 / 48;
@@ -413,9 +459,12 @@ static void field_done(sync_flywheel_t *f)
     f->v_end_q16 = v_stop_q16(f);
     /* Advance the measured field clock directly. Rebuilding it from each
      * instantaneous H prediction injected H PLL jitter at field boundaries. */
-    if (f->v_observed) f->v_next_q16 = f->v_observed_q16 + (uint64_t)V_EDGE_GUARD * 65536u;
+    if (f->v_observed) f->v_next_q16 = f->v_observed_q16 +
+        (uint64_t)(f->v_observed_sum / f->v_observed_n) + (uint64_t)V_EDGE_GUARD * 65536u;
     f->v_next_q16 += (uint64_t)(pal(f) ? 625u : 525u) * (uint32_t)f->coast_period_q16 / 2u;
     f->v_observed = false;
+    f->v_observed_n = 0;
+    f->v_observed_sum = 0;
     f->v_a_line += field_lines(f, f->v_half);
     f->v_half = !f->v_half;
     f->v_armed = false;
@@ -424,13 +473,15 @@ static void field_done(sync_flywheel_t *f)
     f->v_found = false;
 }
 
-static bool broad_at(const sync_flywheel_t *f, const sfw_ring_t *r, uint64_t p, uint32_t h2)
+static bool broad_at(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t p, uint32_t h2)
 {
+    if (!original(f, p + 4u, p + h2 - 105u)) return false;
     return clean_pulse(f, r, p, h2 - HSYNC, 16u) && !lowm(f, r, p + h2 - 110u);
 }
 
-static bool eq_at(const sync_flywheel_t *f, const sfw_ring_t *r, uint64_t p)
+static bool eq_at(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t p)
 {
+    if (!original(f, p + 4u, p + 405u)) return false;
     return clean_pulse(f, r, p, eq_low(f), 6u) && !lowm(f, r, p + 130u) && !lowm(f, r, p + 400u);
 }
 
@@ -452,6 +503,7 @@ static void v_slot(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
     /* Wrong parity means an equalizing slot here: its middle is high. A real
      * broad pulse with only a broken start stays put and is rebuilt. */
     if (j == 0 && !present && p + 2u * h2 + 16u <= avail_end &&
+        original(f, p + h2 / 4u - 5u, p + 3u * h2 / 4u + 5u) &&
         !lowm(f, r, p + h2 / 4u) && !lowm(f, r, p + h2 / 2u) && !lowm(f, r, p + 3u * h2 / 4u)) {
         if (broad_at(f, r, p + h2, h2)) {
             f->v_next_q16 += h2q;
@@ -468,18 +520,32 @@ static void v_slot(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
             return;
         }
     }
-    if (present && j == 0) {
-        f->v_found = true;
+    if (present && broad && (j == 0 || j == (int)nbroad(f) - 1)) {
+        if (j == 0) f->v_found = true;
         int edge = 0;
         uint32_t width = 0;
         if (find_pulse(f, r, p, 16, avail_end, &edge, &width) == P_BROAD &&
-            steady_tip(r, p + (uint64_t)(int64_t)edge)) {
+            steady_tip(f, r, p + (uint64_t)(int64_t)edge)) {
             /* Fit both edges. Leading-edge quantization alone can bias the
              * whole subsequent field; the broad pulse's known width gives
              * an independent falling edge and a centered time estimate. */
-            int centered = edge + ((int)width - (int)(h2 - HSYNC)) / 2;
-            f->v_observed_q16 = (p + (uint64_t)(int64_t)centered) << 16;
-            f->v_observed = true;
+            uint64_t leading = p + (uint64_t)(int64_t)edge;
+            uint64_t falling = leading + width;
+            /* Classifier width is a stride-three estimate. Refine the
+             * falling edge independently before using both edges as a
+             * clock measurement, then average the first and last genuine
+             * broad pulses. This retains a bounded clean-path budget. */
+            uint64_t stop = falling + 6u;
+            falling -= 6u;
+            while (falling < stop && lowm(f, r, falling)) ++falling;
+            int64_t measured = (int64_t)((leading + falling - (h2 - HSYNC)) * 32768u) -
+                               (int64_t)j * (int64_t)h2q;
+            if (!f->v_observed) {
+                f->v_observed_q16 = (uint64_t)measured;
+                f->v_observed = true;
+            }
+            f->v_observed_sum += measured - (int64_t)f->v_observed_q16;
+            ++f->v_observed_n;
         }
     }
     if ((!present || f->rebuild_lines) && repair) {
@@ -490,17 +556,64 @@ static void v_slot(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
     if (++f->v_slot >= (int16_t)(nbroad(f) + npost(f))) field_done(f);
 }
 
+/* Search only proved original gaps. Each gap is qualified once; neither
+ * lowm nor the width walker performs a provenance lookup per phase sample.
+ * Complete read footprints, including the previous phase and width tail,
+ * stay inside the gap. A patched previous H pulse cannot self-reacquire. */
+static bool find_relock(sync_flywheel_t *f, const sfw_ring_t *r,
+                         uint64_t line0, uint32_t period, unsigned win, int32_t *offset)
+{
+    uint64_t begin = line0 + win;
+    uint64_t limit = line0 + period - win;
+    for (unsigned i = 0; i <= f->repairs.count && begin < limit; ++i) {
+        uint64_t end = limit;
+        if (i < f->repairs.count && f->repairs.ranges[i].begin < end)
+            end = f->repairs.ranges[i].begin;
+        if (end > begin + 286u && original(f, begin, end)) {
+            uint64_t k = begin + 21u;
+            bool previous = lowm(f, r, k - 16u);
+            /* A normal sync is at least 150 samples wide. A 16-sample
+             * coarse stride cannot skip it; only a detected transition
+             * pays for one-sample edge refinement and the full width. */
+            for (; k + 265u <= end; k += 16u) {
+                bool current = lowm(f, r, k);
+                if (current && !previous) {
+                    uint64_t edge = k - 15u;
+                    while (edge < k && !lowm(f, r, edge)) ++edge;
+                    uint32_t inside;
+                    uint32_t width = pulse_width(f, r, edge, 260u, &inside);
+                    if (classify(width, inside) == P_NORMAL && inside == 0u) {
+                        uint32_t e = (uint32_t)(edge - line0);
+                        *offset = e > period / 2u ? (int32_t)e - (int32_t)period : (int32_t)e;
+                        return true;
+                    }
+                }
+                previous = current;
+            }
+        }
+        if (i < f->repairs.count && f->repairs.ranges[i].end > begin)
+            begin = f->repairs.ranges[i].end;
+    }
+    return false;
+}
+
 unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
-                 uint64_t write_floor, bool allow_repair, uint32_t budget_evals)
+                 uint64_t rx_complete, uint64_t write_floor, bool allow_repair, uint32_t budget_evals)
 {
     if (!f || !r || !r->ring || !r->phase || !r->ring_bytes ||
         (r->ring_bytes & (r->ring_bytes - 1u))) return 0;
+    if (rx_complete < avail_end ||
+        !sync_repair_ledger_advance(&f->repairs, rx_complete > r->ring_bytes ?
+                                    rx_complete - r->ring_bytes : 0)) return 0;
+    f->evidence_end = avail_end;
     build_cells(r);
     s_evals = 0;
+    s_lowm = s_steps = 0;
     f->evals = 0;
+    f->lowm_evals = f->phase_steps = 0;
     if (f->state == SFW_ACQUIRE) {
         acquire(f, r, avail_end, budget_evals);
-        f->evals = s_evals;
+        store_evals(f);
         if (f->state == SFW_ACQUIRE) return 0;
     }
     unsigned processed = 0;
@@ -566,8 +679,13 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
         int found = 0;
         uint32_t width = 0;
         pulse_t type = P_NONE;
-        /* Fast path: locked and the previous line was clean. */
-        if (locked && f->lines_since_clean == 0u &&
+        bool fast = false;
+        /* On a known bad carrier, a cheap original-source proof tests for
+         * recovery every line. An unqualified pulse coasts directly; the
+         * wider window runs only at the bounded reacquisition cadence. */
+        bool coasting = f->rebuild_lines && f->v_valid;
+        if (locked && (f->lines_since_clean == 0u || coasting) &&
+            original(f, pred - 20u, pred + 210u) &&
             !lowm(f, r, pred - 15u) && lowm(f, r, pred + 3u) && lowm(f, r, pred + 60u) &&
             lowm(f, r, pred + 120u) && lowm(f, r, pred + 165u) && !lowm(f, r, pred + 205u)) {
             int e = -9;
@@ -578,7 +696,8 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
             width = HSYNC;
             type = P_NORMAL;
             ++f->fast_lines;
-        } else {
+            fast = true;
+        } else if (!coasting || (f->lines % RELOCK_EVERY) == 0u) {
             type = find_pulse(f, r, pred, win, avail_end, &found, &width);
         }
         uint64_t start = pred + (uint64_t)(int64_t)found;
@@ -590,7 +709,7 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
          * with both edges intact (width 188 +- 12) steer: a pulse whose start
          * the noise ate has a late leading edge. */
         bool steer = normal && width + 12u >= HSYNC && width <= HSYNC + 12u &&
-                     (!f->rebuild_lines || steady_tip(r, start));
+                     (!f->rebuild_lines || steady_tip(f, r, start));
         bool clean = steer && (!locked || (found >= -CLEAN_ERR && found <= CLEAN_ERR));
         if (steer) {
             /* Noisy pulses (rebuild mode): 4x lower gains for a calm raster. */
@@ -642,9 +761,10 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
             if (f->clean_since_acq < 0xFFFFu) ++f->clean_since_acq;
             f->lines_since_clean = 0;
             f->relock_have = false;
-            /* Slow level/crystal fitting does not need the per-line repair
-             * cadence. Retain the cheap fast path on a clean camera. */
+            /* Level measurements stay sparse; clock fitting reuses each
+             * qualified fast-path edge without additional phase reads. */
             if ((f->clean & 31u) == 1u) learn_levels(f, r, start);
+            if (fast && !f->rebuild_lines && f->levels) observe_clock(f, start);
         } else {
             if (type == P_NONE) ++f->missed;
             if (f->lines_since_clean < 0xFFFFFFFFu) ++f->lines_since_clean;
@@ -688,42 +808,33 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
              * around its own prediction (where our pulse may sit). */
             uint32_t period = (uint32_t)rnd((uint64_t)f->period_q16);
             uint64_t line0 = pred - period;
-            bool prev = lowm(f, r, line0 + (uint64_t)win);
-            for (uint32_t e = (uint32_t)win + 3u; e + (uint32_t)win < period; e += 3u) {
-                uint64_t k = line0 + e;
-                bool cur = lowm(f, r, k);
-                if (cur && !prev) {
-                    uint32_t inside, w = pulse_width(f, r, k, 260u, &inside);
-                    if (classify(w, inside) == P_NORMAL && inside == 0u) {
-                        int32_t off = (int32_t)e > (int32_t)period / 2 ? (int32_t)e - (int32_t)period : (int32_t)e;
-                        int32_t d = off - f->relock_off;
-                        if (f->relock_have && f->lines - f->relock_line == RELOCK_EVERY && d >= -12 && d <= 12) {
-                            f->next_q16 += (uint64_t)((int64_t)off * 65536);
-                            f->period_q16 = f->nominal_q16;
-                            f->v_valid = false;     /* field phase is unknown again */
-                            f->clock_known = false;
-                            f->v_armed = false;
-                            f->v_end_q16 = 0;
-                            f->lines_since_clean = 0;
-                            f->relock_have = false;
-                            ++f->relocks;
-                        } else {
-                            f->relock_off = off;
-                            f->relock_line = f->lines;
-                            f->relock_have = true;
-                        }
-                        break;
-                    }
+            int32_t off = 0;
+            if (find_relock(f, r, line0, period, (unsigned)win, &off)) {
+                int32_t d = off - f->relock_off;
+                if (f->relock_have && f->lines - f->relock_line == RELOCK_EVERY && d >= -12 && d <= 12) {
+                    f->next_q16 += (uint64_t)((int64_t)off * 65536);
+                    f->period_q16 = f->nominal_q16;
+                    f->v_valid = false;
+                    f->v_observed = false;
+                    f->v_observed_n = 0;
+                    f->v_observed_sum = 0;
+                    f->clock_known = false;
+                    f->v_armed = false;
+                    f->v_end_q16 = 0;
+                    f->lines_since_clean = 0;
+                    f->relock_have = false;
+                    ++f->relocks;
+                } else {
+                    f->relock_off = off;
+                    f->relock_line = f->lines;
+                    f->relock_have = true;
                 }
-                prev = cur;
             }
         }
 
-        if (f->lines_since_clean > LOST_LINES) {
-            f->state = SFW_ACQUIRE;
-            f->scan_pos = 0;
-        }
+        /* Loss duration alone never abandons the last known line/field
+         * clock. Reacquisition searches original RX data alongside repair. */
     }
-    f->evals = s_evals;
+    store_evals(f);
     return processed;
 }

@@ -5,7 +5,8 @@
  * -> modeled 4092/32-byte ring geometry and ~16 KiB TX lag -> flywheel ->
  * actual root U85Q-LP arithmetic and LUT, for both pair parities.
  * Active IQ/DAC preservation and recovery pass-through are explicit gates.
- * Nonzero SFW_CLOCK_PPM is an experimental acceptance probe, not yet passing. */
+ * SFW_CLOCK_PPM exercises camera-clock error; nominal and +/-50 ppm pass
+ * the same pulse and exact active-content gates. This is not LCD evidence. */
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -32,6 +33,12 @@ typedef struct {
 } scene_t;
 
 static unsigned s_seed = 1;
+/* Inject the former loss-duration boundary without allocating 100+ million
+ * samples. The surrounding six-field pure-noise scene still exercises every
+ * ring wrap, repair slot and genuine shifted-camera recovery. */
+static uint32_t s_inject_lost;
+static uint64_t s_inject_at, s_inject_until;
+static double s_last_lowm_per_line, s_last_steps_per_line;
 static double urand(void) { s_seed = s_seed * 1103515245u + 12345u; return ((s_seed >> 8) & 0xFFFFFF) / 16777216.0; }
 static double grand(void)
 {
@@ -129,6 +136,8 @@ static uint8_t *run_ring(const uint8_t *in, uint64_t n, sync_flywheel_t *f, cons
     sfw_ring_t r = {ring, RING, phase, mask, clear};
     sfw_init(f);
     uint64_t rx = 0, tx = 0, evals = 0, lines0 = 0;
+    uint64_t lowm = 0, steps = 0;
+    bool injected = false;
     while (tx < n) {
         /* Match root's 8*4092 + 32-byte tail descriptor geometry. */
         uint64_t remaining = RING - (rx & (RING - 1u));
@@ -150,8 +159,29 @@ static uint8_t *run_ring(const uint8_t *in, uint64_t n, sync_flywheel_t *f, cons
              * tx_now+DSCR formula discarded up to one extra descriptor. */
             uint64_t floor = tx_now - tx_local + tx_end + 512u;
             uint32_t before = f->lines;
-            sfw_run(f, &r, ceiling, floor, true, budget);
+            uint32_t fields_before = f->vsyncs + f->v_coasted;
+            if (s_inject_lost && !injected && rx >= s_inject_at) {
+                assert(f->state == SFW_TRACK && f->v_valid && sfw_locked(f));
+                f->lines_since_clean = s_inject_lost;
+                f->rebuild_lines = 1;
+                f->pristine_run = 0;
+                f->period_q16 = f->coast_period_q16;
+                injected = true;
+            }
+            sfw_run(f, &r, ceiling, rx, floor, true, budget);
+            assert(f->repairs.collapses == 0 && f->repairs.count <= 32u);
+            if (injected && rx < s_inject_until) {
+                assert(f->state == SFW_TRACK && f->v_valid && sfw_locked(f));
+                assert(f->lines_since_clean >= s_inject_lost);
+            }
+            if (getenv("SFW_CLOCK_DEBUG") && fields_before != f->vsyncs + f->v_coasted)
+                printf("clock field=%u next=%.5f period=%.8f coast=%.8f repair=%u observed=%.5f\n",
+                       f->vsyncs + f->v_coasted, (double)f->v_next_q16 / 65536,
+                       (double)f->period_q16 / 65536, (double)f->coast_period_q16 / 65536,
+                       f->rebuild_lines, (double)f->v_observed_q16 / 65536);
             evals += f->evals;
+            lowm += f->lowm_evals;
+            steps += f->phase_steps;
             lines0 += f->lines - before;
             for (uint64_t k = ceiling; k < rx; ++k) assert(ring[k & (RING - 1u)] == in[k]);
         }
@@ -160,7 +190,10 @@ static uint8_t *run_ring(const uint8_t *in, uint64_t n, sync_flywheel_t *f, cons
         for (; tx < tx_to; ++tx) out[tx] = ring[tx & (RING - 1u)];
     }
     if (evals_per_line) *evals_per_line = lines0 ? (double)evals / (double)lines0 : 0;
+    s_last_lowm_per_line = lines0 ? (double)lowm / (double)lines0 : 0;
+    s_last_steps_per_line = lines0 ? (double)steps / (double)lines0 : 0;
     free(ring);
+    assert(!s_inject_lost || injected);
     return out;
 }
 
@@ -236,7 +269,7 @@ static verdict_t verify(const scene_t *s, const uint8_t *out, uint64_t n, uint64
                 int wide_edge = 0;
                 unsigned wide = sync_run(out, n, p[j].pos, a, 96, &wide_edge);
                 printf("  miss pos=%llu kind=%d field=%.3f width=%u edge=%d wide_width=%u wide_edge=%d\n", (unsigned long long)p[j].pos,
-                       p[j].kind, p[j].pos / (double)(s->pal ? 800000.0 : 262.5 * 63.5556 * FS), w, edge, wide, wide_edge);
+                       p[j].kind, p[j].pos / ((s->pal ? 312.5 : 262.5) * line_us(s->pal) * FS), w, edge, wide, wide_edge);
             }
         }
         if (!w) { ++v.missing; continue; }
@@ -244,7 +277,7 @@ static verdict_t verify(const scene_t *s, const uint8_t *out, uint64_t n, uint64
         unsigned ae = (unsigned)(edge < 0 ? -edge : edge);
         if (getenv("SFW_DEBUG") && ae > 15u)
             printf("  edge pos=%llu kind=%d field=%.3f width=%u edge=%d\n", (unsigned long long)p[j].pos,
-                   p[j].kind, p[j].pos / (double)(s->pal ? 800000.0 : 262.5 * 63.5556 * FS), w, edge);
+                   p[j].kind, p[j].pos / ((s->pal ? 312.5 : 262.5) * line_us(s->pal) * FS), w, edge);
         if (ae > v.max_edge) v.max_edge = ae;
         ++v.ok;
     }
@@ -408,6 +441,8 @@ static void scenario(bool pal)
     }
     printf("%s weak: repaired=%u slots=%u clean=%u relocks=%u acquisitions=%u evals/line=%.1f\n",
            name, f.repaired, f.slots_repaired, f.clean, f.relocks, f.acquisitions, epl);
+    printf("%s weak detection: lowm/line=%.1f extra phase steps/line=%.1f\n", name,
+           s_last_lowm_per_line, s_last_steps_per_line);
     assert(f.relocks == 0u && f.acquisitions == 1u && sfw_locked(&f));
     preserve_picture(&weak, in, out, n);
     /* Once clean reception returned, every byte must pass through again;
@@ -417,12 +452,76 @@ static void scenario(bool pal)
     printf("%s recovery: all received bytes pass through within half a field\n", name);
     free(out);
     free(in);
+
+    /* 6. Continuous holdover: crossing the old 40000-line reset and the
+     * uint32 saturation boundary cannot abandon H/V or reacquire our own
+     * generated bytes. Real camera returns at another phase after six pure
+     * noise fields. This proves the state transition, not 2.5-s clock drift. */
+    scene_t lost = clean;
+    lost.fade[0] = (fade_t){3 * F, 9 * F, 0.0, 1.6, false};
+    lost.nfade = 1;
+    lost.shift_at = 9 * F;
+    lost.shift = 0.37 * L;
+    s_seed = 31;
+    in = generate(&lost, n);
+    for (unsigned boundary = 0; boundary < 2u; ++boundary) {
+        s_inject_lost = boundary ? UINT32_MAX - 2u : 40000u;
+        s_inject_at = 3 * F + 2u * DSCR;
+        s_inject_until = 9 * F;
+        out = run_ring(in, n, &f, c5vrx_phase8_gain_lut, false, 0, &epl, 4000);
+        assert(f.state == SFW_TRACK && f.acquisitions == 1u && f.relocks == 1u);
+        assert(f.evidence_refused > 0u);
+        for (unsigned a = 0; a < 2u; ++a) {
+            verdict_t hold = verify(&lost, out, n, 4 * F, 9 * F, a);
+            assert(hold.missing == 0 && hold.bad_width == 0 && hold.max_edge <= 15u);
+        }
+        verdict_t returned = verify(&lost, out, n, (uint64_t)(9.5 * F), n - LAG, 0);
+        assert(returned.missing == 0 && returned.bad_width == 0);
+        printf("%s continuous loss: injected=%u acquisitions=%u relocks=%u refused=%u evals/line=%.1f\n",
+               name, s_inject_lost, f.acquisitions, f.relocks, f.evidence_refused, epl);
+        printf("%s loss detection: lowm/line=%.1f extra phase steps/line=%.1f\n", name,
+               s_last_lowm_per_line, s_last_steps_per_line);
+        /* During pure-noise holdover, preserve each active snow sample and
+         * the actual LP result. Shifted reacquisition has a separate test. */
+        preserve_picture(&lost, in, out, 9 * F);
+        free(out);
+    }
+    s_inject_lost = 0;
+    free(in);
+}
+
+static void provenance_admission(void)
+{
+    uint8_t ring[RING] = {0};
+    sfw_ring_t r = {ring, RING, c5vrx_phase8_gain_lut, false, 0};
+    sync_flywheel_t f;
+    sfw_init(&f);
+    /* Even a structurally valid old acquisition scan must not histogram
+     * synthesized input. The guard covers the phase predecessor too. */
+    assert(sync_repair_ledger_record(&f.repairs, 3995u, 10000u));
+    sfw_run(&f, &r, 10000u, 10000u, 0, false, 200u);
+    assert(f.acq_n == 0 && f.state == SFW_ACQUIRE && f.evidence_refused > 0u);
+    assert(!sync_repair_ledger_original(&f.repairs, 3995u, 10000u, 10000u));
+    /* The protected observer ceiling stays old while actual completed RX
+     * wraps: only the proved overwrite frontier expires repaired bytes. */
+    sfw_run(&f, &r, 10000u, RING + 5000u, 0, false, 0);
+    assert(f.repairs.oldest_readable == 5000u && f.repairs.count == 1u);
+    assert(f.repairs.ranges[0].begin == 5000u);
+    sfw_run(&f, &r, 10000u, 9000u, 0, false, 200u); /* impossible RX ceiling */
+    assert(f.repairs.oldest_readable == 5000u && f.repairs.count == 1u);
+    sfw_run(&f, &r, 10000u, RING + 10000u, 0, false, 0);
+    assert(f.repairs.count == 0 && f.repairs.oldest_readable == 10000u);
+    assert(!sync_repair_ledger_original(&f.repairs, 9999u, 10000u, 10000u));
+    sfw_init(&f);
+    assert(f.repairs.count == 0 && f.repairs.oldest_readable == 0 && f.evidence_refused == 0);
+    puts("PASS keeper provenance: synthetic acquisition refused, exact RX expiry, invalid frontier and reset");
 }
 
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
     if (getenv("SFW_CLOCK_PPM")) s_clock_ppm = strtod(getenv("SFW_CLOCK_PPM"), NULL);
+    provenance_admission();
     scenario(true);
     scenario(false);
     puts("PASS sync_flywheel: clean lines untouched, H and V syncs rebuilt through fades for every span alignment, mask-safe bytes, re-lock after a phase jump");

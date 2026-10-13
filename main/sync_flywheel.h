@@ -11,6 +11,7 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include "sync_repair_ledger.h"
 
 /* 40 MS/s raw samples (one byte = signed Q4 I in bits 7..4, Q in 3..0). */
 #define SFW_PAL_LINE_Q16   (2560u * 65536u)  /* 64 us */
@@ -30,6 +31,9 @@ typedef enum { SFW_ACQUIRE = 0, SFW_TRACK = 1 } sfw_state_t;
 
 typedef struct {
     sfw_state_t state;
+    sync_repair_ledger_t repairs;
+    uint64_t evidence_end;
+    uint32_t evidence_refused;
     /* acquisition */
     uint64_t scan_pos;
     uint8_t acq_phase;
@@ -72,12 +76,16 @@ typedef struct {
     int16_t v_slot;             /* next slot, -npre .. nbroad+npost-1 */
     bool v_found;               /* real broad pulses seen in this field */
     bool v_observed;
+    uint16_t v_observed_n;
+    int64_t v_observed_sum;
     uint64_t v_observed_q16;     /* genuine edge; never sourced from repaired bytes */
     uint64_t v_end_q16;          /* end of the last handled interval: its lines stay vertical */
     /* counters */
     uint32_t lines, clean, repaired, missed, slots_repaired, vsyncs, v_coasted, v_parity,
              acquisitions, relocks, skipped_lines, fast_lines, skipped_floor, rebuilt;
-    uint32_t evals;             /* lowm evaluations in the last call */
+    uint32_t evals;             /* budget units: lowm calls plus extra sampled phase steps */
+    uint32_t lowm_evals;        /* actual nine-step lowm calls, separate from budget units */
+    uint32_t phase_steps;       /* additional adjacent steps for acquisition/level/tip checks */
 } sync_flywheel_t;
 
 void sfw_init(sync_flywheel_t *f);
@@ -85,9 +93,12 @@ void sfw_init(sync_flywheel_t *f);
  * absolute sample index, exclusive). Writes only samples >= write_floor
  * (ahead of the TX read). At most budget_evals detection evaluations per call;
  * a flywheel that falls behind coasts lines unanalysed (nothing written).
- * Returns the number of lines handled. */
+ * rx_complete is the actual monotonically increasing completed RX frontier,
+ * distinct from the observer-protected avail_end. Only proved RX overwrite
+ * expires repair provenance; caller must additionally prove in-flight DMA
+ * and all reader lifetimes. Returns the number of lines handled. */
 unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
-                 uint64_t write_floor, bool allow_repair, uint32_t budget_evals);
+                 uint64_t rx_complete, uint64_t write_floor, bool allow_repair, uint32_t budget_evals);
 bool sfw_locked(const sync_flywheel_t *f);
 /* 1 = PAL, 2 = NTSC, 0 = not tracking. */
 int sfw_standard(const sync_flywheel_t *f);
