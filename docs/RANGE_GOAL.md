@@ -29,8 +29,10 @@ Distinguish simulation, firmware implementation and physical validation.
       owner, PBUS tuple readback, bounded window and gain/DC rollback. Boot RF
       context only; arbitrary context and physical single-scan proof pending.
       Actual board toggles refuse before opening, including at zero offset.
-      Diagnostic build `5f099ec` is published and checksum-verified locally;
-      explicit flash approval is pending. Direct Gain remains the actual owner.
+      After the operator reported download mode, immutable build `5225dde`
+      was flashed with verified data and a settings backup. Console output
+      after USB reset is not yet available; physical reset was requested.
+      Native acquisition on this new build remains unmeasured.
 - [ ] Select and implement a feasible PAL/NTSC sync keeper that preserves
       actual received snow and weak picture fragments. Establish camera timing,
       horizontal/vertical holdover, source freshness and DMA safety. Compare
