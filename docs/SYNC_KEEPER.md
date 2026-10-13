@@ -187,6 +187,39 @@ TX-prefetch guard in this model is an assumption requiring physical validation.
 
 ### Physical acceptance
 
+### Nominal-clock host candidate now passing
+
+`main/sync_flywheel.{c,h}` is a host candidate, excluded from firmware's
+component source list. `test/test_sync_flywheel.c` now passes the nominal
+PAL/NTSC cases with the actual root kp-0/U85Q-LP LUT and both pair parities:
+all 1600 / 1358 expected H/V pulses in the faded and weak windows, <=15
+samples (375 ns) edge error, no clean-carrier edits, exact preservation of
+5,966,595 / 4,933,925 active IQ samples and their decoded DAC samples, and
+unmodified pass-through within half a field after clean reception returns.
+These counts are synthetic evidence, not the affected LCD or a CPU deadline.
+
+Corrections retain the observed V-edge offset; field time coasts from a genuine
+broad-pulse edge fitted using both edges, rather than following H PLL noise.
+Unstable sync/porch slopes cannot relearn output levels, and unstable tips do
+not steer the weak-signal PLL. Holdover frequency uses a bounded fit over
+qualified edges, with Q16 sample timing instead of Q8. Repair tip synthesis
+targets the root LUT's known DAC-zero frequency instead of copying a damaged
+RF slope. Test NTSC timing uses exact 572/9 us; the archive's rounded 63.5556
+us added a model clock offset. A 50-ns V-edge uncertainty guard is included.
+
+**Still failing:** explicit +50 and -50 ppm camera-clock probes preserve all
+tested pulses but can overwrite 1-2 active IQ samples at a field boundary.
+The latest all-edge frequency fit also exposes pulse-edge errors in an offset
+case. Nominal tests therefore do not authorize live integration or default
+enable. Source-clock uncertainty, arbitrary kp/output settings, prolonged
+loss, false self-observation, descriptor lifetimes/prefetch and measured CPU
+timing remain required gates. The legacy 2.5-s reset also remains in the host
+candidate and must be replaced with tested ongoing holdover/reacquisition.
+
+The candidate implements a brief recovery qualification, not continuous
+sync replacement on a good camera. Operator intent is repair only when
+necessary, retain real active snow/picture, and return to received sync.
+
 Use the affected LCD and a scope/reference monitor. Capture raw IQ and
 terminated CVBS simultaneously through strong startup, gradual attenuation,
 short/deep fades, VTX off/return and PAL/NTSC. Establish which layer goes

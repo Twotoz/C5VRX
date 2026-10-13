@@ -69,6 +69,9 @@ jobs:
           /tmp/test_native_acquire
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_synth.c -o /tmp/test_sync_synth
           /tmp/test_sync_synth
+          # Host keeper candidate only; not in firmware's component source list.
+          cc -O2 -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -I../main test_sync_flywheel.c ../main/sync_flywheel.c -lm -o /tmp/test_sync_flywheel
+          /tmp/test_sync_flywheel
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_no_signal_raster.c ../main/menu_raster.c -lm -o /tmp/test_no_signal_raster
           /tmp/test_no_signal_raster
           cc -O2 -std=c11 -Wall -Wextra -Werror -DEXPECT_FADE_HOLD -I../main test_gain_fade.c \
