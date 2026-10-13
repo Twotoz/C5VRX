@@ -120,3 +120,18 @@ Before broader use, measure gate restoration, PBUS agreement with captured
 gain metadata, true acquisition count, held DC/IQ, overload/weak-signal recovery,
 sampling gaps, CPU load and actual picture against Direct Gain. A host-passing
 landing candidate is not sufficient to call the requested one scan complete.
+
+## First board toggle (2026-10-13)
+
+The installed PR 212 firmware reports the native bench command. The first
+toggle on A1 (5865 MHz, BW40) was refused with AFC offset -180 kHz. Returning
+to A1 at zero offset still produced `disabled=result_1`, with two attempts,
+zero landing candidates and `max_open_us=0`. Direct Gain remained the owner;
+no native acquisition was opened. The offset limitation therefore does not
+explain the second refusal. Do not describe this as a working native controller.
+
+The next diagnostic build reports context, PHY ownership and forced PBUS
+readback separately. Its refusal-only register snapshots occur before any
+AGC handoff; serial output occurs after releasing PHY ownership. Guards stay
+in place until actual forced-gain readback explains the refusal. These new
+diagnostics have not yet been flashed or measured on the board.

@@ -297,10 +297,19 @@ rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_
     return RF_NATIVE_REFUSED;
 #else
     if (!s_native_vendor_valid || rf_frequency_mhz() != 5865u || rf_offset_khz() != 0 ||
-        s_filter.bw20 || !phy_try_actuator(generation)) return RF_NATIVE_REFUSED;
+        s_filter.bw20) {
+        printf("NATIVE_AGC refusal=context saved=%u freq=%u offset_khz=%d bw20=%u\n",
+               s_native_vendor_valid, rf_frequency_mhz(), rf_offset_khz(), s_filter.bw20);
+        return RF_NATIVE_REFUSED;
+    }
+    if (!phy_try_actuator(generation)) {
+        printf("NATIVE_AGC refusal=phy_busy_or_generation expected=%lu actual=%lu\n",
+               (unsigned long)generation, (unsigned long)phy_generation());
+        return RF_NATIVE_REFUSED;
+    }
     const uint8_t previous = s_gain;
     uint32_t tuple_a = 0, tuple_b = 0;
-    arc_gain_tuple_t expected;
+    arc_gain_tuple_t expected = {0};
     /* Check current ownership and readback before releasing the DC hold. */
     bool owned = (REG32(0x600a7030u) & (1u << 29)) &&
                  (REG32(0x600a702cu) & (1u << 23)) && REG32(0x600a705cu) == 0 &&
@@ -308,7 +317,24 @@ rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_
     bool readable = owned && arc_gain_tuple_decode(&s_table, previous, &expected) &&
                     native_tuple(&tuple_a) && native_tuple(&tuple_b) &&
                     tuple_a == expected.packed_state && tuple_b == tuple_a;
-    if (!readable) { phy_end_actuator(); return RF_NATIVE_REFUSED; }
+    if (!readable) {
+        /* Capture refusal evidence while PHY ownership is still held and AGC
+         * is still forced. No diagnostic I/O inside an open acquisition. */
+        const uint32_t force = REG32(0x600a702cu), bb_gate = REG32(0x600a7030u);
+        const uint32_t rf_gate = REG32(0x600a705cu), rf_control = REG32(0x600a284cu);
+        const uint16_t raw_rf = phy_pbus_rd(8, 1), raw_bb = phy_pbus_rd(0, 2);
+        const uint16_t raw_fine = phy_pbus_rd(1, 2);
+        phy_end_actuator();
+        printf("NATIVE_AGC refusal=forced_readback gain=%u owned=%u expected=%08lx "
+               "tuple_a=%08lx tuple_b=%08lx raw_rf=%03x raw_bb=%03x raw_fine=%03x "
+               "force=%08lx bb_gate=%08lx rf_gate=%08lx rf_control=%08lx\n",
+               previous, owned, (unsigned long)expected.packed_state,
+               (unsigned long)tuple_a, (unsigned long)tuple_b,
+               (unsigned)raw_rf, (unsigned)raw_bb, (unsigned)raw_fine,
+               (unsigned long)force, (unsigned long)bb_gate,
+               (unsigned long)rf_gate, (unsigned long)rf_control);
+        return RF_NATIVE_REFUSED;
+    }
     (void)phy_dco_release();
     rf_native_result_t result = RF_NATIVE_REFUSED;
     uint8_t adopted = previous;
