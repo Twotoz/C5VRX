@@ -208,6 +208,16 @@ margin, or from a lower dropout rate under comparable logged conditions.
 
 ## Merge evidence still required
 
+### Persistent output level (PR 212)
+
+Console `g` and the OUTPUT menu cycle 1.0x, 1.5x, 2.0x and 2.5x. A verified
+live change is saved in NVS; a menu selection is saved when exiting successfully
+to live video. Reboot restores that level before TX starts. Missing or invalid
+stored values use 1.0x; channel/video-standard settings keep their existing
+format. Refused changes and verified rollback leave the saved level unchanged.
+Compare all four levels through successful changes and reboot, plus cooldown
+refusal and menu exit. Firmware tests/build do not establish a physical reboot.
+
 ### Periodic native AGC bench (`~`, PR 212)
 
 After startup has completed, use `~` to toggle the RAM-only native controller;

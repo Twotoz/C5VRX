@@ -214,6 +214,7 @@ void diag_toggle_stream(void);          /* console R */
 /* ---- settings.c ---- */
 void settings_load(void);
 void settings_save(void);
+void settings_save_output(unsigned level); /* only after verified output application */
 bool blob_load(const char *key, void *data, size_t size);
 bool blob_store(const char *key, const void *data, size_t size);
 

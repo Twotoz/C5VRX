@@ -64,7 +64,7 @@ static void help(void)
     printf("C5VRX-5 keys: T status, D range/health report, M gain map (for a preset), R per-second FIELD_DIAG lines on/off,\n"
            "  K kp ladder OFF -> AUTO kp -> AUTO kp+LP (brief restarts), k/j kp calmer/faster, P U85Q/U85Q-LP\n"
            "    (k/j/P save AUTO OFF; fresh settings default to AUTO kp+LP),\n"
-           "  g OUTPUT 1.0/1.5/2.0/2.5x (safe 1.0x every boot; high levels may clip wide VTX),\n"
+           "  g OUTPUT 1.0/1.5/2.0/2.5x (saved after application; restored at boot),\n"
            "  A live VTX profile switch on/off (continuous matching every 30 s; off = report only),\n"
            "  ~ bench: bounded native AGC every 20 ms (RAM-only, OFF at boot; after startup),\n"
            "  B bench: restart live transport without OSD (interrupts video; issue #213 A/B),\n"

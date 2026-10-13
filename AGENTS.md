@@ -485,8 +485,12 @@ all profiles alike (no equaliser possible). Profile gains (+1.7 / +3.2 dB) are S
 operator report 2026-10-11: much less static but little more range, so no
 range gain is claimed; firmware is build-tested, board test pending. No options menu, labs, native AGC, AutoFit/Fusion,
 flywheel or idle raster. Manual OUTPUT (PR #196 review follow-up, 2026-10-12)
-scales only DAC6 low LUT bits, with 1x boot default and shared 5-second
-restart guard; high gains may clip wide VTXs. Automatic output-level servo
+scales only DAC6 low LUT bits, with 1x default when no valid setting exists
+and shared 5-second restart guard; high gains may clip wide VTXs. The operator
+explicitly requested persistence on 2026-10-13: PR #212 saves the output only
+after a verified applied restart, including menu exit, and restores it before
+live TX starts. Failed/refused changes do not replace the saved level.
+Automatic output-level servo
 is simulation-only (`research/output_level.py`): ideal sync/white references
 are not a proven live estimator or measured HDZero compatibility. Fresh
 settings default to AUTO kp+LP by explicit operator decision; saved manual

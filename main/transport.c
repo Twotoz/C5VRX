@@ -634,6 +634,7 @@ static bool resume_live(const uint16_t *restore_lut)
         return false;
     }
     memcpy(s_lut_live, s_lut_work, sizeof(s_lut_live));
+    const bool output_changed = s_have_verified && s_verified_output != r.output;
     s_verified_lp = r.lp;
     s_verified_level = r.level;
     s_verified_output = r.output;
@@ -641,6 +642,9 @@ static bool resume_live(const uint16_t *restore_lut)
     s_have_verified = true;
     s_lut_known = true;
     s_kp_target = (uint8_t)r.level;
+    /* Automatic kp/program changes never write NVS. A failed restart or
+     * rollback returns above and cannot replace the remembered output. */
+    if (output_changed) settings_save_output(r.output);
     return true;
 }
 
@@ -713,7 +717,7 @@ void transport_print(void)
     printf("LCD_AB live_restarts=%lu failed=%lu last_us=%lu\n",
            (unsigned long)s_bench_restarts, (unsigned long)s_bench_restart_fail,
            (unsigned long)s_bench_restart_us);
-    printf("OUTPUT level=%s boot_default=1.0x clipped_lut_entries=%u recovery_errors=%lu rollbacks=%lu "
+    printf("OUTPUT level=%s boot_restore=saved default=1.0x clipped_lut_entries=%u recovery_errors=%lu rollbacks=%lu "
            "rollback_fail=%lu fault_latched=%u live=%u\n", transport_output_name(), s_output_clipped,
            (unsigned long)s_restart_errors, (unsigned long)s_rollbacks, (unsigned long)s_rollback_fail,
            s_transport_fault, s_started);
