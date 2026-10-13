@@ -22,6 +22,9 @@ Distinguish simulation, firmware implementation and physical validation.
       semantics. Ensure one gain owner, coherent adopted gain/DC state,
       retune/calibration handoff, timeout recovery and meaningful counters.
       An opened gate is not proof that exactly one acquisition completed.
+      Software bench implementation: `~`, nominal 20 ms, exclusive observer
+      owner, PBUS tuple readback, bounded window and gain/DC rollback. Boot RF
+      context only; arbitrary context and physical single-scan proof pending.
 - [ ] Select and implement a feasible PAL/NTSC sync keeper that preserves
       actual received snow and weak picture fragments. Establish camera timing,
       horizontal/vertical holdover, source freshness and DMA safety. Compare

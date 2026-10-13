@@ -208,6 +208,25 @@ margin, or from a lower dropout rate under comparable logged conditions.
 
 ## Merge evidence still required
 
+### Periodic native AGC bench (`~`, PR 212)
+
+After startup has completed, use `~` to toggle the RAM-only native controller;
+it is OFF at boot. This first implementation accepts only the original boot
+RF context (5865 MHz, zero offset, BW40), and refuses unsupported contexts or
+bad initial gain readback. `T` reports the selected gain owner and
+`NATIVE_AGC attempts/landing_candidates/faults/max_open_us`. A candidate is
+not a verified single hardware acquisition.
+
+Compare Direct Gain / native / native / Direct Gain at the same RF input.
+Capture raw IQ, actual CVBS and gain/DC readback. Confirm that overload,
+retune/calibration, timeout and sampling-gap exits return to Direct Gain;
+`FAULT_PAUSED` means restoration failed and must be investigated. Verify
+the actual number of gain walks per pulse, the nominal 20-ms scan cadence,
+held IQ/DC and absence of CPU watchdogs. No range claim follows from the
+register readback or the host tests.
+
+### Remaining main-path acceptance
+
 Host tests and compilation verify diagnostic semantics and recorder bounds;
 they do not prove extra attenuation tolerance or cure the reported picture
 cliff. Flash and check VTX-off/on startup, fresh/valid calibration, correct

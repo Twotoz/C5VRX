@@ -725,11 +725,18 @@ requirements by themselves**.
 
 ## Current realtime invariants (C5VRX-5)
 
-- **Direct Gain V5 is the only gain owner.** There is no native hardware AGC
-  in C5VRX-5 (removed with C5VRX-3, 2026-10-12): on a continuous carrier the
+- **Direct Gain V5 is the default gain owner.** The operator explicitly
+  requested periodic native acquisition on 2026-10-13. PR #212 adds an
+  OFF-at-boot, RAM-only `~` bench controller (`docs/NATIVE_AGC_REBUILD.md`):
+  nominal 20 ms, bounded landing/timeout/gap checks, exclusive gain ownership,
+  verified forced-gain/DC restoration and rollback. The saved native RF
+  setup is restricted to boot 5865 MHz / zero offset / BW40. Physical RF
+  restoration, true acquisition count and picture/range remain unverified.
+  Do not call landing candidates exactly one completed scan or enable this
+  by default without comparison. On a continuous carrier the
   C5 packet AGC re-acquires every ~21 us on a different gain, which caused
-  line noise and grain (`legacy/c5vrx3/docs/native-agc-v2.md`). Do not add it
-  back without a new hardware comparison that beats Direct Gain V5.
+  line noise and grain (`legacy/c5vrx3/docs/native-agc-v2.md`). Do not make it
+  the default without a new hardware comparison that beats Direct Gain V5.
 - The live source is MODEM_DIAG Q4/I4 (fixed ultrafine lane) captured by
   PARLIO RX into the raw 32 KiB ring; the TX BitScrambler (U85Q or U85Q-LP)
   demodulates; the CPU never paces samples. VTX presence and USB must never

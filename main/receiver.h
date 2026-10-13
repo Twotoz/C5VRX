@@ -114,6 +114,7 @@ void receiver_resume(void);
 void receiver_set_gain(uint8_t gain);
 void receiver_print(void);
 void receiver_print_map(void);   /* console M: GAINMAP line */
+void receiver_native_toggle(void); /* ~: RAM-only bounded native acquire/hold bench */
 
 /* ---- control.c ---- */
 extern volatile bool s_menu_active;

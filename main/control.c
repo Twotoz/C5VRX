@@ -257,6 +257,7 @@ static void command(int c, unsigned *menu_idle)
         return;
     }
     switch (c) {
+    case '~': receiver_native_toggle(); break;
     case 'N': {
         bool enabled = !no_signal_enabled();
         if (!enabled && no_signal_active()) {

@@ -55,7 +55,52 @@ native gain read on the board. Compare repeated RF/BB/fine reads against known
 forced rows before adopting any native result. Refuse ambiguous/unmatched
 tuples rather than treating 702C's configured force index as actual gain.
 
-## Implementation decision still to validate
+## Implemented bounded bench controller (physical validation pending)
+
+Console `~` toggles a RAM-only acquire/hold controller after startup. It is
+OFF at every boot; Direct Gain remains the default. The nominal period is
+20 ms, not 5 ms: every native pulse is a real analog transition even when it
+lands on the same index, and the existing control guard requires 5 ms of
+settled gain. A 5-ms period would continually exclude ordinary control windows.
+
+The observer is the sole gain owner in this mode. Each attempt acquires the
+PHY mutex, verifies the current forced tuple twice, leaves DCO debug hold,
+restores only the exact RF-AGC fields saved before the first disable, and
+opens BB AGC using the pinned vendor helper. Tasks are suspended for this
+bounded window, while interrupts and the hardware video stream keep running.
+There is no new timer ISR or interrupt-masking spin loop.
+
+The loop retains the old initial-gain start proxy but replaces the old 706C
+"gain" proxy with actual PBUS RF/BB/fine tuples. It closes after a candidate
+tuple holds for 2 us, or at a 60-us timeout / >2-us sampling gap / 512 polls.
+The inverse table search runs after BB closes. Two further equal reads must
+match the candidate and exactly one calibrated table row. Missing, malformed,
+ambiguous and unsupported tuples are refused. The hold is then a forced
+calibrated gain with its own DCO row, and software gain/epoch/time are updated.
+
+Every changed-hardware exit restores disabled RF/BB AGC and forced gain/DC;
+register and tuple readback check that restoration. A failed check rolls back
+once to the previous row. Failed restoration pauses the gain owner and reports
+`FAULT_PAUSED`; other faults return to Direct Gain. Existing overload evidence
+also hands control back to Direct Gain immediately. Retune/calibration/context
+changes disable the experiment. Direct Gain writes and mode switches share
+PHY ownership so task preemption cannot make the two controllers fight.
+
+The saved vendor setup is restricted to the initial 5865-MHz, zero-offset,
+BW40 context. Other contexts refuse; no snapshot from a different channel is
+silently used. Support for arbitrary native contexts remains unfinished.
+Restoring these saved fields is a bench hypothesis needing physical A/B,
+not a claim of universally reversible native initialization.
+
+`NATIVE_AGC` reports attempts, landing candidates, faults and measured maximum
+open duration separately, with `completed_scans=UNVERIFIED`. The nominal
+60-us timeout is not a hard wall-time guarantee through interrupt preemption.
+No physical acquisition-complete flag or exactly-one-scan proof is claimed.
+Host tests cover all 84 table rows and malformed/ambiguous tuples, start,
+stable landing, reset, invalid evidence, missed polling and timeout. They do
+not validate RF register restoration or improvement in picture/range.
+
+## Remaining acceptance
 
 Prefer exclusive native acquire/hold ownership to running two gain controllers.
 Compare a boot-selected native owner (retains vendor RF setup) with a bounded
@@ -71,4 +116,7 @@ Physical validation must establish native gain landing, true acquisition
 count, held-gain stability, overload recovery and picture quality on the
 current ultrafine lane. The old coarse-lane target is not automatically suitable.
 
-No periodic native controller has been enabled by these research changes.
+Before broader use, measure gate restoration, PBUS agreement with captured
+gain metadata, true acquisition count, held DC/IQ, overload/weak-signal recovery,
+sampling gaps, CPU load and actual picture against Direct Gain. A host-passing
+landing candidate is not sufficient to call the requested one scan complete.
