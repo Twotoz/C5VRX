@@ -9,6 +9,7 @@
 #include "kp_ladder.h"
 #include "kp_switch_guard.h"
 #include "profile_logic.h"
+#include "video_loss.h"
 #include "cn_estimate.h"
 #include "analog_video_detect.h"
 #include "driver/gpio.h"
@@ -339,6 +340,8 @@ static void control_task(void *arg)
     uint8_t afc_lost = 0;
     unsigned settle = RETUNE_SETTLE_TICKS, btn = 0, boot_grace = 20, menu_idle = 0, menu_refresh = 0;
     bool long_fired = false, was_locked = false, ladder_was_active = true;
+    video_loss_t video_loss = {0};
+    int64_t raster_retry_us = 0;
     int seen_profile = profile_active();
     uint32_t seen_phy = phy_generation(), seen_control = s_control_epoch;
     uint32_t seen_restart_errors = transport_restart_errors();
@@ -436,6 +439,22 @@ static void control_task(void *arg)
         if (copied) s_cfo_khz = r.porch_pairs ? r.porch_khz : 0;
         /* Burst or line timing confirmed the syncs (afc2_measure). */
         bool valid = window_ok && r.lines && r.standard && r.porch_pairs && r.sync_pairs;
+        /* Display sync evidence does not require AFC envelope stationarity
+         * or AFC lock. Short B/W windows often contain only one sync. */
+        afc2_result_t display = r;
+        if (ladder_ok && !window_ok) display = afc2_measure(s_window, sizeof(s_window), c5vrx_phase8_gain_lut);
+        bool display_sync = display.lines && display.standard && display.sync_pairs && display.porch_pairs;
+        bool display_eligible = !s_menu_active && !calibration_in_startup() && !receiver_paused() &&
+                                !phy_busy() && !transport_faulted() && program_ok;
+        bool want_raster = video_loss_update(&video_loss, ctx, display_eligible, ladder_ok,
+                                             display_sync, (uint64_t)now, no_signal_active());
+        if (display_eligible && now >= raster_retry_us && want_raster != no_signal_active() &&
+            phy_try_actuator(phy_generation())) {
+            bool ok = want_raster ? no_signal_show() : no_signal_end();
+            raster_retry_us = ok ? 0 : now + 1000000; /* no rapid allocation/restart retries */
+            phy_end_actuator();
+            continue; /* ownership changed; never actuate from this old snapshot */
+        }
         if (valid) { s_last_video_us = now; standard_vote(r.standard); profile_observe(&r); }
         bool was = s_afc_locked;
         if (copied) s_afc_locked = afc2_native_lock(s_afc_locked, valid, afc2_ctrl_can_lock(&afc, true), afc.n, &afc_lost);

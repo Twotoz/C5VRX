@@ -191,7 +191,7 @@ static void live_apply(void)
 {
     const int p = s_switch_pending;
     if (p < 0 || p == s_profile) { s_switch_pending = -1; return; }
-    if (s_menu_active || calibration_in_startup() || transport_faulted()) return;
+    if (s_menu_active || no_signal_active() || calibration_in_startup() || transport_faulted()) return;
     if (transport_switch_wait_ms()) return;                  /* retry after the cooldown */
     rf_filter_t f;
     const int cls = p == PROFILE_DEFAULT ? FILTER_NORMAL : p == PROFILE_WIDE ? FILTER_WIDE : FILTER_NARROW;

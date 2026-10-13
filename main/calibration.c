@@ -53,7 +53,7 @@ bool calibration_in_startup(void) { return s_startup; }
 
 static bool quiet_owner(void)
 {
-    return !s_menu_active && !s_scan_active && !receiver_paused() && !phy_busy();
+    return !s_menu_active && !no_signal_active() && !s_scan_active && !receiver_paused() && !phy_busy();
 }
 
 /* Status screens of the startup phase own TX (menu raster), so the menu

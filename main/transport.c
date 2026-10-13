@@ -693,6 +693,9 @@ uint32_t transport_fault_count(void)
 
 void transport_print(void)
 {
+    printf("VIDEO_OUTPUT source=%s standard=%s\n", no_signal_active() ? "NO_SIGNAL" :
+           s_menu_active ? "MENU" : s_started ? "LIVE" : "OFF",
+           s_video_std == VIDEO_STD_PAL ? "PAL" : "NTSC");
     printf("LCD_AB live_restarts=%lu failed=%lu last_us=%lu\n",
            (unsigned long)s_bench_restarts, (unsigned long)s_bench_restart_fail,
            (unsigned long)s_bench_restart_us);

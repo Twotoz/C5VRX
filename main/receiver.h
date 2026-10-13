@@ -171,6 +171,9 @@ void menu_set_standard_mode(std_mode_t mode);
 void status_screen(const char *title, const char *line1, const char *line2, int percent);
 void status_screen_end(void);
 bool menu_status_active(void);
+bool no_signal_active(void);
+bool no_signal_show(void);
+bool no_signal_end(void);
 
 /* ---- profile.c ---- */
 #include "afc.h"

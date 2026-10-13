@@ -630,10 +630,16 @@ initial LP hold and unnecessary sentinel envelope work. Fixes preserve
 hardware streaming and verified restart. Four-seed physical-ADC comparisons
 show several-dB offset/filter mismatch losses; the apparent deviation-1.7
 filter benefit did not survive held-out tests. No measured RF range claim.
-Issue #213 `B` is a manual unchanged live-only restart A/B, not automatic
-keep-alive. OSD supplies sync AND resets transport; loaded CVBS/affected-LCD
-recovery remain unvalidated. Do not synthesize NO SIGNAL from AFC loss alone
-or claim seamless camera-aligned raster handoff.
+Issue #213: automatic black PAL/NTSC NO SIGNAL raster after >=200 ms and
+four observed sync-negative windows; first confirmed sync resumes live.
+Missing copies/settle/other owners are not loss. RX/gain continue; raster
+ownership is separate from the interactive menu. 300 ms recovery grace,
+one-second failure backoff, descriptor reuse, bounded restart/rollback.
+Manual `B` remains an unchanged live-only restart A/B. Do not trigger from
+AFC lock loss alone or claim seamless camera alignment/affected-LCD cure:
+handoff has gaps and physical display/level/latency validation is pending.
+Last-field freeze needs a new decoded-video tap/capture/reconstruction path;
+the native field does not fit current free RAM. See the full audit.
 
 IQLaneFusion research extends U85 and the older adaptive-lane/history work:
 `docs/IQLANE_FUSION.md`, `research/iq_lane_fusion.py`. Exact Q10 cell

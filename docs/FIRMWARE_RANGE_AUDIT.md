@@ -159,16 +159,41 @@ and transition gaps, comparing a monitor that displays snow. Repeat strong
 startup, attenuation, VTX off and return. Zero transport faults do not prove
 valid CVBS. The affected display and loaded measurements remain unavailable.
 
-**Keep-alive feasibility:** menu raster replaces TX ownership with a separate
-chain and returns through halted restart. This has gaps and no camera-field
-alignment. A 102 us control window cannot establish vertical sync or useful
-moving luma; a 50 ms loop cannot bound short fades below a field. The
-two-bundle tracker/LP path has no demonstrated camera-synchronized mux or
-independent sync scheduler. Replacing video whenever AFC loses lock would
-hide useful snow/short B/W windows. One pixel adds no H/V sync. No automatic
-NO SIGNAL raster is enabled. First perform the split above; then prototype
-trustworthy loss detection and hardware handoff with measured latency,
-hysteresis, false replacement and transition behavior.
+**Automatic receiver-side NO SIGNAL raster:** following the operator's
+clarification, the receiver now substitutes real black PAL/NTSC video with
+white NO SIGNAL text after four observed sync-negative windows and >=200 ms
+since the last confirmed sync. It returns on the first newly confirmed sync,
+without waiting for AFC lock. Missing copies are unknown; settle/retune,
+menu, scan, calibration and paused/faulted contexts do not count as loss.
+This uses raw burst/line-timing evidence even when AFC's stationary-envelope
+gate fails. Alternating short B/W windows do not trigger replacement.
+Recovery has a 300 ms entry grace; failed transitions back off one second.
+
+RX and gain remain running while standalone cyclic DMA feeds the raster.
+Use the selected PAL/NTSC mode or the detected/last remembered standard in
+AUTO. Prepare/allocate before stopping TX; failed allocation preserves live
+output. Keep descriptor memory after recovery for reuse on subsequent fades.
+Menu/calibration can take over the same raster; their usual close resumes
+live. Automatic profile/filter switches and intrusive background calibration
+defer during fallback. `NO_SIGNAL` transition counters and `VIDEO_OUTPUT`
+source/standard make substitution distinct from a transport fault.
+
+This is a sampled H-sync absence heuristic, not proof of moving-picture loss
+or vertical sync. The 50 ms loop cannot cover sub-field fades. TX takeover
+and return are halted transitions with gaps and no camera-field alignment;
+no seamless sync-insertion or affected-LCD no-relock claim is made. Repeated
+weak-picture transitions, false replacement, actual detection/return latency,
+loaded levels and monitor lock still require bench validation. The manual
+`B` split remains useful when the screen itself works but live cannot acquire.
+
+**Why black rather than last-field freeze:** the existing RAM ring stores IQ,
+not demodulated DAC video. A native 40 MHz byte-wide PAL field needs about
+800 kB; NTSC about 667 kB, versus tens of kB of free internal RAM on the
+captured board. A reduced-rate stored picture needs a new decoded-video tap,
+capture path and raster reconstruction. The existing synthetic raster shares
+repeated line/UI buffers and requires only its descriptor chain beyond the
+already allocated menu raster. It is the smaller implementation and has no
+field-capture wait; freezing a field is deferred architecture research.
 
 #213 stays open pending actual LCD acquisition/repeated recovery and loaded
 CVBS verification. #201 still needs separate RF/luma/display thresholds.
@@ -197,7 +222,9 @@ Metadata record baseline, C-policy fingerprint, seeds and sweeps; data retain
 negative/censored results. CI checks actual policy against 1414 scene rows
 and 40 actual-C gate summaries alongside LP/ladder/LUT/output invariants.
 `cn_envelope.txt` is normalized from malformed UTF-16 export to readable
-UTF-8 without changing values. Host tests and IDF 6.0.2 build pass. This PR
+UTF-8 without changing values. Added production loss-policy tests and actual
+PAL/NTSC raster emission checks for frame timing, sync/burst, DAC bounds and
+DMA alignment. Host tests and IDF 6.0.2 build pass. This PR
 is not flashed: COM10 is absent. Copy rates, AFC/profile transitions, LCD
 A/B and attenuation tolerance need hardware; no measured range gain or LCD
 cure is claimed.

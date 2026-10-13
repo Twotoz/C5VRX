@@ -670,10 +670,14 @@ Full reproduction, assumptions, figures and negative results:
   simply increasing ADC level is not a large robust win.
 - Issue #213: `B` is manual unchanged live-only restart, without OSD, using
   guarded verified restart/rollback and shared cooldown. Compare OSD/live
-  restart/LCD reset and scope loaded CVBS. No automatic NO SIGNAL raster:
-  current architecture lacks demonstrated gapless camera-aligned handoff.
+  restart/LCD reset and scope loaded CVBS. Following operator clarification,
+  automatic black PAL/NTSC NO SIGNAL raster is now implemented after four
+  observed negative windows / 200 ms; first confirmed sync resumes live.
+  RX/gain continue, missing copies and busy contexts do not count as loss.
+  Handoff is bounded but interrupted, not camera-field aligned. Last-field
+  freeze needs a new decoded-video capture path and much more native RAM.
 - Issues #199/#200 closed against merged fixes and recorded board success.
   #201/#213 remain open for actual RF/luma/display and LCD validation.
 
-15 host C test executables, five diagnostic-log tests and warning-free IDF
+17 host C test executables, five diagnostic-log tests and warning-free IDF
 6.0.2 build pass. New code has not been flashed; COM10 is currently absent.

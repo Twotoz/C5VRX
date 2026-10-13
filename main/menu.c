@@ -29,6 +29,8 @@ static unsigned s_chunk_count, s_node_capacity, s_node_count;
 volatile int s_menu_cursor;
 /* Status screen: a full-screen message on the menu raster (calibration). */
 static volatile bool s_status;
+static volatile bool s_no_signal;
+static uint32_t s_no_signal_entries, s_no_signal_returns;
 static char s_status_title[40], s_status_line1[48], s_status_line2[48];
 static volatile int s_status_percent;
 
@@ -143,6 +145,12 @@ void menu_render(void)
     char buf[32];
     const fpv_channel_t *ch = rf_channel();
     if (s_status) { render_status(); return; }
+    if (s_no_signal) {
+        memset(s_raster.ui, DAC_IDLE_CODE, sizeof(s_raster.ui));
+        text("NO SIGNAL", (MENU_UI_WIDTH - 16 * 9) / 2, 20, UI_WHITE, 2);
+        sync_dma_c2m(s_raster.ui, sizeof(s_raster.ui));
+        return;
+    }
     memset(s_raster.ui, UI_ROOT, sizeof(s_raster.ui));
     rect(0, 0, MENU_UI_WIDTH, MENU_UI_LINES, UI_PANEL);
     /* Header: name, channel, frequency, gain, signal, standard. */
@@ -298,6 +306,13 @@ static esp_err_t build_chain(video_standard_t standard)
 bool menu_open(void)
 {
     if (s_menu_active) return true;
+    /* Transfer raster ownership without a live restart. RX remains running. */
+    if (s_no_signal) {
+        s_no_signal = false;
+        s_menu_active = true;
+        menu_render();
+        return true;
+    }
     /* Allocate and render before touching live video: if memory is short,
      * flight video keeps running. */
     esp_err_t err = build_chain(menu_standard());
@@ -326,7 +341,7 @@ void menu_close(void)
 void menu_set_standard_mode(std_mode_t mode)
 {
     s_std_mode = mode;
-    if (!s_menu_active) return;
+    if (!s_menu_active && !s_no_signal) return;
     video_standard_t want = menu_standard();
     if (want == s_video_std) { menu_render(); return; }
     video_standard_t previous = s_video_std;
@@ -334,4 +349,42 @@ void menu_set_standard_mode(std_mode_t mode)
     /* PAL needs ~312 more descriptors; without them keep the old standard. */
     if (build_chain(want) != ESP_OK) ESP_ERROR_CHECK(build_chain(previous));
     transport_start_chain(node(0));
+}
+
+bool no_signal_active(void) { return s_no_signal; }
+
+bool no_signal_show(void)
+{
+    if (s_no_signal) return true;
+    if (s_menu_active || s_status || receiver_paused() || calibration_in_startup() || transport_faulted()) return false;
+    s_no_signal = true; /* render black active picture with NO SIGNAL */
+    esp_err_t err = build_chain(menu_standard());
+    if (err != ESP_OK) {
+        s_no_signal = false;
+        free_nodes();
+        printf("NO_SIGNAL refused=memory_or_chain error=%s\n", esp_err_to_name(err));
+        return false; /* never stop working live TX for an allocation failure */
+    }
+    transport_stop_tx(); /* RX stays live: gain and camera-sync detector continue */
+    transport_start_chain(node(0));
+    if (transport_faulted()) { s_no_signal = false; return false; }
+    ++s_no_signal_entries;
+    printf("NO_SIGNAL active=1 standard=%s entries=%lu returns=%lu\n", std_name(s_video_std),
+           (unsigned long)s_no_signal_entries, (unsigned long)s_no_signal_returns);
+    return true;
+}
+
+bool no_signal_end(void)
+{
+    if (!s_no_signal) return true;
+    transport_stop_chain();
+    transport_resume_live(); /* bounded verified restart, same selected output/program */
+    s_no_signal = false;
+    ++s_control_epoch; /* RX was restarted; discard pre-restart control evidence */
+    /* Keep descriptors reserved for the next fade, avoiding allocation churn.
+     * They are rebuilt only while GDMA no longer references them. */
+    ++s_no_signal_returns;
+    printf("NO_SIGNAL active=0 standard=%s entries=%lu returns=%lu fault=%u\n", std_name(s_video_std),
+           (unsigned long)s_no_signal_entries, (unsigned long)s_no_signal_returns, transport_faulted());
+    return !transport_faulted();
 }
