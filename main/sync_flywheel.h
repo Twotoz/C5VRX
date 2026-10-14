@@ -50,10 +50,18 @@ typedef struct {
     void *commit_ctx;
 } sfw_ring_t;
 
-typedef enum { SFW_ACQUIRE = 0, SFW_TRACK = 1 } sfw_state_t;
+typedef enum { SFW_ACQUIRE = 0, SFW_TRACK = 1, SFW_GENERATED = 2 } sfw_state_t;
+typedef enum { SFW_STD_UNKNOWN = 0, SFW_STD_PAL = 1, SFW_STD_NTSC = 2 } sfw_standard_t;
+typedef enum { SFW_SOURCE_ABSENT, SFW_SOURCE_CANDIDATE, SFW_SOURCE_SYNC } sfw_source_t;
 
 typedef struct {
     sfw_state_t state;
+    /* Explicit source monitor admission, independent of generated timing.
+     * No source observation may be inferred from keeper output. */
+    uint32_t source_context, source_windows, generated_starts, generated_cancels;
+    uint64_t source_begin, source_end, source_samples;
+    uint8_t fallback_standard;
+    bool source_context_known, source_absent;
     sync_repair_ledger_t repairs;
     uint64_t evidence_end;
     uint32_t evidence_refused;
@@ -118,6 +126,20 @@ typedef struct {
 } sync_flywheel_t;
 
 void sfw_init(sync_flywheel_t *f);
+/* Caller supplies a complete ORIGINAL window and its independently qualified
+ * source status before sfw_run. ABSENT requires an original-source sync
+ * monitor; elapsed time/failed keeper lock alone cannot certify it. Each
+ * window must be fresh, contiguous, in one context and RX-readable. Gaps
+ * reset the absence coverage; at least 8ms of actual samples are required.
+ * CANDIDATE/SYNC cancel generated timing immediately, before another write.
+ * Unknown/changed context, selected standard or stale evidence fail closed.
+ * fallback_standard: 0 disabled, 1 PAL, 2 NTSC (selected or last known).
+ * A monitor's camera-arrival detection latency remains an integration gate. */
+bool sfw_bootstrap_source(sync_flywheel_t *f, uint32_t context, uint8_t fallback_standard,
+                          uint64_t begin, uint64_t end, uint64_t rx_complete,
+                          uint32_t ring_bytes, sfw_source_t source);
+/* Generated output geometry is deliberately separate from real source lock. */
+int sfw_output_standard(const sync_flywheel_t *f);
 /* Process predicted lines / V slots whose data is complete (< avail_end,
  * absolute sample index, exclusive). Writes only samples >= write_floor
  * (ahead of the TX read). At most budget_evals detection evaluations per call;

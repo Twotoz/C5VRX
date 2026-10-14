@@ -412,6 +412,78 @@ int sfw_standard(const sync_flywheel_t *f)
     return pal(f) ? 1 : 2;
 }
 
+int sfw_output_standard(const sync_flywheel_t *f)
+{
+    return f->state == SFW_GENERATED ? f->fallback_standard : sfw_standard(f);
+}
+
+static void cancel_generated(sync_flywheel_t *f)
+{
+    if (f->state == SFW_GENERATED) {
+        ++f->generated_cancels;
+        f->state = SFW_ACQUIRE;
+        f->scan_pos = 0;
+        f->acq_phase = 0; f->acq_n = 0; f->acq_run = 0;
+        f->acq_have_last = false; f->acq_runs = 0;
+        memset(f->acq_hist, 0, sizeof(f->acq_hist));
+        f->clean_since_acq = 0;
+        f->levels = f->clock_known = f->v_valid = f->v_armed = false;
+        f->v_observed = false; f->v_end_q16 = 0;
+        f->rebuild_lines = f->pristine_run = 0;
+    }
+}
+
+bool sfw_bootstrap_source(sync_flywheel_t *f, uint32_t context, uint8_t standard,
+                          uint64_t begin, uint64_t end, uint64_t rx_complete,
+                          uint32_t ring_bytes, sfw_source_t source)
+{
+    if (!f) return false;
+    bool changed = !f->source_context_known || f->source_context != context ||
+                   f->fallback_standard != standard;
+    bool valid = ring_bytes && !(ring_bytes & (ring_bytes - 1u)) &&
+        end > begin && rx_complete >= end && rx_complete - begin <= ring_bytes &&
+        source <= SFW_SOURCE_SYNC && standard <= 2u;
+    if (valid) valid = sync_repair_ledger_advance(&f->repairs,
+        rx_complete > ring_bytes ? rx_complete - ring_bytes : 0) &&
+        sync_repair_ledger_original(&f->repairs, begin, end, end);
+    if (!changed && begin < f->source_end) valid = false;
+    bool gap = !changed && f->source_absent && begin != f->source_end;
+    if (changed || gap || !valid || source != SFW_SOURCE_ABSENT || !standard) {
+        cancel_generated(f);
+        f->source_windows = 0; f->source_samples = 0;
+        f->source_absent = false;
+    }
+    f->source_context_known = true; f->source_context = context;
+    f->fallback_standard = standard <= 2u ? standard : 0;
+    if (!valid) return false;
+    f->source_begin = begin; f->source_end = end;
+    f->source_absent = source == SFW_SOURCE_ABSENT && standard;
+    if (f->source_absent) {
+        if (f->source_windows != UINT32_MAX) ++f->source_windows;
+        if (UINT64_MAX - f->source_samples >= end - begin) f->source_samples += end - begin;
+    }
+    return true;
+}
+
+static void start_generated(sync_flywheel_t *f, uint64_t end)
+{
+    f->state = SFW_GENERATED;
+    f->nominal_q16 = f->period_q16 = f->coast_period_q16 =
+        (int32_t)(f->fallback_standard == 1u ? SFW_PAL_LINE_Q16 : SFW_NTSC_LINE_Q16);
+    f->next_q16 = (end + PORCH + 256u) << 16;
+    f->grid_line = 0;
+    f->clean_since_acq = 0; f->clock_known = false;
+    f->levels = true; f->blank_q4 = 0;
+    f->v_valid = f->v_armed = true;
+    f->v_half = (npre(f) & 1u) != 0;
+    f->v_a_line = npre(f) / 2u;
+    f->v_next_q16 = f->next_q16 + npre(f) * half_q16(f);
+    f->v_slot = -(int16_t)npre(f);
+    f->v_found = f->v_observed = false;
+    f->v_end_q16 = 0;
+    ++f->generated_starts;
+}
+
 static void start_track(sync_flywheel_t *f, uint64_t start, uint32_t nominal)
 {
     f->state = SFW_TRACK;
@@ -701,10 +773,11 @@ static void v_slot(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
     uint64_t p = rnd(pos_q16);
     uint32_t h2 = (uint32_t)rnd(h2q);
     bool broad = j >= 0 && j < (int)nbroad(f);
-    bool present = broad ? broad_at(f, r, p, h2) : eq_at(f, r, p);
+    bool generated = f->state == SFW_GENERATED;
+    bool present = !generated && (broad ? broad_at(f, r, p, h2) : eq_at(f, r, p));
     /* Wrong parity means an equalizing slot here: its middle is high. A real
      * broad pulse with only a broken start stays put and is rebuilt. */
-    if (j == 0 && !present && p + 2u * h2 + 16u <= avail_end &&
+    if (!generated && j == 0 && !present && p + 2u * h2 + 16u <= avail_end &&
         original(f, p + h2 / 4u - 5u, p + 3u * h2 / 4u + 5u) &&
         !lowm(f, r, p + h2 / 4u) && !lowm(f, r, p + h2 / 2u) && !lowm(f, r, p + 3u * h2 / 4u)) {
         if (broad_at(f, r, p + h2, h2)) {
@@ -820,14 +893,21 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
     s_lowm = s_steps = 0;
     f->evals = 0;
     f->lowm_evals = f->phase_steps = 0;
+    bool bootstrap_admitted = f->source_absent && f->source_end == avail_end &&
+        f->fallback_standard && f->repair_step_q8;
+    if (f->state == SFW_GENERATED && !bootstrap_admitted) cancel_generated(f);
+    if (f->state == SFW_ACQUIRE && bootstrap_admitted && allow_repair &&
+        f->source_windows >= 4u && f->source_samples >= 320000u)
+        start_generated(f, avail_end);
     if (f->state == SFW_ACQUIRE) {
         acquire(f, r, avail_end, budget_evals);
         store_evals(f);
         if (f->state == SFW_ACQUIRE) return 0;
     }
     unsigned processed = 0;
-    while (f->state == SFW_TRACK && s_evals < budget_evals) {
-        bool locked = sfw_locked(f);
+    while ((f->state == SFW_TRACK || f->state == SFW_GENERATED) && s_evals < budget_evals) {
+        bool generated = f->state == SFW_GENERATED;
+        bool locked = generated || sfw_locked(f);
         bool repair = allow_repair && locked && f->levels && f->repair_step_q8;
         uint64_t h2q = half_q16(f);
         /* Arm the coming vertical interval 4 lines ahead, on the line grid. */
@@ -878,6 +958,16 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
             advance(f, base + (uint64_t)(int64_t)f->period_q16);
             ++f->skipped_lines;
             if (f->lines_since_clean < 0xFFFFFFFFu) ++f->lines_since_clean;
+            continue;
+        }
+        if (generated) {
+            /* An independently admitted absent-source window is the only
+             * authority here. Never learn/steer/confirm from generated IQ. */
+            if (repair && synth(f, r, pred - PORCH, PORCH, blank_step(f),
+                               HSYNC, sync_step(f), blank_step(f), false, write_floor, avail_end))
+                ++f->repaired;
+            advance(f, base + (uint64_t)(uint32_t)f->period_q16);
+            ++f->lines; ++processed; ++s_evals;
             continue;
         }
         int win = WIN_UNLOCKED;

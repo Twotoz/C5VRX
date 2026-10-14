@@ -35,6 +35,11 @@ typedef struct {
 static unsigned s_seed = 1;
 static unsigned s_kp_level;
 static bool s_commit_mode;
+/* Independent source-monitor fixture: these statuses are injected from the
+ * known source scene, never derived from keeper output. This tests admission
+ * and transition mechanics; a physical source qualifier remains required. */
+static sfw_standard_t s_fallback;
+static uint64_t s_source_return, s_generated_anchor;
 typedef struct {
     uint8_t *ring;
     uint8_t before[RING];
@@ -172,6 +177,7 @@ static uint8_t *run_ring(const uint8_t *in, uint64_t n, sync_flywheel_t *f, cons
     uint64_t rx = 0, tx = 0, evals = 0, lines0 = 0;
     uint64_t lowm = 0, steps = 0;
     bool injected = false;
+    uint64_t source_end = 0;
     while (tx < n) {
         /* Match root's 8*4092 + 32-byte tail descriptor geometry. */
         uint64_t remaining = RING - (rx & (RING - 1u));
@@ -203,6 +209,16 @@ static uint8_t *run_ring(const uint8_t *in, uint64_t n, sync_flywheel_t *f, cons
                 injected = true;
             }
             if (s_commit_mode) memcpy(commit.before, ring, RING);
+            if (s_fallback && ceiling > source_end) {
+                sfw_source_t source = s_source_return && rx >= s_source_return ?
+                    SFW_SOURCE_CANDIDATE : SFW_SOURCE_ABSENT;
+                assert(sfw_bootstrap_source(f, 1u, s_fallback, source_end, ceiling,
+                                             rx, RING, source));
+                source_end = ceiling;
+                if (!s_generated_anchor && f->state == SFW_ACQUIRE &&
+                    f->source_samples >= 320000u && f->source_windows >= 4u)
+                    s_generated_anchor = ceiling + 48u + 256u;
+            }
             sfw_run(f, &r, ceiling, rx, floor, true, budget);
             if (s_commit_mode) assert(!memcmp(commit.before, ring, RING));
             assert(f->repairs.collapses == 0 && f->repairs.count <= 32u);
@@ -366,13 +382,13 @@ static void verify_source_edges(bool pal)
 /* Explicit content-preservation gate: repaired sync is useful only if the
  * true source picture/snow remains. Compare both received IQ and the actual
  * U85Q-LP result across every active sample, not just total changed bytes. */
-static void preserve_picture(const scene_t *s, const uint8_t *in, const uint8_t *out, uint64_t n)
+static void preserve_picture_from(const scene_t *s, const uint8_t *in, const uint8_t *out, uint64_t n, uint64_t from)
 {
     uint8_t *active = calloc(n, 1);
     assert(active);
     uint64_t checked = 0;
     double L = line_us(s->pal), H2 = L / 2;
-    for (uint64_t k = 0; k < n; ++k) {
+    for (uint64_t k = from; k < n; ++k) {
         double t = k / FS;
         if (s->shift_at && k >= s->shift_at) t -= s->shift / FS;
         long h = (long)floor(t / H2 + 1e-9);
@@ -400,6 +416,11 @@ static void preserve_picture(const scene_t *s, const uint8_t *in, const uint8_t 
     printf("%s preservation: %llu active IQ samples and both LP parities unchanged\n",
            s->pal ? "PAL" : "NTSC", (unsigned long long)checked);
     free(active);
+}
+
+static void preserve_picture(const scene_t *s, const uint8_t *in, const uint8_t *out, uint64_t n)
+{
+    preserve_picture_from(s, in, out, n, 0);
 }
 
 static void scenario(bool pal)
@@ -677,6 +698,108 @@ static void commit_admission(void)
     puts("PASS keeper executor: H/V prepare before commit, invalid workspace refused, failed commits leave IQ intact and taint provenance");
 }
 
+static void cold_boot(bool pal)
+{
+    uint64_t F = field_samples(pal), n = 5u * F;
+    scene_t snow = {.pal = pal, .amp = 0, .noise = 1.6};
+    /* The scene generator otherwise includes a camera; zero amplitude
+     * produces only fresh received IQ noise for the complete acquisition. */
+    s_seed = pal ? 91u : 93u;
+    uint8_t *in = generate(&snow, n);
+    sync_flywheel_t f;
+    s_fallback = pal ? SFW_STD_PAL : SFW_STD_NTSC;
+    s_generated_anchor = s_source_return = 0;
+    uint8_t *out = run_ring(in, n, &f, c5vrx_phase8_gain_lut, false, 0, NULL, 4000);
+    assert(f.state == SFW_GENERATED && !sfw_locked(&f) && sfw_standard(&f) == SFW_STD_UNKNOWN);
+    assert(sfw_output_standard(&f) == (int)s_fallback && f.generated_starts == 1u);
+    assert(f.acquisitions == 0u && f.clean == 0u && f.vsyncs == 0u);
+    assert(f.repaired && f.slots_repaired && f.v_coasted >= 3u);
+    assert(s_generated_anchor >= 320000u && !memcmp(in, out, 320000u));
+    double h2 = (pal ? 1280.0 : 11440.0 / 9.0);
+    for (unsigned parity = 0; parity < 2u; ++parity) {
+        decode(out, n, parity);
+        unsigned checked = 0;
+        for (unsigned h = 0; ; ++h) {
+            uint64_t p = s_generated_anchor + (uint64_t)llround(h * h2);
+            if (p + 3000u >= n - LAG) break;
+            if (p < F) continue;
+            int kind = v_kind(pal, h);
+            if (!kind && (h & 1u)) continue;
+            int edge = 0;
+            unsigned width = sync_run(out, n, p, parity, 15u, &edge);
+            unsigned lo = kind == 2 ? (unsigned)(h2 - 248u) : kind ? 70u : 150u;
+            unsigned hi = kind == 2 ? (unsigned)(h2 - 148u) : kind ? 125u : 230u;
+            if (!(width >= lo && width <= hi))
+                printf("cold %s kp=%u parity=%u h=%u kind=%d p=%llu width=%u edge=%d\n",
+                    pal ? "PAL" : "NTSC", kp_level_x100[s_kp_level], parity, h, kind,
+                    (unsigned long long)p, width, edge);
+            assert(width >= lo && width <= hi);
+            ++checked;
+        }
+        assert(checked > 800u);
+    }
+    /* Every sample outside generated blanking remains the received snow.
+     * H repairs touch only the front porch + sync; V owns half-line slots. */
+    for (uint64_t k = 320000u; k < n - LAG; ++k) {
+        if (k < s_generated_anchor) { assert(in[k] == out[k]); continue; }
+        double t = (double)(k - s_generated_anchor), hf = floor(t / h2);
+        long h = (long)hf;
+        int kind = v_kind(pal, h);
+        double x = t - hf * h2;
+        if (!kind && ((h & 1) || x >= 190.0)) {
+            /* The last48 samples of a normal line are its synthetic porch. */
+            bool next_v = v_kind(pal, h + 1) != 0;
+            if ((h & 1) && x >= h2 - (next_v ? 2.0 : 50.0)) continue;
+            if (x < 2.0 || x >= h2 - 2.0) continue; /* rounded half-line boundary */
+            if (in[k] != out[k]) printf("snow overwrite %s k=%llu anchor=%llu h=%ld x=%.3f kind=%d\n",
+                pal ? "PAL" : "NTSC", (unsigned long long)k, (unsigned long long)s_generated_anchor, h, x, kind);
+            assert(in[k] == out[k]);
+        }
+    }
+    free(out); free(in);
+
+    /* Camera appears with another standard and another phase. The independent
+     * candidate arrives before rendering those RX samples; fake V cannot
+     * serve as the new camera anchor. Ordinary original acquisition follows. */
+    bool returned_pal = !pal;
+    F = field_samples(returned_pal); n = 7u * F;
+    scene_t returned = {.pal = returned_pal, .amp = 5.0, .noise = 0.25,
+                        .shift_at = 3u * F, .shift = 0.37 * line_us(returned_pal) * FS};
+    returned.fade[0] = (fade_t){0, 3u * F, 0, 1.6, false}; returned.nfade = 1;
+    in = generate(&returned, n);
+    s_source_return = 3u * F; s_generated_anchor = 0;
+    out = run_ring(in, n, &f, c5vrx_phase8_gain_lut, false, 0, NULL, 4000);
+    assert(f.generated_starts == 1u && f.generated_cancels == 1u);
+    assert(f.state == SFW_TRACK && sfw_locked(&f));
+    assert(sfw_standard(&f) == (returned_pal ? SFW_STD_PAL : SFW_STD_NTSC));
+    assert(f.acquisitions == 1u && f.vsyncs >= 2u);
+    preserve_picture_from(&returned, in, out, n, 3u * F);
+    free(out); free(in);
+    s_fallback = SFW_STD_UNKNOWN; s_source_return = s_generated_anchor = 0;
+    printf("PASS cold %s: selected clock with real snow, both DAC parities, independent candidate cancels fake V before changed-standard camera acquisition\n",
+           pal ? "PAL" : "NTSC");
+}
+
+static void bootstrap_admission(void)
+{
+    sync_flywheel_t f;
+    sfw_init(&f);
+    assert(sfw_bootstrap_source(&f, 1, SFW_STD_PAL, 0, 8000, 8000, RING, SFW_SOURCE_ABSENT));
+    assert(f.source_samples == 8000 && f.source_windows == 1);
+    assert(sfw_bootstrap_source(&f, 1, SFW_STD_PAL, 16000, 24000, 24000, RING, SFW_SOURCE_ABSENT));
+    assert(f.source_samples == 8000 && f.source_windows == 1); /* gap resets */
+    assert(!sfw_bootstrap_source(&f, 1, SFW_STD_PAL, 16000, 24000, 24000, RING, SFW_SOURCE_ABSENT));
+    assert(!f.source_absent && !f.source_windows); /* replay */
+    assert(sync_repair_ledger_record(&f.repairs, 24000, 25000));
+    assert(!sfw_bootstrap_source(&f, 1, SFW_STD_PAL, 24000, 26000, 26000, RING, SFW_SOURCE_ABSENT));
+    assert(!f.source_absent); /* generated data never proves absence */
+    assert(sfw_bootstrap_source(&f, 2, SFW_STD_NTSC, 26000, 32000, 32000, RING, SFW_SOURCE_ABSENT));
+    assert(f.source_samples == 6000 && f.source_windows == 1);
+    assert(sfw_bootstrap_source(&f, 2, SFW_STD_NTSC, 32000, 40000, 40000, RING, SFW_SOURCE_CANDIDATE));
+    assert(!f.source_absent && !f.source_samples);
+    puts("PASS cold bootstrap admission: contiguous original coverage, replay/taint refusal, context reset and candidate cancellation");
+}
+
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -687,6 +810,9 @@ int main(void)
     if (getenv("SFW_CLOCK_PPM")) s_clock_ppm = strtod(getenv("SFW_CLOCK_PPM"), NULL);
     provenance_admission();
     commit_admission();
+    bootstrap_admission();
+    cold_boot(true);
+    cold_boot(false);
     verify_source_edges(true);
     verify_source_edges(false);
     scenario(true);

@@ -395,3 +395,27 @@ tracking behavior. Measure end-to-end timing, source freshness, sustained
 throughput, CPU/heap/stack and transport fault counts under USB load.
 "The monitor never loses sync" requires this physical evidence; host output
 or a firmware build alone cannot establish it.
+
+### Cold start without a camera (host candidate, 2026-10-14)
+
+Issue 213's monitor shows "No Signal" when no camera sync has ever been
+acquired; the keeper previously had nothing to hold. `sfw_bootstrap_source()`
+lets an *independent* original-source monitor declare complete, contiguous,
+RX-readable windows ABSENT for a selected standard (PAL/NTSC). After at least
+four windows and 8 ms (320000 samples) of original coverage, `sfw_run` enters
+`SFW_GENERATED`: H sync plus the full V interval on the selected nominal line
+grid, synthesized only into the front porch/sync and V half-line slots. All
+other samples remain the received snow. Generated timing never learns, steers,
+confirms lock or counts acquisitions (`sfw_locked()` stays false,
+`sfw_standard()` stays unknown; `sfw_output_standard()` reports the generated
+geometry separately).
+
+Any CANDIDATE/SYNC report, context or standard change, replay, gap, stale
+window or modified (repair-ledger) range cancels generated timing before the
+next write and returns to ordinary original acquisition. The tests inject
+source status from the known scene, never from keeper output, and verify both
+DAC parities, >800 generated pulses, unchanged snow outside generated blanking,
+and a changed-standard, phase-shifted camera returning to a single real lock
+with preserved picture. The physical source qualifier, its camera-arrival
+latency and monitor acceptance remain integration gates; the keeper is still
+not in the firmware component list.
