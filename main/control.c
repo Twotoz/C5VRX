@@ -47,6 +47,16 @@ static struct { uint32_t windows, copied, sync, max_work_us, max_sample_us, max_
 static uint8_t s_pal_votes, s_ntsc_votes;
 static uint8_t s_last_std = 0xFF;      /* last stable standard (NVS) */
 static unsigned s_afc_corrections, s_afc_weak_skips;
+typedef struct {
+    afc2_evidence_t history;
+    uint64_t sampled_us, qualified_us;
+    uint32_t context, qualified_gain_epoch;
+    int32_t raw_porch_khz, residual_khz;
+    int cn_x10;
+    bool latest_valid, sticky_lock;
+    const char *window, *held;
+} afc_evidence_snapshot_t;
+static afc_evidence_snapshot_t s_afc_evidence = {.window="boot", .held="boot", .cn_x10=CN_UNKNOWN_X10};
 /* Verified kp ladder (kp_ladder.h), NVS "kp_auto": 0 off, 1 kp only,
  * 2 kp plus the live U85Q <-> U85Q-LP switch. K cycles 0 -> 1 -> 2 -> 0;
  * k steps one kp level and P toggles the program by hand for the bench test
@@ -474,6 +484,9 @@ static void control_task(void *arg)
         if (s_scan_active) {
             s_auto_candidate.candidate = false;
             afc2_ctrl_invalidate(&afc);
+            memset(&s_afc_evidence, 0, sizeof(s_afc_evidence));
+            s_afc_evidence.window="scan"; s_afc_evidence.held="scan";
+            s_afc_evidence.cn_x10=CN_UNKNOWN_X10;
             diag_window(false, false, false);
             continue;
         }
@@ -505,15 +518,26 @@ static void control_task(void *arg)
         s_ladder_gain += now - s_last_gain_write_us < KP_GAIN_WRITE_GUARD_US;
         s_ladder_stuck += s_obs_stuck;
         bool window_ok = ladder_ok && afc2_envelope_stationary(s_window, sizeof(s_window));
+        const char *afc_window_reason = !copied ? "copy_missing" : settle ? "settle" :
+            ctx != afc_context() ? "context" : phy_busy() ? "phy_busy" : !ladder_ok ? "gain_settle" :
+            !window_ok ? "nonstationary" : "measured";
         if (settle) --settle;
         afc2_result_t r = {0};
         if (window_ok) {
             r = afc2_measure(s_window, sizeof(s_window), c5vrx_phase8_gain_lut);
-            afc2_ctrl_observe(&afc, &r);
+            afc2_ctrl_observe_at(&afc, &r, (uint64_t)now);
         } else afc2_ctrl_miss(&afc);   /* settle and context changes reset via afc2_ctrl_sync */
         if (copied) s_cfo_khz = r.porch_pairs ? r.porch_khz : 0;
         /* Burst or line timing confirmed the syncs (afc2_measure). */
         bool valid = window_ok && r.lines && r.standard && r.porch_pairs && r.sync_pairs;
+        const bool qualified=valid && r.polarity && gain_epoch==s_gain_epoch && ctx==afc_context();
+        if (s_afc_evidence.context != ctx) s_afc_evidence.qualified_us=0;
+        if (qualified) {
+            s_afc_evidence.qualified_us=(uint64_t)now;
+            s_afc_evidence.qualified_gain_epoch=gain_epoch;
+            s_afc_evidence.raw_porch_khz=r.porch_khz;
+            s_afc_evidence.residual_khz=r.porch_khz-afc.target_khz;
+        }
         if (valid) { s_last_video_us = now; standard_vote(r.standard); profile_observe(&r); }
         bool was = s_afc_locked;
         if (copied) s_afc_locked = afc2_native_lock(s_afc_locked, valid, afc2_ctrl_can_lock(&afc, true), afc.n, &afc_lost);
@@ -523,6 +547,7 @@ static void control_task(void *arg)
          * walk the offset the wrong way (cn_estimate.h, afc_bias.py). A weak
          * window still feeds the estimate history, it just cannot step. */
         const int cn_x10 = receiver_obs_cn_x10();
+        const char *afc_held = s_afc_locked ? "sticky_lock" : !valid ? "window" : s_menu_active ? "menu" : "actuator";
         if (!s_afc_locked && valid && !s_menu_active &&
             phy_try_actuator(phy_generation())) {
             int32_t step = 0;
@@ -533,14 +558,29 @@ static void control_task(void *arg)
                 ++s_gain_epoch;
                 ++s_afc_corrections;
                 own_write = true;
+                afc_held="stepped";
                 printf("[AFC] step_khz=%ld offset_khz=%d cn_est_x10=%d coherence=%d gain=%u\n", (long)step,
                        rf_offset_khz(), cn_x10, s_obs_coherence, s_current_gain);
             } else if (!strong && afc2_ctrl_stable(&afc, &step) &&
                        (step > AFC2_CTRL_DEADBAND_KHZ || step < -AFC2_CTRL_DEADBAND_KHZ)) {
                 ++s_afc_weak_skips;    /* would have stepped on a weak carrier */
             }
+            if (!own_write) {
+                int32_t median=0;
+                afc_held=gain_epoch != s_gain_epoch ? "gain_changed" : !strong ? "weak_or_unknown_cn" :
+                    afc.n<AFC2_CTRL_SAMPLES ? "collecting" : !afc2_ctrl_stable(&afc,&median) ? "unstable" :
+                    (median>=-AFC2_CTRL_DEADBAND_KHZ && median<=AFC2_CTRL_DEADBAND_KHZ) ? "deadband" : "correction_budget";
+            }
             phy_end_actuator();
         }
+        s_afc_evidence.history=afc2_ctrl_evidence(&afc,(uint64_t)now);
+        s_afc_evidence.sampled_us=(uint64_t)now;
+        s_afc_evidence.context=ctx;
+        s_afc_evidence.cn_x10=cn_x10;
+        s_afc_evidence.latest_valid=qualified;
+        s_afc_evidence.sticky_lock=s_afc_locked;
+        s_afc_evidence.window=qualified ? "valid" : valid ? "stale_gain_or_context" : window_ok ? "no_confirmed_sync" : afc_window_reason;
+        s_afc_evidence.held=afc_held;
         if (afc.sign_state != seen_sign_state) {
             seen_sign_state = afc.sign_state;
             s_afc_sign_state = afc.sign_state;
@@ -642,6 +682,25 @@ void control_print_beat(void)
 
 void control_print(void)
 {
+    vTaskSuspendAll();
+    const afc_evidence_snapshot_t afc_snapshot=s_afc_evidence;
+    const uint64_t afc_now=(uint64_t)esp_timer_get_time();
+    const bool afc_context_current=afc_snapshot.context==afc_context();
+    const bool afc_gain_current=afc_snapshot.qualified_us && afc_snapshot.qualified_gain_epoch==s_gain_epoch;
+    (void)xTaskResumeAll();
+    const afc2_evidence_t evidence=afc_snapshot.history;
+    printf("AFC_EVIDENCE latest_valid=%u context_current=%u qualified_gain_current=%u sticky_lock=%u target_khz=%d "
+           "last_qualified_raw_porch_khz=%ld last_qualified_residual_khz=%ld qualified_age_ms=%lld sample_age_ms=%lld "
+           "n=%u timestamped=%u stable=%u median_residual_khz=%ld mad_khz=%ld oldest_age_ms=%lld newest_age_ms=%lld "
+           "cn_x10=%d window=%s held=%s reference=porch_not_rf_truth\n",
+           afc_snapshot.latest_valid, afc_context_current, afc_gain_current, afc_snapshot.sticky_lock, AFC_PORCH_TARGET_KHZ,
+           (long)afc_snapshot.raw_porch_khz, (long)afc_snapshot.residual_khz,
+           (long long)afc2_evidence_age_ms(afc_context_current && afc_gain_current ? afc_snapshot.qualified_us : 0,afc_now),
+           (long long)afc2_evidence_age_ms(afc_snapshot.sampled_us,afc_now),
+           evidence.n, evidence.timestamped, evidence.stable, (long)evidence.median_khz, (long)evidence.mad_khz,
+           (long long)afc2_evidence_age_ms(evidence.oldest_us,afc_now),
+           (long long)afc2_evidence_age_ms(evidence.newest_us,afc_now),
+           afc_snapshot.cn_x10, afc_snapshot.window, afc_snapshot.held);
     printf("VIDEO_WATCH windows=%lu copied=%lu sync=%lu max_sample_us=%lu max_work_us=%lu max_gap_us=%lu stack_watermark=%lu\n",
            (unsigned long)s_video_watch.windows, (unsigned long)s_video_watch.copied, (unsigned long)s_video_watch.sync,
            (unsigned long)s_video_watch.max_sample_us, (unsigned long)s_video_watch.max_work_us,

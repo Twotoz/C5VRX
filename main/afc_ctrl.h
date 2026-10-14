@@ -76,6 +76,8 @@ typedef enum {
 typedef struct {
     uint32_t context;
     int32_t est[AFC2_CTRL_SAMPLES];
+    /* Passive provenance only; zero means a legacy caller supplied no time. */
+    uint64_t observed_us[AFC2_CTRL_SAMPLES];
     uint8_t n;
     int8_t polarity;
     uint8_t standard;
@@ -153,11 +155,25 @@ static inline void afc2_ctrl_observe(afc2_ctrl_t *c, const afc2_result_t *r)
     c->standard = r->standard;
     int32_t v = (c->ref == AFC2_REF_SYNC_MID ? (r->sync_khz + r->porch_khz) / 2 : r->porch_khz) - c->target_khz;
     if (c->n < AFC2_CTRL_SAMPLES) {
+        c->observed_us[c->n] = 0;
         c->est[c->n++] = v;
     } else {
-        for (unsigned k = 1; k < AFC2_CTRL_SAMPLES; ++k) c->est[k - 1] = c->est[k];
+        for (unsigned k = 1; k < AFC2_CTRL_SAMPLES; ++k) {
+            c->est[k - 1] = c->est[k];
+            c->observed_us[k - 1] = c->observed_us[k];
+        }
         c->est[AFC2_CTRL_SAMPLES - 1] = v;
+        c->observed_us[AFC2_CTRL_SAMPLES - 1] = 0;
     }
+}
+
+/* Diagnostics attach time to exactly the estimate admitted by the unchanged
+ * controller. Missing/contradictory/context handling remains identical. */
+static inline void afc2_ctrl_observe_at(afc2_ctrl_t *c, const afc2_result_t *r, uint64_t observed_us)
+{
+    afc2_ctrl_observe(c, r);
+    if (r && r->lines && r->standard && r->polarity && r->sync_pairs && r->porch_pairs && c->n)
+        c->observed_us[c->n - 1] = observed_us;
 }
 
 static inline int32_t afc2_ctrl_median(const int32_t *v, unsigned n)
@@ -183,6 +199,39 @@ static inline bool afc2_ctrl_stable(const afc2_ctrl_t *c, int32_t *median)
     if (afc2_ctrl_median(dev, c->n) > AFC2_CTRL_MAX_MAD_KHZ) return false;
     *median = med;
     return true;
+}
+
+typedef struct {
+    int32_t median_khz, mad_khz;
+    uint64_t oldest_us, newest_us;
+    uint8_t n, timestamped;
+    bool stable;
+} afc2_evidence_t;
+
+static inline int64_t afc2_evidence_age_ms(uint64_t timestamp, uint64_t now_us)
+{
+    return timestamp && now_us>=timestamp ? (int64_t)((now_us-timestamp)/1000u) : -1;
+}
+
+/* Median is porch-reference residual, not independent RF carrier truth.
+ * Sparse surviving samples may span many seconds despite misses<=20. */
+static inline afc2_evidence_t afc2_ctrl_evidence(const afc2_ctrl_t *c, uint64_t now_us)
+{
+    afc2_evidence_t d = {.n=c->n};
+    if (!c->n) return d;
+    d.median_khz = afc2_ctrl_median(c->est, c->n);
+    int32_t dev[AFC2_CTRL_SAMPLES];
+    for (unsigned k=0; k<c->n; ++k) {
+        dev[k] = c->est[k] >= d.median_khz ? c->est[k]-d.median_khz : d.median_khz-c->est[k];
+        uint64_t t=c->observed_us[k];
+        if (!t || t>now_us) continue;
+        ++d.timestamped;
+        if (!d.oldest_us || t<d.oldest_us) d.oldest_us=t;
+        if (t>d.newest_us) d.newest_us=t;
+    }
+    d.mad_khz = afc2_ctrl_median(dev,c->n);
+    d.stable = c->n>=AFC2_CTRL_SAMPLES && d.mad_khz<=AFC2_CTRL_MAX_MAD_KHZ;
+    return d;
 }
 
 static inline bool afc2_ctrl_can_lock(const afc2_ctrl_t *c, bool auto_afc)
