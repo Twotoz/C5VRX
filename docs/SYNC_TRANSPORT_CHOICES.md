@@ -149,6 +149,28 @@ and refuse stale prepared pulses after any transport setting changes.
 
 ## Next safe buildable step
 
+### Reference-code first-EQ experiment
+
+`research/sync_reference_tip.py` makes a temporary one-line adaptation of the
+actual first-EQ token ranking: use the original 1x worker DAC codes for the
+ranking/limit while evolving decoder state through the actual scaled LUT.
+The result is saved separately in `research/data/sync_reference_tip.json`;
+the original matrix is unchanged. All 1,310,720 limited decode cases meet
+the existing normalized waveform criterion, and all 128 1x rows remain exact.
+Half-scale first-EQ bootstrap refusals fall from 256 to zero across the two
+program audits. Non-LP remains diagnostic and unsupported by the keeper.
+
+This supports a specific next implementation, not relaxing the absolute
+threshold arbitrarily. A production candidate needs explicit verified
+reference-LUT/output/program binding, refusal of unknown or mismatched
+contexts, and LP/noisy-history transition tests. The experiment's reference
+pointer is supplied by the test harness, so it does not prove that binding.
+The retained LP decoder tail differences still prevent a blanket handoff
+or LCD-lock claim. No actual firmware synthesis changes follow from this
+experiment yet.
+
+### Private timing probe
+
 The explicit manual console `J` probe now implements that first step. It
 allocates8832bytes of independent internal DMA-capable RAM:4096-byte private
 ring,1280-byte workspace,2048-byte verified LUT copy,1344-byte destination and
