@@ -28,6 +28,7 @@
 #include <string.h>
 #include "driver/temperature_sensor.h"
 #include "dsp.h"
+#include "dc_live.h"
 #include "esp_attr.h"
 #include "esp_timer.h"
 #include "phy.h"
@@ -67,6 +68,7 @@ static bool collect(unsigned windows, window_stats_t *out)
 {
     uint8_t sample[PROBE_BYTES];
     dsp_circle_t circle = {0};
+    unsigned rail_sum = 0;
     memset(out, 0, sizeof(*out));
     for (unsigned tries = 0; tries < windows * 3u && out->windows < windows; ++tries) {
         vTaskDelay(2);   /* two ticks: one tick starved IDLE with the observer */
@@ -78,10 +80,12 @@ static bool collect(unsigned windows, window_stats_t *out)
         out->hf4_count += PROBE_REGIONS * (PROBE_REGION_BYTES - 4u);
         dsp_circle_sums(sample, sizeof(sample), &circle);
         out->m = measure_window(sample, sizeof(sample));
+        rail_sum += (unsigned)out->m.clip_pm;
         ++out->windows;
     }
     if (!out->windows) return false;
-    out->dc_circle = dsp_circle_dc(&circle, &out->dc_i, &out->dc_q, &out->envelope_x100);
+    out->dc_circle = dc_live_measure(&circle, rail_sum / out->windows,
+        &out->dc_i, &out->dc_q, &out->envelope_x100);
     return out->windows * 2u >= windows;
 }
 
@@ -90,8 +94,10 @@ static bool collect(unsigned windows, window_stats_t *out)
  * phase fixed at reset; about 3 boots in 10 sample mid-transition (zerowidth
  * PR #3). The fourth-difference excess separates them on noise and on a
  * carrier; a bad phase is slipped one RX tick at a time, only in the
- * startup phase of every boot. Live, it is measured every 30 s and only
- * reported: a slip would interrupt the picture.
+ * startup phase of every boot. Live monitoring is passive; an automatic
+ * correction is deferred until an exact bounded phase actuator and verified
+ * rollback exist. The existing 1-us divider pulse changes RX/TX separation
+ * and is not a proved single-position move.
  *
  * Verdict (sphase_logic.h, test/test_sphase.c): the absolute limit is the
  * fast path; above it only a scan whose positions differ is evidence of a
@@ -221,9 +227,10 @@ static void sphase_qualify(const char *stage, bool fresh_context)
            s_sphase_scans, s_sphase_last.valid ? s_sphase_last.best : -1, s_sphase_last.valid ? s_sphase_last.worst : -1);
 }
 
-/* Live, passive every 10 s. On receiver noise it only reports; on the
- * carrier it chooses the phase once per boot and repairs an excursion
- * above SPHASE_LIVE_LIMIT (sphase_logic.h, research README section 19). */
+/* Live, passive every 10 s, with a shorter confirmation after a carrier
+ * excursion. No multi-position scan or slip here: those remain startup/manual
+ * only. Automatic adjustment needs bounded phase/rollback and source-context
+ * proofs (sphase_monitor.h); a noisy window alone cannot supply them. */
 static void sphase_monitor(void)
 {
     static int64_t next_us;
@@ -245,10 +252,15 @@ static void sphase_monitor(void)
     } else if (v != SPHASE_UNSETTLED && strcmp(s_sphase_state, "drifted") == 0) {
         s_sphase_state = sphase_verdict_name(v);
     }
-    const bool qualified = s_sphase_live.qualified;
     const bool scan = sphase_live_tick(&s_sphase_live, excess, carrier, now);
     next_us = now + sphase_live_next_us(&s_sphase_live);
-    if (scan) sphase_carrier_scan("live", qualified);
+    if (scan && excess >= SPHASE_LIVE_LIMIT) {
+        /* A first healthy carrier is not a reason to disrupt live video.
+         * Preserve diagnosis and explain the missing correction capability. */
+        next_us = now + SPHASE_LIVE_CHECK_US;
+        printf("SPHASE automatic_adjustment=deferred reason=live_actuator_unverified "
+               "excess_mc2=%d carrier_qualified=%u\n", excess, s_sphase_live.qualified);
+    }
 }
 
 const char *calibration_sphase_state(void) { return s_sphase_state; }

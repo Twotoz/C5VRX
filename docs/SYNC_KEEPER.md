@@ -190,8 +190,8 @@ TX-prefetch guard in this model is an assumption requiring physical validation.
 ### Nominal and +/-50 ppm camera-clock host candidate now passing
 
 `main/sync_flywheel.{c,h}` is a host candidate, excluded from firmware's
-component source list. `test/test_sync_flywheel.c` now passes the nominal
-PAL/NTSC cases with the actual root kp-0/U85Q-LP LUT and both pair parities:
+component source list. The first complete clock/provenance candidate passed
+PAL/NTSC with the actual root kp-0/U85Q-LP LUT and both pair parities:
 all 1600 / 1358 expected H/V pulses in the faded and weak windows, <=15
 samples (375 ns) edge error, no clean-carrier edits, exact active-IQ and
 decoded-DAC preservation, and unmodified pass-through within half a field
@@ -209,8 +209,9 @@ broad-pulse edge fitted using both edges, rather than following H PLL noise.
 Unstable sync/porch slopes cannot relearn output levels, and unstable tips do
 not steer the weak-signal PLL. Holdover frequency uses a bounded fit over
 qualified edges, with Q16 sample timing instead of Q8. Repair tip synthesis
-targets the root LUT's known DAC-zero frequency instead of copying a damaged
-RF slope. Test NTSC timing uses exact 572/9 us; the archive's rounded 63.5556
+uses a program-qualified synthetic frequency instead of copying a damaged
+RF slope. A universal DAC-zero frequency was disproved by the all-kp audit
+below. Test NTSC timing uses exact 572/9 us; the archive's rounded 63.5556
 us added a model clock offset. The V-edge uncertainty guard is now 25 ns after independent edge refinement.
 
 The sparse 32-line frequency measurements and stride-three V-pulse width
@@ -225,14 +226,11 @@ acquisition and phase re-lock. Clean-path detection costs 35.5 / 36.6 modeled
 evaluations per PAL / NTSC line, below the existing 40-evaluation test budget.
 That proxy does not measure ESP32 execution time or interrupt latency.
 
-**Open gates:** root kp-0 is the only complete keeper test here. The separate
-actual-LUT feasibility audit finds that the fixed -6-MHz synthetic tip is
-unusable at kp 0.60 / 0.55 / 0.50; a correct clock does not solve this output
-problem. Other kp/output settings, prolonged loss and source-standard changes,
-live observer source freshness, descriptor lifetimes/prefetch and measured
-CPU timing still require proof. Host provenance and loss-duration behavior
-now have the additional checks below; these do not prove physical DMA safety
-or unlimited source-clock holdover. Normal 4092-byte observer protection passes; the optional
+**Open gates:** the all-kp follow-up below covers the root 1x LP decoder
+in host scenes. Other output settings, source-standard changes, live observer
+source freshness, descriptor lifetimes/prefetch and measured CPU timing still
+require proof. These results do not prove physical DMA safety or unlimited
+source-clock holdover. Normal 4092-byte observer protection passes; the optional
 8190-byte black-watcher reservation still fails available write opportunity.
 No live integration or default enable is authorized by these host results.
 
@@ -296,8 +294,82 @@ instructions rather than 144-153; this excludes the full keeper's extra
 instrumentation and surrounding work. The complete PAL/NTSC clock and
 content matrix also passes with this arithmetic change.
 
-The candidate implements a brief recovery qualification, not continuous
-sync replacement on a good camera. Operator intent is repair only when
+### Full-pulse synthesis across the active kp ladder (2026-10-14)
+
+The caller now supplies the explicitly verified U85Q-LP program context,
+active kp (85, 80, 75, 70, 65, 60, 55 or 50) and its actual LUT words.
+Unknown kp, an unverified program or a missing LUT cannot authorize repair.
+The caller must provide a consistent snapshot after the existing full
+halted-LUT verification and reset the keeper when the ring/sample epoch or
+source channel changes. A gain-only write must not be confused with a new
+sample-clock epoch; temporarily reject unreliable evidence while retaining
+valid holdover timing.
+The test chooses that same actual LUT in the output decoder, including both
+pair parities; pointer identity across translation units is not used as proof.
+
+A steady carrier sweep was only screening. The earlier -6-MHz universal tip
+failed low kp completely. Even screened candidates -5.5 MHz at kp .60 and
+-5 MHz at .55 failed some full H/broad transitions after endpoint residual
+correction. At .65, -6 MHz failed one -50-ppm camera transition and -5.75 MHz
+failed a +50-ppm transition. The candidate
+therefore uses this more conservative transition-tested table:
+
+| Verified kp | Synthetic tip frequency |
+| --- | --- |
+| .85, .80, .75, .70 | -6 MHz |
+| .65 | -5.5 MHz |
+| .60 | -5.25 MHz |
+| .55 | -4.75 MHz |
+| .50 | -4.5 MHz |
+
+The real RF plateau and the synthesized cells have different uncertainty.
+A conservative 15% circular-phase margin is reserved for real Q4/RF phase
+error. In the present strong-source fixture, .60 has intermittent actual
+pulse breaks despite a clean raw averaged slope, and .55/.50 corrupt every
+checked pulse. Those outputs need repair even with clean RF. The good
+actual-output .85-.65 fixtures remain byte-for-byte untouched. This margin
+is a host policy supported by these scenes, not a measured RF/LCD safety bound.
+
+Horizontal synthesis compensates the tracker's phase lag at its porch-to-tip
+transition, including that phase offset in the endpoint residual. This removes
+rare low-kp delayed tips. A first V equalizing pulse has no preceding spare
+porch: conditioning real picture before it would erase information. Its short
+tip is instead built directly from the actual worker LUT. A bounded 128-byte
+transmitted prefix propagates all possible phase states and an upper LP-state
+bound for both pair parities. Matching states merge conservatively; nonmerged
+states are retained rather than assigning an invented exact phase. Each tip
+byte chooses the lowest worker DAC transition against every surviving state,
+then ordinary blank DDA resumes. This first-pulse work runs at field cadence;
+normal H pulses retain the cheap DDA. Modified prefix bytes describe actual
+transmitted decoder history here and never serve as camera-clock evidence.
+
+All 24 kp-by-clock combinations (eight actual LUT levels at 0 / +50 /
+-50 ppm) pass the complete host fixture suite. The output test retains
+every previous gate: all 1600 PAL / 1358 NTSC
+H/V pulses, <=15 samples (375 ns) edge error, exact active IQ and exact LP
+output at both parities, real shifted-camera reacquisition and the loss-counter
+boundary fixtures. Valid received output resumes complete pass-through.
+When the original deep-kp sync remains digitally broken, only its sync still
+requires repair; active received content remains exact. On reacquisition,
+a genuine fully qualified normal H may be repaired at its observed edge
+before another V pulse establishes field phase; malformed or unknown runs
+cannot authorize that exception.
+
+The shifted-NTSC test oracle also had a rounding defect: separately rounding
+the base edge and truncating the fractional shift made some expectations one
+sample early. It now rounds the complete continuous edge. An independent
+source test checks actual `deviation()` transitions and V-kind against both
+shifted and unshifted PAL/NTSC expectations: the continuous edge is within
+half a sample, and the first generated sample on/after it is within one sample.
+The repair edge gate remains 15 samples; no error tolerance was expanded.
+
+First-EQ worker/LUT accesses, cell preparation and synthesis are outside the
+existing detector counters. Physical cold/prewarmed execution time, stack,
+cache maintenance and worst-case scheduling/deadline measurements remain
+required before putting this candidate into the live firmware.
+
+The candidate uses a brief recovery qualification and returns to received
+sync when that actual program output is reliable. Operator intent is repair only when
 necessary, retain real active snow/picture, and return to received sync.
 
 Use the affected LCD and a scope/reference monitor. Capture raw IQ and

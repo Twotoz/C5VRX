@@ -18,6 +18,9 @@ Distinguish simulation, firmware implementation and physical validation.
       hardware DC tracking, offset-insensitive discrimination and safely
       qualified live estimation. Preserve real weak video; quantify the noise,
       near-zero-CFO and quantizer-floor limits instead of promising immunity.
+      Carrier DC collection now rejects tiny/partial false circles while
+      preserving the noise mean and envelope diagnostic. Token-centering
+      remains a tested host candidate without an automatic live controller.
 - [ ] Operator addition (2026-10-14): monitor sampling timing and adjust it
       when needed. Establish observable evidence, avoid confusing RF/DC noise
       with timing faults, and prove a bounded correction that preserves live
@@ -25,6 +28,8 @@ Distinguish simulation, firmware implementation and physical validation.
       in-flight monitor before selecting an automatic actuator. Inspection
       found that the existing live monitor also starts a disruptive three-
       position scan; its divider pulse lacks a proven phase rollback contract.
+      Live scans are now removed; monitoring reports an explicit deferred
+      adjustment. Automatic adjustment remains incomplete.
 
 - [ ] Finish observer CPU/freshness review, including gain-settling windows;
       verify build/CI and subsequently startup/IDLE behavior on the board.
@@ -46,7 +51,9 @@ Distinguish simulation, firmware implementation and physical validation.
       gain 83, the refusal is BB readback `0x17f` versus a seven-bit table
       value `0x7f`: the pinned vendor RX command supplies channel-mode bit
       eight. The fix verifies that context bit before normalizing the gain;
-      physical acquisition after this fix remains unmeasured. Normal boot
+      physical `f3e6931` now passes preflight and opens for 8 us, then rejects
+      an observation gap and restores Direct Gain. No landing is proved.
+      Normal boot
       after software download was recovered by clearing only the documented
       LP_AON forced-download field; no physical reset is now pending.
 - [ ] Select and implement a feasible PAL/NTSC sync keeper that preserves
@@ -54,7 +61,8 @@ Distinguish simulation, firmware implementation and physical validation.
       horizontal/vertical holdover, source freshness and DMA safety. Compare
       alternatives before choosing; the current host IQ-mux oracle is not
       streaming firmware.
-      The tracked root candidate now passes nominal and +/-50-ppm PAL/NTSC
+      The tracked root candidate now passes all eight kp levels at nominal
+      and +/-50-ppm PAL/NTSC
       pulse/content tests, source provenance and loss-counter/saturation tests.
       Digital synthesis across other kp levels has separate evidence; full
       pulse transitions, measured CPU/DMA timing and LCD acceptance remain gates.

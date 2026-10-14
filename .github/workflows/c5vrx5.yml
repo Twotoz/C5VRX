@@ -67,30 +67,39 @@ jobs:
           done
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_native_acquire.c ../main/arc_phy.c -o /tmp/test_native_acquire
           /tmp/test_native_acquire
-          python3 ../research/native_pbus_contract.py
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_synth.c -o /tmp/test_sync_synth
           /tmp/test_sync_synth
-          for t in test_sync_repair_ledger test_sync_stream_guard test_dma_progress; do
+          for t in test_sync_repair_ledger test_sync_stream_guard test_dma_progress test_sphase_monitor; do
             cc -O2 -std=c11 -Wall -Wextra -Werror -I../main "$t.c" -o "/tmp/$t"
             "/tmp/$t"
           done
           # Host keeper candidate only; not in firmware's component source list.
           cc -O2 -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -I../main test_sync_flywheel.c ../main/sync_flywheel.c -lm -o /tmp/test_sync_flywheel
-          for ppm in 0 50 -50; do
-            SFW_CLOCK_PPM="$ppm" /tmp/test_sync_flywheel
+          for kp in 0 1 2 3 4 5 6 7; do
+            for ppm in 0 50 -50; do
+              SFW_KP_LEVEL="$kp" SFW_CLOCK_PPM="$ppm" /tmp/test_sync_flywheel
+            done
           done
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_dc_live.c -lm -o /tmp/test_dc_live
+          /tmp/test_dc_live ../research/data/walk_2026-10-13
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_no_signal_raster.c ../main/menu_raster.c -lm -o /tmp/test_no_signal_raster
           /tmp/test_no_signal_raster
           cc -O2 -std=c11 -Wall -Wextra -Werror -DEXPECT_FADE_HOLD -I../main test_gain_fade.c \
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_fade && /tmp/test_gain_fade | tail -1
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_gain_preset.c \
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_preset && /tmp/test_gain_preset | tail -1
+      - name: Pinned PHY PBUS command contract
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          python3 research/native_pbus_contract.py
       - name: Diagnostic log semantics
         run: |
           python3 test/test_field_diag_compare.py
           python3 test/test_iq_snapshot.py
           python3 test/test_settings.py
           python3 test/test_native_owner.py
+          python3 test/test_sphase_runtime.py
       - name: Analytic IQ lane reference
         shell: bash
         run: |

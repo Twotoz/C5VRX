@@ -25,6 +25,12 @@ typedef struct {
      * value (the "not flagged" polarity). Ignored when !mask_bit0. */
     bool mask_bit0;
     uint8_t clear_bit0;
+    /* Caller certifies matching kp/LUT/U85Q-LP epoch after transport's full
+     * halted-LUT verification. Unknown or unverified context cannot repair;
+     * the candidate never infers the active kp/program from signal data. */
+    uint8_t verified_kp_x100;
+    bool program_verified;
+    const uint16_t *decoder_lut; /* same verified active worker/controller words */
 } sfw_ring_t;
 
 typedef enum { SFW_ACQUIRE = 0, SFW_TRACK = 1 } sfw_state_t;
@@ -34,6 +40,11 @@ typedef struct {
     sync_repair_ledger_t repairs;
     uint64_t evidence_end;
     uint32_t evidence_refused;
+    int32_t repair_step_q8;
+    uint8_t repair_kp_x100;
+    uint32_t context_refused;
+    uint32_t bootstrap_unknown;
+    uint32_t bootstrap_refused;
     /* acquisition */
     uint64_t scan_pos;
     uint8_t acq_phase;

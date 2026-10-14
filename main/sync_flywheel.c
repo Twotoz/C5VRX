@@ -107,6 +107,117 @@ static int s_cell_mask = -1;
 
 static int signed4(unsigned v) { return v < 8u ? (int)v : (int)v - 16; }
 
+static uint16_t decoder_value(const uint16_t *lut, unsigned state, uint8_t a, uint8_t b)
+{
+    unsigned address = (a >> 4) | ((a & 15u) << 4) | ((b & 128u) << 1) | ((b & 8u) << 6);
+    return lut[state * 32u + (lut[address] >> 11)];
+}
+
+/* A first V equalizing pulse has no spare received front porch. Recover
+ * the exact surviving tracker-state set through a bounded transmitted IQ
+ * prefix. If states have not merged, choose against their worst case rather
+ * than inventing one exact phase. Modified bytes are appropriate
+ * here: this predicts decoder state, and is never camera-sync evidence.
+ * Both pair parities must admit the same generated waveform. */
+typedef struct { unsigned phase, x, y; } decoder_bound_t;
+
+static void decoder_advance(const uint16_t *lut, decoder_bound_t *bound, uint8_t raw, uint8_t mid)
+{
+    unsigned address = (raw >> 4) | ((raw & 15u) << 4) | ((mid & 128u) << 1) | ((mid & 8u) << 6);
+    unsigned carry = ((address >> 8) + (bound->phase >> 3)) >> 2;
+    bound->y = (bound->y >> 1) + (bound->x >> 1) + carry;
+    unsigned value = decoder_value(lut, bound->phase, raw, mid);
+    bound->phase = (value >> 6) & 31u;
+    bound->x = value & 63u;
+}
+
+static bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
+                           decoder_bound_t states[2][32], unsigned counts[2], uint64_t last[2])
+{
+    const uint32_t mask = r->ring_bytes - 1u;
+    if (!r->decoder_lut || a < 130u || a - 130u < f->repairs.oldest_readable) return false;
+    for (unsigned parity = 0; parity < 2; ++parity) {
+        last[parity] = a - 2u;
+        if ((last[parity] & 1u) != parity) --last[parity];
+        unsigned count = 32;
+        for (unsigned j = 0; j < count; ++j) states[parity][j] = (decoder_bound_t){j, 63, 63};
+        for (uint64_t k = last[parity] - 126u; k <= last[parity]; k += 2u) {
+            for (unsigned j = 0; j < count; ++j)
+                decoder_advance(r->decoder_lut, &states[parity][j],
+                    r->ring[(uint32_t)k & mask], r->ring[(uint32_t)(k + 1u) & mask]);
+            unsigned kept = 0;
+            for (unsigned j = 0; j < count; ++j) {
+                unsigned dst = 0;
+                for (; dst < kept; ++dst)
+                    if (states[parity][dst].phase == states[parity][j].phase &&
+                        states[parity][dst].x == states[parity][j].x) break;
+                if (dst == kept) states[parity][kept++] = states[parity][j];
+                else if (states[parity][j].y > states[parity][dst].y)
+                    states[parity][dst].y = states[parity][j].y;
+            }
+            count = kept;
+        }
+        counts[parity] = count;
+        if (count != 1) ++f->bootstrap_unknown;
+    }
+    return true;
+}
+
+/* Only the first EQ has no preceding synthetic porch. Use the actual
+ * worker table to make its tip directly, against every surviving decoder
+ * state. This needs at most 28 regular observation tokens per byte, not a
+ * 256-phase carrier search. The remaining slots use the ordinary DDA. */
+static bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
+                        unsigned low, uint8_t *tip)
+{
+    decoder_bound_t states[2][32];
+    unsigned counts[2];
+    uint64_t last[2];
+    uint8_t cells[28];
+    uint32_t available = 0;
+    if (!decoder_prefix(f, r, a, states, counts, last)) return false;
+    for (unsigned phase = 0; phase < 256u; ++phase) {
+        uint8_t raw = s_cell[phase];
+        unsigned address = (raw >> 4) | ((raw & 15u) << 4);
+        unsigned token = r->decoder_lut[address] >> 11;
+        if (token >= 28u) continue;
+        /* Strong-cell tokens must be independent of the middle byte. */
+        bool regular = true;
+        for (unsigned quadrant = 1; quadrant < 4u; ++quadrant)
+            if ((r->decoder_lut[address | (quadrant << 8)] >> 11) != token) regular = false;
+        if (!regular) continue;
+        if (!(available & (1u << token))) cells[token] = raw;
+        available |= 1u << token;
+    }
+    unsigned previous_phase = ph_at(r, a - 1u);
+    for (unsigned k = 0; k < low; ++k) {
+        unsigned parity = (unsigned)((a + k) & 1u);
+        unsigned best = UINT32_MAX, worst_best = UINT32_MAX;
+        uint8_t chosen = 0;
+        for (unsigned token = 0; token < 28u; ++token) if (available & (1u << token)) {
+            unsigned worst = 0, sum = 0;
+            for (unsigned j = 0; j < counts[parity]; ++j) {
+                unsigned code = r->decoder_lut[states[parity][j].phase * 32u + token] & 63u;
+                if (code > worst) worst = code;
+                sum += code;
+            }
+            int target = (int)previous_phase + f->repair_step_q8 / 256;
+            int error = wrap8((int)r->phase[cells[token]] - target);
+            if (error < 0) error = -error;
+            unsigned score = (worst << 20) + (sum << 8) + (unsigned)error;
+            if (score < best) { best = score; worst_best = worst; chosen = cells[token]; }
+        }
+        if (worst_best > 8u) return false;
+        tip[k] = chosen;
+        unsigned other = parity ^ 1u;
+        uint8_t endpoint = k ? tip[k - 1u] : r->ring[(uint32_t)(a - 1u) & (r->ring_bytes - 1u)];
+        for (unsigned j = 0; j < counts[other]; ++j)
+            decoder_advance(r->decoder_lut, &states[other][j], endpoint, chosen);
+        previous_phase = r->phase[chosen];
+    }
+    return true;
+}
+
 /* Strong cells (radius 4..6.5 fine-lane steps) per target phase; with the
  * acquisition mask only bytes whose bit 0 is the unflagged polarity. */
 static void build_cells(const sfw_ring_t *r)
@@ -137,7 +248,7 @@ static void build_cells(const sfw_ring_t *r)
  * spread over the run, so neither edge carries a glitch. */
 static void synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t n1,
                   int32_t step1, uint32_t n2, int32_t step2, int32_t next_step,
-                  uint64_t floor, uint64_t avail_end)
+                  bool bootstrap, uint64_t floor, uint64_t avail_end)
 {
     uint64_t b = a + n1 + n2;
     /* Refuse a whole pulse if any edge is already unsafe. Clipping a
@@ -145,8 +256,38 @@ static void synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t 
     if (a < floor || b >= avail_end) { ++f->skipped_floor; return; }
     uint32_t n = n1 + n2;
     if (!n) return;
+    if (bootstrap) {
+        uint8_t tip[128];
+        if (n1 <= sizeof(tip) && first_v_tip(f, r, a, n1, tip)) {
+            int64_t p0 = (int64_t)r->phase[tip[n1 - 1u]] * 256;
+            int64_t residual = ((int64_t)ph_at(r, b) * 256 - next_step -
+                                (p0 + (int64_t)n2 * step2)) % 65536;
+            if (residual >= 32768) residual -= 65536;
+            if (residual < -32768) residual += 65536;
+            sync_synth_t blank;
+            if (!sync_synth_init(&blank, (uint16_t)p0, (int32_t)residual, n2) ||
+                !sync_repair_ledger_record(&f->repairs, a, b)) return;
+            uint32_t mask = r->ring_bytes - 1u;
+            for (unsigned k = 0; k < n1; ++k) r->ring[(uint32_t)(a + k) & mask] = tip[k];
+            for (unsigned k = 0; k < n2; ++k)
+                r->ring[(uint32_t)(a + n1 + k) & mask] = s_cell[sync_synth_next(&blank, step2)];
+            return;
+        }
+        if (f->bootstrap_refused != UINT32_MAX) ++f->bootstrap_refused;
+    }
     int64_t p0 = (int64_t)ph_at(r, a - 1u) * 256;
-    int64_t rot = (int64_t)n1 * step1 + (int64_t)n2 * step2;
+    if (step1 == f->repair_step_q8 && f->repair_kp_x100) {
+        /* Match the constant-frequency tracker's phase lag at the tip
+         * transition. The raw first phase alone is behind the observation
+         * needed for an immediate low-kp discriminator step. H repair has
+         * an explicit settling porch; a V slot starts straight at the tip. */
+        int32_t porch = (int32_t)f->blank_q4 * 16;
+        p0 += (int64_t)2 * (step1 - porch) * (100 - f->repair_kp_x100) / f->repair_kp_x100;
+    }
+    int32_t tip_lead = 0;
+    if (n1 == PORCH && step2 == f->repair_step_q8 && f->repair_kp_x100)
+        tip_lead = 2 * (step2 - step1) * (100 - f->repair_kp_x100) / f->repair_kp_x100;
+    int64_t rot = (int64_t)n1 * step1 + (int64_t)n2 * step2 + tip_lead;
     int64_t resid = 0;
     if (b < avail_end) {
         int64_t target = (int64_t)ph_at(r, b) * 256 - next_step;
@@ -162,6 +303,7 @@ static void synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t 
     if (!sync_repair_ledger_record(&f->repairs, a, b)) return;
     for (uint32_t k = 0; k < n1; ++k)
         r->ring[(uint32_t)(a + k) & mask] = s_cell[sync_synth_next(&state, step1)];
+    state.phase = (state.phase + (uint32_t)tip_lead) & 65535u;
     for (uint32_t k = 0; k < n2; ++k)
         r->ring[(uint32_t)(a + n1 + k) & mask] = s_cell[sync_synth_next(&state, step2)];
 
@@ -169,11 +311,33 @@ static void synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t 
 
 static inline int32_t sync_step(const sync_flywheel_t *f)
 {
-    (void)f;
-    /* Root kp LUTs map -6 MHz to DAC tip 0, matching menu_raster.c. A
-     * repaired tip should be this known output reference, not the phase
-     * slope of a degraded RF pulse. 40-MS/s IQ, Phase8 Q8 per sample. */
-    return -9830; /* round(-6e6 / 40e6 * 65536) */
+    return f->repair_step_q8;
+}
+static int32_t verified_sync_step(const sfw_ring_t *r)
+{
+    if (!r->program_verified || !r->decoder_lut) return 0;
+    /* Deepest digitally stable candidates in the actual root worker LUT.
+     * -6 MHz aliases at low kp; this is not a claim of loaded DAC voltage. */
+    switch (r->verified_kp_x100) {
+        case 85: case 80: case 75: case 70: return -9830; /* -6 MHz */
+        case 65: return -9011; /* -5.5 MHz: deeper tips fail offset-camera transitions */
+        case 60: return -8602; /* -5.25 MHz: -5.5 fails endpoint-residual H transitions */
+        case 55: return -7782; /* -4.75 MHz: -5 fails complete broad-pulse transitions */
+        case 50: return -7373; /* -4.5 MHz */
+        default: return 0;
+    }
+}
+
+static bool native_sync_unsafe(const sync_flywheel_t *f)
+{
+    /* A clean RF plateau may still exceed the active tracker gain's
+     * circular phase margin. Such output needs repair despite clean raw
+     * sync. Level learning is independently original/variance qualified. */
+    /* Reserve 15% of the circular phase range for real Q4/RF phase error.
+     * A steady carrier sweep alone missed clean .60-kp pulse dropouts.
+     * Synthetic strong cells have a separate exact-transition test. */
+    int32_t raw_limit = -(139264 * (int32_t)f->repair_kp_x100 + 500) / 1000;
+    return f->levels && f->repair_step_q8 && (int32_t)f->sync_q4 * 16 < raw_limit;
 }
 static inline int32_t blank_step(const sync_flywheel_t *f) { return (int32_t)f->blank_q4 * 16; }
 
@@ -548,9 +712,12 @@ static void v_slot(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
             ++f->v_observed_n;
         }
     }
-    if ((!present || f->rebuild_lines) && repair) {
+    if ((!present || f->rebuild_lines || native_sync_unsafe(f)) && repair) {
         uint32_t low = broad ? h2 - HSYNC : eq_low(f);
-        synth(f, r, p, low, sync_step(f), h2 - low, blank_step(f), blank_step(f), floor, avail_end);
+        bool first = j == -(int)npre(f);
+        int32_t tip = sync_step(f);
+        synth(f, r, p, low, tip, h2 - low, blank_step(f), blank_step(f),
+              first, floor, avail_end);
         ++f->slots_repaired;
     }
     if (++f->v_slot >= (int16_t)(nbroad(f) + npost(f))) field_done(f);
@@ -606,6 +773,10 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
         !sync_repair_ledger_advance(&f->repairs, rx_complete > r->ring_bytes ?
                                     rx_complete - r->ring_bytes : 0)) return 0;
     f->evidence_end = avail_end;
+    f->repair_step_q8 = verified_sync_step(r);
+    f->repair_kp_x100 = f->repair_step_q8 ? r->verified_kp_x100 : 0;
+    if (allow_repair && !f->repair_step_q8 && f->context_refused != UINT32_MAX)
+        ++f->context_refused;
     build_cells(r);
     s_evals = 0;
     s_lowm = s_steps = 0;
@@ -619,7 +790,7 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
     unsigned processed = 0;
     while (f->state == SFW_TRACK && s_evals < budget_evals) {
         bool locked = sfw_locked(f);
-        bool repair = allow_repair && locked && f->levels;
+        bool repair = allow_repair && locked && f->levels && f->repair_step_q8;
         uint64_t h2q = half_q16(f);
         /* Arm the coming vertical interval 4 lines ahead, on the line grid. */
         if (f->v_valid && !f->v_armed) {
@@ -764,7 +935,8 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
             /* Level measurements stay sparse; clock fitting reuses each
              * qualified fast-path edge without additional phase reads. */
             if ((f->clean & 31u) == 1u) learn_levels(f, r, start);
-            if (fast && !f->rebuild_lines && f->levels) observe_clock(f, start);
+            if (fast && (!f->rebuild_lines || native_sync_unsafe(f)) && f->levels)
+                observe_clock(f, start);
         } else {
             if (type == P_NONE) ++f->missed;
             if (f->lines_since_clean < 0xFFFFFFFFu) ++f->lines_since_clean;
@@ -773,7 +945,7 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
         /* Only missing or malformed pulses are rebuilt; a real pulse off the
          * prediction steers the PLL instead. Needs the field phase so the
          * vertical interval is never mistaken for missing H syncs. */
-        bool keep = in_v || (normal && found >= -CLEAN_ERR && found <= CLEAN_ERR &&
+        bool keep = in_v || (normal && !native_sync_unsafe(f) && found >= -CLEAN_ERR && found <= CLEAN_ERR &&
                              clean_pulse(f, r, start, HSYNC, 12u));
         /* Only lines that must carry a normal H sync (field phase known,
          * outside the vertical interval) judge the signal. */
@@ -791,11 +963,16 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
         /* With the field phase known every line here must carry a normal H
          * sync (the vertical interval belongs to the slots), so a run that
          * noise made look like an equalizing or broad pulse is rebuilt too. */
-        if (!keep && repair && f->v_valid) {
+        if (!keep && repair && (f->v_valid || (normal && steer))) {
             /* With 1.2 us of the 1.65 us front porch at blanking, so noise
              * before the pulse cannot move its leading edge. */
-            synth(f, r, rnd(base) - PORCH, PORCH, blank_step(f), HSYNC, sync_step(f), blank_step(f),
-                  write_floor, avail_end);
+            /* After a phase jump, a genuine classified normal H pulse may
+             * still need low-kp output repair before the next V establishes
+             * field phase. Its own observed edge is safe; unknown/malformed
+             * runs cannot authorize this exception. */
+            uint64_t at = f->v_valid ? rnd(base) : start;
+            synth(f, r, at - PORCH, PORCH, blank_step(f), HSYNC, sync_step(f), blank_step(f),
+                  false, write_floor, avail_end);
             ++f->repaired;
         }
 
