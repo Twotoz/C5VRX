@@ -13,6 +13,18 @@ Distinguish simulation, firmware implementation and physical validation.
 
 ## Work remaining
 
+- [ ] Address every PR comment in [PR212_REVIEW_ACTIONS.md](PR212_REVIEW_ACTIONS.md).
+      The 2026-10-14 priority is Direct Gain V6 investigation with V5 retained
+      as default, physical AFC centering and wide-profile reliability before
+      further output experiments. Include optional AUTO OUTPUT minimum/ceiling,
+      identical-IQ 1x/0.5x/sync-priority comparison, full kp/program/output
+      keeper matrix, prewarmed templates and controlled AUTO-versus-fixed A/B/A.
+      Review round: V5 map-context bug fixed (`50ca13e`); V6 stays research-only.
+      Identical-IQ replay and full output/program transition evidence are
+      checked in. Passive PROFILE/AFC diagnostics and manual private-RAM `J`
+      timing instrumentation support the remaining physical tests; they do
+      not enable live flywheel writes. COM10 is currently unavailable.
+
 - [ ] Operator addition (2026-10-14): find the simplest effective DC-bias
       workaround without repeated quiet-channel calibration. Compare existing
       hardware DC tracking, offset-insensitive discrimination and safely

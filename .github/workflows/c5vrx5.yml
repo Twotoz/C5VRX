@@ -73,7 +73,9 @@ jobs:
             cc -O2 -std=c11 -Wall -Wextra -Werror -I../main "$t.c" -o "/tmp/$t"
             "/tmp/$t"
           done
-          # Host keeper candidate only; not in firmware's component source list.
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_private_bench.c ../main/sync_flywheel.c -o /tmp/test_sync_private_bench
+          /tmp/test_sync_private_bench
+          # Live repair stays host-only; firmware links only the manual private-RAM J benchmark.
           cc -O2 -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -I../main test_sync_flywheel.c ../main/sync_flywheel.c -lm -o /tmp/test_sync_flywheel
           for kp in 0 1 2 3 4 5 6 7; do
             for ppm in 0 50 -50; do
@@ -88,6 +90,9 @@ jobs:
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_fade && /tmp/test_gain_fade | tail -1
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_gain_preset.c \
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_preset && /tmp/test_gain_preset | tail -1
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main -I../research test_gain_v6.c \
+            ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_v6 && /tmp/test_gain_v6
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_afc_evidence.c -o /tmp/test_afc_evidence && /tmp/test_afc_evidence
       - name: Pinned PHY PBUS command contract
         shell: bash
         run: |
@@ -101,8 +106,10 @@ jobs:
           python3 test/test_settings.py
           python3 test/test_native_owner.py
           python3 test/test_gain_map_context.py
+          python3 test/test_afc_telemetry.py
           python3 test/test_sphase_runtime.py
           python3 test/test_sync_transport_runtime.py
+          python3 test/test_sync_bench_runtime.py
       - name: Analytic IQ lane reference
         shell: bash
         run: |
@@ -111,6 +118,8 @@ jobs:
           OPENBLAS_NUM_THREADS=1 /tmp/iqf-test-env/bin/python test/test_iq_lane_fusion.py
           python3 "$IDF_PATH/tools/bsasm.py" research/iq_lane_mixed468.bsasm /tmp/iq_lane_mixed468.bsbin \
             -c "$IDF_PATH/components/esp_driver_bitscrambler/bsasm_targets/esp32c5.json"
+      - name: Synthetic field-sync source geometry (both parities and historical IQ hashes)
+        run: OPENBLAS_NUM_THREADS=1 /tmp/iqf-test-env/bin/python test/test_raster_geometry.py
       - name: U85Q-LP research program (assembles; emulator matches U85Q and the LP model)
         shell: bash
         run: |
@@ -128,7 +137,9 @@ jobs:
           /tmp/range_policy > /tmp/range_policy.jsonl
           /tmp/iqf-test-env/bin/python research/firmware_range_audit.py check /tmp/range_policy.jsonl
       - name: OUTPUT research invariants (DAC-only changes and bounded policy)
-        run: /tmp/iqf-test-env/bin/python research/output_level.py --check
+        run: |
+          /tmp/iqf-test-env/bin/python research/output_level.py --check
+          /tmp/iqf-test-env/bin/python research/output_abc.py --check
       - name: Build C5VRX-5
         shell: bash
         run: |
