@@ -1,0 +1,6 @@
+NATIVE_AGC enabled=1 period_us=20000 timeout_us=60 boot_default=OFF ram_only=1 bench=1
+NATIVE_AGC timing result=2 enable_us=0 first_poll_us=0 max_gap_us=1 polls=102 start_polls=0 invalid_polls=0 open_us=60
+NATIVE_AGC disabled=result_2 owner=direct_gain_v5 open_us=60
+STATUS channel=A1 freq=5865 afc_locked=0 standard=AUTO detected=none signal=4 menu=0 mode=DEFAULT 12MHZ KP0.85 kp_auto=2 output=2.0x live=1 busy=0
+STATUS channel=A1 freq=5865 afc_locked=0 standard=AUTO detected=none signal=5 menu=0 mode=DEFAULT 12MHZ KP0.85 kp_auto=2 output=2.0x live=1 busy=0
+HB t_s=65 stage=ready gain=83 menu=0 startup=0 busy=0

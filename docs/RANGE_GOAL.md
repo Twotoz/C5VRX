@@ -35,7 +35,7 @@ Distinguish simulation, firmware implementation and physical validation.
       verify build/CI and subsequently startup/IDLE behavior on the board.
       Software guards and pinned build/CI pass. Short current-board captures
       show ready heartbeats without watchdog output. Board application
-      `b0b4147` is checksum-verified; a full startup/attenuation recording
+      `9720407` is checksum-verified and ready/live; a full startup/attenuation recording
       remains unverified.
 - [ ] Investigate gradual range loss: distinguish flat RX IQ, stopped/flat
       CVBS, gain/DC changes and the monitor muting an otherwise live waveform.
@@ -47,13 +47,14 @@ Distinguish simulation, firmware implementation and physical validation.
       Software bench implementation: `~`, nominal 20 ms, exclusive observer
       owner, PBUS tuple readback, bounded window and gain/DC rollback. Boot RF
       context only; arbitrary context and physical single-scan proof pending.
-      Actual board toggles still refuse before opening. On `b0b4147`, A1,
+      On `b0b4147`, A1,
       gain 83, the refusal is BB readback `0x17f` versus a seven-bit table
       value `0x7f`: the pinned vendor RX command supplies channel-mode bit
       eight. The fix verifies that context bit before normalizing the gain;
-      physical `f3e6931` now passes preflight and opens for 8 us, then rejects
-      an observation gap and restores Direct Gain. No landing is proved.
-      Normal boot
+      physical `f3e6931` passes preflight and opens for 8 us, then rejects
+      an observation gap. `9720407` uses cycle-exact IRAM polling and obtains
+      102 valid observations within 60 us, no start-proxy matches, then times
+      out and restores Direct Gain. No landing is proved. Normal boot
       after software download was recovered by clearing only the documented
       LP_AON forced-download field; no physical reset is now pending.
 - [ ] Select and implement a feasible PAL/NTSC sync keeper that preserves

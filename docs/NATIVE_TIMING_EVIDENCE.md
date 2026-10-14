@@ -51,3 +51,21 @@ one acquisition. Current firmware must continue reporting candidate landings
 separately from `completed_scans=UNVERIFIED`. A current high-resolution tagged
 gain/state capture or a separately validated hardware completion witness is
 needed before claiming exactly one physical scan per pulse.
+
+## Measured progress after the first-gap diagnosis
+
+`13c16d2` reports enable 2 us, first poll 5 us, one poll, no invalid tuple,
+GAP abort and close at 12 us. `9720407` then moves the hot function and tuple
+reader to IRAM and compares exact CPU-cycle intervals at fixed 240 MHz,
+refusing dynamic power management or an unexpected clock. Final ELF inspection
+confirms all open-window calls stay in IRAM and packing/FSM helpers inline.
+Start remains before enable; interrupts still count. Exact 480-cycle gap and
+stability bounds and a 14400-cycle timeout avoid fractional-us rounding.
+
+The latter board trial obtains 102 valid polls with maximum reported
+whole-us gap 1, but zero start-proxy matches, then closes on timeout at 60 us.
+It proves the old polling-overhead failure is removed in this trial. It does
+not prove native acquisition occurred. The next diagnostic records complete
+initial/status/tuple words and tuple changes, plus exact first/max-gap cycles,
+after verified restoration. Those fields distinguish a proxy problem from
+an unchanged gain sequence without relaxing the acquisition guard.

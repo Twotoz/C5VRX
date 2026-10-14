@@ -358,8 +358,10 @@ rf_native_result_t IRAM_ATTR rf_native_acquire(uint32_t generation, uint8_t *gai
     (void)phy_dco_release();
     rf_native_result_t result = RF_NATIVE_REFUSED;
     uint8_t adopted = previous;
-    uint32_t enable_us = 0, first_poll_us = 0, max_poll_gap_us = 0;
-    uint32_t last_poll_us = 0, polls_seen = 0, start_polls = 0, invalid_polls = 0;
+    uint32_t enable_ticks = 0, first_poll_ticks = 0, max_poll_gap_ticks = 0;
+    uint32_t last_poll_ticks = 0, polls_seen = 0, start_polls = 0, invalid_polls = 0;
+    uint32_t initial_word = 0, first_status = 0, last_status = 0;
+    uint32_t first_tuple = 0, last_tuple = 0, tuple_changes = 0;
     /* Only tasks are held; timer/GDMA interrupts still run. PHY ownership
      * excludes gain/retune/calibration writes throughout acquire and restore. */
     vTaskSuspendAll();
@@ -369,22 +371,27 @@ rf_native_result_t IRAM_ATTR rf_native_acquire(uint32_t generation, uint8_t *gai
     if (REG32(0x600a705cu) == s_native_rf_gate &&
         (REG32(0x600a284cu) & NATIVE_RF_MASK) == s_native_rf_control) {
         native_acquire_t a = {0};
-        const uint8_t initial = (uint8_t)((REG32(0x600a7094u) >> 2) & 127u);
+        initial_word = REG32(0x600a7094u);
+        const uint8_t initial = (uint8_t)((initial_word >> 2) & 127u);
         const uint32_t start = esp_cpu_get_cycle_count();
         phy_enable_agc();
-        enable_us = (esp_cpu_get_cycle_count() - start) / ticks_per_us;
+        enable_ticks = esp_cpu_get_cycle_count() - start;
         result = RF_NATIVE_TIMEOUT;
         for (unsigned polls = 0; polls < 512u; ++polls) {
             uint32_t tuple = 0;
             bool valid = native_tuple(&tuple);
+            uint32_t status = REG32(0x600a7078u);
             uint32_t elapsed_ticks = esp_cpu_get_cycle_count() - start;
-            uint32_t elapsed = elapsed_ticks / ticks_per_us;
-            if (!polls_seen) first_poll_us = elapsed;
-            uint32_t gap = elapsed - last_poll_us;
-            if (gap > max_poll_gap_us) max_poll_gap_us = gap;
-            last_poll_us = elapsed;
+            if (!polls_seen) {
+                first_poll_ticks = elapsed_ticks;
+                first_status = status; first_tuple = tuple;
+            } else if (tuple != last_tuple) ++tuple_changes;
+            last_status = status; last_tuple = tuple;
+            uint32_t gap = elapsed_ticks - last_poll_ticks;
+            if (gap > max_poll_gap_ticks) max_poll_gap_ticks = gap;
+            last_poll_ticks = elapsed_ticks;
             ++polls_seen;
-            bool start_seen = (uint8_t)REG32(0x600a7078u) == initial;
+            bool start_seen = (uint8_t)status == initial;
             if (start_seen) ++start_polls;
             if (!valid) ++invalid_polls;
             native_acquire_result_t evidence = native_acquire_observe_ticks(&a, elapsed_ticks, ticks_per_us,
@@ -437,10 +444,15 @@ rf_native_result_t IRAM_ATTR rf_native_acquire(uint32_t generation, uint8_t *gai
     phy_end_actuator();
     if (result != RF_NATIVE_LANDING)
         printf("NATIVE_AGC timing result=%u enable_us=%lu first_poll_us=%lu max_gap_us=%lu "
-               "polls=%lu start_polls=%lu invalid_polls=%lu open_us=%lu\n",
-               (unsigned)result, (unsigned long)enable_us, (unsigned long)first_poll_us,
-               (unsigned long)max_poll_gap_us, (unsigned long)polls_seen,
-               (unsigned long)start_polls, (unsigned long)invalid_polls, (unsigned long)*open_us);
+               "first_cycles=%lu max_gap_cycles=%lu polls=%lu start_polls=%lu invalid_polls=%lu "
+               "open_us=%lu initial_reg=%08lx first_status=%08lx last_status=%08lx "
+               "first_tuple=%08lx last_tuple=%08lx tuple_changes=%lu\n",
+               (unsigned)result, (unsigned long)(enable_ticks / ticks_per_us),
+               (unsigned long)(first_poll_ticks / ticks_per_us), (unsigned long)(max_poll_gap_ticks / ticks_per_us),
+               (unsigned long)first_poll_ticks, (unsigned long)max_poll_gap_ticks, (unsigned long)polls_seen,
+               (unsigned long)start_polls, (unsigned long)invalid_polls, (unsigned long)*open_us,
+               (unsigned long)initial_word, (unsigned long)first_status, (unsigned long)last_status,
+               (unsigned long)first_tuple, (unsigned long)last_tuple, (unsigned long)tuple_changes);
     return result;
 #endif
 }
