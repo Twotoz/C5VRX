@@ -376,6 +376,30 @@ another frequency is preferable to an unproved live decoder rewrite.
 
 ## First buildable delivery
 
+The CPU raw-reader exclusion part is now implemented centrally in
+`transport.c`. All five public copy APIs (control, gain probe, sentinel,
+snapshot and recent endpoints) acquire a reader token before touching raw
+bytes and release it after copy validation. Private-buffer processing and
+USB output hold no token. A changed stream/control/gain/PHY context makes
+the copied result unusable; ending that read still releases its original
+slot. Active slots are never cleared by a context change. This also covers
+early copy failure and prevents an old token from releasing a newer reader.
+
+The pure guard supports eight concurrent readers and exclusive writer
+admission, with 64-bit non-reused tickets and explicit exhaustion refusal.
+No production writer calls it yet. Only short begin/end bookkeeping excludes
+tasks; the DMA keeps running. Existing per-copy overwrite checks remain.
+Tests compile all five actual wrappers and exercise early failures, context
+changes, saturation and attempted writer overlap. The pinned firmware builds;
+physical added CPU cost remains to be measured.
+
+This establishes exclusion, not original-source provenance. Before any
+shared-ring repair writer is enabled, each evidence reader must also check
+its actual absolute read intervals against the repair ledger. Otherwise a
+completed repair can contaminate a later AFC/DC/gain measurement even though
+the copy did not overlap the write. Publication/prefetch bounds and complete
+commit WCET remain separate gates; `mem_writes_safe` remains zero.
+
 Implement transport generation/frontier extraction and the pure interval
 admission guard first, with adversarial host tests for tail, wrap, gaps,
 prefetch, elapsed budget and unknown context. Wire one prewarmed keeper task

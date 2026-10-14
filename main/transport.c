@@ -24,6 +24,7 @@
 #include "kp_tables.h"
 #include "snapshot.h"
 #include "control_window.h"
+#include "raw_access.h"
 #include "sync_transport_probe.h"
 #include "sync_memory_frontier.h"
 #include "sync_private_bench.h"
@@ -1057,8 +1058,32 @@ static bool completed_plan(int active, size_t need, control_copy_plan_t *out)
     return control_copy_plan(lengths, (unsigned)s_rx_node_count, (unsigned)active, need, out);
 }
 
+/* All CPU raw-byte readers below share this independent ownership gate.
+ * DMA continues; leases end before private-buffer analysis/USB printing. */
+static raw_access_t s_raw_access;
+static raw_access_context_t transport_raw_context(void)
+{
+    return (raw_access_context_t){s_stream_generation,s_control_epoch,s_gain_epoch,phy_generation()};
+}
+static bool transport_raw_read_begin(raw_access_token_t *token)
+{
+    vTaskSuspendAll();
+    bool ok=raw_access_read_begin(&s_raw_access,transport_raw_context(),
+                                  s_rx_enabled && !s_stream_generation_overflow,token);
+    (void)xTaskResumeAll();
+    return ok;
+}
+static bool transport_raw_read_end(raw_access_token_t *token)
+{
+    vTaskSuspendAll();
+    bool ok=raw_access_read_end(&s_raw_access,token,transport_raw_context(),
+                                s_rx_enabled && !s_stream_generation_overflow);
+    (void)xTaskResumeAll();
+    return ok;
+}
+
 /* The newest completed descriptor, copied and proven not lapped. */
-bool copy_control_window(uint8_t *dst, size_t bytes)
+static bool copy_control_window_unleased(uint8_t *dst, size_t bytes)
 {
     ++s_control_copy.calls;
     if (s_rx_dma_ch < 0 || s_rx_node_count < 3) { ++s_control_copy.not_ready; return false; }
@@ -1105,7 +1130,7 @@ bool copy_control_window(uint8_t *dst, size_t bytes)
 }
 
 /* Four separated 64-byte regions of the newest completed descriptor. */
-bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node)
+static bool copy_probe_window_unleased(uint8_t dst[PROBE_BYTES], int *node)
 {
     static const size_t offset[PROBE_REGIONS] = {512u, 1536u, 2560u, 4028u};
     if (s_rx_dma_ch < 0 || s_rx_node_count < 2) return false;
@@ -1129,7 +1154,7 @@ bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node)
     return true;
 }
 
-bool copy_sentinel_window(uint8_t dst[64])
+static bool copy_sentinel_window_unleased(uint8_t dst[64])
 {
     if (s_rx_dma_ch < 0 || s_rx_node_count < 3) return false;
     const int64_t start = esp_timer_get_time();
@@ -1147,7 +1172,7 @@ bool copy_sentinel_window(uint8_t dst[64])
 
 /* 8190 contiguous bytes (204.75 us) ending where the active descriptor
  * began, valid only if RX could not have reached them during the copy. */
-bool copy_snapshot(uint8_t *dst)
+static bool copy_snapshot_unleased(uint8_t *dst)
 {
     if (s_rx_dma_ch < 0 || s_rx_node_count < 4) return false;
     int64_t start = esp_timer_get_time();
@@ -1179,7 +1204,7 @@ bool copy_snapshot(uint8_t *dst)
 }
 
 /* Endpoint bytes (odd ring byte of each pair) of the newest `n` pairs. */
-bool copy_recent_endpoints(uint8_t *dst, size_t n)
+static bool copy_recent_endpoints_unleased(uint8_t *dst, size_t n)
 {
     if (s_rx_dma_ch < 0 || s_rx_node_count < 2 || 2u * n > sizeof(s_raw_ring) / 2u) return false;
     int idx = ring_node_index(rx_active_addr());
@@ -1194,6 +1219,49 @@ bool copy_recent_endpoints(uint8_t *dst, size_t n)
         pos = (pos + 2u) % sizeof(s_raw_ring);
     }
     return true;
+}
+
+/* Exclusion only. Original-evidence readers must additionally reject repair
+ * ledger intersections before a future shared-ring writer is enabled. */
+bool copy_control_window(uint8_t *dst, size_t bytes)
+{
+    raw_access_token_t token;
+    if (!transport_raw_read_begin(&token)) return false;
+    bool copied=copy_control_window_unleased(dst,bytes);
+    bool current=transport_raw_read_end(&token);
+    return copied && current;
+}
+bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node)
+{
+    raw_access_token_t token;
+    if (!transport_raw_read_begin(&token)) return false;
+    bool copied=copy_probe_window_unleased(dst,node);
+    bool current=transport_raw_read_end(&token);
+    return copied && current;
+}
+bool copy_sentinel_window(uint8_t dst[64])
+{
+    raw_access_token_t token;
+    if (!transport_raw_read_begin(&token)) return false;
+    bool copied=copy_sentinel_window_unleased(dst);
+    bool current=transport_raw_read_end(&token);
+    return copied && current;
+}
+bool copy_snapshot(uint8_t *dst)
+{
+    raw_access_token_t token;
+    if (!transport_raw_read_begin(&token)) return false;
+    bool copied=copy_snapshot_unleased(dst);
+    bool current=transport_raw_read_end(&token);
+    return copied && current;
+}
+bool copy_recent_endpoints(uint8_t *dst, size_t n)
+{
+    raw_access_token_t token;
+    if (!transport_raw_read_begin(&token)) return false;
+    bool copied=copy_recent_endpoints_unleased(dst,n);
+    bool current=transport_raw_read_end(&token);
+    return copied && current;
 }
 
 /* Sampling phase: holding the RX divider one count higher for ~1 us moves
