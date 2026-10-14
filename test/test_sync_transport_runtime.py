@@ -113,9 +113,9 @@ int main(void) {
     s_live_tx_nodes[2].dw0.length=4092;
     s_rx_node_count=8;probe();assert(strstr(line,"geom_error=1"));s_rx_node_count=9;
     s_rx_dma_ch=-1;probe();assert(strstr(line,"reason=geometry_unverified"));s_rx_dma_ch=0;
-    rx_desc[7].dw0.size=rx_desc[7].dw0.length=s_rx_nodes[7].length=2064;
-    rx_desc[8].buffer=s_rx_nodes[8].buffer=s_raw_ring+30708;
-    rx_desc[8].dw0.size=rx_desc[8].dw0.length=s_rx_nodes[8].length=2060;
+    rx_desc[7].dw0.size=rx_desc[7].dw0.length=s_rx_nodes[7].length=2060;
+    rx_desc[8].buffer=s_rx_nodes[8].buffer=s_raw_ring+30704;
+    rx_desc[8].dw0.size=rx_desc[8].dw0.length=s_rx_nodes[8].length=2064;
     probe();assert(strstr(line,"geometry=1") && strstr(line,"geom_error=0"));
     ++s_stream_generation;probe();assert(strstr(line,"stream_gen=18"));
     s_stream_generation_overflow=true;probe();assert(strstr(line,"reason=not_live"));

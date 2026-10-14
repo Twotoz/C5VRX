@@ -43,15 +43,18 @@ static dma_progress_limits_t limits(void)
     return (dma_progress_limits_t){39990000u, 40010000u, 128u, 512u, true, true, true};
 }
 
-static void continuous_oracle(unsigned rx_rotation, unsigned tx_rotation, unsigned lag, bool balanced)
+static void continuous_oracle(unsigned rx_rotation, unsigned tx_rotation, unsigned lag, unsigned balanced)
 {
     dma_progress_t p; dma_progress_init(&p);
     dma_progress_layout_t rx = layout(rx_rotation, 0x1000), tx = layout(tx_rotation, 0x2000);
     if (balanced) {
         for (unsigned i = 0; i < 9u; ++i) {
             unsigned physical = (i + rx_rotation) % 9u;
-            if (physical == 7u) rx.nodes[i].bytes = 2064u;
-            if (physical == 8u) { rx.nodes[i].offset = 30708u; rx.nodes[i].bytes = 2060u; }
+            if (physical == 7u) rx.nodes[i].bytes = (4124u / balanced / 2u) * balanced;
+            if (physical == 8u) {
+                unsigned first = (4124u / balanced / 2u) * balanced;
+                rx.nodes[i].offset = 28644u + first; rx.nodes[i].bytes = 4124u - first;
+            }
         }
         assert(dma_progress_layout_valid(&rx));
     }
@@ -85,8 +88,8 @@ static void continuous_oracle(unsigned rx_rotation, unsigned tx_rotation, unsign
         assert(f.snapshot_first_us == time && f.snapshot_last_us == time + 1u);
         assert(f.epoch == 1u && f.generation == 5u);
     }
-    printf("continuous lag=%u rotation=%u/%u: 12000 independent position captures across wraps\n",
-           lag, rx_rotation, tx_rotation);
+    printf("continuous lag=%u rotation=%u/%u alignment=%u: 12000 independent position captures across wraps\n",
+           lag, rx_rotation, tx_rotation, balanced);
 }
 
 int main(void)
@@ -181,10 +184,13 @@ int main(void)
     assert(dma_progress_update(&p, &c, &f) == DPG_JUMP);
     assert(!p.ready && !f.valid && p.rx.start == old_rx);
     continuous_oracle(0, 0, 16384, false);
-    continuous_oracle(0, 0, 16384, true);
+    continuous_oracle(0, 0, 16384, 4);
+    continuous_oracle(0, 0, 16384, 32);
     continuous_oracle(7, 3, 16384, false);
-    continuous_oracle(7, 3, 16384, true);
+    continuous_oracle(7, 3, 16384, 4);
+    continuous_oracle(7, 3, 16384, 32);
     continuous_oracle(8, 5, 24576, false);
-    continuous_oracle(8, 5, 24576, true);
+    continuous_oracle(8, 5, 24576, 4);
+    continuous_oracle(8, 5, 24576, 32);
     puts("PASS: bootstrap freshness, absolute wrap/tail progress, generation, ambiguous laps, rate, stall and epoch faults");
 }

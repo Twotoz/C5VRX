@@ -25,9 +25,13 @@ integer 409 us, then starts TX. Driver setup/start latency adds uncertainty.
 The nominal separation is approximately 16 KiB, not an invariant literal
 16384 bytes. Owned TX uses8 x4092 bytes and a32-byte tail. RX uses the
 pinned IDF driver's independently mounted geometry. Its `parlio_rx.c`
-`parlio_rx_mount_trans()` splits a final remainder between two descriptors
+`parlio_rx_mount_transaction_buffer()` splits a final remainder between two descriptors
 when it exceeds4092bytes but is less than8184bytes. For a32768-byte aligned
-body this is7 x4092 plus2064 and2060 bytes, rather than the TX geometry.
+body this is seven4092-byte nodes and a final pair whose sizes depend on
+transaction alignment:2060+2064 at4-byte alignment, or2048+2076 at32-byte
+alignment. The macro rounds the first half down to that alignment. This
+is a source-derived expectation; the actual hardware probe must report
+its discovered node lengths. It differs from the owned TX geometry.
 Discovery may begin at any node. Every descriptor is its actual interval;
 index times4092 is not a valid general RX position.
 
@@ -93,9 +97,9 @@ RX update is never committed when TX fails. The adapter requires externally
 proved clock/geometry/FIFO limits and running ownership. Those booleans are
 not evidence that the hardware proofs have happened.
 
-`test/test_dma_progress.c` passed72000 independent continuous-position
+`test/test_dma_progress.c` passed108000 independent continuous-position
 captures at nominal 40 MS/s, rotated RX/TX discovery and 16/24-KiB modeled
-lag with both8-long/short-tail and actual IDF7-long/two-short RX
+lag with both8-long/short-tail and IDF7-long/two-short RX at4/32-byte alignment
 geometry, plus explicit tail-wrap, startup freshness, skew, hidden lap, stall,
 unknown-capacity, invalid address, generation and overflow cases. This
 validates the arithmetic/state API, not physical lag or actual prefetched
