@@ -67,6 +67,7 @@ static void help(void)
            "  g OUTPUT 0.5x..5.0x in 0.5x steps (saved after application; restored at boot),\n"
            "  A live VTX profile switch on/off (continuous matching every 30 s; off = report only),\n"
            "  ~ bench: bounded native AGC every 20 ms (RAM-only, OFF at boot; after startup),\n"
+           "  J bench: private-RAM sync synthesis/copy timing (no live writes),\n"
            "  B bench: restart live transport without OSD (interrupts video; issue #213 A/B),\n"
            "  N black NO SIGNAL fallback on/off (default OFF: preserve real snow; bench only),\n"
            "  I IQ snapshot, o menu open/close, n/x menu next/select, c next channel, b next band, s scan,\n"
@@ -111,6 +112,7 @@ static void console_task(void *arg)
             switch (c) {
             case 'T': status(); break;
             case 'I': snapshot(); break;
+            case 'J': transport_sync_bench(); break;
             case 'F': filter_request(); break;
             case 'D': diag_report(); break;
             case 'M': receiver_print_map(); break;

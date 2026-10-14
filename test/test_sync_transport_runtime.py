@@ -135,7 +135,7 @@ class TransportRuntimeTest(unittest.TestCase):
     def test_actual_read_only_bridge(self):
         source = (ROOT / "main/transport.c").read_text(encoding="utf-8")
         begin = source.index("static sync_memory_registers_t transport_memory_registers(void)")
-        end = source.index("void transport_print(void)", begin)
+        end = source.index("/* Manual J probe:", begin)
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             for name in ("sync_transport_probe.h", "dma_progress.h", "sync_memory_frontier.h"):

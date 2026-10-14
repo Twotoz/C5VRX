@@ -1,8 +1,10 @@
 /* C5VRX by Twotoz and contributors: root sync-keeper candidate (see header).
  * Ported in idea from the C5VRX-3 flywheel on feat/sync-flywheel; root changes use unwrapped adjacent detection,
- * cheap exact synthesis and whole-interval admission. Host candidate only. */
+ * cheap exact synthesis and whole-interval admission. Live repair remains a host
+ * candidate; only the explicit private-RAM J timing bench is linked in firmware. */
 #include "sync_flywheel.h"
 #include "sync_synth.h"
+#include "sync_private_bench.h"
 #include <string.h>
 
 #ifdef ESP_PLATFORM
@@ -378,6 +380,71 @@ static bool native_sync_unsafe(const sync_flywheel_t *f)
     return f->levels && f->repair_step_q8 && (int32_t)f->sync_q4 * 16 < raw_limit;
 }
 static inline int32_t blank_step(const sync_flywheel_t *f) { return (int32_t)f->blank_q4 * 16; }
+
+static bool private_bench_valid(const sfw_ring_t *r)
+{
+    return r && r->ring && r->phase && r->decoder_lut && !r->commit &&
+        r->ring_bytes >= 2048u && r->ring_bytes <= 8192u &&
+        !(r->ring_bytes & (r->ring_bytes - 1u)) && verified_sync_step(r) &&
+        workspace_valid(r, 1280u);
+}
+
+bool sfw_bench_prewarm(const sfw_ring_t *r)
+{
+    if (!private_bench_valid(r)) return false;
+    build_cells(r);
+    return true;
+}
+
+bool sfw_bench_seed_private(const sfw_ring_t *r, uint16_t phase)
+{
+    if (!sfw_bench_prewarm(r)) return false;
+    uint32_t accumulator = phase;
+    for (uint32_t k = 0; k < r->ring_bytes; ++k) {
+        accumulator = (accumulator - 1638u) & 65535u;
+        r->ring[k] = s_cell[(uint8_t)((accumulator + 128u) >> 8)];
+    }
+    return true;
+}
+
+static bool private_bench_prepared(void *ctx, uint64_t start, const uint8_t *samples, uint32_t bytes)
+{
+    sfw_private_pulse_t *result = ctx;
+    (void)samples;
+    if (start > UINT32_MAX || !bytes || bytes > 1280u) return false;
+    result->start = (uint32_t)start;
+    result->bytes = bytes;
+    result->prepared = true;
+    return true;
+}
+
+bool sfw_bench_prepare_private(const sfw_ring_t *r, bool pal_mode,
+                              sfw_bench_kind_t kind, sfw_private_pulse_t *result)
+{
+    if (!result) return false;
+    memset(result, 0, sizeof(*result));
+    if (!private_bench_valid(r) || kind < SFW_BENCH_H || kind > SFW_BENCH_FIRST_EQ) return false;
+    build_cells(r);
+    sync_flywheel_t f;
+    sfw_init(&f);
+    f.blank_q4 = -102;
+    f.repair_step_q8 = verified_sync_step(r);
+    f.repair_kp_x100 = r->verified_kp_x100;
+    f.evidence_end = r->ring_bytes;
+    sfw_ring_t private_ring = *r;
+    private_ring.commit = private_bench_prepared;
+    private_ring.commit_ctx = result;
+    uint32_t half = pal_mode ? 1280u : 1271u;
+    uint32_t tip = kind == SFW_BENCH_H ? HSYNC : kind == SFW_BENCH_BROAD ? half - HSYNC : 94u;
+    uint32_t n1 = kind == SFW_BENCH_H ? PORCH : tip;
+    uint32_t n2 = kind == SFW_BENCH_H ? tip : half - tip;
+    bool ok = synth(&f, &private_ring, 512u, n1,
+        kind == SFW_BENCH_H ? -1632 : f.repair_step_q8,
+        n2, kind == SFW_BENCH_H ? f.repair_step_q8 : -1632, -1632,
+        kind == SFW_BENCH_FIRST_EQ, 0, r->ring_bytes);
+    result->bootstrap_refused = f.bootstrap_refused;
+    return ok && result->prepared;
+}
 
 /* ---- geometry ---------------------------------------------------------- */
 static inline bool pal(const sync_flywheel_t *f) { return f->nominal_q16 == (int32_t)SFW_PAL_LINE_Q16; }

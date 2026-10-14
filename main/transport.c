@@ -26,6 +26,12 @@
 #include "control_window.h"
 #include "sync_transport_probe.h"
 #include "sync_memory_frontier.h"
+#include "sync_private_bench.h"
+#include "phase8_gain_lut.h"
+#include "esp_cpu.h"
+#include "esp_heap_caps.h"
+#include "esp_private/esp_clk.h"
+#include "soc/soc_caps.h"
 #include "phy.h"
 #include "soc/ahb_dma_struct.h"
 #include "soc/bitscrambler_struct.h"
@@ -863,6 +869,144 @@ static void transport_sync_probe_print(void)
            (unsigned long)memory.memory_bound_hz, (unsigned long)memory.inflight_prefix_bytes,
            (unsigned long long)memory.conditional.rx_lo, (unsigned long long)memory.conditional.rx_hi,
            (unsigned long long)memory.conditional.tx_prefetch_hi);
+}
+
+/* Manual J probe: only private allocated RAM is a destination. */
+typedef struct {
+    uint32_t generation;
+    int level;
+    unsigned output;
+    bool lp;
+} sync_bench_context_t;
+
+static bool transport_bench_context_copy(sync_bench_context_t *ctx, uint16_t *lut)
+{
+    uintptr_t dst = (uintptr_t)lut, raw = (uintptr_t)s_raw_ring;
+    if (!ctx || !lut || dst > UINTPTR_MAX - sizeof(s_lut_live) ||
+        (dst < raw + sizeof(s_raw_ring) && raw < dst + sizeof(s_lut_live))) return false;
+    vTaskSuspendAll();
+    bool valid = s_started && s_have_verified && s_lut_known && !s_transport_fault &&
+        !s_stream_generation_overflow && !s_menu_active && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
+        s_verified_level >= 0 && s_verified_level < KP_LEVELS && s_verified_output < OUTPUT_LEVELS &&
+        s_prog_lp == s_verified_lp && s_output == s_verified_output;
+    if (valid) {
+        *ctx = (sync_bench_context_t){s_stream_generation,s_verified_level,s_verified_output,s_verified_lp};
+        memcpy(lut,s_lut_live,sizeof(s_lut_live));
+    }
+    (void)xTaskResumeAll();
+    return valid;
+}
+
+static bool transport_bench_context_valid(const sync_bench_context_t *ctx)
+{
+    vTaskSuspendAll();
+    bool valid = s_started && s_have_verified && s_lut_known && !s_transport_fault &&
+        !s_stream_generation_overflow && !s_menu_active && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
+        s_stream_generation == ctx->generation && s_verified_level == ctx->level &&
+        s_verified_lp == ctx->lp && s_prog_lp == ctx->lp &&
+        s_verified_output == ctx->output && s_output == ctx->output;
+    (void)xTaskResumeAll();
+    return valid;
+}
+
+static bool transport_bench_cache_result(esp_err_t error)
+{
+    if (error == ESP_OK) return true;
+#if !SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+    /* Pinned esp_cache_msync returns NOT_SUPPORTED for noncacheable SRAM. */
+    if (error == ESP_ERR_NOT_SUPPORTED) return true;
+#endif
+    return false;
+}
+
+void transport_sync_bench(void)
+{
+    enum { PRIVATE_RING=4096, WORKSPACE=1280, LUT_BYTES=2048, COPY_BYTES=1344,
+           ALLOCATION=PRIVATE_RING+WORKSPACE+LUT_BYTES+COPY_BYTES+64 };
+    static portMUX_TYPE copy_mux = portMUX_INITIALIZER_UNLOCKED;
+    static bool called;
+    uint8_t *memory = heap_caps_aligned_alloc(64,ALLOCATION,MALLOC_CAP_INTERNAL|MALLOC_CAP_DMA|MALLOC_CAP_8BIT);
+    if (!memory) { printf("SYNC_BENCH refused=memory writes_live=0\n"); return; }
+    uintptr_t begin = (uintptr_t)memory, raw = (uintptr_t)s_raw_ring;
+    if (begin > UINTPTR_MAX-ALLOCATION || (begin < raw+sizeof(s_raw_ring) && raw < begin+ALLOCATION)) {
+        heap_caps_free(memory); printf("SYNC_BENCH refused=private_alias writes_live=0\n"); return;
+    }
+    memset(memory,0xa5,ALLOCATION);
+    uint8_t *workspace=memory+PRIVATE_RING;
+    uint16_t *lut=(uint16_t *)(workspace+WORKSPACE);
+    uint8_t *destination=(uint8_t *)lut+LUT_BYTES;
+    sync_bench_context_t context;
+    if (!transport_bench_context_copy(&context,lut)) {
+        heap_caps_free(memory); printf("SYNC_BENCH refused=context writes_live=0\n"); return;
+    }
+    sfw_ring_t ring = {.ring=memory,.ring_bytes=PRIVATE_RING,.phase=c5vrx_phase8_gain_lut,
+        .verified_kp_x100=kp_level_x100[context.level],.program_verified=true,.decoder_lut=lut,
+        .workspace=workspace,.workspace_bytes=WORKSPACE};
+    bool first_call=!called; called=true;
+    int64_t t0=esp_timer_get_time(); uint32_t c0=esp_cpu_get_cycle_count();
+    bool warm=sfw_bench_prewarm(&ring);
+    uint32_t warm_cycles=esp_cpu_get_cycle_count()-c0;
+    uint64_t warm_us=(uint64_t)(esp_timer_get_time()-t0);
+    printf("SYNC_BENCH begin private_bytes=%u input=private_synthetic writes_live=0 first_call=%u "
+           "prewarm_cycles=%lu prewarm_us=%llu kp=%u lp=%u output=%u stream_gen=%lu "
+           "cpu_hz=%lu irq_latency_measured=0 live_wcet_proven=0\n",ALLOCATION,first_call,(unsigned long)warm_cycles,
+           (unsigned long long)warm_us,kp_level_x100[context.level],context.lp,context.output,
+           (unsigned long)context.generation,(unsigned long)esp_clk_cpu_freq());
+    bool valid=warm;
+    for (unsigned standard=0; valid && standard<2; ++standard) for (unsigned kind=0; valid && kind<4; ++kind) {
+        if (kind==SFW_BENCH_FIRST_EQ && !context.lp) {
+            printf("SYNC_BENCH pulse standard=%s kind=%u eligible=0 reason=lp_model_only writes_live=0\n",
+                   standard?"PAL":"NTSC",kind);
+            continue;
+        }
+        uint32_t prepare_max_cycles=0,copy_max_cycles=0,refused=0,bytes=0;
+        uint64_t prepare_max_us=0,copy_max_us=0;
+        int cache_in=ESP_OK,cache_out=ESP_OK;
+        for (unsigned run=0; valid && run<4; ++run) {
+            valid=transport_bench_context_valid(&context) && sfw_bench_seed_private(&ring,(uint16_t)(run*8192u));
+            if (!valid) break;
+            sfw_private_pulse_t pulse;
+            t0=esp_timer_get_time(); c0=esp_cpu_get_cycle_count();
+            valid=sfw_bench_prepare_private(&ring,standard!=0,(sfw_bench_kind_t)kind,&pulse);
+            uint32_t elapsed_cycles=esp_cpu_get_cycle_count()-c0;
+            uint64_t elapsed_us=(uint64_t)(esp_timer_get_time()-t0);
+            if (elapsed_cycles>prepare_max_cycles) prepare_max_cycles=elapsed_cycles;
+            if (elapsed_us>prepare_max_us) prepare_max_us=elapsed_us;
+            if (!valid || !transport_bench_context_valid(&context)) { valid=false; break; }
+            bytes=pulse.bytes; refused+=pulse.bootstrap_refused;
+            uint32_t rounded=(bytes+63u)&~63u;
+            if (!bytes || rounded>COPY_BYTES) { valid=false; break; }
+            memset(destination,0xa5,COPY_BYTES+64);
+            esp_err_t initialized=esp_cache_msync(destination,COPY_BYTES+64,ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+            if (!transport_bench_cache_result(initialized)) { valid=false; break; }
+            /* Measured envelope includes entry/exit and possible pre-entry IRQ
+             * delay. No search, synthesis, printing or PHY access is masked. */
+            t0=esp_timer_get_time(); c0=esp_cpu_get_cycle_count();
+            portENTER_CRITICAL(&copy_mux);
+            cache_in=esp_cache_msync(destination,rounded,ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+            if (transport_bench_cache_result(cache_in)) {
+                memcpy(destination,workspace,bytes);
+                cache_out=esp_cache_msync(destination,rounded,ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+            }
+            portEXIT_CRITICAL(&copy_mux);
+            elapsed_cycles=esp_cpu_get_cycle_count()-c0;
+            elapsed_us=(uint64_t)(esp_timer_get_time()-t0);
+            if (elapsed_cycles>copy_max_cycles) copy_max_cycles=elapsed_cycles;
+            if (elapsed_us>copy_max_us) copy_max_us=elapsed_us;
+            valid=transport_bench_cache_result(cache_in) && transport_bench_cache_result(cache_out) &&
+                !memcmp(destination,workspace,bytes) && transport_bench_context_valid(&context);
+            for (unsigned k=bytes; valid && k<COPY_BYTES+64; ++k) if (destination[k]!=0xa5) valid=false;
+        }
+        printf("SYNC_BENCH pulse standard=%s kind=%u valid=%u bytes=%lu prepare_max_cycles=%lu "
+               "prepare_max_us=%llu private_copy_envelope_cycles=%lu private_copy_envelope_us=%llu "
+               "cache_in=%d cache_out=%d bootstrap_refused=%lu first_eq_lp_model_only=%u writes_live=0\n",
+               standard?"PAL":"NTSC",kind,valid,(unsigned long)bytes,(unsigned long)prepare_max_cycles,
+               (unsigned long long)prepare_max_us,(unsigned long)copy_max_cycles,(unsigned long long)copy_max_us,
+               cache_in,cache_out,(unsigned long)refused,kind==SFW_BENCH_FIRST_EQ);
+        vTaskDelay(1);
+    }
+    heap_caps_free(memory);
+    printf("SYNC_BENCH end valid=%u writes_live=0 keeper_enabled=0 irq_latency_measured=0 live_wcet_proven=0\n",valid);
 }
 
 void transport_print(void)
