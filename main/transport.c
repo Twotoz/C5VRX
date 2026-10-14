@@ -357,7 +357,7 @@ unsigned transport_output(void) { return s_output; }
 const char *transport_output_name(void)
 {
     static const char *const names[OUTPUT_LEVELS] = {
-        "1.0x", "1.5x", "2.0x", "2.5x", "3.0x", "3.5x", "4.0x", "4.5x", "5.0x"
+        "1.0x", "1.5x", "2.0x", "2.5x", "3.0x", "3.5x", "4.0x", "4.5x", "5.0x", "0.5x"
     };
     return names[s_output];
 }

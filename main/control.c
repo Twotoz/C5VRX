@@ -334,7 +334,8 @@ static void command(int c, unsigned *menu_idle)
         bool ok = transport_set_output(next);
         printf("OUTPUT manual %s result=%s wait_ms=%lu%s\n", transport_output_name(),
                ok ? "applied" : "refused", (unsigned long)transport_switch_wait_ms(),
-               transport_output() ? " WARNING: may clip wide VTX; verify sync/white into 75 ohm" : "");
+               transport_output() == 9 ? " (low swing: halves noise & clipping; requires sensitive sync)" :
+               (transport_output() ? " WARNING: may clip wide VTX; verify sync/white into 75 ohm" : ""));
         if (s_menu_active) menu_render();
         break;
     }
