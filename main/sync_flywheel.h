@@ -17,6 +17,15 @@
 #define SFW_PAL_LINE_Q16   (2560u * 65536u)  /* 64 us */
 #define SFW_NTSC_LINE_Q16  ((22880u * 65536u + 4u) / 9u) /* exact 572/9 us, rounded once */
 
+/* The executor rechecks DMA/source/context lifetimes after preparation and
+ * admits/copies the COMPLETE interval or refuses it without writing any byte.
+ * No partial success is permitted. The workspace is valid only for this
+ * synchronous call; retaining its pointer or reentering sfw_run is forbidden.
+ * The candidate's ledger is conservatively tainted before this call, even
+ * when it returns false. This API alone does not certify live DMA safety. */
+typedef bool (*sfw_commit_fn)(void *ctx, uint64_t absolute_start,
+                               const uint8_t *samples, uint32_t bytes);
+
 typedef struct {
     uint8_t *ring;              /* raw IQ ring shared by RX and TX */
     uint32_t ring_bytes;        /* power of two */
@@ -31,6 +40,14 @@ typedef struct {
     uint8_t verified_kp_x100;
     bool program_verified;
     const uint16_t *decoder_lut; /* same verified active worker/controller words */
+    /* Optional executor mode. A configured callback requires caller-owned,
+     * writable workspace covering the complete pulse and disjoint from the
+     * whole raw ring. Synthesis never writes the raw ring in this mode.
+     * NULL callback preserves the original direct host-replay mode. */
+    uint8_t *workspace;
+    uint32_t workspace_bytes;
+    sfw_commit_fn commit;
+    void *commit_ctx;
 } sfw_ring_t;
 
 typedef enum { SFW_ACQUIRE = 0, SFW_TRACK = 1 } sfw_state_t;
@@ -45,6 +62,7 @@ typedef struct {
     uint32_t context_refused;
     uint32_t bootstrap_unknown;
     uint32_t bootstrap_refused;
+    uint32_t workspace_refused, commit_calls, commit_refused;
     /* acquisition */
     uint64_t scan_pos;
     uint8_t acq_phase;

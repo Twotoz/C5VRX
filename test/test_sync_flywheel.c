@@ -34,6 +34,31 @@ typedef struct {
 
 static unsigned s_seed = 1;
 static unsigned s_kp_level;
+static bool s_commit_mode;
+typedef struct {
+    uint8_t *ring;
+    uint8_t before[RING];
+    sync_flywheel_t *flywheel;
+    const uint8_t *workspace;
+    unsigned calls;
+    bool refuse;
+} commit_fixture_t;
+
+static bool commit_fixture(void *opaque, uint64_t start, const uint8_t *samples, uint32_t bytes)
+{
+    commit_fixture_t *c = opaque;
+    /* Every raw byte must still match its pre-synthesis value on entry.
+     * Only this executor may modify the raw ring in callback mode. */
+    assert(!memcmp(c->before, c->ring, RING));
+    assert(samples == c->workspace && bytes && bytes <= 1280u);
+    assert(!sync_repair_ledger_original(&c->flywheel->repairs, start, start + bytes,
+                                        c->flywheel->evidence_end));
+    ++c->calls;
+    if (c->refuse) return false;
+    for (uint32_t k = 0; k < bytes; ++k) c->ring[(start + k) & (RING - 1u)] = samples[k];
+    memcpy(c->before, c->ring, RING);
+    return true;
+}
 /* Inject the former loss-duration boundary without allocating 100+ million
  * samples. The surrounding six-field pure-noise scene still exercises every
  * ring wrap, repair slot and genuine shifted-camera recovery. */
@@ -134,7 +159,15 @@ static uint8_t *run_ring(const uint8_t *in, uint64_t n, sync_flywheel_t *f, cons
                          bool mask, uint8_t clear, double *evals_per_line, uint32_t budget)
 {
     uint8_t *ring = calloc(RING, 1), *out = malloc(n);
-    sfw_ring_t r = {ring, RING, phase, mask, clear, kp_level_x100[s_kp_level], true, kp_tables[s_kp_level]};
+    uint8_t workspace[1280];
+    commit_fixture_t commit = {.ring = ring, .flywheel = f, .workspace = workspace};
+    sfw_ring_t r = {.ring = ring, .ring_bytes = RING, .phase = phase, .mask_bit0 = mask,
+                   .clear_bit0 = clear, .verified_kp_x100 = kp_level_x100[s_kp_level],
+                   .program_verified = true, .decoder_lut = kp_tables[s_kp_level]};
+    if (s_commit_mode) {
+        r.workspace = workspace; r.workspace_bytes = sizeof(workspace);
+        r.commit = commit_fixture; r.commit_ctx = &commit;
+    }
     sfw_init(f);
     uint64_t rx = 0, tx = 0, evals = 0, lines0 = 0;
     uint64_t lowm = 0, steps = 0;
@@ -169,7 +202,9 @@ static uint8_t *run_ring(const uint8_t *in, uint64_t n, sync_flywheel_t *f, cons
                 f->period_q16 = f->coast_period_q16;
                 injected = true;
             }
+            if (s_commit_mode) memcpy(commit.before, ring, RING);
             sfw_run(f, &r, ceiling, rx, floor, true, budget);
+            if (s_commit_mode) assert(!memcmp(commit.before, ring, RING));
             assert(f->repairs.collapses == 0 && f->repairs.count <= 32u);
             if (injected && rx < s_inject_until) {
                 assert(f->state == SFW_TRACK && f->v_valid && sfw_locked(f));
@@ -196,6 +231,10 @@ static uint8_t *run_ring(const uint8_t *in, uint64_t n, sync_flywheel_t *f, cons
     free(ring);
     assert(!s_inject_lost || injected);
     assert(f->bootstrap_refused == 0);
+    if (s_commit_mode) {
+        assert(f->commit_calls == commit.calls && !f->commit_refused && !f->workspace_refused);
+        assert(commit.calls == f->repaired + f->slots_repaired);
+    } else assert(!f->commit_calls && !f->commit_refused && !f->workspace_refused);
     return out;
 }
 
@@ -426,6 +465,16 @@ static void scenario(bool pal)
            name, f.repaired, f.slots_repaired, f.v_coasted, f.vsyncs, changed, epl);
     assert(f.repaired > 200u && f.slots_repaired > 10u && f.v_coasted >= 1u);
     preserve_picture(&fade, in, out, n);
+    /* Complete callback stream must exactly match direct replay, including
+     * both first-EQ bootstrap and every subsequent H/V patch. */
+    if (s_commit_mode) {
+        sync_flywheel_t direct;
+        s_commit_mode = false;
+        uint8_t *reference = run_ring(in, n, &direct, c5vrx_phase8_gain_lut, false, 0, NULL, 4000);
+        s_commit_mode = true;
+        assert(!memcmp(reference, out, n));
+        free(reference);
+    }
     free(out);
 
     /* 3. Acquisition mask: synthesized bytes keep bit 0 unflagged. */
@@ -544,7 +593,7 @@ static void scenario(bool pal)
 static void provenance_admission(void)
 {
     uint8_t ring[RING] = {0};
-    sfw_ring_t r = {ring, RING, c5vrx_phase8_gain_lut, false, 0, 0, false, NULL};
+    sfw_ring_t r = {.ring = ring, .ring_bytes = RING, .phase = c5vrx_phase8_gain_lut};
     sync_flywheel_t f;
     sfw_init(&f);
     /* Even a structurally valid old acquisition scan must not histogram
@@ -587,14 +636,57 @@ static void provenance_admission(void)
     puts("PASS keeper program: unknown kp, unverified program and missing active LUT cannot repair");
 }
 
+static void commit_admission(void)
+{
+    uint8_t ring[RING] = {0}, workspace[1280];
+    for (unsigned vertical = 0; vertical < 2; ++vertical)
+        for (unsigned fault = 0; fault < 5; ++fault) {
+            sync_flywheel_t f;
+            sfw_init(&f);
+            f.state = SFW_TRACK; f.clean_since_acq = 32; f.levels = true;
+            f.period_q16 = f.nominal_q16 = f.coast_period_q16 = SFW_PAL_LINE_Q16;
+            f.next_q16 = 5000u * 65536u; f.v_valid = true; f.v_a_line = 10;
+            if (vertical) {
+                f.v_armed = true; f.v_slot = 0; f.v_next_q16 = f.next_q16;
+            }
+            commit_fixture_t commit = {.ring = ring, .flywheel = &f, .workspace = workspace, .refuse = true};
+            sfw_ring_t r = {.ring = ring, .ring_bytes = RING, .phase = c5vrx_phase8_gain_lut,
+                           .verified_kp_x100 = 85, .program_verified = true, .decoder_lut = kp_tables[0],
+                           .workspace = workspace, .workspace_bytes = sizeof(workspace),
+                           .commit = commit_fixture, .commit_ctx = &commit};
+            if (fault == 0) r.workspace = NULL;
+            if (fault == 1) r.workspace_bytes = vertical ? 1279u : 235u;
+            if (fault == 2) r.workspace = ring + 100u;
+            if (fault == 3) r.workspace = (uint8_t *)(UINTPTR_MAX - 16u);
+            memset(workspace, 0xa5, sizeof(workspace));
+            memcpy(commit.before, ring, RING);
+            sfw_run(&f, &r, 10000u, 10000u, 0, true, 1);
+            assert(!memcmp(commit.before, ring, RING));
+            assert(!f.repaired && !f.slots_repaired);
+            if (fault < 4) {
+                assert(f.workspace_refused == 1 && !f.commit_calls && !f.commit_refused);
+                assert(!f.repairs.count && !commit.calls);
+                for (unsigned k = 0; k < sizeof(workspace); ++k) assert(workspace[k] == 0xa5);
+            } else {
+                assert(!f.workspace_refused && f.commit_calls == 1 && f.commit_refused == 1 && commit.calls == 1);
+                assert(f.repairs.count == 1 && f.repairs.ranges[0].end > f.repairs.ranges[0].begin);
+                assert(!sync_repair_ledger_original(&f.repairs, f.repairs.ranges[0].begin,
+                                                    f.repairs.ranges[0].end, 10000u));
+            }
+        }
+    puts("PASS keeper executor: H/V prepare before commit, invalid workspace refused, failed commits leave IQ intact and taint provenance");
+}
+
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
     if (getenv("SFW_KP_LEVEL")) s_kp_level = (unsigned)strtoul(getenv("SFW_KP_LEVEL"), NULL, 10);
     assert(s_kp_level < KP_LEVELS);
+    s_commit_mode = getenv("SFW_COMMIT") != NULL;
     printf("keeper kp=%u\n", kp_level_x100[s_kp_level]);
     if (getenv("SFW_CLOCK_PPM")) s_clock_ppm = strtod(getenv("SFW_CLOCK_PPM"), NULL);
     provenance_admission();
+    commit_admission();
     verify_source_edges(true);
     verify_source_edges(false);
     scenario(true);

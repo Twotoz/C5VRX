@@ -246,16 +246,40 @@ static void build_cells(const sfw_ring_t *r)
  * Phase8 bins per sample), from the real phase before a. When the next real
  * sample is available its phase is met (minus next_step), the residual
  * spread over the run, so neither edge carries a glitch. */
-static void synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t n1,
+static bool workspace_valid(const sfw_ring_t *r, uint32_t bytes)
+{
+    if (!r->workspace || r->workspace_bytes < bytes) return false;
+    uintptr_t begin = (uintptr_t)r->workspace, raw = (uintptr_t)r->ring;
+    /* Check the entire advertised workspace, not merely the current pulse.
+     * Integer interval checks avoid undefined cross-object pointer arithmetic. */
+    if (r->workspace_bytes > UINTPTR_MAX - begin || r->ring_bytes > UINTPTR_MAX - raw) return false;
+    return begin >= raw + r->ring_bytes || raw >= begin + r->workspace_bytes;
+}
+
+static bool commit_prepared(sync_flywheel_t *f, const sfw_ring_t *r,
+                            uint64_t a, uint64_t b)
+{
+    /* Rejection may be caused by a context/DMA race; never let this interval
+     * become fresh camera evidence merely because the executor refused it. */
+    if (!sync_repair_ledger_record(&f->repairs, a, b)) return false;
+    ++f->commit_calls;
+    if (r->commit(r->commit_ctx, a, r->workspace, (uint32_t)(b - a))) return true;
+    ++f->commit_refused;
+    return false;
+}
+
+static bool synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t n1,
                   int32_t step1, uint32_t n2, int32_t step2, int32_t next_step,
                   bool bootstrap, uint64_t floor, uint64_t avail_end)
 {
-    uint64_t b = a + n1 + n2;
+    const uint64_t bytes = (uint64_t)n1 + n2;
+    if (!bytes || bytes > UINT32_MAX || a > UINT64_MAX - bytes) return false;
+    uint64_t b = a + bytes;
     /* Refuse a whole pulse if any edge is already unsafe. Clipping a
      * repair at TX's frontier would generate a malformed sync width. */
-    if (a < floor || b >= avail_end) { ++f->skipped_floor; return; }
-    uint32_t n = n1 + n2;
-    if (!n) return;
+    if (a < floor || b >= avail_end) { ++f->skipped_floor; return false; }
+    uint32_t n = (uint32_t)bytes;
+    if (r->commit && !workspace_valid(r, n)) { ++f->workspace_refused; return false; }
     if (bootstrap) {
         uint8_t tip[128];
         if (n1 <= sizeof(tip) && first_v_tip(f, r, a, n1, tip)) {
@@ -265,13 +289,19 @@ static void synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t 
             if (residual >= 32768) residual -= 65536;
             if (residual < -32768) residual += 65536;
             sync_synth_t blank;
-            if (!sync_synth_init(&blank, (uint16_t)p0, (int32_t)residual, n2) ||
-                !sync_repair_ledger_record(&f->repairs, a, b)) return;
+            if (!sync_synth_init(&blank, (uint16_t)p0, (int32_t)residual, n2)) return false;
+            if (r->commit) {
+                for (unsigned k = 0; k < n1; ++k) r->workspace[k] = tip[k];
+                for (unsigned k = 0; k < n2; ++k)
+                    r->workspace[n1 + k] = s_cell[sync_synth_next(&blank, step2)];
+                return commit_prepared(f, r, a, b);
+            }
+            if (!sync_repair_ledger_record(&f->repairs, a, b)) return false;
             uint32_t mask = r->ring_bytes - 1u;
             for (unsigned k = 0; k < n1; ++k) r->ring[(uint32_t)(a + k) & mask] = tip[k];
             for (unsigned k = 0; k < n2; ++k)
                 r->ring[(uint32_t)(a + n1 + k) & mask] = s_cell[sync_synth_next(&blank, step2)];
-            return;
+            return true;
         }
         if (f->bootstrap_refused != UINT32_MAX) ++f->bootstrap_refused;
     }
@@ -297,16 +327,24 @@ static void synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t 
     }
     const uint32_t mask = r->ring_bytes - 1u;
     sync_synth_t state;
-    if (!sync_synth_init(&state, (uint16_t)p0, (int32_t)resid, n)) return;
+    if (!sync_synth_init(&state, (uint16_t)p0, (int32_t)resid, n)) return false;
+    if (r->commit) {
+        for (uint32_t k = 0; k < n1; ++k)
+            r->workspace[k] = s_cell[sync_synth_next(&state, step1)];
+        state.phase = (state.phase + (uint32_t)tip_lead) & 65535u;
+        for (uint32_t k = 0; k < n2; ++k)
+            r->workspace[n1 + k] = s_cell[sync_synth_next(&state, step2)];
+        return commit_prepared(f, r, a, b);
+    }
     /* The record precedes every write. Overflow conservatively taints the
      * merged span; synthesized bytes never become camera-clock evidence. */
-    if (!sync_repair_ledger_record(&f->repairs, a, b)) return;
+    if (!sync_repair_ledger_record(&f->repairs, a, b)) return false;
     for (uint32_t k = 0; k < n1; ++k)
         r->ring[(uint32_t)(a + k) & mask] = s_cell[sync_synth_next(&state, step1)];
     state.phase = (state.phase + (uint32_t)tip_lead) & 65535u;
     for (uint32_t k = 0; k < n2; ++k)
         r->ring[(uint32_t)(a + n1 + k) & mask] = s_cell[sync_synth_next(&state, step2)];
-
+    return true;
 }
 
 static inline int32_t sync_step(const sync_flywheel_t *f)
@@ -716,9 +754,9 @@ static void v_slot(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
         uint32_t low = broad ? h2 - HSYNC : eq_low(f);
         bool first = j == -(int)npre(f);
         int32_t tip = sync_step(f);
-        synth(f, r, p, low, tip, h2 - low, blank_step(f), blank_step(f),
-              first, floor, avail_end);
-        ++f->slots_repaired;
+        bool committed = synth(f, r, p, low, tip, h2 - low, blank_step(f), blank_step(f),
+                               first, floor, avail_end);
+        if (committed || !r->commit) ++f->slots_repaired;
     }
     if (++f->v_slot >= (int16_t)(nbroad(f) + npost(f))) field_done(f);
 }
@@ -971,9 +1009,9 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
              * field phase. Its own observed edge is safe; unknown/malformed
              * runs cannot authorize this exception. */
             uint64_t at = f->v_valid ? rnd(base) : start;
-            synth(f, r, at - PORCH, PORCH, blank_step(f), HSYNC, sync_step(f), blank_step(f),
-                  false, write_floor, avail_end);
-            ++f->repaired;
+            bool committed = synth(f, r, at - PORCH, PORCH, blank_step(f), HSYNC, sync_step(f), blank_step(f),
+                                   false, write_floor, avail_end);
+            if (committed || !r->commit) ++f->repaired;
         }
 
         /* Coasting: look for the real sync anywhere in the line (a VTX that

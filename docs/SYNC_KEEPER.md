@@ -368,6 +368,20 @@ existing detector counters. Physical cold/prewarmed execution time, stack,
 cache maintenance and worst-case scheduling/deadline measurements remain
 required before putting this candidate into the live firmware.
 
+The candidate now also supports a caller-owned scratch workspace and commit
+callback. It synthesizes each complete H/V pulse before calling the executor;
+it does not modify the raw ring itself in callback mode. The executor must
+freshly verify DMA frontiers/context and perform an atomic complete copy or
+refuse without writing. Missing, undersized, aliased or overflowing workspaces
+are refused. Provenance is conservatively recorded before the callback, even
+on refusal; only accepted commits increment repaired-pulse counters.
+
+All 24 kp/clock combinations pass through this callback path, including
+whole-stream byte comparison against direct fade replay and unchanged active
+IQ/DAC output. Dedicated H/V commit-refusal and invalid-workspace tests pass.
+CI exercises callback mode. This supplies the synthesis/executor boundary;
+it does not establish the pending live executor's timing or DMA admission.
+
 The candidate uses a brief recovery qualification and returns to received
 sync when that actual program output is reliable. Operator intent is repair only when
 necessary, retain real active snow/picture, and return to received sync.
