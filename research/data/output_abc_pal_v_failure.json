@@ -1,0 +1,64 @@
+{
+  "evidence": "expected counterexample; source oracle used only after actual keeper output",
+  "provenance": "C5VRX by Twotoz and contributors; https://github.com/Twotoz/C5VRX; https://twotoz.github.io/C5VRX/",
+  "source": {
+    "seed": 213,
+    "cnr_db": 30.0,
+    "standard": "PAL",
+    "deviation": 1.0,
+    "filter_hz": 12000000.0,
+    "fields": 3,
+    "physical_adc": true,
+    "replacement_rng_seed": 212,
+    "replacement": "uniform uint8 IQ noise",
+    "replacement_begin": 1520000,
+    "replacement_end": 1760000,
+    "iq_sha256": "7e4a002f241e8c64fd274576a14c6026a68e4c75f40ce06857f0a297b9b52daf",
+    "samples": 2400000
+  },
+  "keeper": {
+    "samples": 2400000,
+    "kp_x100": 85,
+    "real_acquisitions": 1,
+    "real_lock": true,
+    "real_v_fields": 1,
+    "repaired_h": 150,
+    "repaired_v": 15,
+    "changed_iq": 54042,
+    "half_lut_clipped": 0,
+    "commit_refused": 0,
+    "bootstrap_generated": 0
+  },
+  "active_iq_overwritten": 1170,
+  "first_active_iq_overwrite": 1593627,
+  "last_active_iq_overwrite": 1594799,
+  "first_field_coordinate": 1.99203375,
+  "source_full_line": 622,
+  "offset_in_full_line_samples": 1307,
+  "source_half_line": 1245,
+  "offset_in_half_line_samples": 27,
+  "parity_rows": [
+    {
+      "parity": 0,
+      "changed_active_dac_samples": 1136,
+      "first_active_dac_change": 1593632,
+      "raw_equal_at_first_dac_change": false,
+      "changed_iq_in_previous_40": 6
+    },
+    {
+      "parity": 1,
+      "changed_active_dac_samples": 1143,
+      "first_active_dac_change": 1593631,
+      "raw_equal_at_first_dac_change": false,
+      "changed_iq_in_previous_40": 5
+    }
+  ],
+  "causal_boundary": {
+    "nominal_first_pre_equalizing_sample": 1593600,
+    "nominal_half_line": 1245,
+    "source_normal_line_half_index": 1244,
+    "source_full_line_end_exclusive": 1594880,
+    "explanation": "sim.raster normal h1244 fills both half-lines and increments h by2, skipping the odd-field pre-EQ slot h1245; its active source labels extend to1594800. Keeper coasts its real prior V anchor and paints that predicted slot during noise."
+  },
+  "limitation": "This source/geometry conflict requires an explicit repair admission decision. It is not only LP state tail. Do not relabel or zero active input to force preservation."
+}
