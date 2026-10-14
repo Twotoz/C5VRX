@@ -23,8 +23,13 @@ current host prototype does not yet provide those hardware proofs.
 Both streams use PLL_F240M/6. RX starts first; `start_rings_tail()` waits an
 integer 409 us, then starts TX. Driver setup/start latency adds uncertainty.
 The nominal separation is approximately 16 KiB, not an invariant literal
-16384 bytes. Both owned TX and discovered RX rings contain 8 x 4092 bytes
-and a 32-byte tail. A tail is a node, not another 4092-byte interval.
+16384 bytes. Owned TX uses8 x4092 bytes and a32-byte tail. RX uses the
+pinned IDF driver's independently mounted geometry. Its `parlio_rx.c`
+`parlio_rx_mount_trans()` splits a final remainder between two descriptors
+when it exceeds4092bytes but is less than8184bytes. For a32768-byte aligned
+body this is7 x4092 plus2064 and2060 bytes, rather than the TX geometry.
+Discovery may begin at any node. Every descriptor is its actual interval;
+index times4092 is not a valid general RX position.
 
 The existing `in_dscr_bf0`/`out_dscr_bf0` registers identify descriptors,
 not a proven byte consumed within them. Before enabling writes, establish
@@ -61,8 +66,10 @@ epoch. Byte-rate/time bounds also reject an unobserved lap even if indices
 look unchanged. Do not deduce absolute laps merely from modulo subtraction.
 
 `main/dma_progress.h` now provides this pure progress adapter. It validates
-the complete 8*4092+32 layout and physical address links, including rotated
-discovery, and bootstraps a shared **relative** data epoch from RX/TX BF0
+the complete contiguous 32-KiB layout and physical address links, including rotated
+discovery. RX/TX layouts are independent: nine unique aligned nodes, each 4..4092
+bytes, one full ring total and at least one 4092-byte observer node. It
+bootstraps a shared **relative** data epoch from RX/TX BF0
 captures. It never claims the number of hardware laps before that capture.
 The current RX descriptor and all older startup IQ remain unqualified;
 `source_fresh_from` begins at its end. Every rebootstrap gets a different
@@ -86,14 +93,22 @@ RX update is never committed when TX fails. The adapter requires externally
 proved clock/geometry/FIFO limits and running ownership. Those booleans are
 not evidence that the hardware proofs have happened.
 
-`test/test_dma_progress.c` passed 36000 independent continuous-position
+`test/test_dma_progress.c` passed72000 independent continuous-position
 captures at nominal 40 MS/s, rotated RX/TX discovery and 16/24-KiB modeled
-lag, plus explicit tail-wrap, startup freshness, skew, hidden lap, stall,
+lag with both8-long/short-tail and actual IDF7-long/two-short RX
+geometry, plus explicit tail-wrap, startup freshness, skew, hidden lap, stall,
 unknown-capacity, invalid address, generation and overflow cases. This
 validates the arithmetic/state API, not physical lag or actual prefetched
-bytes. Live transport integration still needs a lease-held BF0 reader with
-first-read timestamp and a verified transport generation, followed by
-`dma_progress_update()` and `sync_stream_admit()` before each bounded commit.
+bytes. The production `T` command now calls a lease-held read-only BF0 reader
+with first-read timestamp and actual transport generation; all startup and
+rollback attempts invalidate that generation at entry. Its clock/FIFO proof
+flags remain explicitly false, so it cannot authorize writes. The first board
+capture refused the former hard-coded RX geometry; diagnostic output now names
+the first metadata, shape or link mismatch with actual offset/length/address.
+Host tests extract that actual production function and verify no raw, descriptor
+or register writes, logging after release, and balanced PHY leases. Continuous
+capture, verified runtime clock/memory bounds, `dma_progress_update()` and
+`sync_stream_admit()` before each bounded commit are still required.
 
 At a sampled instant, let:
 
@@ -164,7 +179,11 @@ cannot retract already transmitted malformed sync.
 With a 4092-byte protected node, a worst descriptor-quantized nominal window
 is roughly `16384 - 4092 - 4092 - 512 = 7688` bytes, only 192.2 us. Tail and
 real separation move that window. Reserving 8190 contiguous bytes reduces
-it to roughly 3590 bytes, 89.75 us. The host already exposed missing repairs
+it to roughly3590bytes,89.75us. Independently, the actual two short RX
+nodes mean protecting the newest completed4092-byte observer can cover8216
+bytes when the active RX node is the first long node after both short nodes;
+using4092 unconditionally would expose an older observer copy. The progress
+adapter exports the whole preceding-short-nodes-plus-long interval. The host already exposed missing repairs
 with that larger reservation. Treat optional black-raster watching and the
 keeper as mutually exclusive until a different geometry is actually proved.
 Do not silently reduce snapshot size or feed repaired IQ into its observer.

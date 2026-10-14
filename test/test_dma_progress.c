@@ -22,10 +22,12 @@ static uintptr_t descriptor(const dma_progress_layout_t *l, uint64_t position)
             return l->nodes[i].address;
     assert(0); return 0;
 }
-static uint64_t physical_boundary(uint64_t position)
+static uint64_t physical_boundary(const dma_progress_layout_t *l, uint64_t position)
 {
     uint64_t offset = position % DMA_PROGRESS_RING;
-    uint64_t lower = offset >= 32736u ? 32736u : (offset / 4092u) * 4092u;
+    int i = dma_progress_index(l, descriptor(l, position));
+    assert(i >= 0);
+    uint64_t lower = l->nodes[i].offset;
     return position - offset + lower;
 }
 static dma_progress_capture_t capture(const dma_progress_layout_t *rx,
@@ -41,30 +43,45 @@ static dma_progress_limits_t limits(void)
     return (dma_progress_limits_t){39990000u, 40010000u, 128u, 512u, true, true, true};
 }
 
-static void continuous_oracle(unsigned rx_rotation, unsigned tx_rotation, unsigned lag)
+static void continuous_oracle(unsigned rx_rotation, unsigned tx_rotation, unsigned lag, bool balanced)
 {
     dma_progress_t p; dma_progress_init(&p);
     dma_progress_layout_t rx = layout(rx_rotation, 0x1000), tx = layout(tx_rotation, 0x2000);
+    if (balanced) {
+        for (unsigned i = 0; i < 9u; ++i) {
+            unsigned physical = (i + rx_rotation) % 9u;
+            if (physical == 7u) rx.nodes[i].bytes = 2064u;
+            if (physical == 8u) { rx.nodes[i].offset = 30708u; rx.nodes[i].bytes = 2060u; }
+        }
+        assert(dma_progress_layout_valid(&rx));
+    }
     dma_progress_limits_t cap = limits();
     uint64_t rp = 65000, tp = rp - lag, time = 1000;
     dma_progress_capture_t c = capture(&rx, &tx, rp, tp, time);
     dma_progress_frontiers_t f;
     assert(dma_progress_bootstrap(&p, &rx, &tx, &cap, &c, &f) == DPG_OK);
     assert(f.valid);
-    int64_t shift = (int64_t)f.rx_lo - (int64_t)physical_boundary(rp);
-    assert((int64_t)f.tx_lo - (int64_t)physical_boundary(tp) == shift);
+    int64_t shift = (int64_t)f.rx_lo - (int64_t)physical_boundary(&rx, rp);
+    assert((int64_t)f.tx_lo - (int64_t)physical_boundary(&tx, tp) == shift);
     assert(f.source_fresh_from == f.rx_hi && f.rx_overwrite_lo == f.rx_hi);
     for (unsigned i = 0; i < 12000u; ++i) {
         unsigned dt = 17u + i % 37u;
         time += dt; rp += dt * 40u; tp += dt * 40u;
         c = capture(&rx, &tx, rp, tp, time);
         assert(dma_progress_update(&p, &c, &f) == DPG_OK);
-        assert((int64_t)f.rx_lo == (int64_t)physical_boundary(rp) + shift);
-        assert((int64_t)f.tx_lo == (int64_t)physical_boundary(tp) + shift);
+        assert((int64_t)f.rx_lo == (int64_t)physical_boundary(&rx, rp) + shift);
+        assert((int64_t)f.tx_lo == (int64_t)physical_boundary(&tx, tp) + shift);
         assert((uint64_t)((int64_t)rp + shift) >= f.rx_lo && (uint64_t)((int64_t)rp + shift) < f.rx_hi);
         assert((uint64_t)((int64_t)tp + shift) >= f.tx_lo && (uint64_t)((int64_t)tp + shift) < f.tx_hi);
         assert(f.tx_prefetch_hi == f.tx_hi + cap.tx_prefetch_bytes);
-        assert(f.protected_begin < f.rx_lo && f.rx_lo - f.protected_begin <= 4124u);
+        assert(f.protected_begin < f.rx_lo && f.rx_lo - f.protected_begin <= (balanced ? 8216u : 4124u));
+        unsigned ri = (unsigned)dma_progress_index(&rx, descriptor(&rx, rp));
+        uint64_t protected_distance = 0;
+        do {
+            ri = (ri + 8u) % 9u;
+            protected_distance += rx.nodes[ri].bytes;
+        } while (rx.nodes[ri].bytes < 4092u);
+        assert(f.rx_lo - f.protected_begin == protected_distance);
         assert(f.snapshot_first_us == time && f.snapshot_last_us == time + 1u);
         assert(f.epoch == 1u && f.generation == 5u);
     }
@@ -80,6 +97,12 @@ int main(void)
     dma_progress_t p; dma_progress_init(&p);
     dma_progress_frontiers_t f;
     assert(dma_progress_layout_valid(&rx) && dma_progress_layout_valid(&tx));
+    dma_progress_layout_t all_short = rx;
+    for (unsigned i = 0; i < 9; ++i) {
+        all_short.nodes[i].offset = i * 3640u;
+        all_short.nodes[i].bytes = i == 8 ? 3648u : 3640u;
+    }
+    assert(!dma_progress_layout_valid(&all_short)); /* no observer-sized node */
     dma_progress_layout_t broken = rx;
     broken.nodes[8].bytes = 4092;
     assert(!dma_progress_layout_valid(&broken));
@@ -157,8 +180,11 @@ int main(void)
     c = capture(&rx, &tx, 24560, 17000, 1002);
     assert(dma_progress_update(&p, &c, &f) == DPG_JUMP);
     assert(!p.ready && !f.valid && p.rx.start == old_rx);
-    continuous_oracle(0, 0, 16384);
-    continuous_oracle(7, 3, 16384);
-    continuous_oracle(8, 5, 24576);
+    continuous_oracle(0, 0, 16384, false);
+    continuous_oracle(0, 0, 16384, true);
+    continuous_oracle(7, 3, 16384, false);
+    continuous_oracle(7, 3, 16384, true);
+    continuous_oracle(8, 5, 24576, false);
+    continuous_oracle(8, 5, 24576, true);
     puts("PASS: bootstrap freshness, absolute wrap/tail progress, generation, ambiguous laps, rate, stall and epoch faults");
 }

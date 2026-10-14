@@ -734,6 +734,11 @@ static void transport_sync_probe_print(void)
     };
     uint32_t rx_clock = 0, tx_clock = 0, rx_fifo = 0, tx_fifo = 0;
     uint32_t rx_written = 0, rx_read = 0, tx_read = 0;
+    /* Preserve the first actual mismatch for the console, after releasing PHY.
+     * Discovery may begin at any RX descriptor, so compare cyclic offsets. */
+    unsigned geometry_side = 0, geometry_index = 0, geometry_error = 0;
+    uint32_t geometry_offset = 0, geometry_bytes = 0, geometry_size = 0, geometry_cached = 0;
+    uintptr_t geometry_next = 0, geometry_expected = 0;
     uint32_t phy = phy_generation();
     bool owned = phy_try_actuator(phy);
     c.ownership_verified = owned;
@@ -752,6 +757,7 @@ static void transport_sync_probe_print(void)
         rx_read = PARL_IO.rx_st1.rx_fifo_rd_bit_cnt;
         tx_read = PARL_IO.tx_st0.tx_fifo_rd_bit_cnt;
         bool buffers = s_rx_node_count == DMA_PROGRESS_NODES && LIVE_TX_NODES == DMA_PROGRESS_NODES;
+        if (!buffers) geometry_error = 1; /* discovered descriptor count */
         for (unsigned i = 0; buffers && i < DMA_PROGRESS_NODES; ++i) {
             const dma_descriptor_t *r = s_rx_nodes[i].dscr, *t = &s_live_tx_nodes[i];
             uintptr_t base = (uintptr_t)s_raw_ring;
@@ -759,12 +765,41 @@ static void transport_sync_probe_print(void)
             if (!r || rb < base || rb - base >= sizeof(s_raw_ring) ||
                 tb < base || tb - base >= sizeof(s_raw_ring) ||
                 r->buffer != s_rx_nodes[i].buffer || r->dw0.size != s_rx_nodes[i].length) {
+                geometry_error = 2; geometry_side = 1; geometry_index = i;
+                geometry_offset = (uint32_t)(rb - base);
+                geometry_bytes = s_rx_nodes[i].length;
+                geometry_size = r ? r->dw0.size : 0;
+                geometry_cached = r ? r->dw0.length : 0;
                 buffers = false; break;
             }
             rx.nodes[i] = (dma_progress_node_t){(uintptr_t)r, (uintptr_t)r->next,
                                                (uint32_t)(rb - base), s_rx_nodes[i].length};
             tx.nodes[i] = (dma_progress_node_t){(uintptr_t)t, (uintptr_t)t->next,
                                                (uint32_t)(tb - base), t->dw0.length};
+        }
+        if (buffers) {
+            for (unsigned side = 1; side <= 2 && !geometry_error; ++side) {
+                const dma_progress_layout_t *layout = side == 1 ? &rx : &tx;
+                if (dma_progress_layout_valid(layout)) continue;
+                for (unsigned i = 0; i < DMA_PROGRESS_NODES; ++i) {
+                    const dma_progress_node_t *n = &layout->nodes[i];
+                    const dma_progress_node_t *next = &layout->nodes[(i + 1u) % DMA_PROGRESS_NODES];
+                    bool shape = n->offset < DMA_PROGRESS_RING && !(n->offset & 3u) &&
+                        n->bytes >= 4u && n->bytes <= 4092u && !(n->bytes & 3u) &&
+                        n->bytes <= DMA_PROGRESS_RING - n->offset;
+                    unsigned error = !shape ? 3 : n->next != next->address ? 4 :
+                        (n->offset + n->bytes) % DMA_PROGRESS_RING != next->offset ? 5 :
+                        !n->address || (n->address & 3u) ? 6 : 0;
+                    if (!error) continue;
+                    geometry_error = error; geometry_side = side; geometry_index = i;
+                    geometry_offset = n->offset; geometry_bytes = n->bytes;
+                    geometry_next = n->next; geometry_expected = next->address;
+                    geometry_size = side == 1 ? s_rx_nodes[i].dscr->dw0.size : s_live_tx_nodes[i].dw0.size;
+                    geometry_cached = side == 1 ? s_rx_nodes[i].length : s_live_tx_nodes[i].dw0.length;
+                    break;
+                }
+                if (!geometry_error) { geometry_error = 7; geometry_side = side; }
+            }
         }
         limits.geometry_proven = buffers && dma_progress_layout_valid(&rx) && dma_progress_layout_valid(&tx);
     }
@@ -774,14 +809,19 @@ static void transport_sync_probe_print(void)
     printf("SYNC_PROBE mode=read_only writes=0 continuous=0 valid=%u reason=%s blocked=%lu result=%u "
            "stream_gen=%lu epoch=%lu geometry=%u clock_proven=%u fifo_proven=%u "
            "rx_bf0=%08lx tx_bf0=%08lx capture_us=%llu rx_clock=%08lx tx_clock=%08lx "
-           "rx_l1_bytes=%lu tx_l1_bytes=%lu rx_wr_bits=%lu rx_rd_bits=%lu tx_rd_bits=%lu\n",
+           "rx_l1_bytes=%lu tx_l1_bytes=%lu rx_wr_bits=%lu rx_rd_bits=%lu tx_rd_bits=%lu "
+           "rx_nodes=%d tx_nodes=%u geom_error=%u geom_side=%u geom_index=%u geom_offset=%lu "
+           "geom_bytes=%lu geom_size=%lu geom_cached=%lu geom_next=%08lx geom_expected=%08lx\n",
            probe.frontiers.valid, sync_transport_probe_reason(&probe), (unsigned long)probe.blocked,
            (unsigned)probe.result, (unsigned long)c.generation, (unsigned long)probe.progress.epoch,
            limits.geometry_proven, limits.clock_proven, limits.bounds_proven,
            (unsigned long)c.rx_descriptor, (unsigned long)c.tx_descriptor,
            (unsigned long long)(c.last_read_us - c.first_read_us), (unsigned long)rx_clock,
            (unsigned long)tx_clock, (unsigned long)rx_fifo, (unsigned long)tx_fifo,
-           (unsigned long)rx_written, (unsigned long)rx_read, (unsigned long)tx_read);
+           (unsigned long)rx_written, (unsigned long)rx_read, (unsigned long)tx_read,
+           s_rx_node_count, (unsigned)LIVE_TX_NODES, geometry_error, geometry_side, geometry_index,
+           (unsigned long)geometry_offset, (unsigned long)geometry_bytes, (unsigned long)geometry_size,
+           (unsigned long)geometry_cached, (unsigned long)geometry_next, (unsigned long)geometry_expected);
 }
 
 void transport_print(void)

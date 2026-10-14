@@ -1,5 +1,5 @@
 /* C5VRX by Twotoz/contributors: bounded BF0 descriptor progress epochs.
- * Root geometry is 8*4092 +32 bytes. BF0 means current fetched descriptor
+ * RX/TX may partition the same 32-KiB ring differently. BF0 is the currently fetched descriptor
  * in the pinned ESP32-C5 IDF register definitions. This is a pure adapter
  * helper, not hardware proof of FIFO, clock, cache or atomic capture bounds. */
 #pragma once
@@ -57,19 +57,22 @@ static inline int dma_progress_index(const dma_progress_layout_t *l, uintptr_t a
 static inline bool dma_progress_layout_valid(const dma_progress_layout_t *l)
 {
     if (!l) return false;
-    unsigned longs = 0, tails = 0;
+    unsigned longs = 0;
+    uint32_t total = 0;
     for (unsigned i = 0; i < DMA_PROGRESS_NODES; ++i) {
         const dma_progress_node_t *n = &l->nodes[i];
         const dma_progress_node_t *next = &l->nodes[(i + 1u) % DMA_PROGRESS_NODES];
         if (!n->address || (n->address & 3u) || n->next != next->address) return false;
-        if (n->offset == 32736u && n->bytes == 32u) ++tails;
-        else if (n->offset % 4092u == 0 && n->offset < 32736u && n->bytes == 4092u) ++longs;
-        else return false;
+        if (n->offset >= DMA_PROGRESS_RING || (n->offset & 3u) ||
+            n->bytes < 4u || n->bytes > 4092u || (n->bytes & 3u) ||
+            n->bytes > DMA_PROGRESS_RING - n->offset) return false;
+        if (n->bytes == 4092u) ++longs;
+        total += n->bytes;
         if ((n->offset + n->bytes) % DMA_PROGRESS_RING != next->offset) return false;
         for (unsigned j = 0; j < i; ++j)
             if (l->nodes[j].address == n->address || l->nodes[j].offset == n->offset) return false;
     }
-    return longs == 8u && tails == 1u;
+    return longs != 0 && total == DMA_PROGRESS_RING;
 }
 
 static inline dma_progress_result_t dma_progress_fail(dma_progress_t *p, dma_progress_result_t why)
