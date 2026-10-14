@@ -39,8 +39,10 @@ Distinguish simulation, firmware implementation and physical validation.
       verify build/CI and subsequently startup/IDLE behavior on the board.
       Software guards and pinned build/CI pass. Short current-board captures
       show ready heartbeats without watchdog output. Board application
-      `9720407` is checksum-verified and ready/live; a full startup/attenuation recording
-      remains unverified.
+      `287eeee` is checksum-verified, flashed to the C5, and confirmed ready/live
+      at A2 and OUTPUT 2.0x, with `DC_LIVE` running (0 faults) and `SYNC_PROBE`
+      verifying the 2062-byte byte-granular RX tails (`geometry=1`, `geom_error=0`).
+      A full startup/attenuation recording remains unverified.
 - [ ] Investigate gradual range loss: distinguish flat RX IQ, stopped/flat
       CVBS, gain/DC changes and the monitor muting an otherwise live waveform.
       The supplied startup log does not settle this question.
