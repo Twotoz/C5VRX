@@ -63,8 +63,8 @@ static inline bool dma_progress_layout_valid(const dma_progress_layout_t *l)
         const dma_progress_node_t *n = &l->nodes[i];
         const dma_progress_node_t *next = &l->nodes[(i + 1u) % DMA_PROGRESS_NODES];
         if (!n->address || (n->address & 3u) || n->next != next->address) return false;
-        if (n->offset >= DMA_PROGRESS_RING || (n->offset & 3u) ||
-            n->bytes < 4u || n->bytes > 4092u || (n->bytes & 3u) ||
+        if (n->offset >= DMA_PROGRESS_RING ||
+            n->bytes < 1u || n->bytes > 4092u ||
             n->bytes > DMA_PROGRESS_RING - n->offset) return false;
         if (n->bytes == 4092u) ++longs;
         total += n->bytes;

@@ -184,12 +184,15 @@ int main(void)
     assert(dma_progress_update(&p, &c, &f) == DPG_JUMP);
     assert(!p.ready && !f.valid && p.rx.start == old_rx);
     continuous_oracle(0, 0, 16384, false);
+    continuous_oracle(0, 0, 16384, 1);
     continuous_oracle(0, 0, 16384, 4);
     continuous_oracle(0, 0, 16384, 32);
     continuous_oracle(7, 3, 16384, false);
+    continuous_oracle(7, 3, 16384, 1);
     continuous_oracle(7, 3, 16384, 4);
     continuous_oracle(7, 3, 16384, 32);
     continuous_oracle(8, 5, 24576, false);
+    continuous_oracle(8, 5, 24576, 1);
     continuous_oracle(8, 5, 24576, 4);
     continuous_oracle(8, 5, 24576, 32);
     puts("PASS: bootstrap freshness, absolute wrap/tail progress, generation, ambiguous laps, rate, stall and epoch faults");

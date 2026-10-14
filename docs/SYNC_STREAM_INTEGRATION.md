@@ -28,10 +28,12 @@ pinned IDF driver's independently mounted geometry. Its `parlio_rx.c`
 `parlio_rx_mount_transaction_buffer()` splits a final remainder between two descriptors
 when it exceeds4092bytes but is less than8184bytes. For a32768-byte aligned
 body this is seven4092-byte nodes and a final pair whose sizes depend on
-transaction alignment:2060+2064 at4-byte alignment, or2048+2076 at32-byte
-alignment. The macro rounds the first half down to that alignment. This
-is a source-derived expectation; the actual hardware probe must report
-its discovered node lengths. It differs from the owned TX geometry.
+transaction alignment:2062+2062 at1/2-byte alignment,2060+2064 at4-byte
+alignment, or2048+2076 at32-byte alignment. The macro rounds the first half down to that alignment. This
+was initially source-derived; the e913 physical probe subsequently confirmed
+RX node offset28644,length2062, proving that buffer/length4-byte alignment
+was an incorrect assumption. Descriptor addresses retain4-byte alignment;
+8-bit stream buffer offsets/lengths are validated as byte-granular. It differs from the owned TX geometry.
 Discovery may begin at any node. Every descriptor is its actual interval;
 index times4092 is not a valid general RX position.
 
@@ -97,9 +99,9 @@ RX update is never committed when TX fails. The adapter requires externally
 proved clock/geometry/FIFO limits and running ownership. Those booleans are
 not evidence that the hardware proofs have happened.
 
-`test/test_dma_progress.c` passed108000 independent continuous-position
+`test/test_dma_progress.c` passed144000 independent continuous-position
 captures at nominal 40 MS/s, rotated RX/TX discovery and 16/24-KiB modeled
-lag with both8-long/short-tail and IDF7-long/two-short RX at4/32-byte alignment
+lag with both8-long/short-tail and IDF7-long/two-short RX at1/4/32-byte alignment
 geometry, plus explicit tail-wrap, startup freshness, skew, hidden lap, stall,
 unknown-capacity, invalid address, generation and overflow cases. This
 validates the arithmetic/state API, not physical lag or actual prefetched
@@ -109,10 +111,57 @@ rollback attempts invalidate that generation at entry. Its clock/FIFO proof
 flags remain explicitly false, so it cannot authorize writes. The first board
 capture refused the former hard-coded RX geometry; diagnostic output now names
 the first metadata, shape or link mismatch with actual offset/length/address.
-Host tests extract that actual production function and verify no raw, descriptor
-or register writes, logging after release, and balanced PHY leases. Continuous
+The capture now uses independent task-scheduler ownership rather than the
+analog PHY lease: a millisecond DC verification cannot block observations of
+an otherwise running DMA stream. Interrupts and GDMA remain running. Host
+tests extract that actual production function and verify no raw, descriptor
+or register writes, logging after resume, and balanced scheduler leases. Continuous
 capture, verified runtime clock/memory bounds, `dma_progress_update()` and
 `sync_stream_admit()` before each bounded commit are still required.
+
+## Actual memory-frontier readback
+
+The production `T` probe also calls `sync_memory_observe()` with two actual
+register tuples bracketing descriptor/context capture. Both tuples include
+RX/TX BF0 and DONE, TX OUT_DSCR/OUT_STATE, and PCR HP_ROOT/AHB divider/update
+and PARLIO clocks. A differing tuple is refused. DONE must name the preceding
+linked descriptor, OUT_DSCR the current TX node's successor, and OUT_STATE's
+low18bits that same successor. These are deliberately strict observations;
+a physical refusal reports the real words rather than weakening the test.
+They do not establish undocumented ordering between register publication and
+memory bus transactions. DONE semantics are independent of the suppressed EOF.
+
+TRM Version1.1 page387, Tables9.2-1/2, gives source3=PLL240MHz,
+source2=PLL160MHz, AHB=HP_ROOT/(AHB_DIV_NUM+1), and requires reading
+BUS_CLOCK_UPDATE until the new configuration takes effect. Pinned
+`esp_hal_clock/esp32c5/include/hal/clk_tree_ll.h` agrees, despite a duplicated
+source2 typo in the register-comment prose. The adapter refuses unknown clock
+sources, pending updates, nonintegral nominal frequency, AHB above40MHz, or
+PARLIO clock words differing from the verified PLL240/6 live configuration.
+The48MHz documented AHB ceiling times a32-bit memory beat gives a conservative
+192MB/s candidate movement bound, with20% headroom over the expected40MHz
+readback. The pinned `ahb_dma_ll.h` maps16/32/64-byte bursts to INCR4/8/16,
+which independently establishes the32-bit beat size.
+
+Conditional TX bounds include the entire next descriptor, conservatively4092
+bytes, and one64-byte maximum-burst prefix. Conditional RX bounds reserve a
+64-byte prefix. This replaces an invented downstreamFIFO-size assertion with
+explicit memoryfetch-frontier assumptions, but one burst is **not yet proved
+to bound all unpublished outstanding transactions**. The log labels these
+`mem_candidate`, `prefix_candidate`, and `mem_writes_safe=0`, and states the
+remaining publication/prefix/WCET/reader gates. No writer can consume these
+coordinates as an authorization.20000 independently positioned continuous
+captures test wrap, asymmetric actual2062-byte RX tails, DONE/link/clock/skew
+refusal and generation reset; no laptop timing is called a C5 commit bound.
+
+The next executor must add independent raw-reader ownership shared by every
+copy path, and prove cache refresh/copy/flush WCET inside a short IRQ-masked
+section after final coherent capture. All synthesis remains outside it. The
+existing scratch callback already records provenance before it invokes the
+executor. The executor must refuse before its first store or finish the whole
+pulse; a late post-write failure cannot make a partial pulse safe. These gates
+remain incomplete, so the diagnostic adapter deliberately supplies no callback
+that would pretend to execute safe live writes.
 
 At a sampled instant, let:
 

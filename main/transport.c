@@ -25,6 +25,7 @@
 #include "snapshot.h"
 #include "control_window.h"
 #include "sync_transport_probe.h"
+#include "sync_memory_frontier.h"
 #include "phy.h"
 #include "soc/ahb_dma_struct.h"
 #include "soc/bitscrambler_struct.h"
@@ -721,9 +722,27 @@ uint32_t transport_fault_count(void)
 /* Read-only real-hardware bridge toward the keeper. T samples are diagnostic,
  * not a continuous service loop. Unknown clock/FIFO proof remains explicit;
  * no synthesized bytes, DMA descriptors, LUT or clock registers are written. */
+/* Caller holds independent task-scheduler ownership and has validated channel
+ * indices. Paired calls must bracket all metadata observations. DONE is used
+ * separately from EOF, which this cyclic stream intentionally suppresses. */
+static sync_memory_registers_t transport_memory_registers(void)
+{
+    return (sync_memory_registers_t){
+        AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val,
+        AHB_DMA.done_des_addr[s_rx_dma_ch].in_done_des_addr.val,
+        AHB_DMA.channel[s_tx_dma_ch].out.out_dscr_bf0.val,
+        AHB_DMA.done_des_addr[s_tx_dma_ch].out_done_des_addr.val,
+        AHB_DMA.channel[s_tx_dma_ch].out.out_dscr.val,
+        AHB_DMA.channel[s_tx_dma_ch].out.out_state.val,
+        PCR.sysclk_conf.val, PCR.ahb_freq_conf.val, PCR.bus_clk_update.val,
+        PCR.parl_clk_rx_conf.val, PCR.parl_clk_tx_conf.val};
+}
+
 static void transport_sync_probe_print(void)
 {
     static sync_transport_probe_t probe;
+    static sync_memory_frontier_t memory;
+    sync_memory_registers_t memory_first = {0}, memory_last = {0};
     dma_progress_layout_t rx = {0}, tx = {0};
     dma_progress_limits_t limits = {
         .min_rate_hz = IQ_RATE_HZ, .max_rate_hz = IQ_RATE_HZ,
@@ -739,14 +758,19 @@ static void transport_sync_probe_print(void)
     unsigned geometry_side = 0, geometry_index = 0, geometry_error = 0;
     uint32_t geometry_offset = 0, geometry_bytes = 0, geometry_size = 0, geometry_cached = 0;
     uintptr_t geometry_next = 0, geometry_expected = 0;
-    uint32_t phy = phy_generation();
-    bool owned = phy_try_actuator(phy);
+    /* Separate raw metadata ownership from the analog PHY lease. A DC trial
+     * can hold PHY for milliseconds while the running DMA remains observable.
+     * C5 is single-core: no task can restart transport during this short copy.
+     * Interrupts/GDMA continue. This is observation, not a write-time WCET. */
+    vTaskSuspendAll();
+    bool owned = true;
     c.ownership_verified = owned;
     c.first_read_us = esp_timer_get_time();
     c.generation = s_stream_generation;
     c.running = owned && s_started && s_have_verified && s_lut_known && !s_transport_fault &&
                 !s_stream_generation_overflow && !s_menu_active && s_rx_enabled && s_tx_enabled && s_bs_enabled;
     if (owned && s_rx_dma_ch >= 0 && s_rx_dma_ch < 3 && s_tx_dma_ch >= 0 && s_tx_dma_ch < 3) {
+        memory_first = transport_memory_registers();
         c.rx_descriptor = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
         c.tx_descriptor = AHB_DMA.channel[s_tx_dma_ch].out.out_dscr_bf0.val;
         rx_fifo = AHB_DMA.channel[s_rx_dma_ch].in.infifo_status.infifo_cnt_chn;
@@ -784,8 +808,8 @@ static void transport_sync_probe_print(void)
                 for (unsigned i = 0; i < DMA_PROGRESS_NODES; ++i) {
                     const dma_progress_node_t *n = &layout->nodes[i];
                     const dma_progress_node_t *next = &layout->nodes[(i + 1u) % DMA_PROGRESS_NODES];
-                    bool shape = n->offset < DMA_PROGRESS_RING && !(n->offset & 3u) &&
-                        n->bytes >= 4u && n->bytes <= 4092u && !(n->bytes & 3u) &&
+                    bool shape = n->offset < DMA_PROGRESS_RING &&
+                        n->bytes >= 1u && n->bytes <= 4092u &&
                         n->bytes <= DMA_PROGRESS_RING - n->offset;
                     unsigned error = !shape ? 3 : n->next != next->address ? 4 :
                         (n->offset + n->bytes) % DMA_PROGRESS_RING != next->offset ? 5 :
@@ -803,15 +827,24 @@ static void transport_sync_probe_print(void)
         }
         limits.geometry_proven = buffers && dma_progress_layout_valid(&rx) && dma_progress_layout_valid(&tx);
     }
+    if (s_rx_dma_ch >= 0 && s_rx_dma_ch < 3 && s_tx_dma_ch >= 0 && s_tx_dma_ch < 3) {
+        memory_last = transport_memory_registers();
+    }
     c.last_read_us = esp_timer_get_time();
-    if (owned) phy_end_actuator();
+    (void)xTaskResumeAll();
+    sync_memory_observe(&memory, &rx, &tx, &memory_first, &memory_last, &c);
     sync_transport_probe_update(&probe, &rx, &tx, &limits, &c);
     printf("SYNC_PROBE mode=read_only writes=0 continuous=0 valid=%u reason=%s blocked=%lu result=%u "
            "stream_gen=%lu epoch=%lu geometry=%u clock_proven=%u fifo_proven=%u "
            "rx_bf0=%08lx tx_bf0=%08lx capture_us=%llu rx_clock=%08lx tx_clock=%08lx "
            "rx_l1_bytes=%lu tx_l1_bytes=%lu rx_wr_bits=%lu rx_rd_bits=%lu tx_rd_bits=%lu "
            "rx_nodes=%d tx_nodes=%u geom_error=%u geom_side=%u geom_index=%u geom_offset=%lu "
-           "geom_bytes=%lu geom_size=%lu geom_cached=%lu geom_next=%08lx geom_expected=%08lx\n",
+           "geom_bytes=%lu geom_size=%lu geom_cached=%lu geom_next=%08lx geom_expected=%08lx "
+           "mem_candidate=%u mem_result=%u mem_progress=%u mem_stable=%u "
+           "mem_writes_safe=0 mem_block=publication_prefix_wcet_readers_unverified "
+           "rx_done=%08lx tx_done=%08lx tx_next=%08lx tx_state=%08lx "
+           "hp_root=%08lx ahb_div=%08lx bus_update=%08lx ahb_hz=%lu "
+           "memory_bound=%lu prefix_candidate=%lu Rlo=%llu Rhi=%llu Thi=%llu\n",
            probe.frontiers.valid, sync_transport_probe_reason(&probe), (unsigned long)probe.blocked,
            (unsigned)probe.result, (unsigned long)c.generation, (unsigned long)probe.progress.epoch,
            limits.geometry_proven, limits.clock_proven, limits.bounds_proven,
@@ -821,7 +854,15 @@ static void transport_sync_probe_print(void)
            (unsigned long)rx_written, (unsigned long)rx_read, (unsigned long)tx_read,
            s_rx_node_count, (unsigned)LIVE_TX_NODES, geometry_error, geometry_side, geometry_index,
            (unsigned long)geometry_offset, (unsigned long)geometry_bytes, (unsigned long)geometry_size,
-           (unsigned long)geometry_cached, (unsigned long)geometry_next, (unsigned long)geometry_expected);
+           (unsigned long)geometry_cached, (unsigned long)geometry_next, (unsigned long)geometry_expected,
+           memory.conditional_valid, (unsigned)memory.result, (unsigned)memory.progress_result, memory.tuple_stable,
+           (unsigned long)memory_last.rx_done, (unsigned long)memory_last.tx_done,
+           (unsigned long)memory_last.tx_next, (unsigned long)memory_last.tx_state,
+           (unsigned long)memory_last.sysclk, (unsigned long)memory_last.ahb_div,
+           (unsigned long)memory_last.bus_update, (unsigned long)memory.ahb_hz,
+           (unsigned long)memory.memory_bound_hz, (unsigned long)memory.inflight_prefix_bytes,
+           (unsigned long long)memory.conditional.rx_lo, (unsigned long long)memory.conditional.rx_hi,
+           (unsigned long long)memory.conditional.tx_prefetch_hi);
 }
 
 void transport_print(void)
