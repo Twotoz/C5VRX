@@ -21,6 +21,10 @@ Distinguish simulation, firmware implementation and physical validation.
       Carrier DC collection now rejects tiny/partial false circles while
       preserving the noise mean and envelope diagnostic. Token-centering
       remains a tested host candidate without an automatic live controller.
+      `fd32d8b` replaces the polarity-assuming thermal nudge with a verified
+      one-code live-carrier DAC trial (readback, fresh improvement check,
+      verified rollback; RAM-only). Built and host-tested; real-carrier
+      improvement and display visibility of a trial remain board gates.
 - [ ] Operator addition (2026-10-14): monitor sampling timing and adjust it
       when needed. Establish observable evidence, avoid confusing RF/DC noise
       with timing faults, and prove a bounded correction that preserves live
@@ -67,6 +71,13 @@ Distinguish simulation, firmware implementation and physical validation.
       pulse/content tests, source provenance and loss-counter/saturation tests.
       Digital synthesis across other kp levels has separate evidence; full
       pulse transitions, measured CPU/DMA timing and LCD acceptance remain gates.
+      `1d55060` adds cold-start generated H/V timing (no camera ever seen),
+      admitted only by independent absent-source windows and cancelled by any
+      source candidate; snow outside generated blanking is untouched (host).
+      `28b7df7` adds a bracketed DMA memory-frontier readback; the physical
+      e9130ae probe confirmed 2062-byte RX tails. Writes stay unauthorized
+      (`mem_writes_safe=0`) until publication/prefix/WCET/reader ownership
+      are proved; a physical source qualifier is still required.
 - [ ] Reassess remaining range losses using actual firmware policy and held-out
       evidence, especially envelope C/N bias, deviation/filter matching,
       sampling phase and gain/DC behavior. Implement supported improvements;
