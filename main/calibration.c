@@ -29,6 +29,7 @@
 #include "driver/temperature_sensor.h"
 #include "dsp.h"
 #include "dc_live.h"
+#include "dc_trim.h"
 #include "esp_attr.h"
 #include "esp_timer.h"
 #include "phy.h"
@@ -1027,57 +1028,148 @@ static void dco_service(void)
     }
 }
 
-/* Thermal drift of the held DC during flight: nudge the held codes one
- * step when the measured centre stays > 0.3 cell off for 5 s (at most four
- * steps per gain per boot). Only a carrier's circle centre or receiver
- * noise is a DC measurement. */
+/* Quiet-independent active-row DC: qualify the real carrier twice, try one
+ * code, then verify or restore the previous pair. No DAC polarity is assumed.
+ * The PHY lease covers the short trial, but tasks/interrupts and the hardware
+ * video path remain runnable. A preempted trial is rejected on resumption;
+ * its measured duration is reported, not presented as a hard deadline. */
 static int s_drift_offset[ARC_VENDOR_GAIN_MAX + 1u][2];
 static int s_drift_avg[2];
 static uint32_t s_drift_nudges;
 static float s_temp_c = -100.0f;
+static dc_trim_t s_dc_trim;
+static RTC_FAST_ATTR uint8_t s_dc_live_window[4092];
+static uint32_t s_dc_trials, s_dc_rejected, s_dc_deadlines, s_dc_max_us;
+static bool s_dc_fault;
+static int64_t s_dc_last_trial;
 
-static void drift_service(void)
+static void drift_temperature(void)
 {
     static temperature_sensor_handle_t tsens;
-    static int32_t sum[2];
-    static unsigned n, over_s, ticks;
-    static int64_t last_nudge;
+    static unsigned ticks;
     if (!tsens) {
         temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
         if (temperature_sensor_install(&cfg, &tsens) == ESP_OK) (void)temperature_sensor_enable(tsens);
         else tsens = (temperature_sensor_handle_t)(uintptr_t)1u;
     }
     if ((uintptr_t)tsens > 1u && (ticks++ & 3u) == 0u) (void)temperature_sensor_get_celsius(tsens, &s_temp_c);
-    const uint8_t g = s_current_gain;
-    if (!quiet_owner() || s_gain.state != DG_HOLD || !phy_dco_held() || g > ARC_VENDOR_GAIN_MAX ||
-        s_dco.e[g].valid != DCO_ROW_OK) { n = 0; sum[0] = sum[1] = 0; over_s = 0; return; }
-    window_stats_t w;
-    if (!collect(8, &w) || s_current_gain != g || s_gain.state != DG_HOLD ||
-        (!w.dc_circle && w.envelope_x100 > 130u)) { n = 0; sum[0] = sum[1] = 0; return; }
-    sum[0] += w.dc_i;
-    sum[1] += w.dc_q;
-    if (++n < 4u) return;
-    s_drift_avg[0] = sum[0] / (int32_t)n;
-    s_drift_avg[1] = sum[1] / (int32_t)n;
-    n = 0; sum[0] = sum[1] = 0;
-    bool over = abs(s_drift_avg[0]) > 300 || abs(s_drift_avg[1]) > 300;
-    over_s = over ? over_s + 1u : 0u;
+}
+
+static bool dc_trim_snapshot(dc_trim_context_t *c)
+{
+    arc_gain_tuple_t tuple;
+    if (!arc_gain_tuple_decode(rf_gain_table(), s_current_gain, &tuple)) return false;
+    const rf_filter_t filter = rf_filter();
+    *c = (dc_trim_context_t){s_current_gain, s_gain_epoch, s_control_epoch, phy_generation(),
+        rf_table_generation(), rf_frequency_mhz(), (uint32_t)rf_offset_khz(), (uint32_t)filter.code,
+        filter.skirt, filter.bw20, rf_lane(), phy_param[650], tuple.packed_state};
+    return true;
+}
+
+static void dc_trim_invalidate(void)
+{
+    s_last_gain_write_us = esp_timer_get_time();
+    ++s_gain_epoch; /* A physical DC change invalidates amplitude/CN evidence too. */
+}
+
+static bool dc_trim_sample(const dc_trim_context_t *want, const int pair[2],
+                            int64_t deadline, int center[2])
+{
+    dc_trim_context_t current;
+    int actual[2];
+    if (!quiet_owner() || !dc_trim_snapshot(&current) || !dc_trim_same(&current, want) ||
+        !phy_dco_read_pair(actual) || actual[0] != pair[0] || actual[1] != pair[1] ||
+        esp_timer_get_time() >= deadline || !copy_control_window(s_dc_live_window, sizeof(s_dc_live_window)))
+        return false;
+    dsp_circle_t circle = {0};
+    unsigned rails = 0;
+    dsp_circle_sums(s_dc_live_window, sizeof(s_dc_live_window), &circle);
+    for (unsigned k = 0; k < sizeof(s_dc_live_window); ++k) {
+        int i = dsp_i(s_dc_live_window[k]), q = dsp_q(s_dc_live_window[k]);
+        rails += i == -8 || i == 7 || q == -8 || q == 7;
+    }
+    bool qualified = dc_live_fit(&circle, rails * 1000u / sizeof(s_dc_live_window),
+                                  &center[0], &center[1], NULL);
+    return qualified && esp_timer_get_time() < deadline && quiet_owner() &&
+           dc_trim_snapshot(&current) && dc_trim_same(&current, want) &&
+           phy_dco_read_pair(actual) && actual[0] == pair[0] && actual[1] == pair[1];
+}
+
+static void drift_service(void)
+{
+    drift_temperature();
     int64_t now = esp_timer_get_time();
-    if (over_s < 5u || now - last_nudge < 2000000LL) return;
-    int di = s_drift_avg[0] > 300 ? -1 : s_drift_avg[0] < -300 ? 1 : 0;
-    int dq = s_drift_avg[1] > 300 ? -1 : s_drift_avg[1] < -300 ? 1 : 0;
-    if (abs(s_drift_offset[g][0] + di) > 4) di = 0;
-    if (abs(s_drift_offset[g][1] + dq) > 4) dq = 0;
-    int codes[2];
-    if ((!di && !dq) || !phy_dco_nudge(di, dq, codes)) return;
-    s_drift_offset[g][0] += di;
-    s_drift_offset[g][1] += dq;
-    s_dco.e[g].code[0] = (int16_t)codes[0];
-    s_dco.e[g].code[1] = (int16_t)codes[1];
-    s_dco_dirty = true;
-    last_nudge = now;
-    over_s = 0;
-    ++s_drift_nudges;
+    if (s_dc_fault || !quiet_owner() || s_gain.state != DG_HOLD ||
+        s_current_gain > ARC_VENDOR_GAIN_MAX || rf_lane() != RF_LANE_ULTRAFINE ||
+        now < s_last_gain_write_us || now - s_last_gain_write_us < 500) {
+        s_dc_trim.have = false;
+        return;
+    }
+    dc_trim_context_t context;
+    if (!dc_trim_snapshot(&context) || !phy_try_actuator(context.phy)) return;
+    int pair[2], center[2];
+    bool measured = phy_dco_read_pair(pair) && dc_trim_sample(&context, pair, now + DC_TRIM_DEADLINE_US, center);
+    if (!measured) { s_dc_trim.have = false; phy_end_actuator(); return; }
+    s_drift_avg[0] = center[0]; s_drift_avg[1] = center[1];
+    bool consistent = s_dc_trim.have && dc_trim_same(&context, &s_dc_trim.context) &&
+        pair[0] == s_dc_trim.pair[0] && pair[1] == s_dc_trim.pair[1] &&
+        abs(center[0] - s_dc_trim.center[0]) <= 150 && abs(center[1] - s_dc_trim.center[1]) <= 150;
+    if (!dc_trim_same(&context, &s_dc_trim.context)) {
+        s_dc_trim.direction[0] = s_dc_trim.direction[1] = 1;
+    }
+    s_dc_trim.context = context;
+    memcpy(s_dc_trim.pair, pair, sizeof(pair));
+    memcpy(s_dc_trim.center, center, sizeof(center));
+    s_dc_trim.have = true;
+    int axis = abs(center[0]) >= abs(center[1]) ? 0 : 1;
+    if (!consistent || abs(center[axis]) <= DC_TRIM_DEADBAND_MCELLS ||
+        now - s_dc_last_trial < DC_TRIM_PERIOD_US) { phy_end_actuator(); return; }
+    int direction = s_dc_trim.direction[axis];
+    if (!direction) direction = 1;
+    int target[2] = {pair[0], pair[1]};
+    if (target[axis] + direction < 0 || target[axis] + direction > 511) direction = -direction;
+    if (abs(s_drift_offset[context.gain][axis] + direction) > 4) { phy_end_actuator(); return; }
+    target[axis] += direction;
+    s_dc_last_trial = esp_timer_get_time();
+    ++s_dc_trials;
+    dc_trim_invalidate();
+    esp_err_t applied = phy_dco_try_pair(context.packed_gain, pair, target);
+    bool accepted = false, fault = applied == ESP_ERR_INVALID_RESPONSE;
+    if (applied == ESP_OK) {
+        /* Keep the analog lease, but never suspend tasks/interrupts or acquire
+         * a raw-ring lease. Keeper H/V holdover must continue independently. */
+        dc_trim_context_t trial;
+        dc_trim_context_t expected = context;
+        expected.gain_epoch = s_gain_epoch;
+        int after[2];
+        const int64_t began = esp_timer_get_time(), deadline = began + DC_TRIM_DEADLINE_US;
+        s_last_gain_write_us = began;
+        while (esp_timer_get_time() - began < DC_TRIM_SETTLE_US) { /* preemptible fresh-RX guard */ }
+        accepted = dc_trim_snapshot(&trial) && dc_trim_same(&trial, &expected) &&
+                   dc_trim_sample(&expected, target, deadline, after) &&
+                   dc_trim_improves(center, after);
+        if (!accepted) {
+            if (esp_timer_get_time() >= deadline) ++s_dc_deadlines;
+            /* An unqualified/missing/late sample never keeps the trial pair. */
+            dc_trim_invalidate();
+            fault = phy_dco_try_pair(context.packed_gain, target, pair) != ESP_OK;
+        } else {
+            ++s_drift_nudges;
+            s_drift_offset[context.gain][axis] += direction;
+            s_drift_avg[0] = after[0]; s_drift_avg[1] = after[1];
+        }
+    }
+    if (!accepted) { ++s_dc_rejected; s_dc_trim.direction[axis] = -direction; }
+    s_dc_trim.have = false;
+    (void)dc_trim_snapshot(&s_dc_trim.context); /* retain learned direction across own epoch change */
+    uint64_t duration = (uint64_t)(esp_timer_get_time() - s_dc_last_trial);
+    if (duration > s_dc_max_us) s_dc_max_us = duration > UINT32_MAX ? UINT32_MAX : (uint32_t)duration;
+    phy_end_actuator();
+    if (fault) {
+        s_dc_fault = true;
+        (void)receiver_pause("DC_LIVE_RESTORE_FAILED");
+        printf("DC_LIVE fault=restore_failed gain=%lu; gain owner paused\n", (unsigned long)context.gain);
+    }
 }
 
 /* Persist the measured gain map: at most every 30 s, while holding, only
@@ -1297,6 +1389,10 @@ void calibration_print(void)
            (unsigned long)s_dco_searches, (unsigned long)s_dco_carrier_searches, (unsigned long)s_dco_hook_holds,
            (unsigned long)s_dco_aborts, s_drift_avg[0], s_drift_avg[1], (unsigned long)s_drift_nudges,
            (double)s_temp_c);
+    printf("DC_LIVE trials=%lu accepted=%lu rejected=%lu deadlines=%lu max_trial_us=%lu fault=%u "
+           "deadline_us=%u settle_us=%u volatile=1\n", (unsigned long)s_dc_trials,
+           (unsigned long)s_drift_nudges, (unsigned long)s_dc_rejected, (unsigned long)s_dc_deadlines,
+           (unsigned long)s_dc_max_us, (unsigned)s_dc_fault, DC_TRIM_DEADLINE_US, DC_TRIM_SETTLE_US);
     unsigned stored = 0;
     for (unsigned k = 0; k < DCO_SLOTS; ++k) stored += s_dco_index.freq[k] != 0;
     printf("DCO tables freq=%u template_rows=%u seeded_from=%u seeds=%lu stored_channels=%u/%u:", s_dco.freq,

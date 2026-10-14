@@ -120,3 +120,35 @@ cc -O2 -std=c11 -Wall -Wextra -Werror -Imain test/test_dc_live.c -lm -o /tmp/tes
 Actual-C probe and helper tests pass under pinned IDF v6.0.2. Firmware
 integration, CPU deadlines, fixed-gain real-carrier A/B, filter/gain change
 handoff, fading and output/display acceptance remain to be completed.
+
+## Live carrier DC trial (firmware, not yet board-validated)
+
+`calibration.c` `drift_service()` replaces the former blind ±1 thermal nudge,
+which assumed a DAC polarity and accepted any envelope below 1.3. The new path
+needs no quiet channel and assumes no polarity:
+
+1. Under the PHY actuator lease, read the actual DAC pair twice
+   (`phy_dco_read_pair`) and qualify a real carrier circle from a 4092-byte
+   control window with `dc_live_fit`. The complete gain/PHY/table/frequency/
+   filter/lane/scale context (`dc_trim_context_t`) is snapshotted before and
+   after the sample; any change rejects it.
+2. Two consecutive qualified centres within 150 mcell and outside the
+   300-mcell deadband, at most one trial per 2 s, at most ±4 codes per gain
+   per boot.
+3. `phy_dco_try_pair` verifies the actual RF/BB/fine gain readback against
+   the packed table tuple and the expected pair before a one-code write, and
+   verifies the target by readback. A target readback failure restores and
+   verifies the original pair; even that failing reports a fault and pauses
+   the gain owner.
+4. After 300 us settling, a fresh qualified centre must improve the two-axis
+   squared error by at least 20000 mcell² and 10 % (`dc_trim_improves`),
+   within a 2 ms measured deadline. Otherwise the original pair is restored and
+   the axis direction is flipped for the next trial.
+
+Every attempted write advances the gain epoch, invalidating amplitude/CN
+evidence. Tasks, interrupts and the hardware video path keep running; a
+preempted trial is rejected instead of being called a hard deadline. Trials
+are RAM-only (`volatile=1`); counters print as `DC_LIVE` in `calibration_print`.
+`test/test_dc_trim.c` covers the pure decision helpers. The real-carrier
+improvement, settling time, trial visibility on the display and rollback on
+hardware remain board gates.

@@ -423,3 +423,60 @@ bool phy_dco_nudge(int di, int dq, int out[2])
     return ok;
 #endif
 }
+
+bool phy_dco_read_pair(int out[2])
+{
+#ifndef C5VRX_PHY_PINNED
+    (void)out;
+    return false;
+#else
+    if (!out) return false;
+    lock_take();
+    int i = phy_pbus_rd(2, 2), q = phy_pbus_rd(3, 2);
+    bool ok = i == phy_pbus_rd(2, 2) && q == phy_pbus_rd(3, 2);
+    if (ok) { out[0] = i; out[1] = q; }
+    lock_give();
+    return ok;
+#endif
+}
+
+esp_err_t phy_dco_try_pair(uint32_t packed_gain, const int expected[2], const int target[2])
+{
+#ifndef C5VRX_PHY_PINNED
+    (void)packed_gain; (void)expected; (void)target;
+    return ESP_ERR_NOT_SUPPORTED;
+#else
+    if (!expected || !target || expected[0] < 0 || expected[0] > 511 || expected[1] < 0 || expected[1] > 511 ||
+        target[0] < 0 || target[0] > 511 || target[1] < 0 || target[1] > 511)
+        return ESP_ERR_INVALID_ARG;
+    int di = target[0] - expected[0], dq = target[1] - expected[1];
+    if ((di < 0 ? -di : di) + (dq < 0 ? -dq : dq) != 1) return ESP_ERR_INVALID_ARG;
+    lock_take();
+    int current[2];
+    uint16_t rf = phy_pbus_rd(8, 1), bb = phy_pbus_rd(0, 2), fine = phy_pbus_rd(1, 2);
+    bool gain_ok = rf == (packed_gain >> 12) && (bb & 127u) == ((packed_gain >> 4) & 127u) &&
+                   ((bb & ~127u) == 0u || (bb & ~127u) == 0x100u) && fine == (0xd0u | (packed_gain & 7u));
+    if (!gain_ok || !phy_dco_read_pair(current) || current[0] != expected[0] || current[1] != expected[1]) {
+        lock_give();
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!s_dco_held) {
+        uint16_t live[PBUS_BLOCKS][2];
+        read_live(live);
+        enter_debug(live);
+        s_dco_held = true;
+    }
+    dco_apply(target[0], target[1]);
+    bool ok = phy_dco_read_pair(current) && current[0] == target[0] && current[1] == target[1];
+    if (ok) {
+        s_dco_codes[0] = target[0]; s_dco_codes[1] = target[1];
+        lock_give();
+        return ESP_OK;
+    }
+    dco_apply(expected[0], expected[1]);
+    bool restored = phy_dco_read_pair(current) && current[0] == expected[0] && current[1] == expected[1];
+    s_dco_codes[0] = expected[0]; s_dco_codes[1] = expected[1];
+    lock_give();
+    return restored ? ESP_FAIL : ESP_ERR_INVALID_RESPONSE;
+#endif
+}
