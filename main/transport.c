@@ -24,6 +24,8 @@
 #include "kp_tables.h"
 #include "snapshot.h"
 #include "control_window.h"
+#include "sync_transport_probe.h"
+#include "phy.h"
 #include "soc/ahb_dma_struct.h"
 #include "soc/bitscrambler_struct.h"
 #include "soc/parl_io_struct.h"
@@ -58,6 +60,8 @@ static bitscrambler_handle_t s_bs;
 static bool s_tx_enabled;
 static bool s_rx_enabled, s_bs_enabled;
 static bool s_transport_fault;
+static uint32_t s_stream_generation;
+static bool s_stream_generation_overflow;
 static unsigned s_output, s_verified_output, s_output_clipped;
 static int s_verified_level;
 static bool s_verified_lp, s_have_verified;
@@ -502,6 +506,9 @@ static void quiet_interrupts(void)
  * producer/consumer separation cannot drift. */
 static esp_err_t start_rings_tail(void)
 {
+    /* Invalidate every old DMA epoch at entry, including a failed start or
+     * rollback replacement. This changes no stream data or clock setting. */
+    if (++s_stream_generation == 0) s_stream_generation_overflow = true;
     quiet_interrupts();
     esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
     s_tx_dma_ch = find_dma(false);
@@ -711,6 +718,72 @@ uint32_t transport_fault_count(void)
     return s_tx_empty + s_rx_overflow + s_dma_faults + s_bs_overload;
 }
 
+/* Read-only real-hardware bridge toward the keeper. T samples are diagnostic,
+ * not a continuous service loop. Unknown clock/FIFO proof remains explicit;
+ * no synthesized bytes, DMA descriptors, LUT or clock registers are written. */
+static void transport_sync_probe_print(void)
+{
+    static sync_transport_probe_t probe;
+    dma_progress_layout_t rx = {0}, tx = {0};
+    dma_progress_limits_t limits = {
+        .min_rate_hz = IQ_RATE_HZ, .max_rate_hz = IQ_RATE_HZ,
+        .clock_proven = false, .bounds_proven = false
+    };
+    dma_progress_capture_t c = {
+        .min_rate_hz = IQ_RATE_HZ, .max_rate_hz = IQ_RATE_HZ
+    };
+    uint32_t rx_clock = 0, tx_clock = 0, rx_fifo = 0, tx_fifo = 0;
+    uint32_t rx_written = 0, rx_read = 0, tx_read = 0;
+    uint32_t phy = phy_generation();
+    bool owned = phy_try_actuator(phy);
+    c.ownership_verified = owned;
+    c.first_read_us = esp_timer_get_time();
+    c.generation = s_stream_generation;
+    c.running = owned && s_started && s_have_verified && s_lut_known && !s_transport_fault &&
+                !s_stream_generation_overflow && !s_menu_active && s_rx_enabled && s_tx_enabled && s_bs_enabled;
+    if (owned && s_rx_dma_ch >= 0 && s_rx_dma_ch < 3 && s_tx_dma_ch >= 0 && s_tx_dma_ch < 3) {
+        c.rx_descriptor = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
+        c.tx_descriptor = AHB_DMA.channel[s_tx_dma_ch].out.out_dscr_bf0.val;
+        rx_fifo = AHB_DMA.channel[s_rx_dma_ch].in.infifo_status.infifo_cnt_chn;
+        tx_fifo = AHB_DMA.channel[s_tx_dma_ch].out.outfifo_status.outfifo_cnt_chn;
+        rx_clock = PCR.parl_clk_rx_conf.val;
+        tx_clock = PCR.parl_clk_tx_conf.val;
+        rx_written = PARL_IO.rx_st0.rx_fifo_wr_bit_cnt;
+        rx_read = PARL_IO.rx_st1.rx_fifo_rd_bit_cnt;
+        tx_read = PARL_IO.tx_st0.tx_fifo_rd_bit_cnt;
+        bool buffers = s_rx_node_count == DMA_PROGRESS_NODES && LIVE_TX_NODES == DMA_PROGRESS_NODES;
+        for (unsigned i = 0; buffers && i < DMA_PROGRESS_NODES; ++i) {
+            const dma_descriptor_t *r = s_rx_nodes[i].dscr, *t = &s_live_tx_nodes[i];
+            uintptr_t base = (uintptr_t)s_raw_ring;
+            uintptr_t rb = (uintptr_t)s_rx_nodes[i].buffer, tb = (uintptr_t)t->buffer;
+            if (!r || rb < base || rb - base >= sizeof(s_raw_ring) ||
+                tb < base || tb - base >= sizeof(s_raw_ring) ||
+                r->buffer != s_rx_nodes[i].buffer || r->dw0.size != s_rx_nodes[i].length) {
+                buffers = false; break;
+            }
+            rx.nodes[i] = (dma_progress_node_t){(uintptr_t)r, (uintptr_t)r->next,
+                                               (uint32_t)(rb - base), s_rx_nodes[i].length};
+            tx.nodes[i] = (dma_progress_node_t){(uintptr_t)t, (uintptr_t)t->next,
+                                               (uint32_t)(tb - base), t->dw0.length};
+        }
+        limits.geometry_proven = buffers && dma_progress_layout_valid(&rx) && dma_progress_layout_valid(&tx);
+    }
+    c.last_read_us = esp_timer_get_time();
+    if (owned) phy_end_actuator();
+    sync_transport_probe_update(&probe, &rx, &tx, &limits, &c);
+    printf("SYNC_PROBE mode=read_only writes=0 continuous=0 valid=%u reason=%s blocked=%lu result=%u "
+           "stream_gen=%lu epoch=%lu geometry=%u clock_proven=%u fifo_proven=%u "
+           "rx_bf0=%08lx tx_bf0=%08lx capture_us=%llu rx_clock=%08lx tx_clock=%08lx "
+           "rx_l1_bytes=%lu tx_l1_bytes=%lu rx_wr_bits=%lu rx_rd_bits=%lu tx_rd_bits=%lu\n",
+           probe.frontiers.valid, sync_transport_probe_reason(&probe), (unsigned long)probe.blocked,
+           (unsigned)probe.result, (unsigned long)c.generation, (unsigned long)probe.progress.epoch,
+           limits.geometry_proven, limits.clock_proven, limits.bounds_proven,
+           (unsigned long)c.rx_descriptor, (unsigned long)c.tx_descriptor,
+           (unsigned long long)(c.last_read_us - c.first_read_us), (unsigned long)rx_clock,
+           (unsigned long)tx_clock, (unsigned long)rx_fifo, (unsigned long)tx_fifo,
+           (unsigned long)rx_written, (unsigned long)rx_read, (unsigned long)tx_read);
+}
+
 void transport_print(void)
 {
     printf("VIDEO_OUTPUT source=%s standard=%s fallback_enabled=%u\n", no_signal_active() ? "NO_SIGNAL" :
@@ -739,6 +812,7 @@ void transport_print(void)
            (unsigned long)s_control_copy.source_invalid, (unsigned long)s_control_copy.pointer_invalid,
            (unsigned long)s_control_copy.lapped, (unsigned long)s_control_copy.timed_out,
            (unsigned long)s_control_copy.max_us, (unsigned long)s_control_copy.max_advance);
+    transport_sync_probe_print();
 }
 
 int ring_node_index(uint32_t addr)

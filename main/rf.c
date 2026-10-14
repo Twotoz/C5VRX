@@ -8,6 +8,9 @@
 #include <string.h>
 #include "driver/gpio.h"
 #include "esp_event.h"
+#include "esp_attr.h"
+#include "esp_cpu.h"
+#include "esp_private/esp_clk.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_rom_gpio.h"
@@ -82,7 +85,7 @@ extern uint16_t phy_pbus_rd(uint32_t block, uint32_t bank);
 static uint32_t s_native_rf_gate, s_native_rf_control;
 static bool s_native_vendor_valid;
 /* No debug-mode entry, forcing or GPIO remapping. Refuse malformed words. */
-static bool native_tuple(uint32_t *word)
+static bool IRAM_ATTR native_tuple(uint32_t *word)
 {
     /* Exact pinned phy_pbus_rd fields, independently checked by the vendor
      * instruction fixture. Avoid three address-switch calls while acquiring;
@@ -294,7 +297,7 @@ void rf_set_post_gain_hook(void (*hook)(uint8_t gain)) { s_post_gain_hook = hook
 const arc_gain_table_t *rf_gain_table(void) { return &s_table; }
 uint32_t rf_table_generation(void) { return s_table_generation; }
 
-rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_t *open_us)
+rf_native_result_t IRAM_ATTR rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_t *open_us)
 {
     if (!gain || !open_us) return RF_NATIVE_REFUSED;
     *open_us = 0;
@@ -302,6 +305,17 @@ rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_
     (void)generation;
     return RF_NATIVE_REFUSED;
 #else
+    /* Cycle timing requires the fixed, non-DFS clock used by this receiver.
+     * Never hide the enable interval by starting the clock after AGC opens. */
+#if defined(CONFIG_PM_ENABLE) && CONFIG_PM_ENABLE
+    printf("NATIVE_AGC refusal=dynamic_cpu_clock\n");
+    return RF_NATIVE_REFUSED;
+#endif
+    if (esp_clk_cpu_freq() != 240000000) {
+        printf("NATIVE_AGC refusal=cpu_clock requires_fixed_240mhz=1\n");
+        return RF_NATIVE_REFUSED;
+    }
+    const uint32_t ticks_per_us = 240u;
     if (!s_native_vendor_valid || rf_frequency_mhz() != 5865u || rf_offset_khz() != 0 ||
         s_filter.bw20) {
         printf("NATIVE_AGC refusal=context saved=%u freq=%u offset_khz=%d bw20=%u\n",
@@ -356,14 +370,15 @@ rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_
         (REG32(0x600a284cu) & NATIVE_RF_MASK) == s_native_rf_control) {
         native_acquire_t a = {0};
         const uint8_t initial = (uint8_t)((REG32(0x600a7094u) >> 2) & 127u);
-        const int64_t start = esp_timer_get_time();
+        const uint32_t start = esp_cpu_get_cycle_count();
         phy_enable_agc();
-        enable_us = (uint32_t)(esp_timer_get_time() - start);
+        enable_us = (esp_cpu_get_cycle_count() - start) / ticks_per_us;
         result = RF_NATIVE_TIMEOUT;
         for (unsigned polls = 0; polls < 512u; ++polls) {
             uint32_t tuple = 0;
             bool valid = native_tuple(&tuple);
-            uint32_t elapsed = (uint32_t)(esp_timer_get_time() - start);
+            uint32_t elapsed_ticks = esp_cpu_get_cycle_count() - start;
+            uint32_t elapsed = elapsed_ticks / ticks_per_us;
             if (!polls_seen) first_poll_us = elapsed;
             uint32_t gap = elapsed - last_poll_us;
             if (gap > max_poll_gap_us) max_poll_gap_us = gap;
@@ -372,11 +387,11 @@ rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_
             bool start_seen = (uint8_t)REG32(0x600a7078u) == initial;
             if (start_seen) ++start_polls;
             if (!valid) ++invalid_polls;
-            native_acquire_result_t evidence = native_acquire_observe(&a, elapsed,
+            native_acquire_result_t evidence = native_acquire_observe_ticks(&a, elapsed_ticks, ticks_per_us,
                 start_seen, valid, tuple);
             if (evidence == NATIVE_WAIT) continue;
             phy_disable_agc();
-            *open_us = (uint32_t)(esp_timer_get_time() - start);
+            *open_us = (esp_cpu_get_cycle_count() - start) / ticks_per_us;
             if (evidence == NATIVE_LANDING) {
                 /* Decode only after closing: do not search 84 rows while
                  * native AGC is free to begin another acquisition. */
@@ -389,7 +404,7 @@ rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_
             break;
         }
         phy_disable_agc();
-        if (!*open_us) *open_us = (uint32_t)(esp_timer_get_time() - start);
+        if (!*open_us) *open_us = (esp_cpu_get_cycle_count() - start) / ticks_per_us;
     }
     /* Fail closed to the previous forced row, not continuous native AGC. */
     phy_disable_agc();

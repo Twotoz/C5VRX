@@ -67,6 +67,16 @@ int main(void)
     assert(native_acquire_observe(&a, 5, false, true, 40) == NATIVE_WAIT);
     assert(native_acquire_observe(&a, 6, false, true, 40) == NATIVE_WAIT);
     assert(native_acquire_observe(&a, 7, false, true, 40) == NATIVE_LANDING);
+    a = (native_acquire_t){0};
+    assert(native_acquire_observe_ticks(&a, 0, 240, true, true, 40) == NATIVE_WAIT);
+    assert(native_acquire_observe_ticks(&a, 200, 240, false, true, 40) == NATIVE_WAIT);
+    assert(native_acquire_observe_ticks(&a, 679, 240, false, true, 40) == NATIVE_WAIT);
+    assert(native_acquire_observe_ticks(&a, 680, 240, false, true, 40) == NATIVE_LANDING);
+    a = (native_acquire_t){0};
+    assert(native_acquire_observe_ticks(&a, 481, 240, true, true, 40) == NATIVE_GAP);
+    assert(native_acquire_observe_ticks(&a, 14400, 240, true, true, 40) == NATIVE_TIMEOUT);
+    assert(native_acquire_observe_ticks(&a, 0, 0, true, true, 40) == NATIVE_TIMEOUT);
+    assert(native_acquire_observe_ticks(&a, 0, 1001, true, true, 40) == NATIVE_TIMEOUT);
     puts("PASS: all 84 gains in both PBUS contexts, malformed/context-mismatch tuples, native start/landing/timeout/gap/restart");
     return 0;
 }

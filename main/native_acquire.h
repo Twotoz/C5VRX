@@ -13,7 +13,7 @@
  * eight is channel-mode context; bit seven must be zero. Check the expected
  * context before stripping it. The current live bench uses prefix 0x100;
  * this helper does not establish support for other RF/BW contexts. */
-static inline bool native_acquire_pack_pbus(uint16_t rf, uint16_t bb,
+static inline __attribute__((always_inline)) bool native_acquire_pack_pbus(uint16_t rf, uint16_t bb,
     uint16_t fine, uint16_t expected_bb_prefix, uint32_t *word)
 {
     if (!word || (expected_bb_prefix != 0 && expected_bb_prefix != 0x100u) ||
@@ -23,16 +23,16 @@ static inline bool native_acquire_pack_pbus(uint16_t rf, uint16_t bb,
     return true;
 }
 typedef struct {
-    uint32_t last_us, stable_since;
+    uint32_t last_us, stable_since; /* timebase ticks; microseconds in legacy wrapper */
     uint32_t gain; /* observed packed RF/BB/fine tuple; no table search while open */
     bool started, have_gain;
 } native_acquire_t;
 typedef enum { NATIVE_WAIT, NATIVE_LANDING, NATIVE_TIMEOUT, NATIVE_GAP } native_acquire_result_t;
-static inline native_acquire_result_t native_acquire_observe(native_acquire_t *a,
-    uint32_t us, bool start_seen, bool gain_valid, uint32_t gain)
+static inline __attribute__((always_inline)) native_acquire_result_t native_acquire_observe_ticks(native_acquire_t *a,
+    uint32_t us, uint32_t ticks_per_us, bool start_seen, bool gain_valid, uint32_t gain)
 {
-    if (us >= NATIVE_TIMEOUT_US) return NATIVE_TIMEOUT;
-    if (us < a->last_us || us - a->last_us > NATIVE_MAX_GAP_US) return NATIVE_GAP;
+    if (!ticks_per_us || ticks_per_us > 1000u || us >= NATIVE_TIMEOUT_US * ticks_per_us) return NATIVE_TIMEOUT;
+    if (us < a->last_us || us - a->last_us > NATIVE_MAX_GAP_US * ticks_per_us) return NATIVE_GAP;
     a->last_us = us;
     if (start_seen) {
         a->started = true;
@@ -47,5 +47,10 @@ static inline native_acquire_result_t native_acquire_observe(native_acquire_t *a
         a->stable_since = us;
         return NATIVE_WAIT;
     }
-    return us - a->stable_since >= NATIVE_STILL_US ? NATIVE_LANDING : NATIVE_WAIT;
+    return us - a->stable_since >= NATIVE_STILL_US * ticks_per_us ? NATIVE_LANDING : NATIVE_WAIT;
+}
+static inline native_acquire_result_t native_acquire_observe(native_acquire_t *a,
+    uint32_t us, bool start_seen, bool gain_valid, uint32_t gain)
+{
+    return native_acquire_observe_ticks(a, us, 1u, start_seen, gain_valid, gain);
 }
