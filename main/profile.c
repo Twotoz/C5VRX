@@ -37,7 +37,7 @@
  * confirmed lines (burst or line timing); their distance is deviation x 1.914 MHz (40 of 140
  * IRE over 6.7 MHz). A decision needs three batches of 32 estimates, each
  * with a spread <= 8 % and all medians within 5 % of each other, on a
- * centred (AFC locked), coherent carrier in the healthy gain band, at a
+ * centred (AFC locked) carrier in the healthy gain band, at a
  * C/N estimate >= 8 dB (a weak carrier reads the deviation narrow). The
  * estimator and thresholds are pure (profile_logic.h) and host-tested. */
 #include "receiver.h"
@@ -63,6 +63,14 @@ static dev_estimator_t s_dev;
 static volatile int s_live_dev = -1;          /* this channel session, -1 = none yet */
 static volatile size_t s_live_channel = (size_t)-1;
 static volatile uint32_t s_observed, s_gated, s_gated_cn;
+/* Passive rejection evidence: distinguish a low estimate from missing fresh
+ * C/N, and expose the other gates before changing wide-profile policy. */
+static struct {
+    uint32_t pairs, lock, amplitude, clip, hold, cn_missing, cn_low;
+    int last_cn, last_span;
+    unsigned last_freq;
+    bool cn_checked;
+} s_gate = {.last_cn = CN_UNKNOWN_X10};
 static dev_monitor_t s_mon;                   /* continuous matching (live only) */
 static bool s_live_switch = true;             /* NVS prof_live: in-flight switch allowed */
 static int s_switch_pending = -1;             /* profile a live switch waits for, -1 none */
@@ -244,7 +252,7 @@ static void live_decided(int dev_x100, int64_t now)
     live_apply();
 }
 
-/* One burst-confirmed AFC window; gates on a usable, centred carrier. */
+/* One burst/line-timing-confirmed AFC window; gates on a usable, centred carrier. */
 void profile_observe(const afc2_result_t *r)
 {
     const int mode = s_measuring;
@@ -256,17 +264,31 @@ void profile_observe(const afc2_result_t *r)
         if (dev_monitor_tick(&s_mon, now)) dev_reset(&s_dev);   /* new cycle, or a timed-out one */
         if (!s_mon.collecting) return;
     }
-    if (s_dev.result_x100 >= 0 || !r->sync_pairs || !r->porch_pairs || !s_afc_locked) return;
+    if (s_dev.result_x100 >= 0) return;
+    if (!r->sync_pairs || !r->porch_pairs) { ++s_gate.pairs; return; }
+    if (!s_afc_locked) { ++s_gate.lock; return; }
+    s_gate.last_freq = rf_frequency_mhz();
+    s_gate.last_span = r->polarity < 0 ? r->porch_khz - r->sync_khz : r->sync_khz - r->porch_khz;
+    s_gate.last_cn = CN_UNKNOWN_X10;
+    s_gate.cn_checked = false;
     ++s_observed;
     if (!dev_gain_usable(s_obs_p50, (unsigned)s_obs_clip_pm, s_gain.state == DG_HOLD)) {
+        s_gate.amplitude += s_obs_p50 < 13 || s_obs_p50 > 32;
+        s_gate.clip += s_obs_clip_pm != 0;
+        s_gate.hold += s_gain.state != DG_HOLD;
         ++s_gated;
         return;
     }
-    if (receiver_obs_cn_x10() < DEV_MONITOR_MIN_CN_X10) {
+    const int cn = receiver_obs_cn_x10();
+    s_gate.last_cn = cn;
+    s_gate.cn_checked = true;
+    if (cn < DEV_MONITOR_MIN_CN_X10) {
+        if (cn == CN_UNKNOWN_X10) ++s_gate.cn_missing;
+        else ++s_gate.cn_low;
         ++s_gated_cn;
         return;
     }
-    int32_t span = r->polarity < 0 ? r->porch_khz - r->sync_khz : r->sync_khz - r->porch_khz;
+    int32_t span = s_gate.last_span;
     unsigned rejected = s_dev.rejected;
     int dev = dev_add(&s_dev, span);
     if (s_dev.rejected != rejected) printf("PROFILE batch rejected (spread or disagreement), count=%u\n", s_dev.rejected);
@@ -320,6 +342,13 @@ void profile_print(void)
            s_measuring == MEASURE_STARTUP ? "startup" : s_measuring == MEASURE_LIVE ? "live" : "off",
            s_dev.n, s_dev.batches, s_dev.rejected, (unsigned long)s_observed, (unsigned long)s_gated,
            (unsigned long)s_gated_cn);
+    printf("PROFILE_GATES no_pairs=%lu unlocked=%lu amplitude=%lu clip=%lu gain_not_held=%lu "
+           "cn_missing=%lu cn_below=%lu last_cn_x10=%d cn_checked=%u last_span_khz=%d "
+           "last_freq_mhz=%u min_cn_x10=%d\n",
+           (unsigned long)s_gate.pairs, (unsigned long)s_gate.lock, (unsigned long)s_gate.amplitude,
+           (unsigned long)s_gate.clip, (unsigned long)s_gate.hold, (unsigned long)s_gate.cn_missing,
+           (unsigned long)s_gate.cn_low, s_gate.last_cn, (unsigned)s_gate.cn_checked, s_gate.last_span, s_gate.last_freq,
+           DEV_MONITOR_MIN_CN_X10);
     if (s_measuring == MEASURE_LIVE) {
         const int64_t now = esp_timer_get_time();
         printf("PROFILE monitor period_s=30 collecting=%u next_in_s=%lld decisions=%u timeouts=%u last_x100=%d "
