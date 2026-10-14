@@ -1180,17 +1180,18 @@ static void drift_service(void)
 static void gain_map_service(void)
 {
     static int64_t last;
-    static uint32_t last_learned;
     int64_t now = esp_timer_get_time();
-    if (now - last < 30000000LL || s_gain.state != DG_HOLD || s_gain.learned == last_learned) return;
-    last = now;
-    last_learned = s_gain.learned;
+    if (now - last < 30000000LL) return;
     dg_map_blob_t blob;
-    if (!dg_export_map(&s_gain, &blob)) return;
-    blob.freq_mhz = rf_frequency_mhz();
-    blob.lane_mode = 2u;
+    if (!receiver_export_gain_map(&blob)) return;
+    last = now;
     if (s_gain_map_saved_valid && !memcmp(&blob, &s_gain_map_saved, sizeof(blob))) return;
-    if (blob_store("gain_map", &blob, sizeof(blob))) { s_gain_map_saved = blob; s_gain_map_saved_valid = true; }
+    if (blob_store("gain_map", &blob, sizeof(blob))) {
+        /* Observer imports this cache; publish the complete verified blob. */
+        vTaskSuspendAll();
+        s_gain_map_saved = blob; s_gain_map_saved_valid = true;
+        (void)xTaskResumeAll();
+    }
 }
 
 /* VTX deviation for the receive profile (profile.c): measured fresh on

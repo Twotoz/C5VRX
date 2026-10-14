@@ -221,20 +221,38 @@ static int ratio_db_q8(int ratio_q10)
 #define DG_MAGIC 0x44473521u
 static bool same_table(const arc_gain_table_t *a, const arc_gain_table_t *b)
 {
-    if (!a || !b || a->max_index != b->max_index) return false;
+    if (!a || !b || a->max_index != b->max_index || a->band5 != b->band5) return false;
     for (unsigned k = 0; k < ARC_RX_STAGE_COUNT; ++k)
-        if (a->spans[k] != b->spans[k]) return false;
+        if (a->spans[k] != b->spans[k] || a->start[k] != b->start[k] || a->rf_code[k] != b->rf_code[k]) return false;
     return true;
 }
 
-void dg_reset(direct_gain_t *g, const arc_gain_table_t *table, uint8_t current_gain)
+bool dg_map_context_equal(const dg_map_context_t *a, const dg_map_context_t *b)
+{
+    return a && b && a->freq_mhz == b->freq_mhz && a->lane_mode == b->lane_mode &&
+           a->iq_scale == b->iq_scale && a->filter_skirt == b->filter_skirt &&
+           a->filter_bw20 == b->filter_bw20 && a->offset_khz == b->offset_khz && a->filter_code == b->filter_code;
+}
+
+bool dg_map_matches(const direct_gain_t *g, const arc_gain_table_t *table, const dg_map_context_t *context)
+{
+    return g && g->magic == DG_MAGIC && g->map_context_valid &&
+           dg_map_context_equal(&g->map_context, context) && same_table(&g->table, table);
+}
+
+void dg_reset_context(direct_gain_t *g, const arc_gain_table_t *table, uint8_t current_gain,
+                      const dg_map_context_t *context)
 {
     if (!g) return;
     /* Keep the measured map across tracking resets on an unchanged table:
      * dropping it made V5 re-explore every step (a burst of corrective
      * writes, each a little grain; operator, 2026-10-06). */
     dg_map_blob_t kept;
+    dg_map_context_t wanted = {0};
+    if (context) wanted = *context; /* context may alias g */
     bool keep = g->magic == DG_MAGIC && g->learned && table && same_table(&g->table, table) &&
+                g->map_context_valid == (context != NULL) &&
+                (!context || dg_map_context_equal(&g->map_context, &wanted)) &&
                 dg_export_map(g, &kept) > 0u;
     memset(g, 0, sizeof(*g));
     prepare_lut();
@@ -249,7 +267,20 @@ void dg_reset(direct_gain_t *g, const arc_gain_table_t *table, uint8_t current_g
     g->uncertainty_pm[g->current_gain] = 50u;
     g->state = DG_ACQUIRE;
     g->magic = DG_MAGIC;
+    g->map_context_valid = context != NULL;
+    g->map_context = wanted;
     if (keep) (void)dg_import_map(g, &kept);
+}
+
+void dg_reset(direct_gain_t *g, const arc_gain_table_t *table, uint8_t current_gain)
+{
+    /* Tracking/native handoff on the already-bound context. The observer
+     * must use dg_reset_context when the physical transfer context changes. */
+    dg_map_context_t context;
+    if (g && g->magic == DG_MAGIC && g->map_context_valid) {
+        context = g->map_context;
+        dg_reset_context(g, table, current_gain, &context);
+    } else dg_reset_context(g, table, current_gain, NULL);
 }
 
 unsigned dg_export_map(const direct_gain_t *g, dg_map_blob_t *blob)
@@ -259,6 +290,17 @@ unsigned dg_export_map(const direct_gain_t *g, dg_map_blob_t *blob)
     blob->version = DG_MAP_VERSION;
     blob->max_index = g->table.max_index;
     blob->band5 = g->table.band5;
+    blob->context_valid = g->map_context_valid;
+    blob->context = g->map_context;
+    blob->freq_mhz = (uint16_t)g->map_context.freq_mhz;
+    blob->lane_mode = (uint8_t)g->map_context.lane_mode;
+    /* Canonical fields only: memset above keeps serialization padding zero. */
+    memcpy(blob->table.spans, g->table.spans, sizeof(blob->table.spans));
+    memcpy(blob->table.start, g->table.start, sizeof(blob->table.start));
+    memcpy(blob->table.rf_code, g->table.rf_code, sizeof(blob->table.rf_code));
+    blob->table.max_index = g->table.max_index;
+    blob->table.band5 = g->table.band5;
+    blob->table.runtime_spans_valid = g->table.runtime_spans_valid;
     unsigned confident = 0;
     for (unsigned k = 0; k <= g->table.max_index && k < DG_STATES; ++k) {
         if (!g->confidence[k] || !g->relative_power_q10[k]) continue;
@@ -273,7 +315,10 @@ unsigned dg_export_map(const direct_gain_t *g, dg_map_blob_t *blob)
 bool dg_import_map(direct_gain_t *g, const dg_map_blob_t *blob)
 {
     if (!g || !blob || blob->version != DG_MAP_VERSION ||
-        blob->max_index != g->table.max_index || blob->band5 != g->table.band5) return false;
+        blob->max_index != g->table.max_index || blob->band5 != g->table.band5 ||
+        !same_table(&blob->table, &g->table) || blob->context_valid != g->map_context_valid ||
+        (g->map_context_valid && (!dg_map_context_equal(&blob->context, &g->map_context) ||
+         blob->freq_mhz != g->map_context.freq_mhz || blob->lane_mode != g->map_context.lane_mode))) return false;
     const uint8_t anchor = g->current_gain;
     if (!blob->confidence[anchor] || !blob->power_q10[anchor]) return false;
     for (unsigned k = 0; k <= g->table.max_index && k < DG_STATES; ++k) {

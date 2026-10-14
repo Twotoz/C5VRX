@@ -19,6 +19,13 @@
 typedef enum { DG_ACQUIRE = 0, DG_HOLD, DG_SETTLE, DG_VERIFY } dg_state_t;
 typedef enum { DG_FINE = 0, DG_BB, DG_RF } dg_transition_t;
 
+/* Transfer conditions for a measured gain response; gain index itself varies
+ * inside a map. Epochs guard in-flight samples, not persisted identity. */
+typedef struct {
+    uint32_t freq_mhz, lane_mode, iq_scale, filter_skirt, filter_bw20;
+    int32_t offset_khz, filter_code;
+} dg_map_context_t;
+
 typedef struct {
     uint8_t p50, p90, p95;
     uint16_t origin_pm, clip_pm;
@@ -57,6 +64,8 @@ static inline bool dg_stuck(const dg_observation_t *o)
 
 typedef struct {
     arc_gain_table_t table;
+    dg_map_context_t map_context;
+    bool map_context_valid;
     arc_gain_tuple_t tuple[DG_STATES];
     uint16_t relative_power_q10[DG_STATES];
     uint16_t uncertainty_pm[DG_STATES];
@@ -92,18 +101,27 @@ typedef struct {
 } direct_gain_t;
 
 /* Measured gain map, persisted so a boot does not explore blindly. */
-#define DG_MAP_VERSION 4u   /* 4: maps learned from receiver noise (VTX off) are dropped */
+#define DG_MAP_VERSION 5u   /* 5: exact transfer context/table; untagged v4 cache ignored */
 typedef struct {
     uint8_t version, max_index;
     uint16_t freq_mhz;            /* context: channel it was measured on */
     uint8_t lane_mode, band5;
+    uint8_t context_valid;
+    dg_map_context_t context;
+    arc_gain_table_t table;
     uint8_t confidence[DG_STATES];
     uint8_t reserved[DG_STATES];
     uint16_t power_q10[DG_STATES];
     uint16_t uncertainty_pm[DG_STATES];
 } dg_map_blob_t;
 
+/* Tracking reset retains an already-bound context; transfer changes must
+ * use dg_reset_context with a fresh hardware/context snapshot. */
 void dg_reset(direct_gain_t *g, const arc_gain_table_t *table, uint8_t current_gain);
+void dg_reset_context(direct_gain_t *g, const arc_gain_table_t *table, uint8_t current_gain,
+                      const dg_map_context_t *context);
+bool dg_map_context_equal(const dg_map_context_t *a, const dg_map_context_t *b);
+bool dg_map_matches(const direct_gain_t *g, const arc_gain_table_t *table, const dg_map_context_t *context);
 unsigned dg_export_map(const direct_gain_t *g, dg_map_blob_t *blob);
 bool dg_import_map(direct_gain_t *g, const dg_map_blob_t *blob);
 /* Low-confidence prior from measured boards (gain_map_preset.h): only for

@@ -105,6 +105,8 @@ extern volatile int s_obs_env_ratio_x100;   /* gain.h env_ratio_x100 of the late
 extern volatile uint32_t s_obs_us_max, s_obs_windows;
 extern dg_map_blob_t s_gain_map_saved;
 extern bool s_gain_map_saved_valid;
+/* Observer-owned context snapshot; refuses unsettled/changed model state. */
+unsigned receiver_export_gain_map(dg_map_blob_t *blob);
 void receiver_start(void);
 bool receiver_active(void);
 bool receiver_paused(void);

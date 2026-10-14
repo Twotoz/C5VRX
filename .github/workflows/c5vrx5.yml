@@ -100,6 +100,7 @@ jobs:
           python3 test/test_iq_snapshot.py
           python3 test/test_settings.py
           python3 test/test_native_owner.py
+          python3 test/test_gain_map_context.py
           python3 test/test_sphase_runtime.py
           python3 test/test_sync_transport_runtime.py
       - name: Analytic IQ lane reference

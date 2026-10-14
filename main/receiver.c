@@ -31,6 +31,58 @@ static volatile uint32_t s_overload_state;   /* 0 free, 1 writing, 2 published *
 static dg_observation_t s_overload;
 static uint32_t s_overload_gain_epoch, s_overload_control_epoch, s_overload_phy;
 static uint32_t s_map_imports, s_preset_imports;
+static bool s_map_bound;
+static uint32_t s_map_control, s_map_phy, s_map_table;
+extern unsigned char phy_param[];
+
+static dg_map_context_t map_context(void)
+{
+    const rf_filter_t f = rf_filter();
+    return (dg_map_context_t){.freq_mhz=rf_frequency_mhz(), .lane_mode=rf_lane(),
+        .iq_scale=phy_param[650], .filter_skirt=f.skirt, .filter_bw20=f.bw20,
+        .offset_khz=rf_offset_khz(), .filter_code=f.code};
+}
+
+/* No vendor calls or waits here. A nonblocking actuator lease rejects even
+ * phy_try_actuator owners (which do not set phy_busy); short task exclusion
+ * protects the observer's ~700-byte snapshot. Context stamping belongs to
+ * that observer, never to a later calibration task. */
+unsigned receiver_export_gain_map(dg_map_blob_t *blob)
+{
+    if (!blob) return 0;
+    if (!phy_try_actuator(phy_generation())) { memset(blob, 0, sizeof(*blob)); return 0; }
+    vTaskSuspendAll();
+    const uint32_t control=s_control_epoch, phy=phy_generation(), table=rf_table_generation();
+    const uint32_t gain_epoch=s_gain_epoch;
+    const dg_map_context_t context=map_context();
+    unsigned n=0;
+    if (s_map_bound && receiver_active() && s_gain.state == DG_HOLD &&
+        cn_gain_settled((uint64_t)esp_timer_get_time(), (uint64_t)s_last_gain_write_us, false) &&
+        s_gain.current_gain == s_current_gain &&
+        control == s_map_control && phy == s_map_phy && table == s_map_table &&
+        dg_map_matches(&s_gain, rf_gain_table(), &context))
+        n=dg_export_map(&s_gain, blob);
+    const dg_map_context_t after=map_context();
+    if (control != s_control_epoch || gain_epoch != s_gain_epoch || phy != phy_generation() || table != rf_table_generation() ||
+        !dg_map_context_equal(&context, &after)) n=0;
+    phy_end_actuator();
+    (void)xTaskResumeAll();
+    if (!n) memset(blob, 0, sizeof(*blob));
+    return n;
+}
+
+static void gain_map_bind(const dg_map_context_t *context, uint32_t control, uint32_t phy, uint32_t table)
+{
+    dg_reset_context(&s_gain, rf_gain_table(), s_current_gain, context);
+    /* Every import checks the current transfer context and complete table,
+     * including after A -> B -> A. A stored map for A remains available
+     * while B runs but can never be relabelled/imported as B. */
+    if (!s_gain.learned && s_gain_map_saved_valid && dg_import_map(&s_gain, &s_gain_map_saved)) ++s_map_imports;
+    else if (!s_gain.learned && GAIN_MAP_PRESET_BOARDS &&
+             dg_import_preset(&s_gain, c5vrx5_gain_map_preset_q10, GAIN_MAP_PRESET_MAX_INDEX + 1u,
+                              GAIN_MAP_PRESET_MAX_INDEX, GAIN_MAP_PRESET_BAND5)) ++s_preset_imports;
+    s_map_control=control; s_map_phy=phy; s_map_table=table; s_map_bound=true;
+}
 static volatile cn_observation_t s_cn;
 static volatile uint32_t s_cn_sequence;
 static uint32_t s_cn_windows;
@@ -242,18 +294,12 @@ static void observer_task(void *arg)
             continue;
         }
         uint32_t control = s_control_epoch, table = rf_table_generation(), phy = phy_generation();
+        const dg_map_context_t context = map_context();
         bool native_owner = native_tick(control, phy);
         if (s_paused) continue;
         if (!was_active || control != seen_control || table != seen_table || phy != seen_phy ||
-            s_gain.current_gain != s_current_gain) {
-            dg_reset(&s_gain, rf_gain_table(), s_current_gain);
-            /* A fresh boot starts from the persisted map, not the model. */
-            if (!s_gain.learned && s_gain_map_saved_valid && dg_import_map(&s_gain, &s_gain_map_saved))
-                ++s_map_imports;
-            else if (!s_gain.learned && GAIN_MAP_PRESET_BOARDS &&
-                     dg_import_preset(&s_gain, c5vrx5_gain_map_preset_q10, GAIN_MAP_PRESET_MAX_INDEX + 1u,
-                                      GAIN_MAP_PRESET_MAX_INDEX, GAIN_MAP_PRESET_BAND5))
-                ++s_preset_imports;
+            s_gain.current_gain != s_current_gain || !dg_map_matches(&s_gain, rf_gain_table(), &context)) {
+            gain_map_bind(&context, control, phy, table);
             seen_control = control;
             seen_table = table;
             seen_phy = phy;
@@ -293,7 +339,9 @@ static void observer_task(void *arg)
         s_obs_clip_pm = o.clip_pm;
         s_obs_coherence = o.coherence;
         s_obs_stuck = dg_stuck(&o);
-        if (phy != phy_generation() || phy_busy() || gain_epoch != s_gain_epoch || control != s_control_epoch) continue;
+        const dg_map_context_t after_context = map_context();
+        if (phy != phy_generation() || phy_busy() || gain_epoch != s_gain_epoch || control != s_control_epoch ||
+            table != rf_table_generation() || !dg_map_context_equal(&context, &after_context)) continue;
         if (native_owner && (o.clip_pm >= 125u || o.p95 >= 95u)) {
             s_native_enabled = native_owner = false;
             printf("NATIVE_AGC disabled=overload owner=direct_gain_v5\n");
@@ -321,8 +369,7 @@ static void observer_task(void *arg)
 void receiver_start(void)
 {
     s_gain_map_saved_valid = blob_load("gain_map", &s_gain_map_saved, sizeof(s_gain_map_saved)) &&
-                             s_gain_map_saved.version == DG_MAP_VERSION &&
-                             s_gain_map_saved.freq_mhz == rf_frequency_mhz();
+                             s_gain_map_saved.version == DG_MAP_VERSION && s_gain_map_saved.context_valid;
     ESP_ERROR_CHECK(xTaskCreate(observer_task, "gain_obs", 4096, NULL, 3, &s_observer) == pdPASS ?
                     ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xTaskCreate(sentinel_task, "gain_fast", 3072, NULL, 4, &s_sentinel) == pdPASS ?
@@ -360,7 +407,8 @@ void receiver_print(void)
 void receiver_print_map(void)
 {
     dg_map_blob_t blob;
-    unsigned n = dg_export_map(&s_gain, &blob);
+    unsigned n = receiver_export_gain_map(&blob);
+    if (!n) { printf("GAINMAP refused=unsettled_or_changed_context\n"); return; }
     printf("GAINMAP v=%u max=%u band5=%u freq=%u entries=%u", DG_MAP_VERSION, blob.max_index, blob.band5,
            rf_frequency_mhz(), n);
     for (unsigned k = 0; k <= blob.max_index && k < DG_STATES; ++k)
