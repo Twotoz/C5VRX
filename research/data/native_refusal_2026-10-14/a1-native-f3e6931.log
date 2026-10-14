@@ -1,0 +1,6 @@
+STATUS channel=A1 freq=5865 afc_locked=0 standard=AUTO detected=none signal=49 menu=0 mode=DEFAULT 12MHZ KP0.85 kp_auto=2 output=2.0x live=1 busy=0
+NATIVE_AGC enabled=1 period_us=20000 timeout_us=60 boot_default=OFF ram_only=1 bench=1
+NATIVE_AGC disabled=result_3 owner=direct_gain_v5 open_us=8
+HB t_s=175 stage=ready gain=83 menu=0 startup=0 busy=0
+STATUS channel=A1 freq=5865 afc_locked=0 standard=AUTO detected=none signal=48 menu=0 mode=DEFAULT 12MHZ KP0.85 kp_auto=2 output=2.0x live=1 busy=0
+STATUS channel=A1 freq=5865 afc_locked=0 standard=AUTO detected=none signal=48 menu=0 mode=DEFAULT 12MHZ KP0.85 kp_auto=2 output=2.0x live=1 busy=0

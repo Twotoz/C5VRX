@@ -93,6 +93,7 @@ jobs:
         run: |
           . "$IDF_PATH/export.sh"
           python3 research/native_pbus_contract.py
+          python3 research/native_pbus_read_contract.py
       - name: Diagnostic log semantics
         run: |
           python3 test/test_field_diag_compare.py

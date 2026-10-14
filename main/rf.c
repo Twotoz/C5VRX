@@ -84,7 +84,12 @@ static bool s_native_vendor_valid;
 /* No debug-mode entry, forcing or GPIO remapping. Refuse malformed words. */
 static bool native_tuple(uint32_t *word)
 {
-    uint16_t rf = phy_pbus_rd(8, 1), bb = phy_pbus_rd(0, 2), fine = phy_pbus_rd(1, 2);
+    /* Exact pinned phy_pbus_rd fields, independently checked by the vendor
+     * instruction fixture. Avoid three address-switch calls while acquiring;
+     * all prefix, tuple and timing checks remain unchanged. */
+    uint16_t rf = (REG32(0x600a08a8u) >> 9) & 511u;
+    uint16_t bb = REG32(0x600a0894u) & 511u;
+    uint16_t fine = (REG32(0x600a0898u) >> 9) & 511u;
     /* Only called after the validated 5865/BW40/zero-offset bench guard.
      * Vendor RX commands carry channel-mode bit eight in this readback.
      * Keep that mode check; gain tables contain just the low seven bits. */
@@ -339,6 +344,8 @@ rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_
     (void)phy_dco_release();
     rf_native_result_t result = RF_NATIVE_REFUSED;
     uint8_t adopted = previous;
+    uint32_t enable_us = 0, first_poll_us = 0, max_poll_gap_us = 0;
+    uint32_t last_poll_us = 0, polls_seen = 0, start_polls = 0, invalid_polls = 0;
     /* Only tasks are held; timer/GDMA interrupts still run. PHY ownership
      * excludes gain/retune/calibration writes throughout acquire and restore. */
     vTaskSuspendAll();
@@ -351,13 +358,22 @@ rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_
         const uint8_t initial = (uint8_t)((REG32(0x600a7094u) >> 2) & 127u);
         const int64_t start = esp_timer_get_time();
         phy_enable_agc();
+        enable_us = (uint32_t)(esp_timer_get_time() - start);
         result = RF_NATIVE_TIMEOUT;
         for (unsigned polls = 0; polls < 512u; ++polls) {
             uint32_t tuple = 0;
             bool valid = native_tuple(&tuple);
             uint32_t elapsed = (uint32_t)(esp_timer_get_time() - start);
+            if (!polls_seen) first_poll_us = elapsed;
+            uint32_t gap = elapsed - last_poll_us;
+            if (gap > max_poll_gap_us) max_poll_gap_us = gap;
+            last_poll_us = elapsed;
+            ++polls_seen;
+            bool start_seen = (uint8_t)REG32(0x600a7078u) == initial;
+            if (start_seen) ++start_polls;
+            if (!valid) ++invalid_polls;
             native_acquire_result_t evidence = native_acquire_observe(&a, elapsed,
-                (uint8_t)REG32(0x600a7078u) == initial, valid, tuple);
+                start_seen, valid, tuple);
             if (evidence == NATIVE_WAIT) continue;
             phy_disable_agc();
             *open_us = (uint32_t)(esp_timer_get_time() - start);
@@ -404,6 +420,12 @@ rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_
     *gain = adopted;
     (void)xTaskResumeAll();
     phy_end_actuator();
+    if (result != RF_NATIVE_LANDING)
+        printf("NATIVE_AGC timing result=%u enable_us=%lu first_poll_us=%lu max_gap_us=%lu "
+               "polls=%lu start_polls=%lu invalid_polls=%lu open_us=%lu\n",
+               (unsigned)result, (unsigned long)enable_us, (unsigned long)first_poll_us,
+               (unsigned long)max_poll_gap_us, (unsigned long)polls_seen,
+               (unsigned long)start_polls, (unsigned long)invalid_polls, (unsigned long)*open_us);
     return result;
 #endif
 }
