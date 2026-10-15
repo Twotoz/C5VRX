@@ -78,6 +78,21 @@ when complete fade/return scenes still fail.
 
 ## Next concrete steps
 
+### Integrated H period bank
+
+The H constructor now copies an exact-phase constant tip from generated flash
+periods and computes only its48-byte settling porch. Canonical unmasked Phase8
+contexts use it; native masks and other phase maps retain the prior constructor.
+kp0.50 H uses the separately tested-7430 Q8 step; its old-7373 periodic candidate
+failed the boundary fixture. First EQ and ordinary V remain dynamic.
+
+The generated table contains256 strong cells plus264192 carrier bytes, checked
+against the actual cell builder and an independent phase oracle. It allocates
+no mutable full bank. The integrated production H passes2621440 independent
+entry/exit/output/decoder-state cases, all eight full keeper scene suites, and
+the kp0.85/0.50 OUTPUT0.5x/5x matrix. Private J preparation and profiling tests
+also pass. These establish waveform behavior; C5 timing remains to be measured.
+
 ### Current integration (2026-10-15, awaiting C5)
 
 The actual first-EQ constructor now binds the active OUTPUT-mapped LUT to a

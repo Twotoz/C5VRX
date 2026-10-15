@@ -6,6 +6,7 @@
 #include "sync_synth.h"
 #include "sync_private_bench.h"
 #include "output_level.h"
+#include "sync_period_bank.h"
 #include <string.h>
 
 #ifdef ESP_PLATFORM
@@ -160,6 +161,7 @@ static bool clean_pulse(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uin
 static uint8_t s_cell[256];
 static const uint8_t *s_cell_phase;
 static int s_cell_mask = -1;
+static bool s_period_context;
 
 static int signed4(unsigned v) { return v < 8u ? (int)v : (int)v - 16; }
 
@@ -372,6 +374,7 @@ static void build_cells(const sfw_ring_t *r)
     }
     s_cell_phase = r->phase;
     s_cell_mask = key;
+    s_period_context = sfw_period_phase_compatible(r->phase,r->mask_bit0);
 }
 
 /* Write [a, a + n1 + n2): n1 samples rotating step1, then n2 at step2 (Q8
@@ -400,6 +403,41 @@ static SFW_HOT bool commit_prepared(sync_flywheel_t *f, const sfw_ring_t *r,
     return false;
 }
 
+/* Exact-period H tip; only the48-byte settling porch needs a DDS walk.
+ * Preserve the real exit phase exactly, including its Q8 remainder. The
+ * kp0.50 carrier is separately qualified at-7430; the old-7373 periodic H
+ * failed boundary/fade fixtures. Other constructors keep their own steps.
+ * The caller has already admitted the complete interval and workspace. */
+static SFW_HOT bool period_h(sync_flywheel_t *f,const sfw_ring_t *r,uint64_t a,
+                            int32_t porch,int32_t next)
+{
+    int32_t tip=f->repair_kp_x100==50u ? -7430 : f->repair_step_q8;
+    uint32_t target=(ph_at(r,a+PORCH+HSYNC)*256u-(uint32_t)next)&65535u;
+    uint32_t begin=(target-HSYNC*(uint32_t)tip)&65535u;
+    sfw_period_slice_t slice;
+    if(!sfw_period_slice(tip,(uint16_t)begin,HSYNC,&slice))return false;
+    int32_t lead=2*(tip-porch)*(100-f->repair_kp_x100)/f->repair_kp_x100;
+    uint32_t p0=ph_at(r,a-1u)*256u;
+    int32_t residual=(int32_t)((begin-(uint32_t)lead-p0-PORCH*(uint32_t)porch)&65535u);
+    if(residual>=32768)residual-=65536;
+    sync_synth_t bridge;
+    if(!sync_synth_init(&bridge,(uint16_t)p0,residual,PORCH))return false;
+    uint8_t local[PORCH+HSYNC];
+    uint8_t *pulse=r->commit ? r->workspace : local;
+    for(unsigned j=0;j<PORCH;++j)pulse[j]=s_cell[sync_synth_next(&bridge,porch)];
+    memcpy(pulse+PORCH,slice.first,slice.first_bytes);
+    memcpy(pulse+PORCH+slice.first_bytes,slice.second,slice.second_bytes);
+    if(r->commit) {
+        if(r->benchmark_profile){r->benchmark_profile->body_done=bench_tick(r);r->benchmark_profile->stage_mask|=32u;}
+        bool committed=commit_prepared(f,r,a,a+PORCH+HSYNC);
+        if(r->benchmark_profile){r->benchmark_profile->commit_done=bench_tick(r);r->benchmark_profile->stage_mask|=64u;}
+        return committed;
+    }
+    if(!sync_repair_ledger_record(&f->repairs,a,a+PORCH+HSYNC))return false;
+    for(unsigned j=0;j<PORCH+HSYNC;++j)r->ring[(uint32_t)(a+j)&(r->ring_bytes-1u)]=pulse[j];
+    return true;
+}
+
 static SFW_HOT bool synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t n1,
                   int32_t step1, uint32_t n2, int32_t step2, int32_t next_step,
                   bool bootstrap, uint64_t floor, uint64_t avail_end)
@@ -413,6 +451,9 @@ static SFW_HOT bool synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, u
     if (a < floor || b >= avail_end) { ++f->skipped_floor; return false; }
     uint32_t n = (uint32_t)bytes;
     if (r->commit && !workspace_valid(r, n)) { ++f->workspace_refused; return false; }
+    if(!bootstrap && n1==PORCH && n2==HSYNC && step2==f->repair_step_q8 &&
+       f->repair_kp_x100 && s_period_context && s_cell_phase==r->phase && s_cell_mask==2 && !r->mask_bit0)
+        return period_h(f,r,a,step1,next_step);
     if (bootstrap) {
         uint8_t tip[128];
         if (n1 <= sizeof(tip) && first_v_tip(f, r, a, n1, tip)) {
