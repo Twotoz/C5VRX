@@ -80,6 +80,27 @@ when complete fade/return scenes still fail.
 
 ### Integrated H period bank
 
+The first policy image could not allocate J's11136-byte contiguous block on the
+C5 despite18432 bytes total free heap; neither J attempt ran. The adapter now
+uses a2048-byte private source ring:512-byte start plus1280-byte maximum pulse
+and its next sample fit without wrapping. Its9088-byte allocation succeeds.
+The smaller source preserves every relevant input byte and all context/cache/
+source immutability checks; the actual extracted adapter test covers its bounds.
+
+Source `4dc7e73`, `5.0.0-pr.212-sync-tip-policy-2k`, is flashed/hash-verified as
+`879eae189a2129a3e5492d5129e5f28e57752499bca1427e2bcb65793be2fe31`.
+Both J runs pass all16 pulses with zero transport errors. FirstEQ row minima
+are around1.2-1.3ms, improved from the previous1.7-2.0ms but not halved.
+Selection falls to about8k cycles in the least-preempted profile; full OUTPUT
+binding now dominates the regular-token stage. Complete evidence is in
+board_j_tip_policy_2026-10-15.json/.txt.
+
+The binding helper now checks unity via a complete2048-byte comparison. Other
+outputs compute the64 possible DAC codes once, then compare all1024 complete
+mapped words, retaining token/tracker validation. The existing7680-tip and
+81920-corrupted-word regressions pass. This equivalent helper's C5 timing is
+the next measurement; it does not cache an unchecked program context.
+
 The firstEQ singleton selector now uses a generated exact policy indexed by
 verified kp, tracker phase and previous raw phase. It preserves the old
 minimum-DAC score, phase-distance score and ascending-token tie order. Full
