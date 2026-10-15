@@ -77,7 +77,7 @@ static void store_evals(sync_flywheel_t *f)
     f->phase_steps = s_steps;
 }
 
-static bool original(sync_flywheel_t *f, uint64_t begin, uint64_t end)
+static SFW_HOT bool original(sync_flywheel_t *f, uint64_t begin, uint64_t end)
 {
     bool ok = sync_repair_ledger_original(&f->repairs, begin, end, f->evidence_end);
     if (!ok && f->evidence_refused != UINT32_MAX) ++f->evidence_refused;
@@ -856,7 +856,10 @@ static void start_track(sync_flywheel_t *f, uint64_t start, uint32_t nominal)
 /* Streaming acquisition:6800 independent votes spread over about10.7ms.
  * Coarse63-sample seek is coprime to PAL's line period; backfill at stride3
  * preserves the original width/period qualification around each low hit. */
-static void acquire(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end, uint32_t budget)
+/* Keep acquisition out of the large TRACK body and in instruction RAM on
+ * C5. Its first real call must meet the same deadline as subsequent calls;
+ * warming metadata alone does not populate this loop's flash cache lines. */
+static SFW_HOT __attribute__((noinline)) void acquire(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end, uint32_t budget)
 {
     if (avail_end < 8192u) return;
     uint64_t end = avail_end - 16u;
