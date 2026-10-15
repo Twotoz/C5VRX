@@ -80,6 +80,23 @@ when complete fade/return scenes still fail.
 
 ### Integrated H period bank
 
+Physical C5 measurement is now available: source `78b0fd4`, version
+`5.0.0-pr.212-sync-period-h`, flashed and hash-verified as
+`533c7dccce0e4e2242e5c01292a7d71d15bab5aa53085ce4236683a8fb6f88ad`.
+Both J runs complete with all16 pulses valid, zero bootstrap refusals and zero
+TX-empty/RX-overflow/DMA/BitScrambler faults. Normal-load H minima are24-28us;
+these do not establish a material improvement over the earlier24us minimum.
+Ordinary V is still326-413us at its observed minima, firstEQ1608-1816us.
+The firstEQ profile identifies prefix, regular-token discovery and selection
+separately; none of these minimum samples proves live WCET or publication.
+Complete measurements are in board_j_period_h_2026-10-15.json/.txt.
+
+The actual manual read-only W service also fails its first80us turn under
+normal load:136us, zero kernel calls, service_overrun, and no live writes.
+This is evidence against the current scheduling/admission arrangement, not a
+successful detector run. The capture is retained locally as
+`c5vrx-w-period-h-20261015-a.log`; W is stopped after the experiment.
+
 The H constructor now copies an exact-phase constant tip from generated flash
 periods and computes only its48-byte settling porch. Canonical unmasked Phase8
 contexts use it; native masks and other phase maps retain the prior constructor.
