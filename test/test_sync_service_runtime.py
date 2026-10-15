@@ -32,6 +32,8 @@ typedef struct {uint64_t alarm_count,reload_count;struct {bool auto_reload_on_al
 static int64_t now;
 static unsigned timer_live,timer_enabled,timer_started,task_live,notifications,turn_count,end_count;
 static bool fail_end,mutate_context,overrun;
+static bool hold_done;
+static unsigned seen_index;
 static unsigned cleanup_after;
 static unsigned stack_scans;
 static void *task_arg;
@@ -61,7 +63,7 @@ void sfw_init(sync_flywheel_t *f){*f=(sync_flywheel_t){0};}
 unsigned sfw_run(sync_flywheel_t *f,const sfw_ring_t *r,uint64_t end,uint64_t head,uint64_t floor,bool repair,uint32_t budget){
  (void)floor;assert(!repair&&r->phase);assert(!r->program_verified);
  if(!budget){assert(!end&&!head);return 0;}
- assert(budget==64&&head>end);++turn_count;f->evals=budget;f->state=SFW_TRACK;
+ assert(budget==52&&head>end);++turn_count;f->evals=budget;f->state=SFW_TRACK;
  f->acquisitions=1;now+=overrun?80:3;return 0;
 }
 bool sfw_locked(const sync_flywheel_t *f){return f->state==SFW_TRACK;}
@@ -70,7 +72,7 @@ bool transport_sync_source_begin(sync_service_source_t *s,bool discover){
  assert(!s->leased);s->leased=true;
  if(discover){for(unsigned i=0;i<9;++i)s->layout.nodes[i]=(dma_progress_node_t){0x1000+16*i,0x1000+16*((i+1)%9),4092*i,i==8?32:4092};
  s->ring=(sfw_ring_t){.ring=raw,.ring_bytes=sizeof(raw)};}
- unsigned index=(unsigned)((now/80)%9);
+ unsigned index=hold_done?seen_index:(unsigned)((now/80)%9);seen_index=index;
  s->first=s->last=(sync_done_capture_t){.done=s->layout.nodes[index].address,.first_us=now,.last_us=now,
  .context={1,2,3,4},.rx_clock=0x60005,.tx_clock=0x60005,.memory_rate_bound=192000000,.live=true,.metadata_owned=true};return true;
 }
@@ -94,6 +96,7 @@ int main(void){
  assert(s_status.worst_begin_cycles+s_status.worst_observe_cycles+s_status.worst_kernel_cycles+
         s_status.worst_end_cycles+s_status.worst_other_cycles==s_status.max_cycles);
  assert(s_status.worst_kernel_cycles==720);
+ hold_done=true;now+=80;assert(!service_turn(s)&&turn_count==2&&!s->source.leased);hold_done=false;
  fail_end=true;now+=80;assert(!strcmp(service_turn(s),"source_end")&&!s_status.locked&&!s->source.leased);fail_end=false;
  mutate_context=true;now+=80;assert(!strcmp(service_turn(s),"source_changed")&&!s->source.leased);mutate_context=false;
  overrun=true;now+=80;assert(!strcmp(service_turn(s),"service_overrun")&&!s_status.locked&&!s->source.leased);overrun=false;

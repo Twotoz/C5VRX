@@ -16,7 +16,7 @@
  * sfw_run192 + build_cells1056 bytes on its largest core call chain. Keep
  * room for transport/RTOS calls without demanding another4KiB heap block.
  * A future synthesis/publication task needs its own stack qualification. */
-enum { SERVICE_US=80, SERVICE_EVALS=64, SERVICE_STACK=3072 };
+enum { SERVICE_US=80, SERVICE_EVALS=52, SERVICE_STACK=3072 };
 typedef struct {
     sync_flywheel_t detector;
     sync_done_progress_t progress;
@@ -92,7 +92,12 @@ static const char *IRAM_ATTR service_turn(service_t *s)
     const char *why=NULL;
     uint32_t measured_kernel=0;
     if(result!=SDP_OK && result!=SDP_UNSTABLE)why="done_guard";
-    if(result==SDP_OK && o.done_end-o.fresh_from>=DMA_PROGRESS_RING && o.newly_completed) {
+    if(result==SDP_OK && o.done_end-o.fresh_from>=DMA_PROGRESS_RING) {
+        /* Drain the cursor on every alarm, even if DONE has not advanced.
+         * The kernel's exclusive completed-data ceiling still applies; no
+         * queued event or repeated DONE invents samples/camera time. 52
+         * coarse probes per80us cover40.95MS/s, while limiting work to new
+         * 4092-byte completions made64 probes arrive in ~102us bursts. */
         /* Prospective maximum head through an80us read, including a partly
          * transferred next descriptor. Original-source ledger rejects any
          * older input. Post-read timing/context validates this diagnostic. */
