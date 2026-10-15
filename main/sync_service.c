@@ -20,6 +20,7 @@ typedef struct {
     uint8_t phase[256];
     gptimer_handle_t timer;
     TaskHandle_t task;
+    uint64_t alarm_last_us;
 } service_t;
 typedef struct {
     uint32_t turns, calls, acquire_calls, track_calls, max_us, max_cycles;
@@ -29,6 +30,7 @@ typedef struct {
     uint32_t max_begin_cycles, max_observe_cycles, max_end_cycles;
     uint32_t prewarm_cycles;
     const char *prewarm_reason;
+    uint32_t alarms, alarm_min_us, alarm_max_us;
     unsigned state, standard;
     bool locked;
     const char *reason;
@@ -43,6 +45,16 @@ static bool IRAM_ATTR service_alarm(gptimer_handle_t timer,
 {
     (void)timer;(void)event;
     service_t *s=arg;
+    uint64_t now=(uint64_t)esp_timer_get_time();
+    if(s->alarm_last_us) {
+        uint64_t dt=now-s->alarm_last_us;
+        if(dt<=UINT32_MAX) {
+            if(!s_status.alarm_min_us || dt<s_status.alarm_min_us)s_status.alarm_min_us=(uint32_t)dt;
+            if(dt>s_status.alarm_max_us)s_status.alarm_max_us=(uint32_t)dt;
+        }
+    }
+    s->alarm_last_us=now;
+    if(s_status.alarms!=UINT32_MAX)++s_status.alarms;
     BaseType_t wake=pdFALSE;
     vTaskNotifyGiveFromISR(s->task,&wake);
     return wake==pdTRUE;
@@ -151,7 +163,7 @@ void sync_service_print(void)
         "max_acq_evals=%lu max_track_evals=%lu budget=%u backlog_misses=%lu max_backlog=%lu "
         "rejected=%lu coalesced=%lu stack_free=%lu done_result=%lu capture_us=%lu gap_us=%lu "
         "max_acq_cycles=%lu max_track_cycles=%lu max_begin_cycles=%lu max_observe_cycles=%lu max_end_cycles=%lu state=%u standard=%u real_locked=%u "
-        "acquisitions=%lu real_v=%lu prewarm_cycles=%lu prewarm_reason=%s prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
+        "acquisitions=%lu real_v=%lu prewarm_cycles=%lu prewarm_reason=%s alarms=%lu alarm_min_us=%lu alarm_max_us=%lu prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
         active,st.reason,(unsigned long)st.turns,(unsigned long)st.calls,
         (unsigned long)st.acquire_calls,(unsigned long)st.track_calls,(unsigned long)st.max_us,
         (unsigned long)st.max_cycles,(unsigned long)st.max_acquire_evals,(unsigned long)st.max_track_evals,
@@ -161,7 +173,8 @@ void sync_service_print(void)
         (unsigned long)st.max_acquire_cycles,(unsigned long)st.max_track_cycles,
         (unsigned long)st.max_begin_cycles,(unsigned long)st.max_observe_cycles,(unsigned long)st.max_end_cycles,
         st.state,st.standard,st.locked,(unsigned long)st.acquisitions,(unsigned long)st.vsyncs,
-        (unsigned long)st.prewarm_cycles,st.prewarm_reason?st.prewarm_reason:"none");
+        (unsigned long)st.prewarm_cycles,st.prewarm_reason?st.prewarm_reason:"none",
+        (unsigned long)st.alarms,(unsigned long)st.alarm_min_us,(unsigned long)st.alarm_max_us);
 }
 void sync_service_toggle(void)
 {
