@@ -63,8 +63,11 @@ The resulting `5.0.0-pr.212-sync-fold` build has SHA256
 H endpoint residual into its48-byte front porch and copying a constant tip.
 The original fixed-step candidate fails kp0.50. A separate H-only step-7430
 passes the full kp0.50 source-loss/return scenes, all-output transition rows,
-and2621440 phase/decoder/output cases. Other attempted frequencies retain
-their failure evidence; this is not a live timing or memory-writer proof.
+and2621440 coupled phase/decoder/output cases. The stronger independent
+endpoint/boundary-state fixture finds five kp0.50 rows failing; the unchanged
+dynamic synthesizer passes every row. The bank remains unqualified there.
+Other attempted frequencies retain their failure evidence; this is not a
+live timing or memory-writer proof. See SYNC_PRECOMPUTED_PULSES.md for scopes.
 
 `research/sync_coarse_scenes.py` reuses the exact temporary coarse acquisition
 builder and passes all8kp full keeper scene suites. Production acquisition
