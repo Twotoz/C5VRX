@@ -228,3 +228,38 @@ This image has not been flashed: the C5 USB serial device is currently absent.
   ahead of pulse deadlines where exact boundary/handoff checks permit it.
 - Flash tested concrete variants, measure the real stream and validate
   monitor lock through no-VTX, fades and genuine camera return.
+
+### C5 read-service cadence diagnosis (2026-10-15)
+
+The board is connected again. These later measurements supersede the earlier
+USB-absent note. All three images below were flashed with application hash
+verification; all W runs were read-only, VTX off, with no live writer.
+
+- `408cd05` (`sync-read-clock`): ISR intervals 78-82 us, accepted-capture
+  gaps 150-271 us. This separates timer cadence from accepted observations,
+  but alone does not prove a task scheduling delay: crossed DONE captures
+  are retryable and do not refresh the last accepted timestamp.
+- `d37e2e8` (`sync-read-retry`): retry one crossed DONE pair immediately under
+  the existing read lease. Two crossings still report UNSTABLE. Actual-source
+  tests inject both cases and retain balanced leases and context rejection.
+  Separate task-wake measurement finds 137-143 us gaps, with merged alarms.
+  Two starts reach one real 64-evaluation acquisition call, then overrun at
+  122/124 us; the third fails the unchanged hidden-lap guard.
+- `8cb3963` (`sync-read-stack`): remove the per-turn stack high-water scan;
+  retain it at cleanup. It scanned several thousand bytes after the measured
+  turn, hiding its scheduling cost. Three physical starts now have zero
+  coalesced alarms, maximum wake intervals 82/94/91 us, and one real kernel
+  call each. Each stops on the unchanged 80 us deadline: total 124/105/116 us,
+  acquisition kernel 17383/17653/19166 cycles (about 72/74/80 us at 240 MHz).
+  No start proves continuous detector operation or monitor lock.
+
+Complete captured status rows, capture/application hashes and source commits
+are in `research/data/board_w_read_{clock,retry,stack}_2026-10-15.{json,txt}`.
+The current board image is `5.0.0-pr.212-sync-read-stack`, application SHA256
+`00dc2f0d3a5fd7a605cbe9699cbe6d4a1dbf02c291176dc05285a7dfe8cf4e6e`.
+All three actual-service/source runtime tests pass in the pinned IDF container.
+The immediate remaining bottleneck is the first real acquisition kernel plus
+metadata costs, rather than the removed stack scan. Coarse discovery already
+uses full-byte phase-table lookups; simply masking IQ bits does not eliminate
+those lookups. Any reduced-precision detector needs weak-signal qualification.
+The live flywheel/output writer remains unimplemented and disabled.
