@@ -18,7 +18,7 @@
 #include "phy.h"
 #include "rf.h"
 
-#define BOOT_BUTTON      GPIO_NUM_28    /* XIAO ESP32-C5 BOOT */
+#define BOOT_BUTTON      GPIO_NUM_28    /* BOOT (XIAO and NiceMCU C5 Mini) */
 #define TICK_MS          50
 #define LONG_TICKS       12             /* 0.6 s */
 #define MENU_IDLE_TICKS  600            /* 30 s without a press closes the menu */
