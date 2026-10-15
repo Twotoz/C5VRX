@@ -26,6 +26,7 @@ typedef struct {
     uint32_t max_acquire_evals, max_track_evals, backlog_misses, max_backlog;
     uint32_t max_gap_us, max_capture_us, done_result, max_acquire_cycles, max_track_cycles;
     uint32_t rejected, coalesced, stack_free, acquisitions, vsyncs;
+    uint32_t max_begin_cycles, max_observe_cycles, max_end_cycles;
     unsigned state, standard;
     bool locked;
     const char *reason;
@@ -51,6 +52,8 @@ static const char *service_turn(service_t *s)
     int64_t started=esp_timer_get_time();
     uint32_t cycles=esp_cpu_get_cycle_count();
     if(!transport_sync_source_begin(&s->source,false))return "source_begin";
+    uint32_t after_begin=esp_cpu_get_cycle_count();
+    if(after_begin-cycles>s_status.max_begin_cycles)s_status.max_begin_cycles=after_begin-cycles;
     uint64_t span=s->source.last.last_us-s->source.first.first_us;
     if(span>s_status.max_capture_us)s_status.max_capture_us=(uint32_t)span;
     if(s->progress.ready) {
@@ -60,6 +63,8 @@ static const char *service_turn(service_t *s)
     sync_done_observation_t o;
     sync_done_result_t result=sync_done_observe(&s->progress,&s->source.layout,
         &s->source.first,&s->source.last,&o);
+    uint32_t after_observe=esp_cpu_get_cycle_count();
+    if(after_observe-after_begin>s_status.max_observe_cycles)s_status.max_observe_cycles=after_observe-after_begin;
     s_status.done_result=(uint32_t)result;
     const char *why=NULL;
     if(result!=SDP_OK && result!=SDP_UNSTABLE)why="done_guard";
@@ -87,7 +92,10 @@ static const char *service_turn(service_t *s)
             if(lag>s_status.max_backlog)s_status.max_backlog=(uint32_t)lag;
         }
     }
+    uint32_t before_end=esp_cpu_get_cycle_count();
     bool ended=transport_sync_source_end(&s->source);
+    uint32_t end_cycles=esp_cpu_get_cycle_count()-before_end;
+    if(end_cycles>s_status.max_end_cycles)s_status.max_end_cycles=end_cycles;
     if(!ended)why="source_end";
     if(!raw_access_same(s->source.first.context,s->source.last.context) ||
         s->source.first.rx_clock!=s->source.last.rx_clock ||
@@ -135,7 +143,7 @@ void sync_service_print(void)
         "acquire_calls=%lu track_calls=%lu max_us=%lu max_cycles=%lu "
         "max_acq_evals=%lu max_track_evals=%lu budget=%u backlog_misses=%lu max_backlog=%lu "
         "rejected=%lu coalesced=%lu stack_free=%lu done_result=%lu capture_us=%lu gap_us=%lu "
-        "max_acq_cycles=%lu max_track_cycles=%lu state=%u standard=%u real_locked=%u "
+        "max_acq_cycles=%lu max_track_cycles=%lu max_begin_cycles=%lu max_observe_cycles=%lu max_end_cycles=%lu state=%u standard=%u real_locked=%u "
         "acquisitions=%lu real_v=%lu publication_proven=0 live_wcet_proven=0\n",
         active,st.reason,(unsigned long)st.turns,(unsigned long)st.calls,
         (unsigned long)st.acquire_calls,(unsigned long)st.track_calls,(unsigned long)st.max_us,
@@ -143,7 +151,9 @@ void sync_service_print(void)
         SERVICE_EVALS,(unsigned long)st.backlog_misses,(unsigned long)st.max_backlog,
         (unsigned long)st.rejected,(unsigned long)st.coalesced,(unsigned long)st.stack_free,
         (unsigned long)st.done_result,(unsigned long)st.max_capture_us,(unsigned long)st.max_gap_us,
-        (unsigned long)st.max_acquire_cycles,(unsigned long)st.max_track_cycles,st.state,st.standard,st.locked,(unsigned long)st.acquisitions,(unsigned long)st.vsyncs);
+        (unsigned long)st.max_acquire_cycles,(unsigned long)st.max_track_cycles,
+        (unsigned long)st.max_begin_cycles,(unsigned long)st.max_observe_cycles,(unsigned long)st.max_end_cycles,
+        st.state,st.standard,st.locked,(unsigned long)st.acquisitions,(unsigned long)st.vsyncs);
 }
 void sync_service_toggle(void)
 {
