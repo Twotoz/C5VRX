@@ -70,9 +70,11 @@ typedef struct {
     /* Benchmark only: caller-owned writable storage disjoint from buffers.
      * NULL for ordinary host replay and any eventual live keeper. */
     sfw_bench_profile_t *benchmark_profile;
-    /* Optional read-only lifetime accounting. Reset by the caller before
-     * each kernel turn; validate against actual ending DMA metadata before
-     * accepting the resulting detector state. Never write permission. */
+    /* Optional read-only lifetime envelope, caller-owned and disjoint from
+     * source buffers. Reset before each kernel turn; validate against ending
+     * DMA metadata before accepting detector state. Checked source windows
+     * conservatively include every load. allow_repair must be false. This
+     * never supplies write permission or renderer source-lifetime evidence. */
     sync_read_extent_t *read_extent;
 } sfw_ring_t;
 

@@ -77,23 +77,22 @@ static void store_evals(sync_flywheel_t *f)
     f->phase_steps = s_steps;
 }
 
+/* Per-call, read-only envelope; same exclusive-core ownership as counters
+ * and rolling scratch. Never retain the caller's pointer after sfw_run. */
+static sync_read_extent_t *s_read_extent;
 static SFW_HOT bool original(sync_flywheel_t *f, uint64_t begin, uint64_t end)
 {
     bool ok = sync_repair_ledger_original(&f->repairs, begin, end, f->evidence_end);
+    if(ok && s_read_extent)sync_read_extent_span(s_read_extent,begin,end);
     if (!ok && f->evidence_refused != UINT32_MAX) ++f->evidence_refused;
     return ok;
 }
 
-/* Keep the optional instrumentation out of unrolled phase-load sites.
- * Inlining its64-bit envelope bookkeeping into every site consumes scarce
- * IRAM even when the ordinary renderer leaves accounting disabled. */
-static SFW_HOT __attribute__((noinline)) void note_source_read(sync_read_extent_t *extent, uint64_t k)
-{
-    sync_read_extent_note(extent,k);
-}
 static inline uint8_t ph_at(const sfw_ring_t *r, uint64_t k)
 {
-    if(r->read_extent)note_source_read(r->read_extent,k);
+#ifdef SFW_SOURCE_READ_CHECK
+    SFW_SOURCE_READ_CHECK(s_read_extent,k); /* independent host coverage oracle */
+#endif
 #ifdef SFW_PHASE_READ
     SFW_PHASE_READ(); /* host-only exact work instrumentation */
 #endif
@@ -1273,12 +1272,15 @@ SFW_HOT unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail
                  uint64_t rx_complete, uint64_t write_floor, bool allow_repair, uint32_t budget_evals)
 {
     lowm_reset(); /* New raw/phase/source epoch, even after an invalid call. */
+    s_read_extent=NULL;
     if (!f || !r || !r->ring || !r->phase || !r->ring_bytes ||
         (r->ring_bytes & (r->ring_bytes - 1u))) return 0;
+    if(allow_repair && r->read_extent)return 0; /* renderer accesses need separate accounting */
     if (rx_complete < avail_end ||
         !sync_repair_ledger_advance(&f->repairs, rx_complete > r->ring_bytes ?
                                     rx_complete - r->ring_bytes : 0)) return 0;
     f->evidence_end = avail_end;
+    s_read_extent=r->read_extent;
     f->repair_step_q8 = verified_sync_step(r);
     f->repair_kp_x100 = f->repair_step_q8 ? r->verified_kp_x100 : 0;
     if (allow_repair && !f->repair_step_q8 && f->context_refused != UINT32_MAX)
@@ -1298,9 +1300,11 @@ SFW_HOT unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail
     if (f->state == SFW_ACQUIRE) {
         acquire(f, r, avail_end, budget_evals);
         store_evals(f);
-        if (f->state == SFW_ACQUIRE) return 0;
+        if (f->state == SFW_ACQUIRE) {s_read_extent=NULL;return 0;}
     }
-    return run_tracking(f,r,avail_end,write_floor,allow_repair,budget_evals);
+    unsigned processed=run_tracking(f,r,avail_end,write_floor,allow_repair,budget_evals);
+    s_read_extent=NULL;
+    return processed;
 }
 
 static __attribute__((noinline)) unsigned run_tracking(sync_flywheel_t *f, const sfw_ring_t *r,

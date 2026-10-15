@@ -65,7 +65,7 @@ int main(void)
     assert(!sfw_run(&f,&r,70000u,89452u,0,false,52u));
     uint64_t cursor=f.scan_pos;unsigned votes=f.acq_n;
     assert(votes==52u);
-    assert(extent.count==104u&&extent.first==65535u&&extent.last<=70000u&&!extent.overflow);
+    assert(extent.count==52u&&extent.first==65531u&&extent.last<=70000u&&!extent.overflow);
     extent=(sync_read_extent_t){0};
     assert(!sfw_run(&f,&r,70000u,89452u,0,false,52u));
     assert(f.scan_pos>cursor&&f.acq_n>votes&&f.scan_pos>=69984u);

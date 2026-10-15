@@ -4,7 +4,8 @@
  * through BF0 and its successor (2 or3 nodes). BF0 is NOT a payload pointer.
  * This bounded metadata model is a caller/platform qualification requirement;
  * no undocumented FIFO limit or farther prefetch relationship is inferred.
- * Caller instruments EVERY actual source load (including lookbehind), resets
+ * Caller accounts a conservative envelope covering EVERY source load
+ * (including lookbehind), resets
  * source caches at turn entry, and keeps a balanced READ lease through the
  * ending capture. Observations must come from accepted sync_done_observe calls
  * against one immutable layout; use a private candidate progress until success.
@@ -14,7 +15,7 @@
 #include "sync_done_progress.h"
 
 typedef struct {
-    uint64_t first, last, count; /* half-open envelope, count includes duplicates */
+    uint64_t first, last, count; /* half-open envelope; nonzero for accounted reads/spans */
     bool overflow;
 } sync_read_extent_t;
 
@@ -30,6 +31,17 @@ static inline void sync_read_extent_note(sync_read_extent_t *r, uint64_t k)
     if (k==UINT64_MAX || r->count==UINT64_MAX) { r->overflow=true; return; }
     if (!r->count || k<r->first) r->first=k;
     if (!r->count || k+1u>r->last) r->last=k+1u;
+    ++r->count;
+}
+
+/* Record an already checked source footprint once, rather than recording
+ * every sample inside it. Overapproximation can only reject more turns. */
+static inline void sync_read_extent_span(sync_read_extent_t *r, uint64_t begin, uint64_t end)
+{
+    if(!r)return;
+    if(begin>=end || r->count==UINT64_MAX){r->overflow=true;return;}
+    if(!r->count || begin<r->first)r->first=begin;
+    if(!r->count || end>r->last)r->last=end;
     ++r->count;
 }
 

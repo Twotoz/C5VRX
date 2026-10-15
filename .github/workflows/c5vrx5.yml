@@ -73,6 +73,8 @@ jobs:
             cc -O2 -std=c11 -Wall -Wextra -Werror -I../main "$t.c" -o "/tmp/$t"
             "/tmp/$t"
           done
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_source_envelope.c -lm -o /tmp/test_sync_source_envelope
+          /tmp/test_sync_source_envelope
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_private_bench.c ../main/sync_flywheel.c -o /tmp/test_sync_private_bench
           /tmp/test_sync_private_bench
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_prefix_equivalence.c -o /tmp/test_sync_prefix_equivalence
