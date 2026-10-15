@@ -628,7 +628,7 @@ static inline int32_t sync_step(const sync_flywheel_t *f)
 {
     return f->repair_step_q8;
 }
-static int32_t verified_sync_step(const sfw_ring_t *r)
+static SFW_HOT int32_t verified_sync_step(const sfw_ring_t *r)
 {
     if (!r->program_verified || !r->decoder_lut || r->verified_output >= OUTPUT_LEVELS ||
         (r->verified_output && !r->reference_lut)) return 0;
@@ -1256,7 +1256,12 @@ static bool find_relock(sync_flywheel_t *f, const sfw_ring_t *r,
     return false;
 }
 
-unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
+static __attribute__((noinline)) unsigned run_tracking(sync_flywheel_t *f, const sfw_ring_t *r,
+    uint64_t avail_end, uint64_t write_floor, bool allow_repair, uint32_t budget_evals);
+
+/* A small hot dispatcher avoids fetching the large tracking/repair body for
+ * every acquisition turn, without placing that whole body in scarce IRAM. */
+SFW_HOT unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
                  uint64_t rx_complete, uint64_t write_floor, bool allow_repair, uint32_t budget_evals)
 {
     lowm_reset(); /* New raw/phase/source epoch, even after an invalid call. */
@@ -1270,7 +1275,8 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
     f->repair_kp_x100 = f->repair_step_q8 ? r->verified_kp_x100 : 0;
     if (allow_repair && !f->repair_step_q8 && f->context_refused != UINT32_MAX)
         ++f->context_refused;
-    build_cells(r);
+    int cell_key=r->mask_bit0?(int)(r->clear_bit0&1u):2;
+    if(s_cell_phase!=r->phase || s_cell_mask!=cell_key)build_cells(r);
     s_evals = 0;
     s_lowm = s_steps = 0;
     f->evals = 0;
@@ -1286,6 +1292,12 @@ unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
         store_evals(f);
         if (f->state == SFW_ACQUIRE) return 0;
     }
+    return run_tracking(f,r,avail_end,write_floor,allow_repair,budget_evals);
+}
+
+static __attribute__((noinline)) unsigned run_tracking(sync_flywheel_t *f, const sfw_ring_t *r,
+    uint64_t avail_end, uint64_t write_floor, bool allow_repair, uint32_t budget_evals)
+{
     unsigned processed = 0;
     while ((f->state == SFW_TRACK || f->state == SFW_GENERATED) && s_evals < budget_evals) {
         bool generated = f->state == SFW_GENERATED;
