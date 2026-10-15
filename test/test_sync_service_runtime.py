@@ -33,6 +33,7 @@ static int64_t now;
 static unsigned timer_live,timer_enabled,timer_started,task_live,notifications,turn_count,end_count;
 static bool fail_end,mutate_context,overrun;
 static bool hold_done;
+static bool invalid_read,long_overrun;
 static unsigned seen_index;
 static unsigned cleanup_after;
 static unsigned stack_scans;
@@ -63,8 +64,9 @@ void sfw_init(sync_flywheel_t *f){*f=(sync_flywheel_t){0};}
 unsigned sfw_run(sync_flywheel_t *f,const sfw_ring_t *r,uint64_t end,uint64_t head,uint64_t floor,bool repair,uint32_t budget){
  (void)floor;assert(!repair&&r->phase);assert(!r->program_verified);
  if(!budget){assert(!end&&!head);return 0;}
- assert(budget==52&&head>end);++turn_count;f->evals=budget;f->state=SFW_TRACK;
- f->acquisitions=1;now+=overrun?80:3;return 0;
+ assert(budget==52&&head==end&&r->read_extent);++turn_count;f->evals=budget;f->state=SFW_TRACK;
+ sync_read_extent_note(r->read_extent,invalid_read?end+1u:end-128u);
+ f->acquisitions=1;now+=long_overrun?130:overrun?80:3;return 0;
 }
 bool sfw_locked(const sync_flywheel_t *f){return f->state==SFW_TRACK;}
 int sfw_standard(const sync_flywheel_t *f){return f->state==SFW_TRACK?SFW_STD_PAL:SFW_STD_UNKNOWN;}
@@ -73,13 +75,22 @@ bool transport_sync_source_begin(sync_service_source_t *s,bool discover){
  if(discover){for(unsigned i=0;i<9;++i)s->layout.nodes[i]=(dma_progress_node_t){0x1000+16*i,0x1000+16*((i+1)%9),4092*i,i==8?32:4092};
  s->ring=(sfw_ring_t){.ring=raw,.ring_bytes=sizeof(raw)};}
  unsigned index=hold_done?seen_index:(unsigned)((now/80)%9);seen_index=index;
- s->first=s->last=(sync_done_capture_t){.done=s->layout.nodes[index].address,.first_us=now,.last_us=now,
+ s->first=s->last=(sync_done_capture_t){.done=s->layout.nodes[index].address,.bf0=s->layout.nodes[(index+1u)%9u].address,.first_us=now,.last_us=now,
  .context={1,2,3,4},.rx_clock=0x60005,.tx_clock=0x60005,.memory_rate_bound=192000000,.live=true,.metadata_owned=true};return true;
 }
-bool transport_sync_source_end(sync_service_source_t *s){assert(s->leased);s->leased=false;++end_count;if(mutate_context)++s->last.context.gain;return !fail_end;}
+bool transport_sync_source_end(sync_service_source_t *s){assert(s->leased);s->leased=false;++end_count;
+ s->last.first_us=s->last.last_us=(uint64_t)now;
+ if(mutate_context)++s->last.context.gain;
+ s->finish_last=s->last;return !fail_end;}
 """
 SUFFIX = r"""
 static uint32_t ulTaskNotifyTake(int clear,uint32_t wait){assert(clear&&wait==portMAX_DELAY);if(cleanup_after && !--cleanup_after)s_stop=true;unsigned n=notifications;notifications=0;return n;}
+static void prime(service_t *s){
+ sync_done_observation_t o;sfw_init(&s->detector);sync_done_restart(&s->progress);
+ assert(transport_sync_source_begin(&s->source,false));
+ assert(sync_done_observe(&s->progress,&s->source.layout,&s->source.first,&s->source.last,&o)==SDP_OK);
+ assert(transport_sync_source_end(&s->source));s->progress.fresh_from-=32768;
+}
 int main(void){
  sync_service_toggle();assert(s_active&&timer_started&&task_live);
  service_t *s=task_arg;
@@ -98,8 +109,19 @@ int main(void){
  assert(s_status.worst_kernel_cycles==720);
  hold_done=true;now+=80;assert(!service_turn(s)&&turn_count==2&&!s->source.leased);hold_done=false;
  fail_end=true;now+=80;assert(!strcmp(service_turn(s),"source_end")&&!s_status.locked&&!s->source.leased);fail_end=false;
- mutate_context=true;now+=80;assert(!strcmp(service_turn(s),"source_changed")&&!s->source.leased);mutate_context=false;
- overrun=true;now+=80;assert(!strcmp(service_turn(s),"service_overrun")&&!s_status.locked&&!s->source.leased);overrun=false;
+ assert(!s->progress.ready&&s->detector.state==SFW_ACQUIRE);
+ prime(s);mutate_context=true;now+=80;assert(!strcmp(service_turn(s),"source_changed")&&!s->source.leased);mutate_context=false;
+ assert(!s->progress.ready&&s->detector.state==SFW_ACQUIRE);
+ prime(s);overrun=true;now+=80;assert(!service_turn(s)&&s_status.locked&&!s->source.leased&&s_status.late_turns);overrun=false;
+ assert(s_status.read_result==SRV_OK); /* A late, still-live read is valid. */
+ prime(s);invalid_read=true;now+=80;
+ assert(!strcmp(service_turn(s),"read_lifetime")&&s_status.read_result==SRV_INCOMPLETE);
+ assert(!s_status.locked&&!s->progress.ready&&s->detector.state==SFW_ACQUIRE&&!s->source.leased);
+ invalid_read=false;
+ prime(s);long_overrun=true;now+=80;
+ assert(!strcmp(service_turn(s),"read_lifetime")&&s_status.read_result==SRV_AMBIGUOUS);
+ assert(!s_status.locked&&!s->progress.ready&&s->detector.state==SFW_ACQUIRE&&!s->source.leased);
+ long_overrun=false;
  /* Two merged alarms cause one fresh source observation, never two kernel
   * replays or an unobserved camera clock. The next wake requests stop. */
  unsigned prior_turns=s_status.turns;

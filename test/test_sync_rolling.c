@@ -60,15 +60,21 @@ int main(void)
         coarse_reads+=phase_reads;
     }
     printf("PASS: 1000000 exact coarse windows, %u phase reads instead of 10000000, no rolling cache reuse\n",coarse_reads);
+    sync_read_extent_t extent={0};r.read_extent=&extent;
     sfw_init(&f);f.scan_pos=65536u;
     assert(!sfw_run(&f,&r,70000u,89452u,0,false,52u));
     uint64_t cursor=f.scan_pos;unsigned votes=f.acq_n;
     assert(votes==52u);
+    assert(extent.count==104u&&extent.first==65535u&&extent.last<=70000u&&!extent.overflow);
+    extent=(sync_read_extent_t){0};
     assert(!sfw_run(&f,&r,70000u,89452u,0,false,52u));
     assert(f.scan_pos>cursor&&f.acq_n>votes&&f.scan_pos>=69984u);
+    assert(extent.count&&extent.last<=70000u);
+    extent=(sync_read_extent_t){0};
     cursor=f.scan_pos;votes=f.acq_n;
     assert(!sfw_run(&f,&r,70000u,89452u,0,false,52u));
     assert(f.scan_pos==cursor&&f.acq_n==votes&&f.evals==0u);
+    assert(!extent.count);
     puts("PASS: repeated DONE drains pending cursor, then stops without replaying votes or reading future samples");
     printf("PASS: 1000000 exact original windows (%u rolling/%u restarts),3vs10reads, mutations/rollover/run+synth reset, cache=%zu bytes\n",rolling,restarts,sizeof(s_lowm_window));
 }

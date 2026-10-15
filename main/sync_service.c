@@ -26,6 +26,7 @@ typedef struct {
     TaskHandle_t task;
     uint64_t alarm_last_us;
     uint64_t wake_last_us;
+    sync_read_extent_t reads;
 } service_t;
 typedef struct {
     uint32_t turns, calls, acquire_calls, track_calls, max_us, max_cycles;
@@ -39,6 +40,7 @@ typedef struct {
     uint32_t unstable, max_wake_gap_us;
     uint32_t worst_begin_cycles, worst_observe_cycles, worst_kernel_cycles;
     uint32_t worst_end_cycles, worst_other_cycles;
+    uint32_t late_turns, read_result;
     unsigned state, standard;
     bool locked;
     const char *reason;
@@ -67,13 +69,30 @@ static bool IRAM_ATTR service_alarm(gptimer_handle_t timer,
     vTaskNotifyGiveFromISR(s->task,&wake);
     return wake==pdTRUE;
 }
-/* Every failure ends the lease before returning. No failed turn contributes
- * a camera clock. Timing overrun discards the entire private detector. */
+/* Validation need not occupy scarce IRAM: all source loads and paired ending
+ * captures have completed before this helper. Candidate progress is private. */
+static __attribute__((noinline)) sync_read_result_t finish_read(service_t *s,
+    sync_done_progress_t *candidate, const sync_done_capture_t *before_first,
+    const sync_done_capture_t *before_last, const sync_done_observation_t *before, bool ended)
+{
+    if(!ended)return SRV_LEASE;
+    sync_done_observation_t after;
+    if(sync_done_observe(candidate,&s->source.layout,&s->source.last,
+        &s->source.finish_last,&after)!=SDP_OK)return SRV_METADATA;
+    return sync_read_validate(&s->reads,&s->source.layout,before_first,before_last,before,
+        &s->source.last,&s->source.finish_last,&after,ended);
+}
+/* Every failure ends the lease and discards ALL private camera state. No
+ * failed turn contributes evidence. 80us remains the cadence, not permission
+ * to accept a source load whose actual ending lifetime check failed. */
 static const char *IRAM_ATTR service_turn(service_t *s)
 {
     int64_t started=esp_timer_get_time();
     uint32_t cycles=esp_cpu_get_cycle_count();
     if(!transport_sync_source_begin(&s->source,false))return "source_begin";
+    sync_done_capture_t before_first=s->source.first,before_last=s->source.last;
+    sync_done_progress_t candidate=s->progress;
+    s->reads=(sync_read_extent_t){0};
     uint32_t after_begin=esp_cpu_get_cycle_count();
     if(after_begin-cycles>s_status.max_begin_cycles)s_status.max_begin_cycles=after_begin-cycles;
     uint64_t span=s->source.last.last_us-s->source.first.first_us;
@@ -83,7 +102,7 @@ static const char *IRAM_ATTR service_turn(service_t *s)
         if(gap>s_status.max_gap_us)s_status.max_gap_us=(uint32_t)gap;
     }
     sync_done_observation_t o;
-    sync_done_result_t result=sync_done_observe(&s->progress,&s->source.layout,
+    sync_done_result_t result=sync_done_observe(&candidate,&s->source.layout,
         &s->source.first,&s->source.last,&o);
     uint32_t after_observe=esp_cpu_get_cycle_count();
     if(after_observe-after_begin>s_status.max_observe_cycles)s_status.max_observe_cycles=after_observe-after_begin;
@@ -98,15 +117,14 @@ static const char *IRAM_ATTR service_turn(service_t *s)
          * queued event or repeated DONE invents samples/camera time. 52
          * coarse probes per80us cover40.95MS/s, while limiting work to new
          * 4092-byte completions made64 probes arrive in ~102us bursts. */
-        /* Prospective maximum head through an80us read, including a partly
-         * transferred next descriptor. Original-source ledger rejects any
-         * older input. Post-read timing/context validates this diagnostic. */
-        uint64_t upper=o.done_end+s->progress.max_node_bytes+192u*SERVICE_US;
         s->source.ring.phase=s->phase;
+        s->source.ring.read_extent=&s->reads;
         bool acquiring=s->detector.state==SFW_ACQUIRE;
         uint64_t old_cursor=s->detector.scan_pos;
         uint32_t kernel_start=esp_cpu_get_cycle_count();
-        sfw_run(&s->detector,&s->source.ring,o.done_end,upper,0,false,SERVICE_EVALS);
+        /* Keep the completed-data ceiling; ending metadata will validate
+         * the full actual read envelope before any camera state is used. */
+        sfw_run(&s->detector,&s->source.ring,o.done_end,o.done_end,0,false,SERVICE_EVALS);
         uint32_t kernel_cycles=esp_cpu_get_cycle_count()-kernel_start;
         measured_kernel=kernel_cycles;
         uint32_t *cycle_max=acquiring?&s_status.max_acquire_cycles:&s_status.max_track_cycles;
@@ -131,6 +149,17 @@ static const char *IRAM_ATTR service_turn(service_t *s)
         s->source.first.rx_clock!=s->source.last.rx_clock ||
         s->source.first.tx_clock!=s->source.last.tx_clock ||
         s->source.first.memory_rate_bound!=s->source.last.memory_rate_bound)why="source_changed";
+    if(result==SDP_OK) {
+        sync_read_result_t read_result=finish_read(s,&candidate,&before_first,&before_last,&o,ended);
+        s_status.read_result=(uint32_t)read_result;
+        if(read_result!=SRV_OK && !why)why="read_lifetime";
+    } else if(result==SDP_UNSTABLE && ended) {
+        /* No kernel/read happened: a stable ending pair can refresh DONE
+         * progress, without supplying any new camera votes. */
+        sync_done_observation_t after;
+        if(sync_done_observe(&candidate,&s->source.layout,&s->source.last,
+            &s->source.finish_last,&after)!=SDP_OK && !why)why="done_guard";
+    }
     uint64_t elapsed=(uint64_t)(esp_timer_get_time()-started);
     uint32_t used=esp_cpu_get_cycle_count()-cycles;
     if(elapsed>s_status.max_us)s_status.max_us=(uint32_t)elapsed;
@@ -142,9 +171,14 @@ static const char *IRAM_ATTR service_turn(service_t *s)
         s_status.worst_kernel_cycles=measured_kernel;s_status.worst_end_cycles=end_cycles;
         s_status.worst_other_cycles=used-begin-observe-measured_kernel-end_cycles;
     }
-    if(elapsed>=SERVICE_US)why="service_overrun";
+    if(elapsed>=SERVICE_US && s_status.late_turns!=UINT32_MAX)++s_status.late_turns;
     ++s_status.turns;
-    if(why) {++s_status.rejected;s_status.locked=false;s_status.standard=SFW_STD_UNKNOWN;return why;}
+    if(why) {
+        ++s_status.rejected;s_status.locked=false;s_status.standard=SFW_STD_UNKNOWN;
+        sfw_init(&s->detector);sync_done_restart(&s->progress);
+        return why;
+    }
+    s->progress=candidate;
     s_status.state=s->detector.state;s_status.standard=sfw_standard(&s->detector);
     s_status.locked=sfw_locked(&s->detector);
     s_status.acquisitions=s->detector.acquisitions;s_status.vsyncs=s->detector.vsyncs;
@@ -196,7 +230,7 @@ void sync_service_print(void)
         "max_acq_cycles=%lu max_track_cycles=%lu max_begin_cycles=%lu max_observe_cycles=%lu max_end_cycles=%lu state=%u standard=%u real_locked=%u "
         "acquisitions=%lu real_v=%lu prewarm_cycles=%lu prewarm_reason=%s alarms=%lu alarm_min_us=%lu alarm_max_us=%lu unstable=%lu wake_gap_us=%lu "
         "worst_begin_cycles=%lu worst_observe_cycles=%lu worst_kernel_cycles=%lu worst_end_cycles=%lu worst_other_cycles=%lu "
-        "prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
+        "late_turns=%lu read_result=%lu prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
         active,st.reason,(unsigned long)st.turns,(unsigned long)st.calls,
         (unsigned long)st.acquire_calls,(unsigned long)st.track_calls,(unsigned long)st.max_us,
         (unsigned long)st.max_cycles,(unsigned long)st.max_acquire_evals,(unsigned long)st.max_track_evals,
@@ -210,7 +244,8 @@ void sync_service_print(void)
         (unsigned long)st.alarms,(unsigned long)st.alarm_min_us,(unsigned long)st.alarm_max_us,
         (unsigned long)st.unstable,(unsigned long)st.max_wake_gap_us,
         (unsigned long)st.worst_begin_cycles,(unsigned long)st.worst_observe_cycles,
-        (unsigned long)st.worst_kernel_cycles,(unsigned long)st.worst_end_cycles,(unsigned long)st.worst_other_cycles);
+        (unsigned long)st.worst_kernel_cycles,(unsigned long)st.worst_end_cycles,(unsigned long)st.worst_other_cycles,
+        (unsigned long)st.late_turns,(unsigned long)st.read_result);
 }
 void sync_service_toggle(void)
 {

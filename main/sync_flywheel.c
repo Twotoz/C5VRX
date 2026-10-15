@@ -86,6 +86,7 @@ static SFW_HOT bool original(sync_flywheel_t *f, uint64_t begin, uint64_t end)
 
 static inline uint8_t ph_at(const sfw_ring_t *r, uint64_t k)
 {
+    if(r->read_extent)sync_read_extent_note(r->read_extent,k);
 #ifdef SFW_PHASE_READ
     SFW_PHASE_READ(); /* host-only exact work instrumentation */
 #endif

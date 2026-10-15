@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "sync_repair_ledger.h"
+#include "sync_read_validation.h"
 
 /* 40 MS/s raw samples (one byte = signed Q4 I in bits 7..4, Q in 3..0). */
 #define SFW_PAL_LINE_Q16   (2560u * 65536u)  /* 64 us */
@@ -69,6 +70,10 @@ typedef struct {
     /* Benchmark only: caller-owned writable storage disjoint from buffers.
      * NULL for ordinary host replay and any eventual live keeper. */
     sfw_bench_profile_t *benchmark_profile;
+    /* Optional read-only lifetime accounting. Reset by the caller before
+     * each kernel turn; validate against actual ending DMA metadata before
+     * accepting the resulting detector state. Never write permission. */
+    sync_read_extent_t *read_extent;
 } sfw_ring_t;
 
 typedef enum { SFW_ACQUIRE = 0, SFW_TRACK = 1, SFW_GENERATED = 2 } sfw_state_t;

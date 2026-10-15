@@ -7,7 +7,7 @@ typedef struct {
     dma_progress_layout_t layout;
     sfw_ring_t ring;
     raw_access_token_t token;
-    sync_done_capture_t first, last;
+    sync_done_capture_t first, last, finish_last;
     uint32_t faults;
     bool leased;
 } sync_service_source_t;
