@@ -23,7 +23,11 @@ Distinguish simulation, firmware implementation and physical validation.
       Identical-IQ replay and full output/program transition evidence are
       checked in. Passive PROFILE/AFC diagnostics and manual private-RAM `J`
       timing instrumentation support the remaining physical tests; they do
-      not enable live flywheel writes. COM10 is currently unavailable.
+      not enable live flywheel writes. The C5 returned on 2026-10-15 and
+      both private J runs passed correctness with unchanged error counters.
+      Measured H preparation reached602us, regular V1817us and first
+      EQ31373us: dynamic synthesis is still too slow for a live keeper.
+      See SYNC_TRANSPORT_CHOICES.md and board_j_2026-10-15 evidence.
 
 - [ ] Operator addition (2026-10-14): find the simplest effective DC-bias
       workaround without repeated quiet-channel calibration. Compare existing

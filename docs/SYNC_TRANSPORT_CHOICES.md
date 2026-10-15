@@ -196,10 +196,49 @@ IRQ ownership, allocation/free, unchanged live raw/LUT buffers, context changes
 during preparation, cache failures, private-only destinations and tail guards.
 The portable actual-core API test covers640 preparations across all Kp/output
 maps and refuses external executors, overlapping buffers and invalid contexts.
-The pinned actual firmware builds. Physical `J` measurements remain pending;
-no board was available during implementation. Logs explicitly state
+The pinned actual firmware builds. The first physical `J` measurements were
+captured on 2026-10-15 after the operator flashed and reconnected the C5;
+see the results below. Logs explicitly state
 `irq_latency_measured=0` and `live_wcet_proven=0`. A measured private critical
 section envelope is not an IRQ dispatch-jitter measurement or a WCET proof.
+
+### First physical J measurements (2026-10-15)
+
+Evidence: [filtered board log](../research/data/board_j_2026-10-15.log) and
+[parsed measurements](../research/data/board_j_2026-10-15.json). Firmware
+reports `5.0.0-pr.212`; the exact flashed commit was not independently read
+back. Context: A1/5865 MHz, U85Q-LP, kp0.85, OUTPUT1x, CPU240MHz, normal
+receiver tasks and interrupts. Source RF/video was not qualified.
+
+The first boot filter calibration completed after119.173s. Both subsequent
+J runs completed with all16 pulse rows `valid=1`, no bootstrap refusals and
+`writes_live=0`. Before/after transport counters stayed zero for TX empty,
+RX overflow, DMA faults and BitScrambler overload; live output and heartbeats
+continued. The private allocation was8832bytes; reported free internal heap
+returned to28800bytes after the test.
+
+| Observed preparation | Maximum per row, first run | Maximum per row, warm run |
+| --- | --- | --- |
+| H,236bytes |598us|602us|
+| Regular EQ/broad,1271/1280bytes |1795us|1817us|
+| First EQ,1271/1280bytes |11663us|31373us|
+
+Initial cell prewarming took12416us; the second prewarm check took21us.
+These are maxima from four attempts per pulse/standard, not a WCET proof.
+Even the observed H preparation is much longer than a63.56/64us line period.
+This dynamic preparation path is unsuitable for a full-loss per-line keeper
+under the measured workload. Prewarming plus substantially cheaper templates
+and bounded boundary selection is required before a live repair experiment.
+
+The private-copy envelope ranged5..408us. Cycle and timer samples bracket
+different instructions, and ordinary IRQ/task preemption can occur before
+critical-section entry or after exit. Some rows have a large wall-clock
+envelope with a small cycle envelope. These numbers do not establish an
+IRQ-masked copy duration, IRQ dispatch latency, or DMA publication safety.
+Cache return262 (`ESP_ERR_NOT_SUPPORTED`) is the expected accepted no-op for
+the allocated noncacheable internal SRAM. `live_wcet_proven=0` and
+`mem_writes_safe=0` remain appropriate. No live snow-preserving keeper or
+monitor-lock acceptance is demonstrated by this test.
 
 Measure on the real C5 under USB/native/gain/DC load, then measure complete
 detector-only service turns and source age using actual frontiers. Host elapsed
