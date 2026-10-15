@@ -42,7 +42,8 @@ static int s_verified_level;
 static unsigned s_verified_output,s_output;
 static uint32_t s_stream_generation=7;
 static unsigned suspended,critical,enters,exits,allocations,frees,prepares,delays;
-static bool fail_allocate,change_during_prepare,cache_fail,allocated;
+static bool fail_allocate,change_during_prepare,cache_fail,allocated,service_active;
+static bool sync_service_active(void){return service_active;}
 static uint64_t ticks;
 static char log_text[16384];static size_t log_bytes;
 static void vTaskSuspendAll(void){assert(!suspended && !critical);++suspended;}
@@ -105,6 +106,9 @@ int main(void){
     assert(transport_bench_context_copy(&ctx,(uint16_t*)allocation));
     s_output=9;assert(!transport_bench_context_valid(&ctx));s_output=0;
     s_prog_lp=false;assert(!transport_bench_context_valid(&ctx));s_prog_lp=true;
+    service_active=true;transport_sync_bench();service_active=false;
+    assert(!prepares && !allocations && !enters && strstr(log_text,"refused=service_active"));
+    check_immutable(raw,lut);reset_log();
     transport_sync_bench();check_immutable(raw,lut);
     assert(prepares==32 && enters==32 && delays==8 && strstr(log_text,"end valid=1 writes_live=0"));
     assert(strstr(log_text,"irq_latency_measured=0") && strstr(log_text,"live_wcet_proven=0"));

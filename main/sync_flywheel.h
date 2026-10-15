@@ -26,6 +26,17 @@
 typedef bool (*sfw_commit_fn)(void *ctx, uint64_t absolute_start,
                                const uint8_t *samples, uint32_t bytes);
 
+/* Optional PRIVATE benchmark milestones, not CPU-exclusive time or WCET.
+ * Seven counter reads maximum; elapsed cycles include IRQ/task preemption.
+ * Lazy min-token construction remains inside selection, without per-byte
+ * timing or profile stores. stage_mask identifies milestones even at counter wrap. */
+typedef struct {
+    uint32_t begin, init_done, prefix_done, regular_done, selection_done, body_done, commit_done;
+    uint32_t minmask_builds;
+    uint8_t prefix_states[2], stage_mask;
+    bool minmask_in_selection;
+} sfw_bench_profile_t;
+
 typedef struct {
     uint8_t *ring;              /* raw IQ ring shared by RX and TX */
     uint32_t ring_bytes;        /* power of two */
@@ -48,6 +59,9 @@ typedef struct {
     uint32_t workspace_bytes;
     sfw_commit_fn commit;
     void *commit_ctx;
+    /* Benchmark only: caller-owned writable storage disjoint from buffers.
+     * NULL for ordinary host replay and any eventual live keeper. */
+    sfw_bench_profile_t *benchmark_profile;
 } sfw_ring_t;
 
 typedef enum { SFW_ACQUIRE = 0, SFW_TRACK = 1, SFW_GENERATED = 2 } sfw_state_t;

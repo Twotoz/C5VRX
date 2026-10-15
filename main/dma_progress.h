@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include "raw_history.h"
 
 #define DMA_PROGRESS_RING 32768u
 #define DMA_PROGRESS_NODES 9u
@@ -32,6 +33,7 @@ typedef struct {
     dma_progress_limits_t limits;
     dma_progress_channel_t rx, tx;
     uint64_t fresh_from;
+    uint32_t protected_history_bytes; /* cached once per validated RX layout */
     uint32_t generation, epoch;
     bool ready;
 } dma_progress_t;
@@ -139,6 +141,8 @@ static inline dma_progress_result_t dma_progress_export(dma_progress_t *p,
 {
     if (!out) return dma_progress_fail(p, DPG_NOT_READY);
     out->valid = false;
+    if (!p->ready || p->protected_history_bytes<RAW_HISTORY_CONTIGUOUS_MAX+RAW_HISTORY_CACHE_MARGIN ||
+        p->protected_history_bytes>=DMA_PROGRESS_RING) return dma_progress_fail(p,DPG_NOT_READY);
     uint32_t rb = p->rx_layout.nodes[p->rx.index].bytes;
     uint32_t tb = p->tx_layout.nodes[p->tx.index].bytes;
     if (p->rx.start > UINT64_MAX - rb || p->tx.start > UINT64_MAX - tb - p->limits.tx_prefetch_bytes)
@@ -147,12 +151,10 @@ static inline dma_progress_result_t dma_progress_export(dma_progress_t *p,
     /* Both uncertainty intervals must describe fresh data in ONE ring epoch. */
     if (p->rx.start < thi + p->limits.tx_prefetch_bytes ||
         rhi - p->tx.start >= DMA_PROGRESS_RING) return dma_progress_fail(p, DPG_SEPARATION);
-    uint64_t protected_begin = p->rx.start;
-    unsigned index = p->rx.index;
-    do {
-        index = (index + DMA_PROGRESS_NODES - 1u) % DMA_PROGRESS_NODES;
-        protected_begin -= p->rx_layout.nodes[index].bytes;
-    } while (p->rx_layout.nodes[index].bytes < 4092u);
+    if (p->rx.start<p->protected_history_bytes) return dma_progress_fail(p,DPG_OVERFLOW);
+    /* Bootstrap cached all CPU-reader envelopes, not merely the previous
+     * long node. Keep this 80-us diagnostic path constant work. */
+    uint64_t protected_begin=(p->rx.start-p->protected_history_bytes)&~(uint64_t)(RAW_HISTORY_CACHE_MARGIN-1u);
     uint64_t old = p->rx.start > DMA_PROGRESS_RING ? p->rx.start - DMA_PROGRESS_RING : 0;
     if (old < p->fresh_from) old = p->fresh_from;
     *out = (dma_progress_frontiers_t){p->rx.start, rhi, p->tx.start, thi,
@@ -173,6 +175,10 @@ static inline dma_progress_result_t dma_progress_bootstrap(dma_progress_t *p,
     p->ready = false;
     if (out) out->valid = false;
     if (!out || !dma_progress_layout_valid(rx) || !dma_progress_layout_valid(tx)) return DPG_LAYOUT;
+    uint32_t lengths[RAW_HISTORY_NODES];
+    for (unsigned i=0;i<RAW_HISTORY_NODES;++i) lengths[i]=rx->nodes[i].bytes;
+    const raw_history_layout_t history=raw_history_layout(lengths,rx->nodes[0].offset);
+    if (!history.valid) return DPG_LAYOUT;
     dma_progress_result_t result = dma_progress_capture_valid(limits, c);
     if (result != DPG_OK) return result;
     int ri = dma_progress_index(rx, c->rx_descriptor), ti = dma_progress_index(tx, c->tx_descriptor);
@@ -183,6 +189,7 @@ static inline dma_progress_result_t dma_progress_bootstrap(dma_progress_t *p,
     if (result != DPG_OK || motion + 4092u >= DMA_PROGRESS_RING) return DPG_AMBIGUOUS;
     if (p->epoch == UINT32_MAX) return DPG_OVERFLOW;
     p->rx_layout = *rx; p->tx_layout = *tx; p->limits = *limits;
+    p->protected_history_bytes=history.protected_bytes;
     p->generation = c->generation; ++p->epoch;
     uint64_t rlo = 2u * DMA_PROGRESS_RING + rx->nodes[ri].offset;
     uint32_t behind = (rx->nodes[ri].offset + DMA_PROGRESS_RING - tx->nodes[ti].offset) % DMA_PROGRESS_RING;

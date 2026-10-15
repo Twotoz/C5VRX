@@ -29,6 +29,7 @@
 #include "sync_transport_probe.h"
 #include "sync_memory_frontier.h"
 #include "sync_private_bench.h"
+#include "sync_service.h"
 #include "phase8_gain_lut.h"
 #include "esp_cpu.h"
 #include "esp_heap_caps.h"
@@ -923,6 +924,7 @@ static bool transport_bench_cache_result(esp_err_t error)
 
 void transport_sync_bench(void)
 {
+    if (sync_service_active()) { printf("SYNC_BENCH refused=service_active writes_live=0\n"); return; }
     enum { PRIVATE_RING=4096, WORKSPACE=1280, LUT_BYTES=2048, COPY_BYTES=1344, PHASE_BYTES=256,
            ALLOCATION=PRIVATE_RING+WORKSPACE+LUT_BYTES+COPY_BYTES+64+PHASE_BYTES };
     static portMUX_TYPE copy_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -967,6 +969,8 @@ void transport_sync_bench(void)
         uint64_t prepare_max_us=0,copy_max_us=0;
         uint32_t prepare_min_cycles=UINT32_MAX;
         uint64_t prepare_min_us=UINT64_MAX;
+        sfw_bench_profile_t profile={0}, fastest={0};
+        ring.benchmark_profile=&profile;
         int cache_in=ESP_OK,cache_out=ESP_OK;
         for (unsigned run=0; valid && run<4; ++run) {
             valid=transport_bench_context_valid(&context) && sfw_bench_seed_private(&ring,(uint16_t)(run*8192u));
@@ -978,7 +982,7 @@ void transport_sync_bench(void)
             uint64_t elapsed_us=(uint64_t)(esp_timer_get_time()-t0);
             if (elapsed_cycles>prepare_max_cycles) prepare_max_cycles=elapsed_cycles;
             if (elapsed_us>prepare_max_us) prepare_max_us=elapsed_us;
-            if (elapsed_cycles<prepare_min_cycles) prepare_min_cycles=elapsed_cycles;
+            if (elapsed_cycles<prepare_min_cycles) { prepare_min_cycles=elapsed_cycles; fastest=profile; }
             if (elapsed_us<prepare_min_us) prepare_min_us=elapsed_us;
             if (!valid || !transport_bench_context_valid(&context)) { valid=false; break; }
             bytes=pulse.bytes; refused+=pulse.bootstrap_refused;
@@ -1012,6 +1016,19 @@ void transport_sync_bench(void)
                (unsigned long long)prepare_max_us,(unsigned long)copy_max_cycles,(unsigned long long)copy_max_us,
                (unsigned long)prepare_min_cycles,(unsigned long long)prepare_min_us,
                cache_in,cache_out,(unsigned long)refused,kind==SFW_BENCH_FIRST_EQ);
+        printf("SYNC_PROFILE standard=%s kind=%u sample=min_cycles mask=%u init=%lu prefix=%lu "
+               "regular=%lu selection=%lu body=%lu commit=%lu states0=%u states1=%u "
+               "minmask_builds=%lu minmask_in_selection=%u includes_preemption=1 writes_live=0\n",
+               standard?"PAL":"NTSC",kind,fastest.stage_mask,
+               (unsigned long)(fastest.init_done-fastest.begin),
+               (unsigned long)((fastest.stage_mask&4u)?fastest.prefix_done-fastest.init_done:0),
+               (unsigned long)((fastest.stage_mask&8u)?fastest.regular_done-fastest.prefix_done:0),
+               (unsigned long)((fastest.stage_mask&16u)?fastest.selection_done-fastest.regular_done:0),
+               (unsigned long)(fastest.body_done-((fastest.stage_mask&16u)?fastest.selection_done:fastest.init_done)),
+               (unsigned long)(fastest.commit_done-fastest.body_done),
+               fastest.prefix_states[0],fastest.prefix_states[1],
+               (unsigned long)fastest.minmask_builds,fastest.minmask_in_selection);
+        ring.benchmark_profile=NULL;
         vTaskDelay(1);
     }
     heap_caps_free(memory);
@@ -1276,6 +1293,75 @@ bool copy_recent_endpoints(uint8_t *dst, size_t n)
     bool copied=copy_recent_endpoints_unleased(dst,n);
     bool current=transport_raw_read_end(&token);
     return copied && current;
+}
+
+/* Manual W detector: primary DONE metadata, independent of BF0 prefetch.
+ * Task-scheduler serialization prevents transport state mutation during each
+ * metadata capture. DMA/interrupts continue; never clear fault/status bits. */
+static uint32_t transport_sync_faults(void)
+{
+    return s_dma_faults + s_tx_empty + s_rx_overflow + s_bs_overload;
+}
+static bool transport_sync_capture(sync_done_capture_t *c)
+{
+    vTaskSuspendAll();
+    *c=(sync_done_capture_t){0};
+    c->first_us=(uint64_t)esp_timer_get_time();
+    c->context=transport_raw_context();
+    c->metadata_owned=true;
+    c->live=s_started && s_have_verified && s_lut_known && !s_transport_fault &&
+        !s_stream_generation_overflow && !s_menu_active && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
+        s_rx_dma_ch>=0 && s_rx_dma_ch<3 && s_tx_dma_ch>=0 && s_tx_dma_ch<3;
+    if(c->live) {
+        sync_memory_registers_t m=transport_memory_registers();
+        uint32_t ahb=0;
+        c->done=m.rx_done; c->bf0=m.rx_bf0;
+        c->rx_clock=m.rx_clock; c->tx_clock=m.tx_clock;
+        c->memory_rate_bound=sync_memory_clock(&m,&ahb)?192000000u:0;
+        c->live=!(AHB_DMA.in_intr[s_rx_dma_ch].raw.val & 0xfcu) &&
+            !(AHB_DMA.out_intr[s_tx_dma_ch].raw.val & 0x7cu) &&
+            !PARL_IO.int_raw.tx_fifo_rempty_int_raw && !PARL_IO.int_raw.rx_fifo_wovf_int_raw &&
+            !BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].eof_overload;
+    }
+    c->last_us=(uint64_t)esp_timer_get_time();
+    (void)xTaskResumeAll();
+    return c->live && c->memory_rate_bound;
+}
+bool transport_sync_source_begin(sync_service_source_t *s, bool discover)
+{
+    if(!s || s->leased || !transport_raw_read_begin(&s->token))return false;
+    s->leased=true;
+    s->faults=transport_sync_faults();
+    bool ok=transport_sync_capture(&s->first);
+    if(ok && discover) {
+        vTaskSuspendAll();
+        ok=s_rx_node_count==DMA_PROGRESS_NODES;
+        for(unsigned i=0;ok && i<DMA_PROGRESS_NODES;++i) {
+            const dma_descriptor_t *d=s_rx_nodes[i].dscr;
+            uintptr_t b=(uintptr_t)s_rx_nodes[i].buffer, base=(uintptr_t)s_raw_ring;
+            ok=d && b>=base && b-base<sizeof(s_raw_ring) &&
+                d->buffer==s_rx_nodes[i].buffer && d->dw0.size==s_rx_nodes[i].length;
+            if(ok)s->layout.nodes[i]=(dma_progress_node_t){(uintptr_t)d,(uintptr_t)d->next,
+                (uint32_t)(b-base),s_rx_nodes[i].length};
+        }
+        s->ring=(sfw_ring_t){.ring=s_raw_ring,.ring_bytes=sizeof(s_raw_ring),
+            .decoder_lut=s_lut_live}; /* actual pointer, never copied or written */
+        (void)xTaskResumeAll();
+        ok=ok && dma_progress_layout_valid(&s->layout);
+    }
+    ok=transport_sync_capture(&s->last) && ok &&
+        raw_access_same(s->token.context,s->last.context) && s->faults==transport_sync_faults();
+    if(!ok){(void)transport_sync_source_end(s);return false;}
+    sync_dma_m2c(s_raw_ring,sizeof(s_raw_ring));
+    return true;
+}
+bool transport_sync_source_end(sync_service_source_t *s)
+{
+    if(!s || !s->leased)return false;
+    bool ok=transport_sync_capture(&s->last) && s->faults==transport_sync_faults();
+    bool current=transport_raw_read_end(&s->token);
+    s->leased=false;
+    return ok && current;
 }
 
 /* Sampling phase: holding the RX divider one count higher for ~1 us moves

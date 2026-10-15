@@ -3,11 +3,11 @@ idf_component_register(
         "main.c" "rf.c" "phy.c" "arc_phy.c" "transport.c" "gain.c" "receiver.c"
         "control.c" "calibration.c" "menu.c" "menu_raster.c" "analog_video_detect.c"
         "settings.c" "console.c" "profile.c" "diag.c"
-        "sync_flywheel.c" # manual private-RAM benchmark only; no keeper task
+        "sync_flywheel.c" "sync_service.c" # manual read-only W diagnostic; no keeper writer
     INCLUDE_DIRS "."
     REQUIRES esp_wifi esp_phy nvs_flash esp_event esp_netif esp_driver_parlio
              esp_driver_gpio esp_driver_bitscrambler esp_driver_usb_serial_jtag
-             esp_driver_tsens esp_timer esp_mm hal heap esp_hw_support esp_app_format)
+             esp_driver_tsens esp_driver_gptimer esp_timer esp_mm hal heap esp_hw_support esp_app_format)
 
 target_bitscrambler_add_src("u85q.bsasm")
 target_bitscrambler_add_src("u85q_lp.bsasm")

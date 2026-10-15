@@ -138,7 +138,7 @@ class TransportRuntimeTest(unittest.TestCase):
         end = source.index("/* Manual J probe:", begin)
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            for name in ("sync_transport_probe.h", "dma_progress.h", "sync_memory_frontier.h"):
+            for name in ("sync_transport_probe.h", "dma_progress.h", "sync_memory_frontier.h", "raw_history.h"):
                 (folder / name).write_bytes((ROOT / "main" / name).read_bytes())
             (folder / "probe.c").write_text(PREFIX + source[begin:end] + SUFFIX, encoding="utf-8")
             binary = folder / "runtime"

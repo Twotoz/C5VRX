@@ -1,6 +1,7 @@
 /* C5VRX-5 by Twotoz and the C5VRX contributors: USB serial console.
  * Polled, never paces the realtime path. */
 #include "receiver.h"
+#include "sync_service.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "esp_app_desc.h"
@@ -23,6 +24,7 @@ static void status(void)
     profile_print();
     calibration_print();
     transport_print();
+    sync_service_print();
 }
 
 /* 8190 contiguous IQ bytes as hex lines (tools/capture_iq_snapshot.py). */
@@ -67,6 +69,7 @@ static void help(void)
            "  g OUTPUT 0.5x..5.0x in 0.5x steps (saved after application; restored at boot),\n"
            "  A live VTX profile switch on/off (continuous matching every 30 s; off = report only),\n"
            "  ~ bench: bounded native AGC every 20 ms (RAM-only, OFF at boot; after startup),\n"
+           "  W bench: read-only continuous sync detector toggle (OFF at boot),\n"
            "  J bench: private-RAM sync synthesis/copy timing (no live writes),\n"
            "  B bench: restart live transport without OSD (interrupts video; issue #213 A/B),\n"
            "  N black NO SIGNAL fallback on/off (default OFF: preserve real snow; bench only),\n"
@@ -113,6 +116,7 @@ static void console_task(void *arg)
             case 'T': status(); break;
             case 'I': snapshot(); break;
             case 'J': transport_sync_bench(); break;
+            case 'W': sync_service_toggle(); break;
             case 'F': filter_request(); break;
             case 'D': diag_report(); break;
             case 'M': receiver_print_map(); break;

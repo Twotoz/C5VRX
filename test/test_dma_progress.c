@@ -77,14 +77,12 @@ static void continuous_oracle(unsigned rx_rotation, unsigned tx_rotation, unsign
         assert((uint64_t)((int64_t)rp + shift) >= f.rx_lo && (uint64_t)((int64_t)rp + shift) < f.rx_hi);
         assert((uint64_t)((int64_t)tp + shift) >= f.tx_lo && (uint64_t)((int64_t)tp + shift) < f.tx_hi);
         assert(f.tx_prefetch_hi == f.tx_hi + cap.tx_prefetch_bytes);
-        assert(f.protected_begin < f.rx_lo && f.rx_lo - f.protected_begin <= (balanced ? 8216u : 4124u));
-        unsigned ri = (unsigned)dma_progress_index(&rx, descriptor(&rx, rp));
-        uint64_t protected_distance = 0;
-        do {
-            ri = (ri + 8u) % 9u;
-            protected_distance += rx.nodes[ri].bytes;
-        } while (rx.nodes[ri].bytes < 4092u);
-        assert(f.rx_lo - f.protected_begin == protected_distance);
+        unsigned protected_distance=balanced ? 8280u : 8256u;
+        assert(p.protected_history_bytes==protected_distance);
+        assert(f.protected_begin==((f.rx_lo-protected_distance)&~63ull));
+        assert(f.rx_lo-f.protected_begin>=protected_distance &&
+               f.rx_lo-f.protected_begin<protected_distance+64u);
+        assert(f.rx_lo-f.protected_begin>=8192u+64u);
         assert(f.snapshot_first_us == time && f.snapshot_last_us == time + 1u);
         assert(f.epoch == 1u && f.generation == 5u);
     }
@@ -99,6 +97,8 @@ int main(void)
     dma_progress_capture_t c = capture(&rx, &tx, 21000, 5000, 1000);
     dma_progress_t p; dma_progress_init(&p);
     dma_progress_frontiers_t f;
+    f.valid=true;
+    assert(dma_progress_export(&p,&c,&f)==DPG_NOT_READY && !f.valid && !p.ready);
     assert(dma_progress_layout_valid(&rx) && dma_progress_layout_valid(&tx));
     dma_progress_layout_t all_short = rx;
     for (unsigned i = 0; i < 9; ++i) {
@@ -172,7 +172,8 @@ int main(void)
     c = capture(&rx, &tx, 32820, 16080, 1002);
     assert(dma_progress_update(&p, &c, &f) == DPG_OK);
     assert(f.rx_lo == tail_begin + 32u && f.rx_hi - f.rx_lo == 4092u);
-    assert(f.protected_begin == f.rx_lo - 4124u);
+    assert(p.protected_history_bytes==8256u);
+    assert(f.protected_begin == ((f.rx_lo - 8256u)&~63ull));
     assert(f.source_fresh_from == tail_begin + 32u);
     /* RX can move legally while TX has an impossible descriptor jump. The
      * partially successful RX unwrap must not be published or committed. */

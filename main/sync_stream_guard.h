@@ -14,7 +14,7 @@ typedef struct {
     uint64_t rx_complete;       /* start of validated current RX descriptor */
     uint64_t rx_upper;          /* end of that descriptor */
     uint64_t tx_upper;          /* end of validated TX descriptor + proven prefetch */
-    uint64_t protected_begin;   /* newest completed long raw observer node */
+    uint64_t protected_begin;   /* beginning of all protected CPU-reader history */
     uint32_t ring_bytes, rate_hz;
     uint32_t snapshot_age_us, operation_bound_us;
     uint32_t rx_backlog_bytes;  /* proven extra FIFO/in-flight bytes beyond rx_upper */

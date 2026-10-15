@@ -53,6 +53,14 @@ raw data. The endpoints API is constrained to its actual scanner requirement.
 Actual-source wrapper tests check invalid/overflow-sized requests, maximum
 valid sizes, no inner-copy calls on rejection and no leaked reader tokens.
 
+`dma_progress` now caches the validated layout's protected-history size once
+at bootstrap. Each later export subtracts that cached size from the active
+RX descriptor start and rounds down to64bytes; it does not repeat the layout
+search on each poll. Actual geometry reserves8280bytes before alignment;
+the older8×4092+32layout reserves8256bytes. Unknown/unready cache state fails
+closed. This strengthens the diagnostic bound without promoting its physical
+publication flags or enabling a writer.
+
 ## Why a ledger test on every private copy is avoidable
 
 A repair admitted before`R-H` is older than every reader's current source

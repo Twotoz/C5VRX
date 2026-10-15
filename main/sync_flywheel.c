@@ -9,10 +9,32 @@
 
 #ifdef ESP_PLATFORM
 #include "esp_attr.h"
+#include "esp_cpu.h"
 #define SFW_HOT IRAM_ATTR
 #else
 #define SFW_HOT
 #endif
+
+static inline __attribute__((always_inline)) uint32_t bench_tick(const sfw_ring_t *r)
+{
+    if (!r->benchmark_profile) return 0;
+#ifdef SFW_BENCH_CLOCK
+    return SFW_BENCH_CLOCK();
+#elif defined(ESP_PLATFORM)
+    return esp_cpu_get_cycle_count();
+#else
+    return 0;
+#endif
+}
+
+static inline __attribute__((always_inline)) void bench_selection_done(const sfw_ring_t *r, unsigned masks)
+{
+    if (r->benchmark_profile) {
+        r->benchmark_profile->minmask_builds = masks;
+        r->benchmark_profile->selection_done = bench_tick(r);
+        r->benchmark_profile->stage_mask |= 16u;
+    }
+}
 
 /* ITU-R BT.470 geometry in 40 MS/s samples. */
 #define HSYNC          188u   /* 4.7 us */
@@ -205,7 +227,15 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
      * only tokens tied at that minimum can possibly win the phase tie-break. */
     uint32_t minimum_tokens[32] = {0};
     uint8_t minimum_code[32];
-    if (!decoder_prefix(f, r, a, states, counts, last)) return false;
+    unsigned masks_built = 0;
+    bool prefix_ok = decoder_prefix(f, r, a, states, counts, last);
+    if (r->benchmark_profile) {
+        r->benchmark_profile->prefix_done = bench_tick(r);
+        r->benchmark_profile->stage_mask |= 4u;
+        r->benchmark_profile->prefix_states[0] = prefix_ok ? (uint8_t)counts[0] : 0;
+        r->benchmark_profile->prefix_states[1] = prefix_ok ? (uint8_t)counts[1] : 0;
+    }
+    if (!prefix_ok) return false;
     for (unsigned phase = 0; phase < 256u; ++phase) {
         uint8_t raw = s_cell[phase];
         unsigned address = (raw >> 4) | ((raw & 15u) << 4);
@@ -219,6 +249,7 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
         if (!(available & (1u << token))) cells[token] = raw;
         available |= 1u << token;
     }
+    if (r->benchmark_profile) { r->benchmark_profile->regular_done = bench_tick(r); r->benchmark_profile->stage_mask |= 8u; }
     unsigned previous_phase = ph_at(r, a - 1u);
     for (unsigned k = 0; k < low; ++k) {
         unsigned parity = (unsigned)((a + k) & 1u);
@@ -238,7 +269,8 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
                     if (code < lowest) { lowest = code; tied = 0; }
                     if (code == lowest) tied |= UINT32_C(1) << token;
                 }
-                if (!tied) return false;
+                if (!tied) { bench_selection_done(r, masks_built); return false; }
+                ++masks_built;
                 minimum_tokens[only_phase] = tied;
                 minimum_code[only_phase] = (uint8_t)lowest;
             }
@@ -259,7 +291,7 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
             unsigned score = (worst << 20) + (sum << 8) + (unsigned)error;
             if (score < best) { best = score; worst_best = worst; chosen = cells[token]; }
         }
-        if (worst_best > 8u) return false;
+        if (worst_best > 8u) { bench_selection_done(r, masks_built); return false; }
         tip[k] = chosen;
         unsigned other = parity ^ 1u;
         uint8_t endpoint = k ? tip[k - 1u] : r->ring[(uint32_t)(a - 1u) & (r->ring_bytes - 1u)];
@@ -267,6 +299,7 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
             decoder_advance(r->decoder_lut, &states[other][j], endpoint, chosen);
         previous_phase = r->phase[chosen];
     }
+    bench_selection_done(r, masks_built);
     return true;
 }
 
@@ -346,7 +379,10 @@ static SFW_HOT bool synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, u
                 for (unsigned k = 0; k < n1; ++k) r->workspace[k] = tip[k];
                 for (unsigned k = 0; k < n2; ++k)
                     r->workspace[n1 + k] = s_cell[sync_synth_next(&blank, step2)];
-                return commit_prepared(f, r, a, b);
+                if (r->benchmark_profile) { r->benchmark_profile->body_done = bench_tick(r); r->benchmark_profile->stage_mask |= 32u; }
+                bool committed = commit_prepared(f, r, a, b);
+                if (r->benchmark_profile) { r->benchmark_profile->commit_done = bench_tick(r); r->benchmark_profile->stage_mask |= 64u; }
+                return committed;
             }
             if (!sync_repair_ledger_record(&f->repairs, a, b)) return false;
             uint32_t mask = r->ring_bytes - 1u;
@@ -386,7 +422,10 @@ static SFW_HOT bool synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, u
         state.phase = (state.phase + (uint32_t)tip_lead) & 65535u;
         for (uint32_t k = 0; k < n2; ++k)
             r->workspace[n1 + k] = s_cell[sync_synth_next(&state, step2)];
-        return commit_prepared(f, r, a, b);
+        if (r->benchmark_profile) { r->benchmark_profile->body_done = bench_tick(r); r->benchmark_profile->stage_mask |= 32u; }
+        bool committed = commit_prepared(f, r, a, b);
+        if (r->benchmark_profile) { r->benchmark_profile->commit_done = bench_tick(r); r->benchmark_profile->stage_mask |= 64u; }
+        return committed;
     }
     /* The record precedes every write. Overflow conservatively taints the
      * merged span; synthesized bytes never become camera-clock evidence. */
@@ -433,6 +472,19 @@ static inline int32_t blank_step(const sync_flywheel_t *f) { return (int32_t)f->
 
 static bool private_bench_valid(const sfw_ring_t *r)
 {
+    if (r && r->benchmark_profile) {
+        uintptr_t profile = (uintptr_t)r->benchmark_profile;
+        uintptr_t raw = (uintptr_t)r->ring, workspace = (uintptr_t)r->workspace;
+        if (profile > UINTPTR_MAX - sizeof(*r->benchmark_profile) ||
+            raw > UINTPTR_MAX - r->ring_bytes || workspace > UINTPTR_MAX - r->workspace_bytes) return false;
+        uintptr_t end = profile + sizeof(*r->benchmark_profile);
+        uintptr_t lut = (uintptr_t)r->decoder_lut, phase = (uintptr_t)r->phase, context = (uintptr_t)r;
+        if (lut > UINTPTR_MAX - 2048u || phase > UINTPTR_MAX - 256u || context > UINTPTR_MAX - sizeof(*r)) return false;
+        if ((profile < raw + r->ring_bytes && raw < end) ||
+            (profile < workspace + r->workspace_bytes && workspace < end) ||
+            (profile < lut + 2048u && lut < end) || (profile < phase + 256u && phase < end) ||
+            (profile < context + sizeof(*r) && context < end)) return false;
+    }
     return r && r->ring && r->phase && r->decoder_lut && !r->commit &&
         r->ring_bytes >= 2048u && r->ring_bytes <= 8192u &&
         !(r->ring_bytes & (r->ring_bytes - 1u)) && verified_sync_step(r) &&
@@ -474,6 +526,12 @@ bool sfw_bench_prepare_private(const sfw_ring_t *r, bool pal_mode,
     if (!result) return false;
     memset(result, 0, sizeof(*result));
     if (!private_bench_valid(r) || kind < SFW_BENCH_H || kind > SFW_BENCH_FIRST_EQ) return false;
+    if (r->benchmark_profile) {
+        memset(r->benchmark_profile, 0, sizeof(*r->benchmark_profile));
+        r->benchmark_profile->minmask_in_selection = true;
+        r->benchmark_profile->begin = bench_tick(r);
+        r->benchmark_profile->stage_mask = 1u;
+    }
     build_cells(r);
     sync_flywheel_t f;
     sfw_init(&f);
@@ -488,6 +546,7 @@ bool sfw_bench_prepare_private(const sfw_ring_t *r, bool pal_mode,
     uint32_t tip = kind == SFW_BENCH_H ? HSYNC : kind == SFW_BENCH_BROAD ? half - HSYNC : 94u;
     uint32_t n1 = kind == SFW_BENCH_H ? PORCH : tip;
     uint32_t n2 = kind == SFW_BENCH_H ? tip : half - tip;
+    if (r->benchmark_profile) { r->benchmark_profile->init_done = bench_tick(r); r->benchmark_profile->stage_mask |= 2u; }
     bool ok = synth(&f, &private_ring, 512u, n1,
         kind == SFW_BENCH_H ? -1632 : f.repair_step_q8,
         n2, kind == SFW_BENCH_H ? f.repair_step_q8 : -1632, -1632,
