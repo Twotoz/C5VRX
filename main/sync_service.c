@@ -27,6 +27,8 @@ typedef struct {
     uint32_t max_gap_us, max_capture_us, done_result, max_acquire_cycles, max_track_cycles;
     uint32_t rejected, coalesced, stack_free, acquisitions, vsyncs;
     uint32_t max_begin_cycles, max_observe_cycles, max_end_cycles;
+    uint32_t prewarm_cycles;
+    const char *prewarm_reason;
     unsigned state, standard;
     bool locked;
     const char *reason;
@@ -144,7 +146,7 @@ void sync_service_print(void)
         "max_acq_evals=%lu max_track_evals=%lu budget=%u backlog_misses=%lu max_backlog=%lu "
         "rejected=%lu coalesced=%lu stack_free=%lu done_result=%lu capture_us=%lu gap_us=%lu "
         "max_acq_cycles=%lu max_track_cycles=%lu max_begin_cycles=%lu max_observe_cycles=%lu max_end_cycles=%lu state=%u standard=%u real_locked=%u "
-        "acquisitions=%lu real_v=%lu publication_proven=0 live_wcet_proven=0\n",
+        "acquisitions=%lu real_v=%lu prewarm_cycles=%lu prewarm_reason=%s prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
         active,st.reason,(unsigned long)st.turns,(unsigned long)st.calls,
         (unsigned long)st.acquire_calls,(unsigned long)st.track_calls,(unsigned long)st.max_us,
         (unsigned long)st.max_cycles,(unsigned long)st.max_acquire_evals,(unsigned long)st.max_track_evals,
@@ -153,7 +155,8 @@ void sync_service_print(void)
         (unsigned long)st.done_result,(unsigned long)st.max_capture_us,(unsigned long)st.max_gap_us,
         (unsigned long)st.max_acquire_cycles,(unsigned long)st.max_track_cycles,
         (unsigned long)st.max_begin_cycles,(unsigned long)st.max_observe_cycles,(unsigned long)st.max_end_cycles,
-        st.state,st.standard,st.locked,(unsigned long)st.acquisitions,(unsigned long)st.vsyncs);
+        st.state,st.standard,st.locked,(unsigned long)st.acquisitions,(unsigned long)st.vsyncs,
+        (unsigned long)st.prewarm_cycles,st.prewarm_reason?st.prewarm_reason:"none");
 }
 void sync_service_toggle(void)
 {
@@ -182,7 +185,17 @@ void sync_service_toggle(void)
         s_status.reason="task_create";(void)gptimer_disable(s->timer);goto failed_timer;
     }
     s_task=s->task;
-    s_status.reason="running";
+    /* Populate instruction/data caches before the periodic deadline starts.
+     * A fresh progress epoch cannot admit a kernel call here. Discard ALL
+     * resulting detector/progress/status state even if this cold pass was
+     * timely: it is never camera-clock evidence. DMA and interrupts run. */
+    uint32_t warm_start=esp_cpu_get_cycle_count();
+    const char *warm_reason=service_turn(s);
+    uint32_t warm_cycles=esp_cpu_get_cycle_count()-warm_start;
+    sfw_init(&s->detector);
+    memset(&s->progress,0,sizeof(s->progress));
+    s_status=(service_status_t){.reason="running",.prewarm_cycles=warm_cycles,
+        .prewarm_reason=warm_reason?warm_reason:"ok"};
     if(gptimer_start(s->timer)!=ESP_OK) {s_status.reason="timer_start";s_stop=true;xTaskNotifyGive(s_task);}
     sync_service_print();return;
 failed_timer:

@@ -12,9 +12,10 @@ idf_component_register(
 target_bitscrambler_add_src("u85q.bsasm")
 target_bitscrambler_add_src("u85q_lp.bsasm")
 
-# Pulse preparation must not inherit the application's debug-oriented -Og.
+# Pulse preparation and bounded metadata service must not inherit the
+# application's debug-oriented -Og.
 # Keep the rest of the firmware's optimization/debug policy unchanged.
-set_source_files_properties(sync_flywheel.c PROPERTIES COMPILE_OPTIONS "-O2")
+set_source_files_properties(sync_flywheel.c sync_service.c PROPERTIES COMPILE_OPTIONS "-O2")
 
 # Filter capacitor and DC DAC access uses PHY internals recovered from this
 # exact ESP-IDF 6.0.2 libphy; any other PHY binary builds with them refused.

@@ -80,6 +80,8 @@ static uint32_t ulTaskNotifyTake(int clear,uint32_t wait){assert(clear&&wait==po
 int main(void){
  sync_service_toggle();assert(s_active&&timer_started&&task_live);
  service_t *s=task_arg;
+ assert(!s->progress.ready&&!s->source.leased&&!s_status.turns&&!s_status.calls&&!s_status.locked);
+ assert(s_status.prewarm_reason&&!strcmp(s_status.prewarm_reason,"ok"));
  assert(cb.on_alarm(s->timer,NULL,cbarg)&&notifications==1&&turn_count==0);
  /* Seed a valid prior relative epoch, then advance past one fresh ring. */
  sync_done_observation_t o;
