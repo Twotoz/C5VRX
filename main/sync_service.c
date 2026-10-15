@@ -121,7 +121,12 @@ static void service_task(void *arg)
     for(;;) {
         uint32_t notifications=ulTaskNotifyTake(pdTRUE,portMAX_DELAY);
         if(s_stop){s_status.reason="manual_stop";break;}
-        if(notifications!=1){++s_status.coalesced;s_status.reason="coalesced";break;}
+        if(!notifications){s_status.reason="notification_empty";break;}
+        /* A delayed wake is not evidence of a lost DMA epoch. Count merged
+         * alarms, then let actual DONE timestamps/hidden-lap/context checks
+         * decide whether this newest turn is usable. Never replay one
+         * detector turn per queued notification against the same bytes. */
+        if(notifications>1 && s_status.coalesced!=UINT32_MAX)++s_status.coalesced;
         const char *why=service_turn(s);
         if(why){s_status.reason=why;break;}
         s_status.stack_free=(uint32_t)uxTaskGetStackHighWaterMark(NULL);

@@ -76,7 +76,7 @@ bool transport_sync_source_begin(sync_service_source_t *s,bool discover){
 bool transport_sync_source_end(sync_service_source_t *s){assert(s->leased);s->leased=false;++end_count;if(mutate_context)++s->last.context.gain;return !fail_end;}
 """
 SUFFIX = r"""
-static uint32_t ulTaskNotifyTake(int clear,uint32_t wait){assert(clear&&wait==portMAX_DELAY);if(cleanup_after){s_stop=true;cleanup_after=0;}unsigned n=notifications;notifications=0;return n;}
+static uint32_t ulTaskNotifyTake(int clear,uint32_t wait){assert(clear&&wait==portMAX_DELAY);if(cleanup_after && !--cleanup_after)s_stop=true;unsigned n=notifications;notifications=0;return n;}
 int main(void){
  sync_service_toggle();assert(s_active&&timer_started&&task_live);
  service_t *s=task_arg;
@@ -93,8 +93,12 @@ int main(void){
  fail_end=true;now+=80;assert(!strcmp(service_turn(s),"source_end")&&!s_status.locked&&!s->source.leased);fail_end=false;
  mutate_context=true;now+=80;assert(!strcmp(service_turn(s),"source_changed")&&!s->source.leased);mutate_context=false;
  overrun=true;now+=80;assert(!strcmp(service_turn(s),"service_overrun")&&!s_status.locked&&!s->source.leased);overrun=false;
- notifications=2;if(!setjmp(deleted))service_task(s);
+ /* Two merged alarms cause one fresh source observation, never two kernel
+  * replays or an unobserved camera clock. The next wake requests stop. */
+ unsigned prior_turns=s_status.turns;
+ notifications=2;cleanup_after=2;if(!setjmp(deleted))service_task(s);
  assert(!s_active&&!task_live&&!timer_live&&!timer_enabled&&!timer_started&&s_status.coalesced==1);
+ assert(s_status.turns==prior_turns+1 && !strcmp(s_status.reason,"manual_stop"));
  /* Start again without reboot; manual stop frees task/timer/context again. */
  sync_service_toggle();assert(s_active);s=task_arg;sync_service_toggle();
  if(!setjmp(deleted))service_task(s);
