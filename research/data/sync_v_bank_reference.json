@@ -1,0 +1,13 @@
+{
+  "core_sha256": "acdf35c16ce0688eb735878a5ad8c74fafb24f8d3c218a2006fb8eb88ea18d2a",
+  "bridge": "start",
+  "hardware_timing_claim": false,
+  "tip_period_bytes": 229376,
+  "blank_period_bytes": 2048,
+  "scenes": [],
+  "transition_csv": "research/data/sync_v_bank_reference.csv",
+  "phase_baseline": "research/data/sync_v_phase_start_baseline.csv.gz",
+  "phase_bank": "research/data/sync_v_phase_start_bank.csv.gz",
+  "phase_baseline_csv_sha256": "92df5f8374ca9ac582a4c71e396291426685bcb538bc949f0eb30701fb197316",
+  "phase_bank_csv_sha256": "a00db74a796205e817d818f842fab68e3f999aa343c11d290652d35a2324c627"
+}

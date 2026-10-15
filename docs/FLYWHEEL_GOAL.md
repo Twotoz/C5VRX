@@ -80,6 +80,23 @@ when complete fade/return scenes still fail.
 
 ### Integrated H period bank
 
+Source `23588c1`, `5.0.0-pr.212-sync-tip-bind`, is flashed/hash-verified as
+`7d703bfe9becc522851fcc9cca32b9110ce33ab2dfa074057b7df29d50c2fa4f`.
+All16 private J preparations pass with zero transport faults. FirstEQ's best
+row is423us; other row minima are about0.8ms under normal preemption. Ordinary
+V still has outliers up to36.8ms in this low-priority diagnostic. See
+board_j_tip_bind_2026-10-15.json/.txt: this is improved preparation, not live
+publication. The user confirmed VTX off during these J tests. With VTX then on,
+the ordinary receiver reports NTSC/AFC locked at G53; after VTX off it returns
+to G83/AFC unlocked. No flywheel camera-clock claim is made from that control
+diagnostic.
+
+The read-service profile `811fdb0` is physically tested in three starts, each
+ending before a kernel call:118-142us. DONE observation uses14378-15842 cycles
+(about60-66us), source begin5590-6695 and source end3684-5642 cycles. These
+measurements justify investigating metadata cost rather than changing waveform
+tests. They are retained in board_w_read_profile_2026-10-15.json/.txt.
+
 The first policy image could not allocate J's11136-byte contiguous block on the
 C5 despite18432 bytes total free heap; neither J attempt ran. The adapter now
 uses a2048-byte private source ring:512-byte start plus1280-byte maximum pulse
