@@ -77,6 +77,8 @@ jobs:
           /tmp/test_sync_private_bench
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_prefix_equivalence.c -o /tmp/test_sync_prefix_equivalence
           /tmp/test_sync_prefix_equivalence
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main -I../research test_sync_read_turn.c -o /tmp/test_sync_read_turn
+          /tmp/test_sync_read_turn
           # Live repair stays host-only; firmware offers private J and read-only W diagnostics.
           cc -O2 -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -I../main test_sync_flywheel.c ../main/sync_flywheel.c -lm -o /tmp/test_sync_flywheel
           for kp in 0 1 2 3 4 5 6 7; do
