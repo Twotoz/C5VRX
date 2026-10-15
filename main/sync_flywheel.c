@@ -84,9 +84,16 @@ static SFW_HOT bool original(sync_flywheel_t *f, uint64_t begin, uint64_t end)
     return ok;
 }
 
+/* Keep the optional instrumentation out of unrolled phase-load sites.
+ * Inlining its64-bit envelope bookkeeping into every site consumes scarce
+ * IRAM even when the ordinary renderer leaves accounting disabled. */
+static SFW_HOT __attribute__((noinline)) void note_source_read(sync_read_extent_t *extent, uint64_t k)
+{
+    sync_read_extent_note(extent,k);
+}
 static inline uint8_t ph_at(const sfw_ring_t *r, uint64_t k)
 {
-    if(r->read_extent)sync_read_extent_note(r->read_extent,k);
+    if(r->read_extent)note_source_read(r->read_extent,k);
 #ifdef SFW_PHASE_READ
     SFW_PHASE_READ(); /* host-only exact work instrumentation */
 #endif
