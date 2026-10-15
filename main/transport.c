@@ -935,7 +935,9 @@ static bool transport_bench_cache_result(esp_err_t error)
 void transport_sync_bench(void)
 {
     if (sync_service_active()) { printf("SYNC_BENCH refused=service_active writes_live=0\n"); return; }
-    enum { PRIVATE_RING=4096, WORKSPACE=1280, LUT_BYTES=2048, REFERENCE_BYTES=2048,
+    /* The fixed512-byte start plus the longest1280-byte pulse fits2048.
+     * Keep the transient benchmark allocation below fragmented heap blocks. */
+    enum { PRIVATE_RING=2048, WORKSPACE=1280, LUT_BYTES=2048, REFERENCE_BYTES=2048,
            COPY_BYTES=1344, PHASE_BYTES=256,
            ALLOCATION=PRIVATE_RING+WORKSPACE+LUT_BYTES+REFERENCE_BYTES+COPY_BYTES+64+PHASE_BYTES };
     static portMUX_TYPE copy_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -967,9 +969,9 @@ void transport_sync_bench(void)
     bool warm=sfw_bench_prewarm(&ring);
     uint32_t warm_cycles=esp_cpu_get_cycle_count()-c0;
     uint64_t warm_us=(uint64_t)(esp_timer_get_time()-t0);
-    printf("SYNC_BENCH begin private_bytes=%u input=private_synthetic writes_live=0 first_call=%u "
+    printf("SYNC_BENCH begin private_bytes=%u private_ring=%u input=private_synthetic writes_live=0 first_call=%u "
            "prewarm_cycles=%lu prewarm_us=%llu kp=%u lp=%u output=%u stream_gen=%lu "
-           "cpu_hz=%lu phase_ram=1 reference_ram=1 irq_latency_measured=0 live_wcet_proven=0\n",ALLOCATION,first_call,(unsigned long)warm_cycles,
+           "cpu_hz=%lu phase_ram=1 reference_ram=1 irq_latency_measured=0 live_wcet_proven=0\n",ALLOCATION,PRIVATE_RING,first_call,(unsigned long)warm_cycles,
            (unsigned long long)warm_us,kp_level_x100[context.level],context.lp,context.output,
            (unsigned long)context.generation,(unsigned long)esp_clk_cpu_freq());
     bool valid=warm;

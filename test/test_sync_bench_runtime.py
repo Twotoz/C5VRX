@@ -35,7 +35,7 @@ typedef int portMUX_TYPE;
 #define portMUX_INITIALIZER_UNLOCKED 0
 static uint8_t s_raw_ring[32768];
 static uint16_t s_lut_live[1024];
-static _Alignas(64) uint8_t allocation[11136];
+static _Alignas(64) uint8_t allocation[9088];
 static bool s_started=true,s_have_verified=true,s_lut_known=true,s_transport_fault;
 static bool s_stream_generation_overflow,s_menu_active,s_rx_enabled=true,s_tx_enabled=true,s_bs_enabled=true;
 static bool s_prog_lp=true,s_verified_lp=true;
@@ -76,12 +76,16 @@ static int recorded_printf(const char *fmt,...){
     assert(n>0 && (size_t)n<sizeof(log_text)-log_bytes);log_bytes+=(size_t)n;return n;
 }
 static bool instrumented_prepare(const sfw_ring_t*r,bool pal,sfw_bench_kind_t kind,sfw_private_pulse_t*p){
-    assert(!critical && !suspended && r->ring==allocation && r->workspace==allocation+4096);
-    assert(r->phase==allocation+10880 && !memcmp(r->phase,c5vrx_phase8_gain_lut,256));
-    assert(r->reference_lut==(uint16_t*)(allocation+7424));
+    assert(!critical && !suspended && r->ring==allocation && r->workspace==allocation+2048);
+    assert(r->ring_bytes==2048);
+    assert(r->phase==allocation+8832 && !memcmp(r->phase,c5vrx_phase8_gain_lut,256));
+    assert(r->reference_lut==(uint16_t*)(allocation+5376));
     assert(r->verified_output==s_verified_output &&
         sync_lut_context_matches(r->decoder_lut,r->reference_lut,r->verified_output));
+    uint8_t source[2048];memcpy(source,r->ring,sizeof(source));
     ++prepares;bool ok=sfw_bench_prepare_private(r,pal,kind,p);
+    assert(!memcmp(source,r->ring,sizeof(source)));
+    if(ok)assert(p->start>=130u && p->start+p->bytes<r->ring_bytes);
     if(change_during_prepare)++s_stream_generation;
     return ok;
 }
