@@ -294,3 +294,51 @@ work; no live writer or monitor-lock claim is enabled.
 
 Full capture rows/hashes for both images are retained in
 `research/data/board_w_read_{iram,exact}_2026-10-15.{json,txt}`.
+
+### Paired slow-turn costs and read-task memory (2026-10-15)
+
+`30ef871` places the periodic service and source adapters in IRAM; the source
+adapters also use local O2 rather than changing the whole transport file's
+optimization. One read-only run reaches95 kernel calls and rejects at86 us;
+DONE observation maximum falls to1197 cycles (about5 us). Two later task
+creations fail with12612 bytes free in total, so this image does not establish
+reliable restart/allocation. Full rows are in board_w_read_meta_2026-10-15.
+
+`494eb79` reduces only the read-only task's stack reservation to3072 bytes.
+Pinned target compiler -fstack-usage reports service_task32, service_turn128,
+sfw_run192, build_cells1056, acquire96, lowm16 bytes. The largest core chain
+includes build_cells; transport and RTOS calls still need margin. Future
+synthesis/publication needs separate stack qualification. `ad1525a` adds
+components of the SAME maximum-cycle turn, avoiding subtraction of unrelated
+stage maxima. All three actual-source/service runtime tests pass, including
+component sum and kernel-cycle accounting. The3KiB/split image's three starts
+all succeed; exit watermarks are2400/2536/2404 bytes free. All stop on timing,
+not allocation:86/86/91 us. In the first slow turn, cycles are begin2999,
+observe1097, kernel14722, end1584, other372: total20774, or86.6 us at240MHz.
+That is about12.5 +4.6 +61.3 +6.6 +1.6 us, not81 us of unidentified work.
+Full rows and hashes are in board_w_read_split_2026-10-15.
+
+`02d8e55` separates the small hot sfw_run dispatcher from the large noinline
+tracking body and avoids calling build_cells when its existing immutable
+phase/mask cache already matches. This preserves the existing cache contract,
+source/taint gates and complete tracking loop. The dispatcher occupies952
+IRAM bytes; the7292-byte tracking body remains in flash. One million scalar
+coarse comparisons, one million rolling comparisons and the full kp0.85
+PAL/NTSC keeper scene suite pass after the split.
+
+This image is currently flashed, version5.0.0-pr.212-sync-read-dispatch,
+application SHA256
+`01f784045c3b4edbe8ffcafaea38f8273a178062b9957b49e968d577f8fc2f08`,
+with flash hash verification. All three starts allocate successfully and stop
+on the unchanged80us deadline at84/81/88 us, after93/1/1 actual kernel calls.
+The paired worst kernel costs are6586/10179/11437 cycles (27.4/42.4/47.7 us).
+In the first run, source-begin costs9336 cycles (38.9 us), so the limiting
+stage varies; no single aggregate maximum proves a universal speedup. Stack
+watermarks remain2524/2548/2548 bytes free. No coalesced alarms or unstable
+captures occur. Full rows/hashes: board_w_read_dispatch_2026-10-15.
+
+All these measurements are VTX-off/read-only. Sustained source tracking,
+bounded live publication and physical PAL/NTSC monitor lock remain unproven;
+the live writer is still absent. Next work must reduce remaining source/kernel
+tail costs and then test genuine camera acquisition, rather than declare
+completion from an81us near miss or the now-fast5us DONE check.
