@@ -263,3 +263,34 @@ metadata costs, rather than the removed stack scan. Coarse discovery already
 uses full-byte phase-table lookups; simply masking IQ bits does not eliminate
 those lookups. Any reduced-precision detector needs weak-signal qualification.
 The live flywheel/output writer remains unimplemented and disabled.
+
+### Acquisition instruction placement and exact coarse rejection (2026-10-15)
+
+`5db9929` separates the acquisition loop from the large TRACK body and puts it
+and original-source provenance checks in IRAM. The ELF confirms `acquire` at
+0x4080325a (1126 bytes) and `original` at0x40802fa4 (228 bytes). Three actual
+read-only starts run109/4/108 acquisition calls before unchanged deadline
+rejection at95/95/97 us. These remain short runs, not sustained lock evidence.
+
+`608f34c` adds exact coarse-window rejection: after each unwrapped phase step,
+reject only when even -128 for every remaining step cannot reach the original
+nine-step threshold. No IQ bits, thresholds, pulse gates or provenance checks
+are removed. Unlike overlapping fine probes, coarse probes do not populate the
+rolling cache. One million independent scalar comparisons pass, including
+wraparound, altered phase maps and all threshold bins; phase reads total
+8002198 rather than10000000. The original million-case rolling test and full
+kp0.85 PAL/NTSC keeper scenes also pass after this change.
+
+The exact-rejection image is flashed with verified SHA256
+`31c9320ac5732a95650754783d878db0b4edd43815b4ac05ae217da5870856e1`,
+version `5.0.0-pr.212-sync-read-exact`. Three VTX-off read-only starts stop at
+89/82/102 us total, with1/37/1 actual acquisition calls and maximum measured
+kernel7919/10042/8874 cycles (about33/42/37 us at240MHz). No coalesced alarms
+or unstable observations occur. These are different received-noise traces and
+run lengths; the maxima are observations, not paired speedup or WCET proofs.
+Metadata source-begin/end spikes remain material (begin maximum up to10850
+cycles, end up to7296). Read timing and eventually live publication still need
+work; no live writer or monitor-lock claim is enabled.
+
+Full capture rows/hashes for both images are retained in
+`research/data/board_w_read_{iram,exact}_2026-10-15.{json,txt}`.
