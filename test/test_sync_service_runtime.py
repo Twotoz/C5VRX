@@ -126,6 +126,8 @@ class ServiceRuntimeTest(unittest.TestCase):
         prefix=bridge.PREFIX.replace('#include "sync_transport_probe.h"','#include "sync_transport_probe.h"\n#include "sync_service.h"')
         prefix=prefix.replace('} AHB_DMA;', 'struct {reg_t raw;} in_intr[3],out_intr[3]; } AHB_DMA;')
         prefix=prefix.replace('} PARL_IO;', 'struct {unsigned tx_fifo_rempty_int_raw,rx_fifo_wovf_int_raw;} int_raw; } PARL_IO;')
+        prefix=prefix.replace('static uint64_t esp_timer_get_time(void) {timer+=2;return timer;}',
+            'static void (*capture_tick)(void);\nstatic uint64_t esp_timer_get_time(void) {if(capture_tick)capture_tick();timer+=2;return timer;}')
         prefix+=r"""
 static struct {struct {unsigned eof_overload;} state[2];} BITSCRAMBLER;
 #define BITSCRAMBLER_DIR_TX 1
@@ -141,6 +143,14 @@ static void sync_dma_m2c(const void *p,size_t n){assert(p==s_raw_ring&&n==sizeof
         adapter=source[source.index('/* Manual W detector:'):source.index('/* Sampling phase:')]
         init=bridge.SUFFIX[bridge.SUFFIX.index('static void initialize(void)'):bridge.SUFFIX.index('static void probe(void)')]
         body=r"""
+static unsigned capture_ticks,crossings;
+static void cross_done(void){
+ ++capture_ticks;
+ if(crossings && (capture_ticks==3 || capture_ticks==5)){
+  unsigned i=capture_ticks==3?5:6;
+  AHB_DMA.done_des_addr[0].in_done_des_addr.val=(uint32_t)(uintptr_t)&rx_desc[i];--crossings;
+ }
+}
 int main(void){
  initialize();sync_service_source_t s={0};
  unsigned char before[sizeof(AHB_DMA)+sizeof(PCR)+sizeof(PARL_IO)];
@@ -154,6 +164,19 @@ int main(void){
  assert(!memcmp(raw_before,s_raw_ring,sizeof(raw_before))&&!memcmp(before,&AHB_DMA,sizeof(AHB_DMA)));
  assert(!memcmp(before+sizeof(AHB_DMA),&PCR,sizeof(PCR)));
  assert(!memcmp(before+sizeof(AHB_DMA)+sizeof(PCR),&PARL_IO,sizeof(PARL_IO)));
+ /* A single completion edge is retried in the same lease; two crossings
+  * stay unstable rather than inventing a completed interval. */
+ capture_ticks=0;crossings=1;capture_tick=cross_done;
+ assert(transport_sync_source_begin(&s,false)&&capture_ticks==6);
+ assert(s.first.done==(uintptr_t)&rx_desc[5]&&s.last.done==s.first.done);
+ assert(transport_sync_source_end(&s));
+ AHB_DMA.done_des_addr[0].in_done_des_addr.val=(uint32_t)(uintptr_t)&rx_desc[4];
+ capture_ticks=0;crossings=2;
+ assert(transport_sync_source_begin(&s,false)&&capture_ticks==6);
+ sync_done_progress_t progress={0};sync_done_observation_t observation;
+ assert(sync_done_observe(&progress,&s.layout,&s.first,&s.last,&observation)==SDP_UNSTABLE);
+ assert(!progress.ready&&transport_sync_source_end(&s));
+ capture_tick=NULL;
  assert(transport_sync_source_begin(&s,false));++s_gain_epoch;
  assert(!transport_sync_source_end(&s)&&!s.leased&&!raw_access_readers(&s_raw_access));
  s_menu_active=true;assert(!transport_sync_source_begin(&s,false)&&!s.leased);s_menu_active=false;

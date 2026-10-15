@@ -1365,7 +1365,16 @@ bool transport_sync_source_begin(sync_service_source_t *s, bool discover)
         (void)xTaskResumeAll();
         ok=ok && dma_progress_layout_valid(&s->layout);
     }
-    ok=transport_sync_capture(&s->last) && ok &&
+    ok=transport_sync_capture(&s->last) && ok;
+    /* A normal DONE edge between captures is not a missed service wake.
+     * Retry the paired observation once, immediately, under the same READ
+     * lease. No raw reads have occurred and no progress was accepted yet.
+     * A second crossing remains UNSTABLE; all lifetime/time checks remain. */
+    if(ok && s->first.done!=s->last.done) {
+        s->first=s->last;
+        ok=transport_sync_capture(&s->last);
+    }
+    ok=ok &&
         raw_access_same(s->token.context,s->last.context) && s->faults==transport_sync_faults();
     if(!ok){(void)transport_sync_source_end(s);return false;}
     sync_dma_m2c(s_raw_ring,sizeof(s_raw_ring));

@@ -21,6 +21,7 @@ typedef struct {
     gptimer_handle_t timer;
     TaskHandle_t task;
     uint64_t alarm_last_us;
+    uint64_t wake_last_us;
 } service_t;
 typedef struct {
     uint32_t turns, calls, acquire_calls, track_calls, max_us, max_cycles;
@@ -31,6 +32,7 @@ typedef struct {
     uint32_t prewarm_cycles;
     const char *prewarm_reason;
     uint32_t alarms, alarm_min_us, alarm_max_us;
+    uint32_t unstable, max_wake_gap_us;
     unsigned state, standard;
     bool locked;
     const char *reason;
@@ -80,6 +82,7 @@ static const char *service_turn(service_t *s)
     uint32_t after_observe=esp_cpu_get_cycle_count();
     if(after_observe-after_begin>s_status.max_observe_cycles)s_status.max_observe_cycles=after_observe-after_begin;
     s_status.done_result=(uint32_t)result;
+    if(result==SDP_UNSTABLE && s_status.unstable!=UINT32_MAX)++s_status.unstable;
     const char *why=NULL;
     if(result!=SDP_OK && result!=SDP_UNSTABLE)why="done_guard";
     if(result==SDP_OK && o.done_end-o.fresh_from>=DMA_PROGRESS_RING && o.newly_completed) {
@@ -134,6 +137,12 @@ static void service_task(void *arg)
         uint32_t notifications=ulTaskNotifyTake(pdTRUE,portMAX_DELAY);
         if(s_stop){s_status.reason="manual_stop";break;}
         if(!notifications){s_status.reason="notification_empty";break;}
+        uint64_t wake_now=(uint64_t)esp_timer_get_time();
+        if(s->wake_last_us && wake_now>=s->wake_last_us) {
+            uint64_t gap=wake_now-s->wake_last_us;
+            if(gap<=UINT32_MAX && gap>s_status.max_wake_gap_us)s_status.max_wake_gap_us=(uint32_t)gap;
+        }
+        s->wake_last_us=wake_now;
         /* A delayed wake is not evidence of a lost DMA epoch. Count merged
          * alarms, then let actual DONE timestamps/hidden-lap/context checks
          * decide whether this newest turn is usable. Never replay one
@@ -163,7 +172,7 @@ void sync_service_print(void)
         "max_acq_evals=%lu max_track_evals=%lu budget=%u backlog_misses=%lu max_backlog=%lu "
         "rejected=%lu coalesced=%lu stack_free=%lu done_result=%lu capture_us=%lu gap_us=%lu "
         "max_acq_cycles=%lu max_track_cycles=%lu max_begin_cycles=%lu max_observe_cycles=%lu max_end_cycles=%lu state=%u standard=%u real_locked=%u "
-        "acquisitions=%lu real_v=%lu prewarm_cycles=%lu prewarm_reason=%s alarms=%lu alarm_min_us=%lu alarm_max_us=%lu prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
+        "acquisitions=%lu real_v=%lu prewarm_cycles=%lu prewarm_reason=%s alarms=%lu alarm_min_us=%lu alarm_max_us=%lu unstable=%lu wake_gap_us=%lu prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
         active,st.reason,(unsigned long)st.turns,(unsigned long)st.calls,
         (unsigned long)st.acquire_calls,(unsigned long)st.track_calls,(unsigned long)st.max_us,
         (unsigned long)st.max_cycles,(unsigned long)st.max_acquire_evals,(unsigned long)st.max_track_evals,
@@ -174,7 +183,8 @@ void sync_service_print(void)
         (unsigned long)st.max_begin_cycles,(unsigned long)st.max_observe_cycles,(unsigned long)st.max_end_cycles,
         st.state,st.standard,st.locked,(unsigned long)st.acquisitions,(unsigned long)st.vsyncs,
         (unsigned long)st.prewarm_cycles,st.prewarm_reason?st.prewarm_reason:"none",
-        (unsigned long)st.alarms,(unsigned long)st.alarm_min_us,(unsigned long)st.alarm_max_us);
+        (unsigned long)st.alarms,(unsigned long)st.alarm_min_us,(unsigned long)st.alarm_max_us,
+        (unsigned long)st.unstable,(unsigned long)st.max_wake_gap_us);
 }
 void sync_service_toggle(void)
 {
