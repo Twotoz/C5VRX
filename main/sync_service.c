@@ -37,6 +37,8 @@ typedef struct {
     const char *prewarm_reason;
     uint32_t alarms, alarm_min_us, alarm_max_us;
     uint32_t unstable, max_wake_gap_us;
+    uint32_t worst_begin_cycles, worst_observe_cycles, worst_kernel_cycles;
+    uint32_t worst_end_cycles, worst_other_cycles;
     unsigned state, standard;
     bool locked;
     const char *reason;
@@ -88,6 +90,7 @@ static const char *IRAM_ATTR service_turn(service_t *s)
     s_status.done_result=(uint32_t)result;
     if(result==SDP_UNSTABLE && s_status.unstable!=UINT32_MAX)++s_status.unstable;
     const char *why=NULL;
+    uint32_t measured_kernel=0;
     if(result!=SDP_OK && result!=SDP_UNSTABLE)why="done_guard";
     if(result==SDP_OK && o.done_end-o.fresh_from>=DMA_PROGRESS_RING && o.newly_completed) {
         /* Prospective maximum head through an80us read, including a partly
@@ -100,6 +103,7 @@ static const char *IRAM_ATTR service_turn(service_t *s)
         uint32_t kernel_start=esp_cpu_get_cycle_count();
         sfw_run(&s->detector,&s->source.ring,o.done_end,upper,0,false,SERVICE_EVALS);
         uint32_t kernel_cycles=esp_cpu_get_cycle_count()-kernel_start;
+        measured_kernel=kernel_cycles;
         uint32_t *cycle_max=acquiring?&s_status.max_acquire_cycles:&s_status.max_track_cycles;
         if(kernel_cycles>*cycle_max)*cycle_max=kernel_cycles;
         ++s_status.calls;
@@ -125,7 +129,14 @@ static const char *IRAM_ATTR service_turn(service_t *s)
     uint64_t elapsed=(uint64_t)(esp_timer_get_time()-started);
     uint32_t used=esp_cpu_get_cycle_count()-cycles;
     if(elapsed>s_status.max_us)s_status.max_us=(uint32_t)elapsed;
-    if(used>s_status.max_cycles)s_status.max_cycles=used;
+    if(used>s_status.max_cycles) {
+        /* Components of this ONE slowest turn, not unrelated maxima. */
+        uint32_t begin=after_begin-cycles,observe=after_observe-after_begin;
+        s_status.max_cycles=used;
+        s_status.worst_begin_cycles=begin;s_status.worst_observe_cycles=observe;
+        s_status.worst_kernel_cycles=measured_kernel;s_status.worst_end_cycles=end_cycles;
+        s_status.worst_other_cycles=used-begin-observe-measured_kernel-end_cycles;
+    }
     if(elapsed>=SERVICE_US)why="service_overrun";
     ++s_status.turns;
     if(why) {++s_status.rejected;s_status.locked=false;s_status.standard=SFW_STD_UNKNOWN;return why;}
@@ -178,7 +189,9 @@ void sync_service_print(void)
         "max_acq_evals=%lu max_track_evals=%lu budget=%u backlog_misses=%lu max_backlog=%lu "
         "rejected=%lu coalesced=%lu stack_free=%lu done_result=%lu capture_us=%lu gap_us=%lu "
         "max_acq_cycles=%lu max_track_cycles=%lu max_begin_cycles=%lu max_observe_cycles=%lu max_end_cycles=%lu state=%u standard=%u real_locked=%u "
-        "acquisitions=%lu real_v=%lu prewarm_cycles=%lu prewarm_reason=%s alarms=%lu alarm_min_us=%lu alarm_max_us=%lu unstable=%lu wake_gap_us=%lu prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
+        "acquisitions=%lu real_v=%lu prewarm_cycles=%lu prewarm_reason=%s alarms=%lu alarm_min_us=%lu alarm_max_us=%lu unstable=%lu wake_gap_us=%lu "
+        "worst_begin_cycles=%lu worst_observe_cycles=%lu worst_kernel_cycles=%lu worst_end_cycles=%lu worst_other_cycles=%lu "
+        "prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
         active,st.reason,(unsigned long)st.turns,(unsigned long)st.calls,
         (unsigned long)st.acquire_calls,(unsigned long)st.track_calls,(unsigned long)st.max_us,
         (unsigned long)st.max_cycles,(unsigned long)st.max_acquire_evals,(unsigned long)st.max_track_evals,
@@ -190,7 +203,9 @@ void sync_service_print(void)
         st.state,st.standard,st.locked,(unsigned long)st.acquisitions,(unsigned long)st.vsyncs,
         (unsigned long)st.prewarm_cycles,st.prewarm_reason?st.prewarm_reason:"none",
         (unsigned long)st.alarms,(unsigned long)st.alarm_min_us,(unsigned long)st.alarm_max_us,
-        (unsigned long)st.unstable,(unsigned long)st.max_wake_gap_us);
+        (unsigned long)st.unstable,(unsigned long)st.max_wake_gap_us,
+        (unsigned long)st.worst_begin_cycles,(unsigned long)st.worst_observe_cycles,
+        (unsigned long)st.worst_kernel_cycles,(unsigned long)st.worst_end_cycles,(unsigned long)st.worst_other_cycles);
 }
 void sync_service_toggle(void)
 {

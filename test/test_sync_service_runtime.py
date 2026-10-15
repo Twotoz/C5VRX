@@ -91,6 +91,9 @@ int main(void){
  assert(transport_sync_source_end(&s->source));
  s->progress.fresh_from-=32768;
  now+=80;assert(!service_turn(s)&&turn_count==1&&s_status.locked&&!s->source.leased);
+ assert(s_status.worst_begin_cycles+s_status.worst_observe_cycles+s_status.worst_kernel_cycles+
+        s_status.worst_end_cycles+s_status.worst_other_cycles==s_status.max_cycles);
+ assert(s_status.worst_kernel_cycles==720);
  fail_end=true;now+=80;assert(!strcmp(service_turn(s),"source_end")&&!s_status.locked&&!s->source.leased);fail_end=false;
  mutate_context=true;now+=80;assert(!strcmp(service_turn(s),"source_changed")&&!s->source.leased);mutate_context=false;
  overrun=true;now+=80;assert(!strcmp(service_turn(s),"service_overrun")&&!s_status.locked&&!s->source.leased);overrun=false;
