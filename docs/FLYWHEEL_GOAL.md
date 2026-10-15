@@ -80,6 +80,25 @@ when complete fade/return scenes still fail.
 
 ### Integrated H period bank
 
+The firstEQ singleton selector now uses a generated exact policy indexed by
+verified kp, tracker phase and previous raw phase. It preserves the old
+minimum-DAC score, phase-distance score and ascending-token tie order. Full
+reference and OUTPUT binding are checked before using the policy; masked,
+noncanonical and ambiguous-state contexts retain the original minimax path.
+The65536 policy choices match the actual-LUT oracle, and38400 whole-tip
+differentials remain byte-exact. All eight keeper scene suites, the OUTPUT
+extremes and640 private preparations/profile comparisons pass. Physical timing
+of this policy is pending; byte equality alone is not a speed measurement.
+
+The ordinary-V image `35e0d8c` is flashed and verified as
+`98e03ab1b767b51527c2541b70fb156a1b3d9b651b7f24655dfbdec3b765b73b`.
+Both J runs pass all16 preparations with zero transport fault counters. The
+ordinary-V observed minimum rows now span29-385us, including first-run
+NTSC EQ60us and broad70us, PAL EQ29us and broad74us. Normal preemption still
+causes maxima up to24788us; these measurements are not a publication deadline
+proof. FirstEQ remains1736-2012us at its row minima before the new policy.
+See board_j_period_v_2026-10-15.json/.txt for complete evidence.
+
 Ordinary V now also uses complete periods in canonical unmasked kp0.60-0.85
 contexts. A48-byte blank bridge absorbs the endpoint residual, and V blank
 uses the qualified-1632 Q8 carrier. FirstEQ retains its existing constructor;

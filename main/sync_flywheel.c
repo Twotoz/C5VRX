@@ -7,6 +7,9 @@
 #include "sync_private_bench.h"
 #include "output_level.h"
 #include "sync_period_bank.h"
+#include "sync_tip_policy.h"
+#include "sync_lut_context.h"
+#include "kp_tables.h"
 #include <string.h>
 
 #ifdef ESP_PLATFORM
@@ -285,7 +288,22 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
         r->benchmark_profile->prefix_states[1] = prefix_ok ? (uint8_t)counts[1] : 0;
     }
     if (!prefix_ok) return false;
-    for (unsigned phase = 0; phase < 256u; ++phase) {
+    int policy=-1;
+    if(s_period_context && s_cell_phase==r->phase && s_cell_mask==2 &&
+       !r->mask_bit0 && r->program_verified) {
+        for(unsigned level=0;level<KP_LEVELS;++level)
+            if(r->verified_kp_x100==kp_level_x100[level] &&
+               f->repair_step_q8==sfw_tip_policy_steps[level] &&
+               !memcmp(score_lut,kp_tables[level],sizeof(kp_tables[level])) &&
+               sync_lut_context_matches(r->decoder_lut,score_lut,r->verified_output)) {
+                policy=(int)level;break;
+            }
+    }
+    if(policy>=0) {
+        memcpy(cells,sfw_tip_policy_cells,sizeof(cells));
+        available=SFW_TIP_POLICY_AVAILABLE;
+    }
+    for (unsigned phase = 0; policy<0 && phase < 256u; ++phase) {
         uint8_t raw = s_cell[phase];
         unsigned address = (raw >> 4) | ((raw & 15u) << 4);
         unsigned token = r->decoder_lut[address] >> 11;
@@ -309,7 +327,12 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
         bool single = counts[parity] == 1u;
         if (single) {
             only_phase = states[parity][0] >> 6;
-            if (!minimum_tokens[only_phase]) {
+            if(policy>=0) {
+                unsigned index=(unsigned)policy*32u+only_phase;
+                chosen=sfw_tip_policy_raw[index*256u+previous_phase];
+                worst_best=sfw_tip_policy_minimum[index];
+                candidates=0;
+            } else if (!minimum_tokens[only_phase]) {
                 unsigned lowest = UINT32_MAX;
                 uint32_t scan = available, tied = 0;
                 while (scan) {
@@ -323,7 +346,7 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
                 minimum_tokens[only_phase] = tied;
                 minimum_code[only_phase] = (uint8_t)lowest;
             }
-            candidates = minimum_tokens[only_phase];
+            if(policy<0)candidates = minimum_tokens[only_phase];
         }
         int target = (int)previous_phase + f->repair_step_q8 / 256;
         while (candidates) {
