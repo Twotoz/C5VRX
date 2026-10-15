@@ -36,6 +36,15 @@ Do not move that overhead into the firmware without measuring it. Production
 integration also needs actual scheduling recovery; this source-lifetime test
 does not resolve the physical W overrun or establish a live camera clock.
 
+The64-budget replay also passes all six scenes with the coarse variant:
+first lock is14248us PAL/14328us NTSC. Baseline64 never acquires in these
+scenes. The coarse transition can still execute297/310 evaluations when it
+enters TRACK inside a call, and TRACK reaches678. Lowering the outer budget
+therefore does not claim a hard time bound. These results are retained
+separately in sync_read_turn_64.json. The production ACQUIRE now uses the same
+63-sample discovery/3-sample backfill, and manual W requests64 evaluations;
+the kernel's actual board timing still governs acceptance.
+
 Reproduce with `python research/sync_read_turn.py`; full inputs, source hashes
 and results are retained in research/data/sync_read_turn.json. The frozen raw
 core is sync_read_core_cb538a1c.c.gz. New production pulse constructors are

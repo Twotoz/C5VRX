@@ -4,6 +4,7 @@ Frozen actual core, original source scenes, and a modeled8us read span.
 This is not a C5 cycle measurement or permission to publish DMA patches.
 """
 import gzip
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -14,6 +15,7 @@ import sync_acquire_stride as coarse
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
+    parser=argparse.ArgumentParser();parser.add_argument('--budget',type=int,default=192);args=parser.parse_args()
     frozen=ROOT/'research/data/sync_read_core_cb538a1c.c.gz'
     raw_source=gzip.decompress(frozen.read_bytes())
     source=raw_source.decode().replace('\r\n','\n')
@@ -52,7 +54,7 @@ int main(int argc,char **argv){if(argc!=4)return 2;bool p=atoi(argv[1]);unsigned
                 data=(work/'source.bin').read_bytes()
                 inputs.append(dict(name=name,sha256=hashlib.sha256(data).hexdigest(),samples=len(data)))
                 for variant in cores:
-                    result=subprocess.run(common+['/data/'+variant,'/data/source.bin','1'],text=True,capture_output=True,check=True)
+                    result=subprocess.run(common+['/data/'+variant,'/data/source.bin','1',str(args.budget)],text=True,capture_output=True,check=True)
                     row=json.loads(result.stdout[result.stdout.index('{'):])
                     results.append(dict(name=name,variant=variant,**row))
                     print(name,variant,row,flush=True)
@@ -61,7 +63,8 @@ int main(int argc,char **argv){if(argc!=4)return 2;bool p=atoi(argv[1]);unsigned
                     if variant=='coarse':assert row['first_lock_us'] and row['first_v_us'] and row['real_v_fields']
     report=dict(provenance='C5VRX by Twotoz/contributors; https://github.com/Twotoz/C5VRX; https://twotoz.github.io/C5VRX/',
         raw_core_sha256=hashlib.sha256(raw_source).hexdigest(),normalized_core_sha256=hashlib.sha256(source.encode()).hexdigest(),
-        model_read_us=8,service_us=80,actual_rx_geometry=True,hardware_cycles_proven=False,inputs=inputs,rows=results)
-    (ROOT/'research/data/sync_read_turn.json').write_text(json.dumps(report,indent=2)+'\n')
+        model_read_us=8,service_us=80,budget=args.budget,actual_rx_geometry=True,hardware_cycles_proven=False,inputs=inputs,rows=results)
+    name='sync_read_turn.json' if args.budget==192 else f'sync_read_turn_{args.budget}.json'
+    (ROOT/'research/data'/name).write_text(json.dumps(report,indent=2)+'\n')
 
 if __name__=='__main__':main()

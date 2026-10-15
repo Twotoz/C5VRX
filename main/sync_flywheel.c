@@ -853,8 +853,9 @@ static void start_track(sync_flywheel_t *f, uint64_t start, uint32_t nominal)
     ++f->acquisitions;
 }
 
-/* Streaming acquisition, resumable under the budget: a step histogram over
- * ~2 lines for the threshold, then sync-width low runs one line apart. */
+/* Streaming acquisition:6800 independent votes spread over about10.7ms.
+ * Coarse63-sample seek is coprime to PAL's line period; backfill at stride3
+ * preserves the original width/period qualification around each low hit. */
 static void acquire(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end, uint32_t budget)
 {
     if (avail_end < 8192u) return;
@@ -866,7 +867,7 @@ static void acquire(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
     }
     while (f->scan_pos < end && s_evals < budget) {
         uint64_t k = f->scan_pos;
-        f->scan_pos += 3u;
+        f->scan_pos += f->acq_phase < 2u ? 63u : 3u;
         if (!original(f, k - 5u, k + 5u)) {
             f->acq_run = 0;
             f->acq_have_last = false;
@@ -875,7 +876,7 @@ static void acquire(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
         if (f->acq_phase == 0) {
             ++s_evals;
             ++f->acq_hist[step3(r, k) + 128];
-            if (++f->acq_n < 6800u) continue;      /* ~8 lines: never one V interval */
+            if (++f->acq_n < 6800u) continue;      /* never one V interval */
             unsigned c = 0, p3 = 0, p50 = 0;
             bool got = false;
             for (unsigned v = 0; v < 256u; ++v) {
@@ -894,9 +895,19 @@ static void acquire(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
             continue;
         }
         if (++f->acq_n > 6800u) { f->acq_phase = 0; f->acq_n = 0; continue; }   /* 8 lines, no match */
+        if (f->acq_phase == 1u) {
+            if (!lowm(f, r, k)) continue;
+            f->scan_pos = k > 71u ? k - 63u : 8u;
+            f->acq_phase = 2u; f->acq_run = 0;
+            continue;
+        }
+        if (f->acq_phase == 2u) {
+            if (lowm(f, r, k)) { f->acq_phase = 3u; f->acq_run = 3u; }
+            continue;
+        }
         if (lowm(f, r, k)) { f->acq_run += 3u; continue; }
         uint32_t run = f->acq_run;
-        f->acq_run = 0;
+        f->acq_run = 0; f->acq_phase = 1u;
         if (run < 150u || run > 230u) continue;
         uint64_t start = k - run;
         if (f->acq_have_last) {

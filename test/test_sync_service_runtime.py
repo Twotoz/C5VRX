@@ -60,7 +60,7 @@ void sfw_init(sync_flywheel_t *f){*f=(sync_flywheel_t){0};}
 unsigned sfw_run(sync_flywheel_t *f,const sfw_ring_t *r,uint64_t end,uint64_t head,uint64_t floor,bool repair,uint32_t budget){
  (void)floor;assert(!repair&&r->phase);assert(!r->program_verified);
  if(!budget){assert(!end&&!head);return 0;}
- assert(budget==192&&head>end);++turn_count;f->evals=192;f->state=SFW_TRACK;
+ assert(budget==64&&head>end);++turn_count;f->evals=budget;f->state=SFW_TRACK;
  f->acquisitions=1;now+=overrun?80:3;return 0;
 }
 bool sfw_locked(const sync_flywheel_t *f){return f->state==SFW_TRACK;}

@@ -27,7 +27,8 @@ static sync_done_capture_t capture(const dma_progress_layout_t *l,uint64_t pos,u
 }
 int main(int argc,char **argv)
 {
-    if(argc!=3)return 2;FILE *in=fopen(argv[1],"rb");if(!in)return 2;
+    if(argc!=3&&argc!=4)return 2;unsigned budget=argc==4?(unsigned)atoi(argv[3]):192u;
+    if(!budget||budget>1200u)return 2;FILE *in=fopen(argv[1],"rb");if(!in)return 2;
     if(fseek(in,0,SEEK_END))return 2;long length=ftell(in);if(length<1||fseek(in,0,SEEK_SET))return 2;
     uint8_t *raw=malloc((size_t)length);if(!raw||fread(raw,1,(size_t)length,in)!=(size_t)length)return 2;fclose(in);
     uint8_t ring[32768]={0},before[32768];dma_progress_layout_t l=layout(atoi(argv[2])!=0);
@@ -44,7 +45,7 @@ int main(int argc,char **argv)
         if(result!=SRO_OK)return 4;
         if(turn.permit_run){
             memcpy(before,ring,sizeof(ring));bool acq=f.state==SFW_ACQUIRE;
-            recording=true;sfw_run(&f,&r,turn.complete_before,turn.complete_before,0,false,192);recording=false;
+            recording=true;sfw_run(&f,&r,turn.complete_before,turn.complete_before,0,false,budget);recording=false;
             if(memcmp(before,ring,sizeof(ring)))return 5;
             ++calls;unsigned *m=acq?&max_acquire:&max_track;if(f.evals>*m)*m=f.evals;
             if(turn.reads.count>max_reads)max_reads=turn.reads.count;

@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { SERVICE_US=80, SERVICE_EVALS=192, SERVICE_STACK=4096 };
+enum { SERVICE_US=80, SERVICE_EVALS=64, SERVICE_STACK=4096 };
 typedef struct {
     sync_flywheel_t detector;
     sync_done_progress_t progress;
