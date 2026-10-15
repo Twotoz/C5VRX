@@ -78,6 +78,37 @@ when complete fade/return scenes still fail.
 
 ## Next concrete steps
 
+### Current integration (2026-10-15, awaiting C5)
+
+The actual first-EQ constructor now binds the active OUTPUT-mapped LUT to a
+complete unscaled reference. Construction scores use the reference while
+independent waveform validation uses the actual mapped output. This avoids
+rejecting 0.5x output merely because its physical DAC floor exceeds the old
+absolute threshold. The binding test checks all1024 words; corrupted token,
+tracker or DAC words are refused. The reference regression retains128 exact
+unity rows and1310720 actual output decode cases. Full keeper scenes pass at
+kp0.85/0.50 and OUTPUT0.5x/5x; see sync_production_extremes.json for complete
+stdout and source hashes. These are host results, not a monitor-lock claim.
+
+The production detector now reuses six overlapping adjacent phase steps when
+its nine-step window advances by three samples. Its24-byte scratch is cleared
+at every service call and synthesis entry, including refused writes. A million
+independent comparisons retain exactly the original result; consecutive
+windows need three phase lookups instead of ten. Actual C5 timing is pending.
+
+Startup makes RX endless before any TX readiness wait and requests24KiB of
+RX/TX separation instead of16KiB. This adds about205us of video latency.
+Runtime tests extract the actual startup function and cover descriptor/channel
+changes and failure recovery. The requested delay does not establish the
+actual separation; live DMA observations remain authoritative.
+
+The new whole-current-and-next-descriptor admission helper models a complete
+1280-byte patch with the protected8280-byte CPU history. It accepts the24KiB
+fixture over2654208 byte-phase/descriptor-rotation cases at a supplied5us
+publication bound. No writer calls it yet. The bound must include admission,
+stores, cache operations and ordering, and requires physical measurement.
+No live publication or timing flag has been enabled by these arithmetic tests.
+
 - Profile first-EQ stages before selecting another optimization. Preserve
   exact pulse bytes: packed states and local token masks already pass
   38,400 differential tips and full kp0.85/0.50 scene tests.

@@ -5,6 +5,7 @@
 #include "sync_flywheel.h"
 #include "sync_synth.h"
 #include "sync_private_bench.h"
+#include "output_level.h"
 #include <string.h>
 
 #ifdef ESP_PLATFORM
@@ -52,6 +53,18 @@ static inline __attribute__((always_inline)) void bench_selection_done(const sfw
 
 static uint32_t s_evals;
 static uint32_t s_lowm, s_steps;
+/* Per-call scratch, like the evaluation counters: sfw_run is non-reentrant.
+ * Keep only nine original adjacent steps. No cache crosses a source write,
+ * source/context replacement or absolute-position rollover. */
+static struct {
+    uint64_t last;
+    int16_t sum;
+    int8_t steps[9];
+    uint8_t phase, index;
+    bool valid;
+} s_lowm_window;
+static inline __attribute__((always_inline)) void lowm_reset(void)
+{ s_lowm_window.valid=false; }
 
 static void store_evals(sync_flywheel_t *f)
 {
@@ -69,6 +82,9 @@ static bool original(sync_flywheel_t *f, uint64_t begin, uint64_t end)
 
 static inline uint8_t ph_at(const sfw_ring_t *r, uint64_t k)
 {
+#ifdef SFW_PHASE_READ
+    SFW_PHASE_READ(); /* host-only exact work instrumentation */
+#endif
     return r->phase[r->ring[(uint32_t)k & (r->ring_bytes - 1u)]];
 }
 
@@ -90,18 +106,34 @@ static SFW_HOT bool lowm(const sync_flywheel_t *f, const sfw_ring_t *r, uint64_t
 {
     ++s_evals;
     ++s_lowm;
-    int total = 0;
     /* Center on the tested sample. The legacy [-3,+6] window made the
      * detected edge two samples early and could overwrite the last real
      * picture samples before the vertical interval. */
-    int previous = ph_at(r, k - 5u);
+    if(s_lowm_window.valid && k>s_lowm_window.last && k-s_lowm_window.last==3u) {
+        /* The next225ns window retains six steps and appends three. */
+#pragma GCC unroll 3
+        for(unsigned j=0;j<3u;++j) {
+            int phase=ph_at(r,k+2u+j), step=wrap8(phase-s_lowm_window.phase);
+            unsigned index=s_lowm_window.index;
+            s_lowm_window.sum+=(int16_t)(step-s_lowm_window.steps[index]);
+            s_lowm_window.steps[index]=(int8_t)step;
+            if(++index==9u)index=0;
+            s_lowm_window.index=(uint8_t)index;
+            s_lowm_window.phase=(uint8_t)phase;
+        }
+    } else {
+        s_lowm_window.sum=0;s_lowm_window.index=0;
+        int previous = ph_at(r,k-5u);
 #pragma GCC unroll 9
-    for (unsigned j = 0; j < 9u; ++j) {
-        int phase = ph_at(r, k - 4u + j);
-        total += wrap8(phase - previous);
-        previous = phase;
+        for(unsigned j=0;j<9u;++j) {
+            int phase=ph_at(r,k-4u+j),step=wrap8(phase-previous);
+            s_lowm_window.steps[j]=(int8_t)step;s_lowm_window.sum+=(int16_t)step;
+            previous=phase;
+        }
+        s_lowm_window.phase=(uint8_t)previous;
     }
-    return total <= 9 * f->thr;
+    s_lowm_window.last=k;s_lowm_window.valid=true;
+    return s_lowm_window.sum <= 9 * f->thr;
 }
 
 /* A raw-phase outlier at one 50-ns span is not a lost sync pulse: U85Q/LP
@@ -143,10 +175,12 @@ static inline __attribute__((always_inline)) uint16_t decoder_value(const uint16
  * than inventing one exact phase. Modified bytes are appropriate
  * here: this predicts decoder state, and is never camera-sync evidence.
  * Both pair parities must admit the same generated waveform. */
-/* First-EQ decisions depend on tracker phase and the previous worker DAC.
+/* First-EQ decisions depend on tracker phase and the scoring worker DAC.
  * Preserve the final11-bit key/order. At intermediate prefix steps only
  * phase enters the next LUT address, so equal phases may merge early;
- * their discarded DAC values cannot affect any subsequent transition. */
+ * their discarded DAC values cannot affect any subsequent transition.
+ * A verified unscaled reference preserves actual token/tracker bits; its DAC
+ * codes give output-independent state grouping and construction scores. */
 typedef uint16_t decoder_bound_t;
 
 static inline __attribute__((always_inline)) void decoder_advance(const uint16_t *lut, decoder_bound_t *bound, uint8_t raw, uint8_t mid)
@@ -158,6 +192,7 @@ static SFW_HOT bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint
                            decoder_bound_t states[2][32], unsigned counts[2], uint64_t last[2])
 {
     const uint32_t mask = r->ring_bytes - 1u;
+    const uint16_t *lut = r->reference_lut ? r->reference_lut : r->decoder_lut;
     if (!r->decoder_lut || a < 130u || a - 130u < f->repairs.oldest_readable) return false;
     for (unsigned parity = 0; parity < 2; ++parity) {
         last[parity] = a - 2u;
@@ -168,7 +203,7 @@ static SFW_HOT bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint
             /* Every possible tracker state observes the SAME raw pair. */
             unsigned raw = r->ring[(uint32_t)k & mask], mid = r->ring[(uint32_t)(k + 1u) & mask];
             unsigned address = (raw >> 4) | ((raw & 15u) << 4) | ((mid & 128u) << 1) | ((mid & 8u) << 6);
-            unsigned token = r->decoder_lut[address] >> 11;
+            unsigned token = lut[address] >> 11;
             unsigned kept = 0;
             if (k < last[parity]) {
                 /* Only32 possible input phases, one membership word and no
@@ -176,14 +211,14 @@ static SFW_HOT bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint
                  * Keep first-occurrence order; retain full key on final pair. */
                 uint32_t seen = 0;
                 for (unsigned j = 0; j < count; ++j) {
-                    decoder_bound_t next = r->decoder_lut[((states[parity][j] >> 1) & ~31u) | token] & 2047u;
+                    decoder_bound_t next = lut[((states[parity][j] >> 1) & ~31u) | token] & 2047u;
                     uint32_t bit = UINT32_C(1) << (next >> 6);
                     if (!(seen & bit)) { seen |= bit; states[parity][kept++] = next; }
                 }
             } else if (count <= 4u) {
                 /* Avoid clearing a bitset once the usual prefix converges. */
                 for (unsigned j = 0; j < count; ++j) {
-                    decoder_bound_t next = r->decoder_lut[((states[parity][j] >> 1) & ~31u) | token] & 2047u;
+                    decoder_bound_t next = lut[((states[parity][j] >> 1) & ~31u) | token] & 2047u;
                     unsigned dst = 0;
                     while (dst < kept && states[parity][dst] != next) ++dst;
                     if (dst == kept) states[parity][kept++] = next;
@@ -193,7 +228,7 @@ static SFW_HOT bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint
                  * append in first-occurrence order, preserving every tie. */
                 uint32_t seen[64] = {0};
                 for (unsigned j = 0; j < count; ++j) {
-                    decoder_bound_t next = r->decoder_lut[((states[parity][j] >> 1) & ~31u) | token] & 2047u;
+                    decoder_bound_t next = lut[((states[parity][j] >> 1) & ~31u) | token] & 2047u;
                     uint32_t bit = UINT32_C(1) << (next & 31u);
                     if (!(seen[next >> 5] & bit)) {
                         seen[next >> 5] |= bit;
@@ -221,8 +256,8 @@ static inline __attribute__((always_inline)) unsigned first_token(uint32_t bits)
     return token;
 }
 
-/* Only the first EQ has no preceding synthetic porch. Use the actual
- * worker table to make its tip directly, against every surviving decoder
+/* Only the first EQ has no preceding synthetic porch. Use the verified
+ * worker reference to make its tip directly, against every surviving decoder
  * state. This needs at most 28 regular observation tokens per byte, not a
  * 256-phase carrier search. The remaining slots use the ordinary DDA. */
 static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
@@ -239,6 +274,7 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
     uint32_t minimum_tokens[32] = {0};
     uint8_t minimum_code[32];
     unsigned masks_built = 0;
+    const uint16_t *score_lut = r->reference_lut ? r->reference_lut : r->decoder_lut;
     bool prefix_ok = decoder_prefix(f, r, a, states, counts, last);
     if (r->benchmark_profile) {
         r->benchmark_profile->prefix_done = bench_tick(r);
@@ -276,7 +312,7 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
                 uint32_t scan = available, tied = 0;
                 while (scan) {
                     unsigned token = first_token(scan); scan &= scan - 1u;
-                    unsigned code = r->decoder_lut[only_phase * 32u + token] & 63u;
+                    unsigned code = score_lut[only_phase * 32u + token] & 63u;
                     if (code < lowest) { lowest = code; tied = 0; }
                     if (code == lowest) tied |= UINT32_C(1) << token;
                 }
@@ -293,7 +329,7 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
             unsigned worst = 0, sum = 0;
             if (single) worst = sum = minimum_code[only_phase];
             else for (unsigned j = 0; j < counts[parity]; ++j) {
-                unsigned code = r->decoder_lut[(states[parity][j] >> 6) * 32u + token] & 63u;
+                unsigned code = score_lut[(states[parity][j] >> 6) * 32u + token] & 63u;
                 if (code > worst) worst = code;
                 sum += code;
             }
@@ -307,7 +343,7 @@ static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_
         unsigned other = parity ^ 1u;
         uint8_t endpoint = k ? tip[k - 1u] : r->ring[(uint32_t)(a - 1u) & (r->ring_bytes - 1u)];
         for (unsigned j = 0; j < counts[other]; ++j)
-            decoder_advance(r->decoder_lut, &states[other][j], endpoint, chosen);
+            decoder_advance(score_lut, &states[other][j], endpoint, chosen);
         previous_phase = r->phase[chosen];
     }
     bench_selection_done(r, masks_built);
@@ -368,6 +404,7 @@ static SFW_HOT bool synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, u
                   int32_t step1, uint32_t n2, int32_t step2, int32_t next_step,
                   bool bootstrap, uint64_t floor, uint64_t avail_end)
 {
+    lowm_reset(); /* Neither a direct patch nor a callback may reuse old IQ. */
     const uint64_t bytes = (uint64_t)n1 + n2;
     if (!bytes || bytes > UINT32_MAX || a > UINT64_MAX - bytes) return false;
     uint64_t b = a + bytes;
@@ -455,7 +492,8 @@ static inline int32_t sync_step(const sync_flywheel_t *f)
 }
 static int32_t verified_sync_step(const sfw_ring_t *r)
 {
-    if (!r->program_verified || !r->decoder_lut) return 0;
+    if (!r->program_verified || !r->decoder_lut || r->verified_output >= OUTPUT_LEVELS ||
+        (r->verified_output && !r->reference_lut)) return 0;
     /* Deepest digitally stable candidates in the actual root worker LUT.
      * -6 MHz aliases at low kp; this is not a claim of loaded DAC voltage. */
     switch (r->verified_kp_x100) {
@@ -490,7 +528,10 @@ static bool private_bench_valid(const sfw_ring_t *r)
             raw > UINTPTR_MAX - r->ring_bytes || workspace > UINTPTR_MAX - r->workspace_bytes) return false;
         uintptr_t end = profile + sizeof(*r->benchmark_profile);
         uintptr_t lut = (uintptr_t)r->decoder_lut, phase = (uintptr_t)r->phase, context = (uintptr_t)r;
+        uintptr_t reference = (uintptr_t)r->reference_lut;
         if (lut > UINTPTR_MAX - 2048u || phase > UINTPTR_MAX - 256u || context > UINTPTR_MAX - sizeof(*r)) return false;
+        if (r->reference_lut && (reference > UINTPTR_MAX - 2048u ||
+            (profile < reference + 2048u && reference < end))) return false;
         if ((profile < raw + r->ring_bytes && raw < end) ||
             (profile < workspace + r->workspace_bytes && workspace < end) ||
             (profile < lut + 2048u && lut < end) || (profile < phase + 256u && phase < end) ||
@@ -1065,6 +1106,7 @@ static bool find_relock(sync_flywheel_t *f, const sfw_ring_t *r,
 unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
                  uint64_t rx_complete, uint64_t write_floor, bool allow_repair, uint32_t budget_evals)
 {
+    lowm_reset(); /* New raw/phase/source epoch, even after an invalid call. */
     if (!f || !r || !r->ring || !r->phase || !r->ring_bytes ||
         (r->ring_bytes & (r->ring_bytes - 1u))) return 0;
     if (rx_complete < avail_end ||

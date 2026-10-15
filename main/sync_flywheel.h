@@ -51,6 +51,13 @@ typedef struct {
     uint8_t verified_kp_x100;
     bool program_verified;
     const uint16_t *decoder_lut; /* same verified active worker/controller words */
+    /* Optional unscaled worker/controller reference. Caller verifies ALL1024
+     * active words against output_entry(reference,verified_output), under the
+     * same halted-program/generation binding, before claiming program_verified.
+     * Reference token/tracker bits then exactly match the actual decoder.
+     * NULL retains legacy unity construction; scaled output requires a reference. */
+    const uint16_t *reference_lut;
+    uint8_t verified_output;
     /* Optional executor mode. A configured callback requires caller-owned,
      * writable workspace covering the complete pulse and disjoint from the
      * whole raw ring. Synthesis never writes the raw ring in this mode.

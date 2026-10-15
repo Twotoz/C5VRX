@@ -20,6 +20,7 @@
 #include "kp_switch_guard.h"
 #include "transport_recovery.h"
 #include "output_level.h"
+#include "sync_lut_context.h"
 #include "hal/parlio_ll.h"
 #include "kp_tables.h"
 #include "snapshot.h"
@@ -512,24 +513,33 @@ static void quiet_interrupts(void)
     PARL_IO.rx_genrl_cfg.rx_eof_gen_sel = 1;
 }
 
-/* RX first, TX half a ring later; both run from PLL_F240M/6, so the
- * producer/consumer separation cannot drift. */
+/* RX first, TX three quarters of a ring later (nominal614us). Compared with
+ * half a ring this buys8192 bytes for whole-descriptor/write-history guards,
+ * for205us more video latency and no extra memory. Actual frontiers, never
+ * this requested delay, decide whether a future keeper write is admissible. */
 static esp_err_t start_rings_tail(void)
 {
     /* Invalidate every old DMA epoch at entry, including a failed start or
      * rollback replacement. This changes no stream data or clock setting. */
     if (++s_stream_generation == 0) s_stream_generation_overflow = true;
     quiet_interrupts();
-    esp_rom_delay_us((RAW_RING_BYTES / 2ULL) * 1000000ULL / IQ_RATE_HZ);
+    /* Make RX endless BEFORE any wait for TX. start_tx may wait/yield for
+     * FIFO readiness; deferring this until afterward could let RX reach EOF. */
+    s_rx_dma_ch = find_dma(true);
+    if (s_rx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
+    const int rx_channel = s_rx_dma_ch;
+    if (clear_eof(s_rx_dma_ch, true) < 3) return ESP_ERR_INVALID_STATE;
+    esp_rom_delay_us((uint64_t)LIVE_PIPELINE_LAG_BYTES * 1000000ULL / IQ_RATE_HZ);
     s_tx_dma_ch = find_dma(false);
     if (s_tx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
+    const int tx_channel = s_tx_dma_ch;
     esp_err_t err = start_tx();
     if (err != ESP_OK) return err;
-    s_rx_dma_ch = find_dma(true);
-    s_tx_dma_ch = find_dma(false);
-    if (s_rx_dma_ch < 0 || s_tx_dma_ch < 0) return ESP_ERR_NOT_FOUND;
+    int rx_after = find_dma(true), tx_after = find_dma(false);
+    if (rx_after < 0 || tx_after < 0) return ESP_ERR_NOT_FOUND;
+    if (rx_after != rx_channel || tx_after != tx_channel) return ESP_ERR_INVALID_STATE;
     quiet_interrupts();
-    if (clear_eof(s_rx_dma_ch, true) < 3 || clear_eof(s_tx_dma_ch, false) < 1)
+    if (clear_eof(s_tx_dma_ch, false) < 1)
         return ESP_ERR_INVALID_STATE;
     PARL_IO.int_clr.val = UINT32_MAX;
     if (s_rx_dma_ch >= 0) AHB_DMA.in_intr[s_rx_dma_ch].clr.val = UINT32_MAX;
@@ -897,7 +907,7 @@ static bool transport_bench_context_copy(sync_bench_context_t *ctx, uint16_t *lu
         memcpy(lut,s_lut_live,sizeof(s_lut_live));
     }
     (void)xTaskResumeAll();
-    return valid;
+    return valid && sync_lut_context_matches(lut,kp_tables[ctx->level],ctx->output);
 }
 
 static bool transport_bench_context_valid(const sync_bench_context_t *ctx)
@@ -925,8 +935,9 @@ static bool transport_bench_cache_result(esp_err_t error)
 void transport_sync_bench(void)
 {
     if (sync_service_active()) { printf("SYNC_BENCH refused=service_active writes_live=0\n"); return; }
-    enum { PRIVATE_RING=4096, WORKSPACE=1280, LUT_BYTES=2048, COPY_BYTES=1344, PHASE_BYTES=256,
-           ALLOCATION=PRIVATE_RING+WORKSPACE+LUT_BYTES+COPY_BYTES+64+PHASE_BYTES };
+    enum { PRIVATE_RING=4096, WORKSPACE=1280, LUT_BYTES=2048, REFERENCE_BYTES=2048,
+           COPY_BYTES=1344, PHASE_BYTES=256,
+           ALLOCATION=PRIVATE_RING+WORKSPACE+LUT_BYTES+REFERENCE_BYTES+COPY_BYTES+64+PHASE_BYTES };
     static portMUX_TYPE copy_mux = portMUX_INITIALIZER_UNLOCKED;
     static bool called;
     uint8_t *memory = heap_caps_aligned_alloc(64,ALLOCATION,MALLOC_CAP_INTERNAL|MALLOC_CAP_DMA|MALLOC_CAP_8BIT);
@@ -938,15 +949,18 @@ void transport_sync_bench(void)
     memset(memory,0xa5,ALLOCATION);
     uint8_t *workspace=memory+PRIVATE_RING;
     uint16_t *lut=(uint16_t *)(workspace+WORKSPACE);
-    uint8_t *destination=(uint8_t *)lut+LUT_BYTES;
+    uint16_t *reference=(uint16_t *)((uint8_t *)lut+LUT_BYTES);
+    uint8_t *destination=(uint8_t *)reference+REFERENCE_BYTES;
     uint8_t *phase=memory+ALLOCATION-PHASE_BYTES;
     memcpy(phase,c5vrx_phase8_gain_lut,PHASE_BYTES);
     sync_bench_context_t context;
     if (!transport_bench_context_copy(&context,lut)) {
         heap_caps_free(memory); printf("SYNC_BENCH refused=context writes_live=0\n"); return;
     }
+    memcpy(reference,kp_tables[context.level],REFERENCE_BYTES);
     sfw_ring_t ring = {.ring=memory,.ring_bytes=PRIVATE_RING,.phase=phase,
         .verified_kp_x100=kp_level_x100[context.level],.program_verified=true,.decoder_lut=lut,
+        .reference_lut=reference,.verified_output=context.output,
         .workspace=workspace,.workspace_bytes=WORKSPACE};
     bool first_call=!called; called=true;
     int64_t t0=esp_timer_get_time(); uint32_t c0=esp_cpu_get_cycle_count();
@@ -955,7 +969,7 @@ void transport_sync_bench(void)
     uint64_t warm_us=(uint64_t)(esp_timer_get_time()-t0);
     printf("SYNC_BENCH begin private_bytes=%u input=private_synthetic writes_live=0 first_call=%u "
            "prewarm_cycles=%lu prewarm_us=%llu kp=%u lp=%u output=%u stream_gen=%lu "
-           "cpu_hz=%lu phase_ram=1 irq_latency_measured=0 live_wcet_proven=0\n",ALLOCATION,first_call,(unsigned long)warm_cycles,
+           "cpu_hz=%lu phase_ram=1 reference_ram=1 irq_latency_measured=0 live_wcet_proven=0\n",ALLOCATION,first_call,(unsigned long)warm_cycles,
            (unsigned long long)warm_us,kp_level_x100[context.level],context.lp,context.output,
            (unsigned long)context.generation,(unsigned long)esp_clk_cpu_freq());
     bool valid=warm;

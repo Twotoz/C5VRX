@@ -1,9 +1,8 @@
-"""C5VRX by Twotoz/contributors: controlled first-EQ criterion experiment.
+"""C5VRX by Twotoz/contributors: controlled first-EQ reference regression.
 
-Compiles a temporary one-line adaptation of the actual candidate. Token
-ranking uses the original 1x worker DAC code; all decoder-state evolution and
-independent output tests still use the actual scaled LUT. No firmware edits.
-This does NOT validate reference/context admission, noisy prefixes or LCDs.
+Compare the actual reference-bound core with a temporary legacy-scoring copy.
+The actual mapped decoder and external waveform gates remain identical.
+This does NOT validate live generation/ownership, noisy prefixes or LCDs.
 Run with a C11 compiler, e.g. inside the pinned IDF image.
 """
 from pathlib import Path
@@ -24,26 +23,23 @@ def main():
     args = parser.parse_args()
     core_path = ROOT / 'main/sync_flywheel.c'
     matrix_path = ROOT / 'research/sync_output_transition.c'
-    baseline_path = ROOT / 'research/data/sync_output_transition.csv'
     core, matrix = core_path.read_text(), matrix_path.read_text()
-    needle = 'unsigned code = r->decoder_lut[states[parity][j].phase * 32u + token] & 63u;'
-    assert core.count(needle) == 1, 'actual first-tip source changed: review this experiment'
-    core = core.replace(needle, 'unsigned code = experiment_reference[states[parity][j].phase * 32u + token] & 63u;')
-    matrix = matrix.replace('#include "../main/sync_flywheel.c"',
-                            'static const uint16_t *experiment_reference;\n#include "core.c"')
-    needle = 'uint16_t lut[1024]; unsigned clipped = 0;'
-    assert matrix.count(needle) == 1
-    matrix = matrix.replace(needle, 'experiment_reference=kp_tables[kp];\n        ' + needle)
+    needle = 'r->reference_lut ? r->reference_lut : r->decoder_lut'
+    assert core.count(needle)==2, 'actual prefix/score source changed: review comparison'
+    legacy=core.replace(needle,'r->decoder_lut')
+    outputs={}
     with tempfile.TemporaryDirectory() as directory:
         folder = Path(directory)
-        (folder / 'core.c').write_text(core)
-        (folder / 'matrix.c').write_text(matrix)
-        binary = folder / 'matrix'
-        subprocess.run(['cc', '-O2', '-std=c11', '-Wall', '-Wextra', '-Werror',
-                        '-I', str(ROOT / 'main'), str(folder / 'matrix.c'), '-o', str(binary)], check=True)
-        output = subprocess.check_output([str(binary)], text=True)
-    rows = list(csv.DictReader(io.StringIO(output[output.index('kp,'):])))
-    old = list(csv.DictReader(io.StringIO(baseline_path.read_text())))
+        for name,source in [('actual',core),('legacy',legacy)]:
+            (folder/(name+'.c')).write_text(source)
+            runner=folder/(name+'_matrix.c')
+            runner.write_text(matrix.replace('#include "../main/sync_flywheel.c"','#include "'+name+'.c"'))
+            binary=folder/name
+            subprocess.run(['cc','-O2','-std=c11','-Wall','-Wextra','-Werror',
+                '-I',str(ROOT/'main'),str(runner),'-o',str(binary)],check=True)
+            outputs[name]=subprocess.check_output([str(binary)],text=True)
+    rows=list(csv.DictReader(io.StringIO(outputs['actual'])))
+    old=list(csv.DictReader(io.StringIO(outputs['legacy'])))
     key = lambda r: tuple(r[k] for k in ('kp', 'lp', 'output', 'pal', 'kind'))
     previous = {key(row): row for row in old}
     assert len(rows) == len(old) == 1280
@@ -59,18 +55,20 @@ def main():
                 baseline_bootstrap_refused=sum(int(previous[key(row)]['bootstrap_refused']) for row in group),
                 max_tail_span=max(int(row['max_tail_span']) for row in group)))
     result = dict(
-        scope='Temporary reference-code criterion; actual mapped decoder; deterministic strong prefixes only',
+        scope='Actual reference-bound core versus legacy scoring; mapped decoder; deterministic strong prefixes only',
         source_sha256={str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                       for path in (core_path, matrix_path, baseline_path, ROOT / 'main/output_level.h')},
+                       for path in (core_path,matrix_path,ROOT/'main/output_level.h',ROOT/'main/sync_lut_context.h')},
         rows=len(rows), decode_cases=sum(int(row['cases']) for row in rows),
         unity_rows_exact=len(unity), groups=groups,
-        production_changed=False, context_admission_validated=False,
+        reference_binding_implemented=True, live_context_admission_validated=False,
         non_lp_supported=False, physical_lcd_validated=False,
-        conclusion='Reference-code ranking removes the half-scale absolute-code rejection in these prefixes; production requires explicit verified reference/program/output binding and wider scene tests')
+        conclusion='Reference ranking removes half-scale construction rejection; full binding has separate actual-source tests, live timing and display remain unverified')
     if args.output:
         args.output.write_text(json.dumps(result, indent=2) + '\n')
+        args.output.with_suffix('.csv').write_text(outputs['actual'])
     print(json.dumps({name: result[name] for name in ('rows', 'decode_cases', 'unity_rows_exact', 'groups')}, indent=2))
+    return int(any(row['lp']=='1' and (row['normalized_width_ok']!=row['cases'] or int(row['bootstrap_refused'])) for row in rows))
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

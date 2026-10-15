@@ -8,6 +8,7 @@
 #include "phase8_gain_lut.h"
 #include "kp_tables.h"
 #include "output_level.h"
+#include "sync_lut_context.h"
 #include "../main/sync_flywheel.c"
 
 #define RING 32768u
@@ -58,6 +59,7 @@ int main(void)
             bool clip; lut[j] = output_entry(kp_tables[kp][j], output, &clip); clipped += clip;
             assert((lut[j] & 0xffc0u) == (kp_tables[kp][j] & 0xffc0u));
         }
+        assert(sync_lut_context_matches(lut,kp_tables[kp],output));
         unsigned relative_limit = output_entry(8u, output, NULL) & 63u;
         unsigned blank = output_entry(21u, output, NULL) & 63u;
         unsigned sync_floor = output_entry(0u, output, NULL) & 63u;
@@ -77,7 +79,8 @@ int main(void)
                 unsigned width_hi = kind == 0 ? 230u : kind == 2 ? tip + 40u : 125u;
                 for (unsigned seed = 0; seed < 8; ++seed) {
                     sfw_ring_t r = {.ring=raw,.ring_bytes=RING,.phase=c5vrx_phase8_gain_lut,
-                        .verified_kp_x100=kp_level_x100[kp],.program_verified=true,.decoder_lut=lut};
+                        .verified_kp_x100=kp_level_x100[kp],.program_verified=true,.decoder_lut=lut,
+                        .reference_lut=kp_tables[kp],.verified_output=output};
                     build_cells(&r);
                     /* A real original phase prefix and suffix at the configured
                      * -1MHz blanking target. No output-derived threshold fit. */

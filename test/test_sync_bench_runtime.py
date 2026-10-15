@@ -20,6 +20,7 @@ PREFIX = r'''
 #include "phase8_gain_lut.h"
 #include "kp_tables.h"
 #include "output_level.h"
+#include "sync_lut_context.h"
 typedef int esp_err_t;
 #define ESP_OK 0
 #define ESP_ERR_NOT_SUPPORTED 0x106
@@ -34,7 +35,7 @@ typedef int portMUX_TYPE;
 #define portMUX_INITIALIZER_UNLOCKED 0
 static uint8_t s_raw_ring[32768];
 static uint16_t s_lut_live[1024];
-static _Alignas(64) uint8_t allocation[9088];
+static _Alignas(64) uint8_t allocation[11136];
 static bool s_started=true,s_have_verified=true,s_lut_known=true,s_transport_fault;
 static bool s_stream_generation_overflow,s_menu_active,s_rx_enabled=true,s_tx_enabled=true,s_bs_enabled=true;
 static bool s_prog_lp=true,s_verified_lp=true;
@@ -76,7 +77,10 @@ static int recorded_printf(const char *fmt,...){
 }
 static bool instrumented_prepare(const sfw_ring_t*r,bool pal,sfw_bench_kind_t kind,sfw_private_pulse_t*p){
     assert(!critical && !suspended && r->ring==allocation && r->workspace==allocation+4096);
-    assert(r->phase==allocation+8832 && !memcmp(r->phase,c5vrx_phase8_gain_lut,256));
+    assert(r->phase==allocation+10880 && !memcmp(r->phase,c5vrx_phase8_gain_lut,256));
+    assert(r->reference_lut==(uint16_t*)(allocation+7424));
+    assert(r->verified_output==s_verified_output &&
+        sync_lut_context_matches(r->decoder_lut,r->reference_lut,r->verified_output));
     ++prepares;bool ok=sfw_bench_prepare_private(r,pal,kind,p);
     if(change_during_prepare)++s_stream_generation;
     return ok;
@@ -99,6 +103,15 @@ int main(void){
     memcpy(raw,s_raw_ring,sizeof(raw));memcpy(lut,s_lut_live,sizeof(lut));
     sync_bench_context_t ctx;
     assert(!transport_bench_context_copy(&ctx,(uint16_t*)s_raw_ring));
+    assert(transport_bench_context_copy(&ctx,(uint16_t*)allocation));
+    s_lut_live[1023]^=0x40u;
+    assert(!transport_bench_context_copy(&ctx,(uint16_t*)allocation));
+    s_lut_live[1023]^=0x40u;
+    s_output=s_verified_output=9;
+    assert(!transport_bench_context_copy(&ctx,(uint16_t*)allocation));
+    for(unsigned j=0;j<1024;++j)s_lut_live[j]=output_entry(kp_tables[0][j],9,NULL);
+    assert(transport_bench_context_copy(&ctx,(uint16_t*)allocation));
+    s_output=s_verified_output=0;memcpy(s_lut_live,kp_tables[0],sizeof(s_lut_live));
     assert(transport_bench_context_copy(&ctx,(uint16_t*)allocation));
     assert(transport_bench_context_valid(&ctx));
     s_menu_active=true;assert(!transport_bench_context_copy(&ctx,(uint16_t*)allocation));s_menu_active=false;

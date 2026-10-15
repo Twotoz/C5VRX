@@ -20,6 +20,7 @@ int main(void)
     unsigned cases=0;
     for(unsigned kp=0;kp<8;++kp)for(unsigned output=0;output<10;++output) {
         r.verified_kp_x100=kp_level_x100[kp];
+        r.reference_lut=kp_tables[kp];r.verified_output=output;
         for(unsigned j=0;j<1024;++j)lut[j]=output_entry(kp_tables[kp][j],output,NULL);
         assert(sfw_bench_seed_private(&r,12345));memcpy(before,raw,sizeof(raw));
         for(unsigned pal=0;pal<2;++pal)for(unsigned kind=0;kind<4;++kind) {
@@ -45,6 +46,7 @@ int main(void)
     r.benchmark_profile=(sfw_bench_profile_t *)raw;assert(!sfw_bench_prepare_private(&r,true,SFW_BENCH_H,&p));
     r.benchmark_profile=(sfw_bench_profile_t *)workspace;assert(!sfw_bench_prepare_private(&r,true,SFW_BENCH_H,&p));
     r.benchmark_profile=(sfw_bench_profile_t *)lut;assert(!sfw_bench_prepare_private(&r,true,SFW_BENCH_H,&p));
+    r.benchmark_profile=(sfw_bench_profile_t *)r.reference_lut;assert(!sfw_bench_prepare_private(&r,true,SFW_BENCH_H,&p));
     r.benchmark_profile=(sfw_bench_profile_t *)r.phase;assert(!sfw_bench_prepare_private(&r,true,SFW_BENCH_H,&p));
     assert(!memcmp(raw,before,sizeof(raw)));
     printf("PASS: %u block-profiled pulses byte-identical, 4/7 reads, counter wrap, stage consistency and source-alias refusal\n",cases);

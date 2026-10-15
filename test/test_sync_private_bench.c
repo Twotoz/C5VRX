@@ -21,11 +21,13 @@ int main(void)
     for (unsigned kp=0;kp<KP_LEVELS;++kp) for(unsigned output=0;output<OUTPUT_LEVELS;++output) {
         for(unsigned j=0;j<1024;++j)lut[j]=output_entry(kp_tables[kp][j],output,NULL);
         r.verified_kp_x100=kp_level_x100[kp];
+        r.reference_lut=kp_tables[kp];r.verified_output=output;
         assert(sfw_bench_seed_private(&r,12345));memcpy(before,raw,sizeof(raw));
         for(unsigned pal=0;pal<2;++pal)for(unsigned kind=0;kind<4;++kind) {
             memset(storage,0xa5,sizeof(storage));sfw_private_pulse_t pulse;
             assert(sfw_bench_prepare_private(&r,pal,(sfw_bench_kind_t)kind,&pulse));
             assert(pulse.prepared && pulse.start==512 && pulse.bytes==(kind==0?236u:pal?1280u:1271u));
+            assert(!pulse.bootstrap_refused);
             assert(!memcmp(raw,before,sizeof(raw)));
             for(unsigned j=0;j<64;++j)assert(storage[j]==0xa5);
             for(unsigned j=64+pulse.bytes;j<sizeof(storage);++j)assert(storage[j]==0xa5);

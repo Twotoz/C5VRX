@@ -20,6 +20,7 @@
 
 #define IQ_RATE_HZ          40000000u
 #define RAW_RING_BYTES      32768u
+#define LIVE_PIPELINE_LAG_BYTES (3u * RAW_RING_BYTES / 4u)
 #define DAC_IDLE_CODE       20u          /* blanking level; sync is 0 */
 #define CONTROL_BYTES       4092u        /* one completed GDMA descriptor */
 #define PROBE_REGIONS       4u

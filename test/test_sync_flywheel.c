@@ -6,7 +6,9 @@
  * actual root U85Q-LP arithmetic and LUT, for both pair parities.
  * Active IQ/DAC preservation and recovery pass-through are explicit gates.
  * SFW_KP_LEVEL selects the actual root LUT (0..7); SFW_CLOCK_PPM exercises
- * source-clock error without changing pulse/content gates. Not LCD evidence. */
+ * source-clock error without changing pulse/content gates. SFW_OUTPUT_LEVEL
+ * selects the actual mapped LUT; sync uses the same normalized8/21 crossing
+ * fraction at every output. Not LCD evidence. */
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -15,6 +17,7 @@
 #include "sync_flywheel.h"
 #include "phase8_gain_lut.h"
 #include "kp_tables.h"
+#include "sync_lut_context.h"
 
 #define RING 32768u
 #define LAG 16384u
@@ -34,6 +37,8 @@ typedef struct {
 
 static unsigned s_seed = 1;
 static unsigned s_kp_level;
+static unsigned s_output_level, s_sync_limit=8;
+static uint16_t s_active_lut[1024];
 static bool s_commit_mode;
 /* Independent source-monitor fixture: these statuses are injected from the
  * known source scene, never derived from keeper output. This tests admission
@@ -168,7 +173,8 @@ static uint8_t *run_ring(const uint8_t *in, uint64_t n, sync_flywheel_t *f, cons
     commit_fixture_t commit = {.ring = ring, .flywheel = f, .workspace = workspace};
     sfw_ring_t r = {.ring = ring, .ring_bytes = RING, .phase = phase, .mask_bit0 = mask,
                    .clear_bit0 = clear, .verified_kp_x100 = kp_level_x100[s_kp_level],
-                   .program_verified = true, .decoder_lut = kp_tables[s_kp_level]};
+                   .program_verified = true, .decoder_lut = s_active_lut,
+                   .reference_lut = kp_tables[s_kp_level], .verified_output = s_output_level};
     if (s_commit_mode) {
         r.workspace = workspace; r.workspace_bytes = sizeof(workspace);
         r.commit = commit_fixture; r.commit_ctx = &commit;
@@ -275,10 +281,10 @@ static void decode(const uint8_t *raw, uint64_t n, unsigned parity)
         decoded[k] = decoded[k+1] = (uint8_t)y;
         for (unsigned j = 0; j < 10; ++j) address |= ((word >> bits[j]) & 1u) << j;
         counter = ((y >> 1) << 10) | address;
-        unsigned token = kp_tables[s_kp_level][address] >> 11;
+        unsigned token = s_active_lut[address] >> 11;
         unsigned hi = ((counter >> 8) + (((x >> 1) << 2) | (state >> 3))) & 255;
         counter = (hi << 8) | (counter & 255);
-        unsigned value = kp_tables[s_kp_level][(state << 5) + token];
+        unsigned value = s_active_lut[(state << 5) + token];
         x = value & 63;
         state = (value >> 6) & 31;
     }
@@ -292,10 +298,10 @@ static unsigned sync_run(const uint8_t *b, uint64_t n, uint64_t pos, unsigned a,
      * click before the pulse is not the pulse. */
     unsigned best = 0;
     for (uint64_t k = k0; k <= pos + tol && k + 2 < n; k += 2) {
-        if (tx_code(b, k) > 8u) continue;
+        if (tx_code(b, k) > s_sync_limit) continue;
         unsigned run = 0, highs = 0;
         uint64_t j = k;
-        while (j + 2 < n && highs < 2u) { if (tx_code(b, j) <= 8u) highs = 0; else ++highs; j += 2; run += 2; }
+        while (j + 2 < n && highs < 2u) { if (tx_code(b, j) <= s_sync_limit) highs = 0; else ++highs; j += 2; run += 2; }
         run -= 2u * highs;
         if (run > best) { best = run; if (edge) *edge = (int)((int64_t)k - (int64_t)pos); }
     }
@@ -524,9 +530,9 @@ static void scenario(bool pal)
     /* No stale flywheel pulse between real ones: count sync starts per line. */
     unsigned extra = 0;
     for (uint64_t k = (uint64_t)(5.5 * F); k + 9 < 9 * F; k += 3) {
-        if (tx_code(out, k) <= 8u && tx_code(out, k - 3) > 8u && tx_code(out, k - 6) > 8u) {
+        if (tx_code(out, k) <= s_sync_limit && tx_code(out, k - 3) > s_sync_limit && tx_code(out, k - 6) > s_sync_limit) {
             unsigned run = 0;
-            for (uint64_t j = k; tx_code(out, j) <= 8u && run < 2000; j += 3) run += 3;
+            for (uint64_t j = k; tx_code(out, j) <= s_sync_limit && run < 2000; j += 3) run += 3;
             if (run >= 150 && run <= 230) ++extra;
         }
     }
@@ -805,8 +811,14 @@ int main(void)
     setvbuf(stdout, NULL, _IONBF, 0);
     if (getenv("SFW_KP_LEVEL")) s_kp_level = (unsigned)strtoul(getenv("SFW_KP_LEVEL"), NULL, 10);
     assert(s_kp_level < KP_LEVELS);
+    if(getenv("SFW_OUTPUT_LEVEL"))s_output_level=(unsigned)strtoul(getenv("SFW_OUTPUT_LEVEL"),NULL,10);
+    assert(s_output_level<OUTPUT_LEVELS);
+    for(unsigned j=0;j<1024;++j)s_active_lut[j]=output_entry(kp_tables[s_kp_level][j],s_output_level,NULL);
+    assert(sync_lut_context_matches(s_active_lut,kp_tables[s_kp_level],s_output_level));
+    unsigned mapped0=output_entry(0,s_output_level,NULL)&63u,mapped21=output_entry(21,s_output_level,NULL)&63u;
+    s_sync_limit=mapped0+(8u*(mapped21-mapped0)+10u)/21u;
     s_commit_mode = getenv("SFW_COMMIT") != NULL;
-    printf("keeper kp=%u\n", kp_level_x100[s_kp_level]);
+    printf("keeper kp=%u output_index=%u normalized_sync_limit=%u\n",kp_level_x100[s_kp_level],s_output_level,s_sync_limit);
     if (getenv("SFW_CLOCK_PPM")) s_clock_ppm = strtod(getenv("SFW_CLOCK_PPM"), NULL);
     provenance_admission();
     commit_admission();
