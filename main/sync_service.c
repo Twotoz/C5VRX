@@ -12,7 +12,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { SERVICE_US=80, SERVICE_EVALS=64, SERVICE_STACK=4096 };
+/* Read-only task: target stack reports service_task32 + service_turn128 +
+ * sfw_run192 + build_cells1056 bytes on its largest core call chain. Keep
+ * room for transport/RTOS calls without demanding another4KiB heap block.
+ * A future synthesis/publication task needs its own stack qualification. */
+enum { SERVICE_US=80, SERVICE_EVALS=64, SERVICE_STACK=3072 };
 typedef struct {
     sync_flywheel_t detector;
     sync_done_progress_t progress;
