@@ -80,6 +80,16 @@ when complete fade/return scenes still fail.
 
 ### Integrated H period bank
 
+Ordinary V now also uses complete periods in canonical unmasked kp0.60-0.85
+contexts. A48-byte blank bridge absorbs the endpoint residual, and V blank
+uses the qualified-1632 Q8 carrier. FirstEQ retains its existing constructor;
+kp0.50/0.55 ordinary V remains dynamic because its unknown-entry-state fixture
+has counterexamples. A period-bank match is not a camera-sync observation.
+The integrated V passes7864320 independent boundary/output/decoder-state cases,
+all eight full keeper suites,640 private preparations/profile comparisons and
+the production OUTPUT0.5x/5x extremes. The executor workspace is used directly;
+direct host writes need only48 scratch bytes, not another1280-byte pulse copy.
+
 Physical C5 measurement is now available: source `78b0fd4`, version
 `5.0.0-pr.212-sync-period-h`, flashed and hash-verified as
 `533c7dccce0e4e2242e5c01292a7d71d15bab5aa53085ce4236683a8fb6f88ad`.

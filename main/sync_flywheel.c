@@ -438,6 +438,59 @@ static SFW_HOT bool period_h(sync_flywheel_t *f,const sfw_ring_t *r,uint64_t a,
     return true;
 }
 
+static inline bool period_context(const sfw_ring_t *r)
+{ return s_period_context && s_cell_phase==r->phase && s_cell_mask==2 && !r->mask_bit0; }
+
+static inline void period_store(const sfw_ring_t *r,uint64_t a,uint32_t offset,
+                                const uint8_t *source,uint32_t bytes)
+{
+    if(r->commit){memcpy(r->workspace+offset,source,bytes);return;}
+    uint32_t index=(uint32_t)(a+offset)&(r->ring_bytes-1u);
+    while(bytes) {
+        uint32_t part=r->ring_bytes-index;if(part>bytes)part=bytes;
+        memcpy(r->ring+index,source,part);
+        source+=part;bytes-=part;index=0;
+    }
+}
+
+/* Ordinary V only. Unknown-at-tip fixtures qualify kp>=0.60; the lower two
+ * settings retain the dynamic constructor until their entry history is
+ * independently qualified. Put the endpoint residual in48 blank samples. */
+static SFW_HOT bool period_v(sync_flywheel_t *f,const sfw_ring_t *r,uint64_t a,
+                            uint32_t low,uint32_t high,int32_t step)
+{
+    const int32_t blank=-1632;
+    unsigned gcd=((uint32_t)step&1u)?1u:2u;
+    int32_t lead=2*(step-blank)*(100-f->repair_kp_x100)/f->repair_kp_x100;
+    uint32_t start=(ph_at(r,a-1u)*256u+(uint32_t)lead+gcd/2u)&65535u;
+    start&=~(gcd-1u);
+    sfw_period_slice_t tip,tail;
+    if(!sfw_period_slice(step,(uint16_t)start,low,&tip))return false;
+    uint32_t tip_end=(start+low*(uint32_t)step)&65535u;
+    uint32_t target=(ph_at(r,a+low+high)*256u-(uint32_t)blank)&65535u;
+    uint32_t tail_start=(target-(high-48u)*(uint32_t)blank)&65535u;
+    if(!sfw_period_slice(blank,(uint16_t)tail_start,high-48u,&tail))return false;
+    int32_t residual=(int32_t)((tail_start-tip_end-48u*(uint32_t)blank)&65535u);
+    if(residual>=32768)residual-=65536;
+    sync_synth_t bridge;
+    if(!sync_synth_init(&bridge,(uint16_t)tip_end,residual,48u))return false;
+    uint8_t settling[48];
+    for(unsigned j=0;j<48u;++j)settling[j]=s_cell[sync_synth_next(&bridge,blank)];
+    if(!r->commit && !sync_repair_ledger_record(&f->repairs,a,a+low+high))return false;
+    period_store(r,a,0,tip.first,tip.first_bytes);
+    period_store(r,a,tip.first_bytes,tip.second,tip.second_bytes);
+    period_store(r,a,low,settling,sizeof(settling));
+    period_store(r,a,low+48u,tail.first,tail.first_bytes);
+    period_store(r,a,low+48u+tail.first_bytes,tail.second,tail.second_bytes);
+    if(r->commit) {
+        if(r->benchmark_profile){r->benchmark_profile->body_done=bench_tick(r);r->benchmark_profile->stage_mask|=32u;}
+        bool committed=commit_prepared(f,r,a,a+low+high);
+        if(r->benchmark_profile){r->benchmark_profile->commit_done=bench_tick(r);r->benchmark_profile->stage_mask|=64u;}
+        return committed;
+    }
+    return true;
+}
+
 static SFW_HOT bool synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t n1,
                   int32_t step1, uint32_t n2, int32_t step2, int32_t next_step,
                   bool bootstrap, uint64_t floor, uint64_t avail_end)
@@ -452,8 +505,11 @@ static SFW_HOT bool synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, u
     uint32_t n = (uint32_t)bytes;
     if (r->commit && !workspace_valid(r, n)) { ++f->workspace_refused; return false; }
     if(!bootstrap && n1==PORCH && n2==HSYNC && step2==f->repair_step_q8 &&
-       f->repair_kp_x100 && s_period_context && s_cell_phase==r->phase && s_cell_mask==2 && !r->mask_bit0)
+       f->repair_kp_x100 && period_context(r))
         return period_h(f,r,a,step1,next_step);
+    if(!bootstrap && step1==f->repair_step_q8 && f->repair_kp_x100>=60u &&
+       n<=1280u && n2>48u && step2==-1632 && next_step==-1632 && period_context(r))
+        return period_v(f,r,a,n1,n2,step1);
     if (bootstrap) {
         uint8_t tip[128];
         if (n1 <= sizeof(tip) && first_v_tip(f, r, a, n1, tip)) {
@@ -1096,7 +1152,8 @@ static void v_slot(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail_end,
         uint32_t low = broad ? h2 - HSYNC : eq_low(f);
         bool first = j == -(int)npre(f);
         int32_t tip = sync_step(f);
-        bool committed = synth(f, r, p, low, tip, h2 - low, blank_step(f), blank_step(f),
+        int32_t emitted_blank=f->repair_kp_x100>=60u && period_context(r) ? -1632 : blank_step(f);
+        bool committed = synth(f, r, p, low, tip, h2 - low, emitted_blank, emitted_blank,
                                first, floor, avail_end);
         if (committed || !r->commit) ++f->slots_repaired;
     }
