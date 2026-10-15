@@ -71,46 +71,46 @@ it is not a demonstrated video or range improvement.
 
 ## Hardware
 
-XIAO ESP32-C5. DAC on D4..D9 (GPIO 23, 24, 11, 12, 8, 9; LSB first) with
-8.2k / 3.9k / 2k / 1k / 470R / 240R and a 200R load, as in C5VRX-3/4
-([schematic](docs/hardware/c5vrx-dac-schematic.png)). The
+NiceMCU ESP32-C5 Mini (this board build, 4 MB flash). DAC on IO4..IO9
+(LSB first) with 8.2k / 3.9k / 2k / 1k / 470R / 240R and a 200R load. The
+IQ path drives IO0, IO1, IO3, IO10 and IO15 internally: leave them free. The
 receiver uses the ESP32-C5's own Wi-Fi radio; no extra RF parts.
 
 ### Wiring the resistor DAC
 
-Six resistors, one per XIAO pin, all joined on one node: that node is the
+Six resistors, one per board pin, all joined on one node: that node is the
 video output (CVBS). A seventh resistor from that node to GND is the load.
 
-| XIAO pin | GPIO | DAC bit | resistor to the output node |
+| Board pin | GPIO | DAC bit | resistor to the output node |
 | --- | ---: | --- | ---: |
-| D4 | 23 | bit 0 (LSB) | 8.2 kΩ |
-| D5 | 24 | bit 1 | 3.9 kΩ |
-| D6 | 11 | bit 2 | 2.0 kΩ |
-| D7 | 12 | bit 3 | 1.0 kΩ |
-| D8 | 8 | bit 4 | 470 Ω |
-| D9 | 9 | bit 5 (MSB) | 240 Ω |
+| IO4 | 4 | bit 0 (LSB) | 8.2 kΩ |
+| IO5 | 5 | bit 1 | 3.9 kΩ |
+| IO6 | 6 | bit 2 | 2.0 kΩ |
+| IO7 | 7 | bit 3 | 1.0 kΩ |
+| IO8 | 8 | bit 4 | 470 Ω |
+| IO9 | 9 | bit 5 (MSB) | 240 Ω |
 | GND | - | load | 200 Ω (output node to GND) |
 
 ```
-D4 --[8.2k]--+
-D5 --[3.9k]--+
-D6 --[2.0k]--+
-D7 --[1.0k]--+-----------> CVBS out (goggle / monitor AV-in, video)
-D8 --[470R]--+     |
-D9 --[240R]--+   [200R]   (optional: 470 pF from the node to GND,
-                   |        improvement unproven)
+IO4 --[8.2k]--+
+IO5 --[3.9k]--+
+IO6 --[2.0k]--+
+IO7 --[1.0k]--+-----------> CVBS out (goggle / monitor AV-in, video)
+IO8 --[470R]--+     |
+IO9 --[240R]--+   [200R]   (optional: 470 pF from the node to GND,
+                    |        improvement unproven)
 GND ---------------+------> GND (goggle / monitor AV-in ground)
 ```
 
-- The pin order matters: the largest resistor (8.2k) goes on D4 and the
-  smallest (240R) on D9. A swapped pair gives a scrambled, banded picture.
+- The pin order matters: the largest resistor (8.2k) goes on IO4 and the
+  smallest (240R) on IO9. A swapped pair gives a scrambled, banded picture.
 - Connect the output node to the video input (centre/tip) of the goggles,
-  a DVR or an analog monitor, and the XIAO GND to its ground. A common
+  a DVR or an analog monitor, and the board GND to its ground. A common
   ground is required.
 - All values are standard E24; 1 % metal-film resistors are fine. Keep
   the wires from the pins to the node short.
 - Too dark or too dim on some goggles: try OUTPUT in the menu (1.0-2.5x).
-- The XIAO is powered over USB-C or its 5 V pin as usual; the DAC needs no
+- The board is powered over USB-C or its 5 V pin as usual; the DAC needs no
   separate supply.
 
 ## First boot

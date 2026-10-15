@@ -45,9 +45,9 @@ static bool s_started;   /* live TX running (cleared while menu/status/recovery 
 static bool s_prog_lp;   /* U85Q-LP instructions loaded */
 static const void *tracker_program(bool lp) { return lp ? s_u85q_lp : s_u85q; }
 
-/* 6-bit resistor DAC, LSB first (XIAO D4..D9; 8.2k/3.9k/2k/1k/470R/240R
- * plus 200R). Do not change the tested pin order. */
-static const int s_dac_gpio[8] = {23, 24, 11, 12, 8, 9, -1, -1};
+/* 6-bit resistor DAC, LSB first (NiceMCU ESP32-C5 Mini IO4..IO9;
+ * 8.2k/3.9k/2k/1k/470R/240R plus 200R). */
+static const int s_dac_gpio[8] = {4, 5, 6, 7, 8, 9, -1, -1};
 
 DMA_ATTR __attribute__((aligned(64))) uint8_t s_raw_ring[RAW_RING_BYTES];
 static parlio_rx_unit_handle_t s_rx;
@@ -111,8 +111,8 @@ static esp_err_t prepare_rx(void)
         .clk_out_gpio_num = -1,
         .valid_gpio_num = -1,
         /* Same order as rf.c s_iq_pins: Q bits 0..3, I bits 4..7. */
-        .data_gpio_nums = {GPIO_NUM_1, GPIO_NUM_0, GPIO_NUM_25, GPIO_NUM_7,
-                           GPIO_NUM_10, GPIO_NUM_5, GPIO_NUM_3, GPIO_NUM_4},
+        .data_gpio_nums = {GPIO_NUM_1, GPIO_NUM_0, GPIO_NUM_25, GPIO_NUM_26,
+                           GPIO_NUM_10, GPIO_NUM_27, GPIO_NUM_3, GPIO_NUM_15},
         .flags = {.free_clk = true, .clk_gate_en = false, .allow_pd = false},
     };
     esp_err_t err = parlio_new_rx_unit(&cfg, &s_rx);

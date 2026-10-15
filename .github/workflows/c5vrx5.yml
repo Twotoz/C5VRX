@@ -104,7 +104,7 @@ jobs:
           cp build/c5vrx5.bin build/bootloader/bootloader.bin \
              build/partition_table/partition-table.bin build/flasher_args.json release/
           esptool.py --chip esp32c5 merge_bin -o release/c5vrx5_merged.bin \
-            --flash_mode dio --flash_size 8MB --flash_freq 80m \
+            --flash_mode dio --flash_size 4MB --flash_freq 80m \
             0x2000 release/bootloader.bin 0x8000 release/partition-table.bin 0x10000 release/c5vrx5.bin
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           printf '%s\n' '${{ github.event.pull_request.head.sha || github.sha }}' > release/COMMIT
