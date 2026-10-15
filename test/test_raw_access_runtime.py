@@ -26,6 +26,8 @@ class RawAccessRuntime(unittest.TestCase):
 #include <stddef.h>
 #include <stdio.h>
 #include "raw_access.h"
+#include "raw_history.h"
+#include "snapshot.h"
 #define PROBE_BYTES 256
 static raw_access_t s_raw_access;
 static unsigned depth, calls, mode;
@@ -57,7 +59,13 @@ static bool copy_recent_endpoints_unleased(uint8_t*d,size_t n){(void)d;(void)n;r
             'bool copy_sentinel_window(', 'bool copy_snapshot(', 'bool copy_recent_endpoints('])
         main = r'''
 int main(void) {
-    uint8_t data[PROBE_BYTES];
+    uint8_t data[8190];
+    uint64_t issued=s_raw_access.issued;
+    assert(!copy_control_window(data,0) && !copy_control_window(data,4093) && !copy_control_window(data,SIZE_MAX));
+    assert(!copy_recent_endpoints(data,0) && !copy_recent_endpoints(data,4093) && !copy_recent_endpoints(data,SIZE_MAX));
+    assert(!copy_control_window(NULL,64) && !copy_probe_window(NULL,NULL) && !copy_sentinel_window(NULL));
+    assert(!copy_snapshot(NULL) && !copy_recent_endpoints(NULL,1));
+    assert(calls==0 && issued==s_raw_access.issued && !depth && !raw_access_readers(&s_raw_access));
     for(mode=0;mode<5;++mode) for(unsigned which=0;which<5;++which) {
         s_rx_enabled=true; bool result;
         switch(which) {
@@ -70,13 +78,16 @@ int main(void) {
         assert(result==(mode==0)); assert(!depth && !raw_access_readers(&s_raw_access));
     }
     assert(calls==25);
+    mode=0;
+    assert(copy_control_window(data,4092) && copy_recent_endpoints(data,4092));
+    assert(calls==27 && !raw_access_readers(&s_raw_access));
     raw_access_token_t writer;
     assert(raw_access_write_begin(&s_raw_access,transport_raw_context(),true,&writer));
-    assert(!copy_control_window(data,64) && calls==25);
+    assert(!copy_control_window(data,64) && calls==27);
     assert(raw_access_write_end(&s_raw_access,&writer,transport_raw_context(),true));
     s_stream_generation_overflow=true;
-    assert(!copy_snapshot(data) && calls==25 && !raw_access_readers(&s_raw_access));
-    puts("PASS: all five actual raw-copy wrappers release on failures/context changes and refuse an exclusive writer");
+    assert(!copy_snapshot(data) && calls==27 && !raw_access_readers(&s_raw_access));
+    puts("PASS: all five actual raw-copy wrappers enforce declared limits before raw access, leak no tokens, release on failures/context changes and refuse an exclusive writer");
 }
 '''
         with tempfile.TemporaryDirectory() as directory:

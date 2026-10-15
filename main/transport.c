@@ -25,6 +25,7 @@
 #include "snapshot.h"
 #include "control_window.h"
 #include "raw_access.h"
+#include "raw_history.h"
 #include "sync_transport_probe.h"
 #include "sync_memory_frontier.h"
 #include "sync_private_bench.h"
@@ -922,8 +923,8 @@ static bool transport_bench_cache_result(esp_err_t error)
 
 void transport_sync_bench(void)
 {
-    enum { PRIVATE_RING=4096, WORKSPACE=1280, LUT_BYTES=2048, COPY_BYTES=1344,
-           ALLOCATION=PRIVATE_RING+WORKSPACE+LUT_BYTES+COPY_BYTES+64 };
+    enum { PRIVATE_RING=4096, WORKSPACE=1280, LUT_BYTES=2048, COPY_BYTES=1344, PHASE_BYTES=256,
+           ALLOCATION=PRIVATE_RING+WORKSPACE+LUT_BYTES+COPY_BYTES+64+PHASE_BYTES };
     static portMUX_TYPE copy_mux = portMUX_INITIALIZER_UNLOCKED;
     static bool called;
     uint8_t *memory = heap_caps_aligned_alloc(64,ALLOCATION,MALLOC_CAP_INTERNAL|MALLOC_CAP_DMA|MALLOC_CAP_8BIT);
@@ -936,11 +937,13 @@ void transport_sync_bench(void)
     uint8_t *workspace=memory+PRIVATE_RING;
     uint16_t *lut=(uint16_t *)(workspace+WORKSPACE);
     uint8_t *destination=(uint8_t *)lut+LUT_BYTES;
+    uint8_t *phase=memory+ALLOCATION-PHASE_BYTES;
+    memcpy(phase,c5vrx_phase8_gain_lut,PHASE_BYTES);
     sync_bench_context_t context;
     if (!transport_bench_context_copy(&context,lut)) {
         heap_caps_free(memory); printf("SYNC_BENCH refused=context writes_live=0\n"); return;
     }
-    sfw_ring_t ring = {.ring=memory,.ring_bytes=PRIVATE_RING,.phase=c5vrx_phase8_gain_lut,
+    sfw_ring_t ring = {.ring=memory,.ring_bytes=PRIVATE_RING,.phase=phase,
         .verified_kp_x100=kp_level_x100[context.level],.program_verified=true,.decoder_lut=lut,
         .workspace=workspace,.workspace_bytes=WORKSPACE};
     bool first_call=!called; called=true;
@@ -950,7 +953,7 @@ void transport_sync_bench(void)
     uint64_t warm_us=(uint64_t)(esp_timer_get_time()-t0);
     printf("SYNC_BENCH begin private_bytes=%u input=private_synthetic writes_live=0 first_call=%u "
            "prewarm_cycles=%lu prewarm_us=%llu kp=%u lp=%u output=%u stream_gen=%lu "
-           "cpu_hz=%lu irq_latency_measured=0 live_wcet_proven=0\n",ALLOCATION,first_call,(unsigned long)warm_cycles,
+           "cpu_hz=%lu phase_ram=1 irq_latency_measured=0 live_wcet_proven=0\n",ALLOCATION,first_call,(unsigned long)warm_cycles,
            (unsigned long long)warm_us,kp_level_x100[context.level],context.lp,context.output,
            (unsigned long)context.generation,(unsigned long)esp_clk_cpu_freq());
     bool valid=warm;
@@ -962,6 +965,8 @@ void transport_sync_bench(void)
         }
         uint32_t prepare_max_cycles=0,copy_max_cycles=0,refused=0,bytes=0;
         uint64_t prepare_max_us=0,copy_max_us=0;
+        uint32_t prepare_min_cycles=UINT32_MAX;
+        uint64_t prepare_min_us=UINT64_MAX;
         int cache_in=ESP_OK,cache_out=ESP_OK;
         for (unsigned run=0; valid && run<4; ++run) {
             valid=transport_bench_context_valid(&context) && sfw_bench_seed_private(&ring,(uint16_t)(run*8192u));
@@ -973,6 +978,8 @@ void transport_sync_bench(void)
             uint64_t elapsed_us=(uint64_t)(esp_timer_get_time()-t0);
             if (elapsed_cycles>prepare_max_cycles) prepare_max_cycles=elapsed_cycles;
             if (elapsed_us>prepare_max_us) prepare_max_us=elapsed_us;
+            if (elapsed_cycles<prepare_min_cycles) prepare_min_cycles=elapsed_cycles;
+            if (elapsed_us<prepare_min_us) prepare_min_us=elapsed_us;
             if (!valid || !transport_bench_context_valid(&context)) { valid=false; break; }
             bytes=pulse.bytes; refused+=pulse.bootstrap_refused;
             uint32_t rounded=(bytes+63u)&~63u;
@@ -1000,9 +1007,10 @@ void transport_sync_bench(void)
         }
         printf("SYNC_BENCH pulse standard=%s kind=%u valid=%u bytes=%lu prepare_max_cycles=%lu "
                "prepare_max_us=%llu private_copy_envelope_cycles=%lu private_copy_envelope_us=%llu "
-               "cache_in=%d cache_out=%d bootstrap_refused=%lu first_eq_lp_model_only=%u writes_live=0\n",
+               "prepare_min_cycles=%lu prepare_min_us=%llu cache_in=%d cache_out=%d bootstrap_refused=%lu first_eq_lp_model_only=%u writes_live=0\n",
                standard?"PAL":"NTSC",kind,valid,(unsigned long)bytes,(unsigned long)prepare_max_cycles,
                (unsigned long long)prepare_max_us,(unsigned long)copy_max_cycles,(unsigned long long)copy_max_us,
+               (unsigned long)prepare_min_cycles,(unsigned long long)prepare_min_us,
                cache_in,cache_out,(unsigned long)refused,kind==SFW_BENCH_FIRST_EQ);
         vTaskDelay(1);
     }
@@ -1221,10 +1229,12 @@ static bool copy_recent_endpoints_unleased(uint8_t *dst, size_t n)
     return true;
 }
 
-/* Exclusion only. Original-evidence readers must additionally reject repair
- * ledger intersections before a future shared-ring writer is enabled. */
+/* Bounded evidence readers. Shared-ring writes remain disabled: future
+ * integration must preserve raw_history's full protected interval, or check
+ * repair-ledger intersections, in addition to exclusive token ownership. */
 bool copy_control_window(uint8_t *dst, size_t bytes)
 {
+    if (!dst || !raw_history_request(RHR_CONTROL,bytes)) return false;
     raw_access_token_t token;
     if (!transport_raw_read_begin(&token)) return false;
     bool copied=copy_control_window_unleased(dst,bytes);
@@ -1233,6 +1243,7 @@ bool copy_control_window(uint8_t *dst, size_t bytes)
 }
 bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node)
 {
+    if (!dst || !raw_history_request(RHR_PROBE,PROBE_BYTES)) return false;
     raw_access_token_t token;
     if (!transport_raw_read_begin(&token)) return false;
     bool copied=copy_probe_window_unleased(dst,node);
@@ -1241,6 +1252,7 @@ bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node)
 }
 bool copy_sentinel_window(uint8_t dst[64])
 {
+    if (!dst || !raw_history_request(RHR_SENTINEL,64u)) return false;
     raw_access_token_t token;
     if (!transport_raw_read_begin(&token)) return false;
     bool copied=copy_sentinel_window_unleased(dst);
@@ -1249,6 +1261,7 @@ bool copy_sentinel_window(uint8_t dst[64])
 }
 bool copy_snapshot(uint8_t *dst)
 {
+    if (!dst || !raw_history_request(RHR_SNAPSHOT,C5V4_LEVEL_SAMPLE_BYTES)) return false;
     raw_access_token_t token;
     if (!transport_raw_read_begin(&token)) return false;
     bool copied=copy_snapshot_unleased(dst);
@@ -1257,6 +1270,7 @@ bool copy_snapshot(uint8_t *dst)
 }
 bool copy_recent_endpoints(uint8_t *dst, size_t n)
 {
+    if (!dst || !raw_history_request(RHR_ENDPOINTS,n)) return false;
     raw_access_token_t token;
     if (!transport_raw_read_begin(&token)) return false;
     bool copied=copy_recent_endpoints_unleased(dst,n);

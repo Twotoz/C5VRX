@@ -109,7 +109,7 @@ static int s_cell_mask = -1;
 
 static int signed4(unsigned v) { return v < 8u ? (int)v : (int)v - 16; }
 
-static uint16_t decoder_value(const uint16_t *lut, unsigned state, uint8_t a, uint8_t b)
+static inline __attribute__((always_inline)) uint16_t decoder_value(const uint16_t *lut, unsigned state, uint8_t a, uint8_t b)
 {
     unsigned address = (a >> 4) | ((a & 15u) << 4) | ((b & 128u) << 1) | ((b & 8u) << 6);
     return lut[state * 32u + (lut[address] >> 11)];
@@ -126,12 +126,12 @@ static uint16_t decoder_value(const uint16_t *lut, unsigned state, uint8_t a, ui
  * Preserve that key/order as one11-bit value instead of evolving unused y. */
 typedef uint16_t decoder_bound_t;
 
-static void decoder_advance(const uint16_t *lut, decoder_bound_t *bound, uint8_t raw, uint8_t mid)
+static inline __attribute__((always_inline)) void decoder_advance(const uint16_t *lut, decoder_bound_t *bound, uint8_t raw, uint8_t mid)
 {
     *bound = decoder_value(lut, *bound >> 6, raw, mid) & 2047u;
 }
 
-static bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
+static SFW_HOT bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
                            decoder_bound_t states[2][32], unsigned counts[2], uint64_t last[2])
 {
     const uint32_t mask = r->ring_bytes - 1u;
@@ -176,11 +176,23 @@ static bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
     return true;
 }
 
+/* Portable nonzero ctz without a libgcc/flash helper on RV32IMAC. */
+static inline __attribute__((always_inline)) unsigned first_token(uint32_t bits)
+{
+    unsigned token = 0;
+    if (!(bits & 65535u)) { bits >>= 16; token += 16; }
+    if (!(bits & 255u)) { bits >>= 8; token += 8; }
+    if (!(bits & 15u)) { bits >>= 4; token += 4; }
+    if (!(bits & 3u)) { bits >>= 2; token += 2; }
+    if (!(bits & 1u)) ++token;
+    return token;
+}
+
 /* Only the first EQ has no preceding synthetic porch. Use the actual
  * worker table to make its tip directly, against every surviving decoder
  * state. This needs at most 28 regular observation tokens per byte, not a
  * 256-phase carrier search. The remaining slots use the ordinary DDA. */
-static bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
+static SFW_HOT bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
                         unsigned low, uint8_t *tip)
 {
     decoder_bound_t states[2][32];
@@ -188,6 +200,11 @@ static bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
     uint64_t last[2];
     uint8_t cells[28];
     uint32_t available = 0;
+    /* Per-pulse caches cannot survive a context/LUT change accidentally.
+     * For one surviving state the minimax score first minimizes worker DAC;
+     * only tokens tied at that minimum can possibly win the phase tie-break. */
+    uint32_t minimum_tokens[32] = {0};
+    uint8_t minimum_code[32];
     if (!decoder_prefix(f, r, a, states, counts, last)) return false;
     for (unsigned phase = 0; phase < 256u; ++phase) {
         uint8_t raw = s_cell[phase];
@@ -207,14 +224,36 @@ static bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
         unsigned parity = (unsigned)((a + k) & 1u);
         unsigned best = UINT32_MAX, worst_best = UINT32_MAX;
         uint8_t chosen = 0;
-        for (unsigned token = 0; token < 28u; ++token) if (available & (1u << token)) {
+        uint32_t candidates = available;
+        unsigned only_phase = 0;
+        bool single = counts[parity] == 1u;
+        if (single) {
+            only_phase = states[parity][0] >> 6;
+            if (!minimum_tokens[only_phase]) {
+                unsigned lowest = UINT32_MAX;
+                uint32_t scan = available, tied = 0;
+                while (scan) {
+                    unsigned token = first_token(scan); scan &= scan - 1u;
+                    unsigned code = r->decoder_lut[only_phase * 32u + token] & 63u;
+                    if (code < lowest) { lowest = code; tied = 0; }
+                    if (code == lowest) tied |= UINT32_C(1) << token;
+                }
+                if (!tied) return false;
+                minimum_tokens[only_phase] = tied;
+                minimum_code[only_phase] = (uint8_t)lowest;
+            }
+            candidates = minimum_tokens[only_phase];
+        }
+        int target = (int)previous_phase + f->repair_step_q8 / 256;
+        while (candidates) {
+            unsigned token = first_token(candidates); candidates &= candidates - 1u;
             unsigned worst = 0, sum = 0;
-            for (unsigned j = 0; j < counts[parity]; ++j) {
+            if (single) worst = sum = minimum_code[only_phase];
+            else for (unsigned j = 0; j < counts[parity]; ++j) {
                 unsigned code = r->decoder_lut[(states[parity][j] >> 6) * 32u + token] & 63u;
                 if (code > worst) worst = code;
                 sum += code;
             }
-            int target = (int)previous_phase + f->repair_step_q8 / 256;
             int error = wrap8((int)r->phase[cells[token]] - target);
             if (error < 0) error = -error;
             unsigned score = (worst << 20) + (sum << 8) + (unsigned)error;
@@ -269,7 +308,7 @@ static bool workspace_valid(const sfw_ring_t *r, uint32_t bytes)
     return begin >= raw + r->ring_bytes || raw >= begin + r->workspace_bytes;
 }
 
-static bool commit_prepared(sync_flywheel_t *f, const sfw_ring_t *r,
+static SFW_HOT bool commit_prepared(sync_flywheel_t *f, const sfw_ring_t *r,
                             uint64_t a, uint64_t b)
 {
     /* Rejection may be caused by a context/DMA race; never let this interval
@@ -281,7 +320,7 @@ static bool commit_prepared(sync_flywheel_t *f, const sfw_ring_t *r,
     return false;
 }
 
-static bool synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t n1,
+static SFW_HOT bool synth(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t n1,
                   int32_t step1, uint32_t n2, int32_t step2, int32_t next_step,
                   bool bootstrap, uint64_t floor, uint64_t avail_end)
 {
@@ -418,7 +457,7 @@ bool sfw_bench_seed_private(const sfw_ring_t *r, uint16_t phase)
     return true;
 }
 
-static bool private_bench_prepared(void *ctx, uint64_t start, const uint8_t *samples, uint32_t bytes)
+static SFW_HOT bool private_bench_prepared(void *ctx, uint64_t start, const uint8_t *samples, uint32_t bytes)
 {
     sfw_private_pulse_t *result = ctx;
     (void)samples;

@@ -86,7 +86,10 @@ void transport_sync_bench(void); /* manual private-RAM J benchmark; no live writ
 void sync_dma_c2m(const void *addr, size_t size);
 void sync_dma_m2c(const void *addr, size_t size);
 int ring_node_index(uint32_t addr);
-/* Copies that RX cannot have overwritten (false = stale, retry). */
+/* Task-reader token + RX-overwrite/context guards. Nonnull private dst;
+ * control 1..4092 B, probe 256 B, sentinel 64 B, snapshot 8190 B, endpoints
+ * 1..4092 pairs (8184 B raw envelope). False=invalid/unavailable/stale; retry safely.
+ * These bounds alone do not prove DMA publication or original provenance. */
 bool copy_control_window(uint8_t *dst, size_t bytes);
 bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node);
 bool copy_sentinel_window(uint8_t dst[64]);
