@@ -166,7 +166,8 @@ int main(void){
  memcpy(before+sizeof(AHB_DMA)+sizeof(PCR),&PARL_IO,sizeof(PARL_IO));
  assert(transport_sync_source_begin(&s,true)&&s.leased&&raw_access_readers(&s_raw_access)==1);
  assert(s.first.done==(uintptr_t)&rx_desc[4]&&s.first.bf0==(uintptr_t)&rx_desc[5]);
- assert(s.ring.ring==s_raw_ring&&s.ring.decoder_lut==s_lut_live&&!s.ring.program_verified&&cache_calls==1);
+ assert(s.ring.ring==s_raw_ring&&s.ring.decoder_lut==s_lut_live&&!s.ring.program_verified);
+ assert(cache_calls==(SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE?1u:0u));
  assert(transport_sync_source_end(&s)&&!s.leased&&!raw_access_readers(&s_raw_access));
  assert(!memcmp(raw_before,s_raw_ring,sizeof(raw_before))&&!memcmp(before,&AHB_DMA,sizeof(AHB_DMA)));
  assert(!memcmp(before+sizeof(AHB_DMA),&PCR,sizeof(PCR)));
@@ -197,8 +198,9 @@ int main(void){
         with tempfile.TemporaryDirectory() as tmp:
             folder=Path(tmp);path=folder/'adapter.c';path.write_text(prefix+memory+raw+adapter+'\n#undef printf\n'+init+body)
             binary=folder/'adapter'
-            subprocess.run([os.environ.get('CC','cc'),'-O2','-std=c11','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-no-pie','-I',str(ROOT/'main'),str(path),'-o',str(binary)],check=True)
-            subprocess.run([str(binary)],check=True)
+            for cached in (0,1):
+                subprocess.run([os.environ.get('CC','cc'),'-O2','-std=c11','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-no-pie',f'-DSOC_CACHE_INTERNAL_MEM_VIA_L1CACHE={cached}','-I',str(ROOT/'main'),str(path),'-o',str(binary)],check=True)
+                subprocess.run([str(binary)],check=True)
 
     def test_actual_service(self):
         source=(ROOT/'main/sync_service.c').read_text()

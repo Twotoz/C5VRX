@@ -1377,7 +1377,15 @@ bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_source_begin(sync_
     ok=ok &&
         raw_access_same(s->token.context,s->last.context) && s->faults==transport_sync_faults();
     if(!ok){(void)transport_sync_source_end(s);return false;}
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
     sync_dma_m2c(s_raw_ring,sizeof(s_raw_ring));
+#else
+    /* s_raw_ring is DMA_ATTR internal SRAM. On C5 it bypasses L1: the
+     * pinned cache API only discovers a noncacheable range and returns
+     * NOT_SUPPORTED. Keep load ordering without that flash-resident walk.
+     * This shortcut applies only to this fixed internal ring. */
+    __sync_synchronize();
+#endif
     return true;
 }
 bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_source_end(sync_service_source_t *s)
