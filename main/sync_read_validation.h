@@ -1,5 +1,9 @@
 /* C5VRX by Twotoz/contributors: retrospective raw READ lifetime validation.
- * Whole-current+next descriptor operating model; never write permission.
+ * Bounded pre-read descriptor operating model; never write permission.
+ * BF0 must be DONE.next or DONE.next.next. Reserve EVERY node from DONE.end
+ * through BF0 and its successor (2 or3 nodes). BF0 is NOT a payload pointer.
+ * This bounded metadata model is a caller/platform qualification requirement;
+ * no undocumented FIFO limit or farther prefetch relationship is inferred.
  * Caller instruments EVERY actual source load (including lookbehind), resets
  * source caches at turn entry, and keeps a balanced READ lease through the
  * ending capture. Observations must come from accepted sync_done_observe calls
@@ -43,12 +47,15 @@ static inline sync_read_result_t sync_read_capture_cover(
         l->memory_rate_bound!=f->memory_rate_bound) return SRV_CLOCK;
     if (f->last_us<f->first_us || l->first_us<f->last_us || l->last_us<l->first_us)
         return SRV_TIME;
-    int done=dma_progress_index(layout,l->done), current=dma_progress_index(layout,l->bf0);
-    if (done<0 || current<0 || layout->nodes[done].next!=l->bf0) return SRV_LINK;
+    int done=dma_progress_index(layout,l->done), bf=dma_progress_index(layout,l->bf0);
+    if (done<0 || bf<0) return SRV_LINK;
+    unsigned current=((unsigned)done+1u)%DMA_PROGRESS_NODES;
+    unsigned next=(current+1u)%DMA_PROGRESS_NODES;
+    if ((unsigned)bf!=current && (unsigned)bf!=next) return SRV_LINK;
     if (!o->epoch || !o->fresh_from || o->fresh_from>o->done_end ||
         o->done_end%DMA_PROGRESS_RING!=layout->nodes[current].offset) return SRV_EPOCH;
-    unsigned next=((unsigned)current+1u)%DMA_PROGRESS_NODES;
     *cover=layout->nodes[current].bytes+layout->nodes[next].bytes;
+    if ((unsigned)bf==next) *cover+=layout->nodes[(next+1u)%DMA_PROGRESS_NODES].bytes;
     return SRV_OK;
 }
 

@@ -59,7 +59,7 @@ static int gptimer_start(void *t){assert(t&&timer_enabled);timer_started=1;retur
 static int gptimer_stop(void *t){assert(t);timer_started=0;return 0;}
 static int gptimer_disable(void *t){assert(t&&!timer_started);timer_enabled=0;return 0;}
 static int gptimer_del_timer(void *t){assert(t&&!timer_enabled);timer_live=0;return 0;}
-static int xTaskCreate(void (*fn)(void*),const char *name,unsigned stack,void *arg,unsigned priority,void **out){(void)fn;(void)name;assert(stack==3072&&priority==5);task_live=1;task_arg=arg;*out=(void*)2;return pdPASS;}
+static int xTaskCreate(void (*fn)(void*),const char *name,unsigned stack,void *arg,unsigned priority,void **out){(void)fn;(void)name;assert(stack==2560&&priority==5);task_live=1;task_arg=arg;*out=(void*)2;return pdPASS;}
 void sfw_init(sync_flywheel_t *f){*f=(sync_flywheel_t){0};}
 unsigned sfw_run(sync_flywheel_t *f,const sfw_ring_t *r,uint64_t end,uint64_t head,uint64_t floor,bool repair,uint32_t budget){
  (void)floor;assert(!repair&&r->phase);assert(!r->program_verified);

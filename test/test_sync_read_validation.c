@@ -57,17 +57,26 @@ static fixture_t fixture(unsigned rotation,unsigned initial,unsigned duration,bo
     sync_read_extent_note(&f.e,f.b.done_end-1u);
     return f;
 }
+static void prefetch(fixture_t *f)
+{
+    unsigned b=active(&f->l,f->b.done_end),a=active(&f->l,f->a.done_end);
+    f->bf.bf0=f->bl.bf0=f->l.nodes[(b+1u)%9].address;
+    f->af.bf0=f->al.bf0=f->l.nodes[(a+1u)%9].address;
+}
 #define BAD(change,expected) do {fixture_t q=f;change;assert(validate(&q,true)==(expected));}while(0)
 int main(void)
 {
     for(unsigned tails=0;tails<2;++tails)for(unsigned r=0;r<9;++r)
-        for(unsigned i=0;i<9;++i)for(unsigned dt=85;dt<=100;++dt){
+        for(unsigned i=0;i<9;++i)for(unsigned ahead=0;ahead<2;++ahead)
+        for(unsigned dt=85;dt<=100;++dt){
             fixture_t f=fixture(r,i,dt,tails!=0);
+            if(ahead)prefetch(&f);
             assert(validate(&f,true)==SRV_OK);
             /* Exhaust every location in the source ring against independent
              * ending whole-current+next and starting completed-data oracle. */
             unsigned ai=active(&f.l,f.a.done_end);
             uint64_t upper=f.a.done_end+f.l.nodes[ai].bytes+f.l.nodes[(ai+1)%9].bytes;
+            if(ahead)upper+=f.l.nodes[(ai+2)%9].bytes;
             uint64_t oldest=upper-32768u;if(oldest<f.a.fresh_from)oldest=f.a.fresh_from;
             for(uint64_t k=f.b.done_end-32768u;dt==100 && k<=f.b.done_end;++k){
                 f.e=(sync_read_extent_t){0};sync_read_extent_note(&f.e,k);
@@ -100,6 +109,7 @@ int main(void)
     BAD(q.e.first=q.b.fresh_from-1,SRV_EXPIRED);
     BAD(q.e.last=q.b.done_end+1,SRV_INCOMPLETE);
     BAD(q.bf.bf0=q.bl.bf0=q.bf.done,SRV_LINK);
+    BAD(q.af.bf0=q.al.bf0=q.l.nodes[(active(&q.l,q.a.done_end)+2)%9].address,SRV_LINK);
     BAD(q.l.nodes[0].next=0,SRV_METADATA);
     { fixture_t q=fixture(0,7,1,true);
       q.b.done_end=(UINT64_MAX/32768u)*32768u+q.b.done_end%32768u;
@@ -114,6 +124,10 @@ int main(void)
     f.e=(sync_read_extent_t){0};sync_read_extent_note(&f.e,UINT64_MAX);assert(f.e.overflow);
     f.e=(sync_read_extent_t){0};sync_read_extent_note(&f.e,17);sync_read_extent_note(&f.e,5);
     sync_read_extent_note(&f.e,17);assert(f.e.first==5 && f.e.last==18 && f.e.count==3);
-    puts("PASS retrospective raw read validation: all rotations, tails,85-100us, expiration and failure guards");
+    /* Three-long-node reserve fits105us, but106us + quantization can hide
+     * a full ring even with identical DONE/BF0 pairs. Never relax this bound. */
+    f=fixture(0,0,105,true);prefetch(&f);assert(validate(&f,true)==SRV_OK);
+    f.al.last_us=f.bf.first_us+106;assert(validate(&f,true)==SRV_AMBIGUOUS);
+    puts("PASS retrospective reads: all rotations/tails, both BF0 positions,2/3-node reserves,85-100us and106us ambiguity");
     printf("%u validation checks\n",checks);return 0;
 }

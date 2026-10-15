@@ -12,11 +12,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Read-only task: target stack reports service_task32 + service_turn128 +
- * sfw_run192 + build_cells1056 bytes on its largest core call chain. Keep
- * room for transport/RTOS calls without demanding another4KiB heap block.
+/* Read-only task: target stack reports service_task32 + service_turn368 +
+ * sfw_run64 + build_cells1056 bytes on its largest core call chain. Keep
+ * over1KiB beyond those core frames for transport/RTOS, without requiring
+ * a3KiB contiguous heap block after diagnostic task destruction/restart.
  * A future synthesis/publication task needs its own stack qualification. */
-enum { SERVICE_US=80, SERVICE_EVALS=52, SERVICE_STACK=3072 };
+enum { SERVICE_US=80, SERVICE_EVALS=52, SERVICE_STACK=2560 };
 typedef struct {
     sync_flywheel_t detector;
     sync_done_progress_t progress;
@@ -41,6 +42,7 @@ typedef struct {
     uint32_t worst_begin_cycles, worst_observe_cycles, worst_kernel_cycles;
     uint32_t worst_end_cycles, worst_other_cycles;
     uint32_t late_turns, read_result;
+    int before_done_index, before_bf0_index, after_done_index, after_bf0_index;
     unsigned state, standard;
     bool locked;
     const char *reason;
@@ -91,6 +93,8 @@ static const char *IRAM_ATTR service_turn(service_t *s)
     uint32_t cycles=esp_cpu_get_cycle_count();
     if(!transport_sync_source_begin(&s->source,false))return "source_begin";
     sync_done_capture_t before_first=s->source.first,before_last=s->source.last;
+    s_status.before_done_index=dma_progress_index(&s->source.layout,before_last.done);
+    s_status.before_bf0_index=dma_progress_index(&s->source.layout,before_last.bf0);
     sync_done_progress_t candidate=s->progress;
     s->reads=(sync_read_extent_t){0};
     uint32_t after_begin=esp_cpu_get_cycle_count();
@@ -142,6 +146,8 @@ static const char *IRAM_ATTR service_turn(service_t *s)
     }
     uint32_t before_end=esp_cpu_get_cycle_count();
     bool ended=transport_sync_source_end(&s->source);
+    s_status.after_done_index=dma_progress_index(&s->source.layout,s->source.finish_last.done);
+    s_status.after_bf0_index=dma_progress_index(&s->source.layout,s->source.finish_last.bf0);
     uint32_t end_cycles=esp_cpu_get_cycle_count()-before_end;
     if(end_cycles>s_status.max_end_cycles)s_status.max_end_cycles=end_cycles;
     if(!ended)why="source_end";
@@ -230,7 +236,7 @@ void sync_service_print(void)
         "max_acq_cycles=%lu max_track_cycles=%lu max_begin_cycles=%lu max_observe_cycles=%lu max_end_cycles=%lu state=%u standard=%u real_locked=%u "
         "acquisitions=%lu real_v=%lu prewarm_cycles=%lu prewarm_reason=%s alarms=%lu alarm_min_us=%lu alarm_max_us=%lu unstable=%lu wake_gap_us=%lu "
         "worst_begin_cycles=%lu worst_observe_cycles=%lu worst_kernel_cycles=%lu worst_end_cycles=%lu worst_other_cycles=%lu "
-        "late_turns=%lu read_result=%lu prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
+        "late_turns=%lu read_result=%lu before_done=%d before_bf0=%d after_done=%d after_bf0=%d prewarm_accepted=0 publication_proven=0 live_wcet_proven=0\n",
         active,st.reason,(unsigned long)st.turns,(unsigned long)st.calls,
         (unsigned long)st.acquire_calls,(unsigned long)st.track_calls,(unsigned long)st.max_us,
         (unsigned long)st.max_cycles,(unsigned long)st.max_acquire_evals,(unsigned long)st.max_track_evals,
@@ -245,7 +251,8 @@ void sync_service_print(void)
         (unsigned long)st.unstable,(unsigned long)st.max_wake_gap_us,
         (unsigned long)st.worst_begin_cycles,(unsigned long)st.worst_observe_cycles,
         (unsigned long)st.worst_kernel_cycles,(unsigned long)st.worst_end_cycles,(unsigned long)st.worst_other_cycles,
-        (unsigned long)st.late_turns,(unsigned long)st.read_result);
+        (unsigned long)st.late_turns,(unsigned long)st.read_result,
+        st.before_done_index,st.before_bf0_index,st.after_done_index,st.after_bf0_index);
 }
 void sync_service_toggle(void)
 {
