@@ -49,5 +49,16 @@ int main(void)
     assert(!synth(&f,&r,1000,48,-1632,188,-9830,-1632,false,2000,4096));
     phase_reads=0;(void)lowm(&f,&r,1006);assert(phase_reads==10);
     assert(sizeof(s_lowm_window)<=32u);
+    unsigned coarse_reads=0;
+    for(unsigned j=0;j<1000000;++j){
+        k=(j%4093u==0)?UINT64_MAX-2u:65536u+next()%32768u;
+        f.thr=(int16_t)((int)(next()%256u)-128);
+        if(j%8191u==0){raw[next()%32768u]^=0xffu;phase[next()%256u]^=0x7fu;}
+        phase_reads=0;
+        assert(coarse_lowm(&f,&r,k)==reference(&f,&r,k));
+        assert(phase_reads>=2u&&phase_reads<=10u&&!s_lowm_window.valid);
+        coarse_reads+=phase_reads;
+    }
+    printf("PASS: 1000000 exact coarse windows, %u phase reads instead of 10000000, no rolling cache reuse\n",coarse_reads);
     printf("PASS: 1000000 exact original windows (%u rolling/%u restarts),3vs10reads, mutations/rollover/run+synth reset, cache=%zu bytes\n",rolling,restarts,sizeof(s_lowm_window));
 }

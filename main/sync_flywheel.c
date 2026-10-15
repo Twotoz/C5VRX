@@ -148,6 +148,24 @@ static inline bool span_high(const sync_flywheel_t *f, const sfw_ring_t *r, uint
     return !lowm(f, r, k);
 }
 
+/* Coarse probes do not overlap. Avoid populating the rolling cache, and
+ * stop only when even the most negative remaining steps cannot pass the
+ * original nine-step threshold. This is an exact rejection, not reduced
+ * IQ precision or a changed weak-signal qualification. */
+static inline __attribute__((always_inline)) bool coarse_lowm(const sync_flywheel_t *f,
+                                                             const sfw_ring_t *r, uint64_t k)
+{
+    ++s_evals;++s_lowm;lowm_reset();
+    int previous=ph_at(r,k-5u),sum=0,limit=9*f->thr;
+#pragma GCC unroll 9
+    for(unsigned j=0;j<9u;++j) {
+        int phase=ph_at(r,k-4u+j);
+        sum+=wrap8(phase-previous);previous=phase;
+        if(sum-128*(int)(8u-j)>limit)return false;
+    }
+    return sum<=limit;
+}
+
 /* A kept pulse must decode clean span by span, not only on average: n
  * single spans across [a, a + len) must all be at sync level. */
 static bool clean_pulse(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a, uint32_t len,
@@ -899,7 +917,7 @@ static SFW_HOT __attribute__((noinline)) void acquire(sync_flywheel_t *f, const 
         }
         if (++f->acq_n > 6800u) { f->acq_phase = 0; f->acq_n = 0; continue; }   /* 8 lines, no match */
         if (f->acq_phase == 1u) {
-            if (!lowm(f, r, k)) continue;
+            if (!coarse_lowm(f, r, k)) continue;
             f->scan_pos = k > 71u ? k - 63u : 8u;
             f->acq_phase = 2u; f->acq_run = 0;
             continue;
