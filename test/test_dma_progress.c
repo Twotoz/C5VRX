@@ -92,6 +92,14 @@ static void continuous_oracle(unsigned rx_rotation, unsigned tx_rotation, unsign
 
 int main(void)
 {
+    /* Exact integer AHB fast path, including all its timestamp values,
+     * reserve thresholds and the transition back to general rounding. */
+    const uint32_t reserves[]={0,1,1024,4092,32767,32768,UINT32_MAX};
+    for(unsigned us=0;us<=172u;++us)for(unsigned j=0;j<sizeof(reserves)/sizeof(*reserves);++j) {
+        uint64_t actual=UINT64_MAX,expected=(uint64_t)us*192u+reserves[j];
+        dma_progress_result_t result=dma_progress_motion(us,192000000u,reserves[j],&actual);
+        assert(actual==expected && result==(expected>=DMA_PROGRESS_RING?DPG_AMBIGUOUS:DPG_OK));
+    }
     dma_progress_layout_t rx = layout(0, 0x1000), tx = layout(4, 0x2000);
     dma_progress_limits_t cap = limits();
     dma_progress_capture_t c = capture(&rx, &tx, 21000, 5000, 1000);

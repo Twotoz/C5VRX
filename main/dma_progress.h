@@ -98,6 +98,14 @@ static inline dma_progress_result_t dma_progress_capture_valid(
 static inline dma_progress_result_t dma_progress_motion(uint64_t elapsed, uint32_t rate,
                                                         uint32_t reserve, uint64_t *out)
 {
+    /* The C5 conservative AHB bound is exactly192 bytes/us. Within one
+     * possible ring lifetime use32-bit arithmetic; preserve the complete
+     * rounded result and reserve check. This avoids RV32's software64-bit
+     * division in the80us read service. Other rates retain the general path. */
+    if(rate==192000000u && elapsed<=DMA_PROGRESS_RING/192u) {
+        *out=(uint64_t)((uint32_t)elapsed*192u)+reserve;
+        return *out>=DMA_PROGRESS_RING ? DPG_AMBIGUOUS : DPG_OK;
+    }
     if (elapsed > UINT64_MAX / rate) return DPG_AMBIGUOUS;
     uint64_t ticks = elapsed * rate;
     /* Divide before rounding, so even a malicious timestamp cannot overflow. */
