@@ -150,7 +150,9 @@ static void service_task(void *arg)
         if(notifications>1 && s_status.coalesced!=UINT32_MAX)++s_status.coalesced;
         const char *why=service_turn(s);
         if(why){s_status.reason=why;break;}
-        s_status.stack_free=(uint32_t)uxTaskGetStackHighWaterMark(NULL);
+        /* High-water measurement scans the untouched stack byte by byte.
+         * Doing it after every 80us turn delays the next source capture,
+         * outside service_turn's measured interval. Measure only at exit. */
     }
     /* Timer is stopped before task/context release; a final pending ISR can
      * only notify this still-live task. No diagnostic allocation survives OFF. */

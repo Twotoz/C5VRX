@@ -33,6 +33,7 @@ static int64_t now;
 static unsigned timer_live,timer_enabled,timer_started,task_live,notifications,turn_count,end_count;
 static bool fail_end,mutate_context,overrun;
 static unsigned cleanup_after;
+static unsigned stack_scans;
 static void *task_arg;
 static jmp_buf deleted;
 static uint8_t raw[32768];
@@ -42,7 +43,7 @@ static void vTaskSuspendAll(void){}
 static int xTaskResumeAll(void){return 0;}
 static int64_t esp_timer_get_time(void){return now;}
 static uint32_t esp_cpu_get_cycle_count(void){return (uint32_t)now*240u;}
-static unsigned uxTaskGetStackHighWaterMark(void *unused){(void)unused;return 2048;}
+static unsigned uxTaskGetStackHighWaterMark(void *unused){(void)unused;++stack_scans;return 2048;}
 static void vTaskNotifyGiveFromISR(void *task,int *wake){assert(task);++notifications;*wake=pdTRUE;}
 static void xTaskNotifyGive(void *task){assert(task);++notifications;}
 static uint32_t ulTaskNotifyTake(int clear,uint32_t wait);
@@ -96,9 +97,11 @@ int main(void){
  /* Two merged alarms cause one fresh source observation, never two kernel
   * replays or an unobserved camera clock. The next wake requests stop. */
  unsigned prior_turns=s_status.turns;
+ assert(!stack_scans);
  notifications=2;cleanup_after=2;if(!setjmp(deleted))service_task(s);
  assert(!s_active&&!task_live&&!timer_live&&!timer_enabled&&!timer_started&&s_status.coalesced==1);
  assert(s_status.turns==prior_turns+1 && !strcmp(s_status.reason,"manual_stop"));
+ assert(stack_scans==1); /* Only cleanup scans the stack, never a live turn. */
  /* Start again without reboot; manual stop frees task/timer/context again. */
  sync_service_toggle();assert(s_active);s=task_arg;sync_service_toggle();
  if(!setjmp(deleted))service_task(s);
