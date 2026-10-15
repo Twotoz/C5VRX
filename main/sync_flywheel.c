@@ -143,9 +143,10 @@ static inline __attribute__((always_inline)) uint16_t decoder_value(const uint16
  * than inventing one exact phase. Modified bytes are appropriate
  * here: this predicts decoder state, and is never camera-sync evidence.
  * Both pair parities must admit the same generated waveform. */
-/* First-EQ decisions depend on tracker phase and the previous worker DAC,
- * exactly the old deduplication key. LP y never influenced token choice.
- * Preserve that key/order as one11-bit value instead of evolving unused y. */
+/* First-EQ decisions depend on tracker phase and the previous worker DAC.
+ * Preserve the final11-bit key/order. At intermediate prefix steps only
+ * phase enters the next LUT address, so equal phases may merge early;
+ * their discarded DAC values cannot affect any subsequent transition. */
 typedef uint16_t decoder_bound_t;
 
 static inline __attribute__((always_inline)) void decoder_advance(const uint16_t *lut, decoder_bound_t *bound, uint8_t raw, uint8_t mid)
@@ -169,7 +170,17 @@ static SFW_HOT bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint
             unsigned address = (raw >> 4) | ((raw & 15u) << 4) | ((mid & 128u) << 1) | ((mid & 8u) << 6);
             unsigned token = r->decoder_lut[address] >> 11;
             unsigned kept = 0;
-            if (count <= 4u) {
+            if (k < last[parity]) {
+                /* Only32 possible input phases, one membership word and no
+                 * per-pair clearing of a2048-bit phase/DAC membership set.
+                 * Keep first-occurrence order; retain full key on final pair. */
+                uint32_t seen = 0;
+                for (unsigned j = 0; j < count; ++j) {
+                    decoder_bound_t next = r->decoder_lut[((states[parity][j] >> 1) & ~31u) | token] & 2047u;
+                    uint32_t bit = UINT32_C(1) << (next >> 6);
+                    if (!(seen & bit)) { seen |= bit; states[parity][kept++] = next; }
+                }
+            } else if (count <= 4u) {
                 /* Avoid clearing a bitset once the usual prefix converges. */
                 for (unsigned j = 0; j < count; ++j) {
                     decoder_bound_t next = r->decoder_lut[((states[parity][j] >> 1) & ~31u) | token] & 2047u;

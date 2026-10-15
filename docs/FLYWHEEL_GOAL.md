@@ -25,7 +25,7 @@ qualified genuine camera timing.
 
 ## Current physical state
 
-The C5 is on COM10. Original app and partition/settings bytes were backed up
+The C5 was on COM10. Original app and partition/settings bytes were backed up
 privately before app-only experiments; existing settings are retained.
 The current experimental app is `5.0.0-pr.212-sync-fast`, frozen source
 `2d4c422`, app SHA256
@@ -39,6 +39,39 @@ measured normal load. First EQ minimum1703us and maximum39199us still fail
 the streaming deadline; maximum regular V also has preemption outliers.
 These extrema do not prove pure kernel cost or WCET. Transport error
 counters remained zero and output stayed live throughout these tests.
+
+On2026-10-15 the next app-only flash refused before any download or write:
+COM10 no longer existed. Serial enumeration and present-device inspection
+showed only Bluetooth COM3..8. Reconnection was requested; this is a physical
+measurement dependency, not evidence that the new app runs on the board.
+The built `5.0.0-pr.212-sync-profile` app (source87a7f49) has SHA256
+`1a77eecc4604fa9fee8646079a9d6f31b71166f47ed3553bfa5eb64227333bf4`.
+Its manual W service is read-only, allocates only while enabled, and rejects
+late/ambiguous/context-changing turns rather than inventing a camera clock.
+J now profiles first-EQ stages without masking synthesis/search interrupts.
+
+Further exact prefix simplification merges equal intermediate tracker phases:
+previous DAC is not an input to the next LUT transition. The final ordered
+phase/DAC set is retained.19200 prefix and38400 full-tip differential cases
+remain identical to cce2eb7;640 profiled pulse cases pass. C5 timing is pending.
+The resulting `5.0.0-pr.212-sync-fold` build has SHA256
+`40eb3d6a47b0ceaa2e6a71025029abca3801ceb2fca1c4ff552e97865e12bf23`.
+
+## Additional offline evidence
+
+`research/sync_h_bank.py` preserves external waveform gates while moving
+H endpoint residual into its48-byte front porch and copying a constant tip.
+The original fixed-step candidate fails kp0.50. A separate H-only step-7430
+passes the full kp0.50 source-loss/return scenes, all-output transition rows,
+and2621440 phase/decoder/output cases. Other attempted frequencies retain
+their failure evidence; this is not a live timing or memory-writer proof.
+
+`research/sync_coarse_scenes.py` reuses the exact temporary coarse acquisition
+builder and passes all8kp full keeper scene suites. Production acquisition
+is still unchanged; bounded TRACK work and actual W timing remain required.
+Universal first-EQ preparation is being evaluated separately, including
+interactions with the H bank. Individual transition passes are insufficient
+when complete fade/return scenes still fail.
 
 ## Next concrete steps
 
