@@ -121,16 +121,14 @@ static uint16_t decoder_value(const uint16_t *lut, unsigned state, uint8_t a, ui
  * than inventing one exact phase. Modified bytes are appropriate
  * here: this predicts decoder state, and is never camera-sync evidence.
  * Both pair parities must admit the same generated waveform. */
-typedef struct { unsigned phase, x, y; } decoder_bound_t;
+/* First-EQ decisions depend on tracker phase and the previous worker DAC,
+ * exactly the old deduplication key. LP y never influenced token choice.
+ * Preserve that key/order as one11-bit value instead of evolving unused y. */
+typedef uint16_t decoder_bound_t;
 
 static void decoder_advance(const uint16_t *lut, decoder_bound_t *bound, uint8_t raw, uint8_t mid)
 {
-    unsigned address = (raw >> 4) | ((raw & 15u) << 4) | ((mid & 128u) << 1) | ((mid & 8u) << 6);
-    unsigned carry = ((address >> 8) + (bound->phase >> 3)) >> 2;
-    bound->y = (bound->y >> 1) + (bound->x >> 1) + carry;
-    unsigned value = decoder_value(lut, bound->phase, raw, mid);
-    bound->phase = (value >> 6) & 31u;
-    bound->x = value & 63u;
+    *bound = decoder_value(lut, *bound >> 6, raw, mid) & 2047u;
 }
 
 static bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
@@ -142,20 +140,33 @@ static bool decoder_prefix(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
         last[parity] = a - 2u;
         if ((last[parity] & 1u) != parity) --last[parity];
         unsigned count = 32;
-        for (unsigned j = 0; j < count; ++j) states[parity][j] = (decoder_bound_t){j, 63, 63};
+        for (unsigned j = 0; j < count; ++j) states[parity][j] = (decoder_bound_t)((j << 6) | 63u);
         for (uint64_t k = last[parity] - 126u; k <= last[parity]; k += 2u) {
-            for (unsigned j = 0; j < count; ++j)
-                decoder_advance(r->decoder_lut, &states[parity][j],
-                    r->ring[(uint32_t)k & mask], r->ring[(uint32_t)(k + 1u) & mask]);
+            /* Every possible tracker state observes the SAME raw pair. */
+            unsigned raw = r->ring[(uint32_t)k & mask], mid = r->ring[(uint32_t)(k + 1u) & mask];
+            unsigned address = (raw >> 4) | ((raw & 15u) << 4) | ((mid & 128u) << 1) | ((mid & 8u) << 6);
+            unsigned token = r->decoder_lut[address] >> 11;
             unsigned kept = 0;
-            for (unsigned j = 0; j < count; ++j) {
-                unsigned dst = 0;
-                for (; dst < kept; ++dst)
-                    if (states[parity][dst].phase == states[parity][j].phase &&
-                        states[parity][dst].x == states[parity][j].x) break;
-                if (dst == kept) states[parity][kept++] = states[parity][j];
-                else if (states[parity][j].y > states[parity][dst].y)
-                    states[parity][dst].y = states[parity][j].y;
+            if (count <= 4u) {
+                /* Avoid clearing a bitset once the usual prefix converges. */
+                for (unsigned j = 0; j < count; ++j) {
+                    decoder_bound_t next = r->decoder_lut[((states[parity][j] >> 1) & ~31u) | token] & 2047u;
+                    unsigned dst = 0;
+                    while (dst < kept && states[parity][dst] != next) ++dst;
+                    if (dst == kept) states[parity][kept++] = next;
+                }
+            } else {
+                /* Bounded2048-bit membership set replaces quadratic scans;
+                 * append in first-occurrence order, preserving every tie. */
+                uint32_t seen[64] = {0};
+                for (unsigned j = 0; j < count; ++j) {
+                    decoder_bound_t next = r->decoder_lut[((states[parity][j] >> 1) & ~31u) | token] & 2047u;
+                    uint32_t bit = UINT32_C(1) << (next & 31u);
+                    if (!(seen[next >> 5] & bit)) {
+                        seen[next >> 5] |= bit;
+                        states[parity][kept++] = next;
+                    }
+                }
             }
             count = kept;
         }
@@ -199,7 +210,7 @@ static bool first_v_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t a,
         for (unsigned token = 0; token < 28u; ++token) if (available & (1u << token)) {
             unsigned worst = 0, sum = 0;
             for (unsigned j = 0; j < counts[parity]; ++j) {
-                unsigned code = r->decoder_lut[states[parity][j].phase * 32u + token] & 63u;
+                unsigned code = r->decoder_lut[(states[parity][j] >> 6) * 32u + token] & 63u;
                 if (code > worst) worst = code;
                 sum += code;
             }
