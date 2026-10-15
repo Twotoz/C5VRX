@@ -1318,7 +1318,7 @@ static uint32_t transport_sync_faults(void)
 {
     return s_dma_faults + s_tx_empty + s_rx_overflow + s_bs_overload;
 }
-static bool transport_sync_capture(sync_done_capture_t *c)
+static bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_capture(sync_done_capture_t *c)
 {
     vTaskSuspendAll();
     *c=(sync_done_capture_t){0};
@@ -1343,7 +1343,7 @@ static bool transport_sync_capture(sync_done_capture_t *c)
     (void)xTaskResumeAll();
     return c->live && c->memory_rate_bound;
 }
-bool transport_sync_source_begin(sync_service_source_t *s, bool discover)
+bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_source_begin(sync_service_source_t *s, bool discover)
 {
     if(!s || s->leased || !transport_raw_read_begin(&s->token))return false;
     s->leased=true;
@@ -1380,7 +1380,7 @@ bool transport_sync_source_begin(sync_service_source_t *s, bool discover)
     sync_dma_m2c(s_raw_ring,sizeof(s_raw_ring));
     return true;
 }
-bool transport_sync_source_end(sync_service_source_t *s)
+bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_source_end(sync_service_source_t *s)
 {
     if(!s || !s->leased)return false;
     bool ok=transport_sync_capture(&s->last) && s->faults==transport_sync_faults();

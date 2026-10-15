@@ -127,6 +127,7 @@ class ServiceRuntimeTest(unittest.TestCase):
         import test_sync_transport_runtime as bridge
         source=(ROOT/'main/transport.c').read_text()
         prefix=bridge.PREFIX.replace('#include "sync_transport_probe.h"','#include "sync_transport_probe.h"\n#include "sync_service.h"')
+        prefix='#define IRAM_ATTR\n'+prefix
         prefix=prefix.replace('} AHB_DMA;', 'struct {reg_t raw;} in_intr[3],out_intr[3]; } AHB_DMA;')
         prefix=prefix.replace('} PARL_IO;', 'struct {unsigned tx_fifo_rempty_int_raw,rx_fifo_wovf_int_raw;} int_raw; } PARL_IO;')
         prefix=prefix.replace('static uint64_t esp_timer_get_time(void) {timer+=2;return timer;}',

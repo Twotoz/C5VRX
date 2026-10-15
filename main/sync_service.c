@@ -63,7 +63,7 @@ static bool IRAM_ATTR service_alarm(gptimer_handle_t timer,
 }
 /* Every failure ends the lease before returning. No failed turn contributes
  * a camera clock. Timing overrun discards the entire private detector. */
-static const char *service_turn(service_t *s)
+static const char *IRAM_ATTR service_turn(service_t *s)
 {
     int64_t started=esp_timer_get_time();
     uint32_t cycles=esp_cpu_get_cycle_count();
