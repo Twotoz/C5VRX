@@ -109,6 +109,12 @@ publication bound. No writer calls it yet. The bound must include admission,
 stores, cache operations and ordering, and requires physical measurement.
 No live publication or timing flag has been enabled by these arithmetic tests.
 
+The integrated source is committed as `f12bf8f`. Its pinned ESP-IDF6.0.2 build,
+`5.0.0-pr.212-sync-rolling`, completes at0x12a5f0 bytes with SHA256
+`2e340ea302ad9bbf6cb0e9f35c00a35e41822e969cc7960bac595530b397d030`.
+The binary and ELF are retained locally in `c5vrx-sync-rolling-20261015`.
+This image has not been flashed: the C5 USB serial device is currently absent.
+
 - Profile first-EQ stages before selecting another optimization. Preserve
   exact pulse bytes: packed states and local token masks already pass
   38,400 differential tips and full kp0.85/0.50 scene tests.
