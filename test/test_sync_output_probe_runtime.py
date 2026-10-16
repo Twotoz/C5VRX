@@ -37,6 +37,14 @@ typedef struct {unsigned signal_range_min_ns,signal_range_max_ns;struct{bool en_
 #define GPIO_PIN8_REG 4u
 #define GPIO_ENABLE_W1TS_REG 5u
 #define GPIO_ENABLE_W1TC_REG 6u
+#define IO_MUX_GPIO2_REG 7u
+#define GPIO_FUNC2_OUT_SEL_CFG_REG 8u
+#define GPIO_PIN2_REG 9u
+#define GPIO_FUNC2_OUT_SEL_M 511u
+#define GPIO_FUNC2_OUT_INV_SEL_M 512u
+#define GPIO_FUNC2_OE_SEL_M 1024u
+#define GPIO_FUNC2_OE_INV_SEL_M 2048u
+#define GPIO_PIN2_PAD_DRIVER_M 4u
 #define GPIO_FUNC8_OUT_SEL_M 511u
 #define GPIO_FUNC8_OUT_INV_SEL_M 512u
 #define GPIO_FUNC8_OE_SEL_M 1024u
@@ -45,7 +53,9 @@ typedef struct {unsigned signal_range_min_ns,signal_range_max_ns;struct{bool en_
 #define MCU_SEL_M 28672u
 #define MCU_SEL_S 12u
 #define FUN_IE 512u
-static uint32_t registers[7];
+#define FUN_PU 256u
+#define FUN_PD 128u
+static uint32_t registers[10];
 static unsigned writes, api_calls, fail_at, mode, receives, deletes, disables;
 static bool live_value, mutate_pin, channel_live, rx_enabled, receiving;
 static int64_t now;
@@ -53,7 +63,8 @@ static rmt_rx_event_callbacks_t mock_cb;
 static void *mock_context;
 #define REG_READ(address) registers[address]
 static void reg_write(unsigned address,uint32_t value){
- assert(address==IO_MUX_GPIO8_REG||address==GPIO_FUNC8_OUT_SEL_CFG_REG||address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG);
+ assert(address==IO_MUX_GPIO2_REG||address==GPIO_FUNC2_OUT_SEL_CFG_REG||address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG);
+ if(address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG)assert(value==(1u<<2));
  ++writes;
  if(address==GPIO_ENABLE_W1TS_REG)registers[GPIO_ENABLE_REG]|=value;
  else if(address==GPIO_ENABLE_W1TC_REG)registers[GPIO_ENABLE_REG]&=~value;
@@ -63,11 +74,11 @@ static void reg_write(unsigned address,uint32_t value){
 static bool owner_live(uint32_t generation){return live_value&&generation==7u;}
 static int64_t esp_timer_get_time(void){return now;}
 static int rmt_new_rx_channel(const rmt_rx_channel_config_t *cfg,void **out){
- ++api_calls;assert(cfg->gpio_num==8&&cfg->clk_src==80&&cfg->resolution_hz==20000000&&cfg->mem_block_symbols==96);
+ ++api_calls;assert(cfg->gpio_num==2&&cfg->clk_src==80&&cfg->resolution_hz==20000000&&cfg->mem_block_symbols==96);
  if(fail_at==1)return -1;
  assert(!channel_live);channel_live=true;*out=(void*)1;
- registers[IO_MUX_GPIO8_REG]|=FUN_IE;
- if(mutate_pin)registers[GPIO_FUNC8_OUT_SEL_CFG_REG]^=1u;
+ registers[IO_MUX_GPIO2_REG]|=FUN_IE;
+ if(mutate_pin)registers[GPIO_FUNC2_OUT_SEL_CFG_REG]^=1u;
  return 0;
 }
 static int rmt_rx_register_event_callbacks(void *channel,const rmt_rx_event_callbacks_t *cb,void *arg){
@@ -172,7 +183,7 @@ static void fixture(bool ntsc){
 }
 static void lifecycle(void){
  for(unsigned failure=0;failure<=8;++failure){
-  reset();fail_at=failure;uint32_t saved[7];memcpy(saved,registers,sizeof(saved));
+  reset();fail_at=failure;uint32_t saved[10];memcpy(saved,registers,sizeof(saved));
   sync_output_probe(7,owner_live);
   assert(!memcmp(registers,saved,sizeof(saved))&&!s_probe.armed&&!s_busy);
   assert(now<=100000);assert(!rx_enabled||s_quarantined);
@@ -197,6 +208,14 @@ static void lifecycle(void){
  reset();live_value=false;sync_output_probe(7,owner_live);assert(!api_calls&&!writes);
  reset();sync_output_probe(7,NULL);assert(!api_calls&&!writes);
  reset();s_busy=true;sync_output_probe(7,owner_live);assert(!api_calls&&!writes);
+ reset();registers[GPIO_ENABLE_REG]|=1u<<2;
+ sync_output_probe(7,owner_live);assert(!api_calls&&!writes);
+ reset();registers[GPIO_PIN2_REG]|=GPIO_PIN2_PAD_DRIVER_M;
+ sync_output_probe(7,owner_live);assert(!api_calls&&!writes);
+ reset();registers[IO_MUX_GPIO2_REG]=FUN_PU|FUN_PD|0x100000u;
+ registers[GPIO_FUNC2_OUT_SEL_CFG_REG]=0x200000u|256u;
+ uint32_t saved_all[10];memcpy(saved_all,registers,sizeof(saved_all));
+ sync_output_probe(7,owner_live);assert(receives&&!memcmp(saved_all,registers,sizeof(saved_all)));
 }
 int main(void){parser_tests();fixture(false);fixture(true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''

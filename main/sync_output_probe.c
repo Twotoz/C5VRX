@@ -4,6 +4,7 @@
  * never supplies production clock evidence or schedules output pulses.
  * Captures durations, not absolute GPTIMER timestamps. Bright-picture aliases
  * and generated gates are not camera evidence. Owner must exclude gates.
+ * GPIO2 (unused MTMS pad) mirrors PARLIO DATA4 independently of DAC OE.
  * No raw IQ, LUT, DMA descriptors, PHY registers or GPIO output data writes. */
 #include "sync_output_probe.h"
 #include <stdio.h>
@@ -18,8 +19,10 @@
 #include "soc/io_mux_reg.h"
 #include "soc/soc.h"
 
-#define SOP_GPIO 8u
+#define SOP_GPIO 2u
 #define SOP_MASK (1u << SOP_GPIO)
+_Static_assert((SOP_MASK & UINT32_C(0x01801b00)) == 0u,
+               "native witness must be outside all six DAC output enables");
 #define SOP_SYMBOLS 48u
 #define SOP_WINDOW_US 50000
 #define SOP_HARD_US 100000
@@ -170,7 +173,7 @@ void sync_output_probe(uint32_t generation, bool (*live)(uint32_t))
     s_busy = true;
     uint32_t iomux = REG_READ(IO_MUX_GPIO8_REG);
     uint32_t matrix = REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG);
-    uint32_t enabled = REG_READ(GPIO_ENABLE_REG) & SOP_MASK;
+    uint32_t enabled = REG_READ(GPIO_ENABLE_REG) & (1u << 8);
     /* PARLIO DATA4 index52, push-pull, no inversion. Either peripheral or
      * GPIO-controlled OE is valid: this input-only observer changes neither.
      * The root caller additionally verifies LP and unscaled1x reference LUT. */
@@ -185,6 +188,22 @@ void sync_output_probe(uint32_t generation, bool (*live)(uint32_t))
             (unsigned long)REG_READ(GPIO_PIN8_REG));
         s_busy = false; return;
     }
+    /* The native witness must continue seeing PARLIO while all six DAC pads
+     * are gated. GPIO2 is not wired to the DAC and must be unused/disabled.
+     * Its MTMS role is already unavailable in this RX GPIO3/4/5 topology.
+     * Refuse an occupied output rather than taking it from another owner. */
+    uint32_t mirror_iomux = REG_READ(IO_MUX_GPIO2_REG);
+    uint32_t mirror_matrix = REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG);
+    uint32_t mirror_pin = REG_READ(GPIO_PIN2_REG);
+    uint32_t mirror_enable = REG_READ(GPIO_ENABLE_REG) & SOP_MASK;
+    if (mirror_enable || (mirror_pin & GPIO_PIN2_PAD_DRIVER_M)) {
+        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=mirror_occupied\n");
+        s_busy = false; return;
+    }
+    uint32_t witness_iomux = (mirror_iomux & ~(MCU_SEL_M | FUN_PU | FUN_PD)) |
+        (1u << MCU_SEL_S) | FUN_IE;
+    uint32_t witness_matrix = (mirror_matrix & ~(GPIO_FUNC2_OUT_SEL_M |
+        GPIO_FUNC2_OUT_INV_SEL_M | GPIO_FUNC2_OE_INV_SEL_M)) | 52u | GPIO_FUNC2_OE_SEL_M;
     memset(&s_probe, 0, sizeof(s_probe));
     s_probe.generation = generation; s_probe.live = live;
     rmt_channel_handle_t channel = NULL;
@@ -198,13 +217,21 @@ void sync_output_probe(uint32_t generation, bool (*live)(uint32_t))
     const rmt_receive_config_t receive = {.signal_range_min_ns = 2500u,
         .signal_range_max_ns = 100000u, .flags = {.en_partial_rx = true}};
     int64_t began = esp_timer_get_time();
+    REG_WRITE(IO_MUX_GPIO2_REG, witness_iomux);
+    REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG, witness_matrix);
+    REG_WRITE(GPIO_ENABLE_W1TS_REG, SOP_MASK);
+    if (REG_READ(IO_MUX_GPIO2_REG) != witness_iomux ||
+        REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) != witness_matrix ||
+        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) != SOP_MASK) {
+        failure = "mirror_readback"; goto done;
+    }
     err = rmt_new_rx_channel(&cfg, &channel);
     if (err != ESP_OK) { failure = "new_rx"; goto done; }
     /* SDK may set FUN_IE and reselect the same GPIO function. All other
      * matrix/OE and IO MUX bits must remain unchanged before enabling RX. */
-    pin_changed = REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG) != matrix ||
-        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) != enabled ||
-        REG_READ(IO_MUX_GPIO8_REG) != (iomux | FUN_IE);
+    pin_changed = REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) != witness_matrix ||
+        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) != SOP_MASK ||
+        REG_READ(IO_MUX_GPIO2_REG) != witness_iomux;
     if (pin_changed) { failure = "pin_mutated"; goto done; }
     err = rmt_rx_register_event_callbacks(channel, &callbacks, &s_probe);
     if (err != ESP_OK) { failure = "callbacks"; goto done; }
@@ -241,18 +268,21 @@ done:
         esp_err_t deleted = rmt_del_channel(channel);
         if (deleted != ESP_OK) { cleanup = deleted; s_quarantined = channel; }
     }
-    /* Restore input-enable and mux selection even on allocation/setup errors.
+    /* Restore the unused mirror pad even on allocation/setup errors.
      * No writes to GPIO_OUT or GPIO_OUT_W1TS/W1TC are made. */
-    if (REG_READ(IO_MUX_GPIO8_REG) != iomux) REG_WRITE(IO_MUX_GPIO8_REG, iomux);
-    if (REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG) != matrix)
-        REG_WRITE(GPIO_FUNC8_OUT_SEL_CFG_REG, matrix);
-    if ((REG_READ(GPIO_ENABLE_REG) & SOP_MASK) != enabled)
-        REG_WRITE(enabled ? GPIO_ENABLE_W1TS_REG : GPIO_ENABLE_W1TC_REG, SOP_MASK);
-    bool restored = REG_READ(IO_MUX_GPIO8_REG) == iomux &&
+    REG_WRITE(GPIO_ENABLE_W1TC_REG, SOP_MASK);
+    if (REG_READ(IO_MUX_GPIO2_REG) != mirror_iomux) REG_WRITE(IO_MUX_GPIO2_REG, mirror_iomux);
+    if (REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) != mirror_matrix)
+        REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG, mirror_matrix);
+    bool restored = REG_READ(IO_MUX_GPIO2_REG) == mirror_iomux &&
+        REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) == mirror_matrix &&
+        REG_READ(GPIO_PIN2_REG) == mirror_pin &&
+        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) == mirror_enable &&
+        REG_READ(IO_MUX_GPIO8_REG) == iomux &&
         REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG) == matrix &&
-        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) == enabled;
+        (REG_READ(GPIO_ENABLE_REG) & (1u << 8)) == enabled;
     bool exclusion = !s_probe.cancelled && live(generation);
-    printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 gpio=8 bit=4 output_x100=100 "
+    printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 gpio=2 mirror_source_gpio=8 bit=4 output_x100=100 "
         "self_gate_excluded=%u absolute_time=0 camera_qualified=0 restored=%u "
         "pin_mutated=%u error=%s api=%d cleanup=%d duration_us=%lld "
         "callbacks=%lu symbols=%lu halves=%lu epochs=%lu endings=%lu low=%lu "
