@@ -342,3 +342,37 @@ bounded live publication and physical PAL/NTSC monitor lock remain unproven;
 the live writer is still absent. Next work must reduce remaining source/kernel
 tail costs and then test genuine camera acquisition, rather than declare
 completion from an81us near miss or the now-fast5us DONE check.
+
+### 2026-10-16: retrospective source proof and sync-flag experiment
+
+The current flashed image supersedes the dispatch image above: source
+`7b20315`, version `5.0.0-pr.212-sync-post-span`, application SHA256
+`032af69058573456b237ae2039f0fea8c5b1ba1b36eb0fa8d47135140302d29f`.
+It remains read-only and manual; the live writer is absent. Three VTX-off
+starts in `Downloads/c5vrx-w-sync-post-span-20261016-a.log` reach
+59/153/25 kernel calls, with maximum complete turns of 99/135/104 us.
+They reject with source-validation results 3/10/3. These measurements do
+not establish sustainable 80 us operation or camera acquisition.
+
+Source reads are now checked retrospectively against an ending DMA capture.
+Actual paired captures show BF0 two descriptors beyond DONE; the conservative
+source proof reserves the corresponding prefetch cover. Replacing expensive
+per-sample bookkeeping with enclosing source spans preserves host coverage
+of 2,961,955 actual phase reads. An earlier inline bookkeeping image
+`09d926a` exhausted memory during control-task creation and boot-looped;
+moving that work out of IRAM recovered boot, and the current image boots.
+The descriptor-window publication helper still needs an independent DONE
+history anchor before it can support this observed prefetch arrangement.
+
+`research/sync_flag_codec.py` explores a separate hardware-timed flag path,
+without firmware, GPIO changes or hardware timing qualification. It reserves
+I bit0 and compresses 32 controller tokens into 16, retaining worker phase
+updates during forced sync. `research/data/sync_flag_codec.json` contains
+PAL/NTSC at 0/4/12 dB C/N, one field and one seed each. With the flag OFF,
+picture SINAD falls by 0.41–0.69 dB versus the existing codec. A separate
+masked-input baseline attributes 0.22–0.54 dB to the removed input bit;
+token compression adds further loss. This is a limited feasibility sweep,
+not a range measurement. Oracle sync flags are deliberately supplied from
+the generated raster and prove neither acquisition nor physical monitor
+lock. This approach is not enabled and needs a stronger quality/timing
+case before any live-output experiment.
