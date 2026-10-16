@@ -9,6 +9,7 @@
 #include "sync_period_bank.h"
 #include "sync_tip_policy.h"
 #include "sync_lut_context.h"
+#include "sync_pulse_find.h"
 #include "kp_tables.h"
 #include <string.h>
 
@@ -949,29 +950,65 @@ static SFW_HOT __attribute__((noinline)) void acquire(sync_flywheel_t *f, const 
     }
 }
 
-/* Low-run length from a leading edge (stride 3, one high sample tolerated). */
+typedef struct {
+    const sync_flywheel_t *detector;
+    const sfw_ring_t *ring;
+    sync_flywheel_t *source;
+    uint32_t remaining;
+    bool bounded;
+} pulse_sample_context_t;
+
+static spw_sample_result_t pulse_sample(void *context, uint64_t k, bool *value)
+{
+    pulse_sample_context_t *c = context;
+    if (c->bounded) {
+        uint32_t cost = s_lowm_window.valid && k > s_lowm_window.last &&
+            k - s_lowm_window.last == 3u ? 3u : 10u;
+        if (c->remaining < cost) return SPW_PENDING;
+        if (k < 5u || k > UINT64_MAX - 5u ||
+            !original(c->source, k - 5u, k + 5u)) return SPW_EXPIRED;
+        c->remaining -= cost;
+    }
+    *value = lowm(c->detector, c->ring, k);
+    return SPW_SAMPLE;
+}
+
+/* Scalar callers use the same resumable recurrence to completion. The
+ * callback boundary also permits a future caller to yield without turning
+ * unfinished classification into absent sync. */
 static uint32_t pulse_width(const sync_flywheel_t *f, const sfw_ring_t *r, uint64_t k,
                             uint32_t max, uint32_t *inside)
 {
-    uint32_t w = 0, highs = 0, total = 0;
-    while (w < max && highs < 2u) {
-        if (lowm(f, r, k + w)) highs = 0;
-        else { ++highs; ++total; }
-        w += 3u;
-    }
-    *inside = total - highs;
-    return w - 3u * highs;
+    spw_t walk;
+    pulse_sample_context_t context = {.detector = f, .ring = r};
+    uint32_t width = 0;
+    if (!spw_init(&walk, k, max) ||
+        spw_run(&walk, pulse_sample, &context, UINT32_MAX, NULL) != SPW_DONE ||
+        !spw_result(&walk, &width, inside)) return 0;
+    return width;
 }
 
 typedef enum { P_NONE, P_NORMAL, P_EQ, P_BROAD } pulse_t;
 
 static pulse_t classify(uint32_t w, uint32_t inside)
 {
-    uint32_t n = w / 3u;
-    if (w >= 150u && w <= 230u && inside <= n / 8u) return P_NORMAL;
-    if (w >= 900u && inside <= n / 8u) return P_BROAD;
-    if (w >= 70u && w <= 120u && inside <= 1u) return P_EQ;
-    return P_NONE;
+    return (pulse_t)spf_classify(w, inside);
+}
+
+/* The phase limit bounds source loads, not cycles or DMA lifetime. Resumption
+ * uses the frozen observation and requires a freshly validated source/epoch
+ * from its owner. Each new lowm registers only its own ten-byte envelope;
+ * accepted scalar decisions already stored in the observation need no reread.
+ * UINT32_MAX preserves the existing scalar caller's full-span admission. */
+static spf_status_t find_pulse_chunk(sync_flywheel_t *f, const sfw_ring_t *r,
+    spf_t *observation, uint32_t phase_limit, uint32_t *phase_used)
+{
+    if (phase_limit != UINT32_MAX) lowm_reset(); /* no source cache crosses chunks */
+    pulse_sample_context_t context = {.detector = f, .ring = r, .source = f,
+        .remaining = phase_limit, .bounded = phase_limit != UINT32_MAX};
+    spf_status_t status = spf_run(observation, pulse_sample, &context);
+    if (phase_used) *phase_used = phase_limit - context.remaining;
+    return status;
 }
 
 /* Leading edge (high -> low) nearest the prediction within +-win, refined to
@@ -979,33 +1016,18 @@ static pulse_t classify(uint32_t w, uint32_t inside)
 static pulse_t find_pulse(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t pred,
                           int win, uint64_t avail_end, int *found, uint32_t *width)
 {
-    if (pred + (uint64_t)win + 8u > avail_end) return P_NONE;
+    spf_t observation;
+    if (!spf_init(&observation, pred, win, avail_end) || observation.status == SPF_DONE)
+        return P_NONE;
     /* Include the independent falling-edge refinement's +/-6-sample
      * search and lowm's phase predecessor/lookahead, not only width reads. */
     uint64_t end = pred + (uint64_t)win + 1310u;
     if (end > avail_end) end = avail_end;
     if (!original(f, pred - (uint64_t)win - 8u, end)) return P_NONE;
-    bool prev = lowm(f, r, pred - (uint64_t)win - 3u);
-    for (int e = -win; e <= win; e += 3) {
-        uint64_t k = pred + (uint64_t)(int64_t)e;
-        bool cur = lowm(f, r, k);
-        if (cur && !prev && lowm(f, r, k + 3u)) {
-            uint32_t inside;
-            uint64_t room = avail_end > k + 12u ? avail_end - k - 12u : 0u;
-            uint32_t w = pulse_width(f, r, k, room < 1300u ? (uint32_t)room : 1300u, &inside);
-            pulse_t t = classify(w, inside);
-            if (t != P_NONE) {
-                int edge = e;
-                if (lowm(f, r, k - 2u)) edge = e - 2;
-                else if (lowm(f, r, k - 1u)) edge = e - 1;
-                *found = edge;
-                *width = w;
-                return t;
-            }
-        }
-        prev = cur;
-    }
-    return P_NONE;
+    spf_pulse_t pulse;
+    if (find_pulse_chunk(f, r, &observation, UINT32_MAX, NULL) != SPF_DONE ||
+        !spf_result(&observation, &pulse, found, width)) return P_NONE;
+    return (pulse_t)pulse;
 }
 
 /* Exact adjacent-step moments. Each phase belongs to both neighboring

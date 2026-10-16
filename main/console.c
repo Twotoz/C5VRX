@@ -71,6 +71,7 @@ static void help(void)
            "  ~ bench: bounded native AGC every 20 ms (RAM-only, OFF at boot; after startup),\n"
            "  W bench: read-only continuous sync detector toggle (OFF at boot),\n"
            "  J bench: private-RAM sync synthesis/copy timing (no live writes),\n"
+           "  Z/z bench: brief PAL/NTSC sync via DAC output-enable (changes video; OFF at boot),\n"
            "  B bench: restart live transport without OSD (interrupts video; issue #213 A/B),\n"
            "  N black NO SIGNAL fallback on/off (default OFF: preserve real snow; bench only),\n"
            "  I IQ snapshot, o menu open/close, n/x menu next/select, c next channel, b next band, s scan,\n"
@@ -116,6 +117,8 @@ static void console_task(void *arg)
             case 'T': status(); break;
             case 'I': snapshot(); break;
             case 'J': transport_sync_bench(); break;
+            case 'Z': transport_sync_gate_probe(true); break;
+            case 'z': transport_sync_gate_probe(false); break;
             case 'W': sync_service_toggle(); break;
             case 'F': filter_request(); break;
             case 'D': diag_report(); break;

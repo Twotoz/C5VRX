@@ -52,8 +52,13 @@ relative to each mode's measured sync/porch midpoint. A rail code does not
 by itself prove analog clipping. False-sync statistics are an offline
 classification, not a model of the affected LCD's decoder.
 
-Voltage columns apply the existing nominal resistor model: 3.3 V GPIO,
-8.2k/3.9k/2k/1k/470/240 ohm DAC, 200 ohm series resistor, 75 ohm termination.
+The archived voltage columns assume 3.3 V GPIO, the
+8.2k/3.9k/2k/1k/470/240 ohm DAC, a200 ohm series resistor and75 ohm termination.
+The supplied `docs/hardware/c5vrx-dac-schematic.png` instead shows the200 ohm
+resistor as a shunt to ground. That topology mismatch was identified during
+the2026-10-16 sync-gate investigation. These voltage columns therefore do not
+qualify the supplied circuit; the model and voltage artifacts need a separate
+topology correction and rerun before comparison with physical voltages.
 They are static circuit predictions. GPIO impedance, resistor tolerances,
 coupling, cable and actual monitor loading are unmeasured. There is no
 closed-loop voltage sensor and no physical 75 ohm or LCD acceptance claim.

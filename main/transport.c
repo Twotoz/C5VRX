@@ -8,6 +8,7 @@
 #include "driver/bitscrambler.h"
 #include "driver/parlio_rx.h"
 #include "driver/parlio_tx.h"
+#include "sync_gate_probe.h"
 #include "esp_attr.h"
 #include "esp_cache.h"
 #include "esp_rom_sys.h"
@@ -891,6 +892,47 @@ typedef struct {
     unsigned output;
     bool lp;
 } sync_bench_context_t;
+
+static sync_bench_context_t s_gate_context;
+static bool s_gate_probe_busy;
+
+/* ISR-safe transport identity check: no scheduler/PHY calls or mutation. */
+static bool IRAM_ATTR transport_sync_gate_live(uint32_t generation)
+{
+    return s_started && s_have_verified && s_lut_known && !s_transport_fault &&
+        !s_stream_generation_overflow && !s_menu_active && !s_scan_active &&
+        s_rx_enabled && s_tx_enabled && s_bs_enabled &&
+        generation == s_stream_generation && generation == s_gate_context.generation &&
+        s_verified_level == s_gate_context.level && s_verified_lp == s_gate_context.lp &&
+        s_prog_lp == s_gate_context.lp && s_verified_output == s_gate_context.output &&
+        s_output == s_gate_context.output;
+}
+
+void transport_sync_gate_probe(bool pal)
+{
+    if (s_gate_probe_busy || sync_service_active() || calibration_in_startup() || phy_busy()) {
+        printf("SYNC_GATE refused=context_busy\n");
+        return;
+    }
+    if (!phy_try_actuator(phy_generation())) {
+        printf("SYNC_GATE refused=ownership\n");
+        return;
+    }
+    vTaskSuspendAll();
+    s_gate_context = (sync_bench_context_t){s_stream_generation, s_verified_level,
+        s_verified_output, s_verified_lp};
+    bool live = transport_sync_gate_live(s_gate_context.generation);
+    if (live) s_gate_probe_busy = true;
+    (void)xTaskResumeAll();
+    if (!live) {
+        phy_end_actuator();
+        printf("SYNC_GATE refused=transport\n");
+        return;
+    }
+    sync_gate_probe(pal, s_gate_context.generation, transport_sync_gate_live);
+    s_gate_probe_busy = false;
+    phy_end_actuator();
+}
 
 static bool transport_bench_context_copy(sync_bench_context_t *ctx, uint16_t *lut)
 {

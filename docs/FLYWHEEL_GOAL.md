@@ -463,3 +463,50 @@ and18.168ms NTSC for the unchanged63-stride comparison at the same budget.
 TRACK peaks still reach678 evaluations. This is a candidate for reducing
 average acquisition load, not a uniform latency improvement or a bound on
 TRACK. Data: `sync_read_turn_stride127_40.json`; it is not flashed.
+
+### 2026-10-16: exact resumable pulses and direct DAC-OE investigation
+
+The actual scalar finder now uses `sync_pulse_find.h` and
+`sync_pulse_walk.h`. Their explicit PENDING state preserves the next source
+request and never means absent sync. Frozen source room, terminal-high
+subtraction and edge refinement reproduce the old scalar callback trace.
+Independent tests pass2,275,759 walker split/expiry cases and1,381,802 finder
+checks. The actual lowm bridge meters cold10/rolling3 phase loads and resets
+rolling scratch at each finite-budget chunk. Its123,002 instrumented loads
+match reported budgets across8,702 chunks. In advancing-ring PAL/NTSC broad
+fixtures at80us cadence, quotas208/320 complete exactly;10/128 expire before
+another source load. This is modeled lifetime evidence, not C5 WCET.
+The ordinary keeper and source-envelope suites pass with identical source
+request counts. Live TRACK callers still drive scalar completion; scheduling
+their continuations remains unfinished.
+
+A separate GPIO-OE route can avoid raw-ring publication and decoder-state
+synthesis entirely. The supplied DAC schematic has200ohm R7 from CVBS to
+ground. Temporarily making all six DAC pads high impedance should therefore
+pull the summing node toward0V, while PARLIO/BitScrambler keep processing
+real received IQ. With75ohm termination the ideal resistance is54.5ohm;
+optional470pF predicts a25.6ns RC time constant. These are circuit predictions,
+not measured edges. The old output-voltage model assumed200ohm in series;
+`OUTPUT_ABC_EVIDENCE.md` now marks that mismatch rather than treating those
+voltage columns as qualification of this schematic.
+
+The pinned C5 GPIO matrix provides separate OE selection: keep the original
+PARLIO data source, select GPIO_ENABLE for OE, then clear/set the six bits
+with mask0x01801b00. GPIO ETM data tasks cannot do this transparently.
+`sync_gate_probe.c` is an explicit Z(PAL)/z(NTSC) three-field diagnostic,
+OFF at boot. It verifies all six data routes, enabled pads, no weak pulls,
+240MHz CPU and owned transport identity. A20MHz GPTIMER schedules sync
+starts; an IRAM-only disable/spin/enable sequence holds each pulse within
+one interrupt. The exact rational interlaced schedule passes6,336,290 checks,
+including20,004 fields; its sequential path has no RV32 division/helper calls.
+
+Actual probe source compiled against mock SDK verifies complete schedules,
+all timer API failures, context loss, lateness, timeout, restoration and
+late callbacks. Cleanup failures latch the probe unavailable until reboot.
+The wrapper owns the PHY actuator lease throughout this short manual test.
+Target disassembly places the pad-disable/spin/enable sequence wholly in
+IRAM with no call or flash-data access between the two MMIO stores. Driver
+rearm and schedule work happen after OE restoration. A target build passes.
+This is not yet an automatic flywheel or physical waveform/monitor proof;
+the next gate is a board timing probe, then sustained gating with source
+clock alignment and automatic activation only when required.

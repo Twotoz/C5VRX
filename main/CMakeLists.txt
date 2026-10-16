@@ -4,6 +4,7 @@ idf_component_register(
         "control.c" "calibration.c" "menu.c" "menu_raster.c" "analog_video_detect.c"
         "settings.c" "console.c" "profile.c" "diag.c"
         "sync_flywheel.c" "sync_service.c" # manual read-only W diagnostic; no keeper writer
+        "sync_gate_probe.c" # manual Z/z DAC-OE pulse probe; off at boot
     INCLUDE_DIRS "."
     REQUIRES esp_wifi esp_phy nvs_flash esp_event esp_netif esp_driver_parlio
              esp_driver_gpio esp_driver_bitscrambler esp_driver_usb_serial_jtag
@@ -15,7 +16,7 @@ target_bitscrambler_add_src("u85q_lp.bsasm")
 # Pulse preparation and bounded metadata service must not inherit the
 # application's debug-oriented -Og.
 # Keep the rest of the firmware's optimization/debug policy unchanged.
-set_source_files_properties(sync_flywheel.c sync_service.c PROPERTIES COMPILE_OPTIONS "-O2")
+set_source_files_properties(sync_flywheel.c sync_service.c sync_gate_probe.c PROPERTIES COMPILE_OPTIONS "-O2")
 
 # Filter capacitor and DC DAC access uses PHY internals recovered from this
 # exact ESP-IDF 6.0.2 libphy; any other PHY binary builds with them refused.
