@@ -1,4 +1,7 @@
 /* C5VRX by Twotoz and contributors: bounded input-only RMT DACbit4 probe.
+ * This manual observer and its RX ISR stay in flash to preserve receiver
+ * task SRAM. Cache-disabled intervals may lose observations; this module
+ * never supplies production clock evidence or schedules output pulses.
  * Captures durations, not absolute GPTIMER timestamps. Bright-picture aliases
  * and generated gates are not camera evidence. Owner must exclude gates.
  * No raw IQ, LUT, DMA descriptors, PHY registers or GPIO output data writes. */
@@ -41,12 +44,12 @@ static DRAM_ATTR rmt_symbol_word_t s_symbols[SOP_SYMBOLS];
 static rmt_channel_handle_t s_quarantined;
 static bool s_busy;
 
-static inline bool IRAM_ATTR sop_near(uint32_t actual, uint32_t expected, uint32_t tolerance)
+static inline bool sop_near(uint32_t actual, uint32_t expected, uint32_t tolerance)
 {
     return actual >= expected - tolerance && actual <= expected + tolerance;
 }
 
-static void IRAM_ATTR sop_group(sop_context_t *s)
+static void sop_group(sop_context_t *s)
 {
     if (!s->have_broad) return;
     uint32_t n = s->broad_train;
@@ -63,7 +66,7 @@ static void IRAM_ATTR sop_group(sop_context_t *s)
     s->have_broad = false;
 }
 
-static void IRAM_ATTR sop_low(sop_context_t *s, uint32_t start, uint32_t width)
+static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
 {
     ++s->low;
     if (width >= 76u && width <= 112u) {
@@ -96,7 +99,7 @@ static void IRAM_ATTR sop_low(sop_context_t *s, uint32_t start, uint32_t width)
 /* An RMT symbol has two ordered level durations. Merge identical adjacent
  * levels, including across callbacks. Never classify a truncated first run
  * or the unfinished final run. 50ms fits comfortably in32-bit tick counters. */
-static bool IRAM_ATTR sop_half(sop_context_t *s, uint32_t duration, bool level)
+static bool sop_half(sop_context_t *s, uint32_t duration, bool level)
 {
     if (!duration) return false;  /* RMT end marker, not a zero-length edge. */
     if (s->elapsed > UINT32_MAX - duration || s->run_width > UINT32_MAX - duration) {
@@ -114,7 +117,7 @@ static bool IRAM_ATTR sop_half(sop_context_t *s, uint32_t duration, bool level)
     return true;
 }
 
-static bool IRAM_ATTR sop_received(rmt_channel_handle_t channel,
+static bool sop_received(rmt_channel_handle_t channel,
                                    const rmt_rx_done_event_data_t *event, void *arg)
 {
     (void)channel;

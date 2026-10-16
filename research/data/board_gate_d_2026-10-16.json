@@ -1,0 +1,13 @@
+{
+  "provenance": "C5VRX by Twotoz/contributors",
+  "source_commit": "b079ab8",
+  "version": "5.0.0-pr.212-sync-gate-d",
+  "app_sha256": "53a5a9d0d80e0893993b5c99c6ec8959fe2d82cb962add81e4458d9494d9cd4a",
+  "capture_sha256": "ae8a8939bb3c6b0940a7bc67a3e8a18061f41a0d1ee6e38ba82c2822e351621e",
+  "flash_verified": true,
+  "rows": [],
+  "automatic_activation": false,
+  "physical_waveform_proven": false,
+  "monitor_lock_proven": false,
+  "timing_scope": "software counters/registers only; no scope/capture"
+}
