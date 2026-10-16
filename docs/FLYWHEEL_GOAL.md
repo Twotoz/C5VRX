@@ -571,3 +571,35 @@ observer refused `pin_context` without starting capture; its actual pin
 qualification still needs diagnosis. Source-aligned automatic activation,
 analogue pulse shape and actual monitor lock remain unproven. Captures and
 hashes are archived in `research/data/board_gate_{c,d,e}_2026-10-16.*`.
+
+### IRQ entry jitter and early alarms (2026-10-16)
+
+Gate-F (`9b29a23`) accepts either peripheral-controlled or GPIO-controlled
+OE for the input-only native DAC observer, preserving that routing exactly.
+Y now starts and restores successfully, with zero events in the no-VTX
+capture. This is not camera qualification or an absolute clock anchor.
+Its first PAL/NTSC long pair completed, but repeated trials completed only
+one of nine emitted sequences. Every failed trial had already-late timer
+entry/count timestamps, outside the vertical cycle-grid burst. One ownership
+refusal ended the original repeat runner early; it was not a gate failure.
+Both the successful pair and repeat results are archived as board_gate_f
+and board_gate_f_repeat. A single clean pair did not prove sustained timing.
+
+Gate-G (`37d9f40`, SHA256
+`33390a109f217981c75169f9e2f4d0f443deeeba1e6931a0b6df959a0b9612df`)
+arms each timer alarm12us before its unchanged pulse deadline. The ISR
+waits with DAC pads enabled until the timer reaches that deadline, bounded
+by a separate CPU-cycle watchdog if the timer stops. The original8us
+late-pulse rejection guard is unchanged. This spends extra CPU time in the
+manual diagnostic; it is not a claim about production CPU budget. The
+224us logged limit covers the vertical burst, not total early-wait plus
+driver/scheduling time for an ISR.
+
+The initial long pair completed. The following20 alternating long trials
+also all completed:10 PAL and10 NTSC sequences, with968700 total pulses,
+exact pin restoration, unchanged free heap, and no DMA/transport faults.
+The repeat runner retries ownership refusals before starting a trial, with
+50ms spacing after completed sequences. Full results and maximum lateness
+are in board_gate_g_repeat_2026-10-16.json; these remain software timing
+observations. Automatic activation, source clock alignment and monitor lock
+are still unproven. No generated pulse is counted as camera evidence.
