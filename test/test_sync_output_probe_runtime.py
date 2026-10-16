@@ -40,6 +40,9 @@ typedef struct {unsigned signal_range_min_ns,signal_range_max_ns;struct{bool en_
 #define IO_MUX_GPIO2_REG 7u
 #define GPIO_FUNC2_OUT_SEL_CFG_REG 8u
 #define GPIO_PIN2_REG 9u
+#define GPIO_OUT_REG 10u
+#define GPIO_OUT_W1TS_REG 11u
+#define GPIO_OUT_W1TC_REG 12u
 #define GPIO_FUNC2_OUT_SEL_M 511u
 #define GPIO_FUNC2_OUT_INV_SEL_M 512u
 #define GPIO_FUNC2_OE_SEL_M 1024u
@@ -55,19 +58,35 @@ typedef struct {unsigned signal_range_min_ns,signal_range_max_ns;struct{bool en_
 #define FUN_IE 512u
 #define FUN_PU 256u
 #define FUN_PD 128u
-static uint32_t registers[10];
+static uint32_t registers[13];
 static unsigned writes, api_calls, fail_at, mode, receives, deletes, disables;
 static bool live_value, mutate_pin, channel_live, rx_enabled, receiving;
 static int64_t now;
+static unsigned clock_calls,clock_fail;
+static bool clock_prepared,clock_armed;
+static bool marker_sent;
+static bool scheduler_held;
+static void vTaskSuspendAll(void){assert(!scheduler_held);scheduler_held=true;}
+static int xTaskResumeAll(void){assert(scheduler_held);scheduler_held=false;return 0;}
+static bool sync_edge_clock_prepare(void){++clock_calls;assert((registers[GPIO_ENABLE_REG]&(1u<<2))&&!(registers[GPIO_OUT_REG]&(1u<<2)));clock_prepared=clock_fail!=1u;return clock_prepared;}
+static bool sync_edge_clock_arm(void){++clock_calls;assert(scheduler_held&&clock_prepared&&receiving&&!(registers[GPIO_OUT_REG]&(1u<<2)));if(clock_fail==4u)now+=25;clock_armed=clock_fail!=2u;return clock_armed;}
+static bool sync_edge_clock_enable_filter(void){++clock_calls;assert(scheduler_held&&clock_armed&&!(registers[GPIO_OUT_REG]&(1u<<2)));return clock_fail!=5u;}
+static bool sync_edge_clock_read(uint64_t *n){++clock_calls;if(!clock_armed)return false;*n=123456u;return true;}
+static bool sync_edge_clock_close(void){++clock_calls;assert(!(registers[GPIO_ENABLE_REG]&(1u<<2)));clock_prepared=clock_armed=false;return clock_fail!=3u;}
+static uint32_t sync_edge_clock_filter_ns(void){return 1200u;}
+static const char *sync_edge_clock_error(void){return "mock";}
+static void esp_rom_delay_us(unsigned n){assert((n==50u||n==16u||n==4u)&&(registers[GPIO_ENABLE_REG]&(1u<<2)));now+=n;}
 static rmt_rx_event_callbacks_t mock_cb;
 static void *mock_context;
 #define REG_READ(address) registers[address]
 static void reg_write(unsigned address,uint32_t value){
- assert(address==IO_MUX_GPIO2_REG||address==GPIO_FUNC2_OUT_SEL_CFG_REG||address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG);
- if(address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG)assert(value==(1u<<2));
+ assert(address==IO_MUX_GPIO2_REG||address==GPIO_FUNC2_OUT_SEL_CFG_REG||address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG||address==GPIO_OUT_W1TS_REG||address==GPIO_OUT_W1TC_REG);
+ if(address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG||address==GPIO_OUT_W1TS_REG||address==GPIO_OUT_W1TC_REG)assert(value==(1u<<2));
  ++writes;
  if(address==GPIO_ENABLE_W1TS_REG)registers[GPIO_ENABLE_REG]|=value;
  else if(address==GPIO_ENABLE_W1TC_REG)registers[GPIO_ENABLE_REG]&=~value;
+ else if(address==GPIO_OUT_W1TS_REG)registers[GPIO_OUT_REG]|=value;
+ else if(address==GPIO_OUT_W1TC_REG)registers[GPIO_OUT_REG]&=~value;
  else registers[address]=value;
 }
 #define REG_WRITE(address,value) reg_write(address,value)
@@ -89,7 +108,7 @@ static int rmt_rx_register_event_callbacks(void *channel,const rmt_rx_event_call
 static int rmt_enable(void *channel){++api_calls;assert(channel&&channel_live);if(fail_at==3)return -3;rx_enabled=true;return 0;}
 static int rmt_receive(void *channel,void *buffer,size_t size,const rmt_receive_config_t *cfg){
  ++api_calls;assert(channel&&channel_live&&rx_enabled&&buffer&&size==48u*sizeof(rmt_symbol_word_t));
- assert(cfg->signal_range_min_ns==2500&&cfg->signal_range_max_ns==100000&&cfg->flags.en_partial_rx);
+ assert(cfg->signal_range_min_ns==(clock_prepared?0u:2500u)&&cfg->signal_range_max_ns==100000&&cfg->flags.en_partial_rx);
  ++receives;if(fail_at==4||(fail_at==5&&receives>1))return -4;
  receiving=true;return 0;
 }
@@ -101,6 +120,7 @@ static void vTaskDelay(unsigned ticks){
  if(receiving&&mock_cb.on_recv_done){
   rmt_symbol_word_t words[48];
   for(unsigned i=0;i<48;++i)words[i]=(rmt_symbol_word_t){.duration0=1186,.level0=1,.duration1=94,.level1=0};
+  if(clock_armed && mode==1u && !marker_sent){words[0]=(rmt_symbol_word_t){.duration0=320,.level0=1,.duration1=320,.level1=0};marker_sent=true;}
   rmt_rx_done_event_data_t event={.received_symbols=words,.num_symbols=mode==1?48u:0u,.flags={.is_last=mode!=1}};
   if(event.flags.is_last)receiving=false;
   assert(!mock_cb.on_recv_done((void*)1,&event,mock_context));
@@ -118,6 +138,7 @@ static void reset(void){
  live_value=true;mutate_pin=channel_live=rx_enabled=receiving=false;now=0;
  memset(&mock_cb,0,sizeof(mock_cb));mock_context=NULL;
  s_busy=false;s_quarantined=NULL;memset(&s_probe,0,sizeof(s_probe));
+ s_clock_fault=false;clock_calls=clock_fail=0;clock_prepared=clock_armed=scheduler_held=marker_sent=false;
 }
 static void parser_start(void){reset();s_probe.armed=true;s_probe.live=owner_live;s_probe.generation=7;sop_epoch(&s_probe);}
 static void event(rmt_symbol_word_t *words,size_t n,bool last){
@@ -147,6 +168,8 @@ static void parser_tests(void){
  parser_start();s_probe.armed=false;event(words,48,false);assert(!s_probe.callbacks);
  parser_start();s_probe.elapsed=UINT32_MAX-20u;event(words,1,false);
  assert(s_probe.bad_data==1&&s_probe.stop);
+ parser_start();s_probe.marker_required=true;event(words,1,false);
+ assert(s_probe.marker_invalid&&s_probe.stop&&!s_probe.h&&!s_probe.halves);
 }
 /* Pack independent PAL/NTSC half-line fixtures into arbitrary symbol batches.
  * Segments retain their level even when a long HIGH is split into pieces. */
@@ -183,7 +206,7 @@ static void fixture(bool ntsc){
 }
 static void lifecycle(void){
  for(unsigned failure=0;failure<=8;++failure){
-  reset();fail_at=failure;uint32_t saved[10];memcpy(saved,registers,sizeof(saved));
+  reset();fail_at=failure;uint32_t saved[13];memcpy(saved,registers,sizeof(saved));
   sync_output_probe(7,owner_live);
   assert(!memcmp(registers,saved,sizeof(saved))&&!s_probe.armed&&!s_busy);
   assert(now<=100000);assert(!rx_enabled||s_quarantined);
@@ -214,8 +237,21 @@ static void lifecycle(void){
  sync_output_probe(7,owner_live);assert(!api_calls&&!writes);
  reset();registers[IO_MUX_GPIO2_REG]=FUN_PU|FUN_PD|0x100000u;
  registers[GPIO_FUNC2_OUT_SEL_CFG_REG]=0x200000u|256u;
- uint32_t saved_all[10];memcpy(saved_all,registers,sizeof(saved_all));
+ uint32_t saved_all[13];memcpy(saved_all,registers,sizeof(saved_all));
  sync_output_probe(7,owner_live);assert(receives&&!memcmp(saved_all,registers,sizeof(saved_all)));
+ reset();mode=1;sync_output_clock_probe(7,owner_live);
+ assert(clock_calls==6u&&!clock_prepared&&!clock_armed&&s_probe.h>1000&&!s_clock_fault);
+ reset();mode=1;registers[GPIO_OUT_REG]=(1u<<2)|0x80000000u;
+ uint32_t data_before=registers[GPIO_OUT_REG];sync_output_clock_probe(7,owner_live);
+ assert(registers[GPIO_OUT_REG]==data_before&&!s_probe.marker_invalid);
+ reset();sync_output_clock_probe(7,owner_live);
+ assert(receives==1u&&s_probe.epochs==1u&&s_probe.ended&&!clock_prepared);
+ for(unsigned i=1;i<=5u;++i){reset();mode=1;clock_fail=i;
+  sync_output_clock_probe(7,owner_live);assert(!clock_prepared&&!clock_armed);
+  assert(s_clock_fault==(i==3u));}
+ parser_start();s_probe.callbacks=256u;
+ rmt_symbol_word_t rate_word={.duration0=1186,.level0=1,.duration1=94,.level1=0};
+ event(&rate_word,1,false);assert(s_probe.stop&&s_probe.rate_limited&&!s_probe.symbols);
 }
 int main(void){parser_tests();fixture(false);fixture(true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''
@@ -231,7 +267,8 @@ class Runtime(unittest.TestCase):
             compiler = os.environ.get("CC", "cc")
             subprocess.run([compiler, "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
                             str(path / "probe.c"), "-o", str(path / "probe")], check=True)
-            result = subprocess.run([str(path / "probe")], check=True, text=True, capture_output=True)
+            result = subprocess.run([str(path / "probe")], text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout[-6000:])
             self.assertIn("PASS:", result.stdout)
             self.assertIn("camera_qualified=0", result.stdout)
             self.assertIn("self_gate_excluded=0", result.stdout)

@@ -940,7 +940,7 @@ static void transport_sync_gate_run(bool pal, bool longer)
 void transport_sync_gate_probe(bool pal) { transport_sync_gate_run(pal, false); }
 void transport_sync_gate_probe_long(bool pal) { transport_sync_gate_run(pal, true); }
 
-void transport_sync_output_probe(void)
+static void transport_sync_output_run(bool edge_clock)
 {
     if (s_gate_probe_busy || s_output_probe_busy || sync_service_active() ||
         calibration_in_startup() || !phy_try_actuator(phy_generation())) {
@@ -955,11 +955,15 @@ void transport_sync_output_probe(void)
     if (supported) s_output_probe_busy = true;
     (void)xTaskResumeAll();
     if (supported) {
-        sync_output_probe(s_gate_context.generation, transport_sync_gate_live);
+        if(edge_clock)sync_output_clock_probe(s_gate_context.generation, transport_sync_gate_live);
+        else sync_output_probe(s_gate_context.generation, transport_sync_gate_live);
         s_output_probe_busy = false;
     } else printf("SYNC_OUTPUT refused=%s\n", live ? "requires_lp_output_1x" : "transport");
     phy_end_actuator();
 }
+
+void transport_sync_output_probe(void) { transport_sync_output_run(false); }
+void transport_sync_output_clock_probe(void) { transport_sync_output_run(true); }
 
 static bool transport_bench_context_copy(sync_bench_context_t *ctx, uint16_t *lut)
 {

@@ -5,14 +5,17 @@
  * Captures durations, not absolute GPTIMER timestamps. Bright-picture aliases
  * and generated gates are not camera evidence. Owner must exclude gates.
  * GPIO2 (unused MTMS pad) mirrors PARLIO DATA4 independently of DAC OE.
- * No raw IQ, LUT, DMA descriptors, PHY registers or GPIO output data writes. */
+ * Only the isolated GPIO2 data bit may be driven for a private clock marker.
+ * No raw IQ, LUT, DMA descriptors, PHY registers or DAC output data writes. */
 #include "sync_output_probe.h"
+#include "sync_edge_clock.h"
 #include <stdio.h>
 #include <string.h>
 #include "driver/rmt_rx.h"
 #include "driver/rmt_common.h"
 #include "esp_attr.h"
 #include "esp_timer.h"
+#include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "soc/gpio_reg.h"
@@ -34,8 +37,10 @@ typedef struct {
     uint32_t previous_broad, broad_start, previous_group, previous_group_count;
     uint32_t h_train, broad_train;
     uint32_t generation;
+    uint32_t discard_before,first_duration;
+    bool first_level, marker_required, marker_invalid;
     bool (*live)(uint32_t);
-    volatile bool armed, stop, ended, cancelled;
+    volatile bool armed, stop, ended, cancelled, rate_limited;
     bool run_valid, run_level, run_edge;
     bool have_h, have_broad, have_group;
 } sop_context_t;
@@ -46,6 +51,7 @@ static DRAM_ATTR sop_context_t s_probe;
 static DRAM_ATTR rmt_symbol_word_t s_symbols[SOP_SYMBOLS];
 static rmt_channel_handle_t s_quarantined;
 static bool s_busy;
+static bool s_clock_fault;
 
 static inline bool sop_near(uint32_t actual, uint32_t expected, uint32_t tolerance)
 {
@@ -71,6 +77,7 @@ static void sop_group(sop_context_t *s)
 
 static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
 {
+    if(start<s->discard_before)return; /* private marker/handoff is not camera sync */
     ++s->low;
     if (width >= 76u && width <= 112u) {
         ++s->h;
@@ -105,6 +112,12 @@ static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
 static bool sop_half(sop_context_t *s, uint32_t duration, bool level)
 {
     if (!duration) return false;  /* RMT end marker, not a zero-length edge. */
+    if(!s->first_duration){
+        s->first_duration=duration;s->first_level=level;
+        if(s->marker_required && (!level || duration<280u || duration>400u)) {
+            s->marker_invalid=true;s->stop=true;return false;
+        }
+    }
     if (s->elapsed > UINT32_MAX - duration || s->run_width > UINT32_MAX - duration) {
         ++s->bad_data; s->stop = true; return false;
     }
@@ -126,6 +139,7 @@ static bool sop_received(rmt_channel_handle_t channel,
     (void)channel;
     sop_context_t *s = arg;
     if (!s->armed || s->stop) return false;
+    if(s->callbacks>=256u){s->rate_limited=true;s->stop=true;return false;}
     if (!s->live(s->generation)) {
         s->cancelled = true; s->stop = true; return false;
     }
@@ -162,9 +176,9 @@ static void sop_epoch(sop_context_t *s)
     s->h_train = s->broad_train = 0u; s->ended = false;
 }
 
-void sync_output_probe(uint32_t generation, bool (*live)(uint32_t))
+static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), bool edge_clock)
 {
-    if (s_busy || s_quarantined) {
+    if (s_busy || s_quarantined || s_clock_fault) {
         printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=busy_or_quarantined\n"); return;
     }
     if (!live || !live(generation)) {
@@ -196,6 +210,7 @@ void sync_output_probe(uint32_t generation, bool (*live)(uint32_t))
     uint32_t mirror_matrix = REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG);
     uint32_t mirror_pin = REG_READ(GPIO_PIN2_REG);
     uint32_t mirror_enable = REG_READ(GPIO_ENABLE_REG) & SOP_MASK;
+    uint32_t mirror_output = REG_READ(GPIO_OUT_REG) & SOP_MASK;
     if (mirror_enable || (mirror_pin & GPIO_PIN2_PAD_DRIVER_M)) {
         printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=mirror_occupied\n");
         s_busy = false; return;
@@ -203,20 +218,27 @@ void sync_output_probe(uint32_t generation, bool (*live)(uint32_t))
     uint32_t witness_iomux = (mirror_iomux & ~(MCU_SEL_M | FUN_PU | FUN_PD)) |
         (1u << MCU_SEL_S) | FUN_IE;
     uint32_t witness_matrix = (mirror_matrix & ~(GPIO_FUNC2_OUT_SEL_M |
-        GPIO_FUNC2_OUT_INV_SEL_M | GPIO_FUNC2_OE_INV_SEL_M)) | 52u | GPIO_FUNC2_OE_SEL_M;
+        GPIO_FUNC2_OUT_INV_SEL_M | GPIO_FUNC2_OE_INV_SEL_M)) | (edge_clock?256u:52u) | GPIO_FUNC2_OE_SEL_M;
     memset(&s_probe, 0, sizeof(s_probe));
     s_probe.generation = generation; s_probe.live = live;
+    s_probe.marker_required=edge_clock;
+    if(edge_clock)s_probe.discard_before=UINT32_MAX; /* IRQs may precede handoff publication. */
     rmt_channel_handle_t channel = NULL;
     bool enabled_rx = false, pin_changed = false;
+    bool clock_attempted=false,clock_read_ok=false,clock_closed=true;
+    uint64_t clock_ticks=0;
+    uint32_t common_filter_ns=0;
+    int64_t arm_us=-1;
     const char *failure = "none";
     esp_err_t err = ESP_OK, cleanup = ESP_OK;
     const rmt_rx_channel_config_t cfg = {.gpio_num = SOP_GPIO,
         .clk_src = RMT_CLK_SRC_PLL_F80M, .resolution_hz = 20000000u,
         .mem_block_symbols = 96u, .intr_priority = 2};
     const rmt_rx_event_callbacks_t callbacks = {.on_recv_done = sop_received};
-    const rmt_receive_config_t receive = {.signal_range_min_ns = 2500u,
+    const rmt_receive_config_t receive = {.signal_range_min_ns = edge_clock?0u:2500u,
         .signal_range_max_ns = 100000u, .flags = {.en_partial_rx = true}};
     int64_t began = esp_timer_get_time();
+    if(edge_clock)REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
     REG_WRITE(IO_MUX_GPIO2_REG, witness_iomux);
     REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG, witness_matrix);
     REG_WRITE(GPIO_ENABLE_W1TS_REG, SOP_MASK);
@@ -235,17 +257,63 @@ void sync_output_probe(uint32_t generation, bool (*live)(uint32_t))
     if (pin_changed) { failure = "pin_mutated"; goto done; }
     err = rmt_rx_register_event_callbacks(channel, &callbacks, &s_probe);
     if (err != ESP_OK) { failure = "callbacks"; goto done; }
+    if(edge_clock) {
+        clock_attempted=true;
+        if(!sync_edge_clock_prepare()){failure="clock_prepare";goto done;}
+        common_filter_ns=sync_edge_clock_filter_ns();
+        esp_rom_delay_us(50); /* Private GPIO data drives a quiet LOW; DAC is untouched. */
+    }
     if (!live(generation)) { s_probe.cancelled = true; failure = "not_live"; goto done; }
     err = rmt_enable(channel);
     if (err != ESP_OK) { failure = "enable"; goto done; }
     enabled_rx = true;
     s_probe.armed = true;
     sop_epoch(&s_probe);
-    err = rmt_receive(channel, s_symbols, sizeof(s_symbols), &receive);
-    if (err != ESP_OK) { failure = "receive"; goto done; }
+    if(edge_clock) {
+        /* RX idle expiry can run before its first edge. Do not let a gain
+         * task preempt the short RX/ETM/mirror arm sequence. These APIs do
+         * not allocate or wait; interrupts continue and a time/ended guard
+         * refuses even an interrupt-delayed arm before accepting evidence. */
+        bool ready=false;
+        vTaskSuspendAll();
+        int64_t arm_start=esp_timer_get_time();
+        err=rmt_receive(channel,s_symbols,sizeof(s_symbols),&receive);
+        if(err!=ESP_OK)failure="receive";
+        else if(!sync_edge_clock_arm())failure="clock_arm";
+        else if(esp_timer_get_time()-arm_start>20 || s_probe.ended)failure="arm_gap";
+        else {
+            ready=true;
+        }
+        arm_us=esp_timer_get_time()-arm_start;
+        if(arm_us>20){ready=false;failure="arm_gap";}
+        if(ready) {
+            /* The first raw edge is a recognizable private HIGH marker.
+             * Neither consumer has a private/variable filter at this point.
+             * Subsequent ETM events are idempotent START, never reload. */
+            REG_WRITE(GPIO_OUT_W1TS_REG,SOP_MASK);
+            esp_rom_delay_us(16);
+            REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
+            esp_rom_delay_us(16);
+            if(!sync_edge_clock_enable_filter()){ready=false;failure="clock_filter";}
+            else {
+                esp_rom_delay_us(4);
+                REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,(witness_matrix&~GPIO_FUNC2_OUT_SEL_M)|52u);
+                uint64_t native_start;
+                if(!sync_edge_clock_read(&native_start) || native_start>UINT32_MAX-64u) {
+                    ready=false;failure="clock_native_start";
+                } else s_probe.discard_before=(uint32_t)native_start+common_filter_ns/50u+4u;
+            }
+        }
+        (void)xTaskResumeAll();
+        if(!ready)goto done;
+    } else {
+        err=rmt_receive(channel,s_symbols,sizeof(s_symbols),&receive);
+        if(err!=ESP_OK){failure="receive";goto done;}
+    }
     while (esp_timer_get_time() - began < SOP_WINDOW_US && !s_probe.stop) {
         if (!live(generation)) { s_probe.cancelled = true; failure = "not_live"; break; }
         if (s_probe.ended) {
+            if(edge_clock){failure="epoch_end";break;} /* A restart has a new, unknown first edge. */
             sop_epoch(&s_probe);
             err = rmt_receive(channel, s_symbols, sizeof(s_symbols), &receive);
             if (err != ESP_OK) { failure = "restart"; break; }
@@ -255,8 +323,11 @@ void sync_output_probe(uint32_t generation, bool (*live)(uint32_t))
     }
 done:
     s_probe.armed = false;
+    if(edge_clock && clock_attempted)clock_read_ok=sync_edge_clock_read(&clock_ticks);
     if (s_probe.bad_data) failure = "bad_data";
+    else if (s_probe.marker_invalid) failure = "bad_marker";
     else if (s_probe.cancelled) failure = "not_live";
+    else if (s_probe.rate_limited) failure = "event_rate";
     if (channel) {
         if (enabled_rx) {
             esp_err_t stopped = rmt_disable(channel);
@@ -269,8 +340,21 @@ done:
         if (deleted != ESP_OK) { cleanup = deleted; s_quarantined = channel; }
     }
     /* Restore the unused mirror pad even on allocation/setup errors.
-     * No writes to GPIO_OUT or GPIO_OUT_W1TS/W1TC are made. */
+     * Only the private GPIO2 marker data bit is restored; no DAC data writes. */
     REG_WRITE(GPIO_ENABLE_W1TC_REG, SOP_MASK);
+    if(clock_attempted) {
+        clock_closed=sync_edge_clock_close();
+        if(!clock_closed)s_clock_fault=true;
+        printf("SYNC_EDGE_CLOCK manual=1 absolute_time=0 camera_qualified=0 common_filter_ns=%lu timer_hz=20000000 ticks=%llu read_ok=%u edges_seen=%u closed=%u arm_us=%lld marker_ticks=%lu marker_level=%u marker_ok=%u native_after_ticks=%lu error=%s\n",
+            (unsigned long)common_filter_ns,(unsigned long long)clock_ticks,
+            (unsigned)clock_read_ok,(unsigned)(s_probe.halves!=0u),
+            (unsigned)clock_closed,(long long)arm_us,(unsigned long)s_probe.first_duration,
+            (unsigned)s_probe.first_level,(unsigned)(s_probe.first_level &&
+                s_probe.first_duration>=280u && s_probe.first_duration<=400u),
+            (unsigned long)s_probe.discard_before,sync_edge_clock_error());
+    }
+    if(edge_clock && (REG_READ(GPIO_OUT_REG)&SOP_MASK)!=mirror_output)
+        REG_WRITE(mirror_output?GPIO_OUT_W1TS_REG:GPIO_OUT_W1TC_REG,SOP_MASK);
     if (REG_READ(IO_MUX_GPIO2_REG) != mirror_iomux) REG_WRITE(IO_MUX_GPIO2_REG, mirror_iomux);
     if (REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) != mirror_matrix)
         REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG, mirror_matrix);
@@ -278,6 +362,7 @@ done:
         REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) == mirror_matrix &&
         REG_READ(GPIO_PIN2_REG) == mirror_pin &&
         (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) == mirror_enable &&
+        (REG_READ(GPIO_OUT_REG) & SOP_MASK) == mirror_output &&
         REG_READ(IO_MUX_GPIO8_REG) == iomux &&
         REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG) == matrix &&
         (REG_READ(GPIO_ENABLE_REG) & (1u << 8)) == enabled;
@@ -301,3 +386,8 @@ done:
         (unsigned)s_probe.cancelled);
     s_busy = false;
 }
+
+void sync_output_probe(uint32_t generation,bool (*live)(uint32_t))
+{ sync_output_probe_run(generation,live,false); }
+void sync_output_clock_probe(uint32_t generation,bool (*live)(uint32_t))
+{ sync_output_probe_run(generation,live,true); }

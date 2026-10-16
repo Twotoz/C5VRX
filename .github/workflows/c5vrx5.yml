@@ -130,6 +130,7 @@ jobs:
           python3 test/test_sync_service_runtime.py
           python3 test/test_sync_gate_probe_runtime.py
           python3 test/test_sync_output_probe_runtime.py
+          python3 test/test_sync_edge_clock_runtime.py
       - name: Analytic IQ lane reference
         shell: bash
         run: |

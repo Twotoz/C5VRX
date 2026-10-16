@@ -9,3 +9,4 @@
 #include <stdbool.h>
 #include <stdint.h>
 void sync_output_probe(uint32_t generation, bool (*live)(uint32_t));
+void sync_output_clock_probe(uint32_t generation, bool (*live)(uint32_t));

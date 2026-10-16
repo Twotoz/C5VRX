@@ -73,6 +73,7 @@ static void help(void)
            "  J bench: private-RAM sync synthesis/copy timing (no live writes),\n"
            "  Z/z bench: brief PAL/NTSC sync via DAC output-enable (changes video; OFF at boot),\n"
            "  Y bench: filtered native DAC sync observation (LP/1x only; OFF at boot),\n"
+           "  y bench: native mirror with common-edge RMT/ETM clock (experimental),\n"
            "  Q/q bench: three-second PAL/NTSC DAC sync gate test (changes video),\n"
            "  B bench: restart live transport without OSD (interrupts video; issue #213 A/B),\n"
            "  N black NO SIGNAL fallback on/off (default OFF: preserve real snow; bench only),\n"
@@ -122,6 +123,7 @@ static void console_task(void *arg)
             case 'Z': transport_sync_gate_probe(true); break;
             case 'z': transport_sync_gate_probe(false); break;
             case 'Y': transport_sync_output_probe(); break;
+            case 'y': transport_sync_output_clock_probe(); break;
             case 'Q': transport_sync_gate_probe_long(true); break;
             case 'q': transport_sync_gate_probe_long(false); break;
             case 'W': sync_service_toggle(); break;

@@ -6,6 +6,7 @@ idf_component_register(
         "sync_flywheel.c" "sync_service.c" # manual read-only W diagnostic; no keeper writer
         "sync_gate_probe.c" # manual Z/z DAC-OE pulse probe; off at boot
         "sync_output_probe.c" # manual Y filtered native DAC observer; off at boot
+        "sync_edge_clock.c" # experimental common native edge -> ETM timer
     INCLUDE_DIRS "."
     REQUIRES esp_wifi esp_phy nvs_flash esp_event esp_netif esp_driver_parlio
              esp_driver_gpio esp_driver_bitscrambler esp_driver_usb_serial_jtag
