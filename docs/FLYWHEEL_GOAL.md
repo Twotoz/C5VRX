@@ -376,3 +376,30 @@ not a range measurement. Oracle sync flags are deliberately supplied from
 the generated raster and prove neither acquisition nor physical monitor
 lock. This approach is not enabled and needs a stronger quality/timing
 case before any live-output experiment.
+
+`5632f27` removes BF0-only capture retries. Both sampled BF0 positions must
+remain within the DONE+1/+2 operating model; the lifetime check reserves
+their union. DONE changes still trigger one retry. 11,146,690 retrospective
+validation checks pass, including every source-ring location for all16
+before/after pointer combinations. Actual-adapter tests verify that BF0-only
+movement needs two captures while a crossed DONE still retries. The build
+passes; the image is flashed with hash verification, version
+`5.0.0-pr.212-sync-bf-pair`, application SHA256
+`a6fb5e0723ac7202e7c9b94c3e594ef98334dfded24a88cb67681531ab8c010c`.
+Three starts now reach400/671/479 actual kernel calls. They still stop:
+maximum complete turns123/176/127 us, with retrospective ambiguity on
+runs1/3 and DONE hidden-lap ambiguity on run2. Backlog misses29/48/42
+show that sustainable throughput remains unproven. Full rows/hashes are
+in `research/data/board_w_bf_pair_2026-10-16.{json,txt}`. Startup reports
+no video; these are not real-camera acquisition results.
+
+The unused descriptor-window helper now accepts BF0 at DONE+1/+2 only with
+independent unwrapped RX/TX DONE ends and exact matching prefetch coordinates.
+It reserves all2/3 descriptors through BF0.next on both paths, includes the
+whole cover in hidden-lap exclusion, and anchors CPU history at RX DONE.end.
+Tests cover2,654,208 original geometry/phase cases plus83,916 prefetch cases
+(83,754 admitted,162 refused), invalid lap aliases and a concrete pulse that
+the old BF0-anchored ceiling would place inside protected CPU history.
+This remains a conditional arithmetic model without a production writer;
+physical prefetch bounds, complete publication WCET and actual separation
+must still be qualified before stores.
