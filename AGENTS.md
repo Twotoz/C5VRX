@@ -1006,3 +1006,16 @@ I VTX-off follow-up: symbols6584->14596->23109, first trace45 lows/min20 ticks
 (1us), zero sub20-tick lows; valid marker phase spans37-38 ticks. Startup and
 cleanup succeed, no camera model. This8-second result is not a camera/monitor
 proof. Some empty epochs still occur. See board_native_filter_i_2026-10-17.json.
+
+
+### J state and explicit operator pause (2026-10-17)
+
+Current flashed J observes both HIGH/LOW DATA4 runs with separate full H/V
+qualifiers; both-valid ambiguity refuses fresh lock.175 runtime checks pass.
+J VTX-off and2-second camera tests still produce NO qualified native H/V model.
+See board_native_polarity_j_2026-10-17.json; ordinary RF NTSC detection is not
+native qualifier proof. Both observer and output bench are OFF after capture.
+User is away and explicitly requests pausing the goal when VTX must turn on;
+goal is paused, VTX can remain OFF. Do not resume experiments or ask to keep it
+on until user resumes. Comparator-flag hardware idea is unimplemented/unproven;
+pulse_find_tests helper was interrupted. Source goal checklist remains open.

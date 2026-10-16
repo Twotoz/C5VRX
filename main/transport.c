@@ -1051,10 +1051,10 @@ void transport_sync_live_print(void)
     }
     if(have_diag)printf("%s",diagnostic);
     if(have_model)
-        printf("SYNC_LIVE_MODEL valid=%u standard=%u line_ticks_x32=%lu last_h=%llu field=%llu now=%llu phase_span_ticks=%lld boot_default=OFF\n",
+        printf("SYNC_LIVE_MODEL valid=%u standard=%u line_ticks_x32=%lu last_h=%llu field=%llu now=%llu phase_span_ticks=%lld inverted=%u boot_default=OFF\n",
             (unsigned)model.valid,(unsigned)model.standard,(unsigned long)model.line_ticks_x32,
             (unsigned long long)model.last_h,(unsigned long long)model.field,
-            (unsigned long long)model.now,(long long)(model.phase_hi-model.phase_lo));
+            (unsigned long long)model.now,(long long)(model.phase_hi-model.phase_lo),(unsigned)model.inverted);
     slo_status_t output;sync_live_output_status(&output);
     printf("SYNC_FLYWHEEL requested=%u active=%u repaired=%lu suppressed=%lu batches=%lu late_ticks=%lu missed=%lu miss_kind=%lu queue_low=%lu fault=%lu monitor_lock_proven=0\n",
         s?(unsigned)s->output_requested:0u,(unsigned)output.active,

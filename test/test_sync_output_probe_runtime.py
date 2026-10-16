@@ -228,6 +228,32 @@ static void fixture(bool ntsc){
  /* Fixture intentionally has no idle boundaries. Real EQ filtering plus
   *100us idle may split VBI into separate epochs; those must never be joined. */
 }
+static void native_polarity_fixture(bool ntsc,bool inverted){
+ parser_start();packed=halfword=0;fixture_time=0;
+ assert(s_native);s_probe.marker_required=true;s_probe.discard_before=0;
+ s_probe.first_duration=320;s_probe.first_level=true;s_probe.prefix_n=3;
+ s_native->native_phase_checked=true;
+ s_native->native_phase=(sync_phase_bracket_t){.valid=true,.lo=0,.hi=0};
+ unsigned halves=ntsc?525u:625u,group=ntsc?6u:5u;
+ for(unsigned half=0;half<halves*3u;++half){
+  unsigned i=half%halves;bool broad=i>=group&&i<2u*group;
+  bool eq=i<group||(i>=2u*group&&i<3u*group);
+  bool normal=i>=3u*group&&!(half&1u);
+  if(!eq&&!broad&&!normal)continue;
+  uint64_t start=100u+(ntsc?((uint64_t)half*5720u+4u)/9u:(uint64_t)half*640u);
+  uint64_t next=100u+(ntsc?((uint64_t)(half+1u)*5720u+4u)/9u:(uint64_t)(half+1u)*640u);
+  assert(start>fixture_time);segment((uint32_t)(start-fixture_time),!inverted);
+  segment(broad?(uint32_t)(next-start-94u):eq?(ntsc?46u:47u):94u,inverted);
+ }
+ segment(100,!inverted);
+ if(halfword){pack[packed].duration1=0;pack[packed].level1=0;++packed;}
+ event(pack,packed,true);
+ const sync_native_track_t *chosen=inverted?&s_native->inverted:&s_native->native;
+ const sync_native_track_t *other=inverted?&s_native->native:&s_native->inverted;
+ assert(!s_probe.bad_data&&chosen->valid&&chosen->standard==(ntsc?1u:2u)&&
+        chosen->qualified_fields>=1u&&!other->valid);
+ ++checks;
+}
 static void lifecycle(void){
  for(unsigned failure=0;failure<=8;++failure){
   reset();fail_at=failure;uint32_t saved[13];memcpy(saved,registers,sizeof(saved));
@@ -309,6 +335,11 @@ static void resident_lifecycle(void){
  sync_output_live_model_t model;
  assert(sync_output_live_snapshot(&model)&&model.valid&&model.standard==2&&
         model.last_h==123300&&model.line_ticks_x32==40960&&model.now==123456);
+ s_native->inverted=s_native->native;s_native->native.valid=false;
+ assert(sync_output_live_snapshot(&model)&&model.valid&&model.inverted&&model.standard==2);
+ s_native->native=s_native->inverted;
+ assert(sync_output_live_snapshot(&model)&&!model.valid); /* ambiguous polarities */
+ sync_native_reset(&s_native->inverted);checks+=2;
  sync_output_live_invalidate();
  assert(!s_probe.armed&&sync_output_live_snapshot(&model)&&!model.valid);
  unsigned callbacks=s_probe.callbacks,prior_receives=receives;
@@ -373,7 +404,7 @@ static void restore_fault_lifecycle(void){
  ++checks;
 }
 
-int main(void){dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
+int main(void){dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''
 
 

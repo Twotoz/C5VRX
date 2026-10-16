@@ -29,6 +29,7 @@ typedef struct {
     int64_t phase_lo, phase_hi;
     uint8_t standard; /* Native qualifier IDs: PAL=2, NTSC=1. */
     bool valid;
+    bool inverted; /* Qualified sync is a HIGH run on native DATA4. */
 } sync_output_live_model_t;
 bool sync_output_live_begin(uint32_t generation, bool (*live)(uint32_t));
 bool sync_output_live_poll(void);

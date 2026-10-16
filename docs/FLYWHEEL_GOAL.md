@@ -941,3 +941,39 @@ land in empty epochs, so do not claim every ending carries source evidence.
 I source camera test is pending. `board_native_filter_i_2026-10-17.json` stores
 image/log hashes and raw rows. Tests93 actual-observer checks plus bounded trace,
 transport ownership, startup, and PHY-hook tests pass. Output repair remains OFF.
+
+
+### 2026-10-17: J evaluates both DATA4 pulse polarities; goal paused by operator
+
+I's short camera trace contains an exploratory11-period subset averaging
+63.527us/line and4.573us HIGH between long LOW runs. This suggests a DATA4
+polarity/threshold limitation; it does not qualify camera H/V. Raw provenance
+and the chosen subset are in board_native_camera_i_2026-10-17.json.
+J feeds HIGH and LOW runs to independent unchanged full H/V qualifiers. Either
+must meet the same full timing requirements; both-valid ambiguity refuses fresh
+model validity. Model/retained coordinates carry the chosen polarity. No video
+inversion is applied. Parser/runtime tests cover PAL/NTSC in both polarities,
+private marker exclusion, snapshot ambiguity and lifecycle:175 checks pass.
+
+J builds and flash hash verifies. VTX-off8-second test continues receiving
+(25017 then36867 symbols), no qualified native model, no watchdog/source fault,
+clean start/stop/restoration. A subsequent2-second camera test still fails to
+qualify full native H/V in either polarity; ordinary RF detects NTSC/G41. This
+is NOT solved by polarity alone. Output repair remains OFF in all these tests.
+Evidence: board_native_polarity_j_2026-10-17.json. J image SHA256
+ e50b16b87a890c53d47fb65a79465366208e82653e8b8acf59250ede11a34ed4.
+
+Further offline check using exact LUT/cell carrier arithmetic: at-2.32MHz,
+kp0.85 LP codes span13..17, porch-1MHz20..23. Thus DATA4's threshold16 can sit
+inside the sync-code spread for a low-deviation camera. A threshold comparator
+rather than one code bit merits investigation; this is synthetic explanation,
+not a confirmed board root cause. One proposed hardware route repurposes a DAC
+LSB as a comparator flag while grounding physical LSB and mirroring that native
+flag. Feasibility, phase/counter preservation, LP packing, quality and ownership
+are UNPROVEN; no implementation or waveform change was made for that proposal.
+
+Operator is away and explicitly requests pausing when VTX-on evidence is needed.
+Goal paused; observer/requested and repair/requested both0 after J capture.
+VTX may remain OFF. Resume from J, do not routinely roll back. Next actual
+camera qualification/holdover/return/monitor and fast-witness/default work remain
+open. The read-only helper feasibility agent was interrupted for this pause.

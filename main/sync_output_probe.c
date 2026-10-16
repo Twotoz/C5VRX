@@ -45,6 +45,7 @@ typedef struct {
     uint64_t rise_before,rise_after,fall_before,fall_after;
     sync_phase_bracket_t native_phase;
     sync_native_track_t native;
+    sync_native_track_t inverted;
     snt_trace_t trace;
     uint32_t native_qualified_epochs;
     bool native_phase_checked,native_reported;
@@ -102,10 +103,9 @@ static void sop_group(sop_context_t *s)
     s->have_broad = false;
 }
 
-static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
+static void sop_native_run(sop_context_t *s,uint32_t start,uint32_t width,bool inverted)
 {
     if(start<s->discard_before)return; /* private marker/handoff is not camera sync */
-    if(s_native && s_native->resident)snt_trace_low(&s_native->trace,s->epochs,start,width);
     if(s_native && s->marker_required && !s_native->native_phase_checked && s->prefix_n==3u) {
         uint32_t rise=s->prefix[0]+s->prefix[1];
         s_native->native_phase=sync_phase_bracket(rise,rise+s->prefix[2],
@@ -115,12 +115,19 @@ static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
     if(s_native && s->marker_required && s_native->native_phase.valid) {
         int64_t offset=s_native->native_phase.lo+(s_native->native_phase.hi-s_native->native_phase.lo)/2;
         if(offset>=-(int64_t)start && offset<=INT64_MAX-(int64_t)start) {
-            sync_native_low(&s_native->native,(uint64_t)(offset+start),width);
-            if(s_native->native.valid && !s_native->native_reported) {
+            sync_native_low(inverted?&s_native->inverted:&s_native->native,(uint64_t)(offset+start),width);
+            if((s_native->native.valid || s_native->inverted.valid) && !s_native->native_reported) {
                 ++s_native->native_qualified_epochs;s_native->native_reported=true;
             }
         }
     }
+}
+
+static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
+{
+    if(start<s->discard_before)return;
+    if(s_native && s_native->resident)snt_trace_low(&s_native->trace,s->epochs,start,width);
+    sop_native_run(s,start,width,false);
     ++s->low;
     if (width >= 76u && width <= 112u) {
         ++s->h;
@@ -169,7 +176,10 @@ static bool sop_half(sop_context_t *s, uint32_t duration, bool level)
         s->run_valid = true; s->run_level = level;
         s->run_start = s->elapsed; s->run_width = 0u; s->run_edge = false;
     } else if (level != s->run_level) {
-        if (!s->run_level && s->run_edge) sop_low(s, s->run_start, s->run_width);
+        if (s->run_edge) {
+            if(!s->run_level)sop_low(s,s->run_start,s->run_width);
+            else sop_native_run(s,s->run_start,s->run_width,true);
+        }
         s->run_start = s->elapsed; s->run_width = 0u;
         s->run_level = level; s->run_edge = true;
     }
@@ -241,6 +251,7 @@ static void sop_epoch(sop_context_t *s)
     if(s_native) {
         s_native->native_phase=(sync_phase_bracket_t){0};
         sync_native_reset(&s_native->native);
+        sync_native_reset(&s_native->inverted);
         s_native->native_phase_checked=false;s_native->native_reported=false;
     }
     s->discard_before=s->marker_required?UINT32_MAX:0u;
@@ -609,12 +620,14 @@ static bool sop_session_end(sop_session_t *s)
             (unsigned long)s->clock_stats.refused,(unsigned long)s->clock_stats.pending,
             (unsigned long)s->clock_stats.regressions,(unsigned long)s->clock_stats.max_span,
             (long long)s->clock_stats.last_lo,(long long)s->clock_stats.last_hi);
+        const sync_native_track_t *nt=s_native->inverted.valid && !s_native->native.valid?
+            &s_native->inverted:&s_native->native;
         if(!s->resident)printf("SYNC_NATIVE_TIMING manual=1 camera_qualified=0 timing_valid=%u standard=%u qualified_epochs=%lu fields=%lu line_ticks_x32=%lu field_tick=%llu phase_span_ticks=%lld\n",
-            (unsigned)s_native->native.valid,(unsigned)s_native->native.standard,
+            (unsigned)(nt->valid && !(s_native->inverted.valid && s_native->native.valid)),(unsigned)nt->standard,
             (unsigned long)s_native->native_qualified_epochs,
-            (unsigned long)s_native->native.qualified_fields,
-            (unsigned long)s_native->native.line_ticks_x32,
-            (unsigned long long)s_native->native.field,
+            (unsigned long)nt->qualified_fields,
+            (unsigned long)nt->line_ticks_x32,
+            (unsigned long long)nt->field,
             s_native->native_phase.valid?(long long)(s_native->native_phase.hi-s_native->native_phase.lo):-1LL);
         if(!s->resident)printf("SYNC_EDGE_CLOCK manual=1 absolute_time=0 camera_qualified=0 common_filter_ns=%lu timer_hz=20000000 ticks=%llu read_ok=%u edges_seen=%u closed=%u arm_us=%lld marker_ticks=%lu marker_level=%u marker_ok=%u native_after_ticks=%lu error=%s\n",
             (unsigned long)s->common_filter_ns,(unsigned long long)s->clock_ticks,
@@ -702,6 +715,10 @@ bool sync_output_live_snapshot(sync_output_live_model_t *out)
         if(seq&1u)continue;
         __sync_synchronize();
         sync_native_track_t native=s_native->native;
+        sync_native_track_t inverted=s_native->inverted;
+        bool high_pulse=inverted.valid && !native.valid;
+        bool ambiguous=inverted.valid && native.valid;
+        if(high_pulse)native=inverted;
         sync_phase_bracket_t phase=s_native->native_phase;
         bool armed=s_probe.armed,invalidated=s_session->invalidated;
         uint64_t now;
@@ -709,14 +726,15 @@ bool sync_output_live_snapshot(sync_output_live_model_t *out)
         __sync_synchronize();
         if(seq!=s_native->sequence)continue;
         *out=s_session->retained;
-        if(native.valid && phase.valid) {
+        if(native.valid && phase.valid && !ambiguous) {
             out->standard=native.standard;
             out->last_h=native.h;out->field=native.field;
             out->line_ticks_x32=native.line_ticks_x32;
             out->phase_lo=phase.lo;out->phase_hi=phase.hi;
+            out->inverted=high_pulse;
         }
         out->generation=s_session->generation;out->now=now;
-        out->valid=armed && !invalidated && native.valid && phase.valid &&
+        out->valid=armed && !invalidated && !ambiguous && native.valid && phase.valid &&
             now>=native.last && now-native.last<=SOP_MODEL_MAX_AGE_TICKS &&
             now>=native.field && now-native.field<=810000u &&
             s_session->live(s_session->generation);
@@ -737,13 +755,16 @@ bool sync_output_live_diagnostics(char *out,size_t size)
         sop_context_t probe=s_probe;
         sync_native_track_t native=s_native->native;
         sync_phase_bracket_t phase=s_native->native_phase;
+        bool inverted=s_native->inverted.valid && !native.valid;
+        bool ambiguous=s_native->inverted.valid && native.valid;
+        if(inverted)native=s_native->inverted;
         bool phase_checked=s_native->native_phase_checked;
         uint32_t qualified_epochs=s_native->native_qualified_epochs;
         uint32_t rearms=s_session->clock_rearms;
         bool invalidated=s_session->invalidated;
         __sync_synchronize();
         if(seq!=s_native->sequence)continue;
-        int n=snprintf(out,size,"SYNC_LIVE_DIAG callbacks=%lu symbols=%lu epochs=%lu endings=%lu low=%lu h=%lu broad=%lu h_periods=%lu pal32=%lu ntsc32=%lu broad5=%lu broad6=%lu prefix_n=%u marker_ticks=%lu barrier=%lu elapsed=%lu phase_checked=%u phase_valid=%u phase_lo=%lld phase_hi=%lld native_valid=%u native_standard=%u fields=%lu qualified_epochs=%lu rearms=%lu invalidated=%u\n",
+        int n=snprintf(out,size,"SYNC_LIVE_DIAG callbacks=%lu symbols=%lu epochs=%lu endings=%lu low=%lu h=%lu broad=%lu h_periods=%lu pal32=%lu ntsc32=%lu broad5=%lu broad6=%lu prefix_n=%u marker_ticks=%lu barrier=%lu elapsed=%lu phase_checked=%u phase_valid=%u phase_lo=%lld phase_hi=%lld native_valid=%u native_standard=%u fields=%lu qualified_epochs=%lu rearms=%lu invalidated=%u inverted=%u ambiguous=%u\n",
             (unsigned long)probe.callbacks,(unsigned long)probe.symbols,
             (unsigned long)probe.epochs,(unsigned long)probe.endings,
             (unsigned long)probe.low,(unsigned long)probe.h,(unsigned long)probe.broad,
@@ -752,9 +773,9 @@ bool sync_output_live_diagnostics(char *out,size_t size)
             (unsigned long)probe.first_duration,(unsigned long)probe.discard_before,
             (unsigned long)probe.elapsed,(unsigned)phase_checked,
             (unsigned)phase.valid,(long long)phase.lo,
-            (long long)phase.hi,(unsigned)native.valid,
+            (long long)phase.hi,(unsigned)(native.valid && !ambiguous),
             (unsigned)native.standard,(unsigned long)native.qualified_fields,
-            (unsigned long)qualified_epochs,(unsigned long)rearms,(unsigned)invalidated);
+            (unsigned long)qualified_epochs,(unsigned long)rearms,(unsigned)invalidated,(unsigned)inverted,(unsigned)ambiguous);
         if(n>=0 && (size_t)n<size)return true;
         out[0]=0;return false;
     }
