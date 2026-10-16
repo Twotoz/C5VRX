@@ -646,6 +646,14 @@ qualification. Gate-H boots and restores on the C5 with no transport faults;
 the no-VTX capture has zero RMT events, so camera detection and an absolute
 source-clock anchor remain unproven. Manual Q/q gate tests are not an
 automatic flywheel. See docs/FLYWHEEL_GOAL.md and board_gate_h evidence.
+Lowercase y now adds an experimental isolated GPIO2 marker plus GPIO ETM
+START_COUNT timer. Only GPIO2's saved data bit may be driven/restored; all
+real DAC pins stay unchanged. Emit the first marker before enabling the
+variable filter: TRM8.16's ETM tap must not be assumed downstream of it.
+Reject marker mismatch, pre-handoff runs, unanchored RX restarts, excessive
+event rate and arm delay. Gate-L captures20/20 private markers on C5 with
+stable heap and exact cleanup; this is not qualified native-camera phase,
+an absolute timing bound, automatic activation or monitor-lock evidence.
 Black fallback defaults OFF every boot; `N` is its opt-in bench toggle.
 `docs/SYNC_KEEPER.md` / `research/sync_iq_mux.py` explore DMA synthetic-IQ
 sync/blanking plus unmodified active RX IQ. Exact-timing host cases preserve

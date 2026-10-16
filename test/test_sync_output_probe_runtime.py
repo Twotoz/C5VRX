@@ -69,7 +69,7 @@ static bool scheduler_held;
 static void vTaskSuspendAll(void){assert(!scheduler_held);scheduler_held=true;}
 static int xTaskResumeAll(void){assert(scheduler_held);scheduler_held=false;return 0;}
 static bool sync_edge_clock_prepare(void){++clock_calls;assert((registers[GPIO_ENABLE_REG]&(1u<<2))&&!(registers[GPIO_OUT_REG]&(1u<<2)));clock_prepared=clock_fail!=1u;return clock_prepared;}
-static bool sync_edge_clock_arm(void){++clock_calls;assert(scheduler_held&&clock_prepared&&receiving&&!(registers[GPIO_OUT_REG]&(1u<<2)));if(clock_fail==4u)now+=25;clock_armed=clock_fail!=2u;return clock_armed;}
+static bool sync_edge_clock_arm(void){++clock_calls;assert(scheduler_held&&clock_prepared&&receiving&&!(registers[GPIO_OUT_REG]&(1u<<2)));if(clock_fail==4u)now+=201;clock_armed=clock_fail!=2u;return clock_armed;}
 static bool sync_edge_clock_enable_filter(void){++clock_calls;assert(scheduler_held&&clock_armed&&!(registers[GPIO_OUT_REG]&(1u<<2)));return clock_fail!=5u;}
 static bool sync_edge_clock_read(uint64_t *n){++clock_calls;if(!clock_armed)return false;*n=123456u;return true;}
 static bool sync_edge_clock_close(void){++clock_calls;assert(!(registers[GPIO_ENABLE_REG]&(1u<<2)));clock_prepared=clock_armed=false;return clock_fail!=3u;}
@@ -108,7 +108,7 @@ static int rmt_rx_register_event_callbacks(void *channel,const rmt_rx_event_call
 static int rmt_enable(void *channel){++api_calls;assert(channel&&channel_live);if(fail_at==3)return -3;rx_enabled=true;return 0;}
 static int rmt_receive(void *channel,void *buffer,size_t size,const rmt_receive_config_t *cfg){
  ++api_calls;assert(channel&&channel_live&&rx_enabled&&buffer&&size==48u*sizeof(rmt_symbol_word_t));
- assert(cfg->signal_range_min_ns==(clock_prepared?0u:2500u)&&cfg->signal_range_max_ns==100000&&cfg->flags.en_partial_rx);
+ assert(cfg->signal_range_min_ns==(clock_prepared?0u:2500u)&&cfg->signal_range_max_ns==(clock_prepared?1000000u:100000u)&&cfg->flags.en_partial_rx);
  ++receives;if(fail_at==4||(fail_at==5&&receives>1))return -4;
  receiving=true;return 0;
 }

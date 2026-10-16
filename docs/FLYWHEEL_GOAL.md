@@ -641,3 +641,57 @@ timer. A shared GPIO filter is required; keeping RMT's current private2.5us
 filter would allow a different first raw edge to start GPTIMER. The current
 Y implementation still has that private filter and absolute_time=0; this
 clock anchor is a design to verify, not an enabled or proven feature.
+
+### Isolated marker and ETM timer experiment (2026-10-16)
+
+The proposed simultaneous first filtered source edge is superseded. TRM8.16
+describes the ETM event tap as GPIO Filter output; it must not be assumed to
+follow the separate Glitch Filter in Figure8.3-1. The RMT counter starts at
+its first edge (TRM42.3.5.1), so software receive-enable time cannot supply
+its origin. The gate-I prototype also showed a real RX-idle/arm race:
+the timer ran but RMT returned only an empty ending, with no source halves.
+Its binary/capture hashes are retained; it was an uncommitted intermediate
+prototype before `c4f30bd`, not the source currently on the board.
+
+Experimental lowercase y now drives a private16us HIGH/16us LOW marker on
+GPIO2 before enabling its variable filter and connecting PARLIO DATA4.
+RMT private filtering is OFF during this entire experiment. The first raw
+marker edge reaches RMT and GPIO ETM -> GPTIMER START_COUNT before any
+variable filtering. Later START_COUNT events cannot reload the counter.
+The original GPIO2 data bit is saved and restored, with writes masked to
+GPIO2 only. The real six DAC pads and their data/matrix are untouched.
+
+The parser refuses an unexpected first marker and ignores all low runs
+before a timer-derived native-handoff barrier. That barrier initially
+rejects all runs, including callbacks before publication. A receive ending
+stops the experiment; no unanchored restart may bridge epochs. An event-rate
+limit stops parsing after256 callbacks. Timer/filter/ETM objects are torn
+down in dependency order; any teardown error prevents reuse until reboot.
+SDK gptimer_start() is used only during shutdown to synchronize its FSM
+after ETM started counting, followed by stop/disable/delete. It does not
+reset the counter. Host runtime tests cover25 actual clock lifecycle/FSM
+cases and the observer's marker, restoration, arm delay and rate guards.
+
+Gate-K rejected its cold RX/ETM arm at52us under the original20us arm guard.
+The private marker makes that software setup time irrelevant to phase;
+gate-L gives RX a1ms idle window and bounds setup to200us, leaving ample
+time for the marker and native handoff. This changes neither the8us gate
+pulse guard nor any live-video timing. A short scheduler hold covers this
+nonblocking manual arm/marker sequence; interrupts remain enabled.
+
+Gate-L (`2ff7a20`, version5.0.0-pr.212-sync-gate-l, SHA256
+`527b80c7e751e934215964bb5e0ebe886aa83a4fdc3fc8d38ddef8efa43d6c30`)
+captures the private marker on the C5. The first test reads340 ticks/17us,
+marker_ok=1, timer running and exact pin restoration; no native camera
+pulse is inferred from it. Both following long PAL/NTSC gate trials pass,
+and transport fault counters remain zero. Twenty further manual clock
+trials all recognize the marker, close the hardware route and restore the
+pins. Marker widths span325..350 ticks (16.25..17.5us); heap is7176 bytes
+before and after the repeat batch, with no DMA errors. No VTX is detected.
+Captures/hashes are in board_gate_{i,k,l} and board_clock_l_repeat evidence.
+
+This proves repeatable marker capture and resource cleanup, not an absolute
+phase error bound, qualified camera tracking or monitor lock. The shared
+first-edge relationship and later native waveform timestamps still require
+calibration/qualification. The original manual Y remains available, and
+automatic flywheel activation remains OFF.
