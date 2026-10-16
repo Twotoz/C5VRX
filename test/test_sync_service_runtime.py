@@ -183,6 +183,11 @@ static void cross_done(void){
   AHB_DMA.done_des_addr[0].in_done_des_addr.val=(uint32_t)(uintptr_t)&rx_desc[i];--crossings;
  }
 }
+static void cross_prefetch(void){
+ ++capture_ticks;
+ if(capture_ticks==3)
+  AHB_DMA.channel[0].in.in_dscr_bf0.val=(uint32_t)(uintptr_t)&rx_desc[6];
+}
 int main(void){
  initialize();sync_service_source_t s={0};
  unsigned char before[sizeof(AHB_DMA)+sizeof(PCR)+sizeof(PARL_IO)];
@@ -197,6 +202,14 @@ int main(void){
  assert(!memcmp(raw_before,s_raw_ring,sizeof(raw_before))&&!memcmp(before,&AHB_DMA,sizeof(AHB_DMA)));
  assert(!memcmp(before+sizeof(AHB_DMA),&PCR,sizeof(PCR)));
  assert(!memcmp(before+sizeof(AHB_DMA)+sizeof(PCR),&PARL_IO,sizeof(PARL_IO)));
+ /* An independent BF0 edge needs no third capture. The lifetime validator
+  * checks both pointers and reserves their union; neither is DONE evidence. */
+ capture_ticks=0;capture_tick=cross_prefetch;
+ assert(transport_sync_source_begin(&s,false)&&capture_ticks==4);
+ assert(s.first.done==s.last.done&&s.first.bf0==(uintptr_t)&rx_desc[5]);
+ assert(s.last.bf0==(uintptr_t)&rx_desc[6]);
+ assert(transport_sync_source_end(&s)&&capture_ticks==8);
+ AHB_DMA.channel[0].in.in_dscr_bf0.val=(uint32_t)(uintptr_t)&rx_desc[5];
  /* A single completion edge is retried in the same lease; two crossings
   * stay unstable rather than inventing a completed interval. */
  capture_ticks=0;crossings=1;capture_tick=cross_done;

@@ -1370,7 +1370,7 @@ bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_source_begin(sync_
      * Retry the paired observation once, immediately, under the same READ
      * lease. No raw reads have occurred and no progress was accepted yet.
      * A second crossing remains UNSTABLE; all lifetime/time checks remain. */
-    if(ok && (s->first.done!=s->last.done || s->first.bf0!=s->last.bf0)) {
+    if(ok && s->first.done!=s->last.done) {
         s->first=s->last;
         ok=transport_sync_capture(&s->last);
     }
@@ -1393,7 +1393,7 @@ bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_source_end(sync_se
     if(!s || !s->leased)return false;
     bool ok=transport_sync_capture(&s->last);
     ok=transport_sync_capture(&s->finish_last) && ok;
-    if(ok && (s->last.done!=s->finish_last.done || s->last.bf0!=s->finish_last.bf0)) {
+    if(ok && s->last.done!=s->finish_last.done) {
         s->last=s->finish_last;
         ok=transport_sync_capture(&s->finish_last);
     }

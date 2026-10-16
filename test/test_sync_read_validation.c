@@ -87,7 +87,30 @@ int main(void)
     fixture_t f=fixture(3,7,100,true);
     assert(validate(&f,false)==SRV_LEASE);
     BAD(q.bf.done=q.l.nodes[0].address,SRV_METADATA);
-    BAD(q.al.bf0=q.l.nodes[(active(&q.l,q.a.done_end)+1)%9].address,SRV_METADATA);
+    /* BF0 can advance independently while DONE remains stable. Every
+     * first/last combination reserves the union, including an earlier
+     * farther observation; an invalid first pointer cannot be hidden by
+     * a valid final pointer. */
+    for(unsigned bp=0;bp<4;++bp)for(unsigned ap=0;ap<4;++ap){
+        fixture_t q=f;
+        unsigned bi=active(&q.l,q.b.done_end),ai=active(&q.l,q.a.done_end);
+        q.bf.bf0=q.l.nodes[(bi+(bp&1u))%9].address;
+        q.bl.bf0=q.l.nodes[(bi+(bp>>1))%9].address;
+        q.af.bf0=q.l.nodes[(ai+(ap&1u))%9].address;
+        q.al.bf0=q.l.nodes[(ai+(ap>>1))%9].address;
+        assert(validate(&q,true)==SRV_OK);
+        uint64_t upper=q.a.done_end+q.l.nodes[ai].bytes+q.l.nodes[(ai+1)%9].bytes;
+        if(ap)upper+=q.l.nodes[(ai+2)%9].bytes;
+        uint64_t oldest=upper-32768u;
+        if(oldest<q.a.fresh_from)oldest=q.a.fresh_from;
+        for(uint64_t k=q.b.done_end-32768u;k<=q.b.done_end;++k){
+            q.e=(sync_read_extent_t){0};sync_read_extent_note(&q.e,k);
+            assert(validate(&q,true)==(k<oldest?SRV_EXPIRED:
+                k>=q.b.done_end?SRV_INCOMPLETE:SRV_OK));
+        }
+    }
+    BAD(q.af.bf0=q.l.nodes[(active(&q.l,q.a.done_end)+2)%9].address,SRV_LINK);
+    BAD(q.bf.bf0=0,SRV_LINK);
     BAD(q.af.live=false,SRV_METADATA);
     BAD(q.bl.metadata_owned=false,SRV_METADATA);
     BAD(q.b.observed=false,SRV_METADATA);

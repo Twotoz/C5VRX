@@ -50,7 +50,7 @@ static inline sync_read_result_t sync_read_capture_cover(
     const sync_done_capture_t *l, const sync_done_observation_t *o, uint32_t *cover)
 {
     if (!f->live || !l->live || !f->metadata_owned || !l->metadata_owned ||
-        f->done!=l->done || f->bf0!=l->bf0 || !o->observed || o->memory_write_permission)
+        f->done!=l->done || !o->observed || o->memory_write_permission)
         return SRV_METADATA;
     if (!raw_access_same(f->context,l->context) || !f->context.stream) return SRV_CONTEXT;
     if (f->rx_clock!=0x60005u || f->tx_clock!=0x60005u ||
@@ -59,15 +59,22 @@ static inline sync_read_result_t sync_read_capture_cover(
         l->memory_rate_bound!=f->memory_rate_bound) return SRV_CLOCK;
     if (f->last_us<f->first_us || l->first_us<f->last_us || l->last_us<l->first_us)
         return SRV_TIME;
-    int done=dma_progress_index(layout,l->done), bf=dma_progress_index(layout,l->bf0);
-    if (done<0 || bf<0) return SRV_LINK;
+    int done=dma_progress_index(layout,l->done);
+    int bf=dma_progress_index(layout,f->bf0), bl=dma_progress_index(layout,l->bf0);
+    if (done<0 || bf<0 || bl<0) return SRV_LINK;
     unsigned current=((unsigned)done+1u)%DMA_PROGRESS_NODES;
     unsigned next=(current+1u)%DMA_PROGRESS_NODES;
-    if ((unsigned)bf!=current && (unsigned)bf!=next) return SRV_LINK;
+    if (((unsigned)bf!=current && (unsigned)bf!=next) ||
+        ((unsigned)bl!=current && (unsigned)bl!=next)) return SRV_LINK;
     if (!o->epoch || !o->fresh_from || o->fresh_from>o->done_end ||
         o->done_end%DMA_PROGRESS_RING!=layout->nodes[current].offset) return SRV_EPOCH;
     *cover=layout->nodes[current].bytes+layout->nodes[next].bytes;
-    if ((unsigned)bf==next) *cover+=layout->nodes[(next+1u)%DMA_PROGRESS_NODES].bytes;
+    /* BF0 is independent pre-read metadata, not a completion witness.
+     * Both sampled positions must fit the bounded model; reserve the UNION
+     * of their covers rather than retrying or trusting only the last one.
+     * DONE stability, hidden-lap bound and actual read lifetime still apply. */
+    if ((unsigned)bf==next || (unsigned)bl==next)
+        *cover+=layout->nodes[(next+1u)%DMA_PROGRESS_NODES].bytes;
     return SRV_OK;
 }
 
