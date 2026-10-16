@@ -278,11 +278,14 @@ int main(void)
         init();stall=true;run_mode(pal!=0,true);
         assert(s_gate.reason==GATE_TIMEOUT && !clears && wall>=3500000);
         init();late_after=5u;run(pal!=0);assert(clears==5u && s_gate.reason==GATE_LATE);
+        assert(s_gate.failed_stage==1u && s_gate.failed_event_late==161u &&
+               s_gate.failed_count_late==161u && s_gate.count_max_cycles>0u);
         init();lose_after=8u;run(pal!=0);assert(clears==6u && s_gate.reason==GATE_CONTEXT);
         init();lose_after=pal?8u:9u;run(pal!=0);
         assert(clears==(pal?6u:7u) && s_gate.batches==1u && s_gate.reason==GATE_CONTEXT);
         init();inject_batch_delay=true;run(pal!=0);
         assert(batch_delay_used && clears==(pal?6u:7u) && s_gate.reason==GATE_LATE);
+        assert(s_gate.failed_stage==2u);
         init();corrupt_batch=true;run(pal!=0);
         assert(clears==(pal?6u:7u) && s_gate.reason==GATE_BATCH);
         init();stall=true;run(pal!=0);assert(!clears && s_gate.reason==GATE_TIMEOUT);

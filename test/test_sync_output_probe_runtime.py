@@ -185,6 +185,11 @@ static void lifecycle(void){
  }
  reset();mode=1;sync_output_probe(7,owner_live);
  assert(s_probe.h>1000&&s_probe.pal32>10&&!s_probe.bad_data&&now==50000);
+ reset();registers[GPIO_FUNC8_OUT_SEL_CFG_REG]&=~GPIO_FUNC8_OE_SEL_M;
+ uint32_t native_matrix=registers[GPIO_FUNC8_OUT_SEL_CFG_REG];
+ mode=1;sync_output_probe(7,owner_live);
+ assert(s_probe.h>1000&&!s_probe.bad_data&&receives&&
+        registers[GPIO_FUNC8_OUT_SEL_CFG_REG]==native_matrix);
  reset();mode=2;sync_output_probe(7,owner_live);assert(s_probe.cancelled&&now==1000);
  reset();mutate_pin=true;uint32_t saved=registers[GPIO_FUNC8_OUT_SEL_CFG_REG];
  sync_output_probe(7,owner_live);assert(registers[GPIO_FUNC8_OUT_SEL_CFG_REG]==saved&&!receives);

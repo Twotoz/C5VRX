@@ -52,6 +52,9 @@ typedef struct {
     uint32_t field_limit,cycle_ticks,cycle_halves;
     uint64_t batch_tick_offset,batch_half_offset,batch_field_offset;
     volatile uint32_t batches,batch_max_cycles,batch_max_pulses,batch_late_max_cycles;
+    volatile uint32_t schedule_max_cycles,rearm_max_cycles,count_max_cycles;
+    uint32_t failed_event_late,failed_count_late;
+    uint8_t failed_stage; /* 1 timer entry/count, 2 vertical cycle grid */
 } gate_context_t;
 
 static gate_context_t s_gate;
@@ -148,6 +151,7 @@ static bool IRAM_ATTR broad_batch(gate_context_t *g,uint32_t anchor,
         if(late>g->batch_late_max_cycles)g->batch_late_max_cycles=late;
         if((late+11u)/12u>g->max_late)g->max_late=(late+11u)/12u;
         if(late>GATE_LATE_TICKS*12u) {
+            g->failed_stage=2u;
             g->reason=GATE_LATE;g->done=true;break;
         }
         g->pulse=next;
@@ -180,17 +184,23 @@ static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
     const gptimer_alarm_event_data_t *event, void *opaque)
 {
     gate_context_t *g=opaque;
-    (void)event;
     if (g->done) return false;
     if (!g->live(g->generation)) {
         g->reason=GATE_CONTEXT;g->done=true;return false;
     }
     uint64_t now;
+    uint32_t count_start=esp_cpu_get_cycle_count();
     if(gptimer_get_raw_count(timer,&now)!=ESP_OK) {
         g->reason=GATE_COUNT;g->done=true;return false;
     }
+    uint32_t count_cycles=esp_cpu_get_cycle_count()-count_start;
+    if(count_cycles>g->count_max_cycles)g->count_max_cycles=count_cycles;
     uint64_t target=GATE_INITIAL_TICKS+g->pulse.start;
     if(now<target || now-target>GATE_LATE_TICKS) {
+        g->failed_stage=1u;
+        g->failed_count_late=now>=target && now-target<UINT32_MAX?(uint32_t)(now-target):UINT32_MAX;
+        g->failed_event_late=event && event->count_value>=target &&
+            event->count_value-target<UINT32_MAX?(uint32_t)(event->count_value-target):UINT32_MAX;
         if(now>=target && now-target<UINT32_MAX && now-target>g->max_late)
             g->max_late=(uint32_t)(now-target);
         g->reason=GATE_LATE;g->done=true;return false;
@@ -210,16 +220,22 @@ static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
     record_tip(g,held);
     if(batch && !broad_batch(g,anchor,late))return false;
     /* All driver/schedule operations occur after the six pads are enabled. */
+    uint32_t schedule_start=esp_cpu_get_cycle_count();
     if(!sgs_next(&g->schedule,&g->pulse)) {
         g->reason=GATE_SCHEDULE;g->done=true;return false;
     }
+    uint32_t schedule_cycles=esp_cpu_get_cycle_count()-schedule_start;
+    if(schedule_cycles>g->schedule_max_cycles)g->schedule_max_cycles=schedule_cycles;
     if(g->pulse.field>=g->field_limit) {
         g->reason=GATE_COMPLETE;g->done=true;return false;
     }
     gptimer_alarm_config_t alarm={.alarm_count=GATE_INITIAL_TICKS+g->pulse.start};
+    uint32_t rearm_start=esp_cpu_get_cycle_count();
     if(gptimer_set_alarm_action(timer,&alarm)!=ESP_OK) {
         g->reason=GATE_REARM;g->done=true;
     }
+    uint32_t rearm_cycles=esp_cpu_get_cycle_count()-rearm_start;
+    if(rearm_cycles>g->rearm_max_cycles)g->rearm_max_cycles=rearm_cycles;
     return false;
 }
 
@@ -326,6 +342,11 @@ cleanup:
         (unsigned long)g->max_late,(unsigned long)g->batches,
         (unsigned long)g->batch_max_cycles,(unsigned long)g->batch_max_pulses,
         (unsigned long)g->batch_late_max_cycles,(unsigned long)pulls_removed_mask,(unsigned)restored);
+    printf("SYNC_GATE_TIMING failed_stage=%u field=%lu half_index=%u kind=%u event_late_ticks=%lu count_late_ticks=%lu count_max_cycles=%lu schedule_max_cycles=%lu rearm_max_cycles=%lu\n",
+        (unsigned)g->failed_stage,(unsigned long)g->pulse.field,(unsigned)g->pulse.index,
+        (unsigned)g->pulse.kind,(unsigned long)g->failed_event_late,
+        (unsigned long)g->failed_count_late,(unsigned long)g->count_max_cycles,
+        (unsigned long)g->schedule_max_cycles,(unsigned long)g->rearm_max_cycles);
     /* A failed deletion must not let an old callback alias a new context. */
     if(reusable)__atomic_store_n(&s_busy,false,__ATOMIC_RELEASE);
 }

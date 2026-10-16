@@ -171,15 +171,18 @@ void sync_output_probe(uint32_t generation, bool (*live)(uint32_t))
     uint32_t iomux = REG_READ(IO_MUX_GPIO8_REG);
     uint32_t matrix = REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG);
     uint32_t enabled = REG_READ(GPIO_ENABLE_REG) & SOP_MASK;
-    /* PARLIO DATA4 index52, push-pull, no inversion, register-controlled OE.
+    /* PARLIO DATA4 index52, push-pull, no inversion. Either peripheral or
+     * GPIO-controlled OE is valid: this input-only observer changes neither.
      * The root caller additionally verifies LP and unscaled1x reference LUT. */
     bool pin_ok = (matrix & GPIO_FUNC8_OUT_SEL_M) == 52u &&
         !(matrix & (GPIO_FUNC8_OUT_INV_SEL_M | GPIO_FUNC8_OE_INV_SEL_M)) &&
-        (matrix & GPIO_FUNC8_OE_SEL_M) && enabled &&
+        enabled &&
         !(REG_READ(GPIO_PIN8_REG) & GPIO_PIN8_PAD_DRIVER_M) &&
         ((iomux & MCU_SEL_M) >> MCU_SEL_S) == 1u;
     if (!pin_ok) {
-        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=pin_context\n");
+        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=pin_context matrix=0x%08lx iomux=0x%08lx enable=0x%08lx pad=0x%08lx\n",
+            (unsigned long)matrix, (unsigned long)iomux, (unsigned long)enabled,
+            (unsigned long)REG_READ(GPIO_PIN8_REG));
         s_busy = false; return;
     }
     memset(&s_probe, 0, sizeof(s_probe));
