@@ -29,6 +29,7 @@ _Static_assert((SOP_MASK & UINT32_C(0x01801b00)) == 0u,
 #define SOP_SYMBOLS 48u
 #define SOP_WINDOW_US 50000
 #define SOP_HARD_US 100000
+#define SOP_ARM_MAX_US 200
 
 typedef struct {
     uint32_t callbacks, symbols, halves, epochs, endings, low, h, broad;
@@ -236,7 +237,7 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
         .mem_block_symbols = 96u, .intr_priority = 2};
     const rmt_rx_event_callbacks_t callbacks = {.on_recv_done = sop_received};
     const rmt_receive_config_t receive = {.signal_range_min_ns = edge_clock?0u:2500u,
-        .signal_range_max_ns = 100000u, .flags = {.en_partial_rx = true}};
+        .signal_range_max_ns = edge_clock?1000000u:100000u, .flags = {.en_partial_rx = true}};
     int64_t began = esp_timer_get_time();
     if(edge_clock)REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
     REG_WRITE(IO_MUX_GPIO2_REG, witness_iomux);
@@ -280,12 +281,12 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
         err=rmt_receive(channel,s_symbols,sizeof(s_symbols),&receive);
         if(err!=ESP_OK)failure="receive";
         else if(!sync_edge_clock_arm())failure="clock_arm";
-        else if(esp_timer_get_time()-arm_start>20 || s_probe.ended)failure="arm_gap";
+        else if(esp_timer_get_time()-arm_start>SOP_ARM_MAX_US || s_probe.ended)failure="arm_gap";
         else {
             ready=true;
         }
         arm_us=esp_timer_get_time()-arm_start;
-        if(arm_us>20){ready=false;failure="arm_gap";}
+        if(arm_us>SOP_ARM_MAX_US){ready=false;failure="arm_gap";}
         if(ready) {
             /* The first raw edge is a recognizable private HIGH marker.
              * Neither consumer has a private/variable filter at this point.
