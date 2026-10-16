@@ -87,6 +87,8 @@ static unsigned lose_after,late_after;
 static unsigned pull_fail_pin;
 static bool pull_fail_used;
 static bool stall;
+static bool freeze_count;
+static uint32_t entry_delay;
 static int cpu_hz=240000000;
 static int64_t wall;
 static unsigned runs;
@@ -172,12 +174,13 @@ int gptimer_register_event_callbacks(gptimer_handle_t t,const gptimer_event_call
 int gptimer_enable(gptimer_handle_t t){if(fail_stage==3)return -1;t->enabled=true;return 0;}
 int gptimer_set_raw_count(gptimer_handle_t t,uint64_t n){if(fail_stage==4)return -1;t->count=n;return 0;}
 int gptimer_get_raw_count(gptimer_handle_t t,uint64_t *n)
-{assert(!in_batch);assert((registers[0]&GATE_MASK)==GATE_MASK);if(fail_stage==7)return -1;*n=t->count;return 0;}
+{assert(!in_batch);assert((registers[0]&GATE_MASK)==GATE_MASK);if(fail_stage==7)return -1;
+ *n=t->count;if(!freeze_count)++t->count;cycles+=12u;return 0;}
 int gptimer_set_alarm_action(gptimer_handle_t t,const gptimer_alarm_config_t *a)
 {
     assert((registers[0]&GATE_MASK)==GATE_MASK);
     assert(!in_batch);
-    assert(a->alarm_count==GATE_INITIAL_TICKS+s_gate.pulse.start);
+    assert(a->alarm_count==GATE_INITIAL_TICKS+s_gate.pulse.start-GATE_LEAD_TICKS);
     ++alarm_calls;
     if((fail_stage==5 && alarm_calls==1u)||(fail_stage==8 && alarm_calls==5u))return -1;
     t->alarm=a->alarm_count;return 0;
@@ -196,7 +199,7 @@ void vTaskDelay(unsigned ticks)
     assert(ticks==1u);
     if(stall){wall+=10000;return;}
     assert(mt.started && mt.callbacks.on_alarm);
-    mt.count=mt.alarm+(clears>=late_after?161u:0u);
+    mt.count=mt.alarm+(clears>=late_after?GATE_LEAD_TICKS+161u:entry_delay);
     /* First tip crosses UINT32 wrap; subsequent alarm times share one clock. */
     cycles=(uint32_t)(mt.count*12u)+0xffffa200u;
     wall=(int64_t)(mt.count/20u);
@@ -280,6 +283,11 @@ int main(void)
         init();late_after=5u;run(pal!=0);assert(clears==5u && s_gate.reason==GATE_LATE);
         assert(s_gate.failed_stage==1u && s_gate.failed_event_late==161u &&
                s_gate.failed_count_late==161u && s_gate.count_max_cycles>0u);
+        init();entry_delay=GATE_LEAD_TICKS+150u;run(pal!=0);
+        assert(s_gate.reason==GATE_COMPLETE && s_gate.max_late>=150u &&
+               s_gate.max_late<=GATE_LATE_TICKS);entry_delay=0u;
+        init();freeze_count=true;run(pal!=0);
+        assert(s_gate.reason==GATE_COUNT && !clears);freeze_count=false;
         init();lose_after=8u;run(pal!=0);assert(clears==6u && s_gate.reason==GATE_CONTEXT);
         init();lose_after=pal?8u:9u;run(pal!=0);
         assert(clears==(pal?6u:7u) && s_gate.batches==1u && s_gate.reason==GATE_CONTEXT);

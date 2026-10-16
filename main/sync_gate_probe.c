@@ -22,6 +22,7 @@
 #define GATE_FIELDS 3u
 #define GATE_INITIAL_TICKS 2000u
 #define GATE_LATE_TICKS 160u
+#define GATE_LEAD_TICKS 240u /* 12us IRQ head start; pulse grid is unchanged */
 #define GATE_TIMEOUT_US 250000
 #define GATE_LONG_TIMEOUT_US 3500000
 #define GATE_BATCH_PULSES 7u
@@ -196,6 +197,18 @@ static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
     uint32_t count_cycles=esp_cpu_get_cycle_count()-count_start;
     if(count_cycles>g->count_max_cycles)g->count_max_cycles=count_cycles;
     uint64_t target=GATE_INITIAL_TICKS+g->pulse.start;
+    /* Absorb driver/interrupt-entry jitter before the pulse deadline. Keep
+     * pads enabled while waiting, and bound a stalled timer by CPU cycles.
+     * The same 8us late guard still applies to the actual pulse deadline. */
+    uint32_t wait_start=esp_cpu_get_cycle_count();
+    while(now<target) {
+        if(esp_cpu_get_cycle_count()-wait_start>(GATE_LEAD_TICKS+GATE_LATE_TICKS)*12u) {
+            g->reason=GATE_COUNT;g->done=true;return false;
+        }
+        if(gptimer_get_raw_count(timer,&now)!=ESP_OK) {
+            g->reason=GATE_COUNT;g->done=true;return false;
+        }
+    }
     if(now<target || now-target>GATE_LATE_TICKS) {
         g->failed_stage=1u;
         g->failed_count_late=now>=target && now-target<UINT32_MAX?(uint32_t)(now-target):UINT32_MAX;
@@ -229,7 +242,7 @@ static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
     if(g->pulse.field>=g->field_limit) {
         g->reason=GATE_COMPLETE;g->done=true;return false;
     }
-    gptimer_alarm_config_t alarm={.alarm_count=GATE_INITIAL_TICKS+g->pulse.start};
+    gptimer_alarm_config_t alarm={.alarm_count=GATE_INITIAL_TICKS+g->pulse.start-GATE_LEAD_TICKS};
     uint32_t rearm_start=esp_cpu_get_cycle_count();
     if(gptimer_set_alarm_action(timer,&alarm)!=ESP_OK) {
         g->reason=GATE_REARM;g->done=true;
@@ -279,7 +292,7 @@ static void gate_probe_run(bool pal,uint32_t generation,bool (*live)(uint32_t),
     if(gptimer_enable(g->timer)!=ESP_OK){failure="timer_enable";goto cleanup;}
     enabled=true;
     if(gptimer_set_raw_count(g->timer,0)!=ESP_OK){failure="timer_count";goto cleanup;}
-    gptimer_alarm_config_t alarm={.alarm_count=GATE_INITIAL_TICKS+g->pulse.start};
+    gptimer_alarm_config_t alarm={.alarm_count=GATE_INITIAL_TICKS+g->pulse.start-GATE_LEAD_TICKS};
     if(gptimer_set_alarm_action(g->timer,&alarm)!=ESP_OK){failure="timer_alarm";goto cleanup;}
     if(!live(generation)){failure="context";goto cleanup;}
     /* Preserve drive, pad function and every unrelated bit. Flag cleanup
