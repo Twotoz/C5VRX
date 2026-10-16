@@ -8,10 +8,20 @@
 #include <string.h>
 
 #define SNT_H_CANDIDATES 8u
+#define SNT_H_MAX_GAP_TICKS (4u*1290u)
+#define SNT_H_MIN_INTERVALS 16u
+#define SNT_H_MIN_SLOTS 32u
+#define SNT_H_MAX_SLOTS 64u
+/* Before the first broad: at most6 pre-EQ halves (3lines, NTSC), plus
+ * at most1line from the preceding global-even H to the field boundary.
+ * A supported4-line observation gap permits3 additional missing Hs.
+ * Thus last observed H -> first broad is bounded by7*1290ticks, while
+ * EQ/broad counts/widths/spacing and field-period requirements stay exact. */
+#define SNT_V_H_MAX_AGE_TICKS ((3u+1u+3u)*1290u)
 typedef struct {
     uint64_t last,start,fit;
     uint32_t line_ticks_x32;
-    uint8_t n,standard;
+    uint8_t n,slots,standard;
     bool used;
 } snt_h_candidate_t;
 typedef struct {
@@ -31,7 +41,10 @@ static inline void sync_native_reset(sync_native_track_t *s)
 static inline bool snt_near(uint64_t a,uint64_t b,uint64_t tolerance)
 { return a>=b-tolerance && a<=b+tolerance; }
 
-/* H candidates accept only their next line window. Picture lows elsewhere
+/* H candidates accept one to four whole line slots on the same phase.
+ * Missing pulses are missing evidence, never extra observations. Fit at least
+ *16 observed intervals over32..64 slots, normalized back to32 lines.
+ * Picture lows elsewhere
  * do not erase an established phase. Eight fixed slots bound memory/work;
  * never replace a recent paired candidate merely to accommodate more aliases. */
 static inline void snt_h(sync_native_track_t *s,uint64_t tick)
@@ -52,17 +65,31 @@ static inline void snt_h(sync_native_track_t *s,uint64_t tick)
     unsigned free_slot=SNT_H_CANDIDATES;
     for(unsigned i=0;i<SNT_H_CANDIDATES;++i) {
         snt_h_candidate_t *c=&s->candidates[i];
-        if(c->used && tick-c->last>6000u)c->used=false;
+        if(c->used && tick-c->last>SNT_H_MAX_GAP_TICKS)c->used=false;
         if(!c->used) {if(free_slot==SNT_H_CANDIDATES)free_slot=i;continue;}
         uint64_t delta=tick-c->last;
-        if(!snt_near(delta,1275u,15u))continue;
+        unsigned gap=0u;
+        for(unsigned g=1u;g<=4u;++g) {
+            uint32_t expected=c->standard?(c->line_ticks_x32*g+16u)>>5:1275u*g;
+            uint32_t tolerance=c->standard?24u:15u*g;
+            if(snt_near(delta,expected,tolerance)){gap=g;break;}
+        }
+        if(!gap)continue;
+        if(c->slots+gap>SNT_H_MAX_SLOTS) {
+            c->start=c->last;c->slots=c->n=0u;
+        }
         accepted=true;c->last=tick;
-        if(++c->n==32u) {
-            uint64_t fit=tick-c->start;
+        c->slots=(uint8_t)(c->slots+gap);++c->n;
+        if(c->n>=SNT_H_MIN_INTERVALS && c->slots>=SNT_H_MIN_SLOTS) {
+            uint64_t elapsed=tick-c->start;
+            /* The accepted window is <=64*1290ticks. Bound before casting
+             * and multiplying: no wide division/helper in this bounded fit. */
+            uint32_t fit=elapsed<=SNT_H_MAX_SLOTS*1290u?
+                ((uint32_t)elapsed*32u+c->slots/2u)/c->slots:0u;
             c->standard=snt_near(fit,40960u,32u)?2u:
                 snt_near(fit,40676u,32u)?1u:0u;
             c->line_ticks_x32=c->standard?(uint32_t)fit:0u;
-            c->fit=tick;c->start=tick;c->n=0u;
+            c->fit=tick;c->start=tick;c->n=c->slots=0u;
             if(c->standard) {
                 s->h_standard=c->standard;s->h_fit=tick;
                 if(!s->have_selected)s->line_ticks_x32=c->line_ticks_x32;
@@ -87,7 +114,7 @@ static inline bool snt_h_for_v(sync_native_track_t *s,uint8_t standard,unsigned 
         if(!c->used || c->standard!=standard || s->broad_start<c->fit ||
            s->broad_start-c->fit>=100000u || s->broad_start<c->last)continue;
         uint64_t age=s->broad_start-c->last;
-        if(age>6000u)continue;
+        if(age>SNT_V_H_MAX_AGE_TICKS)continue;
         uint32_t period=(c->line_ticks_x32+16u)>>5;
         uint32_t rem=(uint32_t)age%period;
         if(rem>24u && period-rem>24u &&
@@ -124,7 +151,7 @@ static inline void snt_group(sync_native_track_t *s)
 static inline void sync_native_low(sync_native_track_t *s,uint64_t tick,uint32_t width)
 {
     if(s->seen && tick<=s->last) {sync_native_reset(s);return;}
-    if(s->seen && tick-s->last>5000u)sync_native_reset(s);
+    if(s->seen && tick-s->last>SNT_H_MAX_GAP_TICKS)sync_native_reset(s);
     s->seen=true;s->last=tick;
     if(s->valid && tick-s->field>810000u)s->valid=false;
     if(width>=76u && width<=112u) {

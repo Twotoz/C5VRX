@@ -135,6 +135,7 @@ jobs:
           python3 test/test_sync_output_probe_runtime.py
           python3 test/test_sync_edge_clock_runtime.py
           python3 test/test_sync_native_witness_runtime.py
+          python3 research/native_flag_emulator.py --output /tmp/native_flag_emulator.json
           python3 test/test_sync_live_gate_runtime.py
           python3 test/test_sync_live_output_runtime.py
       - name: Analytic IQ lane reference

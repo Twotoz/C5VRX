@@ -977,3 +977,51 @@ Goal paused; observer/requested and repair/requested both0 after J capture.
 VTX may remain OFF. Resume from J, do not routinely roll back. Next actual
 camera qualification/holdover/return/monitor and fast-witness/default work remain
 open. The read-only helper feasibility agent was interrupted for this pause.
+
+
+### 2026-10-17: missing-H evidence, comparator invariance and negative models
+
+Operator returned for a resumed2-second J camera capture. NTSC/G37 strong RF
+is visible, but no native H/V model qualifies. Clean stop/restoration follows;
+operator was immediately told VTX can switch off. Evidence and raw log hash:
+`research/data/board_native_j_resumed_2026-10-17.json`. J remains on the board.
+
+H candidates previously required32 consecutive usable intervals. New bounded
+fit accepts1..4 integer line gaps, requires at least16 observed intervals over
+32..64 line slots, and normalizes to32 lines using unchanged PAL/NTSC fit limits.
+Missing pulses do not count as observations. Eight candidates remain the bound.
+V association age permits7line periods, derived from<=3lines pre-EQ,<=1line H
+parity offset and<=3 missing Hs. EQ/broad counts, widths, spacing and field timing
+are unchanged. Tests cover missing Hs including just before V, picture aliases,
+5-line/off-grid gaps, stale bounds and million noise cases:1,000,137 pass,
+including agent sanitizer run; actual observer runtime175 checks also pass.
+K firmware builds but is NOT flashed. SHA256:
+e1683f5905cbbe1bf9ebf071d917188a1cdbf43d253e3912694b442c940cc7c1.
+
+`research/native_flag_emulator.py` reproduces the proposed hardware comparator
+invariance using production C scaling/tables, pinned SDK assembly and the
+existing generic emulator with observation hooks. All8kp*10output*2program cases
+pass:327600bundles,327680bytes,327360flags. Flag from UNSCALED canonical DAC<19
+is inserted AFTER scaling. LP changes only controller output0 A10->L0; its
+phase/counter recurrence and all non-LSB outputs remain exact in this finite
+fixture. Actual physical DAC would need its LSB grounded, producing baseline
+DAC&~1; flag is raw x, not filtered y. This is not hardware/monitor proof.
+Compact hashes/counts: research/data/native_flag_emulator.json. CI runs the proof.
+
+`research/native_flag_study.py` generates full3field model data for the ACTUAL
+native qualifier. Use --out DIR, optional --clean/--rms/--lp; compile generated
+runner.c against main/ and feed pulses.txt to it. The1us inertial filter is an
+IDEAL MODEL, not characterized RMT silicon. At RMS3.2/CN24 the old qualifier
+accepts no full V in48 series (16 each bit4-low/high and DAC<19); preserve that
+negative result. With missing-H support raw comparator accepts7/16, bit4 accepts
+0/16; clean comparator8/16; theoretical post-LP comparator9/16 vs bit4-low4/16.
+RMS5 raw comparator accepts5/16 vs bit4 zero. These are exploratory comparisons,
+not a passing delivery gate or a measured board improvement. Many model cases
+still fail, and raw comparator chatter can erase all transitions in the ideal
+filter. Data: native_flag_study_baseline_2026-10-17.json and
+native_flag_study_missing_h_2026-10-17.json.
+
+A finite, self-restoring observer-only flag board bench is being implemented
+separately. No comparator firmware is flashed yet. Output-gate integration,
+camera/fade/return/monitor proof and defaults remain required. Do not redefine
+this unfinished goal as an emulator proof or a manual source probe.

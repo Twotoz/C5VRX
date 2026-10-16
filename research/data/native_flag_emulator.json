@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "attribution": "C5VRX by Twotoz and contributors",
+  "result": "PASS",
+  "threshold_unscaled_dac": 19,
+  "seed": 213,
+  "input_sha256": "dee8f69e766d28e677e123924f2ab3aa0d766957fe2bf5344e188322e47b8b93",
+  "output_bytes_per_case": 2048,
+  "counts": {
+    "cases": 160,
+    "bundles": 327600,
+    "output_bytes": 327680,
+    "flag_samples": 327360,
+    "lut_words": 81920,
+    "changed_lut_words": 58999,
+    "grounded_lsb_code_loss_ones": 161656
+  },
+  "profile_coverage": {
+    "kp_settings": 8,
+    "output_levels": 10,
+    "programs": [
+      "normal",
+      "lp"
+    ]
+  },
+  "sha256": {
+    "normal_program": "b3913ae26551f3bac8da2dc2a10e51f365d73bbd3e0b2743000f303f0b66abac",
+    "lp_program": "483c7dd03c8b83eb1987193c8799b352d9c833b4dda5f24d1309622111e84d83",
+    "kp_tables": "d886f2ea25f461c473e9ac58861f4b792185fccea84d5dd19b0f1a5413bd2143",
+    "output_mapping": "5979b843cf4bd4e0542a306108e6c1ea4c0fd879131025889cbb8af8016cb88c",
+    "generic_emulator": "182a5da0671771bd352a75ab0d268546adc0f94a5a44097468a01b62c9a700bd",
+    "runner": "af9d12a40ac613a84093ac619fabc0add102568b18b16e14fe41511c688c2c34",
+    "sdk_assembler": "1b293da34636288b77b3cad0b50825b3c04cadb9660475fddbaa4623b8c562e8",
+    "sdk_target": "8ea69d170fa74ae382838d2634aaf9f5cff66c5ee0267cab5c04f1af82e5a19d"
+  },
+  "assertions": [
+    "SDK instructions/opcodes/read/write unchanged except LP controller output0",
+    "every LUT address and A/B counter equals baseline after every executed bundle",
+    "every non-LSB output bit equals baseline",
+    "duplicated flag equals unscaled preceding worker DAC comparison",
+    "grounded physical DAC equals original DAC with only bit0 cleared"
+  ],
+  "limitations": {
+    "firmware_enabled": false,
+    "physical_gpio_grounding_verified": false,
+    "monitor_lock_proven": false,
+    "camera_timing_proven": false,
+    "input": "deterministic byte stream, not exhaustive IQ sequences",
+    "flag": "raw decoder x; bypasses LP counter y smoothing",
+    "scale_order": "apply actual C output_entry first, replace bit0 from unscaled reference last",
+    "polarity": "HIGH for unscaled DAC<threshold; LOW-sync parser needs explicit adaptation",
+    "negative_study": "raw flag chatter may erase transitions in an inertial filter; this invariance proof does not resolve it"
+  },
+  "case_digest_sha256": "1d0d2f7fe36c07094d4b129490fc24be37ae50dc0effebd4552c36078264835a",
+  "per_program": {
+    "normal": {
+      "cases": 80,
+      "bundles_per_case": [
+        2047
+      ],
+      "flag_samples_per_case": [
+        2046
+      ]
+    },
+    "lp": {
+      "cases": 80,
+      "bundles_per_case": [
+        2048
+      ],
+      "flag_samples_per_case": [
+        2046
+      ]
+    }
+  }
+}

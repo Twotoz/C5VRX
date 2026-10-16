@@ -1019,3 +1019,20 @@ User is away and explicitly requests pausing the goal when VTX must turn on;
 goal is paused, VTX can remain OFF. Do not resume experiments or ask to keep it
 on until user resumes. Comparator-flag hardware idea is unimplemented/unproven;
 pulse_find_tests helper was interrupted. Source goal checklist remains open.
+
+
+### Missing-H K build and comparator study (2026-10-17)
+
+J is still flashed; resumed shortcamera test fails nativeH/V, then cleanstop.
+VTX can remainOFF. NewH candidates accept1..4linegaps,>=16observedintervals in
+32..64slots, same normalizedPAL/NTSC fits; V's H-age allowance is derived7lines.
+Full V/EQ evidence requirements remain unchanged.1,000,137native tests and175
+actual observer checks pass. K builds, notflashed. Do not claim board success.
+Comparator emulator160cases preserves counters/addresses/nonLSB outputs; flag
+uses UNSCALEDword<19 inserted AFTER output_entry scaling. PhysicalLSB would be
+grounded, baselineDAC&~1; LPflag observes rawx, bypassesLPy. Synthetic fullfield
+study still has failures: missing-H+rawflag7/16 vs bit4zero/16 at RMS3.2/CN24;
+not a deliverable success gate. See latest FLYWHEEL_GOAL.md/data artifacts.
+A helper owns a finite observer-only flagbench implementation; no production
+comparator firmware flashed. Keep future U/gates explicitly excluded until its
+pin/program/LUT ownership contract and actual source are verified.
