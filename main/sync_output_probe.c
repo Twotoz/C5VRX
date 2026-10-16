@@ -10,7 +10,9 @@
 #include "sync_output_probe.h"
 #include "sync_edge_clock.h"
 #include "sync_phase_bracket.h"
+#include "sync_native_track.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "driver/rmt_rx.h"
 #include "driver/rmt_common.h"
@@ -31,6 +33,18 @@ _Static_assert((SOP_MASK & UINT32_C(0x01801b00)) == 0u,
 #define SOP_WINDOW_US 50000
 #define SOP_HARD_US 100000
 #define SOP_ARM_MAX_US 200
+
+/* Allocate after receiver startup: even a small BSS increase can prevent
+ * its contiguous control-task stack allocation. Keep storage alive permanently
+ * once acquired, including any quarantined callback ownership. */
+typedef struct {
+    uint64_t rise_before,rise_after,fall_before,fall_after;
+    sync_phase_bracket_t native_phase;
+    sync_native_track_t native;
+    uint32_t native_qualified_epochs;
+    bool native_phase_checked,native_reported;
+} sop_native_t;
+static sop_native_t *s_native;
 
 typedef struct {
     uint32_t callbacks, symbols, halves, epochs, endings, low, h, broad;
@@ -82,6 +96,21 @@ static void sop_group(sop_context_t *s)
 static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
 {
     if(start<s->discard_before)return; /* private marker/handoff is not camera sync */
+    if(s_native && s->marker_required && !s_native->native_phase_checked && s->prefix_n==3u) {
+        uint32_t rise=s->prefix[0]+s->prefix[1];
+        s_native->native_phase=sync_phase_bracket(rise,rise+s->prefix[2],
+            s_native->rise_before,s_native->rise_after,s_native->fall_before,s_native->fall_after);
+        s_native->native_phase_checked=true;
+    }
+    if(s_native && s->marker_required && s_native->native_phase.valid) {
+        int64_t offset=s_native->native_phase.lo+(s_native->native_phase.hi-s_native->native_phase.lo)/2;
+        if(offset>=-(int64_t)start && offset<=INT64_MAX-(int64_t)start) {
+            sync_native_low(&s_native->native,(uint64_t)(offset+start),width);
+            if(s_native->native.valid && !s_native->native_reported) {
+                ++s_native->native_qualified_epochs;s_native->native_reported=true;
+            }
+        }
+    }
     ++s->low;
     if (width >= 76u && width <= 112u) {
         ++s->h;
@@ -181,6 +210,11 @@ static void sop_epoch(sop_context_t *s)
     s->h_train = s->broad_train = 0u; s->ended = false;
     s->prefix_n=0;s->first_duration=0;s->first_level=false;
     memset(s->prefix,0,sizeof(s->prefix));
+    if(s_native) {
+        s_native->native_phase=(sync_phase_bracket_t){0};
+        sync_native_reset(&s_native->native);
+        s_native->native_phase_checked=false;s_native->native_reported=false;
+    }
     s->discard_before=s->marker_required?UINT32_MAX:0u;
 }
 
@@ -217,6 +251,11 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
     if (!live || !live(generation)) {
         printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=not_live\n"); return;
     }
+    if(edge_clock && !s_native) {
+        s_native=calloc(1,sizeof(*s_native));
+        if(!s_native){printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=native_memory\n");return;}
+    }
+    if(edge_clock)memset(s_native,0,sizeof(*s_native));
     s_busy = true;
     uint32_t iomux = REG_READ(IO_MUX_GPIO8_REG);
     uint32_t matrix = REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG);
@@ -374,6 +413,9 @@ clock_epoch_arm:
                     ready=false;failure="clock_native_start";
                 } else if(ready) {
                     native_floor=native_start;
+                    s_native->rise_before=rise_before;s_native->rise_after=rise_after;
+                    s_native->fall_before=fall_before;s_native->fall_after=fall_after;
+                    __sync_synchronize();
                     /* RMT restarts at zero; the output timer never restarts.
                      * Its pre-marker read gives a conservative local barrier. */
                     s_probe.discard_before=(uint32_t)(native_start-epoch_quiet)+common_filter_ns/50u+4u;
@@ -450,6 +492,13 @@ done:
             (unsigned long)clock_stats.refused,(unsigned long)clock_stats.pending,
             (unsigned long)clock_stats.regressions,(unsigned long)clock_stats.max_span,
             (long long)clock_stats.last_lo,(long long)clock_stats.last_hi);
+        printf("SYNC_NATIVE_TIMING manual=1 camera_qualified=0 timing_valid=%u standard=%u qualified_epochs=%lu fields=%lu line_ticks_x32=%lu field_tick=%llu phase_span_ticks=%lld\n",
+            (unsigned)s_native->native.valid,(unsigned)s_native->native.standard,
+            (unsigned long)s_native->native_qualified_epochs,
+            (unsigned long)s_native->native.qualified_fields,
+            (unsigned long)s_native->native.line_ticks_x32,
+            (unsigned long long)s_native->native.field,
+            s_native->native_phase.valid?(long long)(s_native->native_phase.hi-s_native->native_phase.lo):-1LL);
         printf("SYNC_EDGE_CLOCK manual=1 absolute_time=0 camera_qualified=0 common_filter_ns=%lu timer_hz=20000000 ticks=%llu read_ok=%u edges_seen=%u closed=%u arm_us=%lld marker_ticks=%lu marker_level=%u marker_ok=%u native_after_ticks=%lu error=%s\n",
             (unsigned long)common_filter_ns,(unsigned long long)clock_ticks,
             (unsigned)clock_read_ok,(unsigned)(s_probe.halves!=0u),

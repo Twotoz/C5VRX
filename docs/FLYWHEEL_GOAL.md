@@ -755,3 +755,39 @@ as a permanent background service. The bounded 50 ms acquisition window also
 has setup/cleanup overhead: observed total calls exceed 50 ms. Automatic native
 qualification, camera-relative pulse scheduling/handoff, and electrical/monitor
 validation remain unfinished. This is not a flywheel completion claim.
+
+
+### 2026-10-16: P native H/V temporal qualification (manual only)
+
+Added `sync_native_track.h`: require both 32-line PAL/NTSC period fits and
+matching repeated 5/6-broad vertical trains at the corresponding field period.
+Reject observation gaps/regressions; do not complete truncated broad trains at
+capture end. The actual mirror parser feeds only marker-excluded edges through
+a valid phase bracket, mapping local RMT time to the continuous 64-bit timer.
+This temporal candidate is not yet permitted to drive output repair.
+
+Host: 1,000,036 checks, including PAL/NTSC, jitter, large clock origins, missing
+H/V, wrong field periods, regression/gaps and one million random pulses;
+ASan/UBSan passed. Actual production observer mock: 67 checks. CI includes the
+new qualifier. P target build passed.
+
+Negative O build: extra static observer state shifted startup memory enough to
+make the contiguous 6144-byte control-task allocation fail (`ESP_ERR_NO_MEM`).
+Recovered verified N, observed normal startup and zero DMA faults. P allocates
+native state once after startup and keeps it alive for callback/quarantine
+ownership. Evidence `board_native_o_failure_2026-10-16.json` retains failure.
+
+Actual P `5.0.0-pr.212-sync-gate-p`, SHA256
+`470406b771bd3530822ea4807d37bb9fcbfe7b1da29e74bb46fcf6cf05bcd7d6`,
+boots normally; initial plus 20 repeated manual captures restore all state and
+report no errors. Native input has isolated H/broad-like pulses but no coherent
+H/V trains, and correctly produces zero timing-qualified epochs. Warm internal
+heap remains 7000 bytes across the 20 repeated captures. Transport reports zero
+DMA/overflow/BS faults. NTSC 48870-pulse manual gate passes; the initial PAL
+request was refused on ownership (not a passed PAL run). See
+`research/data/board_native_p_2026-10-16.json` for raw provenance and counters.
+
+No camera-on proof or monitor feedback yet. Automatic continuous observation,
+phase-following pulse scheduling, holdover/handoff and monitor validation remain
+unfinished. The manual PHY lease still must not become a permanent background
+lease. P does not enable automatic flywheel at boot.

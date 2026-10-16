@@ -16,6 +16,7 @@ PREFIX = r'''
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #define IRAM_ATTR
 #define DRAM_ATTR
@@ -150,6 +151,19 @@ static void event(rmt_symbol_word_t *words,size_t n,bool last){
  rmt_rx_done_event_data_t e={.received_symbols=words,.num_symbols=n,.flags={.is_last=last}};
  assert(!sop_received((void*)1,&e,&s_probe));++checks;
 }
+static void native_projection(void){
+ if(!s_native){s_native=calloc(1,sizeof(*s_native));}
+ assert(s_native);
+ parser_start();s_probe.marker_required=true;s_probe.discard_before=2000;
+ s_native->native_phase_checked=true;
+ int64_t base=INT64_C(1)<<44;
+ s_native->native_phase=(sync_phase_bracket_t){.lo=base-10,.hi=base+10,.valid=true};
+ sop_low(&s_probe,1999,94);assert(!s_native->native.seen);++checks;
+ sop_low(&s_probe,2000,94);assert(s_native->native.last==(uint64_t)base+2000u);++checks;
+ sop_epoch(&s_probe);assert(!s_native->native.seen&&!s_native->native_phase.valid);++checks;
+ s_probe.discard_before=0;s_native->native_phase_checked=true;
+ sop_low(&s_probe,2000,94);assert(!s_native->native.seen);++checks;
+}
 static void parser_tests(void){
  parser_start();rmt_symbol_word_t words[48];
  for(unsigned i=0;i<48;++i)words[i]=(rmt_symbol_word_t){.duration0=1186,.level0=1,.duration1=94,.level1=0};
@@ -264,7 +278,7 @@ static void lifecycle(void){
  rmt_symbol_word_t rate_word={.duration0=1186,.level0=1,.duration1=94,.level1=0};
  event(&rate_word,1,false);assert(s_probe.stop&&s_probe.rate_limited&&!s_probe.symbols);
 }
-int main(void){parser_tests();fixture(false);fixture(true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
+int main(void){native_projection();parser_tests();fixture(false);fixture(true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''
 
 
@@ -274,9 +288,11 @@ class Runtime(unittest.TestCase):
         source = re.sub(r'^#include[^\n]*\n', '', source, flags=re.MULTILINE)
         phase = (ROOT / 'main/sync_phase_bracket.h').read_text()
         phase = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', phase, flags=re.MULTILINE)
+        native = (ROOT / 'main/sync_native_track.h').read_text()
+        native = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', native, flags=re.MULTILINE)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            (path / "probe.c").write_text(PREFIX + phase + source + SUFFIX)
+            (path / "probe.c").write_text(PREFIX + phase + native + source + SUFFIX)
             compiler = os.environ.get("CC", "cc")
             subprocess.run([compiler, "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
                             str(path / "probe.c"), "-o", str(path / "probe")], check=True)
