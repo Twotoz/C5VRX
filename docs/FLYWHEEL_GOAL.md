@@ -838,3 +838,45 @@ conditional per-tip output scheduling, fast witness and transport cancellation;
 then VTX-on/fade and real monitor proof. Do not substitute resident observation
 or generated pulses for the actual goal. User prefers building forward over
 routine rollback flashes (2026-10-16); apply that preference on subsequent tests.
+
+
+### 2026-10-17: conditional output bench A-E (still OFF at boot)
+
+The shared observer clock now drives an IRAM alarm and a bounded incremental
+PAL/NTSC pulse iterator. No per-pulse division, task queue refill or persistent
+PHY lease is needed. The backend disconnects the six DAC output enables only
+for sync tips; the received hardware stream remains visible between tips.
+It restores pad/matrix ownership before observer/timer teardown. `U` enables
+this bench, `u` only observes, and `t` prints short status. Both default OFF.
+Read-only E observation supports both verified U85Q programs at 1x output.
+An unqualified model on the normal program does not authorize synthetic tips.
+
+Negative board results are retained: A stopped after81 pulses and exposed a
+teardown ownership failure; B hit watchdog starvation and a late-tip stop;
+C removed that watchdog symptom but still stopped on a late tip. The observer
+now resets its runnable budget only after an explicit delay, and control.c is
+compiled O2. D skips late tips instead of emitting them outside the admission
+window, then continues on the same absolute grid. This is not a hard deadline
+or uninterrupted monitor-lock guarantee.
+
+D ran20-second NTSC and PAL benches. At the last18-second samples, software
+counters showed292669 repaired/121 missed NTSC tips and290150 repaired/34 missed
+PAL tips. No output/source faults or watchdog were reported during these runs;
+cleanup restored ownership and final transport fault counters were zero.
+No scope or monitor measurement establishes the actual CVBS waveform/lock.
+The VTX was off during those captures. A later camera-on D capture detected
+NTSC, gain43-53 and AFC lock, but its sync observer was blocked by the old LP
+eligibility requirement. E removes that observation-only restriction. Its
+first VTX-off test starts/stops cleanly and exports no qualified native model.
+
+Evidence and image/log hashes: `research/data/board_conditional_output_2026-10-17.json`.
+Host checks:736399 planner,12008 actual-backend mock-MMIO,84 observer-runtime,
+28 shared-clock lifecycle checks; all pass in the pinned IDF container. The
+Windows host lacks cc; direct host attempts failed before compilation and were
+rerun successfully in that container. E firmware builds and flash hash verifies.
+
+Still required: qualify actual camera H/V on the board, connect a bounded fast
+native witness, prove fade/return and monitor lock, cover other output levels,
+and decide automatic defaults from that evidence. Whole-model validity currently
+stops repair; the per-line native suppression callback remains unconnected.
+Do not call this completed or claim an improvement in RF range from pulse counts.

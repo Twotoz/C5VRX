@@ -5,6 +5,7 @@
  * All allocation/control is outside ISR. No DAC, IQ, LUT or PHY writes. */
 #include "sync_edge_clock.h"
 #include <string.h>
+#include "esp_attr.h"
 #include "driver/gpio_filter.h"
 #include "driver/gpio_etm.h"
 #include "driver/gptimer.h"
@@ -21,8 +22,20 @@ typedef struct {
     bool busy, quarantined, filter_on, timer_on, link_on;
     uint32_t filter_ns;
     const char *error;
+    sync_edge_alarm_fn alarm;
+    void *alarm_arg;
 } sec_t;
 static sec_t s_clock;
+
+static bool IRAM_ATTR sec_alarm(gptimer_handle_t timer,
+    const gptimer_alarm_event_data_t *event,void *opaque)
+{
+    (void)timer;
+    sec_t *s=opaque;
+    sync_edge_alarm_fn callback=s->alarm;
+    if(!s->busy || s->quarantined || !s->link_on || !callback)return false;
+    return callback(event->count_value,s->alarm_arg);
+}
 
 const char *sync_edge_clock_error(void)
 { return s_clock.error ? s_clock.error : "none"; }
@@ -36,6 +49,8 @@ bool sync_edge_clock_close(void)
     sec_t *s=&s_clock;
     if(s->quarantined)return false;
     if(!s->busy)return true;
+    s->alarm=NULL;
+    __sync_synchronize();
 #define SEC_CLEAN(call, label) do { if((call)!=ESP_OK) { \
     s->error=(label);s->quarantined=true;return false; } } while(0)
     if(s->link_on) {
@@ -78,7 +93,7 @@ bool sync_edge_clock_prepare(void)
         .clk_src=(glitch_filter_clock_source_t)(source==0u?SOC_MOD_CLK_XTAL:SOC_MOD_CLK_PLL_F80M),
         .window_width_ns=s->filter_ns,.window_thres_ns=s->filter_ns};
     const gptimer_config_t timer={.clk_src=GPTIMER_CLK_SRC_DEFAULT,
-        .direction=GPTIMER_COUNT_UP,.resolution_hz=20000000u};
+        .direction=GPTIMER_COUNT_UP,.resolution_hz=20000000u,.intr_priority=3};
     const gpio_etm_event_config_t edge={.edge=GPIO_ETM_EVENT_EDGE_ANY};
     const gptimer_etm_task_config_t start={.task_type=GPTIMER_ETM_TASK_START_COUNT};
     const esp_etm_channel_config_t link={0};
@@ -86,6 +101,8 @@ bool sync_edge_clock_prepare(void)
     SEC_SETUP(gpio_new_flex_glitch_filter(&filter,&s->filter),"filter_create");
     if(PCR.iomux_clk_conf.val!=clock_before){s->error="iomux_clock_changed";goto fail;}
     SEC_SETUP(gptimer_new_timer(&timer,&s->timer),"timer_create");
+    const gptimer_event_callbacks_t callbacks={.on_alarm=sec_alarm};
+    SEC_SETUP(gptimer_register_event_callbacks(s->timer,&callbacks,s),"timer_callback");
     SEC_SETUP(gptimer_enable(s->timer),"timer_enable");s->timer_on=true;
     SEC_SETUP(gptimer_set_raw_count(s->timer,0),"timer_zero");
     SEC_SETUP(gpio_new_etm_event(&edge,&s->edge),"edge_create");
@@ -108,7 +125,7 @@ bool sync_edge_clock_arm(void)
     s->link_on=true;return true;
 }
 
-bool sync_edge_clock_read(uint64_t *ticks)
+bool IRAM_ATTR sync_edge_clock_read(uint64_t *ticks)
 {
     sec_t *s=&s_clock;
     if(!ticks || !s->busy || s->quarantined || !s->timer_on || !s->link_on)return false;
@@ -130,4 +147,36 @@ bool sync_edge_clock_disable_filter(void)
     if(!s->busy || s->quarantined || !s->filter || !s->filter_on)return false;
     if(gpio_glitch_filter_disable(s->filter)!=ESP_OK){s->error="filter_pause";return false;}
     s->filter_on=false;return true;
+}
+
+bool IRAM_ATTR sync_edge_clock_alarm_off(void)
+{
+    sec_t *s=&s_clock;
+    if(!s->busy || s->quarantined || !s->timer_on)return false;
+    if(gptimer_set_alarm_action(s->timer,NULL)!=ESP_OK){s->error="alarm_off";return false;}
+    return true;
+}
+
+bool sync_edge_clock_alarm_bind(sync_edge_alarm_fn callback,void *arg)
+{
+    sec_t *s=&s_clock;
+    if(!s->busy || s->quarantined || !s->link_on)return false;
+    /* Single core: task cannot run while its alarm ISR is executing. Clear
+     * authorization before driver work; a pending interrupt then does nothing. */
+    s->alarm=NULL;
+    __sync_synchronize();
+    if(!sync_edge_clock_alarm_off())return false;
+    s->alarm_arg=arg;
+    __sync_synchronize();
+    s->alarm=callback;
+    return true;
+}
+
+bool IRAM_ATTR sync_edge_clock_alarm_at(uint64_t ticks)
+{
+    sec_t *s=&s_clock;
+    if(!s->busy || s->quarantined || !s->link_on || !s->alarm)return false;
+    const gptimer_alarm_config_t alarm={.alarm_count=ticks};
+    if(gptimer_set_alarm_action(s->timer,&alarm)!=ESP_OK){s->error="alarm_at";return false;}
+    return true;
 }

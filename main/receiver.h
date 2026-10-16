@@ -89,6 +89,7 @@ void transport_sync_gate_probe_long(bool pal); /* Q/q: three-second manual gate 
 void transport_sync_output_probe(void); /* Y: native DAC timing observation, LP/1x only */
 void transport_sync_output_clock_probe(void); /* y: common-edge RMT/ETM experiment */
 void transport_sync_live_toggle(void); /* u: resident native observer bench */
+void transport_sync_flywheel_toggle(void); /* U: conditional DAC-OE holdover bench */
 void transport_sync_live_tick(void);   /* control loop; never holds a lifetime PHY lease */
 bool transport_sync_live_cancel(void); /* stop/restore before transport ownership changes */
 void transport_sync_live_print(void);

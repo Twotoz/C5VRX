@@ -75,6 +75,7 @@ static void help(void)
            "  Z/z bench: brief PAL/NTSC sync via DAC output-enable (changes video; OFF at boot),\n"
            "  Y bench: filtered native DAC sync observation (LP/1x only; OFF at boot),\n"
            "  y bench: native mirror with common-edge RMT/ETM clock (experimental),\n"
+           "  u bench: resident native observer, U conditional sync holdover (both OFF at boot),\n"
            "  Q/q bench: three-second PAL/NTSC DAC sync gate test (changes video),\n"
            "  B bench: restart live transport without OSD (interrupts video; issue #213 A/B),\n"
            "  N black NO SIGNAL fallback on/off (default OFF: preserve real snow; bench only),\n"
@@ -119,6 +120,7 @@ static void console_task(void *arg)
         while (xQueueReceive(s_keys, &c, pdMS_TO_TICKS(100)) == pdTRUE) {
             switch (c) {
             case 'T': status(); break;
+            case 't': transport_sync_live_print(); break;
             case 'I': snapshot(); break;
             case 'J': transport_sync_bench(); break;
             case 'Z': transport_sync_gate_probe(true); break;
@@ -134,7 +136,7 @@ static void console_task(void *arg)
             case 'R': diag_toggle_stream(); break;
             case 'L': lane_compare_request(); break;
             case 'h': case '?': help(); break;
-            case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'K': case 'k': case 'j': case 'P': case 'g': case 'A': case 'B': case 'N': case '~': case 'u': {
+            case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'K': case 'k': case 'j': case 'P': case 'g': case 'A': case 'B': case 'N': case '~': case 'u': case 'U': {
                 int command = c;
                 if (s_commands) (void)xQueueSend(s_commands, &command, 0);
                 break;

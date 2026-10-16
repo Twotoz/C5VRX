@@ -73,7 +73,7 @@ static bool scheduler_held;
 static void vTaskSuspendAll(void){assert(!scheduler_held);scheduler_held=true;}
 static int xTaskResumeAll(void){assert(scheduler_held);scheduler_held=false;return 0;}
 static bool sync_edge_clock_prepare(void){++clock_calls;++clock_prepares;assert((registers[GPIO_ENABLE_REG]&(1u<<2))&&!(registers[GPIO_OUT_REG]&(1u<<2)));clock_prepared=clock_fail!=1u;return clock_prepared;}
-static bool sync_edge_clock_arm(void){++clock_calls;++clock_arms;assert(scheduler_held&&clock_prepared&&receiving&&!(registers[GPIO_OUT_REG]&(1u<<2)));if(clock_fail==4u)now+=201;clock_armed=clock_fail!=2u;return clock_armed;}
+static bool sync_edge_clock_arm(void){++clock_calls;++clock_arms;assert(scheduler_held&&clock_prepared&&receiving&&!(registers[GPIO_OUT_REG]&(1u<<2)));if(clock_fail==4u)now+=701;clock_armed=clock_fail!=2u;return clock_armed;}
 static bool sync_edge_clock_enable_filter(void){++clock_calls;assert(scheduler_held&&clock_armed&&!(registers[GPIO_OUT_REG]&(1u<<2)));return clock_fail!=5u;}
 static bool sync_edge_clock_disable_filter(void){++clock_calls;++clock_pauses;assert(clock_armed&&!(registers[GPIO_OUT_REG]&(1u<<2)));clock_epoch_base+=clock_epoch_stride;clock_reads=0;marker_sent=false;return clock_fail!=6u;}
 static bool sync_edge_clock_read(uint64_t *n){++clock_calls;if(!clock_armed)return false;const unsigned samples[]={0,1000,1030,1400,1430,1600,123456};*n=clock_epoch_base+samples[clock_reads<7u?clock_reads:6u];if(mode==4u&&clock_epoch_base&&clock_reads==0u)*n=0u;++clock_reads;return true;}
@@ -187,7 +187,7 @@ static void parser_tests(void){
  parser_start();s_probe.armed=false;event(words,48,false);assert(!s_probe.callbacks);
  parser_start();s_probe.elapsed=UINT32_MAX-20u;event(words,1,false);
  assert(s_probe.bad_data==1&&s_probe.stop);
- parser_start();s_probe.marker_required=true;event(words,1,false);
+ parser_start();s_probe.marker_required=true;words[0].duration0=SOP_MARKER_MAX_TICKS+1u;event(words,1,false);
  assert(s_probe.marker_invalid&&s_probe.stop&&!s_probe.h&&!s_probe.halves);
 }
 /* Pack independent PAL/NTSC half-line fixtures into arbitrary symbol batches.
@@ -318,6 +318,26 @@ static void resident_lifecycle(void){
 }
 
 
+static unsigned close_hooks;
+static uint32_t close_matrix;
+static bool consumer_close(void){
+ assert(clock_prepared&&clock_armed);++close_hooks;
+ registers[GPIO_FUNC8_OUT_SEL_CFG_REG]=close_matrix;return true;
+}
+static bool consumer_refuses(void){return false;}
+static void dependent_teardown(void){
+ reset();mode=1;assert(sync_output_live_begin(7,owner_live));
+ close_matrix=s_session->matrix;
+ registers[GPIO_FUNC8_OUT_SEL_CFG_REG]^=GPIO_FUNC8_OE_SEL_M;
+ sync_output_live_before_close(consumer_close);
+ assert(sync_output_live_end()&&close_hooks==1&&!s_clock_fault&&!clock_prepared);++checks;
+ reset();mode=1;assert(sync_output_live_begin(7,owner_live));
+ sync_output_live_before_close(consumer_refuses);
+ assert(!sync_output_live_end()&&s_busy&&s_clock_fault&&clock_prepared);++checks;
+ parser_start();s_probe.marker_required=true;
+ rmt_symbol_word_t delayed={.duration0=5000,.level0=1,.duration1=720,.level1=0};
+ event(&delayed,1,false);assert(!s_probe.marker_invalid&&!s_probe.stop);++checks;
+}
 static void restore_fault_lifecycle(void){
  reset();mode=1;assert(sync_output_live_begin(7,owner_live));
  /* Simulate pin-state restoration/readback mismatch with successful SDK
@@ -331,7 +351,7 @@ static void restore_fault_lifecycle(void){
  ++checks;
 }
 
-int main(void){restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
+int main(void){dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''
 
 

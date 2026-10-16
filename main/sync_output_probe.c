@@ -31,7 +31,8 @@ _Static_assert((SOP_MASK & UINT32_C(0x01801b00)) == 0u,
                "native witness must be outside all six DAC output enables");
 #define SOP_SYMBOLS 48u
 #define SOP_WINDOW_US 50000
-#define SOP_ARM_MAX_US 200
+#define SOP_ARM_MAX_US 700 /* below1ms RMT idle; permits bounded224us output IRQ */
+#define SOP_MARKER_MAX_TICKS 6000u /*16us marker plus a bounded vertical ISR */
 /* 48-symbol partial deliveries may contain about three milliseconds of H.
  * This bounds delivery staleness, not per-line missing-sync detection. */
 #define SOP_MODEL_MAX_AGE_TICKS 100000u
@@ -154,7 +155,7 @@ static bool sop_half(sop_context_t *s, uint32_t duration, bool level)
     if(s->prefix_n<3u)s->prefix[s->prefix_n++]=duration;
     if(!s->first_duration){
         s->first_duration=duration;s->first_level=level;
-        if(s->marker_required && (!level || duration<280u || duration>400u)) {
+        if(s->marker_required && (!level || duration<280u || duration>SOP_MARKER_MAX_TICKS)) {
             s->marker_invalid=true;s->stop=true;return false;
         }
     }
@@ -310,6 +311,7 @@ typedef struct {
     bool resident;
     volatile bool invalidated;
     sync_output_live_model_t retained;
+    bool (*before_close)(void);
 } sop_session_t;
 static sop_session_t *s_session;
 static bool sop_session_end(sop_session_t *s);
@@ -554,6 +556,10 @@ static bool sop_session_poll(sop_session_t *s)
 static bool sop_session_end(sop_session_t *s)
 {
     s_probe.armed = false;
+    if(s->before_close && !s->before_close()) {
+        s_clock_fault=true;
+        return false; /* Keep dependent callback storage/timer owned. */
+    }
     if(s->edge_clock && s_probe.epochs && !s->phase_scored)
         s->phase=sop_score_clock(&s->clock_stats,s->rise_before,s->rise_after,s->fall_before,s->fall_after);
     if(s->edge_clock && s->clock_attempted)s->clock_read_ok=sync_edge_clock_read(&s->clock_ticks);
@@ -607,7 +613,7 @@ static bool sop_session_end(sop_session_t *s)
             (unsigned)s->clock_read_ok,(unsigned)(s_probe.halves!=0u),
             (unsigned)s->clock_closed,(long long)s->arm_us,(unsigned long)s_probe.first_duration,
             (unsigned)s_probe.first_level,(unsigned)(s_probe.first_level &&
-                s_probe.first_duration>=280u && s_probe.first_duration<=400u),
+                s_probe.first_duration>=280u && s_probe.first_duration<=SOP_MARKER_MAX_TICKS),
             (unsigned long)s_probe.discard_before,sync_edge_clock_error());
     }
     if(s->edge_clock && (REG_READ(GPIO_OUT_REG)&SOP_MASK)!=s->mirror_output)
@@ -644,6 +650,9 @@ static bool sop_session_end(sop_session_t *s)
     /* A failed pin readback is an ownership fault even when every SDK
      * cleanup call succeeded. Never reuse a partly restored observer. */
     if(!restored || s->cleanup!=ESP_OK)s_clock_fault=true;
+    if(s->resident)printf("SYNC_LIVE_END error=%s api=%d cleanup=%d restored=%u clock_closed=%u callbacks=%lu marker_ticks=%lu arm_us=%lld\n",
+        s->failure,(int)s->err,(int)s->cleanup,(unsigned)restored,(unsigned)s->clock_closed,
+        (unsigned long)s_probe.callbacks,(unsigned long)s_probe.first_duration,(long long)s->arm_us);
     s_busy = false;
     return restored && s->cleanup == ESP_OK && s->clock_closed;
 }
@@ -652,6 +661,8 @@ bool sync_output_live_begin(uint32_t generation,bool (*live)(uint32_t))
 { return sop_session_begin(generation,live,true,true); }
 bool sync_output_live_active(void)
 { return s_busy && s_session && s_session->resident; }
+void sync_output_live_before_close(bool (*callback)(void))
+{ if(sync_output_live_active())s_session->before_close=callback; }
 bool sync_output_live_poll(void)
 {
     if(!sync_output_live_active())return false;

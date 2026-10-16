@@ -960,3 +960,17 @@ malloc was sensitive to tiny linked-image/BSS changes and caused boot loops.
 Do not shrink the stack to conceal fragmentation. User requests building forward
 rather than routine rollback flashes; that explicit preference supersedes any
 previous default recovery workflow while developing this feature.
+
+
+### Conditional output bench E (2026-10-17)
+
+Newer scope supersedes the resident B LP-only note: read-only `u` now supports
+both verified U85Q programs at1x. `U` enables conditional missing-model output;
+both remain OFF at boot. The IRAM backend uses a constant-memory incremental
+pulse iterator on the shared observer clock. Dependent output must close before
+the observer restores GPIO/matrix ownership or closes the clock. Late tips are
+skipped, not emitted outside the8us admission guard. Never describe software
+pulse counts as monitor-lock proof. Native per-line witness remains unconnected.
+See docs/FLYWHEEL_GOAL.md and board_conditional_output_2026-10-17.json for actual
+A-E failures, tests, hashes and remaining camera/monitor proof. Latest operator
+state: VTX OFF; do not interpret this capture as camera-on evidence.

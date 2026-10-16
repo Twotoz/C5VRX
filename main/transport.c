@@ -11,6 +11,7 @@
 #include "driver/parlio_tx.h"
 #include "sync_gate_probe.h"
 #include "sync_output_probe.h"
+#include "sync_live_output.h"
 #include "esp_attr.h"
 #include "esp_cache.h"
 #include "esp_rom_sys.h"
@@ -908,7 +909,7 @@ static bool s_output_probe_busy;
  * the resident peripheral observes video or the control task sleeps. */
 typedef struct {
     sync_bench_context_t context;
-    bool requested,authorized,fault;
+    bool requested,authorized,fault,output_requested;
     int64_t retry_us;
     uint32_t starts,stops,failures;
 } sync_live_owner_t;
@@ -931,6 +932,7 @@ bool transport_sync_live_cancel(void)
     if(!s_live_owner)return true;
     s_live_owner->authorized=false;
     __sync_synchronize();
+    if(!sync_live_output_end()){s_live_owner->fault=true;return false;}
     bool active=sync_output_live_active();
     bool ok=sync_output_live_end();
     if(ok)s_output_probe_busy=false;
@@ -945,7 +947,17 @@ void transport_sync_live_toggle(void)
     if(!s_live_owner){printf("SYNC_LIVE refused=memory\n");return;}
     s_live_owner->requested=!s_live_owner->requested;
     /* Actual start/stop occurs on the control owner, under short PHY lease. */
-    printf("SYNC_LIVE requested=%u automatic_gate=0\n",(unsigned)s_live_owner->requested);
+    printf("SYNC_LIVE requested=%u boot_default=OFF\n",(unsigned)s_live_owner->requested);
+}
+
+void transport_sync_flywheel_toggle(void)
+{
+    if(!s_live_owner)s_live_owner=calloc(1,sizeof(*s_live_owner));
+    if(!s_live_owner){printf("SYNC_FLYWHEEL refused=memory\n");return;}
+    s_live_owner->output_requested=!s_live_owner->output_requested;
+    s_live_owner->requested=s_live_owner->output_requested;
+    printf("SYNC_FLYWHEEL requested=%u boot_default=OFF bench=1\n",
+        (unsigned)s_live_owner->output_requested);
 }
 
 void transport_sync_live_tick(void)
@@ -955,7 +967,7 @@ void transport_sync_live_tick(void)
     bool eligible=s->requested && !calibration_in_startup() && !receiver_paused() &&
         !s_menu_active && !s_scan_active && !no_signal_active() && !sync_service_active() &&
         !s_gate_probe_busy && s_started && s_have_verified && s_lut_known &&
-        !s_transport_fault && s_verified_lp && s_verified_output==0u;
+        !s_transport_fault && s_verified_output==0u;
     bool active=sync_output_live_active();
     if(active && (!eligible || !transport_sync_live_valid(s->context.generation))) {
         (void)transport_sync_live_cancel();active=false;
@@ -966,6 +978,7 @@ void transport_sync_live_tick(void)
         s->authorized=true;
         phy_set_observation_hook(sync_output_live_invalidate);
         if(sync_output_live_begin(s->context.generation,transport_sync_live_valid)) {
+            sync_output_live_before_close(sync_live_output_end);
             s_output_probe_busy=true;++s->starts;active=true;
         } else {s->authorized=false;++s->failures;s->retry_us=now+1000000;}
     }
@@ -974,13 +987,37 @@ void transport_sync_live_tick(void)
         (void)transport_sync_live_cancel();
         s->retry_us=now+1000000;
     }
+    if(active && sync_output_live_active()) {
+        sync_output_live_model_t m;
+        slo_status_t output;
+        sync_live_output_status(&output);
+        bool model_ok=sync_output_live_snapshot(&m);
+        /* Healthy qualified camera uses its own pulses. Retained phase is
+         * adopted only when current native evidence is missing. */
+        bool needed=s->output_requested && model_ok && !m.valid &&
+            (s_verified_lp || m.standard!=0u);
+        if(!needed && output.active) {
+            if(!sync_live_output_end())s->fault=true;
+        } else if(needed && !output.active && !output.fault) {
+            slg_model_t model={.field=m.field,.last_h=m.last_h,.observed_at=m.last_h,
+                .line_ticks_x32=m.line_ticks_x32,.receive_epoch=m.generation,
+                .uncertainty_ticks=(uint32_t)(m.phase_hi-m.phase_lo),
+                .standard=(slg_standard_t)m.standard,.qualified=m.standard!=0u};
+            slg_standard_t fallback=s_std_mode==STD_MODE_PAL?SLG_PAL:
+                s_std_mode==STD_MODE_NTSC?SLG_NTSC:s_video_std==VIDEO_STD_NTSC?SLG_NTSC:SLG_PAL;
+            if(!sync_live_output_begin(model.qualified?&model:NULL,fallback,
+                s->context.generation,transport_sync_live_valid,NULL,NULL))++s->failures;
+        }
+        sync_live_output_status(&output);
+        if(output.active && !sync_live_output_poll())++s->failures;
+    }
     phy_end_actuator();
 }
 
 void transport_sync_live_print(void)
 {
     sync_live_owner_t *s=s_live_owner;
-    printf("SYNC_LIVE requested=%u active=%u fault=%u starts=%lu stops=%lu failures=%lu automatic_gate=0\n",
+    printf("SYNC_LIVE requested=%u active=%u fault=%u starts=%lu stops=%lu failures=%lu boot_default=OFF\n",
         s?(unsigned)s->requested:0u,(unsigned)sync_output_live_active(),s?(unsigned)s->fault:0u,
         s?(unsigned long)s->starts:0ul,s?(unsigned long)s->stops:0ul,s?(unsigned long)s->failures:0ul);
     sync_output_live_model_t model;
@@ -990,10 +1027,16 @@ void transport_sync_live_print(void)
         phy_end_actuator();
     }
     if(have_model)
-        printf("SYNC_LIVE_MODEL valid=%u standard=%u line_ticks_x32=%lu last_h=%llu field=%llu now=%llu phase_span_ticks=%lld automatic_gate=0\n",
+        printf("SYNC_LIVE_MODEL valid=%u standard=%u line_ticks_x32=%lu last_h=%llu field=%llu now=%llu phase_span_ticks=%lld boot_default=OFF\n",
             (unsigned)model.valid,(unsigned)model.standard,(unsigned long)model.line_ticks_x32,
             (unsigned long long)model.last_h,(unsigned long long)model.field,
             (unsigned long long)model.now,(long long)(model.phase_hi-model.phase_lo));
+    slo_status_t output;sync_live_output_status(&output);
+    printf("SYNC_FLYWHEEL requested=%u active=%u repaired=%lu suppressed=%lu batches=%lu late_ticks=%lu missed=%lu miss_kind=%lu queue_low=%lu fault=%lu monitor_lock_proven=0\n",
+        s?(unsigned)s->output_requested:0u,(unsigned)output.active,
+        (unsigned long)output.repaired,(unsigned long)output.suppressed,(unsigned long)output.batches,
+        (unsigned long)output.max_late_ticks,(unsigned long)output.missed,(unsigned long)output.miss_kind,
+        (unsigned long)output.queue_low,(unsigned long)output.fault);
 }
 
 /* ISR-safe transport identity check: no scheduler/PHY calls or mutation. */

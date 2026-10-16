@@ -286,7 +286,9 @@ static void observer_task(void *arg)
             before_wait = runnable_since = esp_timer_get_time();
         }
         (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
-        if (esp_timer_get_time() - before_wait >= 100) runnable_since = esp_timer_get_time();
+        /* IRQ time can make an already-pending notification look like a
+         * blocked wait. Only the explicit delay above resets our runnable
+         * budget, so periodic sync IRQs cannot suppress the IDLE opportunity. */
         if (!receiver_active()) {
             was_active = false;
             if (__sync_bool_compare_and_swap(&s_overload_state, 2u, 1u))

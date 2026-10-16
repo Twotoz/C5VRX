@@ -15,3 +15,12 @@ bool sync_edge_clock_read(uint64_t *ticks);
 bool sync_edge_clock_close(void);
 uint32_t sync_edge_clock_filter_ns(void);
 const char *sync_edge_clock_error(void);
+
+/* Single alarm consumer on the SAME clock as native observation. Callback
+ * must be IRAM/cache safe, bounded, and return whether to yield from ISR.
+ * Binding/unbinding is task context, serialized with close. at/off can be
+ * called from that alarm ISR. Unbind disarms before releasing callback data. */
+typedef bool (*sync_edge_alarm_fn)(uint64_t count,void *arg);
+bool sync_edge_clock_alarm_bind(sync_edge_alarm_fn callback,void *arg);
+bool sync_edge_clock_alarm_at(uint64_t ticks);
+bool sync_edge_clock_alarm_off(void);

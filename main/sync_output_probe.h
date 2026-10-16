@@ -13,7 +13,10 @@ void sync_output_clock_probe(uint32_t generation, bool (*live)(uint32_t));
 
 /* Resident observer. Task context only; caller serializes begin/poll/end
  * against transport mutations with short ownership, never a resident lease.
- * No output gates are enabled by these calls. Invalidate BEFORE a receive
+ * At1x the resident DATA4 observation can be investigated on either U85Q
+ * program; absence of a qualified model alone does not authorize repairing
+ * an unqualified strong-signal program. No output gates are enabled here.
+ * Invalidate BEFORE a receive
  * mutation; poll rearms fresh evidence on the same running timer. Snapshot
  * freshness includes RMT delivery latency; it is not a per-line loss flag.
  * Snapshot coordinates remain available with valid=false during holdover.
@@ -29,5 +32,8 @@ bool sync_output_live_begin(uint32_t generation, bool (*live)(uint32_t));
 bool sync_output_live_poll(void);
 bool sync_output_live_end(void);
 bool sync_output_live_active(void);
+/* Task-side teardown dependency: stop any consumer of the shared clock and
+ * restore DAC ownership BEFORE observer teardown checks/clock deletion. */
+void sync_output_live_before_close(bool (*callback)(void));
 void sync_output_live_invalidate(void);
 bool sync_output_live_snapshot(sync_output_live_model_t *out);

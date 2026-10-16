@@ -69,7 +69,7 @@ jobs:
           /tmp/test_native_acquire
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_synth.c -o /tmp/test_sync_synth
           /tmp/test_sync_synth
-          for t in test_sync_repair_ledger test_sync_stream_guard test_dma_progress test_sphase_monitor test_sync_transport_probe test_sync_memory_frontier test_dc_trim test_raw_access test_raw_history test_sync_done_progress test_sync_read_validation test_sync_bench_profile test_sync_reference_context test_sync_rolling test_sync_descriptor_window test_sync_period_bank test_sync_tip_policy test_sync_pulse_walk test_sync_pulse_find test_sync_gate_schedule test_sync_native_track; do
+          for t in test_sync_repair_ledger test_sync_stream_guard test_dma_progress test_sphase_monitor test_sync_transport_probe test_sync_memory_frontier test_dc_trim test_raw_access test_raw_history test_sync_done_progress test_sync_read_validation test_sync_bench_profile test_sync_reference_context test_sync_rolling test_sync_descriptor_window test_sync_period_bank test_sync_tip_policy test_sync_pulse_walk test_sync_pulse_find test_sync_gate_schedule test_sync_native_track test_sync_live_clock; do
             cc -O2 -std=c11 -Wall -Wextra -Werror -I../main "$t.c" -o "/tmp/$t"
             "/tmp/$t"
           done
@@ -135,6 +135,8 @@ jobs:
           python3 test/test_sync_output_probe_runtime.py
           python3 test/test_sync_edge_clock_runtime.py
           python3 test/test_sync_native_witness_runtime.py
+          python3 test/test_sync_live_gate_runtime.py
+          python3 test/test_sync_live_output_runtime.py
       - name: Analytic IQ lane reference
         shell: bash
         run: |
