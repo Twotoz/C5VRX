@@ -9,6 +9,7 @@
  * No raw IQ, LUT, DMA descriptors, PHY registers or DAC output data writes. */
 #include "sync_output_probe.h"
 #include "sync_edge_clock.h"
+#include "sync_phase_bracket.h"
 #include <stdio.h>
 #include <string.h>
 #include "driver/rmt_rx.h"
@@ -40,6 +41,8 @@ typedef struct {
     uint32_t generation;
     uint32_t discard_before,first_duration;
     bool first_level, marker_required, marker_invalid;
+    uint32_t prefix[3];
+    unsigned prefix_n;
     bool (*live)(uint32_t);
     volatile bool armed, stop, ended, cancelled, rate_limited;
     bool run_valid, run_level, run_edge;
@@ -113,6 +116,7 @@ static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
 static bool sop_half(sop_context_t *s, uint32_t duration, bool level)
 {
     if (!duration) return false;  /* RMT end marker, not a zero-length edge. */
+    if(s->prefix_n<3u)s->prefix[s->prefix_n++]=duration;
     if(!s->first_duration){
         s->first_duration=duration;s->first_level=level;
         if(s->marker_required && (!level || duration<280u || duration>400u)) {
@@ -230,6 +234,7 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
     uint64_t clock_ticks=0;
     uint32_t common_filter_ns=0;
     int64_t arm_us=-1;
+    uint64_t rise_before=0,rise_after=0,fall_before=0,fall_after=0;
     const char *failure = "none";
     esp_err_t err = ESP_OK, cleanup = ESP_OK;
     const rmt_rx_channel_config_t cfg = {.gpio_num = SOP_GPIO,
@@ -288,6 +293,10 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
         arm_us=esp_timer_get_time()-arm_start;
         if(arm_us>SOP_ARM_MAX_US){ready=false;failure="arm_gap";}
         if(ready) {
+            uint64_t quiet;
+            if(!sync_edge_clock_read(&quiet) || quiet!=0u){ready=false;failure="clock_not_quiet";}
+        }
+        if(ready) {
             /* The first raw edge is a recognizable private HIGH marker.
              * Neither consumer has a private/variable filter at this point.
              * Subsequent ETM events are idempotent START, never reload. */
@@ -298,11 +307,31 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
             if(!sync_edge_clock_enable_filter()){ready=false;failure="clock_filter";}
             else {
                 esp_rom_delay_us(4);
-                REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,(witness_matrix&~GPIO_FUNC2_OUT_SEL_M)|52u);
+                /* A second, filtered HIGH marker measures the whole native
+                 * input path's delay. Both physical edges are bracketed by
+                 * timer reads and flushed GPIO data readbacks. The marker
+                 * remains confined to GPIO2 and below the source barrier. */
+                if(!sync_edge_clock_read(&rise_before)){ready=false;failure="clock_rise_before";}
+                if(ready) {
+                    __sync_synchronize();REG_WRITE(GPIO_OUT_W1TS_REG,SOP_MASK);
+                    bool high=(REG_READ(GPIO_OUT_REG)&SOP_MASK)!=0u;__sync_synchronize();
+                    if(!high || !sync_edge_clock_read(&rise_after)){ready=false;failure="clock_rise_after";}
+                }
+                if(ready) {
+                    esp_rom_delay_us(16);
+                    if(!sync_edge_clock_read(&fall_before)){ready=false;failure="clock_fall_before";}
+                }
+                if(ready) {
+                    __sync_synchronize();REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
+                    bool low=(REG_READ(GPIO_OUT_REG)&SOP_MASK)==0u;__sync_synchronize();
+                    if(!low || !sync_edge_clock_read(&fall_after)){ready=false;failure="clock_fall_after";}
+                }
+                if(ready)esp_rom_delay_us(16);
+                if(ready)REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,(witness_matrix&~GPIO_FUNC2_OUT_SEL_M)|52u);
                 uint64_t native_start;
-                if(!sync_edge_clock_read(&native_start) || native_start>UINT32_MAX-64u) {
+                if(ready && (!sync_edge_clock_read(&native_start) || native_start>UINT32_MAX-64u)) {
                     ready=false;failure="clock_native_start";
-                } else s_probe.discard_before=(uint32_t)native_start+common_filter_ns/50u+4u;
+                } else if(ready)s_probe.discard_before=(uint32_t)native_start+common_filter_ns/50u+4u;
             }
         }
         (void)xTaskResumeAll();
@@ -346,6 +375,16 @@ done:
     if(clock_attempted) {
         clock_closed=sync_edge_clock_close();
         if(!clock_closed)s_clock_fault=true;
+        uint32_t rmt_rise=s_probe.prefix[0]+s_probe.prefix[1];
+        uint32_t rmt_fall=rmt_rise+s_probe.prefix[2];
+        sync_phase_bracket_t phase=s_probe.prefix_n==3u?
+            sync_phase_bracket(rmt_rise,rmt_fall,rise_before,rise_after,fall_before,fall_after):
+            (sync_phase_bracket_t){0};
+        printf("SYNC_PHASE_BRACKET manual=1 absolute_time=0 camera_qualified=0 prefix_n=%u rmt_rise=%lu rmt_fall=%lu rise_before=%llu rise_after=%llu fall_before=%llu fall_after=%llu valid=%u offset_lo=%lld offset_hi=%lld\n",
+            s_probe.prefix_n,(unsigned long)rmt_rise,(unsigned long)rmt_fall,
+            (unsigned long long)rise_before,(unsigned long long)rise_after,
+            (unsigned long long)fall_before,(unsigned long long)fall_after,
+            (unsigned)phase.valid,(long long)phase.lo,(long long)phase.hi);
         printf("SYNC_EDGE_CLOCK manual=1 absolute_time=0 camera_qualified=0 common_filter_ns=%lu timer_hz=20000000 ticks=%llu read_ok=%u edges_seen=%u closed=%u arm_us=%lld marker_ticks=%lu marker_level=%u marker_ok=%u native_after_ticks=%lu error=%s\n",
             (unsigned long)common_filter_ns,(unsigned long long)clock_ticks,
             (unsigned)clock_read_ok,(unsigned)(s_probe.halves!=0u),

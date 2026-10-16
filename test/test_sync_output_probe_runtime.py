@@ -65,13 +65,14 @@ static int64_t now;
 static unsigned clock_calls,clock_fail;
 static bool clock_prepared,clock_armed;
 static bool marker_sent;
+static unsigned clock_reads;
 static bool scheduler_held;
 static void vTaskSuspendAll(void){assert(!scheduler_held);scheduler_held=true;}
 static int xTaskResumeAll(void){assert(scheduler_held);scheduler_held=false;return 0;}
 static bool sync_edge_clock_prepare(void){++clock_calls;assert((registers[GPIO_ENABLE_REG]&(1u<<2))&&!(registers[GPIO_OUT_REG]&(1u<<2)));clock_prepared=clock_fail!=1u;return clock_prepared;}
 static bool sync_edge_clock_arm(void){++clock_calls;assert(scheduler_held&&clock_prepared&&receiving&&!(registers[GPIO_OUT_REG]&(1u<<2)));if(clock_fail==4u)now+=201;clock_armed=clock_fail!=2u;return clock_armed;}
 static bool sync_edge_clock_enable_filter(void){++clock_calls;assert(scheduler_held&&clock_armed&&!(registers[GPIO_OUT_REG]&(1u<<2)));return clock_fail!=5u;}
-static bool sync_edge_clock_read(uint64_t *n){++clock_calls;if(!clock_armed)return false;*n=123456u;return true;}
+static bool sync_edge_clock_read(uint64_t *n){++clock_calls;if(!clock_armed)return false;const unsigned samples[]={0,1000,1030,1400,1430,1600,123456};*n=samples[clock_reads<7u?clock_reads:6u];++clock_reads;return true;}
 static bool sync_edge_clock_close(void){++clock_calls;assert(!(registers[GPIO_ENABLE_REG]&(1u<<2)));clock_prepared=clock_armed=false;return clock_fail!=3u;}
 static uint32_t sync_edge_clock_filter_ns(void){return 1200u;}
 static const char *sync_edge_clock_error(void){return "mock";}
@@ -120,7 +121,7 @@ static void vTaskDelay(unsigned ticks){
  if(receiving&&mock_cb.on_recv_done){
   rmt_symbol_word_t words[48];
   for(unsigned i=0;i<48;++i)words[i]=(rmt_symbol_word_t){.duration0=1186,.level0=1,.duration1=94,.level1=0};
-  if(clock_armed && mode==1u && !marker_sent){words[0]=(rmt_symbol_word_t){.duration0=320,.level0=1,.duration1=320,.level1=0};marker_sent=true;}
+  if(clock_armed && mode==1u && !marker_sent){words[0]=(rmt_symbol_word_t){.duration0=320,.level0=1,.duration1=720,.level1=0};words[1]=(rmt_symbol_word_t){.duration0=400,.level0=1,.duration1=94,.level1=0};marker_sent=true;}
   rmt_rx_done_event_data_t event={.received_symbols=words,.num_symbols=mode==1?48u:0u,.flags={.is_last=mode!=1}};
   if(event.flags.is_last)receiving=false;
   assert(!mock_cb.on_recv_done((void*)1,&event,mock_context));
@@ -138,7 +139,7 @@ static void reset(void){
  live_value=true;mutate_pin=channel_live=rx_enabled=receiving=false;now=0;
  memset(&mock_cb,0,sizeof(mock_cb));mock_context=NULL;
  s_busy=false;s_quarantined=NULL;memset(&s_probe,0,sizeof(s_probe));
- s_clock_fault=false;clock_calls=clock_fail=0;clock_prepared=clock_armed=scheduler_held=marker_sent=false;
+ s_clock_fault=false;clock_calls=clock_fail=clock_reads=0;clock_prepared=clock_armed=scheduler_held=marker_sent=false;
 }
 static void parser_start(void){reset();s_probe.armed=true;s_probe.live=owner_live;s_probe.generation=7;sop_epoch(&s_probe);}
 static void event(rmt_symbol_word_t *words,size_t n,bool last){
@@ -240,7 +241,7 @@ static void lifecycle(void){
  uint32_t saved_all[13];memcpy(saved_all,registers,sizeof(saved_all));
  sync_output_probe(7,owner_live);assert(receives&&!memcmp(saved_all,registers,sizeof(saved_all)));
  reset();mode=1;sync_output_clock_probe(7,owner_live);
- assert(clock_calls==6u&&!clock_prepared&&!clock_armed&&s_probe.h>1000&&!s_clock_fault);
+ assert(clock_calls==11u&&!clock_prepared&&!clock_armed&&s_probe.h>1000&&!s_clock_fault);
  reset();mode=1;registers[GPIO_OUT_REG]=(1u<<2)|0x80000000u;
  uint32_t data_before=registers[GPIO_OUT_REG];sync_output_clock_probe(7,owner_live);
  assert(registers[GPIO_OUT_REG]==data_before&&!s_probe.marker_invalid);
@@ -261,9 +262,11 @@ class Runtime(unittest.TestCase):
     def test_actual_probe(self):
         source = (ROOT / "main/sync_output_probe.c").read_text()
         source = re.sub(r'^#include[^\n]*\n', '', source, flags=re.MULTILINE)
+        phase = (ROOT / 'main/sync_phase_bracket.h').read_text()
+        phase = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', phase, flags=re.MULTILINE)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            (path / "probe.c").write_text(PREFIX + source + SUFFIX)
+            (path / "probe.c").write_text(PREFIX + phase + source + SUFFIX)
             compiler = os.environ.get("CC", "cc")
             subprocess.run([compiler, "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
                             str(path / "probe.c"), "-o", str(path / "probe")], check=True)
