@@ -84,13 +84,18 @@ static struct mock_timer mt;
 static uint32_t registers[256],before[256],cycles;
 static unsigned clears,sets,alarm_calls,live_calls,fail_stage;
 static unsigned lose_after,late_after;
+static unsigned pull_fail_pin;
+static bool pull_fail_used;
 static bool stall;
 static int cpu_hz=240000000;
 static int64_t wall;
 static unsigned runs;
 static bool live(uint32_t generation)
 {
-    if(mt.started)assert((registers[0]&GATE_MASK)==GATE_MASK);
+    if(mt.started){
+        assert((registers[0]&GATE_MASK)==GATE_MASK);
+        for(unsigned j=0;j<6;++j)assert(!(registers[s_iomux[j]/4u]&(FUN_PU|FUN_PD)));
+    }
     assert(generation==213u);
     return ++live_calls<=lose_after;
 }
@@ -102,7 +107,20 @@ void mock_write(uint32_t address,uint32_t value)
         registers[0]&=~value;
         if(value==GATE_MASK)++clears;
     }else if(address==GPIO_ENABLE_W1TS_REG){registers[0]|=value;if(value==GATE_MASK)++sets;}
-    else registers[address/4u]=value;
+    else {
+        for(unsigned j=0;j<6;++j){
+            if(address==s_iomux[j])
+                assert(value==before[address/4u] || value==(before[address/4u]&~(FUN_PU|FUN_PD)));
+            if(address==matrix_reg(s_pins[j]))
+                assert((value&~(GPIO_FUNC0_OE_SEL|GPIO_FUNC0_OE_INV_SEL))==
+                    (before[address/4u]&~(GPIO_FUNC0_OE_SEL|GPIO_FUNC0_OE_INV_SEL)));
+        }
+        if(pull_fail_pin<6u && !pull_fail_used && address==s_iomux[pull_fail_pin] &&
+            !(value&(FUN_PU|FUN_PD)) && (registers[address/4u]&(FUN_PU|FUN_PD))){
+            pull_fail_used=true;return;
+        }
+        registers[address/4u]=value;
+    }
 }
 int esp_clk_cpu_freq(void){return cpu_hz;}
 uint32_t esp_cpu_get_cycle_count(void){return cycles++;}
@@ -153,6 +171,7 @@ static void init(void)
     cycles=0xfffffff0u;clears=sets=alarm_calls=live_calls=0;
     lose_after=late_after=UINT32_MAX;fail_stage=0;wall=0;stall=false;cpu_hz=240000000;
     s_busy=false;
+    pull_fail_pin=UINT32_MAX;pull_fail_used=false;
 }
 static void run(bool pal)
 {
@@ -189,11 +208,19 @@ int main(void)
         init();late_after=5u;run(pal!=0);assert(clears==5u && s_gate.reason==GATE_LATE);
         init();lose_after=8u;run(pal!=0);assert(clears==6u && s_gate.reason==GATE_CONTEXT);
         init();stall=true;run(pal!=0);assert(!clears && s_gate.reason==GATE_TIMEOUT);
-        for(unsigned stage=1;stage<=11;++stage){init();fail_stage=stage;run(pal!=0);}
+        for(unsigned stage=1;stage<=11;++stage){
+            init();fail_stage=stage;
+            for(unsigned j=0;j<6;++j)registers[s_iomux[j]/4u]|=FUN_PU|FUN_PD;
+            memcpy(before,registers,sizeof(before));run(pal!=0);
+        }
     }
     for(unsigned j=0;j<6;++j){
-        init();registers[s_iomux[j]/4u]|=FUN_PU;memcpy(before,registers,sizeof(before));run(true);assert(!clears && !mt.exists);
-        init();registers[s_iomux[j]/4u]|=FUN_PD;memcpy(before,registers,sizeof(before));run(true);assert(!clears && !mt.exists);
+        init();registers[s_iomux[j]/4u]|=FUN_PU;memcpy(before,registers,sizeof(before));run(true);assert(clears==960u && !mt.exists);
+        init();registers[s_iomux[j]/4u]|=FUN_PD;memcpy(before,registers,sizeof(before));run(true);assert(clears==960u && !mt.exists);
+        init();
+        for(unsigned k=0;k<6;++k)registers[s_iomux[k]/4u]|=FUN_PU|FUN_PD;
+        memcpy(before,registers,sizeof(before));pull_fail_pin=j;run(true);
+        assert(pull_fail_used && !clears && !mt.exists);
         init();registers[matrix_reg(s_pins[j])/4u]^=1u;memcpy(before,registers,sizeof(before));run(true);assert(!clears && !mt.exists);
         init();registers[matrix_reg(s_pins[j])/4u]|=GPIO_FUNC0_OE_INV_SEL;memcpy(before,registers,sizeof(before));run(true);assert(!clears && !mt.exists);
         init();registers[0]&=~(1u<<s_pins[j]);memcpy(before,registers,sizeof(before));
@@ -201,7 +228,7 @@ int main(void)
     }
     init();cpu_hz=160000000;run(true);assert(!clears && !mt.exists);
     init();s_busy=true;sync_gate_probe(true,213u,live);assert(!clears && !mt.exists && s_busy);
-    puts("PASS actual GPIO OE probe mocked runtime: pulses, exact restoration, context/lateness/timeout, all timer failures, invalid pads/mux/pulls/CPU, no physical timing claim");
+    puts("PASS actual GPIO OE probe mocked runtime: pulses, exact IOMUX/OE/matrix restoration, temporary pull clearing and partial failures, context/lateness/timeout, all timer failures, invalid pads/mux/CPU, no physical timing claim");
     return 0;
 }
 '''

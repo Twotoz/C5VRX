@@ -119,8 +119,8 @@ void sync_gate_probe(bool pal,uint32_t generation,bool (*live)(uint32_t))
         printf("SYNC_GATE end reason=busy generation=%lu restored=1\n",(unsigned long)generation);
         return;
     }
-    uint32_t saved_mux[6]={0},saved_pad[6]={0},saved_enable=0;
-    bool saved=false,mux_changed=false,enabled=false,started=false,restored=true;
+    uint32_t saved_mux[6]={0},saved_pad[6]={0},saved_enable=0,pulls_removed_mask=0;
+    bool saved=false,mux_changed=false,pads_changed=false,enabled=false,started=false,restored=true;
     const char *failure=NULL;
     gate_context_t *g=&s_gate;
     memset(g,0,sizeof(*g));g->live=live;g->generation=generation;g->min_hold=UINT32_MAX;
@@ -139,7 +139,6 @@ void sync_gate_probe(bool pal,uint32_t generation,bool (*live)(uint32_t))
     for(unsigned j=0;j<6;++j) {
         if((saved_mux[j]&GPIO_FUNC0_OUT_SEL_M)!=s_signals[j] ||
             (saved_mux[j]&(GPIO_FUNC0_OUT_INV_SEL|GPIO_FUNC0_OE_INV_SEL))) {failure="data_mux";goto cleanup;}
-        if(saved_pad[j]&(FUN_PU|FUN_PD)) {failure="weak_pull";goto cleanup;}
     }
     if(!sgs_init(&g->schedule,pal?SGS_PAL:SGS_NTSC) ||
         !sgs_next(&g->schedule,&g->pulse)) {failure="schedule";goto cleanup;}
@@ -154,6 +153,18 @@ void sync_gate_probe(bool pal,uint32_t generation,bool (*live)(uint32_t))
     gptimer_alarm_config_t alarm={.alarm_count=GATE_INITIAL_TICKS+g->pulse.start};
     if(gptimer_set_alarm_action(g->timer,&alarm)!=ESP_OK){failure="timer_alarm";goto cleanup;}
     if(!live(generation)){failure="context";goto cleanup;}
+    /* Preserve drive, pad function and every unrelated bit. Flag cleanup
+     * before the first write so even a partial readback failure restores all. */
+    pads_changed=true;
+    for(unsigned j=0;j<6;++j) {
+        if(saved_pad[j]&(FUN_PU|FUN_PD)) {
+            pulls_removed_mask|=UINT32_C(1)<<s_pins[j];
+            REG_WRITE(s_iomux[j],saved_pad[j]&~(FUN_PU|FUN_PD));
+        }
+        if(REG_READ(s_iomux[j])!=(saved_pad[j]&~(FUN_PU|FUN_PD))) {
+            failure="pull_clear_readback";goto cleanup;
+        }
+    }
     for(unsigned j=0;j<6;++j) {
         REG_WRITE(matrix_reg(s_pins[j]),
             (saved_mux[j]|GPIO_FUNC0_OE_SEL)&~GPIO_FUNC0_OE_INV_SEL);
@@ -183,13 +194,15 @@ cleanup:
         REG_WRITE(GPIO_ENABLE_W1TC_REG,(~saved_enable)&GATE_MASK);
         for(unsigned j=0;j<6;++j)REG_WRITE(matrix_reg(s_pins[j]),saved_mux[j]);
     }
+    if(saved && pads_changed)
+        for(unsigned j=0;j<6;++j)REG_WRITE(s_iomux[j],saved_pad[j]);
     if(saved) {
         if((REG_READ(GPIO_ENABLE_REG)&GATE_MASK)!=(saved_enable&GATE_MASK))restored=false;
         for(unsigned j=0;j<6;++j)
             if(REG_READ(matrix_reg(s_pins[j]))!=saved_mux[j] ||
                 REG_READ(s_iomux[j])!=saved_pad[j])restored=false;
     }
-    printf("SYNC_GATE end standard=%s generation=%lu reason=%s code=%u pulses=%lu eq=%lu broad=%lu normal=%lu hold_min_cycles=%lu hold_max_cycles=%lu eq_min_cycles=%lu eq_max_cycles=%lu broad_min_cycles=%lu broad_max_cycles=%lu normal_min_cycles=%lu normal_max_cycles=%lu late_max_ticks=%lu restored=%u monitor_lock_proven=0\n",
+    printf("SYNC_GATE end standard=%s generation=%lu reason=%s code=%u pulses=%lu eq=%lu broad=%lu normal=%lu hold_min_cycles=%lu hold_max_cycles=%lu eq_min_cycles=%lu eq_max_cycles=%lu broad_min_cycles=%lu broad_max_cycles=%lu normal_min_cycles=%lu normal_max_cycles=%lu late_max_ticks=%lu pulls_removed_mask=0x%08lx restored=%u monitor_lock_proven=0\n",
         pal?"PAL":"NTSC",(unsigned long)generation,failure?failure:"isr",
         (unsigned)g->reason,(unsigned long)g->pulses,(unsigned long)g->eq,
         (unsigned long)g->broad,(unsigned long)g->normal,
@@ -197,7 +210,7 @@ cleanup:
         (unsigned long)(g->eq?g->kind_min[SGS_EQ]:0u),(unsigned long)g->kind_max[SGS_EQ],
         (unsigned long)(g->broad?g->kind_min[SGS_BROAD]:0u),(unsigned long)g->kind_max[SGS_BROAD],
         (unsigned long)(g->normal?g->kind_min[SGS_NORMAL]:0u),(unsigned long)g->kind_max[SGS_NORMAL],
-        (unsigned long)g->max_late,(unsigned)restored);
+        (unsigned long)g->max_late,(unsigned long)pulls_removed_mask,(unsigned)restored);
     /* A failed deletion must not let an old callback alias a new context. */
     if(reusable)__atomic_store_n(&s_busy,false,__ATOMIC_RELEASE);
 }

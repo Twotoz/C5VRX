@@ -510,3 +510,16 @@ rearm and schedule work happen after OE restoration. A target build passes.
 This is not yet an automatic flywheel or physical waveform/monitor proof;
 the next gate is a board timing probe, then sustained gating with source
 clock alignment and automatic activation only when required.
+
+The first physical gate image (`f26267f`, version
+`5.0.0-pr.212-sync-gate-a`, SHA256
+`3041eb4c2f28428831eb24ae914d0eaec11fff1fa01aab24615536562d50f0d8`)
+boots with10416 bytes of internal heap free. Both Z/z attempts refuse
+`weak_pull` before any pulse; GPIO restoration is verified and transport
+fault counters stay zero. This is not pulse-generation evidence. Full rows
+and capture hashes are in `board_gate_a_2026-10-16.{json,txt}`.
+The probe now saves complete IOMUX words, temporarily clears only weak-pull
+bits, verifies each write, and restores the exact originals on every exit.
+Mock tests cover each pull and partial clearing/readback failures without
+altering unrelated pad/matrix bits. The next board probe still must qualify
+actual timing; default activation remains OFF.

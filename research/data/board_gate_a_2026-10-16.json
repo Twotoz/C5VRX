@@ -1,0 +1,70 @@
+{
+  "provenance": "C5VRX by Twotoz/contributors",
+  "source_commit": "f26267f",
+  "version": "5.0.0-pr.212-sync-gate-a",
+  "app_sha256": "3041eb4c2f28428831eb24ae914d0eaec11fff1fa01aab24615536562d50f0d8",
+  "capture_sha256": "9f7bf13ad37409ff31af4c2e79822d35aaf25991e746daed9d1b6a8ed64f1d42",
+  "flash_verified": true,
+  "rows": [
+    {
+      "standard": "PAL",
+      "generation": 2,
+      "fields": 3,
+      "cpu_hz": 240000000,
+      "automatic": 0
+    },
+    {
+      "standard": "PAL",
+      "generation": 2,
+      "reason": "weak_pull",
+      "code": 0,
+      "pulses": 0,
+      "eq": 0,
+      "broad": 0,
+      "normal": 0,
+      "hold_min_cycles": 0,
+      "hold_max_cycles": 0,
+      "eq_min_cycles": 0,
+      "eq_max_cycles": 0,
+      "broad_min_cycles": 0,
+      "broad_max_cycles": 0,
+      "normal_min_cycles": 0,
+      "normal_max_cycles": 0,
+      "late_max_ticks": 0,
+      "restored": 1,
+      "monitor_lock_proven": 0
+    },
+    {
+      "standard": "NTSC",
+      "generation": 2,
+      "fields": 3,
+      "cpu_hz": 240000000,
+      "automatic": 0
+    },
+    {
+      "standard": "NTSC",
+      "generation": 2,
+      "reason": "weak_pull",
+      "code": 0,
+      "pulses": 0,
+      "eq": 0,
+      "broad": 0,
+      "normal": 0,
+      "hold_min_cycles": 0,
+      "hold_max_cycles": 0,
+      "eq_min_cycles": 0,
+      "eq_max_cycles": 0,
+      "broad_min_cycles": 0,
+      "broad_max_cycles": 0,
+      "normal_min_cycles": 0,
+      "normal_max_cycles": 0,
+      "late_max_ticks": 0,
+      "restored": 1,
+      "monitor_lock_proven": 0
+    }
+  ],
+  "automatic_activation": false,
+  "physical_waveform_proven": false,
+  "monitor_lock_proven": false,
+  "timing_scope": "software counters/registers only; no scope/capture"
+}

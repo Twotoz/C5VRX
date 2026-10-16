@@ -1,0 +1,13 @@
+HB t_s=10 stage=ready gain=83 menu=0 startup=1 busy=0
+HB t_s=15 stage=ready gain=83 menu=0 startup=1 busy=0
+HB t_s=20 stage=ready gain=83 menu=0 startup=1 busy=0
+STARTUP done ms=23572 filter=loaded dco_rows=30 dco_missing=0 sphase=settled profile=DEFAULT 12MHZ KP0.85 reason=no_video_at_startup
+HB t_s=25 stage=ready gain=83 menu=0 startup=0 busy=0
+C5VRX5 version=5.0.0-pr.212-sync-gate-a demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v5 uptime_s=25 heap_internal=10416
+TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=0 kp_target=0 kp_writes=2048 kp_verify_fail=0 program=U85Q-LP prog_switches=1 switch_wait_ms=0 kp_switches=0 kp_restart_fail=0 kp_restart_us=0 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=5054
+SYNC_GATE begin standard=PAL generation=2 fields=3 cpu_hz=240000000 automatic=0
+SYNC_GATE end standard=PAL generation=2 reason=weak_pull code=0 pulses=0 eq=0 broad=0 normal=0 hold_min_cycles=0 hold_max_cycles=0 eq_min_cycles=0 eq_max_cycles=0 broad_min_cycles=0 broad_max_cycles=0 normal_min_cycles=0 normal_max_cycles=0 late_max_ticks=0 restored=1 monitor_lock_proven=0
+SYNC_GATE begin standard=NTSC generation=2 fields=3 cpu_hz=240000000 automatic=0
+SYNC_GATE end standard=NTSC generation=2 reason=weak_pull code=0 pulses=0 eq=0 broad=0 normal=0 hold_min_cycles=0 hold_max_cycles=0 eq_min_cycles=0 eq_max_cycles=0 broad_min_cycles=0 broad_max_cycles=0 normal_min_cycles=0 normal_max_cycles=0 late_max_ticks=0 restored=1 monitor_lock_proven=0
+C5VRX5 version=5.0.0-pr.212-sync-gate-a demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v5 uptime_s=26 heap_internal=10416
+TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=0 kp_target=0 kp_writes=2048 kp_verify_fail=0 program=U85Q-LP prog_switches=1 switch_wait_ms=0 kp_switches=0 kp_restart_fail=0 kp_restart_us=0 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=5054
