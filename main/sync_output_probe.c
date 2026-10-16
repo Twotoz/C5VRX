@@ -32,6 +32,7 @@ _Static_assert((SOP_MASK & UINT32_C(0x01801b00)) == 0u,
 #define SOP_SYMBOLS 48u
 #define SOP_WINDOW_US 50000
 #define SOP_ARM_MAX_US 700 /* below1ms RMT idle; permits bounded224us output IRQ */
+#define SOP_CLOCK_MIN_NS 1000u /* reject sub-us chatter; retain2.3us EQ lows */
 #define SOP_MARKER_MAX_TICKS 6000u /*16us marker plus a bounded vertical ISR */
 /* 48-symbol partial deliveries may contain about three milliseconds of H.
  * This bounds delivery staleness, not per-line missing-sync detection. */
@@ -44,6 +45,7 @@ typedef struct {
     uint64_t rise_before,rise_after,fall_before,fall_after;
     sync_phase_bracket_t native_phase;
     sync_native_track_t native;
+    snt_trace_t trace;
     uint32_t native_qualified_epochs;
     bool native_phase_checked,native_reported;
     int64_t rate_started;
@@ -103,6 +105,7 @@ static void sop_group(sop_context_t *s)
 static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
 {
     if(start<s->discard_before)return; /* private marker/handoff is not camera sync */
+    if(s_native && s_native->resident)snt_trace_low(&s_native->trace,s->epochs,start,width);
     if(s_native && s->marker_required && !s_native->native_phase_checked && s->prefix_n==3u) {
         uint32_t rise=s->prefix[0]+s->prefix[1];
         s_native->native_phase=sync_phase_bracket(rise,rise+s->prefix[2],
@@ -347,8 +350,9 @@ static bool sop_session_arm(sop_session_t *s)
             }
         }
         if(ready) {
-            /* The first raw edge is a recognizable private HIGH marker.
-             * Neither consumer has a private/variable filter at this point.
+            /* The first private HIGH marker starts the ETM clock. RMT's own
+             * fixed input filter can delay its origin; the second marker
+             * measures that offset rather than assuming simultaneous taps.
              * Subsequent ETM events are idempotent START, never reload. */
             REG_WRITE(GPIO_OUT_W1TS_REG,SOP_MASK);
             esp_rom_delay_us(16);
@@ -475,7 +479,7 @@ static bool sop_session_begin(uint32_t generation, bool (*live)(uint32_t), bool 
         .clk_src = RMT_CLK_SRC_PLL_F80M, .resolution_hz = 20000000u,
         .mem_block_symbols = 96u, .intr_priority = 2};
     const rmt_rx_event_callbacks_t callbacks = {.on_recv_done = sop_received};
-    s->receive = (rmt_receive_config_t) {.signal_range_min_ns = s->edge_clock?0u:2500u,
+    s->receive = (rmt_receive_config_t) {.signal_range_min_ns = s->edge_clock?SOP_CLOCK_MIN_NS:2500u,
         .signal_range_max_ns = s->edge_clock?1000000u:100000u, .flags = {.en_partial_rx = true}};
     s->began = esp_timer_get_time();
     if(s->edge_clock)REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
@@ -721,33 +725,54 @@ bool sync_output_live_snapshot(sync_output_live_model_t *out)
     return false;
 }
 
-void sync_output_live_diagnostics(void)
+bool sync_output_live_diagnostics(char *out,size_t size)
 {
-    if(!sync_output_live_active() || !s_native)return;
+    if(!out || !size)return false;
+    out[0]=0;
+    if(!sync_output_live_active() || !s_native)return false;
     for(unsigned attempt=0;attempt<3u;++attempt) {
         uint32_t seq=s_native->sequence;
         if(seq&1u)continue;
         __sync_synchronize();
         sop_context_t probe=s_probe;
-        sop_native_t native=*s_native;
+        sync_native_track_t native=s_native->native;
+        sync_phase_bracket_t phase=s_native->native_phase;
+        bool phase_checked=s_native->native_phase_checked;
+        uint32_t qualified_epochs=s_native->native_qualified_epochs;
         uint32_t rearms=s_session->clock_rearms;
         bool invalidated=s_session->invalidated;
         __sync_synchronize();
         if(seq!=s_native->sequence)continue;
-        printf("SYNC_LIVE_DIAG callbacks=%lu symbols=%lu epochs=%lu endings=%lu low=%lu h=%lu broad=%lu h_periods=%lu pal32=%lu ntsc32=%lu broad5=%lu broad6=%lu prefix_n=%u marker_ticks=%lu barrier=%lu elapsed=%lu phase_checked=%u phase_valid=%u phase_lo=%lld phase_hi=%lld native_valid=%u native_standard=%u fields=%lu qualified_epochs=%lu rearms=%lu invalidated=%u\n",
+        int n=snprintf(out,size,"SYNC_LIVE_DIAG callbacks=%lu symbols=%lu epochs=%lu endings=%lu low=%lu h=%lu broad=%lu h_periods=%lu pal32=%lu ntsc32=%lu broad5=%lu broad6=%lu prefix_n=%u marker_ticks=%lu barrier=%lu elapsed=%lu phase_checked=%u phase_valid=%u phase_lo=%lld phase_hi=%lld native_valid=%u native_standard=%u fields=%lu qualified_epochs=%lu rearms=%lu invalidated=%u\n",
             (unsigned long)probe.callbacks,(unsigned long)probe.symbols,
             (unsigned long)probe.epochs,(unsigned long)probe.endings,
             (unsigned long)probe.low,(unsigned long)probe.h,(unsigned long)probe.broad,
             (unsigned long)probe.h_periods,(unsigned long)probe.pal32,(unsigned long)probe.ntsc32,
             (unsigned long)probe.broad5,(unsigned long)probe.broad6,probe.prefix_n,
             (unsigned long)probe.first_duration,(unsigned long)probe.discard_before,
-            (unsigned long)probe.elapsed,(unsigned)native.native_phase_checked,
-            (unsigned)native.native_phase.valid,(long long)native.native_phase.lo,
-            (long long)native.native_phase.hi,(unsigned)native.native.valid,
-            (unsigned)native.native.standard,(unsigned long)native.native.qualified_fields,
-            (unsigned long)native.native_qualified_epochs,(unsigned long)rearms,(unsigned)invalidated);
-        return;
+            (unsigned long)probe.elapsed,(unsigned)phase_checked,
+            (unsigned)phase.valid,(long long)phase.lo,
+            (long long)phase.hi,(unsigned)native.valid,
+            (unsigned)native.standard,(unsigned long)native.qualified_fields,
+            (unsigned long)qualified_epochs,(unsigned long)rearms,(unsigned)invalidated);
+        if(n>=0 && (size_t)n<size)return true;
+        out[0]=0;return false;
     }
+    return false;
+}
+
+bool sync_output_live_trace_snapshot(snt_trace_t *out)
+{
+    if(!out || !sync_output_live_active() || !s_native)return false;
+    for(unsigned attempt=0;attempt<3u;++attempt) {
+        uint32_t seq=s_native->sequence;
+        if(seq&1u)continue;
+        __sync_synchronize();
+        *out=s_native->trace;
+        __sync_synchronize();
+        if(seq==s_native->sequence)return true;
+    }
+    return false;
 }
 
 static void sync_output_probe_run(uint32_t generation,bool (*live)(uint32_t),bool edge_clock)

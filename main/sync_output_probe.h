@@ -8,6 +8,8 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
+#include "sync_native_trace.h"
 void sync_output_probe(uint32_t generation, bool (*live)(uint32_t));
 void sync_output_clock_probe(uint32_t generation, bool (*live)(uint32_t));
 
@@ -38,4 +40,5 @@ void sync_output_live_before_close(bool (*callback)(void));
 void sync_output_live_invalidate(void);
 bool sync_output_live_snapshot(sync_output_live_model_t *out);
 /* Task-side diagnostic snapshot, under the same serialized ownership. */
-void sync_output_live_diagnostics(void);
+bool sync_output_live_diagnostics(char *out,size_t size);
+bool sync_output_live_trace_snapshot(snt_trace_t *out);

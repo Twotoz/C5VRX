@@ -93,6 +93,7 @@ void transport_sync_flywheel_toggle(void); /* U: conditional DAC-OE holdover ben
 void transport_sync_live_tick(void);   /* control loop; never holds a lifetime PHY lease */
 bool transport_sync_live_cancel(void); /* stop/restore before transport ownership changes */
 void transport_sync_live_print(void);
+void transport_sync_live_trace_print(void);
 void sync_dma_c2m(const void *addr, size_t size);
 void sync_dma_m2c(const void *addr, size_t size);
 int ring_node_index(uint32_t addr);

@@ -113,7 +113,7 @@ static int rmt_rx_register_event_callbacks(void *channel,const rmt_rx_event_call
 static int rmt_enable(void *channel){++api_calls;assert(channel&&channel_live);if(fail_at==3)return -3;rx_enabled=true;return 0;}
 static int rmt_receive(void *channel,void *buffer,size_t size,const rmt_receive_config_t *cfg){
  ++api_calls;assert(channel&&channel_live&&rx_enabled&&buffer&&size==48u*sizeof(rmt_symbol_word_t));
- assert(cfg->signal_range_min_ns==(clock_prepared?0u:2500u)&&cfg->signal_range_max_ns==(clock_prepared?1000000u:100000u)&&cfg->flags.en_partial_rx);
+ assert(cfg->signal_range_min_ns==(clock_prepared?1000u:2500u)&&cfg->signal_range_max_ns==(clock_prepared?1000000u:100000u)&&cfg->flags.en_partial_rx);
  ++receives;if(fail_at==4||(fail_at==5&&receives>1))return -4;
  receiving=true;return 0;
 }
@@ -155,12 +155,17 @@ static void native_projection(void){
  if(!s_native){s_native=calloc(1,sizeof(*s_native));}
  assert(s_native);
  parser_start();s_probe.marker_required=true;s_probe.discard_before=2000;
+ s_native->resident=true;snt_trace_reset(&s_native->trace);
  s_native->native_phase_checked=true;
  int64_t base=INT64_C(1)<<44;
  s_native->native_phase=(sync_phase_bracket_t){.lo=base-10,.hi=base+10,.valid=true};
  sop_low(&s_probe,1999,94);assert(!s_native->native.seen);++checks;
+ assert(!s_native->trace.count);++checks;
  sop_low(&s_probe,2000,94);assert(s_native->native.last==(uint64_t)base+2000u);++checks;
+ assert(s_native->trace.count==1u && s_native->trace.lows[0].tick==2000u &&
+        s_native->trace.lows[0].epoch==(uint16_t)s_probe.epochs);++checks;
  sop_epoch(&s_probe);assert(!s_native->native.seen&&!s_native->native_phase.valid);++checks;
+ assert(s_native->trace.count==1u);++checks; /* diagnostics retain the explicit old epoch */
  s_probe.discard_before=0;s_native->native_phase_checked=true;
  sop_low(&s_probe,2000,94);assert(!s_native->native.seen);++checks;
 }
@@ -287,6 +292,15 @@ static void resident_lifecycle(void){
  assert(!sync_output_live_begin(7,owner_live));
  for(unsigned i=0;i<350u;++i){vTaskDelay(1);assert(sync_output_live_poll());}
  assert(s_probe.callbacks>256u&&!s_probe.rate_limited&&clock_prepares==1&&clock_arms==1);
+ snt_trace_t trace;char diagnostic[768];
+ assert(sync_output_live_trace_snapshot(&trace)&&trace.count==SNT_TRACE_CAPACITY);
+ assert(sync_output_live_diagnostics(diagnostic,sizeof(diagnostic))&&strstr(diagnostic,"SYNC_LIVE_DIAG "));
+ assert(!sync_output_live_diagnostics(diagnostic,1u)&&!diagnostic[0]);
+ ++s_native->sequence;
+ assert(!sync_output_live_trace_snapshot(&trace)&&
+        !sync_output_live_diagnostics(diagnostic,sizeof(diagnostic))&&!diagnostic[0]);
+ ++s_native->sequence;
+ checks+=4;
  /* Inject a qualified model to test publication/lifetime independently of
   * the separate real waveform qualification fixtures. */
  s_native->native=(sync_native_track_t){.valid=true,.standard=2,.last=123400,
@@ -373,9 +387,11 @@ class Runtime(unittest.TestCase):
         native = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', native, flags=re.MULTILINE)
         api = (ROOT / "main/sync_output_probe.h").read_text()
         api = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', api, flags=re.MULTILINE)
+        trace = (ROOT / 'main/sync_native_trace.h').read_text()
+        trace = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', trace, flags=re.MULTILINE)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            (path / "probe.c").write_text(PREFIX + api + phase + native + source + SUFFIX)
+            (path / "probe.c").write_text(PREFIX + trace + api + phase + native + source + SUFFIX)
             compiler = os.environ.get("CC", "cc")
             subprocess.run([compiler, "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
                             str(path / "probe.c"), "-o", str(path / "probe")], check=True)

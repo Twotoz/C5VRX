@@ -1,6 +1,7 @@
 /* C5VRX by Twotoz/contributors. GPIO2 -> shared GPIO filter -> RMT and
- * ETM START_COUNT. A private raw marker starts both consumers before enabling
- * the GPIO filter: ETM's tap must NOT be assumed downstream of that filter.
+ * ETM START_COUNT. A private raw marker starts the timer before enabling the
+ * GPIO filter. RMT has a fixed private filter; its offset is measured by the
+ * observer's second marker, never assumed to be the ETM input tap.
  * Repeated START_COUNT enables the counter; never reloads.
  * All allocation/control is outside ISR. No DAC, IQ, LUT or PHY writes. */
 #include "sync_edge_clock.h"

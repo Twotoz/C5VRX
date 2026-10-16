@@ -901,3 +901,43 @@ in this capture. This is narrower than real-camera recovery proof, still pending
 Evidence: `research/data/board_native_observer_2026-10-17.json`. G image SHA256
 69ec3662bafaeb18f363c161b222a41fcbe5b4d22b765ca8d7f128e7165768d9.
 Output repair stays disabled throughout these observer tests. Default remains OFF.
+
+
+### 2026-10-17: H raw traces contradict a complete G recovery claim
+
+H adds a96-entry bounded diagnostic low-pulse ring, frozen24 lows after the
+first broad-width candidate. Markers remain excluded and each row carries its
+RMT-local epoch (mod65536); never join local time across epochs. `i` snapshots
+under short PHY ownership then formats/drains outside it. Existing diagnostic
+status also formats into a buffer and releases ownership before UART output.
+This recording grants no camera validity. Trace memory is allocated with the
+post-start native observer state, not added to static startup SRAM.
+
+H builds/flash verifies/startup completes. Both the VTX-off and short VTX-on H
+captures reproduce cumulative symbol counts freezing while empty endings grow.
+Therefore G's full receive-boundary reset is NOT a complete fix; its earlier
+private-marker result had narrower scope. H short camera test confirms RF NTSC
+and AFC lock, but never qualifies native H/V. The operator was immediately told
+the VTX can switch off after the2-second capture.
+
+The H off trace contains96 lows,34 shorter than20 RMT ticks; the camera trace
+has13 lows including widths1,3,4 and6 ticks. One tick is50ns. These durations
+are below the intended shared GPIO filter scale, or could reflect corrupt input
+history. Cause is not proved. I enables the independent RMT1000ns input filter,
+still below the2.3us EQ duration. Its separate RMT origin must be calibrated by
+the existing two-edge second marker; do not assume the filtered RMT and raw ETM
+taps start simultaneously. I board result is pending. No output repair enabled.
+Evidence: `research/data/board_native_trace_h_2026-10-17.json`.
+Trace chronology/wrap/freeze tests pass; actual observer runtime93 checks pass.
+
+
+I follow-up (VTX off, RF detected=none/G83): the cumulative symbols keep growing
+6584 ->14596 ->23109 at successive2-second samples. The first stored trace has
+45 lows, minimum20 ticks/1us, none below20 ticks, unlike H's sub-microsecond lows.
+Marker phase fits remain valid (observed spans37-38 ticks), teardown restores
+ownership and closes the clock; no watchdog/output fault is reported. This is
+an8-second observation, not sustained camera/monitor proof. Some snapshots still
+land in empty epochs, so do not claim every ending carries source evidence.
+I source camera test is pending. `board_native_filter_i_2026-10-17.json` stores
+image/log hashes and raw rows. Tests93 actual-observer checks plus bounded trace,
+transport ownership, startup, and PHY-hook tests pass. Output repair remains OFF.

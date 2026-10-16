@@ -76,6 +76,7 @@ static void help(void)
            "  Y bench: filtered native DAC sync observation (LP/1x only; OFF at boot),\n"
            "  y bench: native mirror with common-edge RMT/ETM clock (experimental),\n"
            "  u bench: resident native observer, U conditional sync holdover (both OFF at boot),\n"
+           "  i bench: bounded native pulse history (read-only; enable u first),\n"
            "  Q/q bench: three-second PAL/NTSC DAC sync gate test (changes video),\n"
            "  B bench: restart live transport without OSD (interrupts video; issue #213 A/B),\n"
            "  N black NO SIGNAL fallback on/off (default OFF: preserve real snow; bench only),\n"
@@ -121,6 +122,7 @@ static void console_task(void *arg)
             switch (c) {
             case 'T': status(); break;
             case 't': transport_sync_live_print(); break;
+            case 'i': transport_sync_live_trace_print(); break;
             case 'I': snapshot(); break;
             case 'J': transport_sync_bench(); break;
             case 'Z': transport_sync_gate_probe(true); break;

@@ -986,3 +986,23 @@ markers continuing (975 symbols/325 endings). This is not camera-sync proof.
 See board_native_observer_2026-10-17.json. VTX was getting warm; user was told
 it can be switched off. Do not keep it on for development or assume camera is
 still transmitting. Flywheel output remains OFF; camera qualification still open.
+
+
+### H/I trace supersedes the G idle-recovery inference (2026-10-17)
+
+H again reproduces frozen symbol counts and repeated empty epochs, both with
+VTX off and during a2-second camera test. Full RX disable/enable is NOT a proven
+complete fix. A96-entry diagnostic trace records received low durations only,
+with explicit local epoch IDs; it never grants camera validity. `i` prints it
+outside PHY ownership. H raw trace includes1-tick50ns lows despite the intended
+shared GPIO filter. I therefore tries RMT's independent1000ns input filter,
+retaining2.3us EQ; marker calibration must prove its offset rather than assuming
+RMT/ETM taps are simultaneous. I board result is pending at this note. Keep own
+gates excluded, and do not treat a raw low or a broad-width trigger as sync lock.
+Evidence: board_native_trace_h_2026-10-17.json and docs/FLYWHEEL_GOAL.md.
+
+
+I VTX-off follow-up: symbols6584->14596->23109, first trace45 lows/min20 ticks
+(1us), zero sub20-tick lows; valid marker phase spans37-38 ticks. Startup and
+cleanup succeed, no camera model. This8-second result is not a camera/monitor
+proof. Some empty epochs still occur. See board_native_filter_i_2026-10-17.json.

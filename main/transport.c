@@ -1014,6 +1014,27 @@ void transport_sync_live_tick(void)
     phy_end_actuator();
 }
 
+void transport_sync_live_trace_print(void)
+{
+    snt_trace_t trace;
+    bool have=false;
+    if(phy_try_actuator(phy_generation())) {
+        have=sync_output_live_trace_snapshot(&trace);
+        phy_end_actuator();
+    }
+    /* UART output may block. Release PHY ownership before formatting/draining. */
+    if(!have){printf("SYNC_NATIVE_TRACE available=0\n");return;}
+    printf("SYNC_NATIVE_TRACE available=1 count=%u triggered=%u frozen=%u dropped=%lu tick_hz=20000000 epoch_mod=65536 camera_qualified=0\n",
+        trace.count,(unsigned)trace.triggered,(unsigned)trace.frozen,(unsigned long)trace.dropped);
+    unsigned first=(trace.head+SNT_TRACE_CAPACITY-trace.count)%SNT_TRACE_CAPACITY;
+    for(unsigned i=0;i<trace.count;++i) {
+        const snt_trace_low_t *low=&trace.lows[(first+i)%SNT_TRACE_CAPACITY];
+        printf("SYNC_NATIVE_LOW i=%u epoch=%u tick=%lu width=%u\n",
+            i,low->epoch,(unsigned long)low->tick,low->width);
+    }
+    printf("SYNC_NATIVE_TRACE_END count=%u\n",trace.count);
+}
+
 void transport_sync_live_print(void)
 {
     sync_live_owner_t *s=s_live_owner;
@@ -1021,12 +1042,14 @@ void transport_sync_live_print(void)
         s?(unsigned)s->requested:0u,(unsigned)sync_output_live_active(),s?(unsigned)s->fault:0u,
         s?(unsigned long)s->starts:0ul,s?(unsigned long)s->stops:0ul,s?(unsigned long)s->failures:0ul);
     sync_output_live_model_t model;
-    bool have_model=false;
+    bool have_model=false,have_diag=false;
+    char diagnostic[768];
     if(phy_try_actuator(phy_generation())) {
         have_model=sync_output_live_snapshot(&model);
-        sync_output_live_diagnostics();
+        have_diag=sync_output_live_diagnostics(diagnostic,sizeof(diagnostic));
         phy_end_actuator();
     }
+    if(have_diag)printf("%s",diagnostic);
     if(have_model)
         printf("SYNC_LIVE_MODEL valid=%u standard=%u line_ticks_x32=%lu last_h=%llu field=%llu now=%llu phase_span_ticks=%lld boot_default=OFF\n",
             (unsigned)model.valid,(unsigned)model.standard,(unsigned long)model.line_ticks_x32,
