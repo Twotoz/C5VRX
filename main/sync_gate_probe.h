@@ -8,5 +8,8 @@
  * live must be IRAM-safe and return false if the supplied generation changes.
  * All six DAC pads must already carry PARLIO data0..5 and be enabled.
  * Weak pulls are temporarily disabled without changing any other IOMUX bit;
- * the exact saved pad/matrix configuration is restored on every exit. */
+ * the exact saved pad/matrix configuration is restored on every exit.
+ * Manual diagnostic only: each vertical burst occupies one priority-three
+ * ISR for up to seven half-lines (224us bound, higher-priority IRQ delay is
+ * measured). Each individual gap still exposes the ongoing real DAC data. */
 void sync_gate_probe(bool pal, uint32_t generation, bool (*live)(uint32_t));

@@ -90,11 +90,18 @@ static bool stall;
 static int cpu_hz=240000000;
 static int64_t wall;
 static unsigned runs;
+static sgs_t expected_schedule;
+static sgs_pulse_t expected_pulse;
+static bool in_batch,release_ends_batch,inject_batch_delay,batch_delay_used;
+static bool corrupt_batch;
+static uint32_t batch_anchor,batch_pulses;
+static uint64_t batch_first_tick;
 static bool live(uint32_t generation)
 {
     if(mt.started){
         assert((registers[0]&GATE_MASK)==GATE_MASK);
         for(unsigned j=0;j<6;++j)assert(!(registers[s_iomux[j]/4u]&(FUN_PU|FUN_PD)));
+        if(in_batch && inject_batch_delay && !batch_delay_used){cycles+=2000u;batch_delay_used=true;}
     }
     assert(generation==213u);
     return ++live_calls<=lose_after;
@@ -104,9 +111,26 @@ void mock_write(uint32_t address,uint32_t value)
 {
     assert(address/4u<256);
     if(address==GPIO_ENABLE_W1TC_REG){
+        if(value==GATE_MASK){
+            assert((registers[0]&GATE_MASK)==GATE_MASK);
+            assert(sgs_next(&expected_schedule,&expected_pulse));
+            if(expected_pulse.kind==SGS_BROAD && !in_batch){
+                in_batch=true;batch_anchor=cycles;batch_first_tick=expected_pulse.start;batch_pulses=0;
+            }
+            if(in_batch){
+                uint32_t deadline=(uint32_t)(expected_pulse.start-batch_first_tick)*12u;
+                assert((uint32_t)(cycles-batch_anchor)>=deadline);
+                assert((uint32_t)(cycles-batch_anchor)-deadline<=GATE_LATE_TICKS*12u);
+                assert(++batch_pulses<=GATE_BATCH_PULSES);
+                release_ends_batch=expected_pulse.kind==SGS_EQ;
+            }
+        }
         registers[0]&=~value;
         if(value==GATE_MASK)++clears;
-    }else if(address==GPIO_ENABLE_W1TS_REG){registers[0]|=value;if(value==GATE_MASK)++sets;}
+    }else if(address==GPIO_ENABLE_W1TS_REG){
+        registers[0]|=value;if(value==GATE_MASK)++sets;
+        if(release_ends_batch){in_batch=false;release_ends_batch=false;}
+    }
     else {
         for(unsigned j=0;j<6;++j){
             if(address==s_iomux[j])
@@ -136,15 +160,21 @@ int gptimer_register_event_callbacks(gptimer_handle_t t,const gptimer_event_call
 int gptimer_enable(gptimer_handle_t t){if(fail_stage==3)return -1;t->enabled=true;return 0;}
 int gptimer_set_raw_count(gptimer_handle_t t,uint64_t n){if(fail_stage==4)return -1;t->count=n;return 0;}
 int gptimer_get_raw_count(gptimer_handle_t t,uint64_t *n)
-{assert((registers[0]&GATE_MASK)==GATE_MASK);if(fail_stage==7)return -1;*n=t->count;return 0;}
+{assert(!in_batch);assert((registers[0]&GATE_MASK)==GATE_MASK);if(fail_stage==7)return -1;*n=t->count;return 0;}
 int gptimer_set_alarm_action(gptimer_handle_t t,const gptimer_alarm_config_t *a)
 {
     assert((registers[0]&GATE_MASK)==GATE_MASK);
+    assert(!in_batch);
     ++alarm_calls;
     if((fail_stage==5 && alarm_calls==1u)||(fail_stage==8 && alarm_calls==5u))return -1;
     t->alarm=a->alarm_count;return 0;
 }
-int gptimer_start(gptimer_handle_t t){if(fail_stage==6)return -1;assert(t->enabled);t->started=true;return 0;}
+int gptimer_start(gptimer_handle_t t){
+    if(fail_stage==6)return -1;
+    assert(t->enabled);t->started=true;
+    if(corrupt_batch)s_gate.batch[0][1].start=s_gate.batch[0][0].start+5000u;
+    return 0;
+}
 int gptimer_stop(gptimer_handle_t t){assert(t->started);t->started=false;return fail_stage==9?-1:0;}
 int gptimer_disable(gptimer_handle_t t){assert(!t->started);t->enabled=false;return fail_stage==10?-1:0;}
 int gptimer_del_timer(gptimer_handle_t t){assert(!t->started && !t->enabled);if(fail_stage==11)return -1;t->exists=false;return 0;}
@@ -154,6 +184,7 @@ void vTaskDelay(unsigned ticks)
     if(stall){wall+=10000;return;}
     assert(mt.started && mt.callbacks.on_alarm);
     mt.count=mt.alarm+(clears>=late_after?161u:0u);
+    cycles=(uint32_t)(mt.count*12u)+0xfffffff0u;
     wall=(int64_t)(mt.count/20u);
     gptimer_alarm_event_data_t event={.count_value=mt.count,.alarm_value=mt.alarm};
     mt.callbacks.on_alarm(&mt,&event,mt.context);
@@ -172,9 +203,11 @@ static void init(void)
     lose_after=late_after=UINT32_MAX;fail_stage=0;wall=0;stall=false;cpu_hz=240000000;
     s_busy=false;
     pull_fail_pin=UINT32_MAX;pull_fail_used=false;
+    in_batch=release_ends_batch=inject_batch_delay=batch_delay_used=corrupt_batch=false;
 }
 static void run(bool pal)
 {
+    assert(sgs_init(&expected_schedule,pal?SGS_PAL:SGS_NTSC));
     sync_gate_probe(pal,213u,live);++runs;
     assert(!memcmp(before,registers,sizeof(before)));
     assert(!mt.started && !mt.enabled);
@@ -205,8 +238,16 @@ int main(void)
         unsigned count=0,eq=0,broad=0;
         while(sgs_next(&schedule,&pulse)&&pulse.field<3u){++count;eq+=pulse.kind==SGS_EQ;broad+=pulse.kind==SGS_BROAD;}
         assert(clears==count && s_gate.eq==eq && s_gate.broad==broad);
+        assert(s_gate.batches==3u && s_gate.batch_max_pulses==(pal?6u:7u));
+        assert(s_gate.batch_max_cycles<GATE_BATCH_MAX_CYCLES);
         init();late_after=5u;run(pal!=0);assert(clears==5u && s_gate.reason==GATE_LATE);
         init();lose_after=8u;run(pal!=0);assert(clears==6u && s_gate.reason==GATE_CONTEXT);
+        init();lose_after=pal?8u:9u;run(pal!=0);
+        assert(clears==(pal?6u:7u) && s_gate.batches==1u && s_gate.reason==GATE_CONTEXT);
+        init();inject_batch_delay=true;run(pal!=0);
+        assert(batch_delay_used && clears==(pal?6u:7u) && s_gate.reason==GATE_LATE);
+        init();corrupt_batch=true;run(pal!=0);
+        assert(clears==(pal?6u:7u) && s_gate.reason==GATE_BATCH);
         init();stall=true;run(pal!=0);assert(!clears && s_gate.reason==GATE_TIMEOUT);
         for(unsigned stage=1;stage<=11;++stage){
             init();fail_stage=stage;
@@ -228,7 +269,7 @@ int main(void)
     }
     init();cpu_hz=160000000;run(true);assert(!clears && !mt.exists);
     init();s_busy=true;sync_gate_probe(true,213u,live);assert(!clears && !mt.exists && s_busy);
-    puts("PASS actual GPIO OE probe mocked runtime: pulses, exact IOMUX/OE/matrix restoration, temporary pull clearing and partial failures, context/lateness/timeout, all timer failures, invalid pads/mux/CPU, no physical timing claim");
+    puts("PASS actual GPIO OE probe mocked runtime: full PAL/NTSC pulses, bounded coherent broad bursts/absolute cycle grid/no SDK rearm in gaps, exact restoration, temporary pulls/partial failures, context/lateness/timeout, all timer failures, invalid pads/mux/CPU, no physical timing claim");
     return 0;
 }
 '''

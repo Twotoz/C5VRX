@@ -23,10 +23,12 @@
 #define GATE_INITIAL_TICKS 2000u
 #define GATE_LATE_TICKS 160u
 #define GATE_TIMEOUT_US 250000
+#define GATE_BATCH_PULSES 7u
+#define GATE_BATCH_MAX_CYCLES (7u*640u*12u) /* 224us manual ISR ceiling */
 
 typedef enum {
     GATE_RUNNING, GATE_COMPLETE, GATE_LATE, GATE_CONTEXT, GATE_COUNT,
-    GATE_REARM, GATE_SCHEDULE, GATE_TIMEOUT
+    GATE_REARM, GATE_SCHEDULE, GATE_TIMEOUT, GATE_BATCH
 } gate_reason_t;
 
 typedef struct {
@@ -40,6 +42,12 @@ typedef struct {
     volatile uint32_t pulses, eq, broad, normal;
     volatile uint32_t min_hold, max_hold, max_late;
     volatile uint32_t kind_min[3],kind_max[3];
+    /* Only the vertical bursts are precomputed, not an entire field. This
+     * avoids driver calls and flash schedule fetches in the 4.7us gaps. */
+    sgs_pulse_t batch[GATE_FIELDS][GATE_BATCH_PULSES];
+    sgs_t after_batch[GATE_FIELDS];
+    uint8_t batch_count[GATE_FIELDS];
+    volatile uint32_t batches,batch_max_cycles,batch_max_pulses,batch_late_max_cycles;
 } gate_context_t;
 
 static gate_context_t s_gate;
@@ -60,13 +68,92 @@ static inline uint32_t matrix_reg(unsigned pin)
 /* No flash callee, driver call, or log between disabling and restoring OE.
  * Counter wrap is valid for these <=28us unsigned cycle differences. IRQs
  * above this ISR may still extend the measured hold; no hard WCET is claimed. */
-static uint32_t IRAM_ATTR hold_tip(uint32_t ticks)
+static uint32_t IRAM_ATTR hold_tip(uint32_t ticks,uint32_t *edge_cycle)
 {
     REG_WRITE(GPIO_ENABLE_W1TC_REG,GATE_MASK);
     uint32_t start=esp_cpu_get_cycle_count();
+    if(edge_cycle)*edge_cycle=start;
     while ((uint32_t)(esp_cpu_get_cycle_count()-start)<ticks*12u) { }
     REG_WRITE(GPIO_ENABLE_W1TS_REG,GATE_MASK);
     return (uint32_t)(esp_cpu_get_cycle_count()-start);
+}
+
+static void IRAM_ATTR record_tip(gate_context_t *g,uint32_t held)
+{
+    if(held<g->min_hold)g->min_hold=held;
+    if(held>g->max_hold)g->max_hold=held;
+    if(held<g->kind_min[g->pulse.kind])g->kind_min[g->pulse.kind]=held;
+    if(held>g->kind_max[g->pulse.kind])g->kind_max[g->pulse.kind]=held;
+    ++g->pulses;
+    if(g->pulse.kind==SGS_EQ)++g->eq;
+    else if(g->pulse.kind==SGS_BROAD)++g->broad;
+    else ++g->normal;
+}
+
+static bool prepare_batches(gate_context_t *g,bool pal)
+{
+    sgs_t cursor;sgs_pulse_t pulse;bool ready[GATE_FIELDS]={false};
+    if(!sgs_init(&cursor,pal?SGS_PAL:SGS_NTSC))return false;
+    while(sgs_next(&cursor,&pulse) && pulse.field<GATE_FIELDS) {
+        unsigned field=(unsigned)pulse.field;
+        uint8_t count=g->batch_count[field];
+        if(pulse.kind!=SGS_BROAD &&
+            !(pulse.kind==SGS_EQ && count && !ready[field]))continue;
+        if(ready[field] || count>=GATE_BATCH_PULSES)return false;
+        g->batch[field][count]=pulse;
+        g->batch_count[field]=(uint8_t)(count+1u);
+        if(pulse.kind==SGS_EQ){g->after_batch[field]=cursor;ready[field]=true;}
+    }
+    for(unsigned field=0;field<GATE_FIELDS;++field)
+        if(!ready[field] || g->batch_count[field]!=(pal?6u:7u))return false;
+    return true;
+}
+
+/* A manual diagnostic deliberately occupies one priority-three ISR through
+ * <=7 vertical half-lines (at most224us), with real DAC data exposed in every
+ * inter-pulse gap. This is not the production flywheel scheduling design.
+ * All pulse starts use one absolute CPU-cycle grid, so delay cannot accumulate
+ * pulse by pulse. The live callback and lateness checks run with pads ON. */
+static bool IRAM_ATTR broad_batch(gate_context_t *g,uint32_t anchor,
+                                   uint32_t initial_late)
+{
+    unsigned field=(unsigned)g->pulse.field,count=g->batch_count[field],emitted=1u;
+    uint64_t first=g->pulse.start;
+    ++g->batches;
+    for(unsigned i=1;i<count;++i) {
+        sgs_pulse_t next=g->batch[field][i];
+        uint64_t ticks=next.start-first;
+        if(ticks>GATE_BATCH_MAX_CYCLES/12u) {
+            g->reason=GATE_BATCH;g->done=true;break;
+        }
+        uint32_t deadline=(uint32_t)ticks*12u;
+        uint32_t elapsed=esp_cpu_get_cycle_count()-anchor;
+        while(elapsed<deadline && elapsed<GATE_BATCH_MAX_CYCLES)
+            elapsed=esp_cpu_get_cycle_count()-anchor;
+        if(!g->live(g->generation)) {
+            g->reason=GATE_CONTEXT;g->done=true;break;
+        }
+        elapsed=esp_cpu_get_cycle_count()-anchor;
+        if(elapsed>=GATE_BATCH_MAX_CYCLES || elapsed<deadline) {
+            g->reason=GATE_BATCH;g->done=true;break;
+        }
+        uint32_t late=elapsed-deadline+initial_late*12u;
+        if(late>g->batch_late_max_cycles)g->batch_late_max_cycles=late;
+        if((late+11u)/12u>g->max_late)g->max_late=(late+11u)/12u;
+        if(late>GATE_LATE_TICKS*12u) {
+            g->reason=GATE_LATE;g->done=true;break;
+        }
+        g->pulse=next;
+        uint32_t held=hold_tip(g->pulse.width,NULL);
+        record_tip(g,held);++emitted;
+    }
+    uint32_t duration=esp_cpu_get_cycle_count()-anchor;
+    if(duration>g->batch_max_cycles)g->batch_max_cycles=duration;
+    if(emitted>g->batch_max_pulses)g->batch_max_pulses=emitted;
+    if(duration>=GATE_BATCH_MAX_CYCLES && !g->done){g->reason=GATE_BATCH;g->done=true;}
+    if(g->done)return false;
+    g->schedule=g->after_batch[field];
+    return true;
 }
 
 static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
@@ -90,15 +177,17 @@ static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
     }
     uint32_t late=(uint32_t)(now-target);
     if(late>g->max_late)g->max_late=late;
-    uint32_t held=hold_tip(g->pulse.width);
-    if(held<g->min_hold)g->min_hold=held;
-    if(held>g->max_hold)g->max_hold=held;
-    if(held<g->kind_min[g->pulse.kind])g->kind_min[g->pulse.kind]=held;
-    if(held>g->kind_max[g->pulse.kind])g->kind_max[g->pulse.kind]=held;
-    ++g->pulses;
-    if(g->pulse.kind==SGS_EQ)++g->eq;
-    else if(g->pulse.kind==SGS_BROAD)++g->broad;
-    else ++g->normal;
+    bool batch=g->pulse.kind==SGS_BROAD;
+    if(batch && (g->pulse.field>=GATE_FIELDS ||
+        g->batch_count[g->pulse.field]<2u ||
+        g->batch_count[g->pulse.field]>GATE_BATCH_PULSES ||
+        g->batch[g->pulse.field][0].start!=g->pulse.start)) {
+        g->reason=GATE_BATCH;g->done=true;return false;
+    }
+    uint32_t anchor;
+    uint32_t held=hold_tip(g->pulse.width,&anchor);
+    record_tip(g,held);
+    if(batch && !broad_batch(g,anchor,late))return false;
     /* All driver/schedule operations occur after the six pads are enabled. */
     if(!sgs_next(&g->schedule,&g->pulse)) {
         g->reason=GATE_SCHEDULE;g->done=true;return false;
@@ -125,7 +214,7 @@ void sync_gate_probe(bool pal,uint32_t generation,bool (*live)(uint32_t))
     gate_context_t *g=&s_gate;
     memset(g,0,sizeof(*g));g->live=live;g->generation=generation;g->min_hold=UINT32_MAX;
     for(unsigned j=0;j<3;++j)g->kind_min[j]=UINT32_MAX;
-    printf("SYNC_GATE begin standard=%s generation=%lu fields=%u cpu_hz=%d automatic=0\n",
+    printf("SYNC_GATE begin standard=%s generation=%lu fields=%u cpu_hz=%d automatic=0 burst_isr_limit_us=224\n",
         pal?"PAL":"NTSC",(unsigned long)generation,GATE_FIELDS,esp_clk_cpu_freq());
     if(!live || esp_clk_cpu_freq()!=240000000) {failure="cpu_or_callback";goto cleanup;}
     if(!live(generation)) {failure="context";goto cleanup;}
@@ -140,7 +229,7 @@ void sync_gate_probe(bool pal,uint32_t generation,bool (*live)(uint32_t))
         if((saved_mux[j]&GPIO_FUNC0_OUT_SEL_M)!=s_signals[j] ||
             (saved_mux[j]&(GPIO_FUNC0_OUT_INV_SEL|GPIO_FUNC0_OE_INV_SEL))) {failure="data_mux";goto cleanup;}
     }
-    if(!sgs_init(&g->schedule,pal?SGS_PAL:SGS_NTSC) ||
+    if(!prepare_batches(g,pal) || !sgs_init(&g->schedule,pal?SGS_PAL:SGS_NTSC) ||
         !sgs_next(&g->schedule,&g->pulse)) {failure="schedule";goto cleanup;}
     gptimer_config_t config={.clk_src=GPTIMER_CLK_SRC_DEFAULT,
         .direction=GPTIMER_COUNT_UP,.resolution_hz=SGS_TIMER_HZ,.intr_priority=3};
@@ -202,7 +291,7 @@ cleanup:
             if(REG_READ(matrix_reg(s_pins[j]))!=saved_mux[j] ||
                 REG_READ(s_iomux[j])!=saved_pad[j])restored=false;
     }
-    printf("SYNC_GATE end standard=%s generation=%lu reason=%s code=%u pulses=%lu eq=%lu broad=%lu normal=%lu hold_min_cycles=%lu hold_max_cycles=%lu eq_min_cycles=%lu eq_max_cycles=%lu broad_min_cycles=%lu broad_max_cycles=%lu normal_min_cycles=%lu normal_max_cycles=%lu late_max_ticks=%lu pulls_removed_mask=0x%08lx restored=%u monitor_lock_proven=0\n",
+    printf("SYNC_GATE end standard=%s generation=%lu reason=%s code=%u pulses=%lu eq=%lu broad=%lu normal=%lu hold_min_cycles=%lu hold_max_cycles=%lu eq_min_cycles=%lu eq_max_cycles=%lu broad_min_cycles=%lu broad_max_cycles=%lu normal_min_cycles=%lu normal_max_cycles=%lu late_max_ticks=%lu batches=%lu batch_max_cycles=%lu batch_max_pulses=%lu batch_late_max_cycles=%lu pulls_removed_mask=0x%08lx restored=%u monitor_lock_proven=0\n",
         pal?"PAL":"NTSC",(unsigned long)generation,failure?failure:"isr",
         (unsigned)g->reason,(unsigned long)g->pulses,(unsigned long)g->eq,
         (unsigned long)g->broad,(unsigned long)g->normal,
@@ -210,7 +299,9 @@ cleanup:
         (unsigned long)(g->eq?g->kind_min[SGS_EQ]:0u),(unsigned long)g->kind_max[SGS_EQ],
         (unsigned long)(g->broad?g->kind_min[SGS_BROAD]:0u),(unsigned long)g->kind_max[SGS_BROAD],
         (unsigned long)(g->normal?g->kind_min[SGS_NORMAL]:0u),(unsigned long)g->kind_max[SGS_NORMAL],
-        (unsigned long)g->max_late,(unsigned long)pulls_removed_mask,(unsigned)restored);
+        (unsigned long)g->max_late,(unsigned long)g->batches,
+        (unsigned long)g->batch_max_cycles,(unsigned long)g->batch_max_pulses,
+        (unsigned long)g->batch_late_max_cycles,(unsigned long)pulls_removed_mask,(unsigned)restored);
     /* A failed deletion must not let an old callback alias a new context. */
     if(reusable)__atomic_store_n(&s_busy,false,__ATOMIC_RELEASE);
 }

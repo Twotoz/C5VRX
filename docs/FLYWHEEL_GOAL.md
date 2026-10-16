@@ -523,3 +523,21 @@ bits, verifies each write, and restores the exact originals on every exit.
 Mock tests cover each pull and partial clearing/readback failures without
 altering unrelated pad/matrix bits. The next board probe still must qualify
 actual timing; default activation remains OFF.
+
+The second physical image (`0bdff05`, `5.0.0-pr.212-sync-gate-b`, SHA256
+`d63beab3365722aaaec9212ba109e1b087cd6569db84aca7f93979f669d38810`)
+temporarily clears pulls on GPIO11/12 (mask0x1800). PAL emits5 EQ and2 broad
+tips before rejecting8.6us lateness; NTSC emits6 EQ and3 broad before
+rejecting10.15us. No ordinary H pulse is reached. Software hold counters
+show PAL EQ624–630 cycles and broad6618 cycles at240MHz; these are not
+measured CVBS widths. GPIO/pad restoration passes and transport counters
+remain zero. Rows/hashes: `board_gate_b_2026-10-16.{json,txt}`.
+
+The manual probe now precomputes only the three short vertical bursts in
+RAM. An ISR handles consecutive broad tips plus the first post-EQ on one
+absolute CPU-cycle grid, exposing ongoing DAC data in each gap and avoiding
+SDK rearm/schedule calls between broad tips. The diagnostic ceiling is
+7 tips/224us in that ISR; this is explicitly not a qualified production
+scheduling design. The8us lateness limit remains unchanged. Mock tests
+verify full960/815 PAL/NTSC counts, burst timing, interruption/refusal and
+complete restoration. Physical completion still needs another probe.
