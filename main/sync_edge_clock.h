@@ -10,6 +10,7 @@
 bool sync_edge_clock_prepare(void);
 bool sync_edge_clock_arm(void);
 bool sync_edge_clock_enable_filter(void);
+bool sync_edge_clock_disable_filter(void);
 bool sync_edge_clock_read(uint64_t *ticks);
 bool sync_edge_clock_close(void);
 uint32_t sync_edge_clock_filter_ns(void);

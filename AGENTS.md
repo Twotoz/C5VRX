@@ -930,3 +930,15 @@ Exact adjacent-FM waveform fusion remains gated by issue #23. Every 40 MS/s IQ
 sample must participate before 2:1 reduction, and a live implementation must
 prove sustained hardware throughput plus state continuity before replacing the
 current gapless BitScrambler path.
+
+
+### 2026-10-16 N mirror clock scope
+
+`sync_output_probe.c` manual lowercase `y` can now restart multiple RMT receive
+epochs on one continuously running `sync_edge_clock` timer/link. Pause only the
+filter; calibrate each private marker pair independently and reject regressing
+origins. Keep marker/source barriers in RMT-local coordinates. Board evidence:
+`research/data/board_clock_n_2026-10-16.json` (334 valid fits over 320 rearms;
+21 manual calls). This is LP/1x diagnostics, not a production background observer
+or automatic flywheel. Do not carry its whole-call PHY lease into a continuous
+service. Camera H/V and monitor lock remain unqualified.

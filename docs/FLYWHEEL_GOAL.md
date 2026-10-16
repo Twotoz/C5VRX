@@ -728,3 +728,30 @@ that model to gate only missing sync. Restart markers need their own newly
 calibrated RMT origin without resetting the already-running output clock.
 Default automatic activation remains OFF until that path is implemented
 and physically qualified; manual Y/y/Q/q are not that automatic path.
+
+
+### 2026-10-16: N keeps one clock over multiple RMT epochs
+
+Manual `y` now pauses only the mirror filter and restarts the ended RMT
+receive stream. The ETM route and 20 MHz timer remain alive. Each fresh private
+GPIO2 marker pair calibrates that epoch onto the original timer; markers remain
+excluded from source evidence. RMT barriers use local elapsed time, not the
+potentially 64-bit absolute timer value. Reject backwards timer/origin readings.
+
+Actual C5 build `5.0.0-pr.212-sync-gate-n`, application SHA256
+`a8dfac167ac603ede1ca6dbb6a043f1661fe687ca44572e5831e34b5da9458f7`,
+flashed with hash verification after preserving settings. Initial run plus 20
+warm repetitions: 334 accepted epoch phase fits, 320 RMT rearms, zero refused
+fits and zero clock regressions. Incomplete final epochs are counted pending,
+not accepted. Warm internal heap stayed 7156 bytes. PAL 48000 and NTSC 48870
+manual pulse runs completed; exact restore reported, no transport DMA faults.
+Raw hashes, counters and provenance: `research/data/board_clock_n_2026-10-16.json`.
+Host runtime suites passed 63 observer checks and 25 clock lifecycle cases;
+IDF 6.0.2 target build passed.
+
+Still manual and LP/output 1x only; no native H/V evidence was detected in
+these no-video captures. The full call still owns a PHY lease and is unsuitable
+as a permanent background service. The bounded 50 ms acquisition window also
+has setup/cleanup overhead: observed total calls exceed 50 ms. Automatic native
+qualification, camera-relative pulse scheduling/handoff, and electrical/monitor
+validation remain unfinished. This is not a flywheel completion claim.

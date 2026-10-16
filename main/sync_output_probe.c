@@ -179,6 +179,34 @@ static void sop_epoch(sop_context_t *s)
     s->elapsed = s->run_width = 0u;
     s->run_valid = s->run_edge = s->have_h = s->have_broad = s->have_group = false;
     s->h_train = s->broad_train = 0u; s->ended = false;
+    s->prefix_n=0;s->first_duration=0;s->first_level=false;
+    memset(s->prefix,0,sizeof(s->prefix));
+    s->discard_before=s->marker_required?UINT32_MAX:0u;
+}
+
+typedef struct {
+    uint32_t valid,refused,pending,max_span,regressions;
+    bool have_origin;
+    int64_t last_lo,last_hi;
+} sop_clock_stats_t;
+
+static sync_phase_bracket_t sop_score_clock(sop_clock_stats_t *stats,
+    uint64_t rb,uint64_t ra,uint64_t fb,uint64_t fa)
+{
+    sync_phase_bracket_t r={0};
+    if(s_probe.prefix_n<3u){++stats->pending;return r;}
+    uint32_t rise=s_probe.prefix[0]+s_probe.prefix[1];
+    r=sync_phase_bracket(rise,rise+s_probe.prefix[2],rb,ra,fb,fa);
+    if(r.valid && stats->have_origin && r.lo<=stats->last_hi) {
+        ++stats->regressions;r.valid=false;
+    }
+    if(r.valid) {
+        ++stats->valid;stats->have_origin=true;
+        stats->last_lo=r.lo;stats->last_hi=r.hi;
+        uint32_t span=(uint32_t)(r.hi-r.lo);
+        if(span>stats->max_span)stats->max_span=span;
+    } else ++stats->refused;
+    return r;
 }
 
 static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), bool edge_clock)
@@ -235,6 +263,11 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
     uint32_t common_filter_ns=0;
     int64_t arm_us=-1;
     uint64_t rise_before=0,rise_after=0,fall_before=0,fall_after=0;
+    bool clock_link_armed=false,phase_scored=false;
+    uint32_t clock_rearms=0;
+    uint64_t epoch_quiet=0,native_floor=0;
+    sop_clock_stats_t clock_stats={0};
+    sync_phase_bracket_t phase={0};
     const char *failure = "none";
     esp_err_t err = ESP_OK, cleanup = ESP_OK;
     const rmt_rx_channel_config_t cfg = {.gpio_num = SOP_GPIO,
@@ -275,6 +308,9 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
     enabled_rx = true;
     s_probe.armed = true;
     sop_epoch(&s_probe);
+clock_epoch_arm:
+    phase_scored=false;phase=(sync_phase_bracket_t){0};
+    rise_before=rise_after=fall_before=fall_after=0;
     if(edge_clock) {
         /* RX idle expiry can run before its first edge. Do not let a gain
          * task preempt the short RX/ETM/mirror arm sequence. These APIs do
@@ -285,16 +321,20 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
         int64_t arm_start=esp_timer_get_time();
         err=rmt_receive(channel,s_symbols,sizeof(s_symbols),&receive);
         if(err!=ESP_OK)failure="receive";
-        else if(!sync_edge_clock_arm())failure="clock_arm";
+        else if(!clock_link_armed && !sync_edge_clock_arm())failure="clock_arm";
         else if(esp_timer_get_time()-arm_start>SOP_ARM_MAX_US || s_probe.ended)failure="arm_gap";
         else {
             ready=true;
+            clock_link_armed=true;
         }
         arm_us=esp_timer_get_time()-arm_start;
         if(arm_us>SOP_ARM_MAX_US){ready=false;failure="arm_gap";}
         if(ready) {
-            uint64_t quiet;
-            if(!sync_edge_clock_read(&quiet) || quiet!=0u){ready=false;failure="clock_not_quiet";}
+            const bool quiet_read=sync_edge_clock_read(&epoch_quiet);
+            if(!quiet_read || (!clock_rearms?epoch_quiet!=0u:epoch_quiet<=native_floor)) {
+                if(quiet_read && clock_rearms)++clock_stats.regressions;
+                ready=false;failure=clock_rearms?"clock_regression":"clock_not_quiet";
+            }
         }
         if(ready) {
             /* The first raw edge is a recognizable private HIGH marker.
@@ -329,9 +369,15 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
                 if(ready)esp_rom_delay_us(16);
                 if(ready)REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,(witness_matrix&~GPIO_FUNC2_OUT_SEL_M)|52u);
                 uint64_t native_start;
-                if(ready && (!sync_edge_clock_read(&native_start) || native_start>UINT32_MAX-64u)) {
+                if(ready && (!sync_edge_clock_read(&native_start) || native_start<=epoch_quiet ||
+                    native_start-epoch_quiet>UINT32_MAX-64u)) {
                     ready=false;failure="clock_native_start";
-                } else if(ready)s_probe.discard_before=(uint32_t)native_start+common_filter_ns/50u+4u;
+                } else if(ready) {
+                    native_floor=native_start;
+                    /* RMT restarts at zero; the output timer never restarts.
+                     * Its pre-marker read gives a conservative local barrier. */
+                    s_probe.discard_before=(uint32_t)(native_start-epoch_quiet)+common_filter_ns/50u+4u;
+                }
             }
         }
         (void)xTaskResumeAll();
@@ -343,7 +389,22 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
     while (esp_timer_get_time() - began < SOP_WINDOW_US && !s_probe.stop) {
         if (!live(generation)) { s_probe.cancelled = true; failure = "not_live"; break; }
         if (s_probe.ended) {
-            if(edge_clock){failure="epoch_end";break;} /* A restart has a new, unknown first edge. */
+            if(edge_clock) {
+                phase=sop_score_clock(&clock_stats,rise_before,rise_after,fall_before,fall_after);
+                phase_scored=true;
+                if(clock_stats.regressions){failure="clock_regression";break;}
+                /* Only the ended RMT stream is restarted. Keep its timer and
+                 * ETM START route alive; the new private marker calibrates a
+                 * fresh RMT origin on that SAME continuously running clock. */
+                s_probe.armed=false;
+                REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
+                REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,witness_matrix);
+                esp_rom_delay_us(4);
+                if(!sync_edge_clock_disable_filter()){failure="clock_filter_pause";break;}
+                ++clock_rearms;
+                sop_epoch(&s_probe);s_probe.armed=true;
+                goto clock_epoch_arm;
+            }
             sop_epoch(&s_probe);
             err = rmt_receive(channel, s_symbols, sizeof(s_symbols), &receive);
             if (err != ESP_OK) { failure = "restart"; break; }
@@ -353,6 +414,8 @@ static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), b
     }
 done:
     s_probe.armed = false;
+    if(edge_clock && s_probe.epochs && !phase_scored)
+        phase=sop_score_clock(&clock_stats,rise_before,rise_after,fall_before,fall_after);
     if(edge_clock && clock_attempted)clock_read_ok=sync_edge_clock_read(&clock_ticks);
     if (s_probe.bad_data) failure = "bad_data";
     else if (s_probe.marker_invalid) failure = "bad_marker";
@@ -377,14 +440,16 @@ done:
         if(!clock_closed)s_clock_fault=true;
         uint32_t rmt_rise=s_probe.prefix[0]+s_probe.prefix[1];
         uint32_t rmt_fall=rmt_rise+s_probe.prefix[2];
-        sync_phase_bracket_t phase=s_probe.prefix_n==3u?
-            sync_phase_bracket(rmt_rise,rmt_fall,rise_before,rise_after,fall_before,fall_after):
-            (sync_phase_bracket_t){0};
         printf("SYNC_PHASE_BRACKET manual=1 absolute_time=0 camera_qualified=0 prefix_n=%u rmt_rise=%lu rmt_fall=%lu rise_before=%llu rise_after=%llu fall_before=%llu fall_after=%llu valid=%u offset_lo=%lld offset_hi=%lld\n",
             s_probe.prefix_n,(unsigned long)rmt_rise,(unsigned long)rmt_fall,
             (unsigned long long)rise_before,(unsigned long long)rise_after,
             (unsigned long long)fall_before,(unsigned long long)fall_after,
             (unsigned)phase.valid,(long long)phase.lo,(long long)phase.hi);
+        printf("SYNC_CLOCK_EPOCHS manual=1 camera_qualified=0 rearms=%lu valid=%lu refused=%lu pending=%lu regressions=%lu max_span_ticks=%lu last_origin_lo=%lld last_origin_hi=%lld timer_resets=0\n",
+            (unsigned long)clock_rearms,(unsigned long)clock_stats.valid,
+            (unsigned long)clock_stats.refused,(unsigned long)clock_stats.pending,
+            (unsigned long)clock_stats.regressions,(unsigned long)clock_stats.max_span,
+            (long long)clock_stats.last_lo,(long long)clock_stats.last_hi);
         printf("SYNC_EDGE_CLOCK manual=1 absolute_time=0 camera_qualified=0 common_filter_ns=%lu timer_hz=20000000 ticks=%llu read_ok=%u edges_seen=%u closed=%u arm_us=%lld marker_ticks=%lu marker_level=%u marker_ok=%u native_after_ticks=%lu error=%s\n",
             (unsigned long)common_filter_ns,(unsigned long long)clock_ticks,
             (unsigned)clock_read_ok,(unsigned)(s_probe.halves!=0u),

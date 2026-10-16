@@ -46,7 +46,7 @@ static int gpio_new_flex_glitch_filter(const gpio_flex_glitch_filter_config_t *c
  assert(c->clk_src==(PCR.iomux_clk_conf.iomux_func_clk_sel==0?SOC_MOD_CLK_XTAL:SOC_MOD_CLK_PLL_F80M));
  filter=true;*out=(void*)1;return 0;}
 static int gpio_glitch_filter_enable(void *p){ENTER();assert(p&&filter&&!filter_on);filter_on=true;return 0;}
-static int gpio_glitch_filter_disable(void *p){ENTER();assert(p&&filter&&filter_on&&!link);filter_on=false;return 0;}
+static int gpio_glitch_filter_disable(void *p){ENTER();assert(p&&filter&&filter_on);filter_on=false;return 0;}
 static int gpio_del_glitch_filter(void *p){ENTER();assert(p&&filter&&!filter_on);filter=false;return 0;}
 static int gptimer_new_timer(const gptimer_config_t *c,void **out){ENTER();assert(!timer&&c->resolution_hz==20000000u);timer=true;*out=(void*)2;return 0;}
 static int gptimer_enable(void *p){ENTER();assert(p&&timer&&!timer_on);timer_on=true;return 0;}
@@ -89,6 +89,9 @@ int main(void){
   assert(sync_edge_clock_enable_filter()&&!sync_edge_clock_enable_filter());
   hardware_edge();assert(ticks==100); /* another edge cannot reload START_COUNT */
   ticks+=50;assert(sync_edge_clock_read(&n)&&n==150&&!starts&&!sdk_run);
+  assert(sync_edge_clock_disable_filter()&&!sync_edge_clock_disable_filter());
+  hardware_edge();ticks+=50;assert(sync_edge_clock_enable_filter());
+  assert(sync_edge_clock_read(&n)&&n==200&&!starts&&!sdk_run);
   assert(sync_edge_clock_close()&&starts==1&&PCR.iomux_clk_conf.val==before);
   no_resources();assert(sync_edge_clock_close());++checks;
  }

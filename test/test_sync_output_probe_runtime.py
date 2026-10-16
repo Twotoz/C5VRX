@@ -66,13 +66,16 @@ static unsigned clock_calls,clock_fail;
 static bool clock_prepared,clock_armed;
 static bool marker_sent;
 static unsigned clock_reads;
+static uint64_t clock_epoch_base,clock_epoch_stride;
+static unsigned clock_prepares,clock_arms,clock_pauses;
 static bool scheduler_held;
 static void vTaskSuspendAll(void){assert(!scheduler_held);scheduler_held=true;}
 static int xTaskResumeAll(void){assert(scheduler_held);scheduler_held=false;return 0;}
-static bool sync_edge_clock_prepare(void){++clock_calls;assert((registers[GPIO_ENABLE_REG]&(1u<<2))&&!(registers[GPIO_OUT_REG]&(1u<<2)));clock_prepared=clock_fail!=1u;return clock_prepared;}
-static bool sync_edge_clock_arm(void){++clock_calls;assert(scheduler_held&&clock_prepared&&receiving&&!(registers[GPIO_OUT_REG]&(1u<<2)));if(clock_fail==4u)now+=201;clock_armed=clock_fail!=2u;return clock_armed;}
+static bool sync_edge_clock_prepare(void){++clock_calls;++clock_prepares;assert((registers[GPIO_ENABLE_REG]&(1u<<2))&&!(registers[GPIO_OUT_REG]&(1u<<2)));clock_prepared=clock_fail!=1u;return clock_prepared;}
+static bool sync_edge_clock_arm(void){++clock_calls;++clock_arms;assert(scheduler_held&&clock_prepared&&receiving&&!(registers[GPIO_OUT_REG]&(1u<<2)));if(clock_fail==4u)now+=201;clock_armed=clock_fail!=2u;return clock_armed;}
 static bool sync_edge_clock_enable_filter(void){++clock_calls;assert(scheduler_held&&clock_armed&&!(registers[GPIO_OUT_REG]&(1u<<2)));return clock_fail!=5u;}
-static bool sync_edge_clock_read(uint64_t *n){++clock_calls;if(!clock_armed)return false;const unsigned samples[]={0,1000,1030,1400,1430,1600,123456};*n=samples[clock_reads<7u?clock_reads:6u];++clock_reads;return true;}
+static bool sync_edge_clock_disable_filter(void){++clock_calls;++clock_pauses;assert(clock_armed&&!(registers[GPIO_OUT_REG]&(1u<<2)));clock_epoch_base+=clock_epoch_stride;clock_reads=0;marker_sent=false;return clock_fail!=6u;}
+static bool sync_edge_clock_read(uint64_t *n){++clock_calls;if(!clock_armed)return false;const unsigned samples[]={0,1000,1030,1400,1430,1600,123456};*n=clock_epoch_base+samples[clock_reads<7u?clock_reads:6u];if(mode==4u&&clock_epoch_base&&clock_reads==0u)*n=0u;++clock_reads;return true;}
 static bool sync_edge_clock_close(void){++clock_calls;assert(!(registers[GPIO_ENABLE_REG]&(1u<<2)));clock_prepared=clock_armed=false;return clock_fail!=3u;}
 static uint32_t sync_edge_clock_filter_ns(void){return 1200u;}
 static const char *sync_edge_clock_error(void){return "mock";}
@@ -121,8 +124,8 @@ static void vTaskDelay(unsigned ticks){
  if(receiving&&mock_cb.on_recv_done){
   rmt_symbol_word_t words[48];
   for(unsigned i=0;i<48;++i)words[i]=(rmt_symbol_word_t){.duration0=1186,.level0=1,.duration1=94,.level1=0};
-  if(clock_armed && mode==1u && !marker_sent){words[0]=(rmt_symbol_word_t){.duration0=320,.level0=1,.duration1=720,.level1=0};words[1]=(rmt_symbol_word_t){.duration0=400,.level0=1,.duration1=94,.level1=0};marker_sent=true;}
-  rmt_rx_done_event_data_t event={.received_symbols=words,.num_symbols=mode==1?48u:0u,.flags={.is_last=mode!=1}};
+  if(clock_armed && (mode==1u||mode==3u||mode==4u) && !marker_sent){words[0]=(rmt_symbol_word_t){.duration0=320,.level0=1,.duration1=720,.level1=0};words[1]=(rmt_symbol_word_t){.duration0=400,.level0=1,.duration1=94,.level1=0};marker_sent=true;}
+  rmt_rx_done_event_data_t event={.received_symbols=words,.num_symbols=(mode==1u||mode==3u||mode==4u)?48u:0u,.flags={.is_last=mode!=1}};
   if(event.flags.is_last)receiving=false;
   assert(!mock_cb.on_recv_done((void*)1,&event,mock_context));
  }
@@ -140,6 +143,7 @@ static void reset(void){
  memset(&mock_cb,0,sizeof(mock_cb));mock_context=NULL;
  s_busy=false;s_quarantined=NULL;memset(&s_probe,0,sizeof(s_probe));
  s_clock_fault=false;clock_calls=clock_fail=clock_reads=0;clock_prepared=clock_armed=scheduler_held=marker_sent=false;
+ clock_epoch_base=0;clock_epoch_stride=100000u;clock_prepares=clock_arms=clock_pauses=0;
 }
 static void parser_start(void){reset();s_probe.armed=true;s_probe.live=owner_live;s_probe.generation=7;sop_epoch(&s_probe);}
 static void event(rmt_symbol_word_t *words,size_t n,bool last){
@@ -246,7 +250,13 @@ static void lifecycle(void){
  uint32_t data_before=registers[GPIO_OUT_REG];sync_output_clock_probe(7,owner_live);
  assert(registers[GPIO_OUT_REG]==data_before&&!s_probe.marker_invalid);
  reset();sync_output_clock_probe(7,owner_live);
- assert(receives==1u&&s_probe.epochs==1u&&s_probe.ended&&!clock_prepared);
+ assert(receives>1u&&s_probe.epochs>1u&&!clock_prepared&&clock_prepares==1u&&clock_arms==1u);
+ reset();mode=3;sync_output_clock_probe(7,owner_live);
+ assert(s_probe.epochs>20u&&s_probe.h>1000u&&clock_prepares==1u&&clock_arms==1u&&clock_pauses>20u);
+ reset();mode=3;clock_epoch_stride=UINT64_C(1)<<40;sync_output_clock_probe(7,owner_live);
+ assert(s_probe.epochs>20u&&s_probe.h>1000u&&clock_prepares==1u&&clock_arms==1u);
+ reset();mode=4;sync_output_clock_probe(7,owner_live);
+ assert(receives==2u&&s_probe.epochs==2u&&now<50000&&!clock_prepared);
  for(unsigned i=1;i<=5u;++i){reset();mode=1;clock_fail=i;
   sync_output_clock_probe(7,owner_live);assert(!clock_prepared&&!clock_armed);
   assert(s_clock_fault==(i==3u));}

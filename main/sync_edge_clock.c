@@ -123,3 +123,11 @@ bool sync_edge_clock_enable_filter(void)
     if(gpio_glitch_filter_enable(s->filter)!=ESP_OK){s->error="filter_enable";return false;}
     s->filter_on=true;return true;
 }
+
+bool sync_edge_clock_disable_filter(void)
+{
+    sec_t *s=&s_clock;
+    if(!s->busy || s->quarantined || !s->filter || !s->filter_on)return false;
+    if(gpio_glitch_filter_disable(s->filter)!=ESP_OK){s->error="filter_pause";return false;}
+    s->filter_on=false;return true;
+}
