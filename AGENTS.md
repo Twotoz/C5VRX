@@ -654,6 +654,12 @@ Reject marker mismatch, pre-handoff runs, unanchored RX restarts, excessive
 event rate and arm delay. Gate-L captures20/20 private markers on C5 with
 stable heap and exact cleanup; this is not qualified native-camera phase,
 an absolute timing bound, automatic activation or monitor-lock evidence.
+Gate-M adds a second filtered GPIO2 marker, bounding both transitions with
+timer reads, GPIO readbacks and fences. sync_phase_bracket.h intersects the
+two counter-offset intervals, refusing inconsistent/wide/overflowing bounds.
+40 physical marker trials produce valid digital intervals; warm heap is
+stable and no marker becomes native H/V evidence. This remains a manual
+clock experiment, not a continuously tracked camera or automatic flywheel.
 Black fallback defaults OFF every boot; `N` is its opt-in bench toggle.
 `docs/SYNC_KEEPER.md` / `research/sync_iq_mux.py` explore DMA synthetic-IQ
 sync/blanking plus unmodified active RX IQ. Exact-timing host cases preserve

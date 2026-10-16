@@ -695,3 +695,36 @@ phase error bound, qualified camera tracking or monitor lock. The shared
 first-edge relationship and later native waveform timestamps still require
 calibration/qualification. The original manual Y remains available, and
 automatic flywheel activation remains OFF.
+
+### Filtered two-edge clock bounds (2026-10-16)
+
+Gate-M (`307d735`, SHA256
+`470014cc87822d5299ba281e12c1568a853adfea20a4b359e3a3d51f801ff0aa`)
+adds a second private marker AFTER enabling the native GPIO filter. Timer
+reads bracket its rising and falling GPIO writes, with fences and GPIO data
+readbacks. Their two independent offset intervals are intersected against
+the RMT prefix timestamps. This measures the filtered input path, including
+its delay, rather than assuming a fixed1.2us correction. A non-overlapping,
+non-monotonic, overflowing or wider-than64-tick interval is refused.
+The first timer read must still be zero before the original raw marker;
+an unexpectedly pre-started clock cannot silently acquire an invented epoch.
+Both markers stay outside the native-evidence barrier and cannot supply
+source H/V counts. Integer fixtures cover7247 cases, including large64-bit
+timer origins, and pass address/undefined-behavior sanitizers.
+
+The first gate-M y attempt refused context ownership before setup. Its PAL
+and NTSC long gate tests then both completed without transport faults.
+Two subsequent batches of20 clock probes each produce consistent intervals
+on the C5. Full rows/hashes are in board_phase_m_repeat{,_b}_2026-10-16.
+The first batch includes initial shared-driver allocation; the second warm
+batch verifies stable heap. No camera is detected and no source H/V pulse
+is inferred from the markers. These are digital counter/readback bounds
+under their stated transition-timestamp assumptions, not an independently
+scoped CVBS phase-error guarantee or monitor-lock proof.
+
+Remaining integration is a continuous source observer retaining its timer
+across RX epochs, qualified native H/V phase and period tracking, and using
+that model to gate only missing sync. Restart markers need their own newly
+calibrated RMT origin without resetting the already-running output clock.
+Default automatic activation remains OFF until that path is implemented
+and physically qualified; manual Y/y/Q/q are not that automatic path.
