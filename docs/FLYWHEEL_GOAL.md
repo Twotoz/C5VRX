@@ -445,3 +445,21 @@ early; discard the pending observation on epoch/context/source expiry.
 Do not publish PLL, missing-pulse counters or repairs until the operation is
 complete. Broad-pulse lifetime allows only a few chunks in the actual ring,
 so dividing a1300-byte walk into arbitrarily tiny pieces is insufficient.
+
+`42ab157` is now flashed with hash verification, version
+`5.0.0-pr.212-sync-moments`, application SHA256
+`c3189f6dddcf72d1f3b98665aea2cf5774a0210d4c3a10ab6de0d0cc6b1bba27`.
+It boots normally. Three no-video diagnostic starts reach206/1160/1003
+kernel calls and stop on source-lifetime checks; maxima121/215/124 us,
+read results12/3/10. These are still acquisition-only runs, so they do not
+measure the changed TRACK moment routines. Do not attribute the longer
+second/third runs to those routines. No actual camera or monitor lock is
+proved. Captures and hashes: `board_w_moments_2026-10-16.{json,txt}`.
+
+The later127-stride/budget40 replay (including exact moment reuse) ends
+locked in all six scenes, with one stale acquisition skip per scene.
+First locks occur at25.288ms PAL and25.368ms NTSC, versus59.928ms PAL
+and18.168ms NTSC for the unchanged63-stride comparison at the same budget.
+TRACK peaks still reach678 evaluations. This is a candidate for reducing
+average acquisition load, not a uniform latency improvement or a bound on
+TRACK. Data: `sync_read_turn_stride127_40.json`; it is not flashed.
