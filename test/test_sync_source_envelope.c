@@ -65,9 +65,12 @@ static void replay(bool pal,unsigned budget,bool balanced,bool noise_only)
          * and acquire coarse/fine continuation across call boundaries. */
         for(unsigned repeat=0;repeat<3;++repeat){
             extent=(sync_read_extent_t){0};memcpy(before,ring,RING);
+            bool acquiring=detector.state==SFW_ACQUIRE;
+            unsigned turn_budget=repeat==1?1u:budget;
             coverage_active=true;
-            sfw_run(&detector,&r,done,done,0,false,repeat==1?1u:budget);
+            unsigned processed=sfw_run(&detector,&r,done,done,0,false,turn_budget);
             coverage_active=false;
+            if(acquiring){assert(!processed);assert(detector.evals<=turn_budget);}
             assert(!s_read_extent); /* no retained stack/owner pointer */
             assert(!memcmp(before,ring,RING));
             if(repeat || done==prior_done)++coverage_repeated;

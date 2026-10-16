@@ -15,11 +15,33 @@ import sync_acquire_stride as coarse
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--budget',type=int,default=192);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--budget',type=int,default=192)
+    parser.add_argument('--current-stride',type=int,choices=(127,))
+    args=parser.parse_args()
     frozen=ROOT/'research/data/sync_read_core_cb538a1c.c.gz'
-    raw_source=gzip.decompress(frozen.read_bytes())
+    raw_source=((ROOT/'main/sync_flywheel.c').read_bytes() if args.current_stride
+                else gzip.decompress(frozen.read_bytes()))
     source=raw_source.decode().replace('\r\n','\n')
-    baseline,changed=coarse.variants(source)
+    if args.current_stride:
+        baseline='unsigned sfw_research_acq_skips;\n'+coarse.replace_once(source,
+            'f->scan_pos = avail_end - 6000u;',
+            '++sfw_research_acq_skips; f->scan_pos = avail_end - 6000u;')
+        changed=coarse.replace_once(baseline,
+            'f->scan_pos += f->acq_phase < 2u ? 63u : 3u;',
+            'f->scan_pos += f->acq_phase < 2u ? 127u : 3u;')
+        changed=coarse.replace_once(changed,'f->scan_pos = k > 71u ? k - 63u : 8u;',
+            'f->scan_pos = k > 135u ? k - 127u : 8u;')
+        # A minimum150-sample plateau retains140 sample centers after the
+        # nine-step support. All127 coarse phases hit it; fine stride3 can
+        # recover the leading edge within2. Not a noisy-IQ detection proof.
+        for width in range(150,231):
+            for phase in range(127):
+                lo,hi=5,width-5
+                hit=next(k for k in range(phase,hi,127) if k>=lo)
+                refined=next(k for k in range(hit-127,hi,3) if k>=lo)
+                assert lo<=refined<=lo+2
+    else:
+        baseline,changed=coarse.variants(source)
     marker='    return r->phase[r->ring[(uint32_t)k & (r->ring_bytes - 1u)]];'
     cores={}
     for name,body in [('baseline',baseline),('coarse',changed)]:
@@ -60,11 +82,18 @@ int main(int argc,char **argv){if(argc!=4)return 2;bool p=atoi(argv[1]);unsigned
                     print(name,variant,row,flush=True)
                     assert row['raw_writes']==row['readers_left']==row['rejected']==0
                     assert not row['write_permission']
-                    if variant=='coarse':assert row['first_lock_us'] and row['first_v_us'] and row['real_v_fields']
+                    if variant=='coarse' and not args.current_stride:
+                        assert row['first_lock_us'] and row['first_v_us'] and row['real_v_fields']
     report=dict(provenance='C5VRX by Twotoz/contributors; https://github.com/Twotoz/C5VRX; https://twotoz.github.io/C5VRX/',
         raw_core_sha256=hashlib.sha256(raw_source).hexdigest(),normalized_core_sha256=hashlib.sha256(source.encode()).hexdigest(),
-        model_read_us=8,service_us=80,budget=args.budget,actual_rx_geometry=True,hardware_cycles_proven=False,inputs=inputs,rows=results)
+        candidate_core_sha256=hashlib.sha256(changed.encode()).hexdigest(),
+        model_read_us=8,service_us=80,budget=args.budget,current_stride=args.current_stride,
+        actual_rx_geometry=True,hardware_cycles_proven=False,
+        candidate_acquires_all=all(r['first_lock_us'] and r['first_v_us'] and r['real_v_fields']
+                                  for r in results if r['variant']=='coarse'),
+        inputs=inputs,rows=results)
     name='sync_read_turn.json' if args.budget==192 else f'sync_read_turn_{args.budget}.json'
+    if args.current_stride:name=f'sync_read_turn_stride{args.current_stride}_{args.budget}.json'
     (ROOT/'research/data'/name).write_text(json.dumps(report,indent=2)+'\n')
 
 if __name__=='__main__':main()

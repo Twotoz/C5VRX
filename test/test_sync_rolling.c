@@ -60,6 +60,23 @@ int main(void)
         coarse_reads+=phase_reads;
     }
     printf("PASS: 1000000 exact coarse windows, %u phase reads instead of 10000000, no rolling cache reuse\n",coarse_reads);
+    for(unsigned trial=0;trial<50000u;++trial){
+        static const unsigned lengths[]={0,1,16,32,128};
+        unsigned count=lengths[trial%5u];uint64_t first=65536u+next()%32768u;
+        if(trial%101u==0){raw[next()%32768u]^=0xffu;phase[next()%256u]^=0x7fu;}
+        int sum=17,squares=23,expected_sum=sum,expected_squares=squares;
+        for(unsigned j=0;j<count;++j){
+            int d=(int)phase[raw[(first+j)&32767u]]-(int)phase[raw[(first+j-1u)&32767u]];
+            while(d>127)d-=256;
+            while(d< -128)d+=256;
+            expected_sum+=d;expected_squares+=d*d;
+        }
+        unsigned steps_before=s_steps;phase_reads=0;
+        step_moments(&r,first,count,&sum,&squares);
+        assert(sum==expected_sum&&squares==expected_squares);
+        assert(s_steps-steps_before==count&&phase_reads==(count?count+1u:0u));
+    }
+    puts("PASS: 50000 exact adjacent moments, wrapping/mutated input; tip64->33 and levels352->179 phase loads, same counters");
     sync_read_extent_t extent={0};r.read_extent=&extent;
     sfw_init(&f);f.scan_pos=65536u;
     assert(!sfw_run(&f,&r,70000u,89452u,0,false,52u));

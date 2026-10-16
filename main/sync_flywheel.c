@@ -1008,14 +1008,28 @@ static pulse_t find_pulse(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t pred
     return P_NONE;
 }
 
+/* Exact adjacent-step moments. Each phase belongs to both neighboring
+ * differences; retain it within this immutable read span instead of loading
+ * it twice. No samples, precision or variance terms are dropped. */
+static inline void step_moments(const sfw_ring_t *r,uint64_t first,unsigned count,
+                               int *sum,int *squares)
+{
+    if(!count)return;
+    unsigned previous=ph_at(r,first-1u);
+    for(unsigned k=0;k<count;++k){
+        unsigned phase=ph_at(r,first+k);
+        int d=wrap8((int)phase-(int)previous);
+        *sum+=d;*squares+=d*d;
+        previous=phase;
+    }
+    s_steps+=count;
+}
+
 static bool steady_tip(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t start)
 {
     if (!original(f, start + 59u, start + 92u)) return false;
     int sum = 0, squares = 0;
-    for (unsigned k = 0; k < 32u; ++k) {
-        int d = step3(r, start + 60u + k);
-        sum += d; squares += d * d;
-    }
+    step_moments(r,start+60u,32u,&sum,&squares);
     s_evals += 32u;
     return 32 * squares - sum * sum <= 32 * 32 * 64;
 }
@@ -1074,13 +1088,9 @@ static void learn_levels(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t start
         !original(f, start - 61u, start - 28u) ||
         !original(f, start + 191u, start + 208u)) return;
     int s = 0, b = 0, ss = 0, bb = 0;
-    for (unsigned k = 0; k < 128u; ++k) {
-        int d = step3(r, start + 30u + k); s += d; ss += d * d;
-    }
-    for (unsigned k = 0; k < 48u; ++k) {
-        uint64_t at = k < 32u ? start - 60u + k : start + 192u + (k - 32u);
-        int d = step3(r, at); b += d; bb += d * d;
-    }
+    step_moments(r,start+30u,128u,&s,&ss);
+    step_moments(r,start-60u,32u,&b,&bb);
+    step_moments(r,start+192u,16u,&b,&bb);
     s_evals += 176u;
     /* At weak RF the circular phase slope is biased toward zero. A plausible
      * line width alone cannot qualify a new frequency/level: relearning it
@@ -1300,7 +1310,13 @@ SFW_HOT unsigned sfw_run(sync_flywheel_t *f, const sfw_ring_t *r, uint64_t avail
     if (f->state == SFW_ACQUIRE) {
         acquire(f, r, avail_end, budget_evals);
         store_evals(f);
-        if (f->state == SFW_ACQUIRE) {s_read_extent=NULL;return 0;}
+        /* Acquiring a camera must not append an entire TRACK iteration to
+         * this bounded acquisition turn. Its pulse classifier/level learner
+         * can exceed the remaining budget before checking it again. The
+         * next call resumes the accepted track state against fresh source
+         * lifetime metadata, without replaying acquisition votes. */
+        s_read_extent=NULL;
+        return 0;
     }
     unsigned processed=run_tracking(f,r,avail_end,write_floor,allow_repair,budget_evals);
     s_read_extent=NULL;

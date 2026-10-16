@@ -170,7 +170,10 @@ bool sfw_bootstrap_source(sync_flywheel_t *f, uint32_t context, uint8_t fallback
 int sfw_output_standard(const sync_flywheel_t *f);
 /* Process predicted lines / V slots whose data is complete (< avail_end,
  * absolute sample index, exclusive). Writes only samples >= write_floor
- * (ahead of the TX read). At most budget_evals detection evaluations per call;
+ * (ahead of the TX read). Acquisition consumes at most budget_evals detection
+ * evaluations and yields before tracking even when it finds a camera.
+ * TRACK currently checks this budget between complete pulse/line operations;
+ * its width/level helpers can exceed it. It is NOT a hard cycle/work bound.
  * a flywheel that falls behind coasts lines unanalysed (nothing written).
  * rx_complete is the actual monotonically increasing completed RX frontier,
  * distinct from the observer-protected avail_end. Only proved RX overwrite

@@ -403,3 +403,45 @@ the old BF0-anchored ceiling would place inside protected CPU history.
 This remains a conditional arithmetic model without a production writer;
 physical prefetch bounds, complete publication WCET and actual separation
 must still be qualified before stores.
+
+### Detector work budget: acquisition transition and exact adjacent moments
+
+The existing TRACK budget is soft: one complete width/level operation can
+consume hundreds of evaluations before the outer loop checks again. The
+127-stride experiment in `sync_read_turn.py --current-stride 127` preserves
+the original nine-step decision and fine stride3, with an independent
+10,287-case plateau/lattice check. It is NOT promoted to firmware. At
+budget26 neither seek variant acquires any of the six scenes. At32 the wider seek
+can acquire, but the pre-yield report reaches320 evaluations in an
+acquisition-entered call and753 in TRACK. Doubling the seek stride alone
+does not provide a bounded service turn.
+
+The core now returns after acquisition, retaining the accepted TRACK state
+for the next call. Source-envelope tests assert zero processed lines and
+evaluations<=budget for every acquisition-entered call. All ordinary keeper
+scenes still pass. Advancing-DMA replay at the actual52 budget acquires and
+ends locked in all six baseline PAL/NTSC clean/fade/phase-return scenes;
+maximum acquisition evaluations are52. The32-budget baseline exposes an
+important limit: yielding can let already-old anchors expire before TRACK.
+It is not evidence that the service can simply lower its budget to32.
+TRACK still reaches723 evaluations in the52-budget replay. Before/after
+reports retain source hashes; `_32_pre_yield` preserves the previous trace.
+All these replay spans model8us and do not measure C5 cycles.
+
+Exact adjacent-step moments now carry each phase to the next difference:
+steady-tip phase loads64->33, level-learning loads352->179, with identical
+176 level steps, sums, squares, thresholds and precision. 50,000 independent
+scalar moment comparisons include wrapped source indices, mutated phase
+tables and unchanged work counters. The existing million-case rolling and
+million-case coarse tests pass; the source-envelope oracle covers2,933,620
+loads and27,225 turns; the kp0.85 PAL/NTSC keeper suite still preserves
+active IQ through fades, loss and return. These are host results.
+
+Next required work is a resumable exact pulse/line observation with a real
+source-load or cycle bound. Exhaustion must return PENDING, never missing
+sync. Freeze prediction, threshold and width room; preserve width counters;
+register only each continuation's new reads; collect old steady-tip samples
+early; discard the pending observation on epoch/context/source expiry.
+Do not publish PLL, missing-pulse counters or repairs until the operation is
+complete. Broad-pulse lifetime allows only a few chunks in the actual ring,
+so dividing a1300-byte walk into arbitrarily tiny pieces is insufficient.
