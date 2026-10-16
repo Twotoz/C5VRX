@@ -122,6 +122,7 @@ jobs:
           python3 test/test_iq_snapshot.py
           python3 test/test_settings.py
           python3 test/test_native_owner.py
+          python3 test/test_phy_observation_hook.py
           python3 test/test_gain_map_context.py
           python3 test/test_raw_access_runtime.py
           python3 test/test_afc_telemetry.py
@@ -133,6 +134,7 @@ jobs:
           python3 test/test_sync_gate_probe_runtime.py
           python3 test/test_sync_output_probe_runtime.py
           python3 test/test_sync_edge_clock_runtime.py
+          python3 test/test_sync_native_witness_runtime.py
       - name: Analytic IQ lane reference
         shell: bash
         run: |

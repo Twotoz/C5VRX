@@ -27,6 +27,23 @@
 #define MENU_IDLE_TICKS  600            /* 30 s without a press closes the menu */
 #define RETUNE_SETTLE_TICKS 10          /* 500 ms after a PHY transaction */
 #define SCAN_PAIRS       4092u
+#define CONTROL_STACK_BYTES 6144u
+
+typedef struct {
+    StaticTask_t task;
+    StackType_t stack[CONTROL_STACK_BYTES/sizeof(StackType_t)] __attribute__((aligned(portBYTE_ALIGNMENT)));
+} control_memory_t;
+static control_memory_t *s_control_memory;
+
+bool control_prepare(void)
+{
+    if(!s_control_memory) {
+        s_control_memory=heap_caps_aligned_alloc(portBYTE_ALIGNMENT,sizeof(*s_control_memory),
+            MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+        if(s_control_memory)memset(s_control_memory,0,sizeof(*s_control_memory));
+    }
+    return s_control_memory!=NULL;
+}
 
 volatile bool s_menu_active;
 volatile int s_signal_strength;
@@ -269,6 +286,7 @@ static void command(int c, unsigned *menu_idle)
     }
     switch (c) {
     case '~': receiver_native_toggle(); break;
+    case 'u': transport_sync_live_toggle(); break;
     case 'N': {
         bool enabled = !no_signal_enabled();
         if (!enabled && no_signal_active()) {
@@ -379,6 +397,7 @@ static void control_task(void *arg)
     uint32_t seen_restart_errors = transport_restart_errors();
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(2));
+        transport_sync_live_tick();
         int64_t watch_start = esp_timer_get_time();
         uint32_t video_context = afc_context(), video_gain = s_gain_epoch;
         if (video_loss.initialized && video_loss.context != video_context) s_video_watch.last_us = 0;
@@ -663,7 +682,11 @@ void control_start(void)
     const int actual = transport_kp_level();
     if (actual >= 0) s_kp.level = (uint8_t)actual;
     s_kp.lp = transport_lp();
-    ESP_ERROR_CHECK(xTaskCreate(control_task, "control", 6144, NULL, 3, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
+    /* IDF task stack depths are bytes. Reserve before driver allocations,
+     * then supply that same 6144-byte stack and TCB without another malloc. */
+    ESP_ERROR_CHECK(control_prepare() &&
+        xTaskCreateStatic(control_task,"control",CONTROL_STACK_BYTES,NULL,3,
+            s_control_memory->stack,&s_control_memory->task)!=NULL ? ESP_OK:ESP_ERR_NO_MEM);
 }
 
 /* Status beat for the web menu (web/receiver-console.js): one short line

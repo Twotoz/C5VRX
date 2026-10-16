@@ -1,7 +1,7 @@
 /* C5VRX by Twotoz and contributors: bounded input-only RMT DACbit4 probe.
  * This manual observer and its RX ISR stay in flash to preserve receiver
  * task SRAM. Cache-disabled intervals may lose observations; this module
- * never supplies production clock evidence or schedules output pulses.
+ * supplies candidate clock evidence only; it never schedules output pulses.
  * Captures durations, not absolute GPTIMER timestamps. Bright-picture aliases
  * and generated gates are not camera evidence. Owner must exclude gates.
  * GPIO2 (unused MTMS pad) mirrors PARLIO DATA4 independently of DAC OE.
@@ -31,8 +31,10 @@ _Static_assert((SOP_MASK & UINT32_C(0x01801b00)) == 0u,
                "native witness must be outside all six DAC output enables");
 #define SOP_SYMBOLS 48u
 #define SOP_WINDOW_US 50000
-#define SOP_HARD_US 100000
 #define SOP_ARM_MAX_US 200
+/* 48-symbol partial deliveries may contain about three milliseconds of H.
+ * This bounds delivery staleness, not per-line missing-sync detection. */
+#define SOP_MODEL_MAX_AGE_TICKS 100000u
 
 /* Allocate after receiver startup: even a small BSS increase can prevent
  * its contiguous control-task stack allocation. Keep storage alive permanently
@@ -43,6 +45,10 @@ typedef struct {
     sync_native_track_t native;
     uint32_t native_qualified_epochs;
     bool native_phase_checked,native_reported;
+    int64_t rate_started;
+    uint32_t rate_callbacks;
+    volatile uint32_t sequence;
+    bool resident;
 } sop_native_t;
 static sop_native_t *s_native;
 
@@ -167,13 +173,18 @@ static bool sop_half(sop_context_t *s, uint32_t duration, bool level)
     return true;
 }
 
-static bool sop_received(rmt_channel_handle_t channel,
+static bool sop_received_inner(rmt_channel_handle_t channel,
                                    const rmt_rx_done_event_data_t *event, void *arg)
 {
     (void)channel;
     sop_context_t *s = arg;
     if (!s->armed || s->stop) return false;
-    if(s->callbacks>=256u){s->rate_limited=true;s->stop=true;return false;}
+    int64_t rate_now=esp_timer_get_time();
+    if(s_native && s_native->resident && rate_now-s_native->rate_started>=SOP_WINDOW_US) {
+        s_native->rate_started=rate_now;s_native->rate_callbacks=0;
+    }
+    if((s_native && s_native->resident?s_native->rate_callbacks:s->callbacks)>=256u){s->rate_limited=true;s->stop=true;return false;}
+    if(s_native && s_native->resident)++s_native->rate_callbacks;
     if (!s->live(s->generation)) {
         s->cancelled = true; s->stop = true; return false;
     }
@@ -200,6 +211,19 @@ static bool sop_received(rmt_channel_handle_t channel,
         s->h_train = s->broad_train = 0u;
     }
     return false;
+}
+
+/* Single-core C5: snapshots reject a callback-interrupted copy. All callback
+ * storage remains owned even after a failed disable/detach/delete. */
+static bool sop_received(rmt_channel_handle_t channel,
+    const rmt_rx_done_event_data_t *event,void *arg)
+{
+    if(s_native)++s_native->sequence;
+    __sync_synchronize();
+    bool wake=sop_received_inner(channel,event,arg);
+    __sync_synchronize();
+    if(s_native)++s_native->sequence;
+    return wake;
 }
 
 static void sop_epoch(sop_context_t *s)
@@ -243,114 +267,59 @@ static sync_phase_bracket_t sop_score_clock(sop_clock_stats_t *stats,
     return r;
 }
 
-static void sync_output_probe_run(uint32_t generation, bool (*live)(uint32_t), bool edge_clock)
+typedef struct {
+    uint32_t generation;
+    bool (*live)(uint32_t);
+    bool edge_clock;
+    uint32_t iomux;
+    uint32_t matrix;
+    uint32_t enabled;
+    uint32_t mirror_iomux;
+    uint32_t mirror_matrix;
+    uint32_t mirror_pin;
+    uint32_t mirror_enable;
+    uint32_t mirror_output;
+    uint32_t witness_iomux;
+    uint32_t witness_matrix;
+    rmt_channel_handle_t channel;
+    bool enabled_rx;
+    bool pin_changed;
+    bool clock_attempted;
+    bool clock_read_ok;
+    bool clock_closed;
+    uint64_t clock_ticks;
+    uint32_t common_filter_ns;
+    int64_t arm_us;
+    uint64_t rise_before;
+    uint64_t rise_after;
+    uint64_t fall_before;
+    uint64_t fall_after;
+    bool clock_link_armed;
+    bool phase_scored;
+    uint32_t clock_rearms;
+    uint64_t epoch_quiet;
+    uint64_t native_floor;
+    sop_clock_stats_t clock_stats;
+    sync_phase_bracket_t phase;
+    const char *failure;
+    esp_err_t err;
+    esp_err_t cleanup;
+    rmt_receive_config_t receive;
+    int64_t began;
+    int64_t epoch_started;
+    bool resident;
+    volatile bool invalidated;
+    sync_output_live_model_t retained;
+} sop_session_t;
+static sop_session_t *s_session;
+static bool sop_session_end(sop_session_t *s);
+
+static bool sop_session_arm(sop_session_t *s)
 {
-    if (s_busy || s_quarantined || s_clock_fault) {
-        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=busy_or_quarantined\n"); return;
-    }
-    if (!live || !live(generation)) {
-        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=not_live\n"); return;
-    }
-    if(edge_clock && !s_native) {
-        s_native=calloc(1,sizeof(*s_native));
-        if(!s_native){printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=native_memory\n");return;}
-    }
-    if(edge_clock)memset(s_native,0,sizeof(*s_native));
-    s_busy = true;
-    uint32_t iomux = REG_READ(IO_MUX_GPIO8_REG);
-    uint32_t matrix = REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG);
-    uint32_t enabled = REG_READ(GPIO_ENABLE_REG) & (1u << 8);
-    /* PARLIO DATA4 index52, push-pull, no inversion. Either peripheral or
-     * GPIO-controlled OE is valid: this input-only observer changes neither.
-     * The root caller additionally verifies LP and unscaled1x reference LUT. */
-    bool pin_ok = (matrix & GPIO_FUNC8_OUT_SEL_M) == 52u &&
-        !(matrix & (GPIO_FUNC8_OUT_INV_SEL_M | GPIO_FUNC8_OE_INV_SEL_M)) &&
-        enabled &&
-        !(REG_READ(GPIO_PIN8_REG) & GPIO_PIN8_PAD_DRIVER_M) &&
-        ((iomux & MCU_SEL_M) >> MCU_SEL_S) == 1u;
-    if (!pin_ok) {
-        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=pin_context matrix=0x%08lx iomux=0x%08lx enable=0x%08lx pad=0x%08lx\n",
-            (unsigned long)matrix, (unsigned long)iomux, (unsigned long)enabled,
-            (unsigned long)REG_READ(GPIO_PIN8_REG));
-        s_busy = false; return;
-    }
-    /* The native witness must continue seeing PARLIO while all six DAC pads
-     * are gated. GPIO2 is not wired to the DAC and must be unused/disabled.
-     * Its MTMS role is already unavailable in this RX GPIO3/4/5 topology.
-     * Refuse an occupied output rather than taking it from another owner. */
-    uint32_t mirror_iomux = REG_READ(IO_MUX_GPIO2_REG);
-    uint32_t mirror_matrix = REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG);
-    uint32_t mirror_pin = REG_READ(GPIO_PIN2_REG);
-    uint32_t mirror_enable = REG_READ(GPIO_ENABLE_REG) & SOP_MASK;
-    uint32_t mirror_output = REG_READ(GPIO_OUT_REG) & SOP_MASK;
-    if (mirror_enable || (mirror_pin & GPIO_PIN2_PAD_DRIVER_M)) {
-        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=mirror_occupied\n");
-        s_busy = false; return;
-    }
-    uint32_t witness_iomux = (mirror_iomux & ~(MCU_SEL_M | FUN_PU | FUN_PD)) |
-        (1u << MCU_SEL_S) | FUN_IE;
-    uint32_t witness_matrix = (mirror_matrix & ~(GPIO_FUNC2_OUT_SEL_M |
-        GPIO_FUNC2_OUT_INV_SEL_M | GPIO_FUNC2_OE_INV_SEL_M)) | (edge_clock?256u:52u) | GPIO_FUNC2_OE_SEL_M;
-    memset(&s_probe, 0, sizeof(s_probe));
-    s_probe.generation = generation; s_probe.live = live;
-    s_probe.marker_required=edge_clock;
-    if(edge_clock)s_probe.discard_before=UINT32_MAX; /* IRQs may precede handoff publication. */
-    rmt_channel_handle_t channel = NULL;
-    bool enabled_rx = false, pin_changed = false;
-    bool clock_attempted=false,clock_read_ok=false,clock_closed=true;
-    uint64_t clock_ticks=0;
-    uint32_t common_filter_ns=0;
-    int64_t arm_us=-1;
-    uint64_t rise_before=0,rise_after=0,fall_before=0,fall_after=0;
-    bool clock_link_armed=false,phase_scored=false;
-    uint32_t clock_rearms=0;
-    uint64_t epoch_quiet=0,native_floor=0;
-    sop_clock_stats_t clock_stats={0};
-    sync_phase_bracket_t phase={0};
-    const char *failure = "none";
-    esp_err_t err = ESP_OK, cleanup = ESP_OK;
-    const rmt_rx_channel_config_t cfg = {.gpio_num = SOP_GPIO,
-        .clk_src = RMT_CLK_SRC_PLL_F80M, .resolution_hz = 20000000u,
-        .mem_block_symbols = 96u, .intr_priority = 2};
-    const rmt_rx_event_callbacks_t callbacks = {.on_recv_done = sop_received};
-    const rmt_receive_config_t receive = {.signal_range_min_ns = edge_clock?0u:2500u,
-        .signal_range_max_ns = edge_clock?1000000u:100000u, .flags = {.en_partial_rx = true}};
-    int64_t began = esp_timer_get_time();
-    if(edge_clock)REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
-    REG_WRITE(IO_MUX_GPIO2_REG, witness_iomux);
-    REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG, witness_matrix);
-    REG_WRITE(GPIO_ENABLE_W1TS_REG, SOP_MASK);
-    if (REG_READ(IO_MUX_GPIO2_REG) != witness_iomux ||
-        REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) != witness_matrix ||
-        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) != SOP_MASK) {
-        failure = "mirror_readback"; goto done;
-    }
-    err = rmt_new_rx_channel(&cfg, &channel);
-    if (err != ESP_OK) { failure = "new_rx"; goto done; }
-    /* SDK may set FUN_IE and reselect the same GPIO function. All other
-     * matrix/OE and IO MUX bits must remain unchanged before enabling RX. */
-    pin_changed = REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) != witness_matrix ||
-        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) != SOP_MASK ||
-        REG_READ(IO_MUX_GPIO2_REG) != witness_iomux;
-    if (pin_changed) { failure = "pin_mutated"; goto done; }
-    err = rmt_rx_register_event_callbacks(channel, &callbacks, &s_probe);
-    if (err != ESP_OK) { failure = "callbacks"; goto done; }
-    if(edge_clock) {
-        clock_attempted=true;
-        if(!sync_edge_clock_prepare()){failure="clock_prepare";goto done;}
-        common_filter_ns=sync_edge_clock_filter_ns();
-        esp_rom_delay_us(50); /* Private GPIO data drives a quiet LOW; DAC is untouched. */
-    }
-    if (!live(generation)) { s_probe.cancelled = true; failure = "not_live"; goto done; }
-    err = rmt_enable(channel);
-    if (err != ESP_OK) { failure = "enable"; goto done; }
-    enabled_rx = true;
-    s_probe.armed = true;
-    sop_epoch(&s_probe);
-clock_epoch_arm:
-    phase_scored=false;phase=(sync_phase_bracket_t){0};
-    rise_before=rise_after=fall_before=fall_after=0;
-    if(edge_clock) {
+    s->epoch_started=esp_timer_get_time();
+    s->phase_scored=false;s->phase=(sync_phase_bracket_t){0};
+    s->rise_before=s->rise_after=s->fall_before=s->fall_after=0;
+    if(s->edge_clock) {
         /* RX idle expiry can run before its first edge. Do not let a gain
          * task preempt the short RX/ETM/mirror arm sequence. These APIs do
          * not allocate or wait; interrupts continue and a time/ended guard
@@ -358,21 +327,21 @@ clock_epoch_arm:
         bool ready=false;
         vTaskSuspendAll();
         int64_t arm_start=esp_timer_get_time();
-        err=rmt_receive(channel,s_symbols,sizeof(s_symbols),&receive);
-        if(err!=ESP_OK)failure="receive";
-        else if(!clock_link_armed && !sync_edge_clock_arm())failure="clock_arm";
-        else if(esp_timer_get_time()-arm_start>SOP_ARM_MAX_US || s_probe.ended)failure="arm_gap";
+        s->err=rmt_receive(s->channel,s_symbols,sizeof(s_symbols),&s->receive);
+        if(s->err!=ESP_OK)s->failure="receive";
+        else if(!s->clock_link_armed && !sync_edge_clock_arm())s->failure="clock_arm";
+        else if(esp_timer_get_time()-arm_start>SOP_ARM_MAX_US || s_probe.ended)s->failure="arm_gap";
         else {
             ready=true;
-            clock_link_armed=true;
+            s->clock_link_armed=true;
         }
-        arm_us=esp_timer_get_time()-arm_start;
-        if(arm_us>SOP_ARM_MAX_US){ready=false;failure="arm_gap";}
+        s->arm_us=esp_timer_get_time()-arm_start;
+        if(s->arm_us>SOP_ARM_MAX_US){ready=false;s->failure="arm_gap";}
         if(ready) {
-            const bool quiet_read=sync_edge_clock_read(&epoch_quiet);
-            if(!quiet_read || (!clock_rearms?epoch_quiet!=0u:epoch_quiet<=native_floor)) {
-                if(quiet_read && clock_rearms)++clock_stats.regressions;
-                ready=false;failure=clock_rearms?"clock_regression":"clock_not_quiet";
+            const bool quiet_read=sync_edge_clock_read(&s->epoch_quiet);
+            if(!quiet_read || (!s->clock_rearms?s->epoch_quiet!=0u:s->epoch_quiet<=s->native_floor)) {
+                if(quiet_read && s->clock_rearms)++s->clock_stats.regressions;
+                ready=false;s->failure=s->clock_rearms?"clock_regression":"clock_not_quiet";
             }
         }
         if(ready) {
@@ -383,152 +352,286 @@ clock_epoch_arm:
             esp_rom_delay_us(16);
             REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
             esp_rom_delay_us(16);
-            if(!sync_edge_clock_enable_filter()){ready=false;failure="clock_filter";}
+            if(!sync_edge_clock_enable_filter()){ready=false;s->failure="clock_filter";}
             else {
                 esp_rom_delay_us(4);
                 /* A second, filtered HIGH marker measures the whole native
                  * input path's delay. Both physical edges are bracketed by
                  * timer reads and flushed GPIO data readbacks. The marker
                  * remains confined to GPIO2 and below the source barrier. */
-                if(!sync_edge_clock_read(&rise_before)){ready=false;failure="clock_rise_before";}
+                if(!sync_edge_clock_read(&s->rise_before)){ready=false;s->failure="clock_rise_before";}
                 if(ready) {
                     __sync_synchronize();REG_WRITE(GPIO_OUT_W1TS_REG,SOP_MASK);
                     bool high=(REG_READ(GPIO_OUT_REG)&SOP_MASK)!=0u;__sync_synchronize();
-                    if(!high || !sync_edge_clock_read(&rise_after)){ready=false;failure="clock_rise_after";}
+                    if(!high || !sync_edge_clock_read(&s->rise_after)){ready=false;s->failure="clock_rise_after";}
                 }
                 if(ready) {
                     esp_rom_delay_us(16);
-                    if(!sync_edge_clock_read(&fall_before)){ready=false;failure="clock_fall_before";}
+                    if(!sync_edge_clock_read(&s->fall_before)){ready=false;s->failure="clock_fall_before";}
                 }
                 if(ready) {
                     __sync_synchronize();REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
                     bool low=(REG_READ(GPIO_OUT_REG)&SOP_MASK)==0u;__sync_synchronize();
-                    if(!low || !sync_edge_clock_read(&fall_after)){ready=false;failure="clock_fall_after";}
+                    if(!low || !sync_edge_clock_read(&s->fall_after)){ready=false;s->failure="clock_fall_after";}
                 }
                 if(ready)esp_rom_delay_us(16);
-                if(ready)REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,(witness_matrix&~GPIO_FUNC2_OUT_SEL_M)|52u);
+                if(ready)REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,(s->witness_matrix&~GPIO_FUNC2_OUT_SEL_M)|52u);
                 uint64_t native_start;
-                if(ready && (!sync_edge_clock_read(&native_start) || native_start<=epoch_quiet ||
-                    native_start-epoch_quiet>UINT32_MAX-64u)) {
-                    ready=false;failure="clock_native_start";
+                if(ready && (!sync_edge_clock_read(&native_start) || native_start<=s->epoch_quiet ||
+                    native_start-s->epoch_quiet>UINT32_MAX-64u)) {
+                    ready=false;s->failure="clock_native_start";
                 } else if(ready) {
-                    native_floor=native_start;
-                    s_native->rise_before=rise_before;s_native->rise_after=rise_after;
-                    s_native->fall_before=fall_before;s_native->fall_after=fall_after;
+                    s->native_floor=native_start;
+                    s_native->rise_before=s->rise_before;s_native->rise_after=s->rise_after;
+                    s_native->fall_before=s->fall_before;s_native->fall_after=s->fall_after;
                     __sync_synchronize();
                     /* RMT restarts at zero; the output timer never restarts.
                      * Its pre-marker read gives a conservative local barrier. */
-                    s_probe.discard_before=(uint32_t)(native_start-epoch_quiet)+common_filter_ns/50u+4u;
+                    s_probe.discard_before=(uint32_t)(native_start-s->epoch_quiet)+s->common_filter_ns/50u+4u;
                 }
             }
         }
         (void)xTaskResumeAll();
-        if(!ready)goto done;
+        if(!ready)return false;
     } else {
-        err=rmt_receive(channel,s_symbols,sizeof(s_symbols),&receive);
-        if(err!=ESP_OK){failure="receive";goto done;}
+        s->err=rmt_receive(s->channel,s_symbols,sizeof(s_symbols),&s->receive);
+        if(s->err!=ESP_OK){s->failure="receive";return false;}
     }
-    while (esp_timer_get_time() - began < SOP_WINDOW_US && !s_probe.stop) {
-        if (!live(generation)) { s_probe.cancelled = true; failure = "not_live"; break; }
-        if (s_probe.ended) {
-            if(edge_clock) {
-                phase=sop_score_clock(&clock_stats,rise_before,rise_after,fall_before,fall_after);
-                phase_scored=true;
-                if(clock_stats.regressions){failure="clock_regression";break;}
-                /* Only the ended RMT stream is restarted. Keep its timer and
-                 * ETM START route alive; the new private marker calibrates a
-                 * fresh RMT origin on that SAME continuously running clock. */
-                s_probe.armed=false;
-                REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
-                REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,witness_matrix);
-                esp_rom_delay_us(4);
-                if(!sync_edge_clock_disable_filter()){failure="clock_filter_pause";break;}
-                ++clock_rearms;
-                sop_epoch(&s_probe);s_probe.armed=true;
-                goto clock_epoch_arm;
-            }
-            sop_epoch(&s_probe);
-            err = rmt_receive(channel, s_symbols, sizeof(s_symbols), &receive);
-            if (err != ESP_OK) { failure = "restart"; break; }
+    return true;
+}
+
+static bool sop_session_begin(uint32_t generation, bool (*live)(uint32_t), bool edge_clock, bool resident)
+{
+    if(s_busy || s_quarantined || s_clock_fault)return false;
+    if(!s_session)s_session=calloc(1,sizeof(*s_session));
+    if(!s_session)return false;
+    sop_session_t *s=s_session;
+    memset(s,0,sizeof(*s));
+    s->generation=generation;s->live=live;s->edge_clock=edge_clock;s->resident=resident;
+    s->clock_closed=true;s->arm_us=-1;s->failure="none";
+    if (s_busy || s_quarantined || s_clock_fault) {
+        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=busy_or_quarantined\n"); return false;
+    }
+    if (!s->live || !s->live(s->generation)) {
+        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=not_live\n"); return false;
+    }
+    if(s->edge_clock && !s_native) {
+        s_native=calloc(1,sizeof(*s_native));
+        if(!s_native){printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=native_memory\n");return false;}
+    }
+    if(s->edge_clock)memset(s_native,0,sizeof(*s_native));
+    s_busy = true;
+    s->iomux = REG_READ(IO_MUX_GPIO8_REG);
+    s->matrix = REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG);
+    s->enabled = REG_READ(GPIO_ENABLE_REG) & (1u << 8);
+    /* PARLIO DATA4 index52, push-pull, no inversion. Either peripheral or
+     * GPIO-controlled OE is valid: this input-only observer changes neither.
+     * The root caller additionally verifies LP and unscaled1x reference LUT. */
+    bool pin_ok = (s->matrix & GPIO_FUNC8_OUT_SEL_M) == 52u &&
+        !(s->matrix & (GPIO_FUNC8_OUT_INV_SEL_M | GPIO_FUNC8_OE_INV_SEL_M)) &&
+        s->enabled &&
+        !(REG_READ(GPIO_PIN8_REG) & GPIO_PIN8_PAD_DRIVER_M) &&
+        ((s->iomux & MCU_SEL_M) >> MCU_SEL_S) == 1u;
+    if (!pin_ok) {
+        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=pin_context matrix=0x%08lx iomux=0x%08lx enable=0x%08lx pad=0x%08lx\n",
+            (unsigned long)s->matrix, (unsigned long)s->iomux, (unsigned long)s->enabled,
+            (unsigned long)REG_READ(GPIO_PIN8_REG));
+        s_busy = false; return false;
+    }
+    /* The native witness must continue seeing PARLIO while all six DAC pads
+     * are gated. GPIO2 is not wired to the DAC and must be unused/disabled.
+     * Its MTMS role is already unavailable in this RX GPIO3/4/5 topology.
+     * Refuse an occupied output rather than taking it from another owner. */
+    s->mirror_iomux = REG_READ(IO_MUX_GPIO2_REG);
+    s->mirror_matrix = REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG);
+    s->mirror_pin = REG_READ(GPIO_PIN2_REG);
+    s->mirror_enable = REG_READ(GPIO_ENABLE_REG) & SOP_MASK;
+    s->mirror_output = REG_READ(GPIO_OUT_REG) & SOP_MASK;
+    if (s->mirror_enable || (s->mirror_pin & GPIO_PIN2_PAD_DRIVER_M)) {
+        printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=mirror_occupied\n");
+        s_busy = false; return false;
+    }
+    s->witness_iomux = (s->mirror_iomux & ~(MCU_SEL_M | FUN_PU | FUN_PD)) |
+        (1u << MCU_SEL_S) | FUN_IE;
+    s->witness_matrix = (s->mirror_matrix & ~(GPIO_FUNC2_OUT_SEL_M |
+        GPIO_FUNC2_OUT_INV_SEL_M | GPIO_FUNC2_OE_INV_SEL_M)) | (s->edge_clock?256u:52u) | GPIO_FUNC2_OE_SEL_M;
+    memset(&s_probe, 0, sizeof(s_probe));
+    s_probe.generation = s->generation; s_probe.live = s->live;
+    s_probe.marker_required=s->edge_clock;
+    if(s_native){s_native->resident=resident;s_native->rate_started=esp_timer_get_time();}
+    if(s->edge_clock)s_probe.discard_before=UINT32_MAX; /* IRQs may precede handoff publication. */
+
+
+
+
+
+
+
+
+
+    const rmt_rx_channel_config_t cfg = {.gpio_num = SOP_GPIO,
+        .clk_src = RMT_CLK_SRC_PLL_F80M, .resolution_hz = 20000000u,
+        .mem_block_symbols = 96u, .intr_priority = 2};
+    const rmt_rx_event_callbacks_t callbacks = {.on_recv_done = sop_received};
+    s->receive = (rmt_receive_config_t) {.signal_range_min_ns = s->edge_clock?0u:2500u,
+        .signal_range_max_ns = s->edge_clock?1000000u:100000u, .flags = {.en_partial_rx = true}};
+    s->began = esp_timer_get_time();
+    if(s->edge_clock)REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
+    REG_WRITE(IO_MUX_GPIO2_REG, s->witness_iomux);
+    REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG, s->witness_matrix);
+    REG_WRITE(GPIO_ENABLE_W1TS_REG, SOP_MASK);
+    if (REG_READ(IO_MUX_GPIO2_REG) != s->witness_iomux ||
+        REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) != s->witness_matrix ||
+        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) != SOP_MASK) {
+        s->failure = "mirror_readback"; goto failed;
+    }
+    s->err = rmt_new_rx_channel(&cfg, &s->channel);
+    if (s->err != ESP_OK) { s->failure = "new_rx"; goto failed; }
+    /* SDK may set FUN_IE and reselect the same GPIO function. All other
+     * matrix/OE and IO MUX bits must remain unchanged before enabling RX. */
+    s->pin_changed = REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) != s->witness_matrix ||
+        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) != SOP_MASK ||
+        REG_READ(IO_MUX_GPIO2_REG) != s->witness_iomux;
+    if (s->pin_changed) { s->failure = "pin_mutated"; goto failed; }
+    s->err = rmt_rx_register_event_callbacks(s->channel, &callbacks, &s_probe);
+    if (s->err != ESP_OK) { s->failure = "callbacks"; goto failed; }
+    if(s->edge_clock) {
+        s->clock_attempted=true;
+        if(!sync_edge_clock_prepare()){s->failure="clock_prepare";goto failed;}
+        s->common_filter_ns=sync_edge_clock_filter_ns();
+        esp_rom_delay_us(50); /* Private GPIO data drives a quiet LOW; DAC is untouched. */
+    }
+    if (!s->live(s->generation)) { s_probe.cancelled = true; s->failure = "not_live"; goto failed; }
+    s->err = rmt_enable(s->channel);
+    if (s->err != ESP_OK) { s->failure = "enable"; goto failed; }
+    s->enabled_rx = true;
+    s_probe.armed = true;
+    sop_epoch(&s_probe);
+    if(!sop_session_arm(s))goto failed;
+    return true;
+failed:
+    (void)sop_session_end(s);
+    return false;
+}
+
+static bool sop_session_poll(sop_session_t *s)
+{
+    if(!s_busy)return false;
+    if(!s->live(s->generation)){s_probe.cancelled=true;s_probe.stop=true;s->failure="not_live";return false;}
+    if(s_probe.stop)return false;
+    /* Abort and rearm before the 32-bit RMT-local elapsed counter wraps.
+     * This is a source discontinuity, never synthetic camera evidence. */
+    if(s->invalidated || (!s_probe.ended && esp_timer_get_time()-s->epoch_started>=180000000)) {
+        s_probe.armed=false;
+        if(rmt_disable(s->channel)!=ESP_OK){s->failure="rollover_disable";return false;}
+        s->enabled_rx=false;
+        if(rmt_enable(s->channel)!=ESP_OK){s->failure="rollover_enable";return false;}
+        s->enabled_rx=true;s_probe.ended=true;
+    }
+    if(s_probe.ended) {
+        /* Retain the last qualified clock for callers' holdover, separately
+         * from the fresh receiver evidence about to be reset. */
+        sync_output_live_model_t retained;
+        if(sync_output_live_snapshot(&retained) && retained.standard)
+            s->retained=retained;
+        if(s->edge_clock) {
+            s->phase=sop_score_clock(&s->clock_stats,s->rise_before,s->rise_after,s->fall_before,s->fall_after);
+            s->phase_scored=true;
+            if(s->clock_stats.regressions){s->failure="clock_regression";return false;}
+            s_probe.armed=false;
+            REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
+            REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,s->witness_matrix);
+            esp_rom_delay_us(4);
+            if(!sync_edge_clock_disable_filter()){s->failure="clock_filter_pause";return false;}
+            ++s->clock_rearms;
         }
-        if (esp_timer_get_time() - began >= SOP_HARD_US) { failure = "timeout"; break; }
-        vTaskDelay(1u);
+        sop_epoch(&s_probe);s_probe.armed=true;s->invalidated=false;
+        return sop_session_arm(s);
     }
-done:
+    return true;
+}
+
+static bool sop_session_end(sop_session_t *s)
+{
     s_probe.armed = false;
-    if(edge_clock && s_probe.epochs && !phase_scored)
-        phase=sop_score_clock(&clock_stats,rise_before,rise_after,fall_before,fall_after);
-    if(edge_clock && clock_attempted)clock_read_ok=sync_edge_clock_read(&clock_ticks);
-    if (s_probe.bad_data) failure = "bad_data";
-    else if (s_probe.marker_invalid) failure = "bad_marker";
-    else if (s_probe.cancelled) failure = "not_live";
-    else if (s_probe.rate_limited) failure = "event_rate";
-    if (channel) {
-        if (enabled_rx) {
-            esp_err_t stopped = rmt_disable(channel);
-            if (stopped != ESP_OK) cleanup = stopped;
+    if(s->edge_clock && s_probe.epochs && !s->phase_scored)
+        s->phase=sop_score_clock(&s->clock_stats,s->rise_before,s->rise_after,s->fall_before,s->fall_after);
+    if(s->edge_clock && s->clock_attempted)s->clock_read_ok=sync_edge_clock_read(&s->clock_ticks);
+    if (s_probe.bad_data) s->failure = "bad_data";
+    else if (s_probe.marker_invalid) s->failure = "bad_marker";
+    else if (s_probe.cancelled) s->failure = "not_live";
+    else if (s_probe.rate_limited) s->failure = "event_rate";
+    if (s->channel) {
+        if (s->enabled_rx) {
+            esp_err_t stopped = rmt_disable(s->channel);
+            if (stopped != ESP_OK) s->cleanup = stopped;
+            else s->enabled_rx=false;
         }
         const rmt_rx_event_callbacks_t no_callbacks = {0};
-        esp_err_t detached = rmt_rx_register_event_callbacks(channel, &no_callbacks, NULL);
-        if (detached != ESP_OK) cleanup = detached;
-        esp_err_t deleted = rmt_del_channel(channel);
-        if (deleted != ESP_OK) { cleanup = deleted; s_quarantined = channel; }
+        esp_err_t detached = rmt_rx_register_event_callbacks(s->channel, &no_callbacks, NULL);
+        if (detached != ESP_OK) s->cleanup = detached;
+        if(s->cleanup==ESP_OK) {
+            esp_err_t deleted = rmt_del_channel(s->channel);
+            if(deleted!=ESP_OK)s->cleanup=deleted;
+        }
+        if(s->cleanup!=ESP_OK)s_quarantined=s->channel;
+        else s->channel=NULL;
     }
     /* Restore the unused mirror pad even on allocation/setup errors.
      * Only the private GPIO2 marker data bit is restored; no DAC data writes. */
     REG_WRITE(GPIO_ENABLE_W1TC_REG, SOP_MASK);
-    if(clock_attempted) {
-        clock_closed=sync_edge_clock_close();
-        if(!clock_closed)s_clock_fault=true;
+    if(s->clock_attempted) {
+        s->clock_closed=sync_edge_clock_close();
+        if(!s->clock_closed)s_clock_fault=true;
         uint32_t rmt_rise=s_probe.prefix[0]+s_probe.prefix[1];
         uint32_t rmt_fall=rmt_rise+s_probe.prefix[2];
-        printf("SYNC_PHASE_BRACKET manual=1 absolute_time=0 camera_qualified=0 prefix_n=%u rmt_rise=%lu rmt_fall=%lu rise_before=%llu rise_after=%llu fall_before=%llu fall_after=%llu valid=%u offset_lo=%lld offset_hi=%lld\n",
+        if(!s->resident)printf("SYNC_PHASE_BRACKET manual=1 absolute_time=0 camera_qualified=0 prefix_n=%u rmt_rise=%lu rmt_fall=%lu rise_before=%llu rise_after=%llu fall_before=%llu fall_after=%llu valid=%u offset_lo=%lld offset_hi=%lld\n",
             s_probe.prefix_n,(unsigned long)rmt_rise,(unsigned long)rmt_fall,
-            (unsigned long long)rise_before,(unsigned long long)rise_after,
-            (unsigned long long)fall_before,(unsigned long long)fall_after,
-            (unsigned)phase.valid,(long long)phase.lo,(long long)phase.hi);
-        printf("SYNC_CLOCK_EPOCHS manual=1 camera_qualified=0 rearms=%lu valid=%lu refused=%lu pending=%lu regressions=%lu max_span_ticks=%lu last_origin_lo=%lld last_origin_hi=%lld timer_resets=0\n",
-            (unsigned long)clock_rearms,(unsigned long)clock_stats.valid,
-            (unsigned long)clock_stats.refused,(unsigned long)clock_stats.pending,
-            (unsigned long)clock_stats.regressions,(unsigned long)clock_stats.max_span,
-            (long long)clock_stats.last_lo,(long long)clock_stats.last_hi);
-        printf("SYNC_NATIVE_TIMING manual=1 camera_qualified=0 timing_valid=%u standard=%u qualified_epochs=%lu fields=%lu line_ticks_x32=%lu field_tick=%llu phase_span_ticks=%lld\n",
+            (unsigned long long)s->rise_before,(unsigned long long)s->rise_after,
+            (unsigned long long)s->fall_before,(unsigned long long)s->fall_after,
+            (unsigned)s->phase.valid,(long long)s->phase.lo,(long long)s->phase.hi);
+        if(!s->resident)printf("SYNC_CLOCK_EPOCHS manual=1 camera_qualified=0 rearms=%lu valid=%lu refused=%lu pending=%lu regressions=%lu max_span_ticks=%lu last_origin_lo=%lld last_origin_hi=%lld timer_resets=0\n",
+            (unsigned long)s->clock_rearms,(unsigned long)s->clock_stats.valid,
+            (unsigned long)s->clock_stats.refused,(unsigned long)s->clock_stats.pending,
+            (unsigned long)s->clock_stats.regressions,(unsigned long)s->clock_stats.max_span,
+            (long long)s->clock_stats.last_lo,(long long)s->clock_stats.last_hi);
+        if(!s->resident)printf("SYNC_NATIVE_TIMING manual=1 camera_qualified=0 timing_valid=%u standard=%u qualified_epochs=%lu fields=%lu line_ticks_x32=%lu field_tick=%llu phase_span_ticks=%lld\n",
             (unsigned)s_native->native.valid,(unsigned)s_native->native.standard,
             (unsigned long)s_native->native_qualified_epochs,
             (unsigned long)s_native->native.qualified_fields,
             (unsigned long)s_native->native.line_ticks_x32,
             (unsigned long long)s_native->native.field,
             s_native->native_phase.valid?(long long)(s_native->native_phase.hi-s_native->native_phase.lo):-1LL);
-        printf("SYNC_EDGE_CLOCK manual=1 absolute_time=0 camera_qualified=0 common_filter_ns=%lu timer_hz=20000000 ticks=%llu read_ok=%u edges_seen=%u closed=%u arm_us=%lld marker_ticks=%lu marker_level=%u marker_ok=%u native_after_ticks=%lu error=%s\n",
-            (unsigned long)common_filter_ns,(unsigned long long)clock_ticks,
-            (unsigned)clock_read_ok,(unsigned)(s_probe.halves!=0u),
-            (unsigned)clock_closed,(long long)arm_us,(unsigned long)s_probe.first_duration,
+        if(!s->resident)printf("SYNC_EDGE_CLOCK manual=1 absolute_time=0 camera_qualified=0 common_filter_ns=%lu timer_hz=20000000 ticks=%llu read_ok=%u edges_seen=%u closed=%u arm_us=%lld marker_ticks=%lu marker_level=%u marker_ok=%u native_after_ticks=%lu error=%s\n",
+            (unsigned long)s->common_filter_ns,(unsigned long long)s->clock_ticks,
+            (unsigned)s->clock_read_ok,(unsigned)(s_probe.halves!=0u),
+            (unsigned)s->clock_closed,(long long)s->arm_us,(unsigned long)s_probe.first_duration,
             (unsigned)s_probe.first_level,(unsigned)(s_probe.first_level &&
                 s_probe.first_duration>=280u && s_probe.first_duration<=400u),
             (unsigned long)s_probe.discard_before,sync_edge_clock_error());
     }
-    if(edge_clock && (REG_READ(GPIO_OUT_REG)&SOP_MASK)!=mirror_output)
-        REG_WRITE(mirror_output?GPIO_OUT_W1TS_REG:GPIO_OUT_W1TC_REG,SOP_MASK);
-    if (REG_READ(IO_MUX_GPIO2_REG) != mirror_iomux) REG_WRITE(IO_MUX_GPIO2_REG, mirror_iomux);
-    if (REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) != mirror_matrix)
-        REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG, mirror_matrix);
-    bool restored = REG_READ(IO_MUX_GPIO2_REG) == mirror_iomux &&
-        REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) == mirror_matrix &&
-        REG_READ(GPIO_PIN2_REG) == mirror_pin &&
-        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) == mirror_enable &&
-        (REG_READ(GPIO_OUT_REG) & SOP_MASK) == mirror_output &&
-        REG_READ(IO_MUX_GPIO8_REG) == iomux &&
-        REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG) == matrix &&
-        (REG_READ(GPIO_ENABLE_REG) & (1u << 8)) == enabled;
-    bool exclusion = !s_probe.cancelled && live(generation);
-    printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 gpio=2 mirror_source_gpio=8 bit=4 output_x100=100 "
+    if(s->edge_clock && (REG_READ(GPIO_OUT_REG)&SOP_MASK)!=s->mirror_output)
+        REG_WRITE(s->mirror_output?GPIO_OUT_W1TS_REG:GPIO_OUT_W1TC_REG,SOP_MASK);
+    if (REG_READ(IO_MUX_GPIO2_REG) != s->mirror_iomux) REG_WRITE(IO_MUX_GPIO2_REG, s->mirror_iomux);
+    if (REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) != s->mirror_matrix)
+        REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG, s->mirror_matrix);
+    bool restored = REG_READ(IO_MUX_GPIO2_REG) == s->mirror_iomux &&
+        REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG) == s->mirror_matrix &&
+        REG_READ(GPIO_PIN2_REG) == s->mirror_pin &&
+        (REG_READ(GPIO_ENABLE_REG) & SOP_MASK) == s->mirror_enable &&
+        (REG_READ(GPIO_OUT_REG) & SOP_MASK) == s->mirror_output &&
+        REG_READ(IO_MUX_GPIO8_REG) == s->iomux &&
+        REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG) == s->matrix &&
+        (REG_READ(GPIO_ENABLE_REG) & (1u << 8)) == s->enabled;
+    bool exclusion = !s_probe.cancelled && s->live(s->generation);
+    if(!s->resident)printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 gpio=2 mirror_source_gpio=8 bit=4 output_x100=100 "
         "self_gate_excluded=%u absolute_time=0 camera_qualified=0 restored=%u "
         "pin_mutated=%u error=%s api=%d cleanup=%d duration_us=%lld "
         "callbacks=%lu symbols=%lu halves=%lu epochs=%lu endings=%lu low=%lu "
         "h=%lu broad=%lu h_periods=%lu pal32=%lu ntsc32=%lu broad5=%lu broad6=%lu "
         "pal_fields=%lu ntsc_fields=%lu bad_data=%lu cancelled=%u\n",
-        (unsigned)exclusion, (unsigned)restored, (unsigned)pin_changed,
-        failure, (int)err, (int)cleanup, (long long)(esp_timer_get_time() - began),
+        (unsigned)exclusion, (unsigned)restored, (unsigned)s->pin_changed,
+        s->failure, (int)s->err, (int)s->cleanup, (long long)(esp_timer_get_time() - s->began),
         (unsigned long)s_probe.callbacks, (unsigned long)s_probe.symbols,
         (unsigned long)s_probe.halves, (unsigned long)s_probe.epochs,
         (unsigned long)s_probe.endings, (unsigned long)s_probe.low,
@@ -538,7 +641,79 @@ done:
         (unsigned long)s_probe.broad6, (unsigned long)s_probe.pal_fields,
         (unsigned long)s_probe.ntsc_fields, (unsigned long)s_probe.bad_data,
         (unsigned)s_probe.cancelled);
+    /* A failed pin readback is an ownership fault even when every SDK
+     * cleanup call succeeded. Never reuse a partly restored observer. */
+    if(!restored || s->cleanup!=ESP_OK)s_clock_fault=true;
     s_busy = false;
+    return restored && s->cleanup == ESP_OK && s->clock_closed;
+}
+
+bool sync_output_live_begin(uint32_t generation,bool (*live)(uint32_t))
+{ return sop_session_begin(generation,live,true,true); }
+bool sync_output_live_active(void)
+{ return s_busy && s_session && s_session->resident; }
+bool sync_output_live_poll(void)
+{
+    if(!sync_output_live_active())return false;
+    if(sop_session_poll(s_session))return true;
+    (void)sop_session_end(s_session);return false;
+}
+bool sync_output_live_end(void)
+{
+    if(!s_busy)return !s_quarantined && !s_clock_fault;
+    if(!sync_output_live_active())return false;
+    return sop_session_end(s_session);
+}
+
+void sync_output_live_invalidate(void)
+{
+    if(!sync_output_live_active())return;
+    s_probe.armed=false;
+    __sync_synchronize();
+    s_session->invalidated=true;
+}
+
+bool sync_output_live_snapshot(sync_output_live_model_t *out)
+{
+    if(!out)return false;
+    *out=(sync_output_live_model_t){0};
+    if(!sync_output_live_active() || !s_native)return false;
+    for(unsigned attempt=0;attempt<3u;++attempt) {
+        uint32_t seq=s_native->sequence;
+        if(seq&1u)continue;
+        __sync_synchronize();
+        sync_native_track_t native=s_native->native;
+        sync_phase_bracket_t phase=s_native->native_phase;
+        bool armed=s_probe.armed,invalidated=s_session->invalidated;
+        uint64_t now;
+        if(!sync_edge_clock_read(&now))return false;
+        __sync_synchronize();
+        if(seq!=s_native->sequence)continue;
+        *out=s_session->retained;
+        if(native.valid && phase.valid) {
+            out->standard=native.standard;
+            out->last_h=native.h;out->field=native.field;
+            out->line_ticks_x32=native.line_ticks_x32;
+            out->phase_lo=phase.lo;out->phase_hi=phase.hi;
+        }
+        out->generation=s_session->generation;out->now=now;
+        out->valid=armed && !invalidated && native.valid && phase.valid &&
+            now>=native.last && now-native.last<=SOP_MODEL_MAX_AGE_TICKS &&
+            now>=native.field && now-native.field<=810000u &&
+            s_session->live(s_session->generation);
+        return true;
+    }
+    return false;
+}
+
+static void sync_output_probe_run(uint32_t generation,bool (*live)(uint32_t),bool edge_clock)
+{
+    if(!sop_session_begin(generation,live,edge_clock,false))return;
+    while(esp_timer_get_time()-s_session->began<SOP_WINDOW_US && !s_probe.stop) {
+        if(!sop_session_poll(s_session))break;
+        vTaskDelay(1u);
+    }
+    (void)sop_session_end(s_session);
 }
 
 void sync_output_probe(uint32_t generation,bool (*live)(uint32_t))

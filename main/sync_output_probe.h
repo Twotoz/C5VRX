@@ -1,5 +1,5 @@
-/* C5VRX by Twotoz and contributors: manual native DAC timing observation.
- * Caller holds the PHY actuator lease, verifies LP/output1.0x, and guarantees
+/* C5VRX by Twotoz and contributors: native DAC timing observation.
+ * Manual wrappers require the PHY actuator lease, verified LP/output1.0x and
  * no menu/restart while live(generation) remains true. GPIO2 must be unused;
  * it temporarily mirrors PARLIO DATA4 independently of the six DAC OEs.
  * GPIO8 and all DAC settings remain unchanged by this observer. The live
@@ -10,3 +10,24 @@
 #include <stdint.h>
 void sync_output_probe(uint32_t generation, bool (*live)(uint32_t));
 void sync_output_clock_probe(uint32_t generation, bool (*live)(uint32_t));
+
+/* Resident observer. Task context only; caller serializes begin/poll/end
+ * against transport mutations with short ownership, never a resident lease.
+ * No output gates are enabled by these calls. Invalidate BEFORE a receive
+ * mutation; poll rearms fresh evidence on the same running timer. Snapshot
+ * freshness includes RMT delivery latency; it is not a per-line loss flag.
+ * Snapshot coordinates remain available with valid=false during holdover.
+ * A failed end quarantines driver ownership and prevents subsequent begin. */
+typedef struct {
+    uint64_t last_h, field, now;
+    uint32_t generation, line_ticks_x32;
+    int64_t phase_lo, phase_hi;
+    uint8_t standard; /* Native qualifier IDs: PAL=2, NTSC=1. */
+    bool valid;
+} sync_output_live_model_t;
+bool sync_output_live_begin(uint32_t generation, bool (*live)(uint32_t));
+bool sync_output_live_poll(void);
+bool sync_output_live_end(void);
+bool sync_output_live_active(void);
+void sync_output_live_invalidate(void);
+bool sync_output_live_snapshot(sync_output_live_model_t *out);

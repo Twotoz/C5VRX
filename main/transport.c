@@ -5,6 +5,7 @@
  * DMA boundary is a stream boundary; the CPU never paces samples. */
 #include "receiver.h"
 #include <string.h>
+#include <stdlib.h>
 #include "driver/bitscrambler.h"
 #include "driver/parlio_rx.h"
 #include "driver/parlio_tx.h"
@@ -406,6 +407,7 @@ static bool stop_part(void *ctx, tr_part_t part)
 }
 static bool quiesce(void *ctx)
 {
+    if(!transport_sync_live_cancel())return false;
     bool ok = tr_stop_parts(ctx, stop_part, &s_tx_enabled, &s_bs_enabled, &s_rx_enabled, true);
     s_started = false;
     s_rx_node_count = 0; /* observers cannot consume stopped/stale DMA */
@@ -584,6 +586,7 @@ bool transport_set_base_level(int level)
  * DC and profile calibration. Full recovery quiesce stops RX as well. */
 void transport_stop_tx(void)
 {
+    if(!transport_sync_live_cancel()){s_transport_fault=true;return;}
     bool ok = tr_stop_parts(NULL, stop_part, &s_tx_enabled, &s_bs_enabled, &s_rx_enabled, false);
     s_started = false;
     if (!ok) {
@@ -595,6 +598,7 @@ void transport_stop_tx(void)
 /* Start a standalone descriptor chain (menu raster) on the TX GDMA. */
 void transport_start_chain(dma_descriptor_t *first)
 {
+    if(!transport_sync_live_cancel()){s_transport_fault=true;return;}
     if (s_transport_fault || enable_tx() != ESP_OK) return;
     s_tx_dma_ch = find_dma(false);
     if (s_tx_dma_ch < 0) { (void)disable_tx(); s_transport_fault = true; return; }
@@ -624,6 +628,7 @@ void transport_start_chain(dma_descriptor_t *first)
 
 void transport_stop_chain(void)
 {
+    if(!transport_sync_live_cancel()){s_transport_fault=true;return;}
     if (s_tx_enabled && disable_tx() != ESP_OK) s_transport_fault = true;
 }
 
@@ -897,6 +902,99 @@ typedef struct {
 static sync_bench_context_t s_gate_context;
 static bool s_gate_probe_busy;
 static bool s_output_probe_busy;
+
+/* Allocate after startup so observer state cannot fragment the control stack
+ * allocation. Lifecycle is serialized by short PHY ownership, not held while
+ * the resident peripheral observes video or the control task sleeps. */
+typedef struct {
+    sync_bench_context_t context;
+    bool requested,authorized,fault;
+    int64_t retry_us;
+    uint32_t starts,stops,failures;
+} sync_live_owner_t;
+static sync_live_owner_t *s_live_owner;
+
+static bool IRAM_ATTR transport_sync_live_valid(uint32_t generation)
+{
+    const sync_live_owner_t *s=s_live_owner;
+    return s && s->authorized && !s->fault && s_started && s_have_verified &&
+        s_lut_known && !s_transport_fault && !s_stream_generation_overflow &&
+        !s_menu_active && !s_scan_active && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
+        generation==s_stream_generation && generation==s->context.generation &&
+        s_verified_level==s->context.level && s_verified_lp==s->context.lp &&
+        s_prog_lp==s->context.lp && s_verified_output==s->context.output &&
+        s_output==s->context.output;
+}
+
+bool transport_sync_live_cancel(void)
+{
+    if(!s_live_owner)return true;
+    s_live_owner->authorized=false;
+    __sync_synchronize();
+    bool active=sync_output_live_active();
+    bool ok=sync_output_live_end();
+    if(ok)s_output_probe_busy=false;
+    if(active)++s_live_owner->stops;
+    if(!ok){s_live_owner->fault=true;++s_live_owner->failures;}
+    return ok;
+}
+
+void transport_sync_live_toggle(void)
+{
+    if(!s_live_owner)s_live_owner=calloc(1,sizeof(*s_live_owner));
+    if(!s_live_owner){printf("SYNC_LIVE refused=memory\n");return;}
+    s_live_owner->requested=!s_live_owner->requested;
+    /* Actual start/stop occurs on the control owner, under short PHY lease. */
+    printf("SYNC_LIVE requested=%u automatic_gate=0\n",(unsigned)s_live_owner->requested);
+}
+
+void transport_sync_live_tick(void)
+{
+    sync_live_owner_t *s=s_live_owner;
+    if(!s || s->fault || !phy_try_actuator(phy_generation()))return;
+    bool eligible=s->requested && !calibration_in_startup() && !receiver_paused() &&
+        !s_menu_active && !s_scan_active && !no_signal_active() && !sync_service_active() &&
+        !s_gate_probe_busy && s_started && s_have_verified && s_lut_known &&
+        !s_transport_fault && s_verified_lp && s_verified_output==0u;
+    bool active=sync_output_live_active();
+    if(active && (!eligible || !transport_sync_live_valid(s->context.generation))) {
+        (void)transport_sync_live_cancel();active=false;
+    }
+    int64_t now=esp_timer_get_time();
+    if(eligible && !s->fault && !active && now>=s->retry_us && !s_output_probe_busy) {
+        s->context=(sync_bench_context_t){s_stream_generation,s_verified_level,s_verified_output,s_verified_lp};
+        s->authorized=true;
+        phy_set_observation_hook(sync_output_live_invalidate);
+        if(sync_output_live_begin(s->context.generation,transport_sync_live_valid)) {
+            s_output_probe_busy=true;++s->starts;active=true;
+        } else {s->authorized=false;++s->failures;s->retry_us=now+1000000;}
+    }
+    if(active && !sync_output_live_poll()) {
+        ++s->failures;
+        (void)transport_sync_live_cancel();
+        s->retry_us=now+1000000;
+    }
+    phy_end_actuator();
+}
+
+void transport_sync_live_print(void)
+{
+    sync_live_owner_t *s=s_live_owner;
+    printf("SYNC_LIVE requested=%u active=%u fault=%u starts=%lu stops=%lu failures=%lu automatic_gate=0\n",
+        s?(unsigned)s->requested:0u,(unsigned)sync_output_live_active(),s?(unsigned)s->fault:0u,
+        s?(unsigned long)s->starts:0ul,s?(unsigned long)s->stops:0ul,s?(unsigned long)s->failures:0ul);
+    sync_output_live_model_t model;
+    bool have_model=false;
+    if(phy_try_actuator(phy_generation())) {
+        have_model=sync_output_live_snapshot(&model);
+        phy_end_actuator();
+    }
+    if(have_model)
+        printf("SYNC_LIVE_MODEL valid=%u standard=%u line_ticks_x32=%lu last_h=%llu field=%llu now=%llu phase_span_ticks=%lld automatic_gate=0\n",
+            (unsigned)model.valid,(unsigned)model.standard,(unsigned long)model.line_ticks_x32,
+            (unsigned long long)model.last_h,(unsigned long long)model.field,
+            (unsigned long long)model.now,(long long)(model.phase_hi-model.phase_lo));
+}
 
 /* ISR-safe transport identity check: no scheduler/PHY calls or mutation. */
 static bool IRAM_ATTR transport_sync_gate_live(uint32_t generation)
@@ -1481,6 +1579,7 @@ bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_source_end(sync_se
  * (zerowidth PR #3 does this on its sample clock). */
 void rx_clock_slip(uint32_t us)
 {
+    phy_observation_changed();
     static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
     portENTER_CRITICAL(&mux);
     uint32_t div = PCR.parl_clk_rx_conf.parl_clk_rx_div_num;

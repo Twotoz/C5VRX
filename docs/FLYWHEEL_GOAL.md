@@ -791,3 +791,50 @@ No camera-on proof or monitor feedback yet. Automatic continuous observation,
 phase-following pulse scheduling, holdover/handoff and monitor validation remain
 unfinished. The manual PHY lease still must not become a permanent background
 lease. P does not enable automatic flywheel at boot.
+
+
+### 2026-10-16: resident observer B, picture aliases, startup reservation
+
+Shared begin/poll/end now backs manual Y/y and the resident `u` observer.
+The control loop polls it under brief PHY ownership, releasing ownership before
+sleeping. Receive invalidation rejects pending old buffers and rearms on the
+same running clock. Snapshots separate retained coordinates from fresh validity;
+current-time expiry prevents silence keeping an old model fresh. RMT local
+counter rollover is rearmed before wrap, and resident rate limits are periodic.
+Transport quiesce/menu/chain ownership changes synchronously cancel the observer;
+failed cleanup/restoration latches fault and keeps ownership unavailable.
+PHY gain/native/DC/filter/lane mutations invalidate observations before writes.
+
+Fixed a real-camera blocker in the initial H/V qualifier: picture lows erased
+H trains. Eight bounded phase candidates now ignore out-of-phase picture pulses;
+complete pre-EQ/broad/post-EQ structure is required. Exported last H belongs to
+the selected camera phase, not the last bright-picture alias. Host native suite:
+1,000,088 checks (including sanitizers); actual observer runtime:80 checks;
+actual PHY ownership/gain invalidation ordering test passes.
+
+Resident A exposed the same late contiguous control-stack allocation failure
+as O. B reserves the unchanged 6144-byte stack and TCB immediately after console
+startup, before RF/driver fragmentation, using explicit16-byte-aligned internal
+memory and xTaskCreateStatic. No stack reduction. Pinned IDF confirms byte stack
+depths and static-allocation support. B boots and completes calibration normally.
+
+Actual `5.0.0-pr.212-sync-live-b`, application SHA256
+`ce31014be0596c0fd5ac9cce137adfd33e766f7e8630c46a70c7d6d1e1825fe1`,
+flash hash verified. Resident active10s while observed gain moved83->81;
+then a verified transport restart stopped/restored it and re-bound a new session.
+Three additional start/stop cycles: starts5/stops5, faults0/failures0. Warm active
+heap5404 and stopped heap6068 repeat exactly. Transport DMA/overflow/BS counters
+remain0. VTX is explicitly OFF; no native standard/model qualified. Evidence:
+`research/data/board_resident_b_2026-10-16.json`, including negative A provenance.
+
+The new bounded GPIO witness has1148 host IRQ traces passing and is dormant
+(not included in firmware CMake). It uses software ISR timestamps, <=8 edge
+observations per explicitly opened window, exact GPIO2 ownership restoration,
+and post-start allocation. It has no physical filter/latency or camera proof;
+cache-disabled latency remains unbounded. It is not the output repair engine.
+
+Automatic gates remain OFF/unfinished. Next: connect camera-phase holdover,
+conditional per-tip output scheduling, fast witness and transport cancellation;
+then VTX-on/fade and real monitor proof. Do not substitute resident observation
+or generated pulses for the actual goal. User prefers building forward over
+routine rollback flashes (2026-10-16); apply that preference on subsequent tests.

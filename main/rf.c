@@ -134,7 +134,10 @@ static esp_err_t route_modem_iq(unsigned lane)
 esp_err_t rf_set_lane(unsigned lane)
 {
     if (lane >= RF_LANES) return ESP_ERR_INVALID_ARG;
-    return route_modem_iq(lane);
+    phy_begin();
+    esp_err_t result=route_modem_iq(lane);
+    phy_end();
+    return result;
 }
 
 unsigned rf_lane(void) { return s_lane; }
@@ -275,6 +278,7 @@ bool rf_set_gain(uint8_t gain, uint32_t expected_generation)
      * nothing but would leave debug mode for ~2 us: skip it (V5 used to
      * re-write the same gain 50-100 times a second; seen as rolling). */
     if (gain == s_gain && phy_dco_held()) { phy_end_actuator(); return true; }
+    phy_observation_changed();
     (void)phy_dco_release();          /* a held hold keeps PBUS in debug mode */
     phy_force_rx_gain(true, gain);
     s_gain = gain;
@@ -355,6 +359,7 @@ rf_native_result_t IRAM_ATTR rf_native_acquire(uint32_t generation, uint8_t *gai
                (unsigned long)rf_gate, (unsigned long)rf_control);
         return RF_NATIVE_REFUSED;
     }
+    phy_observation_changed();
     (void)phy_dco_release();
     rf_native_result_t result = RF_NATIVE_REFUSED;
     uint8_t adopted = previous;

@@ -16,6 +16,11 @@ bool phy_busy(void);
 /* Non-blocking gain/offset ownership without a new generation. */
 bool phy_try_actuator(uint32_t expected_generation);
 void phy_end_actuator(void);
+/* Receive observers invalidate buffered evidence BEFORE a physical change.
+ * Hook must be nonblocking, allocation-free, and must not acquire PHY ownership.
+ * Register once during observer setup; NULL removes it. */
+void phy_set_observation_hook(void (*hook)(void));
+void phy_observation_changed(void);
 
 /* Analog RX filter, after ESPARGOS esp-sdr (GPL-3.0, commit ac627b0b):
  * BBTOP 0x67 regs 6/7 hold the RX0 capacitor code (absolute low six bits),

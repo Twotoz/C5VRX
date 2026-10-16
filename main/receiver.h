@@ -88,6 +88,10 @@ void transport_sync_gate_probe(bool pal); /* Z/z: brief PAL/NTSC DAC-OE diagnost
 void transport_sync_gate_probe_long(bool pal); /* Q/q: three-second manual gate test */
 void transport_sync_output_probe(void); /* Y: native DAC timing observation, LP/1x only */
 void transport_sync_output_clock_probe(void); /* y: common-edge RMT/ETM experiment */
+void transport_sync_live_toggle(void); /* u: resident native observer bench */
+void transport_sync_live_tick(void);   /* control loop; never holds a lifetime PHY lease */
+bool transport_sync_live_cancel(void); /* stop/restore before transport ownership changes */
+void transport_sync_live_print(void);
 void sync_dma_c2m(const void *addr, size_t size);
 void sync_dma_m2c(const void *addr, size_t size);
 int ring_node_index(uint32_t addr);
@@ -141,6 +145,7 @@ extern volatile video_standard_t s_detected_std;
 extern volatile int64_t s_last_video_us;           /* last burst-confirmed sync */
 extern QueueHandle_t s_commands;
 void control_start(void);
+bool control_prepare(void); /* reserve unchanged control stack before driver heap fragmentation */
 video_standard_t menu_standard(void);
 void control_print(void);
 void control_print_beat(void);   /* STATUS line every 2 s (console.c) */

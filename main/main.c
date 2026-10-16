@@ -20,6 +20,11 @@ void app_main(void)
     /* The console first: flashing (download key) and diagnostics must stay
      * reachable whatever a later boot step does. */
     console_start();
+    if(!control_prepare()) {
+        s_boot_stage="control_memory";
+        printf("CONTROL stack reservation failed; USB status/download remain available\n");
+        return;
+    }
     s_boot_stage = "rf";
     ESP_ERROR_CHECK(rf_start());
     s_boot_stage = "settings";

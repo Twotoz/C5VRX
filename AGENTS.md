@@ -942,3 +942,21 @@ origins. Keep marker/source barriers in RMT-local coordinates. Board evidence:
 21 manual calls). This is LP/1x diagnostics, not a production background observer
 or automatic flywheel. Do not carry its whole-call PHY lease into a continuous
 service. Camera H/V and monitor lock remain unqualified.
+
+
+### Resident sync observer B (2026-10-16)
+
+`u` is a RAM-only resident native observer bench, OFF at boot, still LP/1x only;
+control2ms poll holds only short PHY leases. Exact teardown precedes transport
+ownership changes; receive mutations invalidate evidence without resetting the
+timebase. H/V qualification now tolerates picture aliases and requires complete
+EQ/broad/EQ. `board_resident_b_2026-10-16.json` records C5 startup, gain activity,
+transport restart and5 clean start/stop cycles. This does not enable automatic
+flywheel or prove camera/monitor lock. New witness module is not yet in CMake.
+
+Control startup memory: keep the6144-byte control stack/TCB reserved by
+`control_prepare` after console startup and before RF/driver allocations. Later
+malloc was sensitive to tiny linked-image/BSS changes and caused boot loops.
+Do not shrink the stack to conceal fragmentation. User requests building forward
+rather than routine rollback flashes; that explicit preference supersedes any
+previous default recovery workflow while developing this feature.

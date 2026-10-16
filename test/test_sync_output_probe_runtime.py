@@ -229,7 +229,7 @@ static void lifecycle(void){
   sync_output_probe(7,owner_live);
   assert(!memcmp(registers,saved,sizeof(saved))&&!s_probe.armed&&!s_busy);
   assert(now<=100000);assert(!rx_enabled||s_quarantined);
-  if(failure==6||failure==7){assert(s_quarantined);unsigned calls=api_calls;
+  if(failure==6||failure==7||failure==8){assert(s_quarantined);unsigned calls=api_calls;
    sync_output_probe(7,owner_live);assert(api_calls==calls);
    rmt_symbol_word_t w={.duration0=1186,.level0=1,.duration1=94,.level1=0};
    unsigned callbacks=s_probe.callbacks;event(&w,1,false);assert(s_probe.callbacks==callbacks);
@@ -278,7 +278,60 @@ static void lifecycle(void){
  rmt_symbol_word_t rate_word={.duration0=1186,.level0=1,.duration1=94,.level1=0};
  event(&rate_word,1,false);assert(s_probe.stop&&s_probe.rate_limited&&!s_probe.symbols);
 }
-int main(void){native_projection();parser_tests();fixture(false);fixture(true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
+
+static void resident_lifecycle(void){
+ reset();mode=1;
+ uint32_t saved[13];memcpy(saved,registers,sizeof(saved));
+ assert(sync_output_live_begin(7,owner_live));
+ assert(sync_output_live_active()&&now<200&&clock_prepares==1&&clock_arms==1);
+ assert(!sync_output_live_begin(7,owner_live));
+ for(unsigned i=0;i<350u;++i){vTaskDelay(1);assert(sync_output_live_poll());}
+ assert(s_probe.callbacks>256u&&!s_probe.rate_limited&&clock_prepares==1&&clock_arms==1);
+ /* Inject a qualified model to test publication/lifetime independently of
+  * the separate real waveform qualification fixtures. */
+ s_native->native=(sync_native_track_t){.valid=true,.standard=2,.last=123400,
+     .h=123300,.field=100000,.line_ticks_x32=40960};
+ s_native->native_phase=(sync_phase_bracket_t){.valid=true,.lo=10,.hi=20};
+ sync_output_live_model_t model;
+ assert(sync_output_live_snapshot(&model)&&model.valid&&model.standard==2&&
+        model.last_h==123300&&model.line_ticks_x32==40960&&model.now==123456);
+ sync_output_live_invalidate();
+ assert(!s_probe.armed&&sync_output_live_snapshot(&model)&&!model.valid);
+ unsigned callbacks=s_probe.callbacks,prior_receives=receives;
+ rmt_symbol_word_t w={.duration0=1186,.level0=1,.duration1=94,.level1=0};
+ event(&w,1,false);assert(s_probe.callbacks==callbacks);
+ assert(sync_output_live_poll()&&receives==prior_receives+1u&&clock_prepares==1&&clock_arms==1);
+ assert(sync_output_live_snapshot(&model)&&!model.valid&&model.standard==2&&model.last_h==123300);
+ /* Force the proactive local-counter rollover boundary without running
+  * 180 seconds of mock captures. Timer/link must survive the RX rearm. */
+ now=s_session->epoch_started+180000000;prior_receives=receives;
+ assert(sync_output_live_poll()&&receives==prior_receives+1u&&clock_prepares==1&&clock_arms==1);
+ assert(sync_output_live_end()&&!sync_output_live_active()&&!channel_live);
+ assert(!memcmp(saved,registers,sizeof(saved))&&sync_output_live_end());
+ reset();mode=1;assert(sync_output_live_begin(7,owner_live));live_value=false;
+ assert(!sync_output_live_poll()&&!sync_output_live_active()&&!channel_live);
+ assert(sync_output_live_end());
+ reset();mode=1;assert(sync_output_live_begin(7,owner_live));fail_at=8;
+ assert(!sync_output_live_end()&&s_quarantined&&!s_probe.armed);
+ assert(!sync_output_live_begin(7,owner_live)&&!sync_output_live_end());
+ checks+=10;
+}
+
+
+static void restore_fault_lifecycle(void){
+ reset();mode=1;assert(sync_output_live_begin(7,owner_live));
+ /* Simulate pin-state restoration/readback mismatch with successful SDK
+  * teardown. A subsequent begin must refuse until reboot. */
+ registers[GPIO_PIN2_REG]^=GPIO_PIN2_PAD_DRIVER_M;
+ assert(!sync_output_live_end()&&s_clock_fault&&!s_busy&&!channel_live);
+ unsigned calls=api_calls;
+ assert(!sync_output_live_begin(7,owner_live));
+ sync_output_probe(7,owner_live);
+ assert(api_calls==calls&&!sync_output_live_end());
+ ++checks;
+}
+
+int main(void){restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''
 
 
@@ -290,9 +343,11 @@ class Runtime(unittest.TestCase):
         phase = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', phase, flags=re.MULTILINE)
         native = (ROOT / 'main/sync_native_track.h').read_text()
         native = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', native, flags=re.MULTILINE)
+        api = (ROOT / "main/sync_output_probe.h").read_text()
+        api = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', api, flags=re.MULTILINE)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            (path / "probe.c").write_text(PREFIX + phase + native + source + SUFFIX)
+            (path / "probe.c").write_text(PREFIX + api + phase + native + source + SUFFIX)
             compiler = os.environ.get("CC", "cc")
             subprocess.run([compiler, "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
                             str(path / "probe.c"), "-o", str(path / "probe")], check=True)
