@@ -637,6 +637,15 @@ hardware streaming and verified restart. Four-seed physical-ADC comparisons
 show several-dB offset/filter mismatch losses; the apparent deviation-1.7
 filter benefit did not survive held-out tests. No measured RF range claim.
 Issue #213: latest operator requires real snow/weak picture preservation.
+PR #212 native-sync work now extends the DAC-OE gate experiment with a
+separate PARLIO DATA4 mirror on unused MTMS/GPIO2. Manual Y temporarily
+routes signal52 there, preserving the real DAC GPIO8 and all six DAC OEs;
+its RMT input cannot see DAC OE gating as source sync. Refuse an occupied
+GPIO2 output, restore all mirror pad/matrix/OE settings, and keep LP/1x
+qualification. Gate-H boots and restores on the C5 with no transport faults;
+the no-VTX capture has zero RMT events, so camera detection and an absolute
+source-clock anchor remain unproven. Manual Q/q gate tests are not an
+automatic flywheel. See docs/FLYWHEEL_GOAL.md and board_gate_h evidence.
 Black fallback defaults OFF every boot; `N` is its opt-in bench toggle.
 `docs/SYNC_KEEPER.md` / `research/sync_iq_mux.py` explore DMA synthetic-IQ
 sync/blanking plus unmodified active RX IQ. Exact-timing host cases preserve

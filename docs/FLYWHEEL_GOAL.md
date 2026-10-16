@@ -603,3 +603,41 @@ The repeat runner retries ownership refusals before starting a trial, with
 are in board_gate_g_repeat_2026-10-16.json; these remain software timing
 observations. Automatic activation, source clock alignment and monitor lock
 are still unproven. No generated pulse is counted as camera evidence.
+
+### Independent native source witness (2026-10-16)
+
+Manual Y now mirrors PARLIO DATA4/signal52 to unused MTMS/GPIO2, instead of
+reading the gated DAC GPIO8. GPIO2 is outside the six-pad DAC OE mask by a
+compile-time assertion. Occupied/open-drain GPIO2 is refused before writes;
+its entire original IOMUX, output matrix and enable state are restored on
+every setup/error/normal exit. No GPIO output-data writes, DAC pin writes,
+IQ/LUT/descriptor or PHY changes are used. Host SDK mocks enforce these
+write restrictions and exact preservation, including native peripheral OE,
+occupied mirrors, injected setup failures and unrelated mux/pull bits.
+This extends the C5VRX/Twotoz DAC-OE experiment without losing source
+observability whenever a later continuous controller generates sync tips.
+
+Seeed's official XIAO ESP32-C5 pin table identifies GPIO2 as MTMS; current
+firmware already uses the other external JTAG pins GPIO3/4/5 for IQ RX:
+https://wiki.seeedstudio.com/xiao_esp32c5_getting_started/ . GPIO2 must remain
+unconnected to another driven peripheral in this manual experiment.
+
+Gate-H (`c3953a0`, SHA256
+`c44aacc2130ba5a1011db718e817c7dfbf29cba5ca58de0e551b7413881703e3`)
+boots with7608 bytes free. Y's51ms no-VTX capture reports no events,
+error=none, restored=1, and no source/DAC changes. The following PAL trial
+completes48000 pulses with1.55us maximum software lateness; NTSC refuses
+ownership before touching output. Transport fault counters remain zero.
+This establishes successful mirror setup/cleanup, not captured camera sync
+or analogue self-gate immunity. The hardware routing excludes DAC gating,
+but actual native-camera events and source phase still need measurement.
+
+For the absolute phase anchor, merely bracketing rmt_receive() is invalid:
+RMT begins counting on its first signal edge, not at software enable time.
+Investigated next route: hold the independent witness low while arming,
+feed the SAME GPIO-filtered edge to both RMT (private filter disabled) and
+GPIO ETM -> GPTIMER START_COUNT. Repeated START_COUNT must not reload the
+timer. A shared GPIO filter is required; keeping RMT's current private2.5us
+filter would allow a different first raw edge to start GPTIMER. The current
+Y implementation still has that private filter and absolute_time=0; this
+clock anchor is a design to verify, not an enabled or proven feature.
