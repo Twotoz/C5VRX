@@ -1,4 +1,4 @@
-/* C5VRX by Twotoz and contributors. A manually invoked three-field analogue
+/* C5VRX by Twotoz and contributors. A manually invoked bounded analogue
  * hypothesis probe: gate DAC pad OE while real PARLIO data continues. R7 is a
  * 200-ohm shunt; a zero-volt sync tip is a prediction requiring measurement.
  * No raw IQ, LUT, descriptor, DMA, or PHY writes. This is not a live flywheel. */
@@ -23,6 +23,7 @@
 #define GATE_INITIAL_TICKS 2000u
 #define GATE_LATE_TICKS 160u
 #define GATE_TIMEOUT_US 250000
+#define GATE_LONG_TIMEOUT_US 3500000
 #define GATE_BATCH_PULSES 7u
 #define GATE_BATCH_MAX_CYCLES (7u*640u*12u) /* 224us manual ISR ceiling */
 
@@ -47,6 +48,9 @@ typedef struct {
     sgs_pulse_t batch[GATE_FIELDS][GATE_BATCH_PULSES];
     sgs_t after_batch[GATE_FIELDS];
     uint8_t batch_count[GATE_FIELDS];
+    uint8_t batch_index;
+    uint32_t field_limit,cycle_ticks,cycle_halves;
+    uint64_t batch_tick_offset,batch_half_offset,batch_field_offset;
     volatile uint32_t batches,batch_max_cycles,batch_max_pulses,batch_late_max_cycles;
 } gate_context_t;
 
@@ -117,11 +121,14 @@ static bool prepare_batches(gate_context_t *g,bool pal)
 static bool IRAM_ATTR broad_batch(gate_context_t *g,uint32_t anchor,
                                    uint32_t initial_late)
 {
-    unsigned field=(unsigned)g->pulse.field,count=g->batch_count[field],emitted=1u;
+    unsigned plan=g->batch_index,count=g->batch_count[plan],emitted=1u;
     uint64_t first=g->pulse.start;
     ++g->batches;
     for(unsigned i=1;i<count;++i) {
-        sgs_pulse_t next=g->batch[field][i];
+        sgs_pulse_t next=g->batch[plan][i];
+        next.start+=g->batch_tick_offset;
+        next.half+=g->batch_half_offset;
+        next.field+=g->batch_field_offset;
         uint64_t ticks=next.start-first;
         if(ticks>GATE_BATCH_MAX_CYCLES/12u) {
             g->reason=GATE_BATCH;g->done=true;break;
@@ -152,7 +159,20 @@ static bool IRAM_ATTR broad_batch(gate_context_t *g,uint32_t anchor,
     if(emitted>g->batch_max_pulses)g->batch_max_pulses=emitted;
     if(duration>=GATE_BATCH_MAX_CYCLES && !g->done){g->reason=GATE_BATCH;g->done=true;}
     if(g->done)return false;
-    g->schedule=g->after_batch[field];
+    g->schedule=g->after_batch[plan];
+    g->schedule.next_tick+=g->batch_tick_offset;
+    g->schedule.next_half+=g->batch_half_offset;
+    g->schedule.field+=g->batch_field_offset;
+    /* NTSC three-field half-count1575 is divisible by9: the fractional tick
+     * remainder repeats exactly. PAL has no fractional carry. Preserve local
+     * index/remainder, but relocate GLOBAL half parity for the ordinary H grid.
+     * No modulo or wide division is needed in this ISR. */
+    if(++g->batch_index==GATE_FIELDS) {
+        g->batch_index=0;
+        g->batch_tick_offset+=g->cycle_ticks;
+        g->batch_half_offset+=g->cycle_halves;
+        g->batch_field_offset+=GATE_FIELDS;
+    }
     return true;
 }
 
@@ -178,10 +198,11 @@ static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
     uint32_t late=(uint32_t)(now-target);
     if(late>g->max_late)g->max_late=late;
     bool batch=g->pulse.kind==SGS_BROAD;
-    if(batch && (g->pulse.field>=GATE_FIELDS ||
-        g->batch_count[g->pulse.field]<2u ||
-        g->batch_count[g->pulse.field]>GATE_BATCH_PULSES ||
-        g->batch[g->pulse.field][0].start!=g->pulse.start)) {
+    if(batch && (g->pulse.field>=g->field_limit || g->batch_index>=GATE_FIELDS ||
+        g->batch_count[g->batch_index]<2u ||
+        g->batch_count[g->batch_index]>GATE_BATCH_PULSES ||
+        g->batch[g->batch_index][0].start+g->batch_tick_offset!=g->pulse.start ||
+        g->batch[g->batch_index][0].half+g->batch_half_offset!=g->pulse.half)) {
         g->reason=GATE_BATCH;g->done=true;return false;
     }
     uint32_t anchor;
@@ -192,7 +213,7 @@ static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
     if(!sgs_next(&g->schedule,&g->pulse)) {
         g->reason=GATE_SCHEDULE;g->done=true;return false;
     }
-    if(g->pulse.field>=GATE_FIELDS) {
+    if(g->pulse.field>=g->field_limit) {
         g->reason=GATE_COMPLETE;g->done=true;return false;
     }
     gptimer_alarm_config_t alarm={.alarm_count=GATE_INITIAL_TICKS+g->pulse.start};
@@ -202,7 +223,8 @@ static bool IRAM_ATTR gate_alarm(gptimer_handle_t timer,
     return false;
 }
 
-void sync_gate_probe(bool pal,uint32_t generation,bool (*live)(uint32_t))
+static void gate_probe_run(bool pal,uint32_t generation,bool (*live)(uint32_t),
+                            uint32_t fields,int64_t timeout_us)
 {
     if(__atomic_exchange_n(&s_busy,true,__ATOMIC_ACQ_REL)) {
         printf("SYNC_GATE end reason=busy generation=%lu restored=1\n",(unsigned long)generation);
@@ -213,9 +235,11 @@ void sync_gate_probe(bool pal,uint32_t generation,bool (*live)(uint32_t))
     const char *failure=NULL;
     gate_context_t *g=&s_gate;
     memset(g,0,sizeof(*g));g->live=live;g->generation=generation;g->min_hold=UINT32_MAX;
+    g->field_limit=fields;g->cycle_ticks=pal?1200000u:1001000u;
+    g->cycle_halves=pal?1875u:1575u;
     for(unsigned j=0;j<3;++j)g->kind_min[j]=UINT32_MAX;
     printf("SYNC_GATE begin standard=%s generation=%lu fields=%u cpu_hz=%d automatic=0 burst_isr_limit_us=224\n",
-        pal?"PAL":"NTSC",(unsigned long)generation,GATE_FIELDS,esp_clk_cpu_freq());
+        pal?"PAL":"NTSC",(unsigned long)generation,(unsigned)fields,esp_clk_cpu_freq());
     if(!live || esp_clk_cpu_freq()!=240000000) {failure="cpu_or_callback";goto cleanup;}
     if(!live(generation)) {failure="context";goto cleanup;}
     saved_enable=REG_READ(GPIO_ENABLE_REG);
@@ -267,7 +291,7 @@ void sync_gate_probe(bool pal,uint32_t generation,bool (*live)(uint32_t))
     if(gptimer_start(g->timer)!=ESP_OK){failure="timer_start";goto cleanup;}
     started=true;
     int64_t began=esp_timer_get_time();
-    while(!g->done && esp_timer_get_time()-began<GATE_TIMEOUT_US)vTaskDelay(1);
+    while(!g->done && esp_timer_get_time()-began<timeout_us)vTaskDelay(1);
     if(!g->done){g->reason=GATE_TIMEOUT;g->done=true;}
 cleanup:
     /* Stop callback delivery before restoring muxes or releasing ownership. */
@@ -305,3 +329,9 @@ cleanup:
     /* A failed deletion must not let an old callback alias a new context. */
     if(reusable)__atomic_store_n(&s_busy,false,__ATOMIC_RELEASE);
 }
+
+void sync_gate_probe(bool pal,uint32_t generation,bool (*live)(uint32_t))
+{ gate_probe_run(pal,generation,live,GATE_FIELDS,GATE_TIMEOUT_US); }
+
+void sync_gate_probe_long(bool pal,uint32_t generation,bool (*live)(uint32_t))
+{ gate_probe_run(pal,generation,live,pal?150u:180u,GATE_LONG_TIMEOUT_US); }

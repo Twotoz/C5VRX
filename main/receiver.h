@@ -85,6 +85,8 @@ uint32_t transport_fault_count(void);
 void transport_print(void);
 void transport_sync_bench(void); /* manual private-RAM J benchmark; no live writes */
 void transport_sync_gate_probe(bool pal); /* Z/z: brief PAL/NTSC DAC-OE diagnostic */
+void transport_sync_gate_probe_long(bool pal); /* Q/q: three-second manual gate test */
+void transport_sync_output_probe(void); /* Y: native DAC timing observation, LP/1x only */
 void sync_dma_c2m(const void *addr, size_t size);
 void sync_dma_m2c(const void *addr, size_t size);
 int ring_node_index(uint32_t addr);

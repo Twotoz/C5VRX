@@ -9,6 +9,7 @@
 #include "driver/parlio_rx.h"
 #include "driver/parlio_tx.h"
 #include "sync_gate_probe.h"
+#include "sync_output_probe.h"
 #include "esp_attr.h"
 #include "esp_cache.h"
 #include "esp_rom_sys.h"
@@ -895,6 +896,7 @@ typedef struct {
 
 static sync_bench_context_t s_gate_context;
 static bool s_gate_probe_busy;
+static bool s_output_probe_busy;
 
 /* ISR-safe transport identity check: no scheduler/PHY calls or mutation. */
 static bool IRAM_ATTR transport_sync_gate_live(uint32_t generation)
@@ -908,9 +910,9 @@ static bool IRAM_ATTR transport_sync_gate_live(uint32_t generation)
         s_output == s_gate_context.output;
 }
 
-void transport_sync_gate_probe(bool pal)
+static void transport_sync_gate_run(bool pal, bool longer)
 {
-    if (s_gate_probe_busy || sync_service_active() || calibration_in_startup() || phy_busy()) {
+    if (s_gate_probe_busy || s_output_probe_busy || sync_service_active() || calibration_in_startup() || phy_busy()) {
         printf("SYNC_GATE refused=context_busy\n");
         return;
     }
@@ -929,8 +931,33 @@ void transport_sync_gate_probe(bool pal)
         printf("SYNC_GATE refused=transport\n");
         return;
     }
-    sync_gate_probe(pal, s_gate_context.generation, transport_sync_gate_live);
+    if (longer) sync_gate_probe_long(pal, s_gate_context.generation, transport_sync_gate_live);
+    else sync_gate_probe(pal, s_gate_context.generation, transport_sync_gate_live);
     s_gate_probe_busy = false;
+    phy_end_actuator();
+}
+
+void transport_sync_gate_probe(bool pal) { transport_sync_gate_run(pal, false); }
+void transport_sync_gate_probe_long(bool pal) { transport_sync_gate_run(pal, true); }
+
+void transport_sync_output_probe(void)
+{
+    if (s_gate_probe_busy || s_output_probe_busy || sync_service_active() ||
+        calibration_in_startup() || !phy_try_actuator(phy_generation())) {
+        printf("SYNC_OUTPUT refused=context_busy\n");
+        return;
+    }
+    vTaskSuspendAll();
+    s_gate_context = (sync_bench_context_t){s_stream_generation, s_verified_level,
+        s_verified_output, s_verified_lp};
+    bool live = transport_sync_gate_live(s_gate_context.generation);
+    bool supported = live && s_gate_context.lp && s_gate_context.output == 0u;
+    if (supported) s_output_probe_busy = true;
+    (void)xTaskResumeAll();
+    if (supported) {
+        sync_output_probe(s_gate_context.generation, transport_sync_gate_live);
+        s_output_probe_busy = false;
+    } else printf("SYNC_OUTPUT refused=%s\n", live ? "requires_lp_output_1x" : "transport");
     phy_end_actuator();
 }
 

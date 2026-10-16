@@ -96,6 +96,9 @@ static bool in_batch,release_ends_batch,inject_batch_delay,batch_delay_used;
 static bool corrupt_batch;
 static uint32_t batch_anchor,batch_pulses;
 static uint64_t batch_first_tick;
+static uint64_t previous_start;
+static uint32_t previous_width;
+static bool have_previous,oracle_pal;
 static bool live(uint32_t generation)
 {
     if(mt.started){
@@ -114,6 +117,15 @@ void mock_write(uint32_t address,uint32_t value)
         if(value==GATE_MASK){
             assert((registers[0]&GATE_MASK)==GATE_MASK);
             assert(sgs_next(&expected_schedule,&expected_pulse));
+            assert(expected_pulse.start==s_gate.pulse.start && expected_pulse.half==s_gate.pulse.half);
+            assert(expected_pulse.field==s_gate.pulse.field && expected_pulse.index==s_gate.pulse.index);
+            assert(expected_pulse.width==s_gate.pulse.width && expected_pulse.kind==s_gate.pulse.kind);
+            uint64_t rational=oracle_pal?expected_pulse.half*640u:(expected_pulse.half*5720u+4u)/9u;
+            assert(expected_pulse.start==rational);
+            assert(expected_pulse.field==expected_pulse.half/(oracle_pal?625u:525u));
+            if(expected_pulse.kind==SGS_NORMAL)assert(!(expected_pulse.half&1u));
+            if(have_previous)assert(expected_pulse.start>=previous_start+previous_width);
+            have_previous=true;previous_start=expected_pulse.start;previous_width=expected_pulse.width;
             if(expected_pulse.kind==SGS_BROAD && !in_batch){
                 in_batch=true;batch_anchor=cycles;batch_first_tick=expected_pulse.start;batch_pulses=0;
             }
@@ -165,6 +177,7 @@ int gptimer_set_alarm_action(gptimer_handle_t t,const gptimer_alarm_config_t *a)
 {
     assert((registers[0]&GATE_MASK)==GATE_MASK);
     assert(!in_batch);
+    assert(a->alarm_count==GATE_INITIAL_TICKS+s_gate.pulse.start);
     ++alarm_calls;
     if((fail_stage==5 && alarm_calls==1u)||(fail_stage==8 && alarm_calls==5u))return -1;
     t->alarm=a->alarm_count;return 0;
@@ -184,7 +197,8 @@ void vTaskDelay(unsigned ticks)
     if(stall){wall+=10000;return;}
     assert(mt.started && mt.callbacks.on_alarm);
     mt.count=mt.alarm+(clears>=late_after?161u:0u);
-    cycles=(uint32_t)(mt.count*12u)+0xfffffff0u;
+    /* First tip crosses UINT32 wrap; subsequent alarm times share one clock. */
+    cycles=(uint32_t)(mt.count*12u)+0xffffa200u;
     wall=(int64_t)(mt.count/20u);
     gptimer_alarm_event_data_t event={.count_value=mt.count,.alarm_value=mt.alarm};
     mt.callbacks.on_alarm(&mt,&event,mt.context);
@@ -204,16 +218,20 @@ static void init(void)
     s_busy=false;
     pull_fail_pin=UINT32_MAX;pull_fail_used=false;
     in_batch=release_ends_batch=inject_batch_delay=batch_delay_used=corrupt_batch=false;
+    have_previous=false;
 }
-static void run(bool pal)
+static void run_mode(bool pal,bool long_test)
 {
+    oracle_pal=pal;
     assert(sgs_init(&expected_schedule,pal?SGS_PAL:SGS_NTSC));
-    sync_gate_probe(pal,213u,live);++runs;
+    if(long_test)sync_gate_probe_long(pal,213u,live);
+    else sync_gate_probe(pal,213u,live);
+    ++runs;
     assert(!memcmp(before,registers,sizeof(before)));
     assert(!mt.started && !mt.enabled);
     assert(!mt.exists || fail_stage==11);
     assert(!s_busy || fail_stage>=9);
-    assert(wall<1000000);
+    assert(wall<(long_test?4000000:1000000));
     if(s_gate.pulses){
         assert(s_gate.pulses==clears);
         assert(s_gate.min_hold>=46u*12u);
@@ -230,8 +248,10 @@ static void run(bool pal)
         assert(s_busy && clears==prior); /* No old-context reuse. */
     }
 }
+static void run(bool pal){run_mode(pal,false);}
 int main(void)
 {
+    assert(sizeof(s_gate.batch)/sizeof(s_gate.batch[0])==3u);
     for(unsigned pal=0;pal<2;++pal){
         init();run(pal!=0);assert(s_gate.reason==GATE_COMPLETE);
         sgs_t schedule;sgs_pulse_t pulse;assert(sgs_init(&schedule,pal?SGS_PAL:SGS_NTSC));
@@ -240,6 +260,23 @@ int main(void)
         assert(clears==count && s_gate.eq==eq && s_gate.broad==broad);
         assert(s_gate.batches==3u && s_gate.batch_max_pulses==(pal?6u:7u));
         assert(s_gate.batch_max_cycles<GATE_BATCH_MAX_CYCLES);
+        init();run_mode(pal!=0,true);assert(s_gate.reason==GATE_COMPLETE);
+        unsigned fields=pal?150u:180u;
+        assert(s_gate.field_limit==fields && s_gate.pulse.field==fields);
+        assert(s_gate.pulses==(pal?48000u:48870u) && s_gate.batches==fields);
+        assert(s_gate.eq==fields*(pal?10u:12u) && s_gate.broad==fields*(pal?5u:6u));
+        assert(s_gate.batch_index==0u && s_gate.batch_field_offset==fields);
+        assert(s_gate.batch_tick_offset==(pal?60000000u:60060000u));
+        assert(s_gate.batch_half_offset==(uint64_t)fields*(pal?625u:525u));
+        assert(s_gate.batch_max_cycles<GATE_BATCH_MAX_CYCLES);
+        assert(wall>2900000 && wall<3100000);
+        assert(s_gate.pulse.start==(pal?60000000u:60060000u));
+        init();late_after=2000u;run_mode(pal!=0,true);
+        assert(s_gate.reason==GATE_LATE && clears>=2000u && clears<2010u);
+        init();lose_after=4000u;run_mode(pal!=0,true);
+        assert(s_gate.reason==GATE_CONTEXT && clears==3998u);
+        init();stall=true;run_mode(pal!=0,true);
+        assert(s_gate.reason==GATE_TIMEOUT && !clears && wall>=3500000);
         init();late_after=5u;run(pal!=0);assert(clears==5u && s_gate.reason==GATE_LATE);
         init();lose_after=8u;run(pal!=0);assert(clears==6u && s_gate.reason==GATE_CONTEXT);
         init();lose_after=pal?8u:9u;run(pal!=0);
@@ -269,7 +306,7 @@ int main(void)
     }
     init();cpu_hz=160000000;run(true);assert(!clears && !mt.exists);
     init();s_busy=true;sync_gate_probe(true,213u,live);assert(!clears && !mt.exists && s_busy);
-    puts("PASS actual GPIO OE probe mocked runtime: full PAL/NTSC pulses, bounded coherent broad bursts/absolute cycle grid/no SDK rearm in gaps, exact restoration, temporary pulls/partial failures, context/lateness/timeout, all timer failures, invalid pads/mux/CPU, no physical timing claim");
+    puts("PASS actual GPIO OE probe mocked runtime: PAL150/NTSC180 fields (48000/48870 pulses) exact rational/half/field/H parity/no overlap, three reused V plans, bounded bursts, exact restoration, context/lateness/timeout, all timer failures, invalid pads/mux/CPU, no physical timing claim");
     return 0;
 }
 '''

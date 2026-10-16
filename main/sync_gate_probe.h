@@ -13,3 +13,8 @@
  * ISR for up to seven half-lines (224us bound, higher-priority IRQ delay is
  * measured). Each individual gap still exposes the ongoing real DAC data. */
 void sync_gate_probe(bool pal, uint32_t generation, bool (*live)(uint32_t));
+
+/* Same manual diagnostic for approximately3s (150PAL/180NTSC fields), with a
+ * 3.5s timeout. Reuses the same three batch plans; no field-sized RAM growth.
+ * Caller retains exclusive ownership throughout; automatic use is forbidden. */
+void sync_gate_probe_long(bool pal, uint32_t generation, bool (*live)(uint32_t));
