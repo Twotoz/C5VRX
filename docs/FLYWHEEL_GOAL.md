@@ -541,3 +541,33 @@ SDK rearm/schedule calls between broad tips. The diagnostic ceiling is
 scheduling design. The8us lateness limit remains unchanged. Mock tests
 verify full960/815 PAL/NTSC counts, burst timing, interruption/refusal and
 complete restoration. Physical completion still needs another probe.
+
+### Three-second manual gate evidence (2026-10-16)
+
+The three-field gate-C image (`f72f9c1`) completed960 PAL and815 NTSC
+pulses on the C5, restoring all pad settings and leaving DMA fault counters
+zero. Maximum software lateness was5.3/5.5us; this is not an analogue
+waveform measurement or proof of monitor lock.
+
+The long diagnostic reuses only three vertical plans for150 PAL or180
+NTSC fields. Host runtime checks compare every OE edge against independent
+rational timing, global H parity, counter wrap, and restoration failures.
+Q/q selects this manual test; default activation remains OFF.
+
+Gate-D (`b079ab8`) failed at boot allocating the6144-byte control task:
+the additional RMT observer consumed scarce SRAM. No pulse test ran.
+The previous gate-C image was restored and its healthy startup verified.
+Gate-E (`2b51e3f`) moves the manual RMT observer and its RX ISR into flash;
+cache-disabled observation continuity is deliberately not promised.
+It boots with7896 bytes free and is currently flashed. Its binary SHA256
+is `59c7f330ddce52c8a2c30e9f22475f7a9ae609b82ef0ebdc006344a7a590eeb4`.
+
+On gate-E, the NTSC test completed all180 fields/48870 pulses over3.003s,
+with maximum software lateness6.7us and exact GPIO restoration. PAL stopped
+after7255 pulses/23 vertical batches when lateness reached14.55us, exceeding
+the unchanged8us guard. Thus sustained PAL timing is not yet qualified.
+Both tests left all DMA/transport fault counters zero. The native-output
+observer refused `pin_context` without starting capture; its actual pin
+qualification still needs diagnosis. Source-aligned automatic activation,
+analogue pulse shape and actual monitor lock remain unproven. Captures and
+hashes are archived in `research/data/board_gate_{c,d,e}_2026-10-16.*`.
