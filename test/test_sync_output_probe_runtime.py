@@ -302,6 +302,14 @@ static void resident_lifecycle(void){
  event(&w,1,false);assert(s_probe.callbacks==callbacks);
  assert(sync_output_live_poll()&&receives==prior_receives+1u&&clock_prepares==1&&clock_arms==1);
  assert(sync_output_live_snapshot(&model)&&!model.valid&&model.standard==2&&model.last_h==123300);
+ /* A natural RX idle ending must flush the hardware/interrupt boundary just
+  * like an explicit mutation. Absolute timer ownership must survive it. */
+ unsigned before_disables=disables;prior_receives=receives;
+ event(&w,1,true);
+ assert(sync_output_live_poll()&&disables==before_disables+1u&&
+        receives==prior_receives+1u&&clock_prepares==1&&clock_arms==1);
+ assert(!s_native->native.seen&&!s_native->native_phase.valid);
+ ++checks;
  /* Force the proactive local-counter rollover boundary without running
   * 180 seconds of mock captures. Timer/link must survive the RX rearm. */
  now=s_session->epoch_started+180000000;prior_receives=receives;

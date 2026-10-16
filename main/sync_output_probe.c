@@ -523,7 +523,11 @@ static bool sop_session_poll(sop_session_t *s)
     if(s_probe.stop)return false;
     /* Abort and rearm before the 32-bit RMT-local elapsed counter wraps.
      * This is a source discontinuity, never synthetic camera evidence. */
-    if(s->invalidated || (!s_probe.ended && esp_timer_get_time()-s->epoch_started>=180000000)) {
+    /* A native idle ending is a hardware receive boundary too. Use the same
+     * full RX disable/enable boundary as an invalidation, including the SDK's
+     * interrupt-status clear, before reusing the channel and private marker.
+     * Keep the independent absolute timer running throughout. */
+    if(s_probe.ended || s->invalidated || esp_timer_get_time()-s->epoch_started>=180000000) {
         s_probe.armed=false;
         if(rmt_disable(s->channel)!=ESP_OK){s->failure="rollover_disable";return false;}
         s->enabled_rx=false;
@@ -715,6 +719,35 @@ bool sync_output_live_snapshot(sync_output_live_model_t *out)
         return true;
     }
     return false;
+}
+
+void sync_output_live_diagnostics(void)
+{
+    if(!sync_output_live_active() || !s_native)return;
+    for(unsigned attempt=0;attempt<3u;++attempt) {
+        uint32_t seq=s_native->sequence;
+        if(seq&1u)continue;
+        __sync_synchronize();
+        sop_context_t probe=s_probe;
+        sop_native_t native=*s_native;
+        uint32_t rearms=s_session->clock_rearms;
+        bool invalidated=s_session->invalidated;
+        __sync_synchronize();
+        if(seq!=s_native->sequence)continue;
+        printf("SYNC_LIVE_DIAG callbacks=%lu symbols=%lu epochs=%lu endings=%lu low=%lu h=%lu broad=%lu h_periods=%lu pal32=%lu ntsc32=%lu broad5=%lu broad6=%lu prefix_n=%u marker_ticks=%lu barrier=%lu elapsed=%lu phase_checked=%u phase_valid=%u phase_lo=%lld phase_hi=%lld native_valid=%u native_standard=%u fields=%lu qualified_epochs=%lu rearms=%lu invalidated=%u\n",
+            (unsigned long)probe.callbacks,(unsigned long)probe.symbols,
+            (unsigned long)probe.epochs,(unsigned long)probe.endings,
+            (unsigned long)probe.low,(unsigned long)probe.h,(unsigned long)probe.broad,
+            (unsigned long)probe.h_periods,(unsigned long)probe.pal32,(unsigned long)probe.ntsc32,
+            (unsigned long)probe.broad5,(unsigned long)probe.broad6,probe.prefix_n,
+            (unsigned long)probe.first_duration,(unsigned long)probe.discard_before,
+            (unsigned long)probe.elapsed,(unsigned)native.native_phase_checked,
+            (unsigned)native.native_phase.valid,(long long)native.native_phase.lo,
+            (long long)native.native_phase.hi,(unsigned)native.native.valid,
+            (unsigned)native.native.standard,(unsigned long)native.native.qualified_fields,
+            (unsigned long)native.native_qualified_epochs,(unsigned long)rearms,(unsigned)invalidated);
+        return;
+    }
 }
 
 static void sync_output_probe_run(uint32_t generation,bool (*live)(uint32_t),bool edge_clock)

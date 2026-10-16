@@ -974,3 +974,15 @@ pulse counts as monitor-lock proof. Native per-line witness remains unconnected.
 See docs/FLYWHEEL_GOAL.md and board_conditional_output_2026-10-17.json for actual
 A-E failures, tests, hashes and remaining camera/monitor proof. Latest operator
 state: VTX OFF; do not interpret this capture as camera-on evidence.
+
+
+### Native observer G receive boundary (2026-10-17)
+
+E/F camera-on RF NTSC/AFC lock did not produce a qualified native H/V model.
+F had repeated empty idle epochs; freezing automatic kp did not solve it and
+AUTO kp+LP was restored. G uses full RMT disable/enable also at natural endings;
+timer/link remain continuous. G follow-up with RF detected=none shows private
+markers continuing (975 symbols/325 endings). This is not camera-sync proof.
+See board_native_observer_2026-10-17.json. VTX was getting warm; user was told
+it can be switched off. Do not keep it on for development or assume camera is
+still transmitting. Flywheel output remains OFF; camera qualification still open.

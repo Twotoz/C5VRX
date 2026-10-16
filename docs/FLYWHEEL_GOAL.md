@@ -880,3 +880,24 @@ native witness, prove fade/return and monitor lock, cover other output levels,
 and decide automatic defaults from that evidence. Whole-model validity currently
 stops repair; the per-line native suppression callback remains unconnected.
 Do not call this completed or claim an improvement in RF range from pulse counts.
+
+
+### 2026-10-17: real-camera observer E/F failure, G receive-boundary change
+
+E/F RF status detects NTSC and AFC lock, but the separate native observer never
+qualifies H/V. F diagnostics show symbols stop growing while empty idle endings
+continue. A temporary AUTO kp OFF bench reproduces this; AUTO kp+LP is restored
+at its end. Do not attribute the failure solely to automatic kp switching.
+The operator may turn the warm VTX off; no sustained camera-on request remains.
+
+G applies the existing explicit-invalidation RX disable/enable boundary also to
+natural idle endings. This flushes driver interrupt state before receive rearm;
+the independent shared timer remains running. Runtime test exercises natural
+end -> disable/enable -> fresh epoch without resetting timer/link,86 checks pass.
+G builds, flash hash verifies, startup completes. A follow-up with detected=none
+reaches975 symbols/325 idle endings: private markers continue returning instead
+of cumulative symbols freezing. No H/V model qualifies; source evidence is absent
+in this capture. This is narrower than real-camera recovery proof, still pending.
+Evidence: `research/data/board_native_observer_2026-10-17.json`. G image SHA256
+69ec3662bafaeb18f363c161b222a41fcbe5b4d22b765ca8d7f128e7165768d9.
+Output repair stays disabled throughout these observer tests. Default remains OFF.

@@ -37,3 +37,5 @@ bool sync_output_live_active(void);
 void sync_output_live_before_close(bool (*callback)(void));
 void sync_output_live_invalidate(void);
 bool sync_output_live_snapshot(sync_output_live_model_t *out);
+/* Task-side diagnostic snapshot, under the same serialized ownership. */
+void sync_output_live_diagnostics(void);

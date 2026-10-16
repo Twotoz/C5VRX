@@ -1024,6 +1024,7 @@ void transport_sync_live_print(void)
     bool have_model=false;
     if(phy_try_actuator(phy_generation())) {
         have_model=sync_output_live_snapshot(&model);
+        sync_output_live_diagnostics();
         phy_end_actuator();
     }
     if(have_model)
