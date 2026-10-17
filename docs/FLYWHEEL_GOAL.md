@@ -1114,3 +1114,22 @@ phase. Source-specific diagnostic counts now expose where acquisition fails.
 Dedicated source tests1,000,055 pass (helper also ran sanitizers); unchanged
 strict suite1,000,137 and integrated observer194 pass. This is host evidence;
 N board build/camera result is pending at this note. Output gates remain OFF.
+
+N build/flash SHA256:
+6a7e255d33df81a5f1933d4440a86a46ad79ba1e950fd6bf405a500b1703579b.
+Three VTX-off calls restore successfully with no false model; heap1260 after
+persistent allocation. User then enabled VTX. Three short calls all restore
+and find high_hstd=1 (NTSC H), but ZERO full V models. This is progress in H
+acquisition, not a working flywheel. Source trace in these later calls has
+eroded broad pulses, e.g543/460/554/463/391/593ticks, with incomplete pre/postEQ.
+Trailing edges fit better than starts, but not all are within24ticks. Simply
+widening pulse gates cannot repair this. VTX was promptly told it can turn off.
+Raw hashes/selected diagnostics/LOW rows: board_native_flag_n_2026-10-17.json.
+
+O diagnostic change uses the SAME96row buffer to keep structural HIGH runs and
+four following runs over the entire finite observation window, with shared-clock
+coordinates. It does not freeze on the first broad candidate; overwritten rows
+are counted. Regular H no longer consumes the whole buffer before a second V
+field can arrive. Ordinary resident LOW history keeps its previous behavior.
+No lock policy is relaxed by this diagnostic change. Goal remains actual
+conditional repair plus monitor-lock proof; H recognition alone does not finish it.

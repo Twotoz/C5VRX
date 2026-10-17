@@ -1267,12 +1267,12 @@ void transport_sync_flag_probe(void)
         "entered=%u observed=%u restored=%u fault=%u output_gates=0 boot_default=OFF\n",
         output,level,(unsigned)lp,(unsigned)entered,(unsigned)observed,(unsigned)restored,(unsigned)s_transport_fault);
     if(s->result[0])printf("%s",s->result);
-    printf("SYNC_FLAG_TRACE signal=48 level=0 count=%u triggered=%u frozen=%u dropped=%lu tick_hz=20000000\n",
+    printf("SYNC_FLAG_TRACE signal=48 level=1 tick_domain=common sparse=structural_plus4 count=%u triggered=%u frozen=%u dropped=%lu tick_hz=20000000\n",
         s->trace.count,(unsigned)s->trace.triggered,(unsigned)s->trace.frozen,(unsigned long)s->trace.dropped);
     unsigned first=(s->trace.head+SNT_TRACE_CAPACITY-s->trace.count)%SNT_TRACE_CAPACITY;
     for(unsigned i=0;i<s->trace.count;++i) {
         const snt_trace_low_t *low=&s->trace.lows[(first+i)%SNT_TRACE_CAPACITY];
-        printf("SYNC_FLAG_LOW i=%u epoch=%u tick=%lu width=%u\n",i,low->epoch,(unsigned long)low->tick,low->width);
+        printf("SYNC_FLAG_HIGH i=%u epoch=%u tick=%lu width=%u\n",i,low->epoch,(unsigned long)low->tick,low->width);
     }
     printf("SYNC_FLAG_TRACE_END count=%u restored=%u\n",s->trace.count,(unsigned)restored);
     if(restored)s_flag_bench=NULL; /* retain failed ownership until reboot */

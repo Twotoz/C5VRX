@@ -117,6 +117,8 @@ static void sop_native_run(sop_context_t *s,uint32_t start,uint32_t width,bool i
     if(s_native && s->marker_required && s_native->native_phase.valid) {
         int64_t offset=s_native->native_phase.lo+(s_native->native_phase.hi-s_native->native_phase.lo)/2;
         if(offset>=-(int64_t)start && offset<=INT64_MAX-(int64_t)start) {
+            if(s_native->trace_flag && inverted && offset+start<=UINT32_MAX)
+                snt_trace_flag_high(&s_native->trace,s->epochs,(uint32_t)(offset+start),width);
             if(s_native->trace_flag)
                 sync_native_flag_high(inverted?&s_native->flag_inverted:&s_native->flag_native,
                                       (uint64_t)(offset+start),width);
@@ -131,7 +133,7 @@ static void sop_native_run(sop_context_t *s,uint32_t start,uint32_t width,bool i
 static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
 {
     if(start<s->discard_before)return;
-    if(s_native && (s_native->resident || s_native->trace_flag))snt_trace_low(&s_native->trace,s->epochs,start,width);
+    if(s_native && s_native->resident)snt_trace_low(&s_native->trace,s->epochs,start,width);
     sop_native_run(s,start,width,false);
     ++s->low;
     if (width >= 76u && width <= 112u) {
