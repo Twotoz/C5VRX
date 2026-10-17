@@ -74,12 +74,20 @@ int main(void)
     CHECK(!w.yield_v);
     v.yield_h = true;
     CHECK(spg_v(&v, 5, 20u * F, F).kind == SPG_NONE && spg_v(&v, 5, 21u * F, F).kind == SPG_NONE);
-    /* Acquisition needs aligned H and confirmed V, no yield. */
+    /* Acquisition needs aligned H and confirmed V, both current, no yield. */
     spg_t q = {0};
-    for (unsigned k = 0; k < SPG_LOCK; ++k) spg_h(&q, 2, LINE, k);
-    CHECK(!spg_acquired(&q));
-    spg_v(&q, 0, F, F); CHECK(!spg_acquired(&q));
-    spg_v(&q, 0, 2u * F, F); CHECK(spg_acquired(&q));
+    for (unsigned k = 0; k < SPG_LOCK; ++k) spg_h(&q, 2, LINE, 1000u * k);
+    CHECK(!spg_acquired(&q, 11000u));
+    spg_v(&q, 0, F, F); CHECK(!spg_acquired(&q, F));
+    spg_v(&q, 0, 2u * F, F);
+    CHECK(!spg_acquired(&q, 2u * F));             /* H confidence from 2 fields ago: stale */
+    spg_h(&q, 2, LINE, 2u * F + 500u);            /* > 1 field later: confidence restarts */
+    CHECK(q.aligned == 1u && !spg_acquired(&q, 2u * F + 500u));
+    for (unsigned k = 1; k < SPG_LOCK; ++k) spg_h(&q, 2, LINE, 2u * F + 500u + 1271u * k);
+    uint64_t now = 2u * F + 500u + 1271u * (SPG_LOCK - 1u);
+    CHECK(spg_acquired(&q, now));
+    CHECK(!spg_acquired(&q, now + SPG_H_FRESH_TICKS + 1u)); /* no H since: not current */
+    CHECK(!spg_acquired(&q, 2u * F + SPG_V_FRESH_TICKS + 1u)); /* V too old */
 
     /* Expiry: a yield without evidence for > SPG_HOLD_TICKS ends. */
     spg_t e = {0};

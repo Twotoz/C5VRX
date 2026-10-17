@@ -298,8 +298,10 @@ int main(void){
  /* Guard acquisition: no probe model (the strict EQ/broad/EQ grammar often
   * failed on the board at range), a camera 300 ticks and 7 halflines off
   * the nominal grid. Coherent H plus field-spaced V must grant authority on
-  * the camera's grid; a PAL camera on the NTSC grid and pure noise never. */
- for(unsigned variant=0;variant<3u;++variant){
+  * the camera's grid; a PAL camera on the NTSC grid and pure noise never.
+  * Variant 3: camera H only for 100 ms, then only V-like broad trains: old H
+  * confidence must not combine with new V evidence. */
+ for(unsigned variant=0;variant<4u;++variant){
   reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
   assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
   assert(!s_output->native_authority);
@@ -315,10 +317,12 @@ int main(void){
    fire();
    while(cam0+j*chl<=(double)(cycles/12)){
     double at=cam0+j*chl;
-    unsigned idx=(unsigned)((t.index+40u+j+halves-7u)%halves);++j;
+    unsigned voff=variant==3u?0u:7u; /* 3: V already on the grid, no V jump */
+    unsigned idx=(unsigned)((t.index+40u+j+halves-voff)%halves);++j;
     if(variant==2u){lcg=lcg*1103515245u+12345u;
      sync_live_output_native_pulse((uint64_t)(at+(lcg>>8)%640u),(lcg>>4)%2u?160u:541u,true);continue;}
     unsigned w=idx<section?47u:idx<2u*section?541u:idx<3u*section?47u:((j-1u)&1u)?0u:160u;
+    if(variant==3u && (at>(double)start+2000000.0)!=(w==541u))w=0u; /* H only, then V only */
     if(w)sync_live_output_native_pulse((uint64_t)(at+0.5),w,true);
    }
    if(s_output->native_authority&&!clamps)clamps=clears;

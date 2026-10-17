@@ -481,7 +481,7 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
     }
     s->yield=spg_yield(&s->guard,tick);
     /* Grant only on the grid the evidence describes: nothing unapplied. */
-    if(!s->native_authority && spg_acquired(&s->guard) &&
+    if(!s->native_authority && spg_acquired(&s->guard,tick) &&
        s->publication==s->applied && !(s->publication&1u)) {
         s->native_authority=true;
         ++s->status.guard_acquired;

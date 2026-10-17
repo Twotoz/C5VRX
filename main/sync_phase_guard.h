@@ -26,6 +26,12 @@
 #define SPG_HOLD_TICKS 2000000u /* 100 ms without camera evidence ends a yield */
 #define SPG_V_SPACING 128      /* ticks: V evidence must repeat on whole fields */
 #define SPG_V_FIELDS 4u        /* ...at most this many fields apart */
+/* Evidence ages. In-phase H confidence older than one field restarts from
+ * zero; acquisition needs H within ~10 lines (the V interval carries no H
+ * for up to ~9 lines) and V within two fields of the deciding pulse. */
+#define SPG_H_STALE_TICKS 400000u
+#define SPG_H_FRESH_TICKS 12800u
+#define SPG_V_FRESH_TICKS 800000u
 
 typedef enum { SPG_NONE = 0, SPG_JUMP_H, SPG_JUMP_V } spg_kind_t;
 typedef struct { spg_kind_t kind; int32_t value; } spg_action_t;
@@ -34,8 +40,8 @@ typedef struct {
     int32_t h_offset, trim_sum, v_offset;
     uint8_t h_score, aligned, v_score, v_good;
     uint16_t trim_n;
-    uint64_t last_evidence, v_tick;
-    bool yield_h, yield_v, have_v;
+    uint64_t last_evidence, v_tick, h_tick;
+    bool yield_h, yield_v, have_v, have_h;
 } spg_t;
 
 static inline void spg_reset(spg_t *g)
@@ -63,6 +69,11 @@ static inline spg_action_t spg_h(spg_t *g, int32_t offset, int32_t line, uint64_
 {
     spg_action_t action = {SPG_NONE, 0};
     if (spg_abs(offset) <= SPG_WINDOW) {
+        /* Confidence from a camera seen long ago is not current evidence. */
+        if (!g->have_h || tick < g->h_tick || tick - g->h_tick > SPG_H_STALE_TICKS) {
+            g->aligned = 0; g->trim_sum = 0; g->trim_n = 0;
+        }
+        g->h_tick = tick; g->have_h = true;
         if (g->aligned < SPG_SCORE_MAX) ++g->aligned;
         if (g->h_score) --g->h_score;
         g->last_evidence = tick;
@@ -139,9 +150,11 @@ static inline spg_action_t spg_v(spg_t *g, int32_t offset, uint64_t tick, uint64
  * coherent camera H (aligned) and the camera's V on two field-spaced
  * observations at the grid's own broad slot. Independent of the strict
  * EQ/broad/EQ grammar, which board captures often failed at range. */
-static inline bool spg_acquired(const spg_t *g)
+static inline bool spg_acquired(const spg_t *g, uint64_t now)
 {
-    return !g->yield_h && !g->yield_v && g->aligned >= SPG_LOCK && g->v_good >= SPG_V_LOCK;
+    return !g->yield_h && !g->yield_v && g->aligned >= SPG_LOCK && g->v_good >= SPG_V_LOCK &&
+           g->have_h && now >= g->h_tick && now - g->h_tick <= SPG_H_FRESH_TICKS &&
+           now >= g->v_tick && now - g->v_tick <= SPG_V_FRESH_TICKS;
 }
 
 /* Camera gone while yielding: resume holdover on the re-anchored grid. */
