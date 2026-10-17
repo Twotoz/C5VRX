@@ -15,15 +15,31 @@ qualified genuine camera timing.
   behavior under normal receiver load. A private J test is not delivery.
 - Original-source H/V acquisition, loss holdover and selected PAL/NTSC timing
   when no camera has ever been seen. Own repairs never qualify camera lock.
-- Whole-pulse writes with independently justified RX/TX lifetimes and cache
-  publication; protect all CPU evidence readers and their recent history.
+- Bounded whole-pulse output with independently justified ownership. A RAM
+  writer must prove RX/TX lifetimes, cache publication and reader history;
+  the hardware output-enable path instead must prove pad restoration, absolute
+  pulse ends and exclusion of generated tips from camera evidence.
 - Real received active samples remain visible through loss. Verify genuine
   return at changed field phase/standard and actual kp/LP/output contexts.
 - Actual terminated waveform/monitor acceptance wherever hardware is
   available; separate software counters from display lock. Do not mark the
   goal complete from a host model or a zero-fault private buffer test.
 
-## Current physical state
+## Current delivery state (2026-10-17)
+
+The integrated comparator/output implementation is under test, with manual
+`u` observation and `U` conditional output. Both remain OFF at boot pending
+physical proof. N is the last flashed build at this note; later chronological
+entries below supersede the initial October15 experiments. The operator is
+away; treat the VTX as OFF until explicitly told it is ON.
+
+The comparator is generated before GPIO output gating, so repairs cannot feed
+back into source acquisition. Real received samples remain the video source;
+only scheduled sync tips can change output-enable state. No synthetic active
+picture, black raster or replay buffer is introduced. These are implementation
+properties, not yet proof that a monitor remains locked through RF loss.
+
+## Initial physical experiments (2026-10-15)
 
 The C5 was on COM10. Original app and partition/settings bytes were backed up
 privately before app-only experiments; existing settings are retained.
@@ -1133,3 +1149,99 @@ are counted. Regular H no longer consumes the whole buffer before a second V
 field can arrive. Ordinary resident LOW history keeps its previous behavior.
 No lock policy is relaxed by this diagnostic change. Goal remains actual
 conditional repair plus monitor-lock proof; H recognition alone does not finish it.
+
+
+### Integrated acquisition, tracking and holdover P (2026-10-17)
+
+N's camera traces guide a separate raw comparator profile; strict DATA4 parsing
+is unchanged. Partial vertical candidates need independently fresh H, distinct
+pre/post equalizers, broad-region occupancy and aligned trailing edges. Two
+compatible fields establish camera authority. Missing observations preserve
+trusted time but cannot themselves count as fresh camera measurements. Fresh
+selected H can track a trusted field grid while V is missing; a confirmed phase
+or standard replacement still needs repeated evidence. The wrapper is88 bytes.
+
+Resident u/U now acquire the comparator flag format through the verified
+program/LUT restart transaction, for normal and LP programs and all output
+levels. Small GPIO23 ownership is separate from optional finite-V trace storage.
+The internal flag stays visible with DAC output-enable off. A per-tip witness
+requires source-ready, matching source epoch, camera authority and a NEW nearby
+LOW/HIGH transition. Cold noise and private calibration markers cannot cancel
+repair. V tips additionally require fresh V evidence; missing V is repaired.
+All repair widths end on their absolute scheduled end; admission is at most1us
+late with more than1us useful tip remaining. Software admission is not a physical
+waveform or monitor acceptance measurement.
+
+The incremental output clock survives missing observer windows. Verified
+flag-to-flag kp/LP/output restarts invalidate source sampling before stopping
+producers, retain the independent timer and pad lease, then publish a replacement
+DMA generation before observer rearm. Rollback follows the same rule. Format
+exit, menu, scan, unknown ownership or latched recovery failure still cancel
+output before observer/pin teardown. An already verified GPIO23 clamp is not
+rewritten during TX-enable, preventing an interrupt-visible ownership gap.
+
+Host evidence: actual observer267 checks, output12022 checks, raw flag qualifier
+1,000,077 checks, format/publication1,224,729 checks, restart42 scenarios and
+all Diagnostic log semantics workflow commands pass. Earlier full C workflow
+checks before the old CPU-writer matrix passed; tail DC/gain/raster/AFC checks
+also pass. This is targeted validation, not a claim that the entire workflow is
+green. The unused CPU memory-writer had preexisting V drift bugs: fitting H
+frequency did not move its pending V deadline. The small correction preserves
+all assertions and passes27/28 full kp/clock/output scenarios. Remaining
+kp7/+50ppm weak NTSC has1356/1358 pulses and reproduces exactly on668fa64;
+it is not caused by the hardware-output implementation. See the separate CPU
+period evidence artifact. Do not weaken that assertion to hide the limitation.
+
+P builds app0x192250 bytes, SHA256
+1aa479d0bb813ce08adff80e48dd2be0dfbce1b5f748ad77037b09606ae6b1f1.
+App-only flash/settings backup/hash verification succeeded. The first VTX-off
+capture bootloops BEFORE sync activation: control_start cannot allocate the
+16-command queue (ESP_ERR_NO_MEM). Compared with N, IRAM increased640 aligned
+bytes and data/BSS16 bytes; that exhausted the already narrow startup margin.
+Raw log: c5vrx-flywheel-p-off-20261017-121236.log. No output or camera success
+is claimed. The console download command remains reachable; board was placed
+in download mode while building forward. A redundant4KiB diagnostic history
+snapshot is being removed without removing history or reducing task stacks.
+
+
+### Memory recovery and target interrupt proof Q/R (2026-10-17)
+
+The duplicate diagnostic history snapshot is gone: preserve the original64
+records, compute60-second totals and snapshot ten scalar samples under the
+existing lock, then sort/print after unlock.516 concurrent-snapshot cases pass.
+No task stack/history depth is reduced. The planner is retained task-side:
+100 repeated timing updates now allocate/free nothing, and invalid models leave
+the running iterator untouched. Status includes total and largest internal heap.
+
+Q boots and actually runs conditional output with the VTX OFF: repairs38509
+then68320, source suppressed0, camera model invalid, no DMA faults, clean output/
+observer stop and ordinary-format restoration. Baseline heap8564/largest4096;
+after persistent observer allocation and cleanup5868/largest3072. However
+3020 then6493 tips miss the1us admission guard; no monitor proof follows.
+
+The Q manual-program test exposes a CACHE ERROR during an NVS write: actual
+MEPC4203144e resolves to slc_next, called from IRAM output_alarm. Plain static
+inline did NOT inline the helper at the target's -Og optimization. Per-pulse
+helpers now require always_inline. A new linked-target audit rejects Q's actual
+flash call and accepts R's output interrupt entry/ownership/clock functions.
+It checks direct calls, not indirect callback provenance or all SDK internals.
+The build workflow runs this audit on the actual linked ELF.
+
+R SHA2568916ef23c5aeadf08402ef468b38107659f6dbdd47bf9a094b9c60a1088cb27b
+boots and survives manual P and AUTO-setting writes without cache panic. The
+observer session remains starts1/stops0 across normal/LP restarts, but output
+had already stopped with fault6 BEFORE the first manual P. Delivery-delay
+instrumentation reports max6765ticks338.25us versus callback89ticks4.45us;
+7404misses, mostly while other tasks/IRQs run. Do not attribute that first stop
+to NVS or claim successful pulse continuity through the later program changes.
+All output/observer activity is OFF after capture, AUTO kp+LP restored, zero
+transport faults. See board_integrated_flag_2026-10-17.json for logs/hashes.
+
+S retains the exact output grid while processing overdue pulses in bounded
+callbacks rather than latching fault6 at the work budget. Expired pulses remain
+skipped; original admission and absolute pulse ends do not widen. Catch-up
+alarms use their actual scheduled timestamp for delivery-delay diagnostics.
+The5ms-outage fixture proves multiple bounded callbacks, exact NTSC phase,
+balanced OE, >50expired skips and resumed repairs. Conditional runtime12025
+checks pass. S board validation is pending at this note; camera and monitor
+proof remain open, all boot defaults remain OFF.

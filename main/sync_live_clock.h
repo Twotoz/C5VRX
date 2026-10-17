@@ -29,9 +29,9 @@ static inline bool slc_init(slc_t *s,const slg_clock_seed_t *seed)
         .section=seed->standard==SLG_PAL?5u:6u,.eq_width=seed->standard==SLG_PAL?47u:46u};
     return s->whole>=600u && s->whole<=670u;
 }
-static inline uint32_t slc_length(const slc_t *s)
+static inline __attribute__((always_inline)) uint32_t slc_length(const slc_t *s)
 { return s->whole+(s->remainder+s->increment>=s->denominator?1u:0u); }
-static inline void slc_advance(slc_t *s)
+static inline __attribute__((always_inline)) void slc_advance(slc_t *s)
 {
     uint32_t length=slc_length(s);
     if(s->half==UINT64_MAX || s->tick>UINT64_MAX-length){s->exhausted=true;return;}
@@ -41,7 +41,7 @@ static inline void slc_advance(slc_t *s)
     s->remainder=(uint8_t)rem;
     if(++s->index==s->halves){s->index=0;++s->field;}
 }
-static inline bool slc_next(slc_t *s,slg_pulse_t *out)
+static inline __attribute__((always_inline)) bool slc_next(slc_t *s,slg_pulse_t *out)
 {
     if(!s || !out || s->exhausted)return false;
     if(s->index>=3u*s->section && (s->half&1u)!=s->parity)slc_advance(s);

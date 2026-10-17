@@ -17,8 +17,9 @@ extern volatile const char *s_boot_stage;
 static void status(void)
 {
     printf("C5VRX5 version=%s demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v5 "
-           "uptime_s=%lld heap_internal=%u\n", esp_app_get_description()->version,
-           esp_timer_get_time() / 1000000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+           "uptime_s=%lld heap_internal=%u heap_largest=%u\n", esp_app_get_description()->version,
+           esp_timer_get_time() / 1000000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT));
     control_print();
     receiver_print();
     profile_print();
@@ -76,7 +77,7 @@ static void help(void)
            "  Y bench: filtered native DAC sync observation (LP/1x only; OFF at boot),\n"
            "  y bench: native mirror with common-edge RMT/ETM clock (experimental),\n"
            "  V bench: finite50ms comparator19 observation; restores video, DAC LSB grounded temporarily,\n"
-           "  u bench: resident native observer, U conditional sync holdover (both OFF at boot),\n"
+           "  u: resident comparator observer, U conditional flywheel (both OFF at boot),\n"
            "  i bench: bounded native pulse history (read-only; enable u first),\n"
            "  Q/q bench: three-second PAL/NTSC DAC sync gate test (changes video),\n"
            "  B bench: restart live transport without OSD (interrupts video; issue #213 A/B),\n"

@@ -164,6 +164,7 @@ class ServiceRuntimeTest(unittest.TestCase):
 static struct {struct {unsigned eof_overload;} state[2];} BITSCRAMBLER;
 #define BITSCRAMBLER_DIR_TX 1
 static uint16_t s_lut_live[1024];
+static void *s_flag_bench;
 static uint32_t s_control_epoch=3,s_gain_epoch=4,s_dma_faults,s_tx_empty,s_rx_overflow,s_bs_overload;
 static uint32_t phy_generation(void){return 5;}
 static unsigned cache_calls;
@@ -190,6 +191,9 @@ static void cross_prefetch(void){
 }
 int main(void){
  initialize();sync_service_source_t s={0};
+ s_flag_bench=(void*)1;
+ assert(!transport_sync_source_begin(&s,true)&&!s.leased&&!raw_access_readers(&s_raw_access));
+ s_flag_bench=NULL;
  unsigned char before[sizeof(AHB_DMA)+sizeof(PCR)+sizeof(PARL_IO)];
  uint8_t raw_before[sizeof(s_raw_ring)];memcpy(raw_before,s_raw_ring,sizeof(raw_before));
  memcpy(before,&AHB_DMA,sizeof(AHB_DMA));memcpy(before+sizeof(AHB_DMA),&PCR,sizeof(PCR));

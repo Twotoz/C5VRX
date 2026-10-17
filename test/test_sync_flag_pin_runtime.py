@@ -16,6 +16,7 @@ PREFIX = r'''
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "sync_native_trace.h"
 #define IRAM_ATTR
@@ -47,6 +48,7 @@ SUFFIX = r'''
 static flag_bench_t storage;
 static uint32_t original[9];
 static void reset(unsigned enable,unsigned output) {
+ (void)s_flag_diag;
  memset(reg,0,sizeof(reg));
  reg[IO_MUX_GPIO23_REG]=0x12341000u;
  reg[GPIO_FUNC23_OUT_SEL_CFG_REG]=48u;
@@ -106,7 +108,7 @@ class Runtime(unittest.TestCase):
     def test_actual_flag_pin_helpers(self):
         source = (ROOT / 'main/transport.c').read_text()
         begin = source.index('typedef struct {\n    uint32_t iomux,matrix,pad,enable,output,clamp_matrix,generation;')
-        end = source.index('\nstatic bool stop_part(', begin)
+        end = source.index('\n/* Pin identity is acquired', begin)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path / 'pin.c').write_text(PREFIX + source[begin:end] + SUFFIX)

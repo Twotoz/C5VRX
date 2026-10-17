@@ -45,6 +45,8 @@ static uint32_t s_stream_generation=7;
 static unsigned suspended,critical,enters,exits,allocations,frees,prepares,delays;
 static bool fail_allocate,change_during_prepare,cache_fail,allocated,service_active;
 static bool sync_service_active(void){return service_active;}
+/* Adapter only checks retained ownership; no flag implementation is linked. */
+static void *s_flag_bench;
 static uint64_t ticks;
 static char log_text[16384];static size_t log_bytes;
 static void vTaskSuspendAll(void){assert(!suspended && !critical);++suspended;}
@@ -105,6 +107,19 @@ int main(void){
     memcpy(s_lut_live,kp_tables[0],sizeof(s_lut_live));
     uint8_t raw[sizeof(s_raw_ring)];uint16_t lut[1024];
     memcpy(raw,s_raw_ring,sizeof(raw));memcpy(lut,s_lut_live,sizeof(lut));
+    /* Non-NULL ownership refuses before allocations or any context inspection,
+     * including retained failed ownership after an otherwise ordinary restore. */
+    unsigned token=0;s_flag_bench=&token;
+    transport_sync_bench();
+    assert(!prepares && !allocations && !enters && !delays &&
+        strstr(log_text,"refused=flag_context"));
+    check_immutable(raw,lut);reset_log();
+    s_lut_known=false;service_active=true;
+    transport_sync_bench();
+    assert(!prepares && !allocations && !enters && !delays &&
+        strstr(log_text,"refused=flag_context"));
+    check_immutable(raw,lut);reset_log();
+    s_lut_known=true;service_active=false;s_flag_bench=NULL;
     sync_bench_context_t ctx;
     assert(!transport_bench_context_copy(&ctx,(uint16_t*)s_raw_ring));
     assert(transport_bench_context_copy(&ctx,(uint16_t*)allocation));
@@ -150,10 +165,15 @@ class BenchRuntimeTest(unittest.TestCase):
     def test_actual_adapter(self):
         source = (ROOT / "main/transport.c").read_text(encoding="utf-8")
         start = source.index("typedef struct {\n    uint32_t generation;\n    int level;")
-        stop = source.index("void transport_print(void)", start)
+        context_end = source.index("} sync_bench_context_t;", start) + len("} sync_bench_context_t;")
+        adapter_start = source.index("static bool transport_bench_context_copy(", context_end)
+        stop = source.index("void transport_print(void)", adapter_start)
+        # Keep the real adapter and helpers unchanged, excluding unrelated
+        # resident/output owners inserted between its typedef and functions.
+        adapter = source[start:context_end] + "\n" + source[adapter_start:stop]
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            (folder / "bench.c").write_text(PREFIX + source[start:stop] + SUFFIX, encoding="utf-8")
+            (folder / "bench.c").write_text(PREFIX + adapter + SUFFIX, encoding="utf-8")
             binary = folder / "bench"
             subprocess.run([os.environ.get("CC", "cc"), "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
                             "-I", str(ROOT / "main"), str(folder / "bench.c"),

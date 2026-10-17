@@ -365,39 +365,35 @@ void diag_report(void)
 #undef VERDICT
 
     /* History: last 60 s and the dropouts of this boot. */
-    /* Console task is the sole caller; keep expanded records off its
-     * 6-KiB stack (printf and USB/NVS frames need headroom). */
-    static diag_record_t h[DIAG_HISTORY];
+    /* Console is the sole caller. Snapshot only aggregates and ten scalar
+     * samples; a second complete history wastes 4 KiB of scarce internal RAM.
+     * Keep event records off the 6-KiB console stack. */
     static diag_event_t ev[DIAG_EVENTS];
     uint32_t seq, events, drops[DIAG_CATEGORIES];
+    int cn_history[10], gn[10];
+    unsigned n, m, ok = 0, max_gain = 0;
     taskENTER_CRITICAL(&s_lock);
     seq = s_seq;
     events = s_event_seq;
-    memcpy(h, s_hist, sizeof(h));
+    n = seq < 60u ? seq : 60u;
+    m = seq < 10u ? seq : 10u;
+    for (unsigned k = 0; k < n; ++k) {
+        const diag_record_t *r = &s_hist[(seq - 1u - k) % DIAG_HISTORY];
+        ok += diag_video_ok(r);
+        max_gain += r->gain + 1u >= r->gain_max;
+        if (k < m) { cn_history[k] = r->cn_x10; gn[k] = r->gain; }
+    }
     memcpy(ev, s_events, sizeof(ev));
     memcpy(drops, s_dropouts, sizeof(drops));
     taskEXIT_CRITICAL(&s_lock);
-    unsigned n = seq < 60u ? seq : 60u, ok = 0, max_gain = 0;
-    for (unsigned k = 0; k < n; ++k) {
-        const diag_record_t *r = &h[(seq - 1u - k) % DIAG_HISTORY];
-        ok += diag_video_ok(r);
-        max_gain += r->gain + 1u >= r->gain_max;
-    }
     /* Antenna / placement A/B: hold one position for 10 s, press D, change
      * one thing, repeat. Medians, so one fade does not decide. */
     {
-        int cn[10], gn[10];
-        unsigned m = seq < 10u ? seq : 10u;
-        for (unsigned k = 0; k < m; ++k) {
-            const diag_record_t *r = &h[(seq - 1u - k) % DIAG_HISTORY];
-            cn[k] = r->cn_x10;
-            gn[k] = r->gain;
-        }
         for (unsigned a2 = 1; a2 < m; ++a2)
-            for (unsigned b = a2; b > 0 && cn[b - 1] > cn[b]; --b) { int t2 = cn[b]; cn[b] = cn[b - 1]; cn[b - 1] = t2; }
+            for (unsigned b = a2; b > 0 && cn_history[b - 1] > cn_history[b]; --b) { int t2 = cn_history[b]; cn_history[b] = cn_history[b - 1]; cn_history[b - 1] = t2; }
         for (unsigned a2 = 1; a2 < m; ++a2)
             for (unsigned b = a2; b > 0 && gn[b - 1] > gn[b]; --b) { int t2 = gn[b]; gn[b] = gn[b - 1]; gn[b - 1] = t2; }
-        if (m) printf("RANGE_DIAG last_10s seconds=%u cn_est_x10 median=%d min=%d gain median=%d (model only; compare repeated controlled setups)\n", m, cn[m / 2], cn[0], gn[m / 2]);
+        if (m) printf("RANGE_DIAG last_10s seconds=%u cn_est_x10 median=%d min=%d gain median=%d (model only; compare repeated controlled setups)\n", m, cn_history[m / 2], cn_history[0], gn[m / 2]);
     }
     printf("RANGE_DIAG history seconds=%u sync_evidence_ok_pct=%u at_max_gain_pct=%u dropouts=%lu", n, n ? ok * 100u / n : 0u,
            n ? max_gain * 100u / n : 0u, (unsigned long)events);

@@ -66,6 +66,9 @@ BITSCRAMBLER_PROGRAM(s_u85q_lp_flag, "u85q_lp_flag");
 static bool s_started;   /* live TX running (cleared while menu/status/recovery owns TX) */
 static bool s_prog_lp;   /* U85Q-LP instructions loaded */
 static const void *tracker_program(bool lp) { return lp ? s_u85q_lp : s_u85q; }
+static bool s_flag_format,s_verified_flag;
+static const void *tracker_format_program(bool lp,bool flag)
+{ return flag && lp?s_u85q_lp_flag:tracker_program(lp); }
 
 /* 6-bit resistor DAC, LSB first (XIAO D4..D9; 8.2k/3.9k/2k/1k/470R/240R
  * plus 200R). Do not change the tested pin order. */
@@ -406,12 +409,15 @@ typedef struct {
  * s_lut_live remain the original restoration target throughout the bench. */
 typedef struct {
     uint32_t iomux,matrix,pad,enable,output,clamp_matrix,generation;
-    bool active,saved,clamped,verified;
+    bool active,saved,clamped,verified,bench;
+} flag_bench_t;
+typedef struct {
     snt_trace_t trace;
     char result[640];
-} flag_bench_t;
+} flag_diag_t;
 static flag_bench_t *s_flag_bench;
 static flag_bench_t *s_flag_storage;
+static flag_diag_t *s_flag_diag;
 #define FLAG_PIN_MASK (UINT32_C(1)<<23)
 
 static bool IRAM_ATTR flag_pin_clamped(void)
@@ -452,6 +458,28 @@ static bool flag_pin_apply(bool flag)
     return flag_pin_restored();
 }
 
+/* Pin identity is acquired once, before any comparator program can run.
+ * The small ownership record is independent of optional diagnostic buffers. */
+static bool flag_pin_acquire(bool bench)
+{
+    if(s_flag_bench)return false;
+    if(!s_flag_storage)s_flag_storage=calloc(1,sizeof(*s_flag_storage));
+    flag_bench_t *s=s_flag_storage;
+    if(!s)return false;
+    memset(s,0,sizeof(*s));
+    s->iomux=REG_READ(IO_MUX_GPIO23_REG);s->matrix=REG_READ(GPIO_FUNC23_OUT_SEL_CFG_REG);
+    s->pad=REG_READ(GPIO_PIN23_REG);s->enable=REG_READ(GPIO_ENABLE_REG)&FLAG_PIN_MASK;
+    s->output=REG_READ(GPIO_OUT_REG)&FLAG_PIN_MASK;
+    if((s->matrix&GPIO_FUNC23_OUT_SEL_M)!=48u ||
+       (s->matrix&(GPIO_FUNC23_OUT_INV_SEL_M|GPIO_FUNC23_OE_INV_SEL_M)) ||
+       (s->pad&GPIO_PIN23_PAD_DRIVER_M) || !s->enable ||
+       ((s->iomux&MCU_SEL_M)>>MCU_SEL_S)!=1u)return false;
+    s->clamp_matrix=(s->matrix&~(GPIO_FUNC23_OUT_SEL_M|GPIO_FUNC23_OUT_INV_SEL_M|
+        GPIO_FUNC23_OE_INV_SEL_M))|256u|GPIO_FUNC23_OE_SEL_M;
+    s->saved=true;s->active=true;s->bench=bench;s_flag_bench=s;
+    return true;
+}
+
 static bool stop_part(void *ctx, tr_part_t part)
 {
     (void)ctx;
@@ -460,9 +488,12 @@ static bool stop_part(void *ctx, tr_part_t part)
     if (err != ESP_OK) printf("TRANSPORT teardown part=%d error=%s\n", part, esp_err_to_name(err));
     return err == ESP_OK;
 }
+static bool transport_sync_restart_begin(bool flag);
+static void transport_sync_restart_finish(bool verified);
 static bool quiesce(void *ctx)
 {
-    if(!transport_sync_live_cancel())return false;
+    const restart_t *r=ctx;
+    if(!transport_sync_restart_begin(r && r->flag) && !transport_sync_live_cancel())return false;
     bool ok = tr_stop_parts(ctx, stop_part, &s_tx_enabled, &s_bs_enabled, &s_rx_enabled, true);
     s_started = false;
     s_rx_node_count = 0; /* observers cannot consume stopped/stale DMA */
@@ -479,8 +510,9 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
         r->lp = s_verified_lp;
         r->level = s_verified_level;
         r->output = s_verified_output;
-        r->flag = false;
-        r->program = tracker_program(r->lp);
+        r->flag = s_verified_flag;
+        s_flag_format=s_verified_flag;
+        r->program = tracker_format_program(r->lp,r->flag);
         memcpy(s_lut_work, s_lut_live, sizeof(s_lut_work));
     }
     esp_err_t err = ESP_OK;
@@ -523,7 +555,10 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
         break;
     case TR_TX_ENABLE:
         err = enable_tx();
-        if(err==ESP_OK && !flag_pin_apply(r->flag))return false;
+        /* A flag-to-flag restart retains the independent sync clock and pad
+         * owner. Do not interrupt its clamp while changing the stream. */
+        if(err==ESP_OK && !(r->flag && s_verified_flag && flag_pin_clamped()) &&
+           !flag_pin_apply(r->flag))return false;
         break;
     case TR_RX_START: err = start_rx(); break;
     case TR_TX_START: err = start_rings_tail(); break;
@@ -695,8 +730,11 @@ void transport_stop_chain(void)
 static bool resume_live(const uint16_t *restore_lut)
 {
     if (s_transport_fault) return false;
-    restart_t r = {.program=tracker_program(s_prog_lp), .level=0, .lp=s_prog_lp, .output=s_output};
+    restart_t r = {.program=tracker_format_program(s_prog_lp,s_flag_format), .level=0,
+        .lp=s_prog_lp,.flag=s_flag_format,.output=s_output};
     if (!restore_lut) restore_lut = kp_tables[s_kp_target];
+    if(restore_lut==s_lut_live && s_flag_format!=s_verified_flag)
+        restore_lut=kp_tables[s_verified_level];
     if (restore_lut == s_lut_live) {
         memcpy(s_lut_work, s_lut_live, sizeof(s_lut_work));
         r.level = s_verified_level;
@@ -706,7 +744,8 @@ static bool resume_live(const uint16_t *restore_lut)
         if (!program_words(r.program, &inst) || r.program[6] != 1u) return false;
         for (unsigned i = 0; i < 1024u; ++i) {
             bool clipped;
-            s_lut_work[i] = output_entry(restore_lut[i], s_output, &clipped);
+            s_lut_work[i] = r.flag?sync_flag_entry(restore_lut[i],s_output,&clipped):
+                                  output_entry(restore_lut[i], s_output, &clipped);
             r.clipped += clipped;
         }
         for (int k = 0; k < KP_LEVELS; ++k) if (restore_lut == kp_tables[k]) r.level = k;
@@ -717,6 +756,7 @@ static bool resume_live(const uint16_t *restore_lut)
         ++s_rollback_fail;
         s_transport_fault = true;
         s_lut_known = false;
+        transport_sync_restart_finish(false);
         printf("TRANSPORT ERROR: verified recovery failed; live OFF latched, USB/reflash available\n");
         return false;
     }
@@ -724,6 +764,7 @@ static bool resume_live(const uint16_t *restore_lut)
     if (result == TR_ROLLED_BACK) {
         ++s_rollbacks;
         s_kp_target = (uint8_t)s_verified_level;
+        transport_sync_restart_finish(true);
         printf("TRANSPORT rollback=verified program=%s kp_level=%d output=%s\n",
                transport_program_name(), s_verified_level, transport_output_name());
         return false;
@@ -731,16 +772,41 @@ static bool resume_live(const uint16_t *restore_lut)
     memcpy(s_lut_live, s_lut_work, sizeof(s_lut_live));
     const bool output_changed = s_have_verified && s_verified_output != r.output;
     s_verified_lp = r.lp;
+    s_verified_flag=r.flag;
     s_verified_level = r.level;
     s_verified_output = r.output;
     s_output_clipped = r.clipped;
     s_have_verified = true;
     s_lut_known = true;
     s_kp_target = (uint8_t)r.level;
+    transport_sync_restart_finish(true);
     /* Automatic kp/program changes never write NVS. A failed restart or
      * rollback returns above and cannot replace the remembered output. */
     if (output_changed) settings_save_output(r.output);
     return true;
+}
+
+static bool transport_flag_format(bool flag)
+{
+    if(s_transport_fault || !s_started || !s_have_verified || !s_lut_known)return false;
+    if(s_verified_flag==flag)return true;
+    if(!transport_sync_live_cancel())return false;
+    if(flag) {
+        if(!flag_pin_acquire(false))return false;
+        /* Optional V trace memory must not compete with the resident output
+         * backend. Pin ownership itself uses only the small separate record. */
+        free(s_flag_diag);s_flag_diag=NULL;
+    }
+    s_flag_format=flag;
+    bool ok=resume_live(kp_tables[s_verified_level]);
+    if(!s_transport_fault && !s_verified_flag) {
+        if(!flag_pin_restored()){s_transport_fault=true;s_lut_known=false;return false;}
+        s_flag_bench->active=false;s_flag_bench=NULL;
+    } else if(!s_transport_fault && !flag_pin_clamped()) {
+        s_transport_fault=true;s_lut_known=false;return false;
+    }
+    ++s_control_epoch;
+    return ok;
 }
 
 void transport_resume_live(void)
@@ -968,7 +1034,13 @@ static bool s_output_probe_busy;
 typedef struct {
     sync_bench_context_t context;
     bool requested,authorized,fault,output_requested;
+    bool native_tracking;
+    bool coasting_restart;
+    uint32_t stream_generation;
     int64_t retry_us;
+    int64_t model_update_us;
+    uint64_t model_h,model_field;
+    size_t channel;
     uint32_t starts,stops,failures;
 } sync_live_owner_t;
 static sync_live_owner_t *s_live_owner;
@@ -976,19 +1048,57 @@ static sync_live_owner_t *s_live_owner;
 static bool IRAM_ATTR transport_sync_live_valid(uint32_t generation)
 {
     const sync_live_owner_t *s=s_live_owner;
-    return s && s->authorized && !s->fault && s_started && s_have_verified &&
-        s_lut_known && !s_transport_fault && !s_stream_generation_overflow &&
-        !s_menu_active && !s_scan_active && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
-        generation==s_stream_generation && generation==s->context.generation &&
+    if(!(s && s->authorized && !s->fault && s_have_verified &&
+        s_lut_known && s_verified_flag && s_flag_format && flag_pin_clamped() &&
+        !s_transport_fault && !s_stream_generation_overflow &&
+        !s_menu_active && !s_scan_active && generation==s->context.generation))return false;
+    /* The peripheral lease owns the absolute output clock; a replacement DMA
+     * stream gets a separate generation. Only this bounded verified restart
+     * may keep sync running while the stream itself is stopped. */
+    if(s->coasting_restart)return true;
+    return s_started && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
+        s_stream_generation==s->stream_generation &&
         s_verified_level==s->context.level && s_verified_lp==s->context.lp &&
-        s_prog_lp==s->context.lp && s_verified_output==s->context.output &&
-        s_output==s->context.output;
+        s_verified_output==s->context.output;
+}
+
+static bool transport_sync_restart_begin(bool flag)
+{
+    sync_live_owner_t *s=s_live_owner;
+    if(!flag || !s || !s->requested || !s->authorized || s->fault ||
+       !s_verified_flag || !s_flag_format || s_transport_fault ||
+       s_menu_active || s_scan_active || !flag_pin_clamped() ||
+       !sync_output_live_active())return false;
+    if(!s->coasting_restart && !transport_sync_live_valid(s->context.generation))return false;
+    s->coasting_restart=true;
+    sync_live_output_phase(4u);
+    s->native_tracking=false;
+    sync_output_live_invalidate(); /* revoke source before stopping any producer */
+    return true;
+}
+
+static void transport_sync_restart_finish(bool verified)
+{
+    sync_live_owner_t *s=s_live_owner;
+    if(!s || !s->coasting_restart)return;
+    if(!verified || !s_verified_flag || !s_flag_format || !flag_pin_clamped()) {
+        (void)transport_sync_live_cancel();
+        return;
+    }
+    s->context.level=s_verified_level;s->context.lp=s_verified_lp;
+    s->context.output=s_verified_output;s->stream_generation=s_stream_generation;
+    __sync_synchronize();
+    s->coasting_restart=false;
+    sync_live_output_phase(0u);
 }
 
 bool transport_sync_live_cancel(void)
 {
     if(!s_live_owner)return true;
     s_live_owner->authorized=false;
+    s_live_owner->native_tracking=false;
+    s_live_owner->coasting_restart=false;
+    sync_live_output_phase(0u);
     __sync_synchronize();
     if(!sync_live_output_end()){s_live_owner->fault=true;return false;}
     bool active=sync_output_live_active();
@@ -1004,6 +1114,7 @@ void transport_sync_live_toggle(void)
     if(!s_live_owner)s_live_owner=calloc(1,sizeof(*s_live_owner));
     if(!s_live_owner){printf("SYNC_LIVE refused=memory\n");return;}
     s_live_owner->requested=!s_live_owner->requested;
+    if(!s_live_owner->requested)s_live_owner->output_requested=false;
     /* Actual start/stop occurs on the control owner, under short PHY lease. */
     printf("SYNC_LIVE requested=%u boot_default=OFF\n",(unsigned)s_live_owner->requested);
 }
@@ -1018,77 +1129,106 @@ void transport_sync_flywheel_toggle(void)
         (unsigned)s_live_owner->output_requested);
 }
 
+static bool IRAM_ATTR transport_sync_native_source(void *arg,uint32_t *epoch)
+{
+    (void)arg;
+    return s_live_owner && s_live_owner->native_tracking && sync_output_live_source(NULL,epoch);
+}
+
 void transport_sync_live_tick(void)
 {
     sync_live_owner_t *s=s_live_owner;
     if(!s || s->fault || !phy_try_actuator(phy_generation()))return;
     bool eligible=s->requested && !calibration_in_startup() && !receiver_paused() &&
         !s_menu_active && !s_scan_active && !no_signal_active() && !sync_service_active() &&
-        !s_gate_probe_busy && s_started && s_have_verified && s_lut_known &&
-        !s_transport_fault && s_verified_output==0u;
+        !s_gate_probe_busy && s_started && s_have_verified && s_lut_known && !s_transport_fault;
     bool active=sync_output_live_active();
     if(active && (!eligible || !transport_sync_live_valid(s->context.generation))) {
         (void)transport_sync_live_cancel();active=false;
     }
     int64_t now=esp_timer_get_time();
-    if(eligible && !s->fault && !active && now>=s->retry_us && !s_output_probe_busy) {
+    if(!s->requested && s_verified_flag && !active && now>=s->retry_us) {
+        if(!transport_flag_format(false)){++s->failures;s->retry_us=now+1000000;}
+    }
+    if(eligible && !s_verified_flag && !active && now>=s->retry_us) {
+        if(!transport_flag_format(true)) {++s->failures;s->retry_us=now+1000000;}
+    }
+    if(eligible && s_verified_flag && !s->fault && !active && now>=s->retry_us && !s_output_probe_busy) {
         s->context=(sync_bench_context_t){s_stream_generation,s_verified_level,s_verified_output,s_verified_lp};
+        s->stream_generation=s_stream_generation;
         s->authorized=true;
         phy_set_observation_hook(sync_output_live_invalidate);
-        if(sync_output_live_begin(s->context.generation,transport_sync_live_valid)) {
+        if(sync_output_live_begin_flag(s->context.generation,transport_sync_live_valid)) {
             sync_output_live_before_close(sync_live_output_end);
             s_output_probe_busy=true;++s->starts;active=true;
+            s->model_h=s->model_field=0u;s->model_update_us=0;
+            s->channel=rf_channel_index();
         } else {s->authorized=false;++s->failures;s->retry_us=now+1000000;}
     }
+    if(active && s->channel!=rf_channel_index()) {
+        sync_output_live_forget();s->channel=rf_channel_index();
+    }
+    if(!sync_output_live_source(NULL,NULL))s->native_tracking=false;
+    sync_live_output_phase(1u);
     if(active && !sync_output_live_poll()) {
-        ++s->failures;
-        (void)transport_sync_live_cancel();
-        s->retry_us=now+1000000;
+        ++s->failures;(void)transport_sync_live_cancel();s->retry_us=now+1000000;
     }
     if(active && sync_output_live_active()) {
+        sync_live_output_phase(2u);
         sync_output_live_model_t m;
-        slo_status_t output;
-        sync_live_output_status(&output);
-        bool model_ok=sync_output_live_snapshot(&m);
-        /* Healthy qualified camera uses its own pulses. Retained phase is
-         * adopted only when current native evidence is missing. */
-        bool needed=s->output_requested && model_ok && !m.valid &&
-            (s_verified_lp || m.standard!=0u);
-        if(!needed && output.active) {
+        slo_status_t output;sync_live_output_status(&output);
+        bool have=sync_output_live_snapshot(&m);
+        s->native_tracking=have && m.tracking;
+        sync_live_output_native_fresh(have && m.valid);
+        /* Acquisition and continuity are separate. The schedule coasts even
+         * while the camera is healthy; individual real tips suppress repair
+         * in the ISR. Missing RMT windows never destroy the output clock. */
+        if(!s->output_requested && output.active) {
             if(!sync_live_output_end())s->fault=true;
-        } else if(needed && !output.active && !output.fault) {
-            slg_model_t model={.field=m.field,.last_h=m.last_h,.observed_at=m.last_h,
+        } else if(s->output_requested && have) {
+            slg_model_t model={.field=m.field,.last_h=m.last_h,.observed_at=m.now,
                 .line_ticks_x32=m.line_ticks_x32,.receive_epoch=m.generation,
                 .uncertainty_ticks=(uint32_t)(m.phase_hi-m.phase_lo),
                 .standard=(slg_standard_t)m.standard,.qualified=m.standard!=0u};
-            slg_standard_t fallback=s_std_mode==STD_MODE_PAL?SLG_PAL:
-                s_std_mode==STD_MODE_NTSC?SLG_NTSC:s_video_std==VIDEO_STD_NTSC?SLG_NTSC:SLG_PAL;
-            if(!sync_live_output_begin(model.qualified?&model:NULL,fallback,
-                s->context.generation,transport_sync_live_valid,NULL,NULL))++s->failures;
+            if(!output.active && !output.fault) {
+                slg_standard_t fallback=s_std_mode==STD_MODE_PAL?SLG_PAL:
+                    s_std_mode==STD_MODE_NTSC?SLG_NTSC:s_video_std==VIDEO_STD_NTSC?SLG_NTSC:SLG_PAL;
+                if(!sync_live_output_flag_begin(model.qualified?&model:NULL,fallback,
+                    s->context.generation,transport_sync_live_valid,transport_sync_native_source,NULL))++s->failures;
+                sync_live_output_native_fresh(m.valid);
+            } else if(output.active && m.tracking &&
+                      (m.field!=s->model_field || (m.last_h!=s->model_h && now-s->model_update_us>=5000))) {
+                sync_live_output_phase(3u);
+                if(sync_live_output_update(&model)) {
+                    s->model_field=m.field;s->model_h=m.last_h;s->model_update_us=now;
+                }
+            }
         }
         sync_live_output_status(&output);
         if(output.active && !sync_live_output_poll())++s->failures;
     }
+    sync_live_output_phase(0u);
     phy_end_actuator();
 }
 
 void transport_sync_live_trace_print(void)
 {
     snt_trace_t trace;
-    bool have=false;
+    bool have=false,flag=false;
     if(phy_try_actuator(phy_generation())) {
         have=sync_output_live_trace_snapshot(&trace);
+        flag=s_verified_flag;
         phy_end_actuator();
     }
     /* UART output may block. Release PHY ownership before formatting/draining. */
     if(!have){printf("SYNC_NATIVE_TRACE available=0\n");return;}
-    printf("SYNC_NATIVE_TRACE available=1 count=%u triggered=%u frozen=%u dropped=%lu tick_hz=20000000 epoch_mod=65536 camera_qualified=0\n",
-        trace.count,(unsigned)trace.triggered,(unsigned)trace.frozen,(unsigned long)trace.dropped);
+    printf("SYNC_NATIVE_TRACE available=1 level=%u tick_domain=%s count=%u triggered=%u frozen=%u dropped=%lu tick_hz=20000000 epoch_mod=65536 camera_qualified=0\n",
+        flag?1u:0u,flag?"common":"local",trace.count,(unsigned)trace.triggered,(unsigned)trace.frozen,(unsigned long)trace.dropped);
     unsigned first=(trace.head+SNT_TRACE_CAPACITY-trace.count)%SNT_TRACE_CAPACITY;
     for(unsigned i=0;i<trace.count;++i) {
         const snt_trace_low_t *low=&trace.lows[(first+i)%SNT_TRACE_CAPACITY];
-        printf("SYNC_NATIVE_LOW i=%u epoch=%u tick=%lu width=%u\n",
-            i,low->epoch,(unsigned long)low->tick,low->width);
+        printf("SYNC_NATIVE_%s i=%u epoch=%u tick=%lu width=%u\n",
+            flag?"HIGH":"LOW",i,low->epoch,(unsigned long)low->tick,low->width);
     }
     printf("SYNC_NATIVE_TRACE_END count=%u\n",trace.count);
 }
@@ -1109,16 +1249,23 @@ void transport_sync_live_print(void)
     }
     if(have_diag)printf("%s",diagnostic);
     if(have_model)
-        printf("SYNC_LIVE_MODEL valid=%u standard=%u line_ticks_x32=%lu last_h=%llu field=%llu now=%llu phase_span_ticks=%lld inverted=%u boot_default=OFF\n",
-            (unsigned)model.valid,(unsigned)model.standard,(unsigned long)model.line_ticks_x32,
+        printf("SYNC_LIVE_MODEL valid=%u tracking=%u standard=%u line_ticks_x32=%lu last_h=%llu field=%llu now=%llu phase_span_ticks=%lld inverted=%u boot_default=OFF\n",
+            (unsigned)model.valid,(unsigned)model.tracking,(unsigned)model.standard,(unsigned long)model.line_ticks_x32,
             (unsigned long long)model.last_h,(unsigned long long)model.field,
             (unsigned long long)model.now,(long long)(model.phase_hi-model.phase_lo),(unsigned)model.inverted);
     slo_status_t output;sync_live_output_status(&output);
-    printf("SYNC_FLYWHEEL requested=%u active=%u repaired=%lu suppressed=%lu batches=%lu late_ticks=%lu missed=%lu miss_kind=%lu queue_low=%lu fault=%lu monitor_lock_proven=0\n",
+    printf("SYNC_FLYWHEEL requested=%u active=%u repaired=%lu suppressed=%lu batches=%lu late_ticks=%lu missed=%lu miss_kind=%lu queue_low=%lu fault=%lu "
+        "irq_delay_ticks=%lu callback_ticks=%lu budget_yields=%lu miss_phase=%lu miss_other=%lu miss_observer=%lu miss_snapshot=%lu miss_update=%lu miss_restart=%lu miss_reserved=%lu monitor_lock_proven=0\n",
         s?(unsigned)s->output_requested:0u,(unsigned)output.active,
         (unsigned long)output.repaired,(unsigned long)output.suppressed,(unsigned long)output.batches,
         (unsigned long)output.max_late_ticks,(unsigned long)output.missed,(unsigned long)output.miss_kind,
-        (unsigned long)output.queue_low,(unsigned long)output.fault);
+        (unsigned long)output.queue_low,(unsigned long)output.fault,
+        (unsigned long)output.max_irq_delay_ticks,(unsigned long)output.max_callback_ticks,
+        (unsigned long)output.budget_yields,
+        (unsigned long)output.miss_phase,(unsigned long)output.misses_by_phase[0],
+        (unsigned long)output.misses_by_phase[1],(unsigned long)output.misses_by_phase[2],
+        (unsigned long)output.misses_by_phase[3],(unsigned long)output.misses_by_phase[4],
+        (unsigned long)output.misses_by_phase[5]);
 }
 
 /* ISR-safe transport identity check: no scheduler/PHY calls or mutation. */
@@ -1209,27 +1356,13 @@ void transport_sync_flag_probe(void)
         !s_stream_generation_overflow && s_verified_level>=0 && s_verified_level<KP_LEVELS &&
         s_prog_lp==s_verified_lp && s_output==s_verified_output;
     if(!eligible){phy_end_actuator();printf("SYNC_FLAG refused=transport\n");return;}
-    /* Keep the first diagnostic allocation: observer setup retains its own
-     * storage, and freeing/reallocating this block fragmented the small heap
-     * enough that a second bench could not allocate it on the actual C5. */
-    if(!s_flag_storage)s_flag_storage=calloc(1,sizeof(*s_flag_storage));
-    flag_bench_t *s=s_flag_storage;
-    if(!s){phy_end_actuator();printf("SYNC_FLAG refused=memory\n");return;}
-    memset(s,0,sizeof(*s));
-    s->iomux=REG_READ(IO_MUX_GPIO23_REG);
-    s->matrix=REG_READ(GPIO_FUNC23_OUT_SEL_CFG_REG);
-    s->pad=REG_READ(GPIO_PIN23_REG);
-    s->enable=REG_READ(GPIO_ENABLE_REG)&FLAG_PIN_MASK;
-    s->output=REG_READ(GPIO_OUT_REG)&FLAG_PIN_MASK;
-    if((s->matrix&GPIO_FUNC23_OUT_SEL_M)!=48u ||
-       (s->matrix&(GPIO_FUNC23_OUT_INV_SEL_M|GPIO_FUNC23_OE_INV_SEL_M)) ||
-       (s->pad&GPIO_PIN23_PAD_DRIVER_M) || !s->enable ||
-       ((s->iomux&MCU_SEL_M)>>MCU_SEL_S)!=1u) {
-        phy_end_actuator();printf("SYNC_FLAG refused=pin_context\n");return;
+    if(!s_flag_diag)s_flag_diag=calloc(1,sizeof(*s_flag_diag));
+    if(!s_flag_diag || !flag_pin_acquire(true)) {
+        phy_end_actuator();printf("SYNC_FLAG refused=memory_or_pin_context\n");return;
     }
-    s->clamp_matrix=(s->matrix&~(GPIO_FUNC23_OUT_SEL_M|GPIO_FUNC23_OUT_INV_SEL_M|
-        GPIO_FUNC23_OE_INV_SEL_M))|256u|GPIO_FUNC23_OE_SEL_M;
-    s->saved=true;s->active=true;s_flag_bench=s;s_output_probe_busy=true;
+    flag_bench_t *s=s_flag_bench;
+    flag_diag_t *d=s_flag_diag;memset(d,0,sizeof(*d));
+    s_output_probe_busy=true;
     const int level=s_verified_level;
     const bool lp=s_verified_lp;
     const unsigned output=s_verified_output;
@@ -1242,7 +1375,7 @@ void transport_sync_flag_probe(void)
         /* The ordinary shadow deliberately remains unmodified for rollback.
          * Every ordinary raw/synthesis consumer is excluded while it differs. */
         s_started=true;s_lut_known=false;s->verified=true;s->generation=s_stream_generation;
-        observed=sync_output_flag_probe(s->generation,flag_bench_live,&s->trace,s->result,sizeof(s->result));
+        observed=sync_output_flag_probe(s->generation,flag_bench_live,&d->trace,d->result,sizeof(d->result));
         s->verified=false;
         r=(restart_t){.program=tracker_program(lp),.level=level,.lp=lp,.output=output};
         memcpy(s_lut_work,s_lut_live,sizeof(s_lut_work));
@@ -1266,15 +1399,15 @@ void transport_sync_flag_probe(void)
     printf("SYNC_FLAG_RESULT signal=48 threshold=19 threshold_domain=canonical output=%u kp=%d lp=%u "
         "entered=%u observed=%u restored=%u fault=%u output_gates=0 boot_default=OFF\n",
         output,level,(unsigned)lp,(unsigned)entered,(unsigned)observed,(unsigned)restored,(unsigned)s_transport_fault);
-    if(s->result[0])printf("%s",s->result);
+    if(d->result[0])printf("%s",d->result);
     printf("SYNC_FLAG_TRACE signal=48 level=1 tick_domain=common sparse=structural_plus4 count=%u triggered=%u frozen=%u dropped=%lu tick_hz=20000000\n",
-        s->trace.count,(unsigned)s->trace.triggered,(unsigned)s->trace.frozen,(unsigned long)s->trace.dropped);
-    unsigned first=(s->trace.head+SNT_TRACE_CAPACITY-s->trace.count)%SNT_TRACE_CAPACITY;
-    for(unsigned i=0;i<s->trace.count;++i) {
-        const snt_trace_low_t *low=&s->trace.lows[(first+i)%SNT_TRACE_CAPACITY];
+        d->trace.count,(unsigned)d->trace.triggered,(unsigned)d->trace.frozen,(unsigned long)d->trace.dropped);
+    unsigned first=(d->trace.head+SNT_TRACE_CAPACITY-d->trace.count)%SNT_TRACE_CAPACITY;
+    for(unsigned i=0;i<d->trace.count;++i) {
+        const snt_trace_low_t *low=&d->trace.lows[(first+i)%SNT_TRACE_CAPACITY];
         printf("SYNC_FLAG_HIGH i=%u epoch=%u tick=%lu width=%u\n",i,low->epoch,(unsigned long)low->tick,low->width);
     }
-    printf("SYNC_FLAG_TRACE_END count=%u restored=%u\n",s->trace.count,(unsigned)restored);
+    printf("SYNC_FLAG_TRACE_END count=%u restored=%u\n",d->trace.count,(unsigned)restored);
     if(restored)s_flag_bench=NULL; /* retain failed ownership until reboot */
 }
 
@@ -1451,12 +1584,12 @@ void transport_print(void)
            (unsigned long)s_restart_errors, (unsigned long)s_rollbacks, (unsigned long)s_rollback_fail,
            s_transport_fault, s_started);
     printf("TRANSPORT rx_descriptors=%d tx_empty=%lu rx_overflow=%lu dma_faults=%lu bs_overload=%lu "
-           "kp_level=%d kp_target=%d kp_writes=%lu kp_verify_fail=%lu program=%s prog_switches=%lu "
+           "kp_level=%d kp_target=%d kp_writes=%lu kp_verify_fail=%lu program=%s flag_format=%u prog_switches=%lu "
            "switch_wait_ms=%lu kp_switches=%lu kp_restart_fail=%lu kp_restart_us=%lu prog_verify_fail=%lu prog_restart_fail=%lu prog_restart_us=%lu\n",
            s_rx_node_count, (unsigned long)s_tx_empty, (unsigned long)s_rx_overflow,
            (unsigned long)s_dma_faults, (unsigned long)s_bs_overload, transport_kp_level(),
            transport_kp_target(), (unsigned long)s_kp_writes, (unsigned long)s_kp_verify_fail,
-           transport_program_name(), (unsigned long)s_prog_switches,
+           transport_program_name(),(unsigned)s_verified_flag, (unsigned long)s_prog_switches,
            (unsigned long)transport_switch_wait_ms(), (unsigned long)s_kp_switches, (unsigned long)s_kp_restart_fail, (unsigned long)s_kp_restart_us,
            (unsigned long)s_prog_verify_fail,
            (unsigned long)s_prog_restart_fail, (unsigned long)s_prog_restart_us);

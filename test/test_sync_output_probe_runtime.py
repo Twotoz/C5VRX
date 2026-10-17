@@ -21,6 +21,7 @@ PREFIX = r'''
 #define IRAM_ATTR
 #define DRAM_ATTR
 #define ESP_OK 0
+bool sync_output_live_source(void *arg,uint32_t *epoch);
 typedef int esp_err_t;
 typedef void *rmt_channel_handle_t;
 typedef union {
@@ -80,11 +81,12 @@ static bool sync_edge_clock_read(uint64_t *n){++clock_calls;if(!clock_armed)retu
 static bool sync_edge_clock_close(void){++clock_calls;assert(!(registers[GPIO_ENABLE_REG]&(1u<<2)));clock_prepared=clock_armed=false;return clock_fail!=3u;}
 static uint32_t sync_edge_clock_filter_ns(void){return 1200u;}
 static const char *sync_edge_clock_error(void){return "mock";}
-static void esp_rom_delay_us(unsigned n){assert((n==50u||n==16u||n==4u)&&(registers[GPIO_ENABLE_REG]&(1u<<2)));now+=n;}
+static void esp_rom_delay_us(unsigned n){assert((n==50u||n==16u||n==4u||n==3u)&&(registers[GPIO_ENABLE_REG]&(1u<<2)));now+=n;}
 static rmt_rx_event_callbacks_t mock_cb;
 static void *mock_context;
 #define REG_READ(address) registers[address]
 static void reg_write(unsigned address,uint32_t value){
+ assert(!sync_output_live_source(NULL,NULL)); /* no marker/handoff write while admitted */
  if(address==GPIO_FUNC2_OUT_SEL_CFG_REG && (value&GPIO_FUNC2_OUT_SEL_M)==48u)flag_source_seen=true;
  assert(address==IO_MUX_GPIO2_REG||address==GPIO_FUNC2_OUT_SEL_CFG_REG||address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG||address==GPIO_OUT_W1TS_REG||address==GPIO_OUT_W1TC_REG);
  if(address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG||address==GPIO_OUT_W1TS_REG||address==GPIO_OUT_W1TC_REG)assert(value==(1u<<2));
@@ -406,6 +408,132 @@ static void restore_fault_lifecycle(void){
  ++checks;
 }
 
+/* Source admission is the output ISR's only permission to sample GPIO2.
+ * Exercise real setup/marker/teardown and parser stop/idle conditions. */
+static void flag_mutation_authority(void){
+ reset();mode=1;assert(sync_output_live_begin_flag(7,owner_live));vTaskDelay(1);
+ /* A completed first V group survives same-camera gain before authority;
+  * all incomplete runs and H acquisition candidates are independently reset. */
+ s_native->inverted.have_group=true;s_native->inverted.group=10000u;
+ s_native->inverted.group_n=5u;s_native->flag_inverted.group_shifted=true;
+ s_native->inverted.candidates[0].used=true;s_native->flag_inverted.pre_count=3u;
+ sync_output_live_invalidate();assert(sync_output_live_poll());
+ assert(!s_native->inverted.valid&&s_native->inverted.have_group&&
+        s_native->inverted.group==10000u&&s_native->inverted.group_n==5u&&
+        s_native->flag_inverted.group_shifted);
+ assert(!s_native->inverted.candidates[0].used&&!s_native->flag_inverted.pre_count);
+ vTaskDelay(1);
+ s_native->inverted=(sync_native_track_t){.valid=true,.have_selected=true,
+   .standard=2u,.field=10000u,.h=123300u,.last=123400u,.line_ticks_x32=40960u,
+   .selected_line_ticks_x32=40960u,.qualified_fields=3u,.h_fit=123300u,.h_standard=2u};
+ s_native->native_phase=(sync_phase_bracket_t){.valid=true,.lo=10,.hi=20};
+ s_native->inverted.candidates[0].used=true;
+ s_native->flag_inverted.pre_count=4u;
+ sync_output_live_invalidate();assert(sync_output_live_poll());
+ assert(s_native->inverted.valid&&s_native->inverted.have_selected&&
+        s_native->inverted.field==10000u&&s_native->inverted.qualified_fields==3u);
+ assert(!s_native->inverted.candidates[0].used&&!s_native->flag_inverted.pre_count&&
+        !s_native->inverted.h_fit&&s_session->fresh_h_fit);
+ vTaskDelay(1);
+ s_native->native_phase=(sync_phase_bracket_t){.valid=true,.lo=10,.hi=20};
+ s_native->inverted.h=clock_epoch_base+123300u;
+ s_native->inverted.last=clock_epoch_base+123400u;
+ sync_output_live_model_t model;
+ assert(sync_output_live_snapshot(&model)&&!model.tracking);
+ s_native->inverted.h_fit=s_native->inverted.h;s_native->inverted.h_standard=2u;
+ assert(sync_output_live_snapshot(&model)&&model.tracking);
+ s_native->inverted.have_group=true;s_native->inverted.group=clock_epoch_base+10000u;
+ s_native->inverted.group_n=5u;s_native->flag_inverted.group_shifted=true;
+ sync_output_live_forget();assert(sync_output_live_poll());
+ assert(!s_native->inverted.valid&&!s_native->inverted.have_selected&&!s_native->inverted.field&&
+        !s_native->inverted.have_group&&!s_native->flag_inverted.group_shifted);
+ assert(sync_output_live_snapshot(&model)&&!model.tracking&&!model.valid&&model.standard==2u);
+ assert(sync_output_live_end());checks+=12;
+}
+static void coast_field_grid(void){
+ for(unsigned standard=1;standard<=2;++standard){
+  uint32_t line=standard==2?40960u:40676u;
+  unsigned halves=standard==2?625u:525u;
+  for(unsigned k=0;k<17;++k){
+   uint64_t anchor=10000;
+   uint64_t at=anchor+((uint64_t)k*halves*line+32u)/64u;
+   uint64_t h=anchor+(((uint64_t)k*halves+20u)*line+32u)/64u;
+   assert(sop_coast_field(anchor,h,line,standard)==at);
+   if(at>anchor)assert(sop_coast_field(anchor,at-1u,line,standard)<at);
+   uint64_t relative=((h-anchor)*64u+line/2u)/line;
+   uint64_t local=((h-at)*64u+line/2u)/line;
+   assert(((relative^local)&1u)==(k&1u)); /* alternating field H phase */
+   ++checks;
+  }
+  uint64_t h=UINT64_MAX-1u;
+  uint64_t predicted=sop_coast_field(1u,h,line,standard);
+  assert(predicted<=h && h-predicted<410000u);++checks;
+ }
+ assert(sop_coast_field(1000u,999u,40960u,2u)==1000u);++checks;
+}
+static void flag_resident_source(void){
+ reset();mode=1;
+ uint32_t epoch,prior;
+ assert(!sync_output_live_source(NULL,&epoch));prior=epoch;
+ assert(sync_output_live_begin(7,owner_live));
+ assert(!sync_output_live_source(NULL,&epoch)&&epoch!=prior);
+ assert(sync_output_live_end());prior=epoch;
+ reset();mode=1;
+ assert(sync_output_live_begin_flag(7,owner_live));
+ assert(sync_output_live_source(NULL,&epoch)&&epoch!=prior);
+ assert((registers[GPIO_FUNC2_OUT_SEL_CFG_REG]&GPIO_FUNC2_OUT_SEL_M)==48u);
+ prior=epoch;
+ vTaskDelay(1); /* deliver/calibrate this epoch's private markers */
+ sync_output_live_invalidate();
+ assert(!sync_output_live_source(NULL,&epoch)&&epoch!=prior);
+ prior=epoch;
+ assert(sync_output_live_poll());
+ assert(sync_output_live_source(NULL,&epoch)&&epoch!=prior);
+ prior=epoch;
+ vTaskDelay(1);
+ s_probe.stop=true;
+ assert(!sync_output_live_source(NULL,&epoch));s_probe.stop=false;
+ rmt_symbol_word_t w={.duration0=94,.level0=1,.duration1=1186,.level1=0};
+ event(&w,1,true);
+ assert(!sync_output_live_source(NULL,&epoch));
+ assert(sync_output_live_poll());
+ assert(sync_output_live_source(NULL,&epoch)&&epoch!=prior);
+ /* Known comparator polarity must never be rejected because the LOW alias
+  * independently passes a diagnostic qualifier. */
+ s_native->native=(sync_native_track_t){.valid=true,.standard=1,.last=clock_epoch_base+123400,
+   .h=clock_epoch_base+123300,.field=clock_epoch_base+100000,.line_ticks_x32=40676};
+ s_native->inverted=(sync_native_track_t){.valid=true,.standard=2,.last=clock_epoch_base+123400,
+   .h=clock_epoch_base+123300,.field=clock_epoch_base+100000,.line_ticks_x32=40960};
+ s_native->native_phase=(sync_phase_bracket_t){.valid=true,.lo=10,.hi=20};
+ sync_output_live_model_t model;
+ assert(sync_output_live_snapshot(&model)&&model.valid&&model.inverted&&model.standard==2);
+ char diagnostic[768];
+ assert(sync_output_live_diagnostics(diagnostic,sizeof(diagnostic))&&strstr(diagnostic,"inverted=1 ambiguous=0"));
+ /* Lost V must not discard a fresh selected H clock. Coast coordinates only;
+  * never increment or replace observed field evidence. */
+ clock_epoch_base=2000000u;
+ s_native->inverted.have_selected=true;
+ s_native->inverted.selected_line_ticks_x32=40960u;
+ s_native->inverted.h_fit=clock_epoch_base+123300u;s_native->inverted.h_standard=2u;
+ s_native->inverted.line_ticks_x32=40676u; /* unrelated generic reacquisition fit */
+ s_native->inverted.last=clock_epoch_base+123400u;
+ s_native->inverted.h=clock_epoch_base+123300u;
+ s_native->inverted.field=100000u;
+ unsigned fields=s_native->inverted.qualified_fields;
+ assert(sync_output_live_snapshot(&model)&&!model.valid&&model.tracking&&model.line_ticks_x32==40960u);
+ assert(model.field==sop_coast_field(100000u,clock_epoch_base+123300u,40960u,2u));
+ assert(model.field>100000u && model.field<=model.last_h && model.last_h-model.field<400000u);
+ assert(s_native->inverted.field==100000u&&s_native->inverted.qualified_fields==fields);
+ s_native->inverted.h=clock_epoch_base;
+ assert(sync_output_live_snapshot(&model)&&!model.tracking&&!model.valid);
+ s_native->inverted.h=clock_epoch_base+123300u;
+ sync_output_live_invalidate();
+ assert(sync_output_live_snapshot(&model)&&!model.tracking&&!model.valid);
+ checks+=5;
+ assert(sync_output_live_end());
+ assert(!sync_output_live_source(NULL,&epoch));
+ checks+=18;
+}
 static void flag_lifecycle(void){
  for(unsigned failure=0;failure<=8u;++failure){
   reset();mode=failure==5u?3u:1u;fail_at=failure;
@@ -455,7 +583,7 @@ static void flag_profile_route(void){
  assert(s_native->inverted.h_standard==1u&&!s_native->native.h_standard);
  assert(!s_native->inverted.valid);checks+=2;
 }
-int main(void){flag_idle_lifetime();flag_profile_route();flag_lifecycle();dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
+int main(void){flag_mutation_authority();coast_field_grid();flag_resident_source();flag_idle_lifetime();flag_profile_route();flag_lifecycle();dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''
 
 

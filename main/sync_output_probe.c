@@ -82,6 +82,27 @@ static DRAM_ATTR rmt_symbol_word_t s_symbols[SOP_SYMBOLS];
 static rmt_channel_handle_t s_quarantined;
 static bool s_busy;
 static bool s_clock_fault;
+/* ISR consumers use only this DRAM publication, never the task-owned session
+ * or private marker. An epoch change invalidates any previously sampled edge. */
+static DRAM_ATTR volatile uint32_t s_source_epoch;
+static DRAM_ATTR volatile bool s_source_ready;
+static void sop_source_pause(void)
+{
+    s_source_ready=false;
+    __sync_synchronize();
+    ++s_source_epoch;
+    __sync_synchronize();
+}
+bool IRAM_ATTR sync_output_live_source(void *arg,uint32_t *epoch)
+{
+    (void)arg;
+    uint32_t before=s_source_epoch;
+    __sync_synchronize();
+    bool ready=s_source_ready && s_probe.armed && !s_probe.stop && !s_probe.ended;
+    __sync_synchronize();
+    if(epoch)*epoch=before;
+    return ready && before==s_source_epoch;
+}
 
 static inline bool sop_near(uint32_t actual, uint32_t expected, uint32_t tolerance)
 {
@@ -123,7 +144,9 @@ static void sop_native_run(sop_context_t *s,uint32_t start,uint32_t width,bool i
                 sync_native_flag_high(inverted?&s_native->flag_inverted:&s_native->flag_native,
                                       (uint64_t)(offset+start),width);
             else sync_native_low(inverted?&s_native->inverted:&s_native->native,(uint64_t)(offset+start),width);
-            if((s_native->native.valid || s_native->inverted.valid) && !s_native->native_reported) {
+            bool qualified=(s_native->resident && s_native->trace_flag)?s_native->inverted.valid:
+                (s_native->native.valid || s_native->inverted.valid);
+            if(qualified && !s_native->native_reported) {
                 ++s_native->native_qualified_epochs;s_native->native_reported=true;
             }
         }
@@ -339,6 +362,7 @@ typedef struct {
     int64_t epoch_started;
     bool resident;
     volatile bool invalidated;
+    bool forget_native,fresh_h_fit;
     sync_output_live_model_t retained;
     bool (*before_close)(void);
 } sop_session_t;
@@ -347,6 +371,7 @@ static bool sop_session_end(sop_session_t *s);
 
 static bool sop_session_arm(sop_session_t *s)
 {
+    sop_source_pause();
     s->epoch_started=esp_timer_get_time();
     s->phase_scored=false;s->phase=(sync_phase_bracket_t){0};
     s->rise_before=s->rise_after=s->fall_before=s->fall_after=0;
@@ -425,6 +450,14 @@ static bool sop_session_arm(sop_session_t *s)
         }
         (void)xTaskResumeAll();
         if(!ready)return false;
+        if(s->resident && s->flag_source) {
+            /* Let the common input filter clear the private LOW marker before
+             * granting a direct GPIO sampler camera-source ownership. */
+            esp_rom_delay_us((s->common_filter_ns+999u)/1000u+1u);
+            __sync_synchronize();
+            s_source_ready=s_probe.armed && !s_probe.ended && !s_probe.stop &&
+                (REG_READ(GPIO_FUNC2_OUT_SEL_CFG_REG)&GPIO_FUNC2_OUT_SEL_M)==48u;
+        }
     } else {
         s->err=rmt_receive(s->channel,s_symbols,sizeof(s_symbols),&s->receive);
         if(s->err!=ESP_OK){s->failure="receive";return false;}
@@ -546,6 +579,33 @@ failed:
     return false;
 }
 
+/* Same-camera gain/DC/filter changes invalidate observations, not established
+ * camera clock authority. Restore only trusted fields after clearing every
+ * acquisition candidate and incomplete vertical group. */
+static void sop_flag_clock_reset(sync_native_flag_track_t *f)
+{
+    sync_native_track_t *n=f->native;
+    bool trusted=n->valid,selected=n->have_selected;
+    bool have_group=n->have_group,shifted=f->group_shifted;
+    uint64_t group=n->group;
+    uint8_t group_n=n->group_n;
+    uint64_t h=n->h,field=n->field;
+    uint32_t line=n->selected_line_ticks_x32,fields=n->qualified_fields;
+    uint8_t standard=n->standard;
+    sync_native_reset(n);sync_native_flag_init(f,n);
+    /* A fully completed first V group is evidence, not an unfinished pulse
+     * train. Keep it on this same clock so 20ms AGC cannot starve a 33ms pair.
+     * snft_finish still demands an independent fresh H/V group and its exact
+     * inter-field timing/phase agreement before granting authority. */
+    n->have_group=have_group;n->group=group;n->group_n=group_n;
+    f->group_shifted=shifted;
+    if(trusted) {
+        n->valid=true;n->standard=standard;n->h=h;n->field=field;
+        n->line_ticks_x32=n->selected_line_ticks_x32=line;
+        n->qualified_fields=fields;n->have_selected=selected;
+    }
+}
+
 static bool sop_session_poll(sop_session_t *s)
 {
     if(!s_busy)return false;
@@ -563,6 +623,7 @@ static bool sop_session_poll(sop_session_t *s)
      * interrupt-status clear, before reusing the channel and private marker.
      * Keep the independent absolute timer running throughout. */
     if(s_probe.ended || s->invalidated || esp_timer_get_time()-s->epoch_started>=180000000) {
+        sop_source_pause();
         s_probe.armed=false;
         if(rmt_disable(s->channel)!=ESP_OK){s->failure="rollover_disable";return false;}
         s->enabled_rx=false;
@@ -586,8 +647,15 @@ static bool sop_session_poll(sop_session_t *s)
             if(!sync_edge_clock_disable_filter()){s->failure="clock_filter_pause";return false;}
             ++s->clock_rearms;
         }
-        sop_epoch_mode(&s_probe,flag_idle && s->phase.valid);
-        s_probe.armed=true;s->invalidated=false;
+        bool retain_clock=s->resident && s->flag_source && s->invalidated &&
+            !s->forget_native && s->phase.valid;
+        if(retain_clock) {
+            sop_flag_clock_reset(&s_native->flag_native);
+            sop_flag_clock_reset(&s_native->flag_inverted);
+            s->fresh_h_fit=true;
+        }
+        sop_epoch_mode(&s_probe,retain_clock || (flag_idle && s->phase.valid));
+        s_probe.armed=true;s->invalidated=false;s->forget_native=false;
         return sop_session_arm(s);
     }
     return true;
@@ -595,6 +663,7 @@ static bool sop_session_poll(sop_session_t *s)
 
 static bool sop_session_end(sop_session_t *s)
 {
+    sop_source_pause();
     s_probe.armed = false;
     if(s->before_close && !s->before_close()) {
         s_clock_fault=true;
@@ -702,6 +771,8 @@ static bool sop_session_end(sop_session_t *s)
 
 bool sync_output_live_begin(uint32_t generation,bool (*live)(uint32_t))
 { return sop_session_begin(generation,live,true,true,false); }
+bool sync_output_live_begin_flag(uint32_t generation,bool (*live)(uint32_t))
+{ return sop_session_begin(generation,live,true,true,true); }
 bool sync_output_live_active(void)
 { return s_busy && s_session && s_session->resident; }
 void sync_output_live_before_close(bool (*callback)(void))
@@ -722,9 +793,31 @@ bool sync_output_live_end(void)
 void sync_output_live_invalidate(void)
 {
     if(!sync_output_live_active())return;
+    sop_source_pause();
     s_probe.armed=false;
     __sync_synchronize();
     s_session->invalidated=true;
+}
+
+/* Advance a trusted V anchor by whole fields on its rational halfline grid.
+ * A field contains an odd halfline count; retaining that count (rather than
+ * rounding to whole H lines) also preserves interlace H parity. Split the
+ * arithmetic before multiplying so even near-UINT64_MAX timer values are safe. */
+static uint64_t sop_coast_field(uint64_t field,uint64_t h,uint32_t line,uint8_t standard)
+{
+    if(h<=field || !line || (standard!=1u && standard!=2u))return field;
+    uint64_t numerator=(uint64_t)(standard==2u?625u:525u)*line;
+    uint64_t age=h-field;
+    uint64_t fields=(age/numerator)*64u+((age%numerator)*64u+31u)/numerator;
+    uint64_t advance=(fields/64u)*numerator+((fields%64u)*numerator+32u)/64u;
+    return field+advance; /* advance<=age by construction */
+}
+
+void sync_output_live_forget(void)
+{
+    if(!sync_output_live_active())return;
+    s_session->forget_native=true;
+    sync_output_live_invalidate();
 }
 
 bool sync_output_live_snapshot(sync_output_live_model_t *out)
@@ -738,8 +831,8 @@ bool sync_output_live_snapshot(sync_output_live_model_t *out)
         __sync_synchronize();
         sync_native_track_t native=s_native->native;
         sync_native_track_t inverted=s_native->inverted;
-        bool high_pulse=inverted.valid && !native.valid;
-        bool ambiguous=inverted.valid && native.valid;
+        bool high_pulse=s_session->flag_source || (inverted.valid && !native.valid);
+        bool ambiguous=!s_session->flag_source && inverted.valid && native.valid;
         if(high_pulse)native=inverted;
         sync_phase_bracket_t phase=s_native->native_phase;
         bool armed=s_probe.armed,invalidated=s_session->invalidated;
@@ -751,15 +844,24 @@ bool sync_output_live_snapshot(sync_output_live_model_t *out)
         if(native.valid && phase.valid && !ambiguous) {
             out->standard=native.standard;
             out->last_h=native.h;out->field=native.field;
-            out->line_ticks_x32=native.line_ticks_x32;
+            out->line_ticks_x32=native.have_selected?native.selected_line_ticks_x32:native.line_ticks_x32;
             out->phase_lo=phase.lo;out->phase_hi=phase.hi;
             out->inverted=high_pulse;
         }
         out->generation=s_session->generation;out->now=now;
+        bool source=s_session->flag_source?sync_output_live_source(NULL,NULL):armed;
+        out->tracking=armed && !invalidated && source && !ambiguous && native.valid &&
+            native.have_selected && phase.valid && native.field &&
+            (!s_session->fresh_h_fit || (native.h_fit && native.h_standard==native.standard)) &&
+            (native.standard==1u || native.standard==2u) &&
+            now>=native.h && now-native.h<=SOP_MODEL_MAX_AGE_TICKS &&
+            s_session->live(s_session->generation);
         out->valid=armed && !invalidated && !ambiguous && native.valid && phase.valid &&
             now>=native.last && now-native.last<=SOP_MODEL_MAX_AGE_TICKS &&
             now>=native.field && now-native.field<=810000u &&
             s_session->live(s_session->generation);
+        if(out->tracking && !out->valid)
+            out->field=sop_coast_field(native.field,native.h,out->line_ticks_x32,native.standard);
         return true;
     }
     return false;
@@ -777,8 +879,8 @@ bool sync_output_live_diagnostics(char *out,size_t size)
         sop_context_t probe=s_probe;
         sync_native_track_t native=s_native->native;
         sync_phase_bracket_t phase=s_native->native_phase;
-        bool inverted=s_native->inverted.valid && !native.valid;
-        bool ambiguous=s_native->inverted.valid && native.valid;
+        bool inverted=s_session->flag_source || (s_native->inverted.valid && !native.valid);
+        bool ambiguous=!s_session->flag_source && s_native->inverted.valid && native.valid;
         if(inverted)native=s_native->inverted;
         bool phase_checked=s_native->native_phase_checked;
         uint32_t qualified_epochs=s_native->native_qualified_epochs;
