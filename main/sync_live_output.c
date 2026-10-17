@@ -133,7 +133,7 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
         else native=s->native && s->native(tip.start,tip.width,(slg_kind_t)tip.kind,s->native_arg);
         if(!s->status.active || !s->live(s->generation)){fail(s,1);return false;}
         if(native)++s->status.suppressed;
-        else {
+        else if(s->native_authority) {
             REG_WRITE(GPIO_ENABLE_W1TC_REG,SLO_MASK);
             if(s->flag) {
                 /* Restore native video promptly when a correctly phased source

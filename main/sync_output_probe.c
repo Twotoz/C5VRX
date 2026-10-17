@@ -57,7 +57,7 @@ static RTC_FAST_ATTR sop_rx_ring_t s_rx_ring;
  * once acquired, including any quarantined callback ownership. */
 typedef struct {
     uint64_t rise_before,rise_after,fall_before,fall_after;
-    sync_phase_bracket_t native_phase;
+    sync_phase_bracket_t native_phase,calibrated_phase;
     sync_native_track_t native;
     sync_native_track_t inverted;
     sync_native_flag_track_t flag_native,flag_inverted;
@@ -148,8 +148,11 @@ static void sop_native_run(sop_context_t *s,uint32_t start,uint32_t width,bool i
             s_native->rise_before,s_native->rise_after,s_native->fall_before,s_native->fall_after);
         s_native->native_phase_checked=true;
     }
-    if(s_native && s->marker_required && s_native->native_phase.valid) {
-        int64_t offset=s_native->native_phase.lo+(s_native->native_phase.hi-s_native->native_phase.lo)/2;
+    sync_phase_bracket_t phase=s_native?s_native->native_phase:(sync_phase_bracket_t){0};
+    if(!phase.valid && s_native && s_native->calibrated_phase.valid)
+        phase=s_native->calibrated_phase;
+    if(s_native && s->marker_required && phase.valid) {
+        int64_t offset=phase.lo+(phase.hi-phase.lo)/2;
         if(offset>=-(int64_t)start && offset<=INT64_MAX-(int64_t)start) {
             if(s_native->trace_flag && inverted && offset+start<=UINT32_MAX)
                 snt_trace_flag_high(&s_native->trace,s->epochs,(uint32_t)(offset+start),width);
@@ -698,6 +701,13 @@ static bool sop_session_poll(sop_session_t *s)
         }
         if(s->forget_native)s->clock_stats.have_origin=false;
         bool phase_ok=s->phase.valid || (s->clock_stats.have_origin && !s->clock_stats.regressions);
+        if(s_native && phase_ok) {
+            s_native->calibrated_phase=(sync_phase_bracket_t){
+                .lo=s->phase.valid?s->phase.lo:s->clock_stats.last_lo,
+                .hi=s->phase.valid?s->phase.hi:s->clock_stats.last_hi,
+                .valid=true
+            };
+        }
         bool retain_clock=s->resident && s->flag_source && s->invalidated &&
             !s->forget_native && phase_ok;
         if(retain_clock) {
