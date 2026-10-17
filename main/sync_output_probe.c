@@ -39,7 +39,7 @@ _Static_assert((SOP_MASK & UINT32_C(0x01801b00)) == 0u,
  * This bounds delivery staleness, not per-line missing-sync detection. */
 #define SOP_MODEL_MAX_AGE_TICKS 180000u
 
-#define SOP_RX_RING 32u
+#define SOP_RX_RING 16u /* 32 overflowed lp_ram_seg by 2708 bytes */
 typedef struct {
     rmt_symbol_word_t symbols[SOP_SYMBOLS];
     uint8_t count;

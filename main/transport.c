@@ -1121,7 +1121,7 @@ void transport_sync_flywheel_toggle(void)
     if(!s_live_owner){printf("SYNC_FLYWHEEL refused=memory\n");return;}
     s_live_owner->output_requested=!s_live_owner->output_requested;
     s_live_owner->requested=s_live_owner->output_requested;
-    printf("SYNC_FLYWHEEL requested=%u boot_default=OFF bench=1\n",
+    printf("SYNC_FLYWHEEL requested=%u boot_default=ON bench=1\n",
         (unsigned)s_live_owner->output_requested);
 }
 
@@ -1133,6 +1133,19 @@ static bool IRAM_ATTR transport_sync_native_source(void *arg,uint32_t *epoch)
 
 void transport_sync_live_tick(void)
 {
+    /* Boot default ON: allocate lazily on the first control tick (after
+     * receiver startup, same as pressing U) so startup RAM is unchanged. */
+    static bool boot_default_applied;
+    if(!boot_default_applied) {
+        boot_default_applied=true;
+        if(!s_live_owner) {
+            s_live_owner=calloc(1,sizeof(*s_live_owner));
+            if(s_live_owner) {
+                s_live_owner->requested=s_live_owner->output_requested=true;
+                printf("SYNC_FLYWHEEL requested=1 boot_default=ON\n");
+            } else printf("SYNC_FLYWHEEL refused=memory boot_default=ON\n");
+        }
+    }
     sync_live_owner_t *s=s_live_owner;
     if(!s || s->fault || !phy_try_actuator(phy_generation()))return;
     bool eligible=s->requested && !calibration_in_startup() && !receiver_paused() &&
