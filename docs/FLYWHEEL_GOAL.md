@@ -1073,3 +1073,10 @@ and the separately checked-in firmware flag program. Production instructions,
 configuration and helper now match:160 cases/327600 bundles/327680 bytes/
 327360 flags pass. Schema2 artifact includes hashes of both production flag
 files. No physical source quality or monitor-lock conclusion follows.
+
+Actual GPIO23 flag helper code now runs in a strict host MMIO harness:
+24 checks cover exact latch/matrix/OE/IOMUX/pad restoration, unrelated GPIO
+preservation, lost output-low/matrix/enable writes, lost restoration writes and
+unowned/unsaved refusal. CI includes test_sync_flag_pin_runtime.py. It does not
+prove physical voltage or the entire transport transaction; camera evidence is
+still required. No firmware change or flash was needed for this test addition.
