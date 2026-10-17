@@ -158,6 +158,24 @@ int main(void)
         afc2_ctrl_reacquire(&c);
         check("stale history is never restored by re-acquisition", c.n == 0, "21 misses");
     }
+    {
+        afc2_ctrl_t c = {.target_khz = -1000, .sign = 1};
+        afc2_ctrl_reset(&c, 1, true);
+        afc2_result_t off = {.lines = 8, .standard = 1, .polarity = -1,
+                             .sync_pairs = 200, .porch_pairs = 300, .sync_khz = -3250, .porch_khz = -1250};
+        for (unsigned n = 0; n < AFC2_CTRL_SAMPLES; ++n) afc2_ctrl_observe(&c, &off);
+        int32_t step = 0;
+        bool stepped = afc2_ctrl_decide(&c, true, &step);
+        afc2_ctrl_sync(&c, 2, true);
+        afc2_result_t centred = off;
+        centred.porch_khz = -1000;
+        for (unsigned n = 0; n < AFC2_CTRL_SAMPLES; ++n) afc2_ctrl_observe(&c, &centred);
+        uint8_t lost = 0;
+        bool lock = afc2_native_lock(false, true, afc2_ctrl_can_lock(&c, true), c.n, &lost);
+        check("single step into deadband confirms sign on lock",
+              stepped && step == -250 && lock && c.sign_state == AFC2_SIGN_CONFIRMED && !c.sign_check,
+              "sign confirmed without needing another decide call");
+    }
     printf("%s: %u checks, %u failures\n", s_fail ? "FAIL" : "PASS", s_run, s_fail);
     return s_fail ? 1 : 0;
 }

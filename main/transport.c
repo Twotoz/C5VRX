@@ -348,7 +348,6 @@ static bool switch_live(int level, bool lp)
     kp_switch_mark(&s_switch_guard, finished);  /* failures interrupted video too */
     if (kp_changed) s_kp_restart_us = (uint32_t)(finished - began);
     if (lp_changed) s_prog_restart_us = (uint32_t)(finished - began);
-    ++s_control_epoch;
     return ok;
 }
 
@@ -391,7 +390,6 @@ bool transport_set_output(unsigned level)
     s_output = level;
     bool ok = resume_live(s_lut_known ? kp_tables[s_verified_level] : NULL);
     kp_switch_mark(&s_switch_guard, esp_timer_get_time());
-    ++s_control_epoch;
     return ok;
 }
 
@@ -805,7 +803,6 @@ static bool transport_flag_format(bool flag)
     } else if(!s_transport_fault && !flag_pin_clamped()) {
         s_transport_fault=true;s_lut_known=false;return false;
     }
-    ++s_control_epoch;
     return ok;
 }
 
@@ -843,7 +840,6 @@ bool transport_bench_restart(void)
     kp_switch_mark(&s_switch_guard, finished);
     s_bench_restart_us = (uint32_t)(finished - began);
     if (!ok) ++s_bench_restart_fail;
-    ++s_control_epoch;
     return ok;
 }
 

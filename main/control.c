@@ -103,6 +103,7 @@ static void manual_auto_off(void)
 /* Learned offset sign (afc_ctrl.h sign check), persisted once observed. */
 static volatile int8_t s_afc_sign = 1;
 static volatile uint8_t s_afc_sign_state;
+static bool s_afc_sign_saved;
 
 static void standard_reset(void)
 {
@@ -385,7 +386,7 @@ static uint32_t afc_context(void)
 static void control_task(void *arg)
 {
     (void)arg;
-    afc2_ctrl_t afc = {.target_khz = AFC_PORCH_TARGET_KHZ, .sign = s_afc_sign};
+    afc2_ctrl_t afc = {.target_khz = AFC_PORCH_TARGET_KHZ, .sign = s_afc_sign, .sign_state = s_afc_sign_state};
     uint8_t seen_sign_state = afc.sign_state;
     bool own_write = false;
     uint8_t afc_lost = 0;
@@ -608,7 +609,10 @@ static void control_task(void *arg)
             printf("[AFC] offset sign %s: %+d\n", afc.sign_state == AFC2_SIGN_FLIPPED ? "FLIPPED" : "confirmed",
                    afc.sign < 0 ? -1 : 1);
             int8_t sign = afc.sign < 0 ? -1 : 1;
-            if (sign != s_afc_sign) { s_afc_sign = sign; (void)blob_store("afc_sign", &sign, 1); }
+            if (!s_afc_sign_saved || sign != s_afc_sign) {
+                s_afc_sign = sign;
+                s_afc_sign_saved = blob_store("afc_sign", &sign, 1);
+            }
         }
         /* The ladder owns kp/LP on every profile (one U85Q topology; a
          * profile only sets the filter and the start level). It is inactive
@@ -672,7 +676,11 @@ void control_start(void)
     gpio_config(&cfg);
     if (!blob_load("last_std", &s_last_std, 1)) s_last_std = 0xFF;
     int8_t sign;
-    if (blob_load("afc_sign", &sign, 1) && (sign == 1 || sign == -1)) s_afc_sign = sign;
+    if (blob_load("afc_sign", &sign, 1) && (sign == 1 || sign == -1)) {
+        s_afc_sign = sign;
+        s_afc_sign_state = AFC2_SIGN_CONFIRMED;
+        s_afc_sign_saved = true;
+    }
     if (!blob_load("kp_auto", &s_kp_auto, 1) || s_kp_auto > 2) s_kp_auto = 2;
     else s_saved_kp_auto = s_kp_auto; /* an explicitly saved OFF wins */
     s_commands = xQueueCreate(16, sizeof(int));

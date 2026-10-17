@@ -165,6 +165,32 @@ static inline void afc2_ctrl_observe(afc2_ctrl_t *c, const afc2_result_t *r)
         c->est[AFC2_CTRL_SAMPLES - 1] = v;
         c->observed_us[AFC2_CTRL_SAMPLES - 1] = 0;
     }
+    if (c->sign_check && c->n >= AFC2_CTRL_SAMPLES) {
+        int32_t s[AFC2_CTRL_SAMPLES], dev[AFC2_CTRL_SAMPLES];
+        for (unsigned k = 0; k < c->n; ++k) s[k] = c->est[k];
+        for (unsigned a = 1; a < c->n; ++a)
+            for (unsigned b = a; b > 0 && s[b - 1] > s[b]; --b) {
+                int32_t t = s[b]; s[b] = s[b - 1]; s[b - 1] = t;
+            }
+        int32_t med = (s[c->n / 2 - 1] + s[c->n / 2]) / 2;
+        for (unsigned k = 0; k < c->n; ++k)
+            dev[k] = c->est[k] > med ? c->est[k] - med : med - c->est[k];
+        for (unsigned a = 1; a < c->n; ++a)
+            for (unsigned b = a; b > 0 && dev[b - 1] > dev[b]; --b) {
+                int32_t t = dev[b]; dev[b] = dev[b - 1]; dev[b - 1] = t;
+            }
+        if ((dev[c->n / 2 - 1] + dev[c->n / 2]) / 2 <= AFC2_CTRL_MAX_MAD_KHZ) {
+            int32_t delta = med - c->check_med, half = c->check_step / 2;
+            if ((c->check_step > 0 && delta <= -half) || (c->check_step < 0 && delta >= -half))
+                c->sign_state = AFC2_SIGN_CONFIRMED;
+            else if ((c->check_step > 0 && delta >= half) || (c->check_step < 0 && delta <= half)) {
+                c->sign = c->sign < 0 ? 1 : -1;
+                c->sign_state = AFC2_SIGN_FLIPPED;
+                c->corrections = 0;
+            }
+            c->sign_check = false;
+        }
+    }
 }
 
 /* Diagnostics attach time to exactly the estimate admitted by the unchanged
