@@ -9,9 +9,47 @@ All seven PR discussion comments were read, including output AUTO/floor,
 flywheel deadlines, output A/B/C and the priority order; both review/inline
 comment endpoints were empty at this review.
 
-## Current result
+## Firmware V6 carrier memory (2026-10-18)
 
-**V5 remains the firmware gain owner.** The new V6 implementation is an
+**Direct Gain V6 is now the firmware gain owner.** It is V5 (measurement,
+healthy band, continuous tracking, overload safety) plus a carrier memory.
+It does not implement the research classifier below; that remains research.
+
+Board readout 2026-10-18 (PR212 `6285771`, A1 NTSC, AFC locked, strong
+camera): field traces showed G21 -> G63 after each fade with up to 742 per
+mille clipping on return, then a staged walk back through G58/G53/G38/...
+`GAIN` counters (`writes=16 fade_holds=0`) showed why the 10-ms fade hold
+rarely acted: the observer rebinds the model on every AFC offset step and
+PHY lease (`phy_generation`, `s_control_epoch`), and the rebind cleared
+`last_healthy_us` together with the whole tracking state.
+
+V6 keeps the last healthy, non-stuck gain (`anchor_gain`) and the fade/carrier
+timestamps across tracking resets when channel, filter code/skirt/BW, lane, IQ
+scale and the complete gain table are unchanged; the AFC offset may differ.
+The learned map keeps its exact V5 provenance rules. With a remembered gain,
+an empty window after the 10-ms hold climbs `DG6_CLIMB_STEP` = 8 indices every
+`DG6_CLIMB_US` = 3 ms (a carrier that is really gone still reaches the
+maximum, ~25 ms later). Saturation above the remembered gain returns to it in
+one write, without the 1-ms burst gate; at or below it V5's burst gate and
+staged recovery are unchanged. A Wi-Fi burst during a climb therefore costs
+one write to a known-good gain.
+
+Host model (`test/test_gain_fade.c`, V5 -> V6): -40 dB fades of 10/30 ms
+picture back 1.8 -> 0.0 ms after the carrier; sustained -22 dB step
+20.4 -> 13.8 ms; VTX off still ends at G83; all 28 checks pass.
+`test/test_gain_v6_memory.c` (85 checks) covers rebind retention, channel
+change, bounded climb, one-write return, maximum reach, stuck DC and the
+retained burst gate. This model is rough and monotonic; no board/range result
+is claimed until a physical A/B.
+
+Manual mode (operator request): saved `gain_mode` (console `G`, menu GAIN)
+selects AUTO (V6), MAX (table maximum) or fixed G78..G24. Fixed modes skip
+`dg_tick`; paused owners (calibration, scan) still write and the mode is
+re-applied afterwards. AUTO is the default.
+
+## Research result (before the firmware V6 above)
+
+**V5 remained the firmware gain owner at this research stage.** The new V6 implementation is an
 experimental decision helper in `research/gain_v6_policy.h`, default OFF,
 with no production caller, register access, menu item or NVS state. Enabling
 its macro only enables the research policy; it does not enable board V6.

@@ -25,6 +25,8 @@ bool blob_store(const char *, const void *, size_t);
 void settings_load(void);
 void settings_save(void);
 void settings_save_output(unsigned);
+void settings_save_gain_mode(uint8_t mode);
+void receiver_set_gain_mode(uint8_t mode, bool save);
 '''
 NVS = r'''
 #pragma once
@@ -57,13 +59,14 @@ HARNESS = r'''
 #include <stdio.h>
 #include <string.h>
 typedef struct { unsigned char bytes[16]; size_t n; } slot_t;
-static slot_t slots[2], pending;
+static slot_t slots[3], pending;
 static int pending_index = -1, writes, commits, fail_open, fail_set, fail_commit;
-static unsigned output, channel, output_applied;
+static unsigned output, channel, output_applied, gain_mode, gain_restores;
 std_mode_t s_std_mode;
 static int index_of(const char *key) {
     if (!strcmp(key, "settings")) return 0;
     if (!strcmp(key, "output")) return 1;
+    if (!strcmp(key, "gain_mode")) return 2;
     assert(0); return -1;
 }
 esp_err_t nvs_open(const char *ns, int mode, nvs_handle_t *h) {
@@ -94,7 +97,9 @@ const char *esp_err_to_name(esp_err_t e) { (void)e; return "TEST_FAILURE"; }
 unsigned rf_channel_index(void) { return channel; }
 bool rf_set_channel(unsigned c) { channel = c; return true; }
 bool transport_set_output(unsigned o) { assert(o < OUTPUT_LEVELS); output = o; ++output_applied; return true; }
-static void boot(void) { output = 0; channel = 0; s_std_mode = STD_MODE_AUTO; output_applied = 0; settings_load(); }
+void receiver_set_gain_mode(uint8_t mode, bool save) { assert(!save); gain_mode = mode; ++gain_restores; }
+static void boot(void) { output = 0; channel = 0; s_std_mode = STD_MODE_AUTO; output_applied = 0;
+    gain_mode = 0; gain_restores = 0; settings_load(); }
 static void seed(unsigned slot, const unsigned char *bytes, size_t n) {
     assert(n <= sizeof(slots[slot].bytes)); slots[slot].n = n; memcpy(slots[slot].bytes, bytes, n);
 }
@@ -138,6 +143,14 @@ int main(void) {
     assert(writes == 1 && !commits); fail_set = 0; boot(); assert(output == 2);
     fail_commit = 1; settings_save_output(1); fail_commit = 0; boot(); assert(output == 2);
     settings_save_output(1); boot(); assert(output == 1);
+    /* Gain mode: own key, restored at boot, unchanged value not rewritten,
+     * independent of output/channel blobs. */
+    boot(); assert(!gain_restores);
+    writes = commits = 0; settings_save_gain_mode(255); assert(writes == 1 && commits == 1);
+    boot(); assert(gain_restores == 1 && gain_mode == 255 && output == 1);
+    settings_save_gain_mode(255); assert(writes == 1 && commits == 1);
+    settings_save_gain_mode(42); boot(); assert(gain_mode == 42 && output == 1);
+    settings_save_gain_mode(0); boot(); assert(gain_restores == 1 && gain_mode == 0);
     puts("PASS: actual settings.c output save/reboot, legacy compatibility, invalid data, wear and NVS failures");
     return 0;
 }

@@ -333,7 +333,13 @@ int main(void){
   if(variant==0u){
    assert(s_output->native_authority&&s_output->status.guard_acquired==1u);
    assert(s_output->status.guard_v_jumps==1u&&s_output->status.guard_h_jumps==1u);
-   assert(!s_output->yield&&clears>clamps); /* holdover repairs on the camera grid */
+   /* A present camera owns sync: tips are left to it, never doubled. */
+   assert(!s_output->yield&&clears==clamps&&s_output->status.camera_yields&&s_output->status.camera_lines);
+   /* Camera gone beyond the hold: holdover repairs on the camera grid. */
+   uint64_t gone=cycles/12;
+   while(cycles/12<gone+600000u)fire(); /* 30 ms */
+   sync_live_output_guard_tick();
+   assert(!s_output->status.camera_present&&clears>clamps);
   } else assert(!s_output->native_authority&&!s_output->status.guard_acquired&&!clears);
   assert(!s_output->status.fault&&sync_live_output_end());++checks;
  }

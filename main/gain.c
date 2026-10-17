@@ -1,6 +1,7 @@
-/* C5VRX-5 by Twotoz and the C5VRX contributors: Direct Gain V5 core.
+/* C5VRX-5 by Twotoz and the C5VRX contributors: Direct Gain V6 core.
  * Ported from legacy/c5vrx4/main/direct_gain_v3.c (PR #190) with the fixed-lane,
- * staged-recovery, boost-off configuration that ran on the board. */
+ * staged-recovery, boost-off configuration that ran on the board (V5), plus
+ * the V6 carrier memory described in gain.h. */
 #include "gain.h"
 #include "direct_gain_v3_lut.h"
 #include <string.h>
@@ -45,6 +46,16 @@ static bool s_lut_ready;
  * bounded by the hold. A carrier that is really gone still reaches the
  * table maximum; distance fades are slower and tracked as before. */
 #define DG_FADE_HOLD_US    10000u
+/* V6 carrier memory. After the fade hold a lost carrier climbs from the last
+ * healthy gain in steps of DG6_CLIMB_STEP indices (about one RF stage) every
+ * DG6_CLIMB_US: a carrier back at its old level, or somewhat weaker, shows up
+ * a few dB above it instead of 40 dB above it, and a carrier that is really
+ * gone still reaches the table maximum within ~25 ms. Saturation above the
+ * remembered gain is that carrier returning: one write back to it, without
+ * the 1 ms burst gate and the staged walk (each stage a few ms of folded,
+ * clipped picture). A burst there costs one write to a known-good gain. */
+#define DG6_CLIMB_STEP     8u
+#define DG6_CLIMB_US       3000u
 
 static int clamp_i(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static int abs_i(int v) { return v < 0 ? -v : v; }
@@ -250,6 +261,17 @@ void dg_reset_context(direct_gain_t *g, const arc_gain_table_t *table, uint8_t c
     dg_map_blob_t kept;
     dg_map_context_t wanted = {0};
     if (context) wanted = *context; /* context may alias g */
+    /* V6 carrier memory survives tracking resets on the same receiver: an
+     * AFC step changes only the offset, a PHY lease nothing physical. */
+    const bool same_receiver = g->magic == DG_MAGIC && table && same_table(&g->table, table) &&
+        g->map_context_valid == (context != NULL) &&
+        (!context || (g->map_context.freq_mhz == wanted.freq_mhz && g->map_context.lane_mode == wanted.lane_mode &&
+                      g->map_context.iq_scale == wanted.iq_scale && g->map_context.filter_code == wanted.filter_code &&
+                      g->map_context.filter_skirt == wanted.filter_skirt && g->map_context.filter_bw20 == wanted.filter_bw20));
+    const bool anchor_valid = same_receiver && g->anchor_valid;
+    const uint8_t anchor_gain = g->anchor_gain;
+    const uint64_t anchor_us = g->anchor_us, carrier_us = g->carrier_us, last_healthy_us = g->last_healthy_us;
+    const uint32_t anchor_returns = same_receiver ? g->anchor_returns : 0u, climbs = same_receiver ? g->climbs : 0u;
     bool keep = g->magic == DG_MAGIC && g->learned && table && same_table(&g->table, table) &&
                 g->map_context_valid == (context != NULL) &&
                 (!context || dg_map_context_equal(&g->map_context, &wanted)) &&
@@ -270,6 +292,15 @@ void dg_reset_context(direct_gain_t *g, const arc_gain_table_t *table, uint8_t c
     g->map_context_valid = context != NULL;
     g->map_context = wanted;
     if (keep) (void)dg_import_map(g, &kept);
+    if (same_receiver) {
+        g->anchor_valid = anchor_valid && anchor_gain >= 20u && anchor_gain <= g->table.max_index;
+        g->anchor_gain = anchor_gain;
+        g->anchor_us = anchor_us;
+        g->carrier_us = carrier_us;
+        g->last_healthy_us = last_healthy_us;
+        g->anchor_returns = anchor_returns;
+        g->climbs = climbs;
+    }
 }
 
 void dg_reset(direct_gain_t *g, const arc_gain_table_t *table, uint8_t current_gain)
@@ -559,6 +590,21 @@ uint8_t dg_tick(direct_gain_t *g, const dg_observation_t *o)
     g->last_tracking = *o;
     bool no_carrier = o->p50 <= 4 && o->origin_pm >= 650 && o->coherence < 20;
     bool saturated = o->clip_pm >= 100 || o->p95 >= 95;
+    if (!no_carrier) g->carrier_us = o->observed_us;
+    /* V6: a carrier clipping above its remembered gain returns to it at
+     * once (see DG6_CLIMB_STEP). At or below it, V5's burst gate and
+     * staged overload recovery still apply. */
+    if (saturated && g->anchor_valid && g->current_gain > g->anchor_gain) {
+        ++g->overloads;
+        ++g->anchor_returns;
+        g->saturated_run = false;
+        g->overload_recovery = false;
+        g->high_windows = g->weak_windows = 0;
+        g->virtual_gain_q8 = 0;
+        g->last_direction = 0;
+        g->climb_us = 0;
+        return start_write(g, o, &prior, g->anchor_gain);
+    }
     if (!saturated) g->saturated_run = false;
     else if (!g->saturated_run) { g->saturated_run = true; g->saturated_since_us = o->observed_us; }
     if (saturated && o->observed_us - g->saturated_since_us < DG_BURST_US) {
@@ -579,6 +625,19 @@ uint8_t dg_tick(direct_gain_t *g, const dg_observation_t *o)
             o->observed_us - g->last_healthy_us < DG_FADE_HOLD_US) {
             ++g->fade_holds;
             return g->current_gain;
+        }
+        /* V6: with a remembered carrier, climb from it in bounded steps. */
+        if (!g->overload_recovery && !at_max && g->anchor_valid) {
+            if (g->climb_us && o->observed_us >= g->climb_us &&
+                o->observed_us - g->climb_us < DG6_CLIMB_US) return g->current_gain;
+            unsigned next = (unsigned)g->current_gain + DG6_CLIMB_STEP;
+            if (next > g->table.max_index) next = g->table.max_index;
+            g->climb_us = o->observed_us;
+            ++g->climbs;
+            g->high_windows = g->weak_windows = 0;
+            g->virtual_gain_q8 = 0;
+            g->last_direction = 0;
+            return start_write(g, o, &prior, (uint8_t)next);
         }
         /* After an overload a low radius is no proof the carrier vanished:
          * walk back through physical tuples instead of jumping to max. */
@@ -637,6 +696,13 @@ uint8_t dg_tick(direct_gain_t *g, const dg_observation_t *o)
     }
     if (healthy(o)) {
         g->last_healthy_us = o->observed_us;
+        /* A fixed IQ point (DC, no VTX) reads healthy but is no carrier. */
+        if (!dg_stuck(o)) {
+            g->anchor_valid = true;
+            g->anchor_gain = g->current_gain;
+            g->anchor_us = o->observed_us;
+        }
+        g->climb_us = 0;
         g->overload_recovery = false;
         g->state = DG_HOLD;
         g->corrections = 0;

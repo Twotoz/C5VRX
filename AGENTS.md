@@ -754,7 +754,17 @@ requirements by themselves**.
 
 ## Current realtime invariants (C5VRX-5)
 
-- **Direct Gain V5 is the default gain owner.** The operator explicitly
+- **Direct Gain V6 is the default gain owner** (2026-10-18, operator request):
+  V5 plus a carrier memory (`main/gain.c` `DG6_*`, `docs/DIRECT_GAIN_V6.md`
+  section "Firmware V6 carrier memory"). The last healthy gain survives
+  tracking resets on the same channel/filter/lane/table (AFC offset ignored);
+  a lost carrier holds 10 ms, then climbs 8 indices per 3 ms (still reaching
+  the maximum); saturation above the remembered gain is one write back to it.
+  Host model only (`test/test_gain_fade.c`, `test/test_gain_v6_memory.c`).
+  Saved `gain_mode` (console `G`, menu GAIN): AUTO, MAX or fixed G78..G24;
+  fixed modes bypass the controller. This is an explicit user setting, not a
+  firmware gain pin: AUTO stays the default.
+- **(Previous V5 note, still valid for the native bench.)** The operator explicitly
   requested periodic native acquisition on 2026-10-13. PR #212 adds an
   OFF-at-boot, RAM-only `~` bench controller (`docs/NATIVE_AGC_REBUILD.md`):
   nominal 20 ms, bounded landing/timeout/gap checks, exclusive gain ownership,

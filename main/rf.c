@@ -12,7 +12,6 @@
 #include "esp_cpu.h"
 #include "esp_private/esp_clk.h"
 #include "esp_log.h"
-#include "esp_netif.h"
 #include "esp_rom_gpio.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -211,8 +210,8 @@ esp_err_t rf_start(void)
         if (err == ESP_OK) err = nvs_flash_init();
     }
     if (err != ESP_OK) return err;
-    err = esp_netif_init();
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
+    /* No esp_netif_init: no network interface exists, and its TCP/IP task
+     * (3 KiB stack plus queues) took heap the menu needs. */
     err = esp_event_loop_create_default();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
     /* sta_disconnected_pm must be off: Wi-Fi power management would gate

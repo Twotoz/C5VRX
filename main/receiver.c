@@ -1,4 +1,4 @@
-/* C5VRX-5 by Twotoz and the C5VRX contributors: Direct Gain V5 runtime.
+/* C5VRX-5 by Twotoz and the C5VRX contributors: Direct Gain V6 runtime.
  * A 200 us timer wakes sentinel/gain; full C/N runs every 20 ms with
  * context/age validation. Bound a continuously runnable observer batch so
  * IDLE/calibration get time even if notifications accumulate. */
@@ -26,6 +26,50 @@ dg_map_blob_t s_gain_map_saved;
 bool s_gain_map_saved_valid;
 
 static TaskHandle_t s_observer, s_sentinel;
+static volatile uint8_t s_gain_mode = GAIN_MODE_AUTO;
+
+/* Menu/console cycle: AUTO, MAX, then fixed G78 down to G24. */
+static const uint8_t s_gain_modes[] = {GAIN_MODE_AUTO, GAIN_MODE_MAX, 78, 72, 66, 60, 54, 48, 42, 36, 30, 24};
+
+uint8_t receiver_gain_mode(void) { return s_gain_mode; }
+
+void receiver_set_gain_mode(uint8_t mode, bool save)
+{
+    if (mode != GAIN_MODE_AUTO && mode != GAIN_MODE_MAX && (mode < 20u || mode > ARC_VENDOR_GAIN_MAX)) return;
+    s_gain_mode = mode;
+    if (save) settings_save_gain_mode(mode);
+    char buf[16];
+    printf("GAIN mode=%s %s\n", receiver_gain_mode_name(mode, buf, sizeof(buf)), save ? "saved=1" : "boot_restore=saved");
+}
+
+uint8_t receiver_gain_mode_next(uint8_t mode)
+{
+    for (unsigned k = 0; k < sizeof(s_gain_modes); ++k)
+        if (s_gain_modes[k] == mode) return s_gain_modes[(k + 1u) % sizeof(s_gain_modes)];
+    return GAIN_MODE_AUTO;
+}
+
+const char *receiver_gain_mode_name(uint8_t mode, char *buf, unsigned size)
+{
+    if (mode == GAIN_MODE_AUTO) return "AUTO";
+    if (mode == GAIN_MODE_MAX) return "MAX";
+    snprintf(buf, size, "G%u", mode);
+    return buf;
+}
+
+/* Fixed modes bypass the controller; apply_target clamps to the live table. */
+static uint8_t gain_decision(const dg_observation_t *o)
+{
+    const uint8_t mode = s_gain_mode;
+    if (mode == GAIN_MODE_AUTO) return dg_tick(&s_gain, o);
+    const uint8_t target = mode == GAIN_MODE_MAX ? rf_gain_table()->max_index : mode;
+    /* Once written and settled the model reads HOLD, so profile/DC/C-N gates
+     * waiting for a held gain behave as with a steady carrier. */
+    if (target == s_current_gain && s_gain.state != DG_HOLD &&
+        o->observed_us > (uint64_t)s_last_gain_write_us && o->observed_us - (uint64_t)s_last_gain_write_us >= 2000u)
+        s_gain.state = DG_HOLD;
+    return target;
+}
 static volatile bool s_paused;
 static volatile uint32_t s_overload_state;   /* 0 free, 1 writing, 2 published */
 static dg_observation_t s_overload;
@@ -130,7 +174,7 @@ static bool native_tick(uint32_t control, uint32_t phy)
         s_native_enabled = false;
         dg_reset(&s_gain, rf_gain_table(), s_current_gain);
         phy_end_actuator();
-        printf("NATIVE_AGC disabled=context_changed owner=direct_gain_v5\n");
+        printf("NATIVE_AGC disabled=context_changed owner=direct_gain_v6\n");
         return false;
     }
     int64_t now = esp_timer_get_time();
@@ -158,7 +202,7 @@ static bool native_tick(uint32_t control, uint32_t phy)
     phy_end_actuator();
     if (result != RF_NATIVE_LANDING)
         printf("NATIVE_AGC disabled=result_%u owner=%s open_us=%lu\n", (unsigned)result,
-               s_paused ? "FAULT_PAUSED" : "direct_gain_v5", (unsigned long)opened);
+               s_paused ? "FAULT_PAUSED" : "direct_gain_v6", (unsigned long)opened);
     return s_native_enabled || s_paused;
 }
 
@@ -316,9 +360,9 @@ static void observer_task(void *arg)
             __sync_lock_release(&s_overload_state);
             if (current && native_owner) {
                 s_native_enabled = native_owner = false;
-                printf("NATIVE_AGC disabled=overload owner=direct_gain_v5\n");
+                printf("NATIVE_AGC disabled=overload owner=direct_gain_v6\n");
             }
-            if (current) apply_target(dg_tick(&s_gain, &o), control, phy);
+            if (current) apply_target(gain_decision(&o), control, phy);
             if (!native_owner) continue;
         }
         uint32_t gain_epoch = s_gain_epoch;
@@ -346,7 +390,7 @@ static void observer_task(void *arg)
             table != rf_table_generation() || !dg_map_context_equal(&context, &after_context)) continue;
         if (native_owner && (o.clip_pm >= 125u || o.p95 >= 95u)) {
             s_native_enabled = native_owner = false;
-            printf("NATIVE_AGC disabled=overload owner=direct_gain_v5\n");
+            printf("NATIVE_AGC disabled=overload owner=direct_gain_v6\n");
         }
         if (measure_cn) {
             ++s_cn_sequence;
@@ -361,7 +405,7 @@ static void observer_task(void *arg)
          * by the AFC within the last 500 ms (never from receiver noise). */
         const int64_t video = s_last_video_us;
         s_gain.learn_enabled = video != 0 && t0 - video < 500000;
-        if (!native_owner) apply_target(dg_tick(&s_gain, &o), control, phy);
+        if (!native_owner) apply_target(gain_decision(&o), control, phy);
         uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
         if (us > s_obs_us_max) s_obs_us_max = us;
         ++s_obs_windows;
@@ -391,14 +435,19 @@ void receiver_print(void)
            (unsigned long)s_native_faults, (unsigned long)s_native_max_open);
     printf("CN_OBSERVER windows=%lu period_us=%u max_age_us=%u\n", (unsigned long)s_cn_windows,
            CN_OBSERVE_PERIOD_US, CN_OBSERVE_MAX_AGE_US);
-    printf("GAIN owner=%s gain=%u state=%u p50=%d p95=%d coherence=%d env_x100=%d stuck=%u cn_x10=%d origin_pm=%d clip_pm=%d "
+    char mode[16];
+    printf("GAIN owner=%s mode=%s gain=%u state=%u p50=%d p95=%d coherence=%d env_x100=%d stuck=%u cn_x10=%d origin_pm=%d clip_pm=%d "
+           "anchor=%u anchor_valid=%u anchor_returns=%lu climbs=%lu "
            "writes=%lu holds=%lu overloads=%lu bursts=%lu fade_holds=%lu damp=%lu map_learned=%lu learn_refused=%lu "
            "map_imports=%lu preset_imports=%lu "
            "obs_windows=%lu obs_us_max=%lu\n",
-           s_native_enabled ? "native_acquire_hold" : s_paused ? "paused" : "direct_gain_v5",
+           s_native_enabled ? "native_acquire_hold" : s_paused ? "paused" :
+           s_gain_mode == GAIN_MODE_AUTO ? "direct_gain_v6" : "manual",
+           receiver_gain_mode_name(s_gain_mode, mode, sizeof(mode)),
            s_current_gain, (unsigned)s_gain.state, s_obs_p50, s_obs_p95, s_obs_coherence, s_obs_env_ratio_x100,
            (unsigned)s_obs_stuck, receiver_obs_cn_x10(),
-           s_obs_origin_pm, s_obs_clip_pm, (unsigned long)s_gain.writes, (unsigned long)s_gain.holds,
+           s_obs_origin_pm, s_obs_clip_pm, (unsigned)s_gain.anchor_gain, (unsigned)s_gain.anchor_valid,
+           (unsigned long)s_gain.anchor_returns, (unsigned long)s_gain.climbs, (unsigned long)s_gain.writes, (unsigned long)s_gain.holds,
            (unsigned long)s_gain.overloads, (unsigned long)s_gain.bursts_ignored, (unsigned long)s_gain.fade_holds,
            (unsigned long)s_gain.damp_events, (unsigned long)s_gain.learned, (unsigned long)s_gain.learn_refused,
            (unsigned long)s_map_imports, (unsigned long)s_preset_imports, (unsigned long)s_obs_windows,

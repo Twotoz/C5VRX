@@ -93,6 +93,9 @@ void transport_sync_live_toggle(void); /* u: resident native observer bench */
 void transport_sync_flywheel_toggle(void); /* U: conditional DAC-OE holdover bench */
 void transport_sync_live_tick(void);   /* control loop; never holds a lifetime PHY lease */
 bool transport_sync_live_cancel(void); /* stop/restore before transport ownership changes */
+/* Menu open: stop the flywheel output (not eligible under the menu anyway)
+ * so its heap is free before the menu reserves descriptors. */
+void transport_sync_live_release(void);
 void transport_sync_live_print(void);
 void transport_sync_live_trace_print(void);
 void sync_dma_c2m(const void *addr, size_t size);
@@ -132,6 +135,15 @@ void receiver_resume(void);
 void receiver_set_gain(uint8_t gain);
 void receiver_print(void);
 void receiver_print_map(void);   /* console M: GAINMAP line */
+/* Gain mode: GAIN_MODE_AUTO (Direct Gain V6), GAIN_MODE_MAX (table maximum)
+ * or a fixed gain index 20..max. Fixed modes skip the controller entirely;
+ * paused owners (calibration, scan) still write and the mode returns after. */
+#define GAIN_MODE_AUTO 0u
+#define GAIN_MODE_MAX  255u
+uint8_t receiver_gain_mode(void);
+void receiver_set_gain_mode(uint8_t mode, bool save);
+uint8_t receiver_gain_mode_next(uint8_t mode);
+const char *receiver_gain_mode_name(uint8_t mode, char *buf, unsigned size);
 void receiver_native_toggle(void); /* ~: RAM-only bounded native acquire/hold bench */
 
 /* ---- control.c ---- */
@@ -183,7 +195,7 @@ bool calibration_dc_ok(uint8_t gain);
 void lane_compare_request(void);
 
 /* ---- menu.c ---- */
-enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_CALIBRATE, MENU_OUTPUT, MENU_EXIT, MENU_ITEMS };
+enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_CALIBRATE, MENU_OUTPUT, MENU_GAIN, MENU_EXIT, MENU_ITEMS };
 extern volatile int s_menu_cursor;
 bool menu_open(void);
 void menu_close(void);
@@ -234,6 +246,7 @@ void diag_toggle_stream(void);          /* console R */
 void settings_load(void);
 void settings_save(void);
 void settings_save_output(unsigned level); /* only after verified output application */
+void settings_save_gain_mode(uint8_t mode);
 bool blob_load(const char *key, void *data, size_t size);
 bool blob_store(const char *key, const void *data, size_t size);
 

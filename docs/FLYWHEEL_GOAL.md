@@ -1245,3 +1245,32 @@ The5ms-outage fixture proves multiple bounded callbacks, exact NTSC phase,
 balanced OE, >50expired skips and resumed repairs. Conditional runtime12025
 checks pass. S board validation is pending at this note; camera and monitor
 proof remain open, all boot defaults remain OFF.
+
+
+### Camera-presence yield and menu memory (2026-10-18)
+
+Board readout on PR212 `6285771` (A1 NTSC, AFC locked, strong camera, boot
+default ON): `repaired` grew ~13.6k versus ~7.2k `suppressed` in ~4 s,
+`h_jumps` ~9/s, `SYNC_LIVE_MODEL valid=0 tracking=0`, guard `yield` 0. The
+operator saw horizontally shifted top lines and sync lost "after a while,
+as if the clocks drift apart". The held grid had drifted off the camera, so
+`flag_native` no longer saw the camera edge inside the phase window and the
+ISR inserted its own tip next to the camera's sync.
+
+`sync_live_output.c` now detects camera presence independently of the
+output grid: native H pulses (75..240 ticks, comparator polarity) spaced one
+to four line periods (+-0.6 us) refresh a camera timestamp. Within 20 ms of
+it every scheduled tip is left to the camera (`camera_yields`); repairs only
+fill real gaps. The ISR needs both the task's freshness flag and the 32-bit
+tick, so a torn or wrapped value cannot read as present. A loss shorter than
+the hold gets no repair. Status adds `camera_present/camera_lines/
+camera_yields`. Build and host tests only; board/monitor proof pending.
+
+Menu: `E menu: unavailable: ESP_ERR_NO_MEM (internal free=7104)`,
+`heap_internal=10184`; NTSC needs ~18 KiB of descriptors in 1.5-KiB chunks.
+`menu_open` now cancels the flywheel output (ineligible under the menu
+anyway) before reserving descriptors. `rf_start` no longer calls
+`esp_netif_init` (no interface exists; its TCP/IP task cost heap), and
+`sdkconfig.defaults` uses two static Wi-Fi RX and management buffers without
+A-MPDU (the zero promiscuous filter delivers no frames). Static HP SRAM fell
+from 297698 to 295118 bytes; the heap gain needs the board readout.

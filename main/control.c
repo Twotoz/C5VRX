@@ -275,6 +275,7 @@ static void menu_action(void)
     case MENU_SCAN: scan(); break;
     case MENU_CALIBRATE: menu_close(); filter_request(); return;   /* runs once the menu is closed */
     case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
+    case MENU_GAIN: receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); break;
     case MENU_VIDEO:
         cycle_video_standard();
         break;
@@ -294,6 +295,7 @@ static void command(int c, unsigned *menu_idle)
     case '~': receiver_native_toggle(); break;
     case 'V': transport_sync_flag_probe(); break;
     case 'u': transport_sync_live_toggle(); break;
+    case 'G': receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); break;
     case 'U': transport_sync_flywheel_toggle(); break;
     case 'N': {
         bool enabled = !no_signal_enabled();

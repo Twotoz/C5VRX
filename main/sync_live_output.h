@@ -21,7 +21,9 @@ typedef struct {
     /* Holdover PLL: fine-period updates/rejections, offset vs nominal. */
     uint32_t pll_updates,pll_rejected;
     int32_t pll_ppb;
-    bool active,guard_yield;
+    /* Tips left to a present camera: periodic native H within the hold. */
+    uint32_t camera_yields,camera_lines;
+    bool active,guard_yield,camera_present;
 } slo_status_t;
 /* Explicit selected-standard fallback if model is NULL/unqualified. Native
  * callback must be cache-safe/IRAM; NULL admits no native suppression evidence. */

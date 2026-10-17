@@ -107,6 +107,7 @@ jobs:
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_preset && /tmp/test_gain_preset | tail -1
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main -I../research test_gain_v6.c \
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_v6 && /tmp/test_gain_v6
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_gain_v6_memory.c ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_v6_memory && /tmp/test_gain_v6_memory
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_afc_evidence.c -o /tmp/test_afc_evidence && /tmp/test_afc_evidence
       - name: Pinned PHY PBUS command contract
         shell: bash

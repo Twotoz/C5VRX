@@ -27,6 +27,14 @@
 #define SLO_PHASE_WINDOW 80u
 #define SLO_BATCH_CYCLES (224u*240u)
 #define SLO_CATCHUP_LEAD 80u /*4us leaves driver/ISR epilogue time before retry*/
+/* Camera presence, independent of the output grid: native H tips spaced one
+ * to four line periods (+-0.6us at 20MHz). Repairs only fill real gaps; a
+ * grid that drifted off the camera can never add a second sync while the
+ * camera's own pulses arrive (operator: sync lost after a while, clocks
+ * drifting apart; board 2026-10-18, repaired>suppressed on a strong camera).
+ * Native pulses reach the task in batches, so the hold covers one field. */
+#define SLO_CAMERA_TOL 12u
+#define SLO_CAMERA_HOLD 400000u /* 20ms */
 typedef struct {uint64_t start;uint16_t width;uint8_t kind;uint16_t index;uint64_t half;} slo_tip_t;
 typedef struct {
     sync_live_gate_t *planner;
@@ -55,6 +63,11 @@ typedef struct {
     spg_t guard;
     uint64_t guard_after,last_broad;
     volatile bool yield;
+    /* Task writes; the ISR needs both the 32-bit tick and the task's
+     * freshness flag, so a torn or wrapped tick never reads as present. */
+    uint64_t last_h_tick,camera_tick;
+    volatile uint32_t camera_tick32;
+    volatile bool camera_fresh;
     slo_status_t status;
     bool saved,configured,quarantined;
 } slo_t;
@@ -143,7 +156,9 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
         if(s->flag)native=flag_native(s,now,&tip);
         else native=s->native && s->native(tip.start,tip.width,(slg_kind_t)tip.kind,s->native_arg);
         if(!s->status.active || !s->live(s->generation)){fail(s,1);return false;}
+        const bool camera=s->camera_fresh && (uint32_t)now-s->camera_tick32<SLO_CAMERA_HOLD;
         if(native)++s->status.suppressed;
+        else if(camera)++s->status.camera_yields;
         else if(s->native_authority && s->yield)++s->status.yielded;
         else if(s->native_authority) {
             REG_WRITE(GPIO_ENABLE_W1TC_REG,SLO_MASK);
@@ -430,6 +445,19 @@ static bool guard_publish_period(slo_t *s,uint64_t period_q)
 void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
 {
     slo_t *s=s_output;
+    if(s && s->flag && s->status.active && !s->quarantined && high==s->native_inverted &&
+       width>=75u && width<=240u) {
+        uint64_t d=tick>s->last_h_tick?tick-s->last_h_tick:0u;
+        for(uint32_t k=1u;k<=4u && d;++k) {
+            uint32_t line=s->standard==SLG_PAL?1280u*k:(12711u*k+5u)/10u;
+            if(d+SLO_CAMERA_TOL>=line && d<=line+SLO_CAMERA_TOL) {
+                s->camera_tick=tick;s->camera_tick32=(uint32_t)tick;
+                __sync_synchronize();s->camera_fresh=true;++s->status.camera_lines;
+                break;
+            }
+        }
+        s->last_h_tick=tick;
+    }
     /* Without authority the grid is a nominal clock that emits nothing;
      * the guard still aligns it to a coherent camera and may grant it. */
     if(!s || !s->flag || !s->status.active || s->quarantined ||
@@ -495,6 +523,8 @@ void sync_live_output_guard_tick(void)
     if(!s || !s->flag || !sync_edge_clock_read(&now))return;
     s->yield=spg_yield(&s->guard,now);
     s->status.guard_yield=s->yield;
+    if(s->camera_fresh && (now<s->camera_tick || now-s->camera_tick>=SLO_CAMERA_HOLD))s->camera_fresh=false;
+    s->status.camera_present=s->camera_fresh;
     s->status.pll_rejected=s->pll.rejected;
     /* Signed fine-period offset versus nominal, in parts per billion. */
     if(s->pll_period_q) {

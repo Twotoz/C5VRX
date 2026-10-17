@@ -43,9 +43,10 @@ static const uint8_t s_icons[MENU_ITEMS][8] = {
     {0x7e, 0x42, 0x42, 0x42, 0x7e, 0x18, 0x3c, 0x00},   /* video */
     {0x08, 0x08, 0x1c, 0x7f, 0x1c, 0x08, 0x08, 0x00},   /* calibrate */
     {0x00, 0x08, 0x18, 0x38, 0x78, 0x38, 0x18, 0x08},   /* output */
+    {0x00, 0x02, 0x06, 0x0e, 0x1e, 0x3e, 0x7e, 0x00},   /* gain */
     {0x7c, 0x44, 0x04, 0x1f, 0x04, 0x44, 0x7c, 0x00},   /* exit */
 };
-static const char *const s_items[MENU_ITEMS] = {"BAND", "CHANNEL", "SCAN", "VIDEO", "CALIBRATE", "OUTPUT", "EXIT"};
+static const char *const s_items[MENU_ITEMS] = {"BAND", "CHANNEL", "SCAN", "VIDEO", "CALIBRATE", "OUTPUT", "GAIN", "EXIT"};
 
 static void rect(int x, int y, int w, int h, uint8_t code)
 {
@@ -234,6 +235,16 @@ void menu_render(void)
         text(transport_output() == 9 ? "LOW SWING REDUCES CLIPPING" :
              (transport_output() ? "HIGH LEVEL MAY CLIP VIDEO" : "INCREASE FOR WEAK SYNC"), 100, 47, UI_WHITE, 1);
         break;
+    case MENU_GAIN: {
+        char mode[16];
+        title("RX GAIN", "HOLD: CHANGE");
+        value_box(100, 22, 276, "MODE", receiver_gain_mode_name(receiver_gain_mode(), mode, sizeof(mode)));
+        snprintf(buf, sizeof(buf), "G%u", s_current_gain);
+        value_box(100, 34, 276, "ACTIVE GAIN", buf);
+        text(receiver_gain_mode() == GAIN_MODE_AUTO ? "AUTO FOLLOWS THE SIGNAL (V6)" : "FIXED GAIN, SAVED",
+             100, 47, UI_WHITE, 1);
+        break;
+    }
     case MENU_CALIBRATE:
         title("CALIBRATE", "HOLD: CALIBRATE NOW");
         text("ON THE GROUND ONLY: VIDEO STOPS", 100, 24, UI_WHITE, 1);
@@ -317,7 +328,9 @@ bool menu_open(void)
         return true;
     }
     /* Allocate and render before touching live video: if memory is short,
-     * flight video keeps running. */
+     * flight video keeps running. The flywheel output stops under the menu
+     * anyway; release its heap first. */
+    transport_sync_live_release();
     esp_err_t err = build_chain(menu_standard());
     if (err != ESP_OK) {
         ESP_LOGE("menu", "unavailable: %s (internal free=%u)", esp_err_to_name(err),

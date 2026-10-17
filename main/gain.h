@@ -1,4 +1,12 @@
-/* C5VRX-5 by Twotoz and the C5VRX contributors: Direct Gain V5 core.
+/* C5VRX-5 by Twotoz and the C5VRX contributors: Direct Gain V6 core.
+ *
+ * V6 (2026-10-18) keeps V5's measurement, healthy band, continuous tracking
+ * and overload safety, and adds a carrier memory: the last healthy gain of
+ * this channel/filter survives tracking resets (AFC steps, PHY leases), a
+ * lost carrier climbs in bounded steps from it instead of jumping to the
+ * table maximum, and a returning carrier that clips above it goes back to
+ * it in one write instead of a staged walk down (board 2026-10-18: G21 ->
+ * G63 with 742 per mille clipping after every fade; poor reacquisition).
  *
  * The Direct Gain V3 core (centred Q4 envelope, Phase8 coherence, exact
  * vendor 5 GHz gain tuples, zero-write healthy band) plus V5's direct
@@ -97,6 +105,12 @@ typedef struct {
     bool learn_enabled;
     uint32_t learn_refused;       /* transitions not learned: no confirmed VTX */
     uint32_t fade_holds;          /* windows held through a fade */
+    /* V6 carrier memory: kept across tracking resets on the same channel,
+     * filter, lane and table (not the AFC offset). */
+    bool anchor_valid;
+    uint8_t anchor_gain;
+    uint64_t anchor_us, carrier_us, climb_us;
+    uint32_t anchor_returns, climbs;
     uint32_t magic;
 } direct_gain_t;
 
