@@ -7,7 +7,8 @@ Run inside the pinned espressif/idf:v6.0.2 environment, e.g.:
 Uses the real C output_entry()/kp_tables and actual SDK assembler. Loads the
 existing u85q_lp.py generic emulator through AST without importing numpy/numba;
 the only instrumentation records post-op counters, LUT address and mux output.
-Comparator variants exist only in a temporary directory, never in main/.
+Temporary variants are checked against the firmware's actual LP flag program
+and C comparator mapping before emulation.
 
 Normal U85Q already writes L0 into both output bytes. The LP variant replaces
 controller A10 at output0 with L0; worker O0 repeats that bit. Counter operands
@@ -79,6 +80,7 @@ def actual_luts(directory: Path, compiler: str) -> tuple[list[list[int]], list[l
 #include <stdint.h>
 #include "kp_tables.h"
 #include "output_level.h"
+#include "sync_flag.h"
 int main(void) {
     const uint32_t dimensions[2] = {KP_LEVELS, OUTPUT_LEVELS};
     if (fwrite(dimensions, sizeof(dimensions), 1, stdout) != 1) return 1;
@@ -87,6 +89,9 @@ int main(void) {
         for (unsigned level = 0; level < OUTPUT_LEVELS; ++level)
             for (unsigned i = 0; i < 1024; ++i) {
                 uint16_t word = output_entry(kp_tables[kp][i], level, NULL);
+                uint16_t expected = (uint16_t)((word & ~1u) |
+                    ((kp_tables[kp][i] & 63u) < SYNC_FLAG_THRESHOLD));
+                if (sync_flag_entry(kp_tables[kp][i], level, NULL) != expected) return 4;
                 if (fwrite(&word, sizeof(word), 1, stdout) != 1) return 3;
             }
     return 0;
@@ -141,6 +146,7 @@ def prove(idf: Path, compiler: str, threshold: int, output_bytes: int, seed: int
     emulate = namespace["emulate"]
     normal_path = ROOT / "main/u85q.bsasm"
     lp_path = ROOT / "main/u85q_lp.bsasm"
+    production_flag_path = ROOT / "main/u85q_lp_flag.bsasm"
     normal = assemble(normal_path)
     lp = assemble(lp_path)
     if normal[1]["lut_width_bits"] != 16 or lp[1]["lut_width_bits"] != 16:
@@ -162,6 +168,9 @@ def prove(idf: Path, compiler: str, threshold: int, output_bytes: int, seed: int
         lp_variant.write_text(replace_lut(lp_text.replace("set 0..5 A10..A15,",
             "set 0 L0,\n    set 1..5 A11..A15,"), marked0))
         flag_normal, flag_lp = assemble(normal_variant), assemble(lp_variant)
+        production_flag = assemble(production_flag_path)
+        assert semantic(production_flag[0]) == semantic(flag_lp[0]), "firmware LP flag instructions differ from proof"
+        assert semantic(production_flag[1]) == semantic(flag_lp[1]), "firmware LP flag configuration differs from proof"
         assert semantic(normal[0]) == semantic(flag_normal[0])
         for before, after in zip(lp[0], flag_lp[0]):
             for name in ("read", "write", "op"):
@@ -221,16 +230,20 @@ def prove(idf: Path, compiler: str, threshold: int, output_bytes: int, seed: int
                     counters["flag_samples"] += flags
                     counters["grounded_lsb_code_loss_ones"] += lost
     paths = {"normal_program": normal_path, "lp_program": lp_path,
+             "production_flag_program": production_flag_path,
+             "production_flag_mapping": ROOT / "main/sync_flag.h",
              "kp_tables": ROOT / "main/kp_tables.h", "output_mapping": ROOT / "main/output_level.h",
              "generic_emulator": ROOT / "research/u85q_lp.py", "runner": Path(__file__),
              "sdk_assembler": idf / "tools/bsasm.py",
              "sdk_target": idf / "components/esp_driver_bitscrambler/bsasm_targets/esp32c5.json"}
-    return {"schema": 1, "attribution": "C5VRX by Twotoz and contributors",
+    return {"schema": 2, "attribution": "C5VRX by Twotoz and contributors",
             "result": "PASS", "threshold_unscaled_dac": threshold, "seed": seed,
             "input_sha256": raw_hash, "output_bytes_per_case": output_bytes,
             "counts": counters, "profile_coverage": {"kp_settings": 8, "output_levels": 10,
             "programs": ["normal", "lp"]}, "sha256": {name: digest(path) for name, path in paths.items()},
             "assertions": ["SDK instructions/opcodes/read/write unchanged except LP controller output0",
+                "actual firmware LP flag instructions/configuration equal the emulated variant",
+                "actual C sync_flag_entry equals scaled output with canonical comparator inserted last",
                 "every LUT address and A/B counter equals baseline after every executed bundle",
                 "every non-LSB output bit equals baseline",
                 "duplicated flag equals unscaled preceding worker DAC comparison",

@@ -1065,3 +1065,11 @@ An additional exploratory threshold sweep (16..21) is archived separately in
 native_flag_threshold_study_2026-10-17.json. Many fullfield model cases still
 fail; changing the threshold alone is not a demonstrated solution. No firmware
 threshold change follows from this sweep.
+
+The comparator emulator now verifies the actual compiled LPflag source semantics
+and C sync_flag_entry helper before simulating. Previously it generated only a
+temporary variant from the ordinary LP source; that left a gap between the proof
+and the separately checked-in firmware flag program. Production instructions,
+configuration and helper now match:160 cases/327600 bundles/327680 bytes/
+327360 flags pass. Schema2 artifact includes hashes of both production flag
+files. No physical source quality or monitor-lock conclusion follows.

@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "attribution": "C5VRX by Twotoz and contributors",
   "result": "PASS",
   "threshold_unscaled_dac": 19,
@@ -26,15 +26,19 @@
   "sha256": {
     "normal_program": "b3913ae26551f3bac8da2dc2a10e51f365d73bbd3e0b2743000f303f0b66abac",
     "lp_program": "483c7dd03c8b83eb1987193c8799b352d9c833b4dda5f24d1309622111e84d83",
+    "production_flag_program": "7584b71eea15cb1d4129a7fecc396989aa320921d12f1b4cd9031ef80766341b",
+    "production_flag_mapping": "ccc92f1d20731b10b76691743929ce6b29f086f795a1f90c9ecc42694c8f6a26",
     "kp_tables": "d886f2ea25f461c473e9ac58861f4b792185fccea84d5dd19b0f1a5413bd2143",
     "output_mapping": "5979b843cf4bd4e0542a306108e6c1ea4c0fd879131025889cbb8af8016cb88c",
     "generic_emulator": "182a5da0671771bd352a75ab0d268546adc0f94a5a44097468a01b62c9a700bd",
-    "runner": "af9d12a40ac613a84093ac619fabc0add102568b18b16e14fe41511c688c2c34",
+    "runner": "3b2d2f6b18f63f5af860b72eb24188eadcbe359ed77b0b3437ebb0fa8f2f95f4",
     "sdk_assembler": "1b293da34636288b77b3cad0b50825b3c04cadb9660475fddbaa4623b8c562e8",
     "sdk_target": "8ea69d170fa74ae382838d2634aaf9f5cff66c5ee0267cab5c04f1af82e5a19d"
   },
   "assertions": [
     "SDK instructions/opcodes/read/write unchanged except LP controller output0",
+    "actual firmware LP flag instructions/configuration equal the emulated variant",
+    "actual C sync_flag_entry equals scaled output with canonical comparator inserted last",
     "every LUT address and A/B counter equals baseline after every executed bundle",
     "every non-LSB output bit equals baseline",
     "duplicated flag equals unscaled preceding worker DAC comparison",
