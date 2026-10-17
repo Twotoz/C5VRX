@@ -1,0 +1,1247 @@
+# Flywheel on the physical C5
+
+Operator goal (2026-10-15): continue until the flywheel works on the C5.
+This supersedes the broader active range-audit checklist; earlier evidence
+and unresolved RF questions remain historical context in RANGE_GOAL.md.
+
+C5VRX by Twotoz and the C5VRX contributors. The received snow and weak picture
+remain the source of active video. Generated black/no-signal content does
+not satisfy this goal. The keeper acts when needed and yields promptly to
+qualified genuine camera timing.
+
+## Required delivery
+
+- Working, bounded real-stream processing on C5, including CPU/heap/IDLE
+  behavior under normal receiver load. A private J test is not delivery.
+- Original-source H/V acquisition, loss holdover and selected PAL/NTSC timing
+  when no camera has ever been seen. Own repairs never qualify camera lock.
+- Bounded whole-pulse output with independently justified ownership. A RAM
+  writer must prove RX/TX lifetimes, cache publication and reader history;
+  the hardware output-enable path instead must prove pad restoration, absolute
+  pulse ends and exclusion of generated tips from camera evidence.
+- Real received active samples remain visible through loss. Verify genuine
+  return at changed field phase/standard and actual kp/LP/output contexts.
+- Actual terminated waveform/monitor acceptance wherever hardware is
+  available; separate software counters from display lock. Do not mark the
+  goal complete from a host model or a zero-fault private buffer test.
+
+## Current delivery state (2026-10-17)
+
+The integrated comparator/output implementation is under test, with manual
+`u` observation and `U` conditional output. Both remain OFF at boot pending
+physical proof. N is the last flashed build at this note; later chronological
+entries below supersede the initial October15 experiments. The operator is
+away; treat the VTX as OFF until explicitly told it is ON.
+
+The comparator is generated before GPIO output gating, so repairs cannot feed
+back into source acquisition. Real received samples remain the video source;
+only scheduled sync tips can change output-enable state. No synthetic active
+picture, black raster or replay buffer is introduced. These are implementation
+properties, not yet proof that a monitor remains locked through RF loss.
+
+## Initial physical experiments (2026-10-15)
+
+The C5 was on COM10. Original app and partition/settings bytes were backed up
+privately before app-only experiments; existing settings are retained.
+The current experimental app is `5.0.0-pr.212-sync-fast`, frozen source
+`2d4c422`, app SHA256
+`f867ed7df2e2f9384ae224bc6037df1efe778aa3481bb0c206537b681893d969`.
+Flash data was verified, forced-download cleared and watchdog boot used.
+It is live at A1, LP kp0.85, OUTPUT1x. It still has no live keeper writes.
+
+J measurements are in `research/data/board_j_{o2,prefix,fast}_2026-10-15.*`.
+The fast variant gives H preparation minimum24us, maximum190us under the
+measured normal load. First EQ minimum1703us and maximum39199us still fail
+the streaming deadline; maximum regular V also has preemption outliers.
+These extrema do not prove pure kernel cost or WCET. Transport error
+counters remained zero and output stayed live throughout these tests.
+
+On2026-10-15 the next app-only flash refused before any download or write:
+COM10 no longer existed. Serial enumeration and present-device inspection
+showed only Bluetooth COM3..8. Reconnection was requested; this is a physical
+measurement dependency, not evidence that the new app runs on the board.
+The built `5.0.0-pr.212-sync-profile` app (source87a7f49) has SHA256
+`1a77eecc4604fa9fee8646079a9d6f31b71166f47ed3553bfa5eb64227333bf4`.
+Its manual W service is read-only, allocates only while enabled, and rejects
+late/ambiguous/context-changing turns rather than inventing a camera clock.
+J now profiles first-EQ stages without masking synthesis/search interrupts.
+
+Further exact prefix simplification merges equal intermediate tracker phases:
+previous DAC is not an input to the next LUT transition. The final ordered
+phase/DAC set is retained.19200 prefix and38400 full-tip differential cases
+remain identical to cce2eb7;640 profiled pulse cases pass. C5 timing is pending.
+The resulting `5.0.0-pr.212-sync-fold` build has SHA256
+`40eb3d6a47b0ceaa2e6a71025029abca3801ceb2fca1c4ff552e97865e12bf23`.
+
+## Additional offline evidence
+
+`research/sync_h_bank.py` preserves external waveform gates while moving
+H endpoint residual into its48-byte front porch and copying a constant tip.
+The original fixed-step candidate fails kp0.50. A separate H-only step-7430
+passes the full kp0.50 source-loss/return scenes, all-output transition rows,
+and2621440 coupled phase/decoder/output cases. The stronger independent
+endpoint/boundary-state fixture finds five kp0.50 rows failing; the unchanged
+dynamic synthesizer passes every row. The bank remains unqualified there.
+Other attempted frequencies retain their failure evidence; this is not a
+live timing or memory-writer proof. See SYNC_PRECOMPUTED_PULSES.md for scopes.
+
+`research/sync_coarse_scenes.py` reuses the exact temporary coarse acquisition
+builder and passes all8kp full keeper scene suites. Production acquisition
+is still unchanged; bounded TRACK work and actual W timing remain required.
+Universal first-EQ preparation is being evaluated separately, including
+interactions with the H bank. Individual transition passes are insufficient
+when complete fade/return scenes still fail.
+
+## Next concrete steps
+
+### Integrated H period bank
+
+Source `23588c1`, `5.0.0-pr.212-sync-tip-bind`, is flashed/hash-verified as
+`7d703bfe9becc522851fcc9cca32b9110ce33ab2dfa074057b7df29d50c2fa4f`.
+All16 private J preparations pass with zero transport faults. FirstEQ's best
+row is423us; other row minima are about0.8ms under normal preemption. Ordinary
+V still has outliers up to36.8ms in this low-priority diagnostic. See
+board_j_tip_bind_2026-10-15.json/.txt: this is improved preparation, not live
+publication. The user confirmed VTX off during these J tests. With VTX then on,
+the ordinary receiver reports NTSC/AFC locked at G53; after VTX off it returns
+to G83/AFC unlocked. No flywheel camera-clock claim is made from that control
+diagnostic.
+
+The read-service profile `811fdb0` is physically tested in three starts, each
+ending before a kernel call:118-142us. DONE observation uses14378-15842 cycles
+(about60-66us), source begin5590-6695 and source end3684-5642 cycles. These
+measurements justify investigating metadata cost rather than changing waveform
+tests. They are retained in board_w_read_profile_2026-10-15.json/.txt.
+
+The first policy image could not allocate J's11136-byte contiguous block on the
+C5 despite18432 bytes total free heap; neither J attempt ran. The adapter now
+uses a2048-byte private source ring:512-byte start plus1280-byte maximum pulse
+and its next sample fit without wrapping. Its9088-byte allocation succeeds.
+The smaller source preserves every relevant input byte and all context/cache/
+source immutability checks; the actual extracted adapter test covers its bounds.
+
+Source `4dc7e73`, `5.0.0-pr.212-sync-tip-policy-2k`, is flashed/hash-verified as
+`879eae189a2129a3e5492d5129e5f28e57752499bca1427e2bcb65793be2fe31`.
+Both J runs pass all16 pulses with zero transport errors. FirstEQ row minima
+are around1.2-1.3ms, improved from the previous1.7-2.0ms but not halved.
+Selection falls to about8k cycles in the least-preempted profile; full OUTPUT
+binding now dominates the regular-token stage. Complete evidence is in
+board_j_tip_policy_2026-10-15.json/.txt.
+
+The binding helper now checks unity via a complete2048-byte comparison. Other
+outputs compute the64 possible DAC codes once, then compare all1024 complete
+mapped words, retaining token/tracker validation. The existing7680-tip and
+81920-corrupted-word regressions pass. This equivalent helper's C5 timing is
+the next measurement; it does not cache an unchecked program context.
+
+The firstEQ singleton selector now uses a generated exact policy indexed by
+verified kp, tracker phase and previous raw phase. It preserves the old
+minimum-DAC score, phase-distance score and ascending-token tie order. Full
+reference and OUTPUT binding are checked before using the policy; masked,
+noncanonical and ambiguous-state contexts retain the original minimax path.
+The65536 policy choices match the actual-LUT oracle, and38400 whole-tip
+differentials remain byte-exact. All eight keeper scene suites, the OUTPUT
+extremes and640 private preparations/profile comparisons pass. Physical timing
+of this policy is pending; byte equality alone is not a speed measurement.
+
+The ordinary-V image `35e0d8c` is flashed and verified as
+`98e03ab1b767b51527c2541b70fb156a1b3d9b651b7f24655dfbdec3b765b73b`.
+Both J runs pass all16 preparations with zero transport fault counters. The
+ordinary-V observed minimum rows now span29-385us, including first-run
+NTSC EQ60us and broad70us, PAL EQ29us and broad74us. Normal preemption still
+causes maxima up to24788us; these measurements are not a publication deadline
+proof. FirstEQ remains1736-2012us at its row minima before the new policy.
+See board_j_period_v_2026-10-15.json/.txt for complete evidence.
+
+Ordinary V now also uses complete periods in canonical unmasked kp0.60-0.85
+contexts. A48-byte blank bridge absorbs the endpoint residual, and V blank
+uses the qualified-1632 Q8 carrier. FirstEQ retains its existing constructor;
+kp0.50/0.55 ordinary V remains dynamic because its unknown-entry-state fixture
+has counterexamples. A period-bank match is not a camera-sync observation.
+The integrated V passes7864320 independent boundary/output/decoder-state cases,
+all eight full keeper suites,640 private preparations/profile comparisons and
+the production OUTPUT0.5x/5x extremes. The executor workspace is used directly;
+direct host writes need only48 scratch bytes, not another1280-byte pulse copy.
+
+Physical C5 measurement is now available: source `78b0fd4`, version
+`5.0.0-pr.212-sync-period-h`, flashed and hash-verified as
+`533c7dccce0e4e2242e5c01292a7d71d15bab5aa53085ce4236683a8fb6f88ad`.
+Both J runs complete with all16 pulses valid, zero bootstrap refusals and zero
+TX-empty/RX-overflow/DMA/BitScrambler faults. Normal-load H minima are24-28us;
+these do not establish a material improvement over the earlier24us minimum.
+Ordinary V is still326-413us at its observed minima, firstEQ1608-1816us.
+The firstEQ profile identifies prefix, regular-token discovery and selection
+separately; none of these minimum samples proves live WCET or publication.
+Complete measurements are in board_j_period_h_2026-10-15.json/.txt.
+
+The actual manual read-only W service also fails its first80us turn under
+normal load:136us, zero kernel calls, service_overrun, and no live writes.
+This is evidence against the current scheduling/admission arrangement, not a
+successful detector run. The capture is retained locally as
+`c5vrx-w-period-h-20261015-a.log`; W is stopped after the experiment.
+
+The H constructor now copies an exact-phase constant tip from generated flash
+periods and computes only its48-byte settling porch. Canonical unmasked Phase8
+contexts use it; native masks and other phase maps retain the prior constructor.
+kp0.50 H uses the separately tested-7430 Q8 step; its old-7373 periodic candidate
+failed the boundary fixture. First EQ and ordinary V remain dynamic.
+
+The generated table contains256 strong cells plus264192 carrier bytes, checked
+against the actual cell builder and an independent phase oracle. It allocates
+no mutable full bank. The integrated production H passes2621440 independent
+entry/exit/output/decoder-state cases, all eight full keeper scene suites, and
+the kp0.85/0.50 OUTPUT0.5x/5x matrix. Private J preparation and profiling tests
+also pass. These establish waveform behavior; C5 timing remains to be measured.
+
+### Current integration (2026-10-15, awaiting C5)
+
+The actual first-EQ constructor now binds the active OUTPUT-mapped LUT to a
+complete unscaled reference. Construction scores use the reference while
+independent waveform validation uses the actual mapped output. This avoids
+rejecting 0.5x output merely because its physical DAC floor exceeds the old
+absolute threshold. The binding test checks all1024 words; corrupted token,
+tracker or DAC words are refused. The reference regression retains128 exact
+unity rows and1310720 actual output decode cases. Full keeper scenes pass at
+kp0.85/0.50 and OUTPUT0.5x/5x; see sync_production_extremes.json for complete
+stdout and source hashes. These are host results, not a monitor-lock claim.
+
+The production detector now reuses six overlapping adjacent phase steps when
+its nine-step window advances by three samples. Its24-byte scratch is cleared
+at every service call and synthesis entry, including refused writes. A million
+independent comparisons retain exactly the original result; consecutive
+windows need three phase lookups instead of ten. Actual C5 timing is pending.
+
+Startup makes RX endless before any TX readiness wait and requests24KiB of
+RX/TX separation instead of16KiB. This adds about205us of video latency.
+Runtime tests extract the actual startup function and cover descriptor/channel
+changes and failure recovery. The requested delay does not establish the
+actual separation; live DMA observations remain authoritative.
+
+The new whole-current-and-next-descriptor admission helper models a complete
+1280-byte patch with the protected8280-byte CPU history. It accepts the24KiB
+fixture over2654208 byte-phase/descriptor-rotation cases at a supplied5us
+publication bound. No writer calls it yet. The bound must include admission,
+stores, cache operations and ordering, and requires physical measurement.
+No live publication or timing flag has been enabled by these arithmetic tests.
+
+The integrated source is committed as `f12bf8f`. Its pinned ESP-IDF6.0.2 build,
+`5.0.0-pr.212-sync-rolling`, completes at0x12a5f0 bytes with SHA256
+`2e340ea302ad9bbf6cb0e9f35c00a35e41822e969cc7960bac595530b397d030`.
+The binary and ELF are retained locally in `c5vrx-sync-rolling-20261015`.
+This image has not been flashed: the C5 USB serial device is currently absent.
+
+- Profile first-EQ stages before selecting another optimization. Preserve
+  exact pulse bytes: packed states and local token masks already pass
+  38,400 differential tips and full kp0.85/0.50 scene tests.
+- Measure an actual read-only detector service (W), using completed-DONE
+  observations, raw leases and bounded event-driven scheduling. Startup,
+  late data and ambiguity must not invent an uninterrupted camera stream.
+- Reduce acquisition work with independently tested coarse discovery plus
+  precise edge/width qualification. TRACK helper budget overrun remains
+  explicit; do not hide it by calling the outer budget a time bound.
+- Integrate the protected-history reserve and justify actual memory-write
+  admission before enabling any live commit. Prepare/reuse expensive work
+  ahead of pulse deadlines where exact boundary/handoff checks permit it.
+- Flash tested concrete variants, measure the real stream and validate
+  monitor lock through no-VTX, fades and genuine camera return.
+
+### C5 read-service cadence diagnosis (2026-10-15)
+
+The board is connected again. These later measurements supersede the earlier
+USB-absent note. All three images below were flashed with application hash
+verification; all W runs were read-only, VTX off, with no live writer.
+
+- `408cd05` (`sync-read-clock`): ISR intervals 78-82 us, accepted-capture
+  gaps 150-271 us. This separates timer cadence from accepted observations,
+  but alone does not prove a task scheduling delay: crossed DONE captures
+  are retryable and do not refresh the last accepted timestamp.
+- `d37e2e8` (`sync-read-retry`): retry one crossed DONE pair immediately under
+  the existing read lease. Two crossings still report UNSTABLE. Actual-source
+  tests inject both cases and retain balanced leases and context rejection.
+  Separate task-wake measurement finds 137-143 us gaps, with merged alarms.
+  Two starts reach one real 64-evaluation acquisition call, then overrun at
+  122/124 us; the third fails the unchanged hidden-lap guard.
+- `8cb3963` (`sync-read-stack`): remove the per-turn stack high-water scan;
+  retain it at cleanup. It scanned several thousand bytes after the measured
+  turn, hiding its scheduling cost. Three physical starts now have zero
+  coalesced alarms, maximum wake intervals 82/94/91 us, and one real kernel
+  call each. Each stops on the unchanged 80 us deadline: total 124/105/116 us,
+  acquisition kernel 17383/17653/19166 cycles (about 72/74/80 us at 240 MHz).
+  No start proves continuous detector operation or monitor lock.
+
+Complete captured status rows, capture/application hashes and source commits
+are in `research/data/board_w_read_{clock,retry,stack}_2026-10-15.{json,txt}`.
+The current board image is `5.0.0-pr.212-sync-read-stack`, application SHA256
+`00dc2f0d3a5fd7a605cbe9699cbe6d4a1dbf02c291176dc05285a7dfe8cf4e6e`.
+All three actual-service/source runtime tests pass in the pinned IDF container.
+The immediate remaining bottleneck is the first real acquisition kernel plus
+metadata costs, rather than the removed stack scan. Coarse discovery already
+uses full-byte phase-table lookups; simply masking IQ bits does not eliminate
+those lookups. Any reduced-precision detector needs weak-signal qualification.
+The live flywheel/output writer remains unimplemented and disabled.
+
+### Acquisition instruction placement and exact coarse rejection (2026-10-15)
+
+`5db9929` separates the acquisition loop from the large TRACK body and puts it
+and original-source provenance checks in IRAM. The ELF confirms `acquire` at
+0x4080325a (1126 bytes) and `original` at0x40802fa4 (228 bytes). Three actual
+read-only starts run109/4/108 acquisition calls before unchanged deadline
+rejection at95/95/97 us. These remain short runs, not sustained lock evidence.
+
+`608f34c` adds exact coarse-window rejection: after each unwrapped phase step,
+reject only when even -128 for every remaining step cannot reach the original
+nine-step threshold. No IQ bits, thresholds, pulse gates or provenance checks
+are removed. Unlike overlapping fine probes, coarse probes do not populate the
+rolling cache. One million independent scalar comparisons pass, including
+wraparound, altered phase maps and all threshold bins; phase reads total
+8002198 rather than10000000. The original million-case rolling test and full
+kp0.85 PAL/NTSC keeper scenes also pass after this change.
+
+The exact-rejection image is flashed with verified SHA256
+`31c9320ac5732a95650754783d878db0b4edd43815b4ac05ae217da5870856e1`,
+version `5.0.0-pr.212-sync-read-exact`. Three VTX-off read-only starts stop at
+89/82/102 us total, with1/37/1 actual acquisition calls and maximum measured
+kernel7919/10042/8874 cycles (about33/42/37 us at240MHz). No coalesced alarms
+or unstable observations occur. These are different received-noise traces and
+run lengths; the maxima are observations, not paired speedup or WCET proofs.
+Metadata source-begin/end spikes remain material (begin maximum up to10850
+cycles, end up to7296). Read timing and eventually live publication still need
+work; no live writer or monitor-lock claim is enabled.
+
+Full capture rows/hashes for both images are retained in
+`research/data/board_w_read_{iram,exact}_2026-10-15.{json,txt}`.
+
+### Paired slow-turn costs and read-task memory (2026-10-15)
+
+`30ef871` places the periodic service and source adapters in IRAM; the source
+adapters also use local O2 rather than changing the whole transport file's
+optimization. One read-only run reaches95 kernel calls and rejects at86 us;
+DONE observation maximum falls to1197 cycles (about5 us). Two later task
+creations fail with12612 bytes free in total, so this image does not establish
+reliable restart/allocation. Full rows are in board_w_read_meta_2026-10-15.
+
+`494eb79` reduces only the read-only task's stack reservation to3072 bytes.
+Pinned target compiler -fstack-usage reports service_task32, service_turn128,
+sfw_run192, build_cells1056, acquire96, lowm16 bytes. The largest core chain
+includes build_cells; transport and RTOS calls still need margin. Future
+synthesis/publication needs separate stack qualification. `ad1525a` adds
+components of the SAME maximum-cycle turn, avoiding subtraction of unrelated
+stage maxima. All three actual-source/service runtime tests pass, including
+component sum and kernel-cycle accounting. The3KiB/split image's three starts
+all succeed; exit watermarks are2400/2536/2404 bytes free. All stop on timing,
+not allocation:86/86/91 us. In the first slow turn, cycles are begin2999,
+observe1097, kernel14722, end1584, other372: total20774, or86.6 us at240MHz.
+That is about12.5 +4.6 +61.3 +6.6 +1.6 us, not81 us of unidentified work.
+Full rows and hashes are in board_w_read_split_2026-10-15.
+
+`02d8e55` separates the small hot sfw_run dispatcher from the large noinline
+tracking body and avoids calling build_cells when its existing immutable
+phase/mask cache already matches. This preserves the existing cache contract,
+source/taint gates and complete tracking loop. The dispatcher occupies952
+IRAM bytes; the7292-byte tracking body remains in flash. One million scalar
+coarse comparisons, one million rolling comparisons and the full kp0.85
+PAL/NTSC keeper scene suite pass after the split.
+
+This image is currently flashed, version5.0.0-pr.212-sync-read-dispatch,
+application SHA256
+`01f784045c3b4edbe8ffcafaea38f8273a178062b9957b49e968d577f8fc2f08`,
+with flash hash verification. All three starts allocate successfully and stop
+on the unchanged80us deadline at84/81/88 us, after93/1/1 actual kernel calls.
+The paired worst kernel costs are6586/10179/11437 cycles (27.4/42.4/47.7 us).
+In the first run, source-begin costs9336 cycles (38.9 us), so the limiting
+stage varies; no single aggregate maximum proves a universal speedup. Stack
+watermarks remain2524/2548/2548 bytes free. No coalesced alarms or unstable
+captures occur. Full rows/hashes: board_w_read_dispatch_2026-10-15.
+
+All these measurements are VTX-off/read-only. Sustained source tracking,
+bounded live publication and physical PAL/NTSC monitor lock remain unproven;
+the live writer is still absent. Next work must reduce remaining source/kernel
+tail costs and then test genuine camera acquisition, rather than declare
+completion from an81us near miss or the now-fast5us DONE check.
+
+### 2026-10-16: retrospective source proof and sync-flag experiment
+
+The current flashed image supersedes the dispatch image above: source
+`7b20315`, version `5.0.0-pr.212-sync-post-span`, application SHA256
+`032af69058573456b237ae2039f0fea8c5b1ba1b36eb0fa8d47135140302d29f`.
+It remains read-only and manual; the live writer is absent. Three VTX-off
+starts in `Downloads/c5vrx-w-sync-post-span-20261016-a.log` reach
+59/153/25 kernel calls, with maximum complete turns of 99/135/104 us.
+They reject with source-validation results 3/10/3. These measurements do
+not establish sustainable 80 us operation or camera acquisition.
+
+Source reads are now checked retrospectively against an ending DMA capture.
+Actual paired captures show BF0 two descriptors beyond DONE; the conservative
+source proof reserves the corresponding prefetch cover. Replacing expensive
+per-sample bookkeeping with enclosing source spans preserves host coverage
+of 2,961,955 actual phase reads. An earlier inline bookkeeping image
+`09d926a` exhausted memory during control-task creation and boot-looped;
+moving that work out of IRAM recovered boot, and the current image boots.
+The descriptor-window publication helper still needs an independent DONE
+history anchor before it can support this observed prefetch arrangement.
+
+`research/sync_flag_codec.py` explores a separate hardware-timed flag path,
+without firmware, GPIO changes or hardware timing qualification. It reserves
+I bit0 and compresses 32 controller tokens into 16, retaining worker phase
+updates during forced sync. `research/data/sync_flag_codec.json` contains
+PAL/NTSC at 0/4/12 dB C/N, one field and one seed each. With the flag OFF,
+picture SINAD falls by 0.41–0.69 dB versus the existing codec. A separate
+masked-input baseline attributes 0.22–0.54 dB to the removed input bit;
+token compression adds further loss. This is a limited feasibility sweep,
+not a range measurement. Oracle sync flags are deliberately supplied from
+the generated raster and prove neither acquisition nor physical monitor
+lock. This approach is not enabled and needs a stronger quality/timing
+case before any live-output experiment.
+
+`5632f27` removes BF0-only capture retries. Both sampled BF0 positions must
+remain within the DONE+1/+2 operating model; the lifetime check reserves
+their union. DONE changes still trigger one retry. 11,146,690 retrospective
+validation checks pass, including every source-ring location for all16
+before/after pointer combinations. Actual-adapter tests verify that BF0-only
+movement needs two captures while a crossed DONE still retries. The build
+passes; the image is flashed with hash verification, version
+`5.0.0-pr.212-sync-bf-pair`, application SHA256
+`a6fb5e0723ac7202e7c9b94c3e594ef98334dfded24a88cb67681531ab8c010c`.
+Three starts now reach400/671/479 actual kernel calls. They still stop:
+maximum complete turns123/176/127 us, with retrospective ambiguity on
+runs1/3 and DONE hidden-lap ambiguity on run2. Backlog misses29/48/42
+show that sustainable throughput remains unproven. Full rows/hashes are
+in `research/data/board_w_bf_pair_2026-10-16.{json,txt}`. Startup reports
+no video; these are not real-camera acquisition results.
+
+The unused descriptor-window helper now accepts BF0 at DONE+1/+2 only with
+independent unwrapped RX/TX DONE ends and exact matching prefetch coordinates.
+It reserves all2/3 descriptors through BF0.next on both paths, includes the
+whole cover in hidden-lap exclusion, and anchors CPU history at RX DONE.end.
+Tests cover2,654,208 original geometry/phase cases plus83,916 prefetch cases
+(83,754 admitted,162 refused), invalid lap aliases and a concrete pulse that
+the old BF0-anchored ceiling would place inside protected CPU history.
+This remains a conditional arithmetic model without a production writer;
+physical prefetch bounds, complete publication WCET and actual separation
+must still be qualified before stores.
+
+### Detector work budget: acquisition transition and exact adjacent moments
+
+The existing TRACK budget is soft: one complete width/level operation can
+consume hundreds of evaluations before the outer loop checks again. The
+127-stride experiment in `sync_read_turn.py --current-stride 127` preserves
+the original nine-step decision and fine stride3, with an independent
+10,287-case plateau/lattice check. It is NOT promoted to firmware. At
+budget26 neither seek variant acquires any of the six scenes. At32 the wider seek
+can acquire, but the pre-yield report reaches320 evaluations in an
+acquisition-entered call and753 in TRACK. Doubling the seek stride alone
+does not provide a bounded service turn.
+
+The core now returns after acquisition, retaining the accepted TRACK state
+for the next call. Source-envelope tests assert zero processed lines and
+evaluations<=budget for every acquisition-entered call. All ordinary keeper
+scenes still pass. Advancing-DMA replay at the actual52 budget acquires and
+ends locked in all six baseline PAL/NTSC clean/fade/phase-return scenes;
+maximum acquisition evaluations are52. The32-budget baseline exposes an
+important limit: yielding can let already-old anchors expire before TRACK.
+It is not evidence that the service can simply lower its budget to32.
+TRACK still reaches723 evaluations in the52-budget replay. Before/after
+reports retain source hashes; `_32_pre_yield` preserves the previous trace.
+All these replay spans model8us and do not measure C5 cycles.
+
+Exact adjacent-step moments now carry each phase to the next difference:
+steady-tip phase loads64->33, level-learning loads352->179, with identical
+176 level steps, sums, squares, thresholds and precision. 50,000 independent
+scalar moment comparisons include wrapped source indices, mutated phase
+tables and unchanged work counters. The existing million-case rolling and
+million-case coarse tests pass; the source-envelope oracle covers2,933,620
+loads and27,225 turns; the kp0.85 PAL/NTSC keeper suite still preserves
+active IQ through fades, loss and return. These are host results.
+
+Next required work is a resumable exact pulse/line observation with a real
+source-load or cycle bound. Exhaustion must return PENDING, never missing
+sync. Freeze prediction, threshold and width room; preserve width counters;
+register only each continuation's new reads; collect old steady-tip samples
+early; discard the pending observation on epoch/context/source expiry.
+Do not publish PLL, missing-pulse counters or repairs until the operation is
+complete. Broad-pulse lifetime allows only a few chunks in the actual ring,
+so dividing a1300-byte walk into arbitrarily tiny pieces is insufficient.
+
+`42ab157` is now flashed with hash verification, version
+`5.0.0-pr.212-sync-moments`, application SHA256
+`c3189f6dddcf72d1f3b98665aea2cf5774a0210d4c3a10ab6de0d0cc6b1bba27`.
+It boots normally. Three no-video diagnostic starts reach206/1160/1003
+kernel calls and stop on source-lifetime checks; maxima121/215/124 us,
+read results12/3/10. These are still acquisition-only runs, so they do not
+measure the changed TRACK moment routines. Do not attribute the longer
+second/third runs to those routines. No actual camera or monitor lock is
+proved. Captures and hashes: `board_w_moments_2026-10-16.{json,txt}`.
+
+The later127-stride/budget40 replay (including exact moment reuse) ends
+locked in all six scenes, with one stale acquisition skip per scene.
+First locks occur at25.288ms PAL and25.368ms NTSC, versus59.928ms PAL
+and18.168ms NTSC for the unchanged63-stride comparison at the same budget.
+TRACK peaks still reach678 evaluations. This is a candidate for reducing
+average acquisition load, not a uniform latency improvement or a bound on
+TRACK. Data: `sync_read_turn_stride127_40.json`; it is not flashed.
+
+### 2026-10-16: exact resumable pulses and direct DAC-OE investigation
+
+The actual scalar finder now uses `sync_pulse_find.h` and
+`sync_pulse_walk.h`. Their explicit PENDING state preserves the next source
+request and never means absent sync. Frozen source room, terminal-high
+subtraction and edge refinement reproduce the old scalar callback trace.
+Independent tests pass2,275,759 walker split/expiry cases and1,381,802 finder
+checks. The actual lowm bridge meters cold10/rolling3 phase loads and resets
+rolling scratch at each finite-budget chunk. Its123,002 instrumented loads
+match reported budgets across8,702 chunks. In advancing-ring PAL/NTSC broad
+fixtures at80us cadence, quotas208/320 complete exactly;10/128 expire before
+another source load. This is modeled lifetime evidence, not C5 WCET.
+The ordinary keeper and source-envelope suites pass with identical source
+request counts. Live TRACK callers still drive scalar completion; scheduling
+their continuations remains unfinished.
+
+A separate GPIO-OE route can avoid raw-ring publication and decoder-state
+synthesis entirely. The supplied DAC schematic has200ohm R7 from CVBS to
+ground. Temporarily making all six DAC pads high impedance should therefore
+pull the summing node toward0V, while PARLIO/BitScrambler keep processing
+real received IQ. With75ohm termination the ideal resistance is54.5ohm;
+optional470pF predicts a25.6ns RC time constant. These are circuit predictions,
+not measured edges. The old output-voltage model assumed200ohm in series;
+`OUTPUT_ABC_EVIDENCE.md` now marks that mismatch rather than treating those
+voltage columns as qualification of this schematic.
+
+The pinned C5 GPIO matrix provides separate OE selection: keep the original
+PARLIO data source, select GPIO_ENABLE for OE, then clear/set the six bits
+with mask0x01801b00. GPIO ETM data tasks cannot do this transparently.
+`sync_gate_probe.c` is an explicit Z(PAL)/z(NTSC) three-field diagnostic,
+OFF at boot. It verifies all six data routes, enabled pads, no weak pulls,
+240MHz CPU and owned transport identity. A20MHz GPTIMER schedules sync
+starts; an IRAM-only disable/spin/enable sequence holds each pulse within
+one interrupt. The exact rational interlaced schedule passes6,336,290 checks,
+including20,004 fields; its sequential path has no RV32 division/helper calls.
+
+Actual probe source compiled against mock SDK verifies complete schedules,
+all timer API failures, context loss, lateness, timeout, restoration and
+late callbacks. Cleanup failures latch the probe unavailable until reboot.
+The wrapper owns the PHY actuator lease throughout this short manual test.
+Target disassembly places the pad-disable/spin/enable sequence wholly in
+IRAM with no call or flash-data access between the two MMIO stores. Driver
+rearm and schedule work happen after OE restoration. A target build passes.
+This is not yet an automatic flywheel or physical waveform/monitor proof;
+the next gate is a board timing probe, then sustained gating with source
+clock alignment and automatic activation only when required.
+
+The first physical gate image (`f26267f`, version
+`5.0.0-pr.212-sync-gate-a`, SHA256
+`3041eb4c2f28428831eb24ae914d0eaec11fff1fa01aab24615536562d50f0d8`)
+boots with10416 bytes of internal heap free. Both Z/z attempts refuse
+`weak_pull` before any pulse; GPIO restoration is verified and transport
+fault counters stay zero. This is not pulse-generation evidence. Full rows
+and capture hashes are in `board_gate_a_2026-10-16.{json,txt}`.
+The probe now saves complete IOMUX words, temporarily clears only weak-pull
+bits, verifies each write, and restores the exact originals on every exit.
+Mock tests cover each pull and partial clearing/readback failures without
+altering unrelated pad/matrix bits. The next board probe still must qualify
+actual timing; default activation remains OFF.
+
+The second physical image (`0bdff05`, `5.0.0-pr.212-sync-gate-b`, SHA256
+`d63beab3365722aaaec9212ba109e1b087cd6569db84aca7f93979f669d38810`)
+temporarily clears pulls on GPIO11/12 (mask0x1800). PAL emits5 EQ and2 broad
+tips before rejecting8.6us lateness; NTSC emits6 EQ and3 broad before
+rejecting10.15us. No ordinary H pulse is reached. Software hold counters
+show PAL EQ624–630 cycles and broad6618 cycles at240MHz; these are not
+measured CVBS widths. GPIO/pad restoration passes and transport counters
+remain zero. Rows/hashes: `board_gate_b_2026-10-16.{json,txt}`.
+
+The manual probe now precomputes only the three short vertical bursts in
+RAM. An ISR handles consecutive broad tips plus the first post-EQ on one
+absolute CPU-cycle grid, exposing ongoing DAC data in each gap and avoiding
+SDK rearm/schedule calls between broad tips. The diagnostic ceiling is
+7 tips/224us in that ISR; this is explicitly not a qualified production
+scheduling design. The8us lateness limit remains unchanged. Mock tests
+verify full960/815 PAL/NTSC counts, burst timing, interruption/refusal and
+complete restoration. Physical completion still needs another probe.
+
+### Three-second manual gate evidence (2026-10-16)
+
+The three-field gate-C image (`f72f9c1`) completed960 PAL and815 NTSC
+pulses on the C5, restoring all pad settings and leaving DMA fault counters
+zero. Maximum software lateness was5.3/5.5us; this is not an analogue
+waveform measurement or proof of monitor lock.
+
+The long diagnostic reuses only three vertical plans for150 PAL or180
+NTSC fields. Host runtime checks compare every OE edge against independent
+rational timing, global H parity, counter wrap, and restoration failures.
+Q/q selects this manual test; default activation remains OFF.
+
+Gate-D (`b079ab8`) failed at boot allocating the6144-byte control task:
+the additional RMT observer consumed scarce SRAM. No pulse test ran.
+The previous gate-C image was restored and its healthy startup verified.
+Gate-E (`2b51e3f`) moves the manual RMT observer and its RX ISR into flash;
+cache-disabled observation continuity is deliberately not promised.
+It boots with7896 bytes free and is currently flashed. Its binary SHA256
+is `59c7f330ddce52c8a2c30e9f22475f7a9ae609b82ef0ebdc006344a7a590eeb4`.
+
+On gate-E, the NTSC test completed all180 fields/48870 pulses over3.003s,
+with maximum software lateness6.7us and exact GPIO restoration. PAL stopped
+after7255 pulses/23 vertical batches when lateness reached14.55us, exceeding
+the unchanged8us guard. Thus sustained PAL timing is not yet qualified.
+Both tests left all DMA/transport fault counters zero. The native-output
+observer refused `pin_context` without starting capture; its actual pin
+qualification still needs diagnosis. Source-aligned automatic activation,
+analogue pulse shape and actual monitor lock remain unproven. Captures and
+hashes are archived in `research/data/board_gate_{c,d,e}_2026-10-16.*`.
+
+### IRQ entry jitter and early alarms (2026-10-16)
+
+Gate-F (`9b29a23`) accepts either peripheral-controlled or GPIO-controlled
+OE for the input-only native DAC observer, preserving that routing exactly.
+Y now starts and restores successfully, with zero events in the no-VTX
+capture. This is not camera qualification or an absolute clock anchor.
+Its first PAL/NTSC long pair completed, but repeated trials completed only
+one of nine emitted sequences. Every failed trial had already-late timer
+entry/count timestamps, outside the vertical cycle-grid burst. One ownership
+refusal ended the original repeat runner early; it was not a gate failure.
+Both the successful pair and repeat results are archived as board_gate_f
+and board_gate_f_repeat. A single clean pair did not prove sustained timing.
+
+Gate-G (`37d9f40`, SHA256
+`33390a109f217981c75169f9e2f4d0f443deeeba1e6931a0b6df959a0b9612df`)
+arms each timer alarm12us before its unchanged pulse deadline. The ISR
+waits with DAC pads enabled until the timer reaches that deadline, bounded
+by a separate CPU-cycle watchdog if the timer stops. The original8us
+late-pulse rejection guard is unchanged. This spends extra CPU time in the
+manual diagnostic; it is not a claim about production CPU budget. The
+224us logged limit covers the vertical burst, not total early-wait plus
+driver/scheduling time for an ISR.
+
+The initial long pair completed. The following20 alternating long trials
+also all completed:10 PAL and10 NTSC sequences, with968700 total pulses,
+exact pin restoration, unchanged free heap, and no DMA/transport faults.
+The repeat runner retries ownership refusals before starting a trial, with
+50ms spacing after completed sequences. Full results and maximum lateness
+are in board_gate_g_repeat_2026-10-16.json; these remain software timing
+observations. Automatic activation, source clock alignment and monitor lock
+are still unproven. No generated pulse is counted as camera evidence.
+
+### Independent native source witness (2026-10-16)
+
+Manual Y now mirrors PARLIO DATA4/signal52 to unused MTMS/GPIO2, instead of
+reading the gated DAC GPIO8. GPIO2 is outside the six-pad DAC OE mask by a
+compile-time assertion. Occupied/open-drain GPIO2 is refused before writes;
+its entire original IOMUX, output matrix and enable state are restored on
+every setup/error/normal exit. No GPIO output-data writes, DAC pin writes,
+IQ/LUT/descriptor or PHY changes are used. Host SDK mocks enforce these
+write restrictions and exact preservation, including native peripheral OE,
+occupied mirrors, injected setup failures and unrelated mux/pull bits.
+This extends the C5VRX/Twotoz DAC-OE experiment without losing source
+observability whenever a later continuous controller generates sync tips.
+
+Seeed's official XIAO ESP32-C5 pin table identifies GPIO2 as MTMS; current
+firmware already uses the other external JTAG pins GPIO3/4/5 for IQ RX:
+https://wiki.seeedstudio.com/xiao_esp32c5_getting_started/ . GPIO2 must remain
+unconnected to another driven peripheral in this manual experiment.
+
+Gate-H (`c3953a0`, SHA256
+`c44aacc2130ba5a1011db718e817c7dfbf29cba5ca58de0e551b7413881703e3`)
+boots with7608 bytes free. Y's51ms no-VTX capture reports no events,
+error=none, restored=1, and no source/DAC changes. The following PAL trial
+completes48000 pulses with1.55us maximum software lateness; NTSC refuses
+ownership before touching output. Transport fault counters remain zero.
+This establishes successful mirror setup/cleanup, not captured camera sync
+or analogue self-gate immunity. The hardware routing excludes DAC gating,
+but actual native-camera events and source phase still need measurement.
+
+For the absolute phase anchor, merely bracketing rmt_receive() is invalid:
+RMT begins counting on its first signal edge, not at software enable time.
+Investigated next route: hold the independent witness low while arming,
+feed the SAME GPIO-filtered edge to both RMT (private filter disabled) and
+GPIO ETM -> GPTIMER START_COUNT. Repeated START_COUNT must not reload the
+timer. A shared GPIO filter is required; keeping RMT's current private2.5us
+filter would allow a different first raw edge to start GPTIMER. The current
+Y implementation still has that private filter and absolute_time=0; this
+clock anchor is a design to verify, not an enabled or proven feature.
+
+### Isolated marker and ETM timer experiment (2026-10-16)
+
+The proposed simultaneous first filtered source edge is superseded. TRM8.16
+describes the ETM event tap as GPIO Filter output; it must not be assumed to
+follow the separate Glitch Filter in Figure8.3-1. The RMT counter starts at
+its first edge (TRM42.3.5.1), so software receive-enable time cannot supply
+its origin. The gate-I prototype also showed a real RX-idle/arm race:
+the timer ran but RMT returned only an empty ending, with no source halves.
+Its binary/capture hashes are retained; it was an uncommitted intermediate
+prototype before `c4f30bd`, not the source currently on the board.
+
+Experimental lowercase y now drives a private16us HIGH/16us LOW marker on
+GPIO2 before enabling its variable filter and connecting PARLIO DATA4.
+RMT private filtering is OFF during this entire experiment. The first raw
+marker edge reaches RMT and GPIO ETM -> GPTIMER START_COUNT before any
+variable filtering. Later START_COUNT events cannot reload the counter.
+The original GPIO2 data bit is saved and restored, with writes masked to
+GPIO2 only. The real six DAC pads and their data/matrix are untouched.
+
+The parser refuses an unexpected first marker and ignores all low runs
+before a timer-derived native-handoff barrier. That barrier initially
+rejects all runs, including callbacks before publication. A receive ending
+stops the experiment; no unanchored restart may bridge epochs. An event-rate
+limit stops parsing after256 callbacks. Timer/filter/ETM objects are torn
+down in dependency order; any teardown error prevents reuse until reboot.
+SDK gptimer_start() is used only during shutdown to synchronize its FSM
+after ETM started counting, followed by stop/disable/delete. It does not
+reset the counter. Host runtime tests cover25 actual clock lifecycle/FSM
+cases and the observer's marker, restoration, arm delay and rate guards.
+
+Gate-K rejected its cold RX/ETM arm at52us under the original20us arm guard.
+The private marker makes that software setup time irrelevant to phase;
+gate-L gives RX a1ms idle window and bounds setup to200us, leaving ample
+time for the marker and native handoff. This changes neither the8us gate
+pulse guard nor any live-video timing. A short scheduler hold covers this
+nonblocking manual arm/marker sequence; interrupts remain enabled.
+
+Gate-L (`2ff7a20`, version5.0.0-pr.212-sync-gate-l, SHA256
+`527b80c7e751e934215964bb5e0ebe886aa83a4fdc3fc8d38ddef8efa43d6c30`)
+captures the private marker on the C5. The first test reads340 ticks/17us,
+marker_ok=1, timer running and exact pin restoration; no native camera
+pulse is inferred from it. Both following long PAL/NTSC gate trials pass,
+and transport fault counters remain zero. Twenty further manual clock
+trials all recognize the marker, close the hardware route and restore the
+pins. Marker widths span325..350 ticks (16.25..17.5us); heap is7176 bytes
+before and after the repeat batch, with no DMA errors. No VTX is detected.
+Captures/hashes are in board_gate_{i,k,l} and board_clock_l_repeat evidence.
+
+This proves repeatable marker capture and resource cleanup, not an absolute
+phase error bound, qualified camera tracking or monitor lock. The shared
+first-edge relationship and later native waveform timestamps still require
+calibration/qualification. The original manual Y remains available, and
+automatic flywheel activation remains OFF.
+
+### Filtered two-edge clock bounds (2026-10-16)
+
+Gate-M (`307d735`, SHA256
+`470014cc87822d5299ba281e12c1568a853adfea20a4b359e3a3d51f801ff0aa`)
+adds a second private marker AFTER enabling the native GPIO filter. Timer
+reads bracket its rising and falling GPIO writes, with fences and GPIO data
+readbacks. Their two independent offset intervals are intersected against
+the RMT prefix timestamps. This measures the filtered input path, including
+its delay, rather than assuming a fixed1.2us correction. A non-overlapping,
+non-monotonic, overflowing or wider-than64-tick interval is refused.
+The first timer read must still be zero before the original raw marker;
+an unexpectedly pre-started clock cannot silently acquire an invented epoch.
+Both markers stay outside the native-evidence barrier and cannot supply
+source H/V counts. Integer fixtures cover7247 cases, including large64-bit
+timer origins, and pass address/undefined-behavior sanitizers.
+
+The first gate-M y attempt refused context ownership before setup. Its PAL
+and NTSC long gate tests then both completed without transport faults.
+Two subsequent batches of20 clock probes each produce consistent intervals
+on the C5. Full rows/hashes are in board_phase_m_repeat{,_b}_2026-10-16.
+The first batch includes initial shared-driver allocation; the second warm
+batch verifies stable heap. No camera is detected and no source H/V pulse
+is inferred from the markers. These are digital counter/readback bounds
+under their stated transition-timestamp assumptions, not an independently
+scoped CVBS phase-error guarantee or monitor-lock proof.
+
+Remaining integration is a continuous source observer retaining its timer
+across RX epochs, qualified native H/V phase and period tracking, and using
+that model to gate only missing sync. Restart markers need their own newly
+calibrated RMT origin without resetting the already-running output clock.
+Default automatic activation remains OFF until that path is implemented
+and physically qualified; manual Y/y/Q/q are not that automatic path.
+
+
+### 2026-10-16: N keeps one clock over multiple RMT epochs
+
+Manual `y` now pauses only the mirror filter and restarts the ended RMT
+receive stream. The ETM route and 20 MHz timer remain alive. Each fresh private
+GPIO2 marker pair calibrates that epoch onto the original timer; markers remain
+excluded from source evidence. RMT barriers use local elapsed time, not the
+potentially 64-bit absolute timer value. Reject backwards timer/origin readings.
+
+Actual C5 build `5.0.0-pr.212-sync-gate-n`, application SHA256
+`a8dfac167ac603ede1ca6dbb6a043f1661fe687ca44572e5831e34b5da9458f7`,
+flashed with hash verification after preserving settings. Initial run plus 20
+warm repetitions: 334 accepted epoch phase fits, 320 RMT rearms, zero refused
+fits and zero clock regressions. Incomplete final epochs are counted pending,
+not accepted. Warm internal heap stayed 7156 bytes. PAL 48000 and NTSC 48870
+manual pulse runs completed; exact restore reported, no transport DMA faults.
+Raw hashes, counters and provenance: `research/data/board_clock_n_2026-10-16.json`.
+Host runtime suites passed 63 observer checks and 25 clock lifecycle cases;
+IDF 6.0.2 target build passed.
+
+Still manual and LP/output 1x only; no native H/V evidence was detected in
+these no-video captures. The full call still owns a PHY lease and is unsuitable
+as a permanent background service. The bounded 50 ms acquisition window also
+has setup/cleanup overhead: observed total calls exceed 50 ms. Automatic native
+qualification, camera-relative pulse scheduling/handoff, and electrical/monitor
+validation remain unfinished. This is not a flywheel completion claim.
+
+
+### 2026-10-16: P native H/V temporal qualification (manual only)
+
+Added `sync_native_track.h`: require both 32-line PAL/NTSC period fits and
+matching repeated 5/6-broad vertical trains at the corresponding field period.
+Reject observation gaps/regressions; do not complete truncated broad trains at
+capture end. The actual mirror parser feeds only marker-excluded edges through
+a valid phase bracket, mapping local RMT time to the continuous 64-bit timer.
+This temporal candidate is not yet permitted to drive output repair.
+
+Host: 1,000,036 checks, including PAL/NTSC, jitter, large clock origins, missing
+H/V, wrong field periods, regression/gaps and one million random pulses;
+ASan/UBSan passed. Actual production observer mock: 67 checks. CI includes the
+new qualifier. P target build passed.
+
+Negative O build: extra static observer state shifted startup memory enough to
+make the contiguous 6144-byte control-task allocation fail (`ESP_ERR_NO_MEM`).
+Recovered verified N, observed normal startup and zero DMA faults. P allocates
+native state once after startup and keeps it alive for callback/quarantine
+ownership. Evidence `board_native_o_failure_2026-10-16.json` retains failure.
+
+Actual P `5.0.0-pr.212-sync-gate-p`, SHA256
+`470406b771bd3530822ea4807d37bb9fcbfe7b1da29e74bb46fcf6cf05bcd7d6`,
+boots normally; initial plus 20 repeated manual captures restore all state and
+report no errors. Native input has isolated H/broad-like pulses but no coherent
+H/V trains, and correctly produces zero timing-qualified epochs. Warm internal
+heap remains 7000 bytes across the 20 repeated captures. Transport reports zero
+DMA/overflow/BS faults. NTSC 48870-pulse manual gate passes; the initial PAL
+request was refused on ownership (not a passed PAL run). See
+`research/data/board_native_p_2026-10-16.json` for raw provenance and counters.
+
+No camera-on proof or monitor feedback yet. Automatic continuous observation,
+phase-following pulse scheduling, holdover/handoff and monitor validation remain
+unfinished. The manual PHY lease still must not become a permanent background
+lease. P does not enable automatic flywheel at boot.
+
+
+### 2026-10-16: resident observer B, picture aliases, startup reservation
+
+Shared begin/poll/end now backs manual Y/y and the resident `u` observer.
+The control loop polls it under brief PHY ownership, releasing ownership before
+sleeping. Receive invalidation rejects pending old buffers and rearms on the
+same running clock. Snapshots separate retained coordinates from fresh validity;
+current-time expiry prevents silence keeping an old model fresh. RMT local
+counter rollover is rearmed before wrap, and resident rate limits are periodic.
+Transport quiesce/menu/chain ownership changes synchronously cancel the observer;
+failed cleanup/restoration latches fault and keeps ownership unavailable.
+PHY gain/native/DC/filter/lane mutations invalidate observations before writes.
+
+Fixed a real-camera blocker in the initial H/V qualifier: picture lows erased
+H trains. Eight bounded phase candidates now ignore out-of-phase picture pulses;
+complete pre-EQ/broad/post-EQ structure is required. Exported last H belongs to
+the selected camera phase, not the last bright-picture alias. Host native suite:
+1,000,088 checks (including sanitizers); actual observer runtime:80 checks;
+actual PHY ownership/gain invalidation ordering test passes.
+
+Resident A exposed the same late contiguous control-stack allocation failure
+as O. B reserves the unchanged 6144-byte stack and TCB immediately after console
+startup, before RF/driver fragmentation, using explicit16-byte-aligned internal
+memory and xTaskCreateStatic. No stack reduction. Pinned IDF confirms byte stack
+depths and static-allocation support. B boots and completes calibration normally.
+
+Actual `5.0.0-pr.212-sync-live-b`, application SHA256
+`ce31014be0596c0fd5ac9cce137adfd33e766f7e8630c46a70c7d6d1e1825fe1`,
+flash hash verified. Resident active10s while observed gain moved83->81;
+then a verified transport restart stopped/restored it and re-bound a new session.
+Three additional start/stop cycles: starts5/stops5, faults0/failures0. Warm active
+heap5404 and stopped heap6068 repeat exactly. Transport DMA/overflow/BS counters
+remain0. VTX is explicitly OFF; no native standard/model qualified. Evidence:
+`research/data/board_resident_b_2026-10-16.json`, including negative A provenance.
+
+The new bounded GPIO witness has1148 host IRQ traces passing and is dormant
+(not included in firmware CMake). It uses software ISR timestamps, <=8 edge
+observations per explicitly opened window, exact GPIO2 ownership restoration,
+and post-start allocation. It has no physical filter/latency or camera proof;
+cache-disabled latency remains unbounded. It is not the output repair engine.
+
+Automatic gates remain OFF/unfinished. Next: connect camera-phase holdover,
+conditional per-tip output scheduling, fast witness and transport cancellation;
+then VTX-on/fade and real monitor proof. Do not substitute resident observation
+or generated pulses for the actual goal. User prefers building forward over
+routine rollback flashes (2026-10-16); apply that preference on subsequent tests.
+
+
+### 2026-10-17: conditional output bench A-E (still OFF at boot)
+
+The shared observer clock now drives an IRAM alarm and a bounded incremental
+PAL/NTSC pulse iterator. No per-pulse division, task queue refill or persistent
+PHY lease is needed. The backend disconnects the six DAC output enables only
+for sync tips; the received hardware stream remains visible between tips.
+It restores pad/matrix ownership before observer/timer teardown. `U` enables
+this bench, `u` only observes, and `t` prints short status. Both default OFF.
+Read-only E observation supports both verified U85Q programs at 1x output.
+An unqualified model on the normal program does not authorize synthetic tips.
+
+Negative board results are retained: A stopped after81 pulses and exposed a
+teardown ownership failure; B hit watchdog starvation and a late-tip stop;
+C removed that watchdog symptom but still stopped on a late tip. The observer
+now resets its runnable budget only after an explicit delay, and control.c is
+compiled O2. D skips late tips instead of emitting them outside the admission
+window, then continues on the same absolute grid. This is not a hard deadline
+or uninterrupted monitor-lock guarantee.
+
+D ran20-second NTSC and PAL benches. At the last18-second samples, software
+counters showed292669 repaired/121 missed NTSC tips and290150 repaired/34 missed
+PAL tips. No output/source faults or watchdog were reported during these runs;
+cleanup restored ownership and final transport fault counters were zero.
+No scope or monitor measurement establishes the actual CVBS waveform/lock.
+The VTX was off during those captures. A later camera-on D capture detected
+NTSC, gain43-53 and AFC lock, but its sync observer was blocked by the old LP
+eligibility requirement. E removes that observation-only restriction. Its
+first VTX-off test starts/stops cleanly and exports no qualified native model.
+
+Evidence and image/log hashes: `research/data/board_conditional_output_2026-10-17.json`.
+Host checks:736399 planner,12008 actual-backend mock-MMIO,84 observer-runtime,
+28 shared-clock lifecycle checks; all pass in the pinned IDF container. The
+Windows host lacks cc; direct host attempts failed before compilation and were
+rerun successfully in that container. E firmware builds and flash hash verifies.
+
+Still required: qualify actual camera H/V on the board, connect a bounded fast
+native witness, prove fade/return and monitor lock, cover other output levels,
+and decide automatic defaults from that evidence. Whole-model validity currently
+stops repair; the per-line native suppression callback remains unconnected.
+Do not call this completed or claim an improvement in RF range from pulse counts.
+
+
+### 2026-10-17: real-camera observer E/F failure, G receive-boundary change
+
+E/F RF status detects NTSC and AFC lock, but the separate native observer never
+qualifies H/V. F diagnostics show symbols stop growing while empty idle endings
+continue. A temporary AUTO kp OFF bench reproduces this; AUTO kp+LP is restored
+at its end. Do not attribute the failure solely to automatic kp switching.
+The operator may turn the warm VTX off; no sustained camera-on request remains.
+
+G applies the existing explicit-invalidation RX disable/enable boundary also to
+natural idle endings. This flushes driver interrupt state before receive rearm;
+the independent shared timer remains running. Runtime test exercises natural
+end -> disable/enable -> fresh epoch without resetting timer/link,86 checks pass.
+G builds, flash hash verifies, startup completes. A follow-up with detected=none
+reaches975 symbols/325 idle endings: private markers continue returning instead
+of cumulative symbols freezing. No H/V model qualifies; source evidence is absent
+in this capture. This is narrower than real-camera recovery proof, still pending.
+Evidence: `research/data/board_native_observer_2026-10-17.json`. G image SHA256
+69ec3662bafaeb18f363c161b222a41fcbe5b4d22b765ca8d7f128e7165768d9.
+Output repair stays disabled throughout these observer tests. Default remains OFF.
+
+
+### 2026-10-17: H raw traces contradict a complete G recovery claim
+
+H adds a96-entry bounded diagnostic low-pulse ring, frozen24 lows after the
+first broad-width candidate. Markers remain excluded and each row carries its
+RMT-local epoch (mod65536); never join local time across epochs. `i` snapshots
+under short PHY ownership then formats/drains outside it. Existing diagnostic
+status also formats into a buffer and releases ownership before UART output.
+This recording grants no camera validity. Trace memory is allocated with the
+post-start native observer state, not added to static startup SRAM.
+
+H builds/flash verifies/startup completes. Both the VTX-off and short VTX-on H
+captures reproduce cumulative symbol counts freezing while empty endings grow.
+Therefore G's full receive-boundary reset is NOT a complete fix; its earlier
+private-marker result had narrower scope. H short camera test confirms RF NTSC
+and AFC lock, but never qualifies native H/V. The operator was immediately told
+the VTX can switch off after the2-second capture.
+
+The H off trace contains96 lows,34 shorter than20 RMT ticks; the camera trace
+has13 lows including widths1,3,4 and6 ticks. One tick is50ns. These durations
+are below the intended shared GPIO filter scale, or could reflect corrupt input
+history. Cause is not proved. I enables the independent RMT1000ns input filter,
+still below the2.3us EQ duration. Its separate RMT origin must be calibrated by
+the existing two-edge second marker; do not assume the filtered RMT and raw ETM
+taps start simultaneously. I board result is pending. No output repair enabled.
+Evidence: `research/data/board_native_trace_h_2026-10-17.json`.
+Trace chronology/wrap/freeze tests pass; actual observer runtime93 checks pass.
+
+
+I follow-up (VTX off, RF detected=none/G83): the cumulative symbols keep growing
+6584 ->14596 ->23109 at successive2-second samples. The first stored trace has
+45 lows, minimum20 ticks/1us, none below20 ticks, unlike H's sub-microsecond lows.
+Marker phase fits remain valid (observed spans37-38 ticks), teardown restores
+ownership and closes the clock; no watchdog/output fault is reported. This is
+an8-second observation, not sustained camera/monitor proof. Some snapshots still
+land in empty epochs, so do not claim every ending carries source evidence.
+I source camera test is pending. `board_native_filter_i_2026-10-17.json` stores
+image/log hashes and raw rows. Tests93 actual-observer checks plus bounded trace,
+transport ownership, startup, and PHY-hook tests pass. Output repair remains OFF.
+
+
+### 2026-10-17: J evaluates both DATA4 pulse polarities; goal paused by operator
+
+I's short camera trace contains an exploratory11-period subset averaging
+63.527us/line and4.573us HIGH between long LOW runs. This suggests a DATA4
+polarity/threshold limitation; it does not qualify camera H/V. Raw provenance
+and the chosen subset are in board_native_camera_i_2026-10-17.json.
+J feeds HIGH and LOW runs to independent unchanged full H/V qualifiers. Either
+must meet the same full timing requirements; both-valid ambiguity refuses fresh
+model validity. Model/retained coordinates carry the chosen polarity. No video
+inversion is applied. Parser/runtime tests cover PAL/NTSC in both polarities,
+private marker exclusion, snapshot ambiguity and lifecycle:175 checks pass.
+
+J builds and flash hash verifies. VTX-off8-second test continues receiving
+(25017 then36867 symbols), no qualified native model, no watchdog/source fault,
+clean start/stop/restoration. A subsequent2-second camera test still fails to
+qualify full native H/V in either polarity; ordinary RF detects NTSC/G41. This
+is NOT solved by polarity alone. Output repair remains OFF in all these tests.
+Evidence: board_native_polarity_j_2026-10-17.json. J image SHA256
+ e50b16b87a890c53d47fb65a79465366208e82653e8b8acf59250ede11a34ed4.
+
+Further offline check using exact LUT/cell carrier arithmetic: at-2.32MHz,
+kp0.85 LP codes span13..17, porch-1MHz20..23. Thus DATA4's threshold16 can sit
+inside the sync-code spread for a low-deviation camera. A threshold comparator
+rather than one code bit merits investigation; this is synthetic explanation,
+not a confirmed board root cause. One proposed hardware route repurposes a DAC
+LSB as a comparator flag while grounding physical LSB and mirroring that native
+flag. Feasibility, phase/counter preservation, LP packing, quality and ownership
+are UNPROVEN; no implementation or waveform change was made for that proposal.
+
+Operator is away and explicitly requests pausing when VTX-on evidence is needed.
+Goal paused; observer/requested and repair/requested both0 after J capture.
+VTX may remain OFF. Resume from J, do not routinely roll back. Next actual
+camera qualification/holdover/return/monitor and fast-witness/default work remain
+open. The read-only helper feasibility agent was interrupted for this pause.
+
+
+### 2026-10-17: missing-H evidence, comparator invariance and negative models
+
+Operator returned for a resumed2-second J camera capture. NTSC/G37 strong RF
+is visible, but no native H/V model qualifies. Clean stop/restoration follows;
+operator was immediately told VTX can switch off. Evidence and raw log hash:
+`research/data/board_native_j_resumed_2026-10-17.json`. J remains on the board.
+
+H candidates previously required32 consecutive usable intervals. New bounded
+fit accepts1..4 integer line gaps, requires at least16 observed intervals over
+32..64 line slots, and normalizes to32 lines using unchanged PAL/NTSC fit limits.
+Missing pulses do not count as observations. Eight candidates remain the bound.
+V association age permits7line periods, derived from<=3lines pre-EQ,<=1line H
+parity offset and<=3 missing Hs. EQ/broad counts, widths, spacing and field timing
+are unchanged. Tests cover missing Hs including just before V, picture aliases,
+5-line/off-grid gaps, stale bounds and million noise cases:1,000,137 pass,
+including agent sanitizer run; actual observer runtime175 checks also pass.
+K firmware builds but is NOT flashed. SHA256:
+e1683f5905cbbe1bf9ebf071d917188a1cdbf43d253e3912694b442c940cc7c1.
+
+`research/native_flag_emulator.py` reproduces the proposed hardware comparator
+invariance using production C scaling/tables, pinned SDK assembly and the
+existing generic emulator with observation hooks. All8kp*10output*2program cases
+pass:327600bundles,327680bytes,327360flags. Flag from UNSCALED canonical DAC<19
+is inserted AFTER scaling. LP changes only controller output0 A10->L0; its
+phase/counter recurrence and all non-LSB outputs remain exact in this finite
+fixture. Actual physical DAC would need its LSB grounded, producing baseline
+DAC&~1; flag is raw x, not filtered y. This is not hardware/monitor proof.
+Compact hashes/counts: research/data/native_flag_emulator.json. CI runs the proof.
+
+`research/native_flag_study.py` generates full3field model data for the ACTUAL
+native qualifier. Use --out DIR, optional --clean/--rms/--lp; compile generated
+runner.c against main/ and feed pulses.txt to it. The1us inertial filter is an
+IDEAL MODEL, not characterized RMT silicon. At RMS3.2/CN24 the old qualifier
+accepts no full V in48 series (16 each bit4-low/high and DAC<19); preserve that
+negative result. With missing-H support raw comparator accepts7/16, bit4 accepts
+0/16; clean comparator8/16; theoretical post-LP comparator9/16 vs bit4-low4/16.
+RMS5 raw comparator accepts5/16 vs bit4 zero. These are exploratory comparisons,
+not a passing delivery gate or a measured board improvement. Many model cases
+still fail, and raw comparator chatter can erase all transitions in the ideal
+filter. Data: native_flag_study_baseline_2026-10-17.json and
+native_flag_study_missing_h_2026-10-17.json.
+
+A finite, self-restoring observer-only flag board bench is being implemented
+separately. No comparator firmware is flashed yet. Output-gate integration,
+camera/fade/return/monitor proof and defaults remain required. Do not redefine
+this unfinished goal as an emulator proof or a manual source probe.
+
+### Finite comparator bench L (2026-10-17)
+
+Commit79ec945 adds manual `V`: a50ms signal48 comparator observation using
+canonical unscaled DAC<19, after output scaling. GPIO23 is grounded before TX
+starts, so the flag never drives the physical DAC; the ordinary video loses at
+most one DAC code during the bench. LP uses a private flag-output program.
+The ordinary verified LUT/program remains the rollback target for BOTH entry
+and exit. Source observation and pin cleanup precede restoring ordinary video;
+trace printing follows PHY release. All flag activity is OFF at boot, and no
+output gates are enabled by this test. Failed restoration latches a fault.
+
+655360 mapping/scaling/state invariants pass. Actual observer runtime185 checks
+include signal48 selection, trace export, cancellation and SDK setup/rearm/
+cleanup failures. The new rearm-failure check found a false success return:
+a failed poll must report an incomplete measurement even if teardown succeeds.
+That is corrected. Firmware L builds (app0x18ff80 bytes); exported SHA256:
+9b4f2460f0170ab1b2428d364e8e523a0de9d6f95fb116bc01b4f6f786bd8bd4.
+Board execution and actual camera H/V qualification remain pending at this note.
+
+L board follow-up: the first finite50ms session completes and restores ordinary
+LP video with zero transport faults and no qualified H/V model, VTX off. Three
+subsequent attempts refuse memory: freeing its temporary bench block fragments
+the already small heap after permanent observer allocation. Evidence:
+research/data/board_native_flag_l_2026-10-17.json.
+
+M retains and reuses that diagnostic block; failed ownership still remains
+latched until reboot. Build/flash verified SHA256:
+29005f8e4e35f39248f249e16cd2796c3aac96cb591cdb6f961a8d6c5d9434ac.
+Three consecutive finite sessions now complete with restored=1/fault=0 and
+ordinary transport dma_faults=0, program=U85Q-LP. Heap free1404 bytes after
+persistent bench/observer allocation. These sessions received only marker-sized
+symbol batches and no usable phase/H/V model. Successful cleanup is not evidence
+of useful sync. See board_native_flag_m_2026-10-17.json. M remains flashed; all
+observer/output gates OFF. Camera measurement awaits the operator.
+
+An additional exploratory threshold sweep (16..21) is archived separately in
+native_flag_threshold_study_2026-10-17.json. Many fullfield model cases still
+fail; changing the threshold alone is not a demonstrated solution. No firmware
+threshold change follows from this sweep.
+
+The comparator emulator now verifies the actual compiled LPflag source semantics
+and C sync_flag_entry helper before simulating. Previously it generated only a
+temporary variant from the ordinary LP source; that left a gap between the proof
+and the separately checked-in firmware flag program. Production instructions,
+configuration and helper now match:160 cases/327600 bundles/327680 bytes/
+327360 flags pass. Schema2 artifact includes hashes of both production flag
+files. No physical source quality or monitor-lock conclusion follows.
+
+Actual GPIO23 flag helper code now runs in a strict host MMIO harness:
+24 checks cover exact latch/matrix/OE/IOMUX/pad restoration, unrelated GPIO
+preservation, lost output-low/matrix/enable writes, lost restoration writes and
+unowned/unsaved refusal. CI includes test_sync_flag_pin_runtime.py. It does not
+prove physical voltage or the entire transport transaction; camera evidence is
+still required. No firmware change or flash was needed for this test addition.
+
+### Actual flag camera trace and source grammar N (2026-10-17)
+
+Operator briefly enabled VTX. M first refused a busy PHY lease; prepared retry
+completed50ms and restored ordinary video, fault=0. RF reports NTSC/G38, but
+full native timing remains invalid. VTX switched off immediately afterwards.
+Evidence: board_native_flag_m_camera_2026-10-17.json, including the96 raw LOWs
+and95 HIGH intervals reconstructed only between adjacent LOWs in the same epoch.
+This~6ms frozen trace contains ONE vertical train, not a qualifying field pair.
+
+First65 HIGH intervals are141..179ticks (median162), with32-line spans40675,
+40676,40676,40680ticks: NTSC H timing, with a pulse too wide for the old76..112
+width gate. This is consistent with merged sync/burst; the exact analogue cause
+is not yet scoped. Pre-EQ widths47/51/56/35/66/56, anchored timing error<=18ticks;
+six broad widths541..543; four postEQ survive, then H at expected halfslot13.
+
+A separate sync_native_flag_track.h source profile uses76..200tick H,32..70tick
+EQ on an anchored halfline grid�24ticks. Broad5/6 width/spacing stays strict.
+Require ALL preEQ positions, at least n-2 DISTINCT postEQ positions, correct H
+delimiter10/11(PAL) or12/13(NTSC) halfslots, independently fresh H fit, and TWO
+matching broad groups at the existing field-period tolerance. Extra/duplicate/
+offgrid pulses refuse. Ordinary DATA4 grammar stays unchanged. Actual frozen
+capture now yields one completed group and explicitly no lock.
+
+Natural flag-source RMT idle may keep a completed first group on the continuous
+clock; stale partial train/H must be discarded and H reacquired independently.
+Every epoch recalibrates marker phase. PHY/source/clock changes, proactive
+rollover, or an invalid previous marker bracket still fully reset acquisition.
+Manual diagnostic timing_valid additionally requires fresh evidence on a valid
+phase. Source-specific diagnostic counts now expose where acquisition fails.
+
+Dedicated source tests1,000,055 pass (helper also ran sanitizers); unchanged
+strict suite1,000,137 and integrated observer194 pass. This is host evidence;
+N board build/camera result is pending at this note. Output gates remain OFF.
+
+N build/flash SHA256:
+6a7e255d33df81a5f1933d4440a86a46ad79ba1e950fd6bf405a500b1703579b.
+Three VTX-off calls restore successfully with no false model; heap1260 after
+persistent allocation. User then enabled VTX. Three short calls all restore
+and find high_hstd=1 (NTSC H), but ZERO full V models. This is progress in H
+acquisition, not a working flywheel. Source trace in these later calls has
+eroded broad pulses, e.g543/460/554/463/391/593ticks, with incomplete pre/postEQ.
+Trailing edges fit better than starts, but not all are within24ticks. Simply
+widening pulse gates cannot repair this. VTX was promptly told it can turn off.
+Raw hashes/selected diagnostics/LOW rows: board_native_flag_n_2026-10-17.json.
+
+O diagnostic change uses the SAME96row buffer to keep structural HIGH runs and
+four following runs over the entire finite observation window, with shared-clock
+coordinates. It does not freeze on the first broad candidate; overwritten rows
+are counted. Regular H no longer consumes the whole buffer before a second V
+field can arrive. Ordinary resident LOW history keeps its previous behavior.
+No lock policy is relaxed by this diagnostic change. Goal remains actual
+conditional repair plus monitor-lock proof; H recognition alone does not finish it.
+
+
+### Integrated acquisition, tracking and holdover P (2026-10-17)
+
+N's camera traces guide a separate raw comparator profile; strict DATA4 parsing
+is unchanged. Partial vertical candidates need independently fresh H, distinct
+pre/post equalizers, broad-region occupancy and aligned trailing edges. Two
+compatible fields establish camera authority. Missing observations preserve
+trusted time but cannot themselves count as fresh camera measurements. Fresh
+selected H can track a trusted field grid while V is missing; a confirmed phase
+or standard replacement still needs repeated evidence. The wrapper is88 bytes.
+
+Resident u/U now acquire the comparator flag format through the verified
+program/LUT restart transaction, for normal and LP programs and all output
+levels. Small GPIO23 ownership is separate from optional finite-V trace storage.
+The internal flag stays visible with DAC output-enable off. A per-tip witness
+requires source-ready, matching source epoch, camera authority and a NEW nearby
+LOW/HIGH transition. Cold noise and private calibration markers cannot cancel
+repair. V tips additionally require fresh V evidence; missing V is repaired.
+All repair widths end on their absolute scheduled end; admission is at most1us
+late with more than1us useful tip remaining. Software admission is not a physical
+waveform or monitor acceptance measurement.
+
+The incremental output clock survives missing observer windows. Verified
+flag-to-flag kp/LP/output restarts invalidate source sampling before stopping
+producers, retain the independent timer and pad lease, then publish a replacement
+DMA generation before observer rearm. Rollback follows the same rule. Format
+exit, menu, scan, unknown ownership or latched recovery failure still cancel
+output before observer/pin teardown. An already verified GPIO23 clamp is not
+rewritten during TX-enable, preventing an interrupt-visible ownership gap.
+
+Host evidence: actual observer267 checks, output12022 checks, raw flag qualifier
+1,000,077 checks, format/publication1,224,729 checks, restart42 scenarios and
+all Diagnostic log semantics workflow commands pass. Earlier full C workflow
+checks before the old CPU-writer matrix passed; tail DC/gain/raster/AFC checks
+also pass. This is targeted validation, not a claim that the entire workflow is
+green. The unused CPU memory-writer had preexisting V drift bugs: fitting H
+frequency did not move its pending V deadline. The small correction preserves
+all assertions and passes27/28 full kp/clock/output scenarios. Remaining
+kp7/+50ppm weak NTSC has1356/1358 pulses and reproduces exactly on668fa64;
+it is not caused by the hardware-output implementation. See the separate CPU
+period evidence artifact. Do not weaken that assertion to hide the limitation.
+
+P builds app0x192250 bytes, SHA256
+1aa479d0bb813ce08adff80e48dd2be0dfbce1b5f748ad77037b09606ae6b1f1.
+App-only flash/settings backup/hash verification succeeded. The first VTX-off
+capture bootloops BEFORE sync activation: control_start cannot allocate the
+16-command queue (ESP_ERR_NO_MEM). Compared with N, IRAM increased640 aligned
+bytes and data/BSS16 bytes; that exhausted the already narrow startup margin.
+Raw log: c5vrx-flywheel-p-off-20261017-121236.log. No output or camera success
+is claimed. The console download command remains reachable; board was placed
+in download mode while building forward. A redundant4KiB diagnostic history
+snapshot is being removed without removing history or reducing task stacks.
+
+
+### Memory recovery and target interrupt proof Q/R (2026-10-17)
+
+The duplicate diagnostic history snapshot is gone: preserve the original64
+records, compute60-second totals and snapshot ten scalar samples under the
+existing lock, then sort/print after unlock.516 concurrent-snapshot cases pass.
+No task stack/history depth is reduced. The planner is retained task-side:
+100 repeated timing updates now allocate/free nothing, and invalid models leave
+the running iterator untouched. Status includes total and largest internal heap.
+
+Q boots and actually runs conditional output with the VTX OFF: repairs38509
+then68320, source suppressed0, camera model invalid, no DMA faults, clean output/
+observer stop and ordinary-format restoration. Baseline heap8564/largest4096;
+after persistent observer allocation and cleanup5868/largest3072. However
+3020 then6493 tips miss the1us admission guard; no monitor proof follows.
+
+The Q manual-program test exposes a CACHE ERROR during an NVS write: actual
+MEPC4203144e resolves to slc_next, called from IRAM output_alarm. Plain static
+inline did NOT inline the helper at the target's -Og optimization. Per-pulse
+helpers now require always_inline. A new linked-target audit rejects Q's actual
+flash call and accepts R's output interrupt entry/ownership/clock functions.
+It checks direct calls, not indirect callback provenance or all SDK internals.
+The build workflow runs this audit on the actual linked ELF.
+
+R SHA2568916ef23c5aeadf08402ef468b38107659f6dbdd47bf9a094b9c60a1088cb27b
+boots and survives manual P and AUTO-setting writes without cache panic. The
+observer session remains starts1/stops0 across normal/LP restarts, but output
+had already stopped with fault6 BEFORE the first manual P. Delivery-delay
+instrumentation reports max6765ticks338.25us versus callback89ticks4.45us;
+7404misses, mostly while other tasks/IRQs run. Do not attribute that first stop
+to NVS or claim successful pulse continuity through the later program changes.
+All output/observer activity is OFF after capture, AUTO kp+LP restored, zero
+transport faults. See board_integrated_flag_2026-10-17.json for logs/hashes.
+
+S retains the exact output grid while processing overdue pulses in bounded
+callbacks rather than latching fault6 at the work budget. Expired pulses remain
+skipped; original admission and absolute pulse ends do not widen. Catch-up
+alarms use their actual scheduled timestamp for delivery-delay diagnostics.
+The5ms-outage fixture proves multiple bounded callbacks, exact NTSC phase,
+balanced OE, >50expired skips and resumed repairs. Conditional runtime12025
+checks pass. S board validation is pending at this note; camera and monitor
+proof remain open, all boot defaults remain OFF.

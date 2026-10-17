@@ -1,0 +1,287 @@
+{
+  "scope": "Offline independent decisions at recorded gain, original Q4/I4; not closed-loop counterfactual replay",
+  "source_revision": "fc9b8bd-plus-map-context-v5",
+  "source_sha256": {
+    "main/gain.c": "f50b6150b2db9cb2d37ffb6300f9ac92c7eac75a9bab59723ef3390393276093",
+    "main/arc_phy.c": "9efc5be1e166434f6099d9f44dce787cc54dafb8ffc3b046cef22edb176f8f1e",
+    "research/gain_v6_policy.h": "7cc0cfa483e6cb23cb93e14aafa2c1bd8120c31664a103b5681ec7087a975831",
+    "test/test_gain_v6.c": "e6063da6fc0236ef24a645a31e6ceb19254dc879ce736cf61cb174bf113d0930"
+  },
+  "default_v6_enabled": false,
+  "production_callers": 0,
+  "missing_capture_context": [
+    "synchronized actual DCO pair and residual",
+    "gain/control/PHY/filter epochs",
+    "genuine-sync/noise confirmation",
+    "per-gain same-RF input captures"
+  ],
+  "recorded_gain_map": {
+    "file": "range_diag_vtx_off.txt",
+    "entries": [
+      {
+        "gain": 20,
+        "power_q10": 159,
+        "confidence": 1,
+        "uncertainty_pm": 350
+      },
+      {
+        "gain": 21,
+        "power_q10": 155,
+        "confidence": 8,
+        "uncertainty_pm": 153
+      },
+      {
+        "gain": 22,
+        "power_q10": 173,
+        "confidence": 7,
+        "uncertainty_pm": 149
+      },
+      {
+        "gain": 23,
+        "power_q10": 237,
+        "confidence": 8,
+        "uncertainty_pm": 146
+      },
+      {
+        "gain": 24,
+        "power_q10": 276,
+        "confidence": 14,
+        "uncertainty_pm": 154
+      },
+      {
+        "gain": 25,
+        "power_q10": 303,
+        "confidence": 15,
+        "uncertainty_pm": 97
+      },
+      {
+        "gain": 26,
+        "power_q10": 361,
+        "confidence": 15,
+        "uncertainty_pm": 168
+      },
+      {
+        "gain": 27,
+        "power_q10": 448,
+        "confidence": 15,
+        "uncertainty_pm": 171
+      },
+      {
+        "gain": 28,
+        "power_q10": 579,
+        "confidence": 9,
+        "uncertainty_pm": 136
+      },
+      {
+        "gain": 29,
+        "power_q10": 516,
+        "confidence": 15,
+        "uncertainty_pm": 117
+      },
+      {
+        "gain": 30,
+        "power_q10": 586,
+        "confidence": 15,
+        "uncertainty_pm": 160
+      },
+      {
+        "gain": 31,
+        "power_q10": 827,
+        "confidence": 13,
+        "uncertainty_pm": 115
+      },
+      {
+        "gain": 32,
+        "power_q10": 1024,
+        "confidence": 1,
+        "uncertainty_pm": 50
+      },
+      {
+        "gain": 33,
+        "power_q10": 924,
+        "confidence": 1,
+        "uncertainty_pm": 350
+      }
+    ],
+    "covers_weak_capture_gains": false,
+    "limitations": "G20-33 only, no controlled RF/transition IQ, no filter/DC epoch; not a weak/floor counterfactual model"
+  },
+  "captures": [
+    {
+      "file": "off_00.bin",
+      "gain": 59,
+      "bytes": 8190,
+      "fnv1a": "289abe69",
+      "sha256": "6a8c12a8da91f600a54e46c58c9246f26a68524e26b77ca405d85fc71ad17804",
+      "windows": 31,
+      "v5_independent_proposals": 0,
+      "unknown": 0,
+      "stuck": 31,
+      "overload": 0,
+      "dc_diagnoses": 31,
+      "v6_applies": 0
+    },
+    {
+      "file": "off_01.bin",
+      "gain": 59,
+      "bytes": 8190,
+      "fnv1a": "66f7f12e",
+      "sha256": "8e8347174605337efa26988d5943f6769ca5ed7cfbbe669ce381b41cab0eae08",
+      "windows": 31,
+      "v5_independent_proposals": 0,
+      "unknown": 0,
+      "stuck": 31,
+      "overload": 0,
+      "dc_diagnoses": 31,
+      "v6_applies": 0
+    },
+    {
+      "file": "off_02.bin",
+      "gain": 59,
+      "bytes": 8190,
+      "fnv1a": "78af72d8",
+      "sha256": "f99b8c8b61aaa54e5b861e27f4913f894fd22ef5851d39752caf57d8c8844906",
+      "windows": 31,
+      "v5_independent_proposals": 0,
+      "unknown": 0,
+      "stuck": 31,
+      "overload": 0,
+      "dc_diagnoses": 31,
+      "v6_applies": 0
+    },
+    {
+      "file": "off_03.bin",
+      "gain": 59,
+      "bytes": 8190,
+      "fnv1a": "81fe278f",
+      "sha256": "619d86d72406d6f115e61e909b89d110b5640f5bca813aae639f14d3f41140dd",
+      "windows": 31,
+      "v5_independent_proposals": 0,
+      "unknown": 0,
+      "stuck": 31,
+      "overload": 0,
+      "dc_diagnoses": 31,
+      "v6_applies": 0
+    },
+    {
+      "file": "weak_00.bin",
+      "gain": 73,
+      "bytes": 8190,
+      "fnv1a": "b54f20c6",
+      "sha256": "ea1efe178053fecfcfa7039173e2a522705506a2011eb72ccf9f068c3f1d4ba7",
+      "windows": 31,
+      "v5_independent_proposals": 10,
+      "unknown": 31,
+      "stuck": 0,
+      "overload": 0,
+      "dc_diagnoses": 0,
+      "v6_applies": 0
+    },
+    {
+      "file": "weak_01.bin",
+      "gain": 75,
+      "bytes": 8190,
+      "fnv1a": "569b804e",
+      "sha256": "e896f4fed051e20fa8c9847eeffa269e195a84a8a05de7b5879030a42f8a2fa3",
+      "windows": 31,
+      "v5_independent_proposals": 1,
+      "unknown": 31,
+      "stuck": 0,
+      "overload": 0,
+      "dc_diagnoses": 0,
+      "v6_applies": 0
+    },
+    {
+      "file": "weak_02.bin",
+      "gain": 75,
+      "bytes": 8190,
+      "fnv1a": "6ad68a14",
+      "sha256": "1b8be25850e63c6c963b665da2dd61bcfcabc94dd717d3ca611c36ba78495504",
+      "windows": 31,
+      "v5_independent_proposals": 0,
+      "unknown": 31,
+      "stuck": 0,
+      "overload": 0,
+      "dc_diagnoses": 0,
+      "v6_applies": 0
+    },
+    {
+      "file": "weak_03.bin",
+      "gain": 74,
+      "bytes": 8190,
+      "fnv1a": "60148f68",
+      "sha256": "d09efc509af580e9e425be05dd920691b4feb5feef5f4e77da39b82210907304",
+      "windows": 31,
+      "v5_independent_proposals": 0,
+      "unknown": 31,
+      "stuck": 0,
+      "overload": 0,
+      "dc_diagnoses": 0,
+      "v6_applies": 0
+    },
+    {
+      "file": "weak_04.bin",
+      "gain": 74,
+      "bytes": 8190,
+      "fnv1a": "d57d8089",
+      "sha256": "4467e10c9790d87df548aed1cca84f5f50be3c44e09ab522a63bbbf13ab339ba",
+      "windows": 31,
+      "v5_independent_proposals": 2,
+      "unknown": 31,
+      "stuck": 0,
+      "overload": 0,
+      "dc_diagnoses": 0,
+      "v6_applies": 0
+    },
+    {
+      "file": "weak_05.bin",
+      "gain": 74,
+      "bytes": 8190,
+      "fnv1a": "b8d79418",
+      "sha256": "53373bb097eedd0d7c5d2407e2e5e8dcdebd05de823ea3f0fa8ae4704ea09c14",
+      "windows": 31,
+      "v5_independent_proposals": 0,
+      "unknown": 31,
+      "stuck": 0,
+      "overload": 0,
+      "dc_diagnoses": 0,
+      "v6_applies": 0
+    }
+  ],
+  "logs": [
+    {
+      "file": "walk_serial.log",
+      "sha256": "c9e5579ba60f2b0905a29b4369579c4335584c9e7ab6e8640ef8a4b3ba650090",
+      "rows": 200,
+      "gain59_60_rows": 165,
+      "zero_sync_rows": 183,
+      "max_observed_writes_per_s": 119.28429423459245,
+      "median_observed_writes_per_s": 0.0,
+      "usable_for_counterfactual_gain": false,
+      "limitation": "Aggregate log, no per-transition original IQ/DC readback or controlled RF level"
+    },
+    {
+      "file": "walk2_stuck_misfire.log",
+      "sha256": "ddb2e7712f9d7eecc8f06c77bbad426e12b25fe6de1350401a97ca4433f15c83",
+      "rows": 148,
+      "gain59_60_rows": 0,
+      "zero_sync_rows": 6,
+      "max_observed_writes_per_s": 388.30297219558963,
+      "median_observed_writes_per_s": 126.00925337929783,
+      "usable_for_counterfactual_gain": false,
+      "limitation": "Aggregate log, no per-transition original IQ/DC readback or controlled RF level"
+    },
+    {
+      "file": "walk3_gain_loop.log",
+      "sha256": "25943ef9d03be7b4f18087b77ecf5dd63aaf88487418a37e7b0ad7f4adbd21e9",
+      "rows": 344,
+      "gain59_60_rows": 7,
+      "zero_sync_rows": 175,
+      "max_observed_writes_per_s": 1464.84375,
+      "median_observed_writes_per_s": 79.32603493454747,
+      "usable_for_counterfactual_gain": false,
+      "limitation": "Aggregate log, no per-transition original IQ/DC readback or controlled RF level"
+    }
+  ],
+  "conclusion": "Stuck captures diagnose DC without max-gain pumping; unknown context cannot certify a safe gain action or range gain"
+}

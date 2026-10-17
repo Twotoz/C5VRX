@@ -27,3 +27,6 @@ CONFIG_ESP_PHY_DISABLE_PLL_TRACK=y
 CONFIG_PM_ENABLE=n
 CONFIG_GPTIMER_ISR_CACHE_SAFE=y
 CONFIG_GPTIMER_CTRL_FUNC_IN_IRAM=y
+# The manual native-output observer runs with the PHY lease and needs no
+# cache-disabled service. Preserve scarce SRAM for receiver task stacks.
+CONFIG_RMT_RX_ISR_HANDLER_IN_IRAM=n

@@ -1,17 +1,18 @@
 /* C5VRX-5 by Twotoz and the C5VRX contributors: Direct Gain V5 runtime.
- * A 200 us timer wakes the observer (one fresh completed RX descriptor per
- * window, never the one GDMA is writing) and a sentinel that catches a
- * clipped envelope between observer windows. Only this file writes gain. */
+ * A 200 us timer wakes sentinel/gain; full C/N runs every 20 ms with
+ * context/age validation. Bound a continuously runnable observer batch so
+ * IDLE/calibration get time even if notifications accumulate. */
 #include "receiver.h"
 #include <stdio.h>
 #include <string.h>
 #include "cn_estimate.h"
+#include "cn_observation.h"
 #include "esp_timer.h"
 #include "gain_map_preset.h"
 #include "phase8_gain_lut.h"
 #include "phy.h"
 #include "rf.h"
-#include "soc/ahb_dma_struct.h"
+#include "native_acquire.h"
 
 direct_gain_t s_gain;
 volatile uint8_t s_current_gain = 62u;
@@ -30,10 +31,135 @@ static volatile uint32_t s_overload_state;   /* 0 free, 1 writing, 2 published *
 static dg_observation_t s_overload;
 static uint32_t s_overload_gain_epoch, s_overload_control_epoch, s_overload_phy;
 static uint32_t s_map_imports, s_preset_imports;
+static bool s_map_bound;
+static uint32_t s_map_control, s_map_phy, s_map_table;
+extern unsigned char phy_param[];
+
+static dg_map_context_t map_context(void)
+{
+    const rf_filter_t f = rf_filter();
+    return (dg_map_context_t){.freq_mhz=rf_frequency_mhz(), .lane_mode=rf_lane(),
+        .iq_scale=phy_param[650], .filter_skirt=f.skirt, .filter_bw20=f.bw20,
+        .offset_khz=rf_offset_khz(), .filter_code=f.code};
+}
+
+/* No vendor calls or waits here. A nonblocking actuator lease rejects even
+ * phy_try_actuator owners (which do not set phy_busy); short task exclusion
+ * protects the observer's ~700-byte snapshot. Context stamping belongs to
+ * that observer, never to a later calibration task. */
+unsigned receiver_export_gain_map(dg_map_blob_t *blob)
+{
+    if (!blob) return 0;
+    if (!phy_try_actuator(phy_generation())) { memset(blob, 0, sizeof(*blob)); return 0; }
+    vTaskSuspendAll();
+    const uint32_t control=s_control_epoch, phy=phy_generation(), table=rf_table_generation();
+    const uint32_t gain_epoch=s_gain_epoch;
+    const dg_map_context_t context=map_context();
+    unsigned n=0;
+    if (s_map_bound && receiver_active() && s_gain.state == DG_HOLD &&
+        cn_gain_settled((uint64_t)esp_timer_get_time(), (uint64_t)s_last_gain_write_us, false) &&
+        s_gain.current_gain == s_current_gain &&
+        control == s_map_control && phy == s_map_phy && table == s_map_table &&
+        dg_map_matches(&s_gain, rf_gain_table(), &context))
+        n=dg_export_map(&s_gain, blob);
+    const dg_map_context_t after=map_context();
+    if (control != s_control_epoch || gain_epoch != s_gain_epoch || phy != phy_generation() || table != rf_table_generation() ||
+        !dg_map_context_equal(&context, &after)) n=0;
+    phy_end_actuator();
+    (void)xTaskResumeAll();
+    if (!n) memset(blob, 0, sizeof(*blob));
+    return n;
+}
+
+static void gain_map_bind(const dg_map_context_t *context, uint32_t control, uint32_t phy, uint32_t table)
+{
+    dg_reset_context(&s_gain, rf_gain_table(), s_current_gain, context);
+    /* Every import checks the current transfer context and complete table,
+     * including after A -> B -> A. A stored map for A remains available
+     * while B runs but can never be relabelled/imported as B. */
+    if (!s_gain.learned && s_gain_map_saved_valid && dg_import_map(&s_gain, &s_gain_map_saved)) ++s_map_imports;
+    else if (!s_gain.learned && GAIN_MAP_PRESET_BOARDS &&
+             dg_import_preset(&s_gain, c5vrx5_gain_map_preset_q10, GAIN_MAP_PRESET_MAX_INDEX + 1u,
+                              GAIN_MAP_PRESET_MAX_INDEX, GAIN_MAP_PRESET_BAND5)) ++s_preset_imports;
+    s_map_control=control; s_map_phy=phy; s_map_table=table; s_map_bound=true;
+}
+static volatile cn_observation_t s_cn;
+static volatile uint32_t s_cn_sequence;
+static uint32_t s_cn_windows;
+static volatile bool s_native_enabled, s_native_scanning;
+static int64_t s_native_next;
+static uint32_t s_native_control, s_native_phy;
+static uint32_t s_native_attempts, s_native_landings, s_native_faults, s_native_max_open;
 
 bool receiver_active(void)
 {
-    return !s_paused && !s_menu_active && !phy_busy();
+    return !s_paused && !s_menu_active && !s_native_scanning && !phy_busy();
+}
+
+void receiver_native_toggle(void)
+{
+    if (s_native_scanning || s_paused || s_menu_active || calibration_in_startup() ||
+        !phy_try_actuator(phy_generation())) {
+        printf("NATIVE_AGC toggle refused=busy_or_startup\n");
+        return;
+    }
+    const bool enabled = !s_native_enabled;
+    s_native_control = s_control_epoch;
+    s_native_phy = phy_generation();
+    s_native_next = 0;
+    /* The observer owns the gain model. Toggling without an analog change
+     * must not reset that model from the control task while it is sampled. */
+    __sync_synchronize();
+    s_native_enabled = enabled;
+    phy_end_actuator();
+    printf("NATIVE_AGC enabled=%u period_us=%u timeout_us=%u boot_default=OFF ram_only=1 bench=1\n",
+           s_native_enabled, NATIVE_PERIOD_US, NATIVE_TIMEOUT_US);
+}
+
+static bool native_tick(uint32_t control, uint32_t phy)
+{
+    if (!s_native_enabled) return false;
+    /* The toggle publishes its mode while holding this same lease. A timer
+     * wake before it releases must defer, not turn contention into an RF
+     * fault. Keep ownership through the recursive RF acquisition and model
+     * publication, so a mode change cannot race an opened window. */
+    if (!phy_try_actuator(phy)) return true;
+    if (!s_native_enabled) { phy_end_actuator(); return false; }
+    if (s_paused || s_menu_active) { phy_end_actuator(); return true; }
+    if (control != s_native_control || phy != s_native_phy || calibration_in_startup()) {
+        s_native_enabled = false;
+        dg_reset(&s_gain, rf_gain_table(), s_current_gain);
+        phy_end_actuator();
+        printf("NATIVE_AGC disabled=context_changed owner=direct_gain_v5\n");
+        return false;
+    }
+    int64_t now = esp_timer_get_time();
+    if (now < s_native_next) { phy_end_actuator(); return true; }
+    s_native_next = now + NATIVE_PERIOD_US; /* no catch-up scan burst after a pause */
+    s_native_scanning = true;
+    uint8_t applied = s_current_gain;
+    uint32_t opened = 0;
+    ++s_native_attempts;
+    rf_native_result_t result = rf_native_acquire(phy, &applied, &opened);
+    if (opened > s_native_max_open) s_native_max_open = opened;
+    if (result != RF_NATIVE_REFUSED) {
+        s_current_gain = applied;
+        s_last_gain_write_us = esp_timer_get_time();
+        ++s_gain_epoch;
+        dg_reset(&s_gain, rf_gain_table(), applied);
+    }
+    if (result == RF_NATIVE_LANDING) ++s_native_landings;
+    else {
+        ++s_native_faults;
+        s_native_enabled = false;
+        if (result == RF_NATIVE_RESTORE_FAILED) s_paused = true;
+    }
+    s_native_scanning = false;
+    phy_end_actuator();
+    if (result != RF_NATIVE_LANDING)
+        printf("NATIVE_AGC disabled=result_%u owner=%s open_us=%lu\n", (unsigned)result,
+               s_paused ? "FAULT_PAUSED" : "direct_gain_v5", (unsigned long)opened);
+    return s_native_enabled || s_paused;
 }
 
 bool receiver_paused(void) { return s_paused; }
@@ -69,27 +195,45 @@ void receiver_set_gain(uint8_t gain)
 
 static void apply_target(uint8_t target, uint32_t control, uint32_t phy)
 {
-    if (phy != phy_generation() || phy_busy() || control != s_control_epoch || !receiver_active()) return;
+    if (s_native_enabled || phy != phy_generation() || phy_busy() || control != s_control_epoch || !receiver_active()) return;
     if (target == s_current_gain) return;
     const arc_gain_table_t *t = rf_gain_table();
     if (target < 2u) target = 2u;
     if (target > t->max_index) target = t->max_index;
+    /* Toggle and write share PHY ownership. A task preemption between the
+     * first mode check and the write must not let Direct Gain fight native. */
+    if (!phy_try_actuator(phy)) return;
+    if (s_native_enabled || control != s_control_epoch || !receiver_active()) {
+        phy_end_actuator();
+        return;
+    }
     /* A busy or changed PHY must not leave software ahead of hardware. */
     if (!rf_set_gain(target, phy)) {
         dg_sync_applied(&s_gain, s_current_gain, (uint64_t)esp_timer_get_time());
+        phy_end_actuator();
         return;
     }
     s_current_gain = target;
     s_last_gain_write_us = esp_timer_get_time();
     ++s_gain_epoch;
     dg_sync_applied(&s_gain, target, (uint64_t)s_last_gain_write_us);
+    phy_end_actuator();
 }
 
 int receiver_obs_cn_x10(void)
 {
     /* Envelope model (cn_estimate.h); a fixed IQ point has no envelope to
      * judge and read 14-20 dB in the coherence model with no VTX at all. */
-    return s_obs_stuck ? CN_UNKNOWN_X10 : cn_estimate_env_x10(s_obs_env_ratio_x100, calibration_filter_class_mhz());
+    uint32_t seq = s_cn_sequence;
+    __sync_synchronize();
+    cn_observation_t o = s_cn;
+    __sync_synchronize();
+    if ((seq & 1u) || seq != s_cn_sequence || s_obs_stuck || !receiver_active() ||
+        !cn_gain_settled((uint64_t)esp_timer_get_time(), (uint64_t)s_last_gain_write_us,
+                         s_gain.state == DG_SETTLE) ||
+        !cn_observation_fresh(&o, (uint64_t)esp_timer_get_time(), s_gain_epoch, s_control_epoch,
+                             phy_generation(), rf_table_generation())) return CN_UNKNOWN_X10;
+    return cn_estimate_env_x10(o.ratio, calibration_filter_class_mhz());
 }
 
 static void tick_cb(void *arg)
@@ -109,16 +253,8 @@ static void sentinel_task(void *arg)
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         if (!receiver_active() || s_overload_state || s_rx_dma_ch < 0 || s_rx_node_count < 2) continue;
         uint32_t gain_epoch = s_gain_epoch, control = s_control_epoch, phy = phy_generation();
-        int active = ring_node_index(AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val);
-        if (active < 0) continue;
-        int idx = (active - 1 + s_rx_node_count) % s_rx_node_count;
-        uint8_t *src = s_rx_nodes[idx].buffer;
-        if (!src || s_rx_nodes[idx].length < CONTROL_BYTES) continue;
-        sync_dma_m2c(src + 1984u, sizeof(sample));
-        memcpy(sample, src + 1984u, sizeof(sample));
-        if (ring_node_index(AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val) == idx ||
-            gain_epoch != s_gain_epoch) continue;
-        dg_observation_t o = dg_measure(sample, sizeof(sample), c5vrx_phase8_gain_lut,
+        if (!copy_sentinel_window(sample) || gain_epoch != s_gain_epoch) continue;
+        dg_observation_t o = dg_measure_gain(sample, sizeof(sample), c5vrx_phase8_gain_lut,
                                         (uint64_t)esp_timer_get_time());
         if (o.clip_pm < 125u && o.p95 < 95u) continue;
         if (control != s_control_epoch || phy != phy_generation() || phy_busy()) continue;
@@ -140,8 +276,19 @@ static void observer_task(void *arg)
     uint32_t seen_control = UINT32_MAX, seen_table = UINT32_MAX, seen_phy = UINT32_MAX;
     bool was_active = false;
     int last_node = -1;
+    int64_t runnable_since = esp_timer_get_time();
     for (;;) {
+        int64_t before_wait = esp_timer_get_time();
+        if (before_wait - runnable_since >= 800) {
+            /* taskYIELD cannot let priority-0 IDLE run. A real block can.
+             * Do not disable/feed its watchdog to hide CPU saturation. */
+            vTaskDelay(1);
+            before_wait = runnable_since = esp_timer_get_time();
+        }
         (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+        /* IRQ time can make an already-pending notification look like a
+         * blocked wait. Only the explicit delay above resets our runnable
+         * budget, so periodic sync IRQs cannot suppress the IDLE opportunity. */
         if (!receiver_active()) {
             was_active = false;
             if (__sync_bool_compare_and_swap(&s_overload_state, 2u, 1u))
@@ -149,16 +296,12 @@ static void observer_task(void *arg)
             continue;
         }
         uint32_t control = s_control_epoch, table = rf_table_generation(), phy = phy_generation();
+        const dg_map_context_t context = map_context();
+        bool native_owner = native_tick(control, phy);
+        if (s_paused) continue;
         if (!was_active || control != seen_control || table != seen_table || phy != seen_phy ||
-            s_gain.current_gain != s_current_gain) {
-            dg_reset(&s_gain, rf_gain_table(), s_current_gain);
-            /* A fresh boot starts from the persisted map, not the model. */
-            if (!s_gain.learned && s_gain_map_saved_valid && dg_import_map(&s_gain, &s_gain_map_saved))
-                ++s_map_imports;
-            else if (!s_gain.learned && GAIN_MAP_PRESET_BOARDS &&
-                     dg_import_preset(&s_gain, c5vrx5_gain_map_preset_q10, GAIN_MAP_PRESET_MAX_INDEX + 1u,
-                                      GAIN_MAP_PRESET_MAX_INDEX, GAIN_MAP_PRESET_BAND5))
-                ++s_preset_imports;
+            s_gain.current_gain != s_current_gain || !dg_map_matches(&s_gain, rf_gain_table(), &context)) {
+            gain_map_bind(&context, control, phy, table);
             seen_control = control;
             seen_table = table;
             seen_phy = phy;
@@ -171,8 +314,12 @@ static void observer_task(void *arg)
                            s_overload_control_epoch == control && s_overload_phy == phy &&
                            (uint64_t)esp_timer_get_time() - o.observed_us <= 1000u;
             __sync_lock_release(&s_overload_state);
+            if (current && native_owner) {
+                s_native_enabled = native_owner = false;
+                printf("NATIVE_AGC disabled=overload owner=direct_gain_v5\n");
+            }
             if (current) apply_target(dg_tick(&s_gain, &o), control, phy);
-            continue;
+            if (!native_owner) continue;
         }
         uint32_t gain_epoch = s_gain_epoch;
         int node = -1;
@@ -181,20 +328,40 @@ static void observer_task(void *arg)
         if (node == last_node) continue;
         last_node = node;
         const int64_t t0 = esp_timer_get_time();
-        dg_observation_t o = dg_measure(sample, sizeof(sample), c5vrx_phase8_gain_lut, (uint64_t)t0);
+        cn_observation_t previous_cn = s_cn; /* sole writer: observer */
+        bool measure_cn = cn_gain_settled((uint64_t)t0, (uint64_t)s_last_gain_write_us,
+                                         s_gain.state == DG_SETTLE) &&
+                         (!cn_observation_fresh(&previous_cn, (uint64_t)t0, gain_epoch, control, phy, table) ||
+                          (uint64_t)t0 - previous_cn.us >= CN_OBSERVE_PERIOD_US);
+        dg_observation_t o = measure_cn ? dg_measure(sample, sizeof(sample), c5vrx_phase8_gain_lut, (uint64_t)t0) :
+                                         dg_measure_gain(sample, sizeof(sample), c5vrx_phase8_gain_lut, (uint64_t)t0);
         s_obs_p50 = o.p50;
         s_obs_p95 = o.p95;
         s_obs_origin_pm = o.origin_pm;
         s_obs_clip_pm = o.clip_pm;
         s_obs_coherence = o.coherence;
         s_obs_stuck = dg_stuck(&o);
-        s_obs_env_ratio_x100 = o.env_ratio_x100;
-        if (phy != phy_generation() || phy_busy()) continue;
+        const dg_map_context_t after_context = map_context();
+        if (phy != phy_generation() || phy_busy() || gain_epoch != s_gain_epoch || control != s_control_epoch ||
+            table != rf_table_generation() || !dg_map_context_equal(&context, &after_context)) continue;
+        if (native_owner && (o.clip_pm >= 125u || o.p95 >= 95u)) {
+            s_native_enabled = native_owner = false;
+            printf("NATIVE_AGC disabled=overload owner=direct_gain_v5\n");
+        }
+        if (measure_cn) {
+            ++s_cn_sequence;
+            __sync_synchronize();
+            s_cn = (cn_observation_t){gain_epoch, control, phy, table, (uint64_t)t0, o.env_ratio_x100};
+            s_obs_env_ratio_x100 = o.env_ratio_x100;
+            __sync_synchronize();
+            ++s_cn_sequence;
+            ++s_cn_windows;
+        }
         /* Learn the gain map only from a real VTX: burst-confirmed sync seen
          * by the AFC within the last 500 ms (never from receiver noise). */
         const int64_t video = s_last_video_us;
         s_gain.learn_enabled = video != 0 && t0 - video < 500000;
-        apply_target(dg_tick(&s_gain, &o), control, phy);
+        if (!native_owner) apply_target(dg_tick(&s_gain, &o), control, phy);
         uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
         if (us > s_obs_us_max) s_obs_us_max = us;
         ++s_obs_windows;
@@ -204,8 +371,7 @@ static void observer_task(void *arg)
 void receiver_start(void)
 {
     s_gain_map_saved_valid = blob_load("gain_map", &s_gain_map_saved, sizeof(s_gain_map_saved)) &&
-                             s_gain_map_saved.version == DG_MAP_VERSION &&
-                             s_gain_map_saved.freq_mhz == rf_frequency_mhz();
+                             s_gain_map_saved.version == DG_MAP_VERSION && s_gain_map_saved.context_valid;
     ESP_ERROR_CHECK(xTaskCreate(observer_task, "gain_obs", 4096, NULL, 3, &s_observer) == pdPASS ?
                     ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xTaskCreate(sentinel_task, "gain_fast", 3072, NULL, 4, &s_sentinel) == pdPASS ?
@@ -218,10 +384,18 @@ void receiver_start(void)
 
 void receiver_print(void)
 {
-    printf("GAIN owner=direct_gain_v5 gain=%u state=%u p50=%d p95=%d coherence=%d env_x100=%d stuck=%u cn_x10=%d origin_pm=%d clip_pm=%d "
+    printf("NATIVE_AGC enabled=%u scanning=%u period_us=%u timeout_us=%u attempts=%lu landing_candidates=%lu "
+           "faults=%lu max_open_us=%lu completed_scans=UNVERIFIED ram_only=1\n",
+           s_native_enabled, s_native_scanning, NATIVE_PERIOD_US, NATIVE_TIMEOUT_US,
+           (unsigned long)s_native_attempts, (unsigned long)s_native_landings,
+           (unsigned long)s_native_faults, (unsigned long)s_native_max_open);
+    printf("CN_OBSERVER windows=%lu period_us=%u max_age_us=%u\n", (unsigned long)s_cn_windows,
+           CN_OBSERVE_PERIOD_US, CN_OBSERVE_MAX_AGE_US);
+    printf("GAIN owner=%s gain=%u state=%u p50=%d p95=%d coherence=%d env_x100=%d stuck=%u cn_x10=%d origin_pm=%d clip_pm=%d "
            "writes=%lu holds=%lu overloads=%lu bursts=%lu fade_holds=%lu damp=%lu map_learned=%lu learn_refused=%lu "
            "map_imports=%lu preset_imports=%lu "
            "obs_windows=%lu obs_us_max=%lu\n",
+           s_native_enabled ? "native_acquire_hold" : s_paused ? "paused" : "direct_gain_v5",
            s_current_gain, (unsigned)s_gain.state, s_obs_p50, s_obs_p95, s_obs_coherence, s_obs_env_ratio_x100,
            (unsigned)s_obs_stuck, receiver_obs_cn_x10(),
            s_obs_origin_pm, s_obs_clip_pm, (unsigned long)s_gain.writes, (unsigned long)s_gain.holds,
@@ -235,7 +409,8 @@ void receiver_print(void)
 void receiver_print_map(void)
 {
     dg_map_blob_t blob;
-    unsigned n = dg_export_map(&s_gain, &blob);
+    unsigned n = receiver_export_gain_map(&blob);
+    if (!n) { printf("GAINMAP refused=unsettled_or_changed_context\n"); return; }
     printf("GAINMAP v=%u max=%u band5=%u freq=%u entries=%u", DG_MAP_VERSION, blob.max_index, blob.band5,
            rf_frequency_mhz(), n);
     for (unsigned k = 0; k <= blob.max_index && k < DG_STATES; ++k)

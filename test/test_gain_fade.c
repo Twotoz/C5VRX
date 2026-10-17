@@ -24,10 +24,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gain.h"
+#include "profile_logic.h"
+#include "cn_estimate.h"
+#include "phase8_gain_lut.h"
 
 unsigned char phy_param[2048];     /* arc_phy.c reference; unused for the 5 GHz table */
 
+#ifndef TICK_US
 #define TICK_US 200u
+#endif
 static direct_gain_t g;
 static arc_gain_table_t table;
 static double s_db[DG_STATES];
@@ -202,7 +207,7 @@ int main(void)
         check("envelope ratio ignores DC on both IQ axes", dc_env.env_ratio_x100 == env.env_ratio_x100);
         /* Check translated raw moments against a direct DC-centred oracle,
          * including asymmetric means, correlated axes and short windows. */
-        bool moments_ok = true;
+        bool moments_ok = true, fast_ok = true;
         uint32_t seed = 19;
         for (unsigned trial = 0; trial < 64u; ++trial) {
             size_t count = 1u + trial * 4u;
@@ -225,9 +230,34 @@ int main(void)
             double ratio = mp <= 0 ? 0 : var > 0 ? 100 * mp * mp / var : 65535;
             int expected = ratio > 65535 ? 65535 : (int)(ratio + .5);
             dg_observation_t measured = dg_measure(envelope, count, lut, 1000);
+            dg_observation_t fast = dg_measure_gain(envelope, count, lut, 1000);
+            fast_ok = fast_ok && fast.env_ratio_x100 == 0 && fast.p50 == measured.p50 && fast.p90 == measured.p90 &&
+                      fast.p95 == measured.p95 && fast.origin_pm == measured.origin_pm && fast.clip_pm == measured.clip_pm &&
+                      fast.coherence == measured.coherence && fast.repeat_pm == measured.repeat_pm &&
+                      fast.span == measured.span && fast.observed_us == measured.observed_us;
             moments_ok = moments_ok && abs((int)measured.env_ratio_x100 - expected) <= 1;
         }
         check("integer envelope moments match the centred oracle (64 asymmetric/correlated probes)", moments_ok);
+        check("fast sentinel preserves all gain evidence on 64 probes", fast_ok);
+        for (unsigned k = 0; k < 256u; ++k) {
+            double phase = 6.283185307179586 * k * 7500000. / 40000000.;
+            int ci = (int)floor(4.2 * cos(phase)), cq = (int)floor(4.2 * sin(phase));
+            envelope[k] = (uint8_t)(((unsigned)ci & 15u) << 4 | ((unsigned)cq & 15u));
+        }
+        dg_observation_t high_fm = dg_measure(envelope, sizeof(envelope), c5vrx_phase8_gain_lut, 1000);
+        check("fast clean FM is low-coherence but usable for deviation measurement",
+              high_fm.coherence < 80 && dev_gain_usable(high_fm.p50, high_fm.clip_pm, true) &&
+              cn_estimate_env_x10(high_fm.env_ratio_x100, 12) >= DEV_MONITOR_MIN_CN_X10);
+        dg_reset(&g, &table, 60);
+        bool stable_fast = true;
+        for (unsigned k = 0; k < 100u; ++k) {
+            high_fm.observed_us = 1000u + k * TICK_US;
+            stable_fast = stable_fast && dg_tick(&g, &high_fm) == 60 && g.state == DG_HOLD;
+        }
+        check("healthy fast FM reaches HOLD without gain writes", stable_fast && g.writes == 0);
+        check("deviation power/clip/held-gain protections remain",
+              !dev_gain_usable(12, 0, true) && !dev_gain_usable(33, 0, true) &&
+              !dev_gain_usable(20, 1, true) && !dev_gain_usable(20, 0, false));
         /* A strong clean carrier: radius 4 cells, slow rotation, so most
          * neighbours repeat, but the circle spans many codes (board, G27). */
         uint8_t circle[256];

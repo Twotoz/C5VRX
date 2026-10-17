@@ -1,0 +1,64 @@
+{
+  "toolchain": "espressif/idf:v6.0.2",
+  "optimization": "-O2",
+  "source_sha256": {
+    "main/sync_flywheel.c": "58f5c80fdebd05c34c1664314dfdfd37bdabde5f63f1eaf47acc9ccfe46ac3c6",
+    "main/sync_flywheel.h": "504301ccb000aee3df977c63d17799ea9ed87f1a52a5813ded796c647d627ce7",
+    "main/sync_synth.h": "d59c790c457e03dad1d3f816322df930b505f99adc2d1f7df09e6d8c78e7d533",
+    "main/sync_repair_ledger.h": "1b55803daf525d90d73feb303060413ca30879367d9ac45ce629860a0052d064"
+  },
+  "note": "Static assembly only; no C5 timing, instruction CPI or WCET assumption",
+  "cycle_budget_per_PAL_line_at_240MHz": 15360,
+  "cycle_budget_per_NTSC_line_at_240MHz": 15253.333333333334,
+  "synthesized_H_plus_front_porch_bytes_per_second": 3687500,
+  "symbols": [
+    {
+      "address": "00000000",
+      "symbol": "lowm"
+    },
+    {
+      "address": "00000086",
+      "symbol": "build_cells"
+    },
+    {
+      "address": "000001c4",
+      "symbol": "field_done"
+    },
+    {
+      "address": "00000316",
+      "symbol": "original"
+    },
+    {
+      "address": "000003fa",
+      "symbol": "find_pulse"
+    },
+    {
+      "address": "0000069a",
+      "symbol": "synth"
+    },
+    {
+      "address": "00000aae",
+      "symbol": "steady_tip"
+    },
+    {
+      "address": "00000b74",
+      "symbol": "broad_at"
+    },
+    {
+      "address": "00000c64",
+      "symbol": "sfw_init"
+    },
+    {
+      "address": "00000c72",
+      "symbol": "sfw_locked"
+    },
+    {
+      "address": "00000c8a",
+      "symbol": "sfw_standard"
+    },
+    {
+      "address": "00000caa",
+      "symbol": "sfw_run"
+    }
+  ]
+}

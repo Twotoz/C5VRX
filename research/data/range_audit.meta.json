@@ -1,0 +1,32 @@
+{
+  "baseline": "14e190d9",
+  "policy_sha256": "e63b68b43a54df4b713c752dd2a522b9664062976cb6dbc192b6e90da3b43680",
+  "rows": 630,
+  "fields": 1,
+  "seeds": [
+    51,
+    52
+  ],
+  "cnrs": [
+    -2,
+    0,
+    2,
+    4,
+    6,
+    8,
+    10
+  ],
+  "deviations": [
+    0.69,
+    1,
+    1.4,
+    1.7,
+    2
+  ],
+  "families": [
+    "profile",
+    "offset",
+    "quantizer"
+  ],
+  "physical_adc": false
+}

@@ -16,6 +16,11 @@ bool phy_busy(void);
 /* Non-blocking gain/offset ownership without a new generation. */
 bool phy_try_actuator(uint32_t expected_generation);
 void phy_end_actuator(void);
+/* Receive observers invalidate buffered evidence BEFORE a physical change.
+ * Hook must be nonblocking, allocation-free, and must not acquire PHY ownership.
+ * Register once during observer setup; NULL removes it. */
+void phy_set_observation_hook(void (*hook)(void));
+void phy_observation_changed(void);
 
 /* Analog RX filter, after ESPARGOS esp-sdr (GPL-3.0, commit ac627b0b):
  * BBTOP 0x67 regs 6/7 hold the RX0 capacitor code (absolute low six bits),
@@ -47,3 +52,12 @@ esp_err_t phy_dco_hold(int code_i, int code_q);
 bool phy_dco_release(void);
 bool phy_dco_held(void);
 bool phy_dco_nudge(int di, int dq, int out[2]);
+/* Sample the actual current DAC pair twice; no mode change or assumed codes.
+ * try_pair requires the caller's PHY actuator lease and an exact actual
+ * RF/BB/fine match to packed_gain. A one-code trial may enter debug hold.
+ * ESP_OK: target verified; ESP_ERR_INVALID_STATE: refused before writes;
+ * ESP_FAIL: target failed, original pair verified; ESP_ERR_INVALID_RESPONSE:
+ * even original restoration failed. Caller must invalidate sample epochs on
+ * any attempted write and keep a last validated pair until remeasurement. */
+bool phy_dco_read_pair(int out[2]);
+esp_err_t phy_dco_try_pair(uint32_t packed_gain, const int expected[2], const int target[2]);

@@ -62,6 +62,9 @@ int main(void)
     }
     model_t ok = {.fail=-1, .rollback_fail=-1};
     assert(tr_restart(&ok, clean, step, true) == TR_APPLIED && ok.published == 2);
+    assert(OUTPUT_LEVELS == 10);
+    assert((output_entry(19, 8, NULL) & 63u) - (output_entry(15, 8, NULL) & 63u) == 20u);
+    assert((output_entry(25, 9, NULL) & 63u) - (output_entry(17, 9, NULL) & 63u) == 4u);
     for (unsigned l = 0; l < OUTPUT_LEVELS; ++l)
         for (unsigned k = 0; k < KP_LEVELS; ++k)
             for (unsigned i = 0; i < 1024; ++i) {

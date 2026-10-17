@@ -29,6 +29,10 @@ static unsigned s_chunk_count, s_node_capacity, s_node_count;
 volatile int s_menu_cursor;
 /* Status screen: a full-screen message on the menu raster (calibration). */
 static volatile bool s_status;
+static volatile bool s_no_signal;
+static bool s_no_signal_enabled; /* default live snow: never hide camera information automatically */
+static bool s_prepare_no_signal;
+static uint32_t s_no_signal_entries, s_no_signal_returns;
 static char s_status_title[40], s_status_line1[48], s_status_line2[48];
 static volatile int s_status_percent;
 
@@ -143,6 +147,12 @@ void menu_render(void)
     char buf[32];
     const fpv_channel_t *ch = rf_channel();
     if (s_status) { render_status(); return; }
+    if (s_no_signal || s_prepare_no_signal) {
+        memset(s_raster.ui, DAC_IDLE_CODE, sizeof(s_raster.ui));
+        text("NO SIGNAL", (MENU_UI_WIDTH - 16 * 9) / 2, 20, UI_WHITE, 2);
+        sync_dma_c2m(s_raster.ui, sizeof(s_raster.ui));
+        return;
+    }
     memset(s_raster.ui, UI_ROOT, sizeof(s_raster.ui));
     rect(0, 0, MENU_UI_WIDTH, MENU_UI_LINES, UI_PANEL);
     /* Header: name, channel, frequency, gain, signal, standard. */
@@ -220,8 +230,9 @@ void menu_render(void)
     case MENU_OUTPUT:
         title("OUTPUT LEVEL", "HOLD: CHANGE");
         value_box(100, 22, 276, "LEVEL", transport_output_name());
-        text("BOOT: 1.0X   LOAD: 75 OHM", 100, 38, UI_MUTED, 1);
-        text(transport_output() ? "HIGH LEVEL MAY CLIP VIDEO" : "INCREASE FOR WEAK SYNC", 100, 47, UI_WHITE, 1);
+        text("SAVED ON EXIT   LOAD: 75 OHM", 100, 38, UI_MUTED, 1);
+        text(transport_output() == 9 ? "LOW SWING REDUCES CLIPPING" :
+             (transport_output() ? "HIGH LEVEL MAY CLIP VIDEO" : "INCREASE FOR WEAK SYNC"), 100, 47, UI_WHITE, 1);
         break;
     case MENU_CALIBRATE:
         title("CALIBRATE", "HOLD: CALIBRATE NOW");
@@ -298,6 +309,13 @@ static esp_err_t build_chain(video_standard_t standard)
 bool menu_open(void)
 {
     if (s_menu_active) return true;
+    /* Transfer raster ownership without a live restart. RX remains running. */
+    if (s_no_signal) {
+        s_no_signal = false;
+        s_menu_active = true;
+        menu_render();
+        return true;
+    }
     /* Allocate and render before touching live video: if memory is short,
      * flight video keeps running. */
     esp_err_t err = build_chain(menu_standard());
@@ -326,7 +344,7 @@ void menu_close(void)
 void menu_set_standard_mode(std_mode_t mode)
 {
     s_std_mode = mode;
-    if (!s_menu_active) return;
+    if (!s_menu_active && !s_no_signal) return;
     video_standard_t want = menu_standard();
     if (want == s_video_std) { menu_render(); return; }
     video_standard_t previous = s_video_std;
@@ -334,4 +352,51 @@ void menu_set_standard_mode(std_mode_t mode)
     /* PAL needs ~312 more descriptors; without them keep the old standard. */
     if (build_chain(want) != ESP_OK) ESP_ERROR_CHECK(build_chain(previous));
     transport_start_chain(node(0));
+}
+
+bool no_signal_active(void) { return s_no_signal; }
+bool no_signal_enabled(void) { return s_no_signal_enabled; }
+void no_signal_enable(bool enabled) { s_no_signal_enabled = enabled; }
+
+bool no_signal_prepare(void)
+{
+    if (s_no_signal) return true;
+    if (s_menu_active || s_status || receiver_paused() || calibration_in_startup() || transport_faulted()) return false;
+    if (s_node_count && s_video_std == menu_standard()) return true;
+    s_prepare_no_signal = true;
+    esp_err_t err = build_chain(menu_standard());
+    s_prepare_no_signal = false;
+    if (err != ESP_OK) { free_nodes(); return false; }
+    return true; /* prepared while live still runs; no TX/BS/PHY mutation */
+}
+
+bool no_signal_show(void)
+{
+    if (s_no_signal) return true;
+    if (s_menu_active || s_status || receiver_paused() || calibration_in_startup() || transport_faulted() ||
+        transport_kp_level() < 0 || transport_kp_target() < 0) return false;
+    if (!no_signal_prepare()) { printf("NO_SIGNAL refused=not_prepared\n"); return false; }
+    s_no_signal = true;
+    transport_stop_tx(); /* RX stays live: gain and camera-sync detector continue */
+    transport_start_chain(node(0));
+    if (transport_faulted()) { s_no_signal = false; return false; }
+    ++s_no_signal_entries;
+    printf("NO_SIGNAL active=1 standard=%s entries=%lu returns=%lu\n", std_name(s_video_std),
+           (unsigned long)s_no_signal_entries, (unsigned long)s_no_signal_returns);
+    return true;
+}
+
+bool no_signal_end(int level, bool lp)
+{
+    if (!s_no_signal) return true;
+    transport_stop_chain();
+    bool applied = transport_resume_raster(level, lp);
+    s_no_signal = false;
+    ++s_control_epoch; /* RX was restarted; discard pre-restart control evidence */
+    /* Keep descriptors reserved for the next fade, avoiding allocation churn.
+     * They are rebuilt only while GDMA no longer references them. */
+    ++s_no_signal_returns;
+    printf("NO_SIGNAL active=0 standard=%s entries=%lu returns=%lu fault=%u\n", std_name(s_video_std),
+           (unsigned long)s_no_signal_entries, (unsigned long)s_no_signal_returns, transport_faulted());
+    return applied;
 }

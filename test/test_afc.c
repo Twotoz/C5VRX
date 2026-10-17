@@ -63,7 +63,7 @@ static int run(int vtx_khz, double sigma_khz, double seconds, int *locked, unsig
         afc2_ctrl_observe(&c, &r);
         bool was = lock;
         lock = afc2_native_lock(lock, true, afc2_ctrl_can_lock(&c, true), c.n, &lost);
-        if (was && !lock) afc2_ctrl_reset(&c, ctx, true);
+        if (was && !lock) afc2_ctrl_reacquire(&c);
         int32_t step;
         if (!lock && afc2_ctrl_decide(&c, true, &step)) {
             offset += step;
@@ -131,6 +131,50 @@ int main(void)
         for (unsigned w = 0; w <= AFC2_CTRL_MAX_MISSES; ++w) afc2_ctrl_miss(&c);
         snprintf(detail, sizeof(detail), "n=%u", c.n);
         check("more than 1 s without evidence: cleared", c.n == 0u, detail);
+    }
+    {
+        afc2_ctrl_t c = {.target_khz = -1000};
+        afc2_ctrl_reset(&c, 7, true);
+        afc2_result_t good = {.lines = 2, .standard = 2, .polarity = -1,
+                              .sync_pairs = 200, .porch_pairs = 80, .sync_khz = -2914, .porch_khz = -1000};
+        for (unsigned n = 0; n < AFC2_CTRL_SAMPLES; ++n) afc2_ctrl_observe(&c, &good);
+        bool lock = true;
+        uint8_t lost = 0;
+        c.corrections = 3;
+        for (unsigned n = 0; n < AFC2_NATIVE_LOST_WINDOWS; ++n) {
+            afc2_ctrl_miss(&c);
+            bool was = lock;
+            lock = afc2_native_lock(lock, false, false, c.n, &lost);
+            if (was && !lock) afc2_ctrl_reacquire(&c);
+        }
+        check("short fade drops lock but preserves centred estimates", !lock && c.n == AFC2_CTRL_SAMPLES && c.corrections == 0, "4 missing windows");
+        afc2_ctrl_observe(&c, &good);
+        lock = afc2_native_lock(lock, true, afc2_ctrl_can_lock(&c, true), c.n, &lost);
+        check("first valid centred window after the fade re-locks", lock, "no repeated 16-window acquisition");
+        good.standard = 1;
+        afc2_ctrl_observe(&c, &good);
+        check("contradicting standard still clears the old estimate history", c.n == 1, "new NTSC context evidence");
+        for (unsigned n = 0; n <= AFC2_CTRL_MAX_MISSES; ++n) afc2_ctrl_miss(&c);
+        afc2_ctrl_reacquire(&c);
+        check("stale history is never restored by re-acquisition", c.n == 0, "21 misses");
+    }
+    {
+        afc2_ctrl_t c = {.target_khz = -1000, .sign = 1};
+        afc2_ctrl_reset(&c, 1, true);
+        afc2_result_t off = {.lines = 8, .standard = 1, .polarity = -1,
+                             .sync_pairs = 200, .porch_pairs = 300, .sync_khz = -3250, .porch_khz = -1250};
+        for (unsigned n = 0; n < AFC2_CTRL_SAMPLES; ++n) afc2_ctrl_observe(&c, &off);
+        int32_t step = 0;
+        bool stepped = afc2_ctrl_decide(&c, true, &step);
+        afc2_ctrl_sync(&c, 2, true);
+        afc2_result_t centred = off;
+        centred.porch_khz = -1000;
+        for (unsigned n = 0; n < AFC2_CTRL_SAMPLES; ++n) afc2_ctrl_observe(&c, &centred);
+        uint8_t lost = 0;
+        bool lock = afc2_native_lock(false, true, afc2_ctrl_can_lock(&c, true), c.n, &lost);
+        check("single step into deadband confirms sign on lock",
+              stepped && step == -250 && lock && c.sign_state == AFC2_SIGN_CONFIRMED && !c.sign_check,
+              "sign confirmed without needing another decide call");
     }
     printf("%s: %u checks, %u failures\n", s_fail ? "FAIL" : "PASS", s_run, s_fail);
     return s_fail ? 1 : 0;

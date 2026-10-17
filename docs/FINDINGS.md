@@ -640,3 +640,68 @@ depended on C/N window availability.
 These are simulation-derived decision estimates, not independently measured
 RF C/N. After flashing, compare VTX-off and close-VTX logs, kp selection,
 `afc_locked`, and `obs_us_max` to check the added observer cost on the C5.
+
+### Deep firmware range audit after PR #211 (2026-10-13, PR #212)
+
+Full reproduction, assumptions, figures and negative results:
+`docs/FIRMWARE_RANGE_AUDIT.md`. Main baseline `14e190d9` / v5.0.109.
+
+- The B/W AFC line-period fallback was unreachable: pass two dropped
+  no-burst runs. Raw-IQ regression fails 9/19 baseline checks, passes 19/19
+  after retaining shape-confirmed runs with timed polarity evidence.
+- Four misses dropped native lock and fully reset AFC before its 20-miss
+  grace. Reacquire now preserves measurement/sign history; fresh valid sync
+  and strong C/N are mandatory for any correction.
+- Gain HOLD/profile/carrier-DC phase-coherence gates rejected clean fast FM.
+  Retain amplitude/clip, settled gain, actual sync/deviation/envelope gates;
+  remove the waveform-dependent veto. Strong deviation-2.0 probe eligibility
+  at 12 MHz rises from 28-32% to about 85% in actual-C synthetic probes.
+  Remaining filter-AM envelope C/N bias is recorded, not assumed fixed.
+- Short 32-byte RX tail could never supply a full control window. New
+  descriptor selection and exact pointer/time proofs cover control,
+  observer and sentinel. `CONTROL_COPY` separates remaining failure causes.
+- Initialize LP's adaptive hold on boot; skip unused envelope moments in
+  sentinel. Hardware copy rates/observer timing remain to be measured.
+- Four-seed physical-ADC model: deviation 1.0 residual offset +/-1.5 MHz
+  costs 3.0-4.8 dB in the synthetic threshold. Deviation 2.0 normal-12 versus
+  wide-16 MHz at actual LP targets costs about 3 dB. Do not add overlapping
+  losses or treat these as measured sensitivity/distance improvement.
+  Deviation-1.7 apparent filter benefit did not survive held-out tests;
+  simply increasing ADC level is not a large robust win.
+- Issue #213: `B` is manual unchanged live-only restart, without OSD, using
+  guarded verified restart/rollback and shared cooldown. Compare OSD/live
+  restart/LCD reset and scope loaded CVBS. Following operator clarification,
+  automatic black PAL/NTSC NO SIGNAL raster is now implemented after four
+  observed negative windows / 8 ms; first confirmed sync resumes live.
+  RX/gain continue, missing copies and busy contexts do not count as loss.
+  A nominal 2 ms integer sync watchdog uses 8190-byte snapshots, independently
+  of the 50 ms gain/AFC cadence. Prewarm the raster while live runs; reuse
+  prepared timing. Actual work/gap/coverage/stack is in `VIDEO_WATCH`.
+  81920 placed clean PAL/NTSC/colour/BW/deviation scenes pass, along with noise
+  and false-pulse rejection. CPU deadlines/weak-signal coverage need hardware.
+  Handoff is bounded but interrupted, not camera-field aligned. Last-field
+  freeze needs a new decoded-video capture path and much more native RAM.
+- Issues #199/#200 closed against merged fixes and recorded board success.
+  #201/#213 remain open for actual RF/luma/display and LCD validation.
+
+19 host C test executables, five diagnostic-log tests and warning-free IDF
+6.0.2 build pass. No controlled range/LCD acceptance test exists.
+
+### Operator clarification and watchdog log (2026-10-13)
+
+Operator confirms the monitor's own No Signal message at range, and wants
+real snow/weak image fragments with repaired sync, not generated content.
+Black fallback now defaults OFF; `N` is an opt-in bench mode. See
+`docs/SYNC_KEEPER.md`: synthetic-IQ blanking plus real active IQ is a host
+prototype, not live firmware. Exact timing preserves active IQ and interior
+DAC in these cases; 2 us timing error replaces about 4% of active IQ.
+
+Supplied startup log: repeated IDLE watchdog/gain_obs reports before any
+VIDEO_WATCH sample, gain_obs 97427 windows by uptime 38 s, calibration delayed
+until around that time, control_copy failures 0 / max 25 us. CPU saturation
+is distinct from a measured RF desensitization or LCD diagnosis. Timer now
+wakes gain/sentinel at 200 us, with mostly cheap gain-only measurements and
+800-us runnable-batch budget / one-tick block. Uniform 1-ms sampling was
+rejected (modeled sustained -22 dB recovery 52 ms versus 20.4). Full envelope
+every 20 ms has context/age guard (40-ms expiry). Watchdog remains
+enabled; the next board log must verify idle/startup and CPU headroom.

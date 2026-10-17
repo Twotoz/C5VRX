@@ -58,7 +58,7 @@ typedef struct {
     int32_t sync_khz;        /* mean instantaneous frequency of the sync tips */
     int32_t porch_khz;       /* mean instantaneous frequency, burst-free porch */
     uint32_t sync_pairs, porch_pairs;
-    uint8_t standard;        /* 0 unknown / no burst, 1 NTSC, 2 PAL */
+    uint8_t standard;        /* 0 unknown, 1 NTSC, 2 PAL (burst or line timing) */
     uint16_t burst_x10;      /* mean burst amplitude in phase codes x10 */
     uint16_t period_40m;     /* measured accepted-run spacing; 0 without two agreeing runs */
     uint16_t width_40m;      /* mean accepted sync width, smoothed detector */
@@ -266,7 +266,19 @@ static inline afc2_result_t afc2_measure(const uint8_t *s, size_t n,
                     size_t end = pend_k[p] - AFC2_DELAY;
                     unsigned evidence = afc2_run_score(s, n, end, lut, &std_id, &amp);
                     score[p] += evidence;
-                    if (evidence && acc_n[p] < AFC2_MAX_RUNS) {
+                    /* Keep shape-confirmed runs without a burst: the old
+                     * gate made the later B/W timing fallback unreachable.
+                     * A correctly spaced pair also votes for the polarity;
+                     * one unconfirmed run does not. */
+                    if (acc_n[p] < AFC2_MAX_RUNS) {
+                        if (acc_n[p]) {
+                            const unsigned prev = acc_n[p] - 1u;
+                            const size_t start = end - pend_len[p];
+                            const size_t before = acc_end[p][prev] - acc_len[p][prev];
+                            const size_t period = start - before;
+                            if ((period >= 2554u && period <= 2568u) ||
+                                (period >= 2532u && period <= 2550u)) score[p] += 3u;
+                        }
                         acc_end[p][acc_n[p]] = end;
                         acc_len[p][acc_n[p]] = pend_len[p];
                         ++acc_n[p];

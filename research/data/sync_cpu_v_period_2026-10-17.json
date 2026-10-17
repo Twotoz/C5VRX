@@ -1,0 +1,382 @@
+{
+  "project": "C5VRX by Twotoz and contributors",
+  "date": "2026-10-17",
+  "schema": 1,
+  "scope": "Host CPU memory-writer prototype only. Current hardware GPIO-output-enable flywheel backend does not execute this core. These results prove no board timing, CVBS waveform, camera acquisition, monitor lock or RF range.",
+  "environment": {
+    "image": "espressif/idf:v6.0.2",
+    "compiler": "container host cc",
+    "flags": "-O2 -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -Imain",
+    "commit_mode": "SFW_COMMIT=1"
+  },
+  "baseline": {
+    "revision": "668fa64f88e89fdb0ad0843f460aa048a4ee180b",
+    "method": "git archive 668fa64 on Windows; mount tar read-only in a fresh pinned Docker container; extract into /tmp/baseline. Compile and run there, independently of modified worktree.",
+    "archive_sha256": "4894894f6af2cd6fee2d640f5f42bce670830a122306e32973f01f1b5d2b9c95",
+    "verified_failures": [
+      {
+        "kp_index": 0,
+        "clock_ppm": 50,
+        "assertion": "test_sync_flywheel.c:781: f.acquisitions == 1u && f.vsyncs >= 2u",
+        "metrics": {
+          "returned_standard": "NTSC",
+          "acquisitions": 1,
+          "vsyncs": 1,
+          "clean": 854,
+          "locked": true
+        },
+        "following_failure_if_count_assertion_bypassed": "preserve_picture_from: active overwrite at sample3337742, field5.0014, half2624, x_us30.975, input21/output11"
+      },
+      {
+        "kp_index": 0,
+        "clock_ppm": -50,
+        "assertion": "test_sync_flywheel.c:452: f.repaired == 0 && f.slots_repaired == 0 && f.relocks == 0",
+        "phase": "PAL clean scene"
+      },
+      {
+        "kp_index": 7,
+        "clock_ppm": 50,
+        "assertion": "test_sync_flywheel.c:781 cold-return V count, before later scenarios"
+      }
+    ],
+    "control": {
+      "kp_index": 0,
+      "clock_ppm": 0,
+      "full_suite": "PASS"
+    },
+    "cause": "The first acquired V schedules the next field with nominal coast_period_q16. A later H frequency fit changes coast_period_q16 without correcting the already-scheduled V deadline. At +50ppm NTSC that deadline remains roughly33 input samples early, so later first-broad checks reject and repairs can touch picture.",
+    "instrumentation_scope": "Counters and V scheduling prints existed only in extracted temporary baseline trees. No assertions were weakened in committed tests."
+  },
+  "fix": {
+    "file": "main/sync_flywheel.c",
+    "function": "observe_clock",
+    "description": "When a qualified H fit changes coast_period_q16, adjust the pending unarmed V deadline by (new_period-old_period)*(625 PAL or525 NTSC)/2. Never move an already-armed vertical train.",
+    "assertions_changed": false,
+    "state_added": false,
+    "sources_sha256": {
+      "main/sync_flywheel.c": "14571bf63729eec8e0f1a589142474237d61ae664416ff6bfdfcbf47bfad995d",
+      "main/sync_flywheel.h": "1d0eaa9ecd14a8f1d54ff2d11a4d9b12f34463eac2402ca6353b97ce14855cf9",
+      "test/test_sync_flywheel.c": "fd5b23ae1377c2cefbec5c264d1d7072acfdf921629fcfb73cac5cb334e48ce7",
+      "main/kp_tables.h": "d886f2ea25f461c473e9ac58861f4b792185fccea84d5dd19b0f1a5413bd2143",
+      "main/phase8_gain_lut.h": "1e5ea1afe636a365b502fe54e77d4dac7c6c422cd0f8edab190c074f315c433e"
+    }
+  },
+  "matrix": {
+    "cases": 28,
+    "passed": 27,
+    "failed": 1,
+    "cases_definition": "8 kp indices x clock ppm0,+50,-50 at output0, plus kp indices0,7 x outputs8,9 at ppm0. Every case runs complete original test_sync_flywheel main.",
+    "logs_location": "Operator-local temporary directory c5vrx-sfw-v-period-results; hashes below identify full logs without adding raw log bulk to repository.",
+    "results": [
+      {
+        "kp": 0,
+        "ppm": 0,
+        "output": 0,
+        "exit": 0,
+        "log": "kp0-ppm0-output0.log",
+        "log_sha256": "beea258248682441f194abf67cf616c0bd276f01702c6362c519808e2783ccd1",
+        "log_bytes": 4869,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 0,
+        "ppm": 50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp0-ppm50-output0.log",
+        "log_sha256": "89fcbd5c65294bd84f11204ceeb2aa13ba243e480d9af308990fdd5ba7f51d52",
+        "log_bytes": 4872,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 0,
+        "ppm": -50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp0-ppm-50-output0.log",
+        "log_sha256": "9c90e522f7446048961f4dd9a1b5fd37844a762264fd57de902025b9ee4e1712",
+        "log_bytes": 4872,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 1,
+        "ppm": 0,
+        "output": 0,
+        "exit": 0,
+        "log": "kp1-ppm0-output0.log",
+        "log_sha256": "259c6acaccae35c762135da057b13773148095e54971182bbd1dee658590ab0e",
+        "log_bytes": 4869,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 1,
+        "ppm": 50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp1-ppm50-output0.log",
+        "log_sha256": "2bbce3fb5ef3b9c74d1fa8d7c41e97e9645d00056222dfc47de34ceebbac599e",
+        "log_bytes": 4872,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 1,
+        "ppm": -50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp1-ppm-50-output0.log",
+        "log_sha256": "8d9a15aba3de6c42f3ee3d59b6deff77d2b915c10b578f4c57771ed8c3620a23",
+        "log_bytes": 4872,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 2,
+        "ppm": 0,
+        "output": 0,
+        "exit": 0,
+        "log": "kp2-ppm0-output0.log",
+        "log_sha256": "095db262f08d53d15b5fa82a4908eac43c28d5240d405bd291834b92c77e5ffe",
+        "log_bytes": 4869,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 2,
+        "ppm": 50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp2-ppm50-output0.log",
+        "log_sha256": "fd54e1f1dbd5fa9950cb33f311b14b35c75f7aeadee6565f4a5e68280abf3c7b",
+        "log_bytes": 4872,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 2,
+        "ppm": -50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp2-ppm-50-output0.log",
+        "log_sha256": "b8eba5ed362d1532b210f223eda7d8280a9890baabd5de29cb339a1a72c2c39d",
+        "log_bytes": 4872,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 3,
+        "ppm": 0,
+        "output": 0,
+        "exit": 0,
+        "log": "kp3-ppm0-output0.log",
+        "log_sha256": "1e57442d2513ac96d49435945c3225f7599e2a79b88983203bc28a0674cb8e38",
+        "log_bytes": 4869,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 3,
+        "ppm": 50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp3-ppm50-output0.log",
+        "log_sha256": "a5707a5f01cd3462608362814abaaa021bc5c5dd060e87892569b2b97425971f",
+        "log_bytes": 4872,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 3,
+        "ppm": -50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp3-ppm-50-output0.log",
+        "log_sha256": "01809bab14c41d62cb9dd0254249ee1de6dd4b22b8614ee6948771238eb37dc4",
+        "log_bytes": 4872,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 4,
+        "ppm": 0,
+        "output": 0,
+        "exit": 0,
+        "log": "kp4-ppm0-output0.log",
+        "log_sha256": "bafab86957104ce0ced3edf348e322df258db5ca746571181ddc7dd333f93f07",
+        "log_bytes": 4869,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 4,
+        "ppm": 50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp4-ppm50-output0.log",
+        "log_sha256": "0f5ec88110a7594f8c3d3c8be9228921e92d4780efc63b204dfeba5dc410af5c",
+        "log_bytes": 4873,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 4,
+        "ppm": -50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp4-ppm-50-output0.log",
+        "log_sha256": "8eb994434d55dd33586f20dd0ced9d2119a646093365b3e7936f5f2f17fa09ce",
+        "log_bytes": 4873,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 5,
+        "ppm": 0,
+        "output": 0,
+        "exit": 0,
+        "log": "kp5-ppm0-output0.log",
+        "log_sha256": "cea242244e260852c6aa8f7f742c0e8ab2e8c9ec850fe4f570ce382ff313e1a3",
+        "log_bytes": 5227,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 5,
+        "ppm": 50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp5-ppm50-output0.log",
+        "log_sha256": "b74ee65bc8a751a860b3aacfcad2d907c16b58922129b1ba03326562da385429",
+        "log_bytes": 5229,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 5,
+        "ppm": -50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp5-ppm-50-output0.log",
+        "log_sha256": "02467be2a78674b91ab9d70a540695d1cadc3bbcc61facb833a0705f3d687eb1",
+        "log_bytes": 5231,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 6,
+        "ppm": 0,
+        "output": 0,
+        "exit": 0,
+        "log": "kp6-ppm0-output0.log",
+        "log_sha256": "a77e0e55b30c15a013b6666faf148eb10a6780c7f347afd104beeee800eed298",
+        "log_bytes": 5213,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 6,
+        "ppm": 50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp6-ppm50-output0.log",
+        "log_sha256": "a35fe534d38b7ba59b9180186d5b255e9f0b55d4c0f583a716e2617f171260da",
+        "log_bytes": 5215,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 6,
+        "ppm": -50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp6-ppm-50-output0.log",
+        "log_sha256": "772e059b991e305fd37dd0e12dced188194b7cef0e6770b2fe524388f8ea356c",
+        "log_bytes": 5217,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 7,
+        "ppm": 0,
+        "output": 0,
+        "exit": 0,
+        "log": "kp7-ppm0-output0.log",
+        "log_sha256": "992e943bea4c47e8ee710563d58ceeddbfd9f50cff68697e7b86fdc4821cb02f",
+        "log_bytes": 5213,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 7,
+        "ppm": 50,
+        "output": 0,
+        "exit": -6,
+        "log": "kp7-ppm50-output0.log",
+        "log_sha256": "4a34be60cd4fcaf6619576925ab25251b89fd0735c4b0b171933f1a818ce414c",
+        "log_bytes": 4331,
+        "final_line": "test_sync_flywheel: test/test_sync_flywheel.c:564: scenario: Assertion `v.missing == 0 && v.bad_width == 0 && v.max_edge <= 15u' failed.",
+        "selected_lines": [
+          "NTSC weak align=0: input ok 0/1358 -> output ok 1356/1358 (missing 2, bad width 0, max edge 15)",
+          "test_sync_flywheel: test/test_sync_flywheel.c:564: scenario: Assertion `v.missing == 0 && v.bad_width == 0 && v.max_edge <= 15u' failed."
+        ]
+      },
+      {
+        "kp": 7,
+        "ppm": -50,
+        "output": 0,
+        "exit": 0,
+        "log": "kp7-ppm-50-output0.log",
+        "log_sha256": "864fe0ba31b4e50cc76b71b534ed57c6202a247438cba85e17882f2cecb120a8",
+        "log_bytes": 5217,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 0,
+        "ppm": 0,
+        "output": 8,
+        "exit": 0,
+        "log": "kp0-ppm0-output8.log",
+        "log_sha256": "a79ac17af1e6fddf50f177bc5e66050c3741b143ad71c9b7c5285540d8664de4",
+        "log_bytes": 4868,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 0,
+        "ppm": 0,
+        "output": 9,
+        "exit": 0,
+        "log": "kp0-ppm0-output9.log",
+        "log_sha256": "c226d103798a78cfd98cc5631cfb67c5dbe0c0ecb69a725ec6de7676ab6ce4cb",
+        "log_bytes": 4870,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 7,
+        "ppm": 0,
+        "output": 8,
+        "exit": 0,
+        "log": "kp7-ppm0-output8.log",
+        "log_sha256": "212a395777f66e9aaf50d2e331a1d361a27e68ca7f88431764e5972300b822fb",
+        "log_bytes": 5209,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      },
+      {
+        "kp": 7,
+        "ppm": 0,
+        "output": 9,
+        "exit": 0,
+        "log": "kp7-ppm0-output9.log",
+        "log_sha256": "6d401f726cb2a616a7fe5ec65f632b61b3afc18110e94ea85f959d3b8a0c905e",
+        "log_bytes": 5214,
+        "final_line": "PASS sync_flywheel: valid received sync untouched, actual-kp H/V repairs preserve active content at both parities, loss holdover and real re-lock"
+      }
+    ]
+  },
+  "remaining_failure": {
+    "kp_index": 7,
+    "kp_x100": 50,
+    "clock_ppm": 50,
+    "output_index": 0,
+    "scenario": "weak NTSC scene, amplitude1.5/noise0.9 during fields3..9, seed23",
+    "assertion": "scenario weak align0: v.missing == 0 && v.bad_width == 0 && v.max_edge <= 15u",
+    "metrics": {
+      "checked": 1358,
+      "valid": 1356,
+      "missing": 2,
+      "bad_width": 0,
+      "max_edge_samples": 15
+    },
+    "baseline_reproduced": true,
+    "baseline_method": "Extract unchanged668fa64. Reduce scenario() to original weak section with identical seed23 and setup, skip cold_boot and PAL scenario calls so earlier known failures cannot mask NTSC weak result. Keep original weak pulse and picture assertions. Original core reproduces exactly1356/1358,2missing,max_edge15.",
+    "baseline_reduction_script": "from pathlib import Path\np=Path('test/test_sync_flywheel.c');s=p.read_text();start=s.index('    const char *name = pal ? \"PAL\" : \"NTSC\";',s.index('static void scenario('));weak=s.index('    scene_t weak = clean;',start);stop=s.index('    /* 6.',weak) if '    /* 6.' in s[weak:] else -1\n# Keep precisely the weak section through its first preservation assertion.\nend=s.index('    /* Once clean reception returned',weak)\nbody='''    const char *name=pal?\"PAL\":\"NTSC\";\n    uint64_t F=field_samples(pal),n=10*F;\n    scene_t clean={.pal=pal,.cfo_mhz=0.15,.amp=5.0,.noise=0.25};\n    sync_flywheel_t f;double epl=0;uint8_t *in,*out;\n'''+s[weak:end]+'''    free(out);free(in);\n'''\n# Balanced function end before provenance_admission.\nscenario_end=s.index('\\nstatic void provenance_admission',start)\ns=s[:start]+body+'}\\n'+s[scenario_end:]\ns=s.replace('    cold_boot(true);','    if(0)cold_boot(true);').replace('    cold_boot(false);','    if(0)cold_boot(false);')\ns=s.replace('    scenario(true);','    if(0)scenario(true);')\np.write_text(s)\n",
+    "decision": "Leave assertion intact. No sufficiently understood minimal correction for this preexisting weak-scene edge case was identified; this fix does not claim a fully green CPU prototype matrix."
+  },
+  "replay": {
+    "compile": "cc -O2 -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -Imain test/test_sync_flywheel.c main/sync_flywheel.c -lm -o /tmp/test_sync_flywheel",
+    "matrix_shell": "failed=0; for kp in 0 1 2 3 4 5 6 7; do for ppm in 0 50 -50; do SFW_COMMIT=1 SFW_KP_LEVEL=\"$kp\" SFW_CLOCK_PPM=\"$ppm\" /tmp/test_sync_flywheel || failed=1; done; done; for kp in 0 7; do for output in 8 9; do SFW_COMMIT=1 SFW_KP_LEVEL=\"$kp\" SFW_CLOCK_PPM=0 SFW_OUTPUT_LEVEL=\"$output\" /tmp/test_sync_flywheel || failed=1; done; done; exit \"$failed\"",
+    "baseline_archive": "git archive 668fa64 --output baseline.tar; extract into fresh temporary directory and use the same compile command.",
+    "expected_current_result": "27 cases pass; kp7/+50ppm/output0 fails the documented preexisting weak NTSC pulse assertion. Matrix overall failure is intentional evidence, not suppressed."
+  }
+}

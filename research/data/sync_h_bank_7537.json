@@ -1,0 +1,25 @@
+{
+  "core_sha256": "9b7423aba85c3bdb29f831f45531a05302cc228b4472fcd98acaeeb46eb3c988",
+  "bank_bytes": 385024,
+  "h50_step": -7537,
+  "algorithm": "constant tip; quantized received endpoint; all residual in48 porch; unchanged kp lead",
+  "hardware_timing_claim": false,
+  "scenes": [
+    {
+      "kp_index": 7,
+      "returncode": -6,
+      "stdout": "keeper kp=50\nPASS keeper provenance: synthetic acquisition refused, exact RX expiry, invalid frontier and reset\nPASS keeper program: unknown kp, unverified program and missing active LUT cannot repair\nPASS keeper executor: H/V prepare before commit, invalid workspace refused, failed commits leave IQ intact and taint provenance\nPASS cold bootstrap admission: contiguous original coverage, replay/taint refusal, context reset and candidate cancellation\nNTSC preservation: 1973480 active IQ samples and both LP parities unchanged\nPASS cold PAL: selected clock with real snow, both DAC parities, independent candidate cancels fake V before changed-standard camera acquisition\ncold NTSC kp=50 parity=0 h=1416 kind=0 p=2123753 width=0 edge=0\nscenes: /src/test/test_sync_flywheel.c:736: cold_boot: Assertion `width >= lo && width <= hi' failed.\n"
+    }
+  ],
+  "inputs": {
+    "main/sync_flywheel.c": "d469d39bb2e532588ed1be18ecd1f274a731a5b6d111aaddb07f08687b88ba51",
+    "main/sync_flywheel.h": "2d45ef266fd5b7c6590b4844ed98e2b0a07c99baf1024f96d88c7545c6d8a886",
+    "main/sync_synth.h": "d59c790c457e03dad1d3f816322df930b505f99adc2d1f7df09e6d8c78e7d533",
+    "main/kp_tables.h": "d886f2ea25f461c473e9ac58861f4b792185fccea84d5dd19b0f1a5413bd2143",
+    "main/phase8_gain_lut.h": "1e5ea1afe636a365b502fe54e77d4dac7c6c422cd0f8edab190c074f315c433e",
+    "main/output_level.h": "5979b843cf4bd4e0542a306108e6c1ea4c0fd879131025889cbb8af8016cb88c",
+    "test/test_sync_flywheel.c": "f68fdd1cfc97067cdc4e4114d804833f65c413fd3e46e7fa85c9e4d46f614bcd",
+    "research/sync_output_transition.c": "19478ce0119453d29b03e9023c1ab905ca0307c86a0db2348bf335d28b3842b8"
+  },
+  "transition_csv": "/out/sync_h_bank_7537.csv"
+}

@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""C5VRX/Twotoz: execute actual conditional output queue/ISR/cleanup.
+
+Software MMIO fixtures do not establish physical CVBS or monitor lock.
+"""
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+from test_sync_gate_probe_runtime import SDK
+
+ROOT=Path(__file__).resolve().parents[1]
+HARNESS=r'''
+static uint32_t registers[256],saved[256];
+static uint64_t cycles,alarm_tick;
+static sync_edge_alarm_fn handler;
+static void *handler_arg;
+static unsigned clears,sets,clock_extra_cycles;
+static bool live_ok,native_ok,alarm_enabled,clock_ok,bind_ok;
+static bool source_ok;static uint32_t source_epoch;
+static uint64_t high_start,high_end,clear_tick,set_tick;
+static bool epoch_at_high,check_repair_admission;
+uint32_t mock_read(uint32_t r){assert(r/4<256);
+ if(r==GPIO_IN_REG)return cycles/12>=high_start && cycles/12<high_end?4u:0;
+ return registers[r/4];}
+void mock_write(uint32_t r,uint32_t v){
+ assert(r/4<256);
+ if(r==GPIO_ENABLE_W1TC_REG){
+  if(check_repair_admission)assert(cycles/12<=s_output->tip.start+SLO_FLAG_LATE+2u);
+  registers[0]&=~v;++clears;clear_tick=cycles/12;
+ }
+ else if(r==GPIO_ENABLE_W1TS_REG){registers[0]|=v;++sets;set_tick=cycles/12;}
+ else registers[r/4]=v;
+}
+int esp_clk_cpu_freq(void){return 240000000;}
+uint32_t esp_cpu_get_cycle_count(void){return (uint32_t)++cycles;}
+bool sync_edge_clock_read(uint64_t *v){cycles+=24u+clock_extra_cycles;*v=cycles/12;return clock_ok;}
+bool sync_edge_clock_alarm_bind(sync_edge_alarm_fn fn,void *arg){
+ if(!bind_ok){return false;}handler=fn;handler_arg=arg;alarm_enabled=false;return true;
+}
+bool sync_edge_clock_alarm_at(uint64_t tick){alarm_tick=tick;alarm_enabled=true;return true;}
+bool sync_edge_clock_alarm_off(void){alarm_enabled=false;return true;}
+static bool owner(uint32_t g){assert(g==7);return live_ok;}
+static bool present(uint64_t start,uint32_t width,slg_kind_t kind,void *arg){
+ (void)start;(void)width;(void)kind;(void)arg;return native_ok;
+}
+static bool source(void *arg,uint32_t *epoch){
+ (void)arg;*epoch=source_epoch+(epoch_at_high && cycles/12>=high_start?1u:0u);return source_ok;
+}
+static void reset(void){
+ assert(!s_output);memset(registers,0,sizeof(registers));cycles=100000;
+ registers[0]=SLO_MASK|1u;live_ok=clock_ok=bind_ok=true;native_ok=false;
+ clears=sets=clock_extra_cycles=0;sync_live_output_phase(0);source_ok=true;source_epoch=1;epoch_at_high=false;
+ high_start=high_end=UINT64_MAX;clear_tick=set_tick=0;check_repair_admission=false;handler=NULL;handler_arg=NULL;alarm_enabled=false;
+ for(unsigned i=0;i<6;++i){registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*pins[i])/4]=48u+i;
+  registers[pads[i]/4]=FUN_PU|FUN_PD|0x100000u;}
+ memcpy(saved,registers,sizeof(saved));
+}
+static void fire(void){
+ assert(alarm_enabled&&handler);alarm_enabled=false;
+ if(cycles<alarm_tick*12u)cycles=alarm_tick*12u;
+ cycles+=100;handler(cycles/12u,handler_arg);
+}
+int main(void){
+ unsigned checks=0;
+ for(unsigned standard=1;standard<=2;++standard)for(unsigned native=0;native<=1;++native){
+  reset();native_ok=native;
+  assert(sync_live_output_begin(NULL,(slg_standard_t)standard,7,owner,present,NULL));
+  for(unsigned i=0;i<3000;++i){assert(sync_live_output_poll());fire();
+   assert(s_output->status.active&&!s_output->status.fault);
+   assert((registers[0]&SLO_MASK)==SLO_MASK);++checks;}
+  assert(native?(s_output->status.suppressed>=3000&&!clears):
+    (s_output->status.repaired>=3000&&clears==s_output->status.repaired));
+  assert((native||s_output->status.batches>0)&&s_output->status.queue_low==0);
+  assert(s_output->status.max_callback_ticks<=3u); /* exclude later tips in V batches */
+  assert(sync_live_output_end()&&!alarm_enabled&&!memcmp(saved,registers,sizeof(saved)));++checks;
+ }
+ reset();assert(sync_live_output_begin(NULL,SLG_PAL,7,owner,NULL,NULL));
+ live_ok=false;fire();assert(!clears&&s_output->status.fault==1);assert(sync_live_output_end());++checks;
+ reset();assert(sync_live_output_begin(NULL,SLG_PAL,7,owner,NULL,NULL));
+ cycles=(alarm_tick+SLO_LEAD+SLO_LATE+1u)*12u;fire();
+ assert(!clears&&s_output->status.active&&!s_output->status.fault&&s_output->status.missed==1&&alarm_enabled);assert(sync_live_output_end());++checks;
+ reset();registers[0]&=~(1u<<8);assert(!sync_live_output_begin(NULL,SLG_PAL,7,owner,NULL,NULL)&&!s_output);++checks;
+ reset();assert(sync_live_output_begin(NULL,SLG_PAL,7,owner,NULL,NULL));
+ s_output->clock.exhausted=true;fire();assert(s_output->status.fault==2&&clears==1);
+ assert(sync_live_output_end());++checks;
+ /* Comparator pin contract: no ordinary pin23 mux may be admitted. */
+ reset();assert(!sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL)&&!s_output);++checks;
+ reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+ registers[GPIO_OUT_REG/4]=1u<<23;
+ assert(!sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL)&&!s_output);++checks;
+ for(unsigned mode=0;mode<6;++mode){
+  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+  memcpy(saved,registers,sizeof(saved));
+  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+  /* This fixture tests the fast witness after independent camera authority. */
+  s_output->native_authority=true;s_output->native_v_fresh=true;
+  assert(registers[pads[0]/4]==saved[pads[0]/4]);
+  uint64_t tip=s_output->tip.start,end=tip+s_output->tip.width;
+  /* 0 absent;1 genuine early edge;2 late edge;3 stale HIGH;
+   * 4 epoch changes on HIGH;5 markers/source disabled. */
+  if(mode==1){high_start=tip-10;high_end=end;}
+  if(mode==2){high_start=tip+10;high_end=end;}
+  if(mode==3){high_start=0;high_end=UINT64_MAX;}
+  if(mode==4){high_start=tip-10;high_end=end;epoch_at_high=true;}
+  if(mode==5){high_start=tip-10;high_end=end;source_ok=false;}
+  fire();
+  assert(!s_output->status.fault);
+  if(mode==1)assert(!clears&&s_output->status.suppressed);
+  else {
+   assert(clears&&s_output->status.repaired);
+   assert(set_tick<=end+3u); /* timer sample loop <=150ns in this fixture */
+   if(mode==2)assert(set_tick<tip+30u);
+   else assert(set_tick>=end);
+  }
+  assert(sync_live_output_end()&&!memcmp(saved,registers,sizeof(saved)));++checks;
+ }
+ reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+ assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+ high_start=s_output->tip.start-10;high_end=UINT64_MAX;fire();
+ assert(s_output->status.repaired&&!s_output->status.suppressed); /* unqualified noise cannot cancel */
+ assert(sync_live_output_end());++checks;
+ reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+ assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+ cycles=(s_output->tip.start+SLO_FLAG_LATE+1u)*12u;
+ fire();assert(!clears&&s_output->status.missed&&s_output->status.active);
+ assert(sync_live_output_end());++checks;
+ /* Delivery latency and callback work are separate clock quantities; phase
+  * accounting must survive an overdue first tip without treating later tips
+  * in the same batch as fresh interrupt deliveries. */
+ reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+ assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+ uint64_t delayed_tip=s_output->tip.start;
+ clock_extra_cycles=120u;sync_live_output_phase(4u);
+ cycles=(delayed_tip+30u)*12u;fire();
+ assert(s_output->status.max_irq_delay_ticks==SLO_LEAD+38u);
+ assert(s_output->status.max_callback_ticks==12u);
+ assert(s_output->status.miss_phase==4u&&s_output->status.misses_by_phase[4u]==1u);
+ for(unsigned phase=0;phase<6u;++phase)if(phase!=4u)assert(!s_output->status.misses_by_phase[phase]);
+ assert(sync_live_output_end());++checks;
+ /* A long masked/cache interval skips stale backlog in bounded chunks,
+  * without permanently stopping sync or changing the absolute halfline grid. */
+ reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+ assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+ uint64_t initial_origin=s_output->tip.start-(s_output->tip.half*5720u+4u)/9u;
+ cycles=(s_output->tip.start+100000u)*12u; /*5ms unavailable CPU*/
+ check_repair_admission=true;
+ unsigned callbacks=0;
+ do {
+  uint32_t consumed=s_output->status.missed+s_output->status.repaired+s_output->status.suppressed;
+  fire();++callbacks;
+  assert(s_output->status.active&&!s_output->status.fault&&alarm_enabled);
+  assert(s_output->status.missed+s_output->status.repaired+s_output->status.suppressed-consumed<=8u);
+  assert((registers[0]&SLO_MASK)==SLO_MASK&&clears==sets);
+  assert(s_output->tip.start==initial_origin+(s_output->tip.half*5720u+4u)/9u);
+  assert(callbacks<40u);
+ }while(s_output->tip.start<=cycles/12+SLO_LEAD+60u);
+ assert(callbacks>1u&&s_output->status.budget_yields&&s_output->status.missed>50u);
+ for(unsigned i=0;i<30u;++i)fire();
+ assert(!s_output->status.fault&&s_output->status.repaired&&clears==sets);
+ assert(sync_live_output_end());++checks;
+ /* Model publications leave the running timer/pulse intact until ISR boundary. */
+ reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+ assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+ for(unsigned i=0;i<50;++i)fire();
+ uint64_t old_tip=s_output->tip.start;
+ uint16_t index=s_output->tip.index;
+ assert(index>20u);
+ uint64_t origin=old_tip-((uint64_t)index*40676u+32u)/64u;
+ slg_model_t model={.field=origin+(6u*40676u+32u)/64u,
+   .last_h=origin+((uint64_t)(index-2u)*40676u+32u)/64u,
+   .observed_at=cycles/12,.line_ticks_x32=40676u,.receive_epoch=1,
+   .uncertainty_ticks=64,.standard=SLG_NTSC,.qualified=true};
+ unsigned allocations=heap_allocations,frees=heap_frees;
+ for(unsigned repeat=0;repeat<100u;++repeat)assert(sync_live_output_update(&model));
+ assert(heap_allocations==allocations&&heap_frees==frees);
+ assert(s_output->pending_slew && s_output->tip.start==old_tip && alarm_enabled);
+ unsigned publication=s_output->publication;
+ fire();assert(s_output->applied==publication && s_output->standard==SLG_NTSC);
+ assert(!s_output->status.fault);++checks;
+ model.last_h+=(40676u+32u)/64u;model.observed_at=cycles/12;
+ assert(sync_live_output_update(&model)&&!s_output->pending_slew);++checks;
+ model.qualified=false;assert(!sync_live_output_update(&model));++checks;
+ model.qualified=true;model.line_ticks_x32=0u;
+ slc_t running=s_output->clock;slo_tip_t running_tip=s_output->tip;
+ publication=s_output->publication;
+ assert(!sync_live_output_update(&model));
+ assert(!memcmp(&running,&s_output->clock,sizeof(running))&&
+        !memcmp(&running_tip,&s_output->tip,sizeof(running_tip))&&s_output->publication==publication);
+ assert(heap_allocations==allocations&&heap_frees==frees);++checks;
+ model=(slg_model_t){.field=cycles/12-30000u,.last_h=cycles/12-4400u,
+   .observed_at=cycles/12,.line_ticks_x32=40960u,.receive_epoch=2,
+   .uncertainty_ticks=64,.standard=SLG_PAL,.qualified=true};
+ assert(sync_live_output_update(&model)&&!s_output->pending_slew);
+ fire();assert(s_output->standard==SLG_PAL&&!s_output->status.fault);++checks;
+ for(unsigned i=0;i<100;++i)fire();
+ assert(sync_live_output_end());
+ /* A delayed full-reseed publication is consumed without granting native
+  * authority to the still-running nominal clock. This is the measured board
+  * failure regime: ISR delay longer than the candidate's future lead. */
+ reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+ assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+ uint64_t nominal_origin=s_output->tip.start-(s_output->tip.half*5720u+4u)/9u;
+ for(unsigned i=0;i<50;++i)fire();
+ assert(!s_output->native_authority);
+ model=(slg_model_t){.field=cycles/12-30000u,.last_h=cycles/12-4400u,
+   .observed_at=cycles/12,.line_ticks_x32=40960u,.receive_epoch=2,
+   .uncertainty_ticks=64,.standard=SLG_PAL,.qualified=true};
+ assert(sync_live_output_update(&model)&&!s_output->pending_slew);
+ uint64_t expired_candidate=s_output->pending_tip.start;
+ publication=s_output->publication;
+ cycles=(expired_candidate+1000u)*12u;
+ fire();
+ assert(s_output->applied==publication&&!s_output->native_authority);
+ assert(s_output->standard==SLG_NTSC&&!s_output->status.fault);
+ assert(s_output->tip.start==nominal_origin+(s_output->tip.half*5720u+4u)/9u);++checks;
+ /* Once a fresh full reseed is actually admitted, old source/edge history
+  * must be discarded before the new phase gets fast native suppression. */
+ model.field=cycles/12-30000u;model.last_h=cycles/12-4400u;model.observed_at=cycles/12;
+ assert(sync_live_output_update(&model)&&!s_output->pending_slew);
+ s_output->source_seen=s_output->low_seen=s_output->rise_valid=true;
+ s_output->last_high=true;s_output->rise=s_output->tip.start;
+ fire();
+ assert(s_output->native_authority&&s_output->standard==SLG_PAL);
+ assert(!s_output->source_seen&&!s_output->low_seen&&!s_output->rise_valid);
+ assert(!s_output->status.fault);assert(sync_live_output_end());++checks;
+ printf("PASS: %u actual conditional-output checks; no physical timing/monitor claim\n",checks);
+}
+'''
+
+
+def main():
+    def stripped(path):
+        return re.sub(r'^#(?:include|pragma)[^\n]*\n','',path.read_text(),flags=re.MULTILINE)
+    prefix=SDK+'''\n#include <stdlib.h>\n#define DRAM_ATTR\n#define GPIO_IN_REG 12u
+#define GPIO_OUT_REG 16u
+#define MALLOC_CAP_INTERNAL 1\n#define MALLOC_CAP_8BIT 2
+static unsigned heap_allocations,heap_frees;
+static void *counted_calloc(size_t n,size_t size){++heap_allocations;return calloc(n,size);}
+static void counted_free(void *p){++heap_frees;free(p);}
+#define calloc(n,s) counted_calloc(n,s)
+#define free(p) counted_free(p)
+#define heap_caps_calloc(n,s,caps) counted_calloc(n,s)\n'''
+    api=stripped(ROOT/'main/sync_edge_clock.h')+stripped(ROOT/'main/sync_live_gate.h')
+    api+=stripped(ROOT/'main/sync_live_output.h')+stripped(ROOT/'main/sync_live_clock.h')
+    source=stripped(ROOT/'main/sync_live_gate.c')+stripped(ROOT/'main/sync_live_output.c')
+    with tempfile.TemporaryDirectory() as directory:
+        p=Path(directory);(p/'run.c').write_text(prefix+api+source+HARNESS)
+        subprocess.run(['cc','-O2','-std=c11','-Wall','-Wextra','-Werror',str(p/'run.c'),'-o',str(p/'run')],check=True)
+        subprocess.run([str(p/'run')],check=True)
+
+
+if __name__=='__main__':main()

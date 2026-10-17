@@ -20,6 +20,7 @@
 
 #define IQ_RATE_HZ          40000000u
 #define RAW_RING_BYTES      32768u
+#define LIVE_PIPELINE_LAG_BYTES (3u * RAW_RING_BYTES / 4u)
 #define DAC_IDLE_CODE       20u          /* blanking level; sync is 0 */
 #define CONTROL_BYTES       4092u        /* one completed GDMA descriptor */
 #define PROBE_REGIONS       4u
@@ -58,6 +59,8 @@ extern int s_rx_node_count;
 esp_err_t transport_start(void);
 void transport_stop_tx(void);
 void transport_resume_live(void);
+bool transport_bench_restart(void); /* issue #213: live-only, unchanged verified configuration */
+bool transport_resume_raster(int level, bool lp); /* confirmed ladder target at raster exit */
 void transport_start_chain(dma_descriptor_t *first);
 /* One tracker topology (U85Q / U85Q-LP); a profile only picks the filter
  * and the kp level the pipeline starts from (kp_tables.h). */
@@ -80,12 +83,28 @@ void transport_stop_chain(void);
 void transport_poll_faults(void);
 uint32_t transport_fault_count(void);
 void transport_print(void);
+void transport_sync_bench(void); /* manual private-RAM J benchmark; no live writes */
+void transport_sync_gate_probe(bool pal); /* Z/z: brief PAL/NTSC DAC-OE diagnostic */
+void transport_sync_gate_probe_long(bool pal); /* Q/q: three-second manual gate test */
+void transport_sync_output_probe(void); /* Y: native DAC timing observation, LP/1x only */
+void transport_sync_flag_probe(void); /* V: finite comparator observation, restores original stream */
+void transport_sync_output_clock_probe(void); /* y: common-edge RMT/ETM experiment */
+void transport_sync_live_toggle(void); /* u: resident native observer bench */
+void transport_sync_flywheel_toggle(void); /* U: conditional DAC-OE holdover bench */
+void transport_sync_live_tick(void);   /* control loop; never holds a lifetime PHY lease */
+bool transport_sync_live_cancel(void); /* stop/restore before transport ownership changes */
+void transport_sync_live_print(void);
+void transport_sync_live_trace_print(void);
 void sync_dma_c2m(const void *addr, size_t size);
 void sync_dma_m2c(const void *addr, size_t size);
 int ring_node_index(uint32_t addr);
-/* Copies that RX cannot have overwritten (false = stale, retry). */
+/* Task-reader token + RX-overwrite/context guards. Nonnull private dst;
+ * control 1..4092 B, probe 256 B, sentinel 64 B, snapshot 8190 B, endpoints
+ * 1..4092 pairs (8184 B raw envelope). False=invalid/unavailable/stale; retry safely.
+ * These bounds alone do not prove DMA publication or original provenance. */
 bool copy_control_window(uint8_t *dst, size_t bytes);
 bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node);
+bool copy_sentinel_window(uint8_t dst[64]);
 bool copy_snapshot(uint8_t *dst);
 bool copy_recent_endpoints(uint8_t *dst, size_t n);
 void rx_clock_slip(uint32_t us);
@@ -102,6 +121,8 @@ extern volatile int s_obs_env_ratio_x100;   /* gain.h env_ratio_x100 of the late
 extern volatile uint32_t s_obs_us_max, s_obs_windows;
 extern dg_map_blob_t s_gain_map_saved;
 extern bool s_gain_map_saved_valid;
+/* Observer-owned context snapshot; refuses unsettled/changed model state. */
+unsigned receiver_export_gain_map(dg_map_blob_t *blob);
 void receiver_start(void);
 bool receiver_active(void);
 bool receiver_paused(void);
@@ -111,6 +132,7 @@ void receiver_resume(void);
 void receiver_set_gain(uint8_t gain);
 void receiver_print(void);
 void receiver_print_map(void);   /* console M: GAINMAP line */
+void receiver_native_toggle(void); /* ~: RAM-only bounded native acquire/hold bench */
 
 /* ---- control.c ---- */
 extern volatile bool s_menu_active;
@@ -126,6 +148,7 @@ extern volatile video_standard_t s_detected_std;
 extern volatile int64_t s_last_video_us;           /* last burst-confirmed sync */
 extern QueueHandle_t s_commands;
 void control_start(void);
+bool control_prepare(void); /* reserve unchanged control stack before driver heap fragmentation */
 video_standard_t menu_standard(void);
 void control_print(void);
 void control_print_beat(void);   /* STATUS line every 2 s (console.c) */
@@ -169,6 +192,12 @@ void menu_set_standard_mode(std_mode_t mode);
 void status_screen(const char *title, const char *line1, const char *line2, int percent);
 void status_screen_end(void);
 bool menu_status_active(void);
+bool no_signal_active(void);
+bool no_signal_enabled(void);
+void no_signal_enable(bool enabled);
+bool no_signal_prepare(void);
+bool no_signal_show(void);
+bool no_signal_end(int level, bool lp);
 
 /* ---- profile.c ---- */
 #include "afc.h"
@@ -204,6 +233,7 @@ void diag_toggle_stream(void);          /* console R */
 /* ---- settings.c ---- */
 void settings_load(void);
 void settings_save(void);
+void settings_save_output(unsigned level); /* only after verified output application */
 bool blob_load(const char *key, void *data, size_t size);
 bool blob_store(const char *key, const void *data, size_t size);
 

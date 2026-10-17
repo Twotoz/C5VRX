@@ -44,4 +44,8 @@ void arc_gain_table_from_bytes(arc_gain_table_t *table,
                                uint8_t max_index);
 bool arc_gain_tuple_decode(const arc_gain_table_t *table, uint8_t gain_index,
                            arc_gain_tuple_t *tuple);
+/* Inverse of the pinned 5 GHz PBUS expansion. Refuse unmatched or ambiguous
+ * actual tuples; the force-index configuration is not native gain readback. */
+bool arc_gain_from_pbus(const arc_gain_table_t *table, uint16_t rf, uint16_t bb,
+                        uint16_t fine, uint8_t *index);
 uint8_t arc_gain_highest_rf_stage_start(const arc_gain_table_t *table);

@@ -72,9 +72,7 @@ def half_sample(standard, h):
     return h * 1280 if standard == 'PAL' else ((h * 2860 + 4) // 9) * 4
 
 
-def raster(standard, seed, fields=2):
-    """BT.470-timed raster: syncs, equalizing/broad pulses, burst, and a
-    textured picture (random luma knots every 0.2 us plus chroma)."""
+def _raster(standard, seed, fields, legacy):
     pal = standard == 'PAL'
     fh, eq = (625, 5) if pal else (525, 6)
     total = fh * fields
@@ -88,6 +86,11 @@ def raster(standard, seed, fields=2):
         start, end = half_sample(standard, h), half_sample(standard, h + 1)
         if pos < 3 * eq:
             width = (end - start) - 188 if eq <= pos < 2 * eq else (94 if pal else 92)
+            if not legacy:
+                # A preceding full normal line can extend into the first
+                # half-line of V. Replace its complete slot, including blank.
+                ire[start:end] = 0
+                region[start:end] = 0
             ire[start:start + width] = -40
             region[start:start + width] = 2
             h += 1
@@ -111,19 +114,43 @@ def raster(standard, seed, fields=2):
             image += 8 * np.sin(2 * np.pi * fsc * (x + a) / FS + ((-1) ** (h // 2) if pal else 1) * .6)
             ire[a:b] = image
             region[a:b] = 1
-        h += 2
+        # V can start at the second half of this normal line. Visit that
+        # slot instead of skipping its first equalizing pulse. Keep the
+        # existing full-line random draws so unrelated picture is unchanged.
+        next_v = (h + 1 + (eq if pal else 0)) % fh == 0
+        h += 1 if not legacy and next_v else 2
     return ire, region
 
 
+def raster(standard, seed, fields=2):
+    """BT.470 field-sync geometry, burst and textured picture.
+
+    Visits the first pre-EQ slot even when it falls halfway through a normal
+    line. This corrects historical PAL/NTSC multi-field source inputs; it
+    does not certify all analog levels or waveform tolerances.
+    """
+    return _raster(standard, seed, fields, legacy=False)
+
+
+def raster_legacy(standard, seed, fields=2):
+    """Exact historical source, including skipped odd-field first pre-EQ.
+
+    Explicit replay/provenance only: never use to assert source conformance.
+    """
+    return _raster(standard, seed, fields, legacy=True)
+
+
 def make_case(seed, cnr_db, standard='PAL', deviation=1.0, rms=4.2, filter_hz=None,
-              porch_hz=PORCH_HZ, offset_hz=0.0, fields=2, physical_adc=False, adc_gain=None, white_scale=1.0):
+              porch_hz=PORCH_HZ, offset_hz=0.0, fields=2, physical_adc=False, adc_gain=None, white_scale=1.0,
+              legacy_raster=False):
     """Raw IQ bytes (noisy and noise-free) plus the goggle-filtered truth.
     filter_hz: -3 dB full width of an extra 4th-order analog filter (None =
     the C5's normal ~20 MHz channel only). offset_hz: residual AFC error."""
     rng = np.random.default_rng(seed)
-    ire, region = raster(standard, seed + 7, fields)
+    ire, region = (raster_legacy if legacy_raster else raster)(standard, seed + 7, fields)
     # Optional research stress: unequal sync/picture deviation (issue #200
-    # reported levels). Default 1.0 preserves all existing studies exactly.
+    # reported levels). White scale1.0 retains the chosen raster's levels;
+    # historical multi-field inputs additionally require legacy_raster=True.
     if white_scale != 1.0:
         ire = np.where(ire > 0, ire * white_scale, ire)
     source = sg.lfilter(sg.firwin(81, 6e6, fs=F80), 1, np.repeat(ire, 2))
@@ -164,7 +191,8 @@ def make_case(seed, cnr_db, standard='PAL', deviation=1.0, rms=4.2, filter_hz=No
     truth = sg.sosfilt(GOGGLE, ire)
     result = dict(raw=quantize(n), clean=quantize(np.zeros_like(n)), truth=truth, region=region,
                   standard=standard, cnr=cnr_db, deviation=deviation, filter_hz=filter_hz,
-                  physical_adc=physical_adc)
+                  physical_adc=physical_adc,
+                  raster_version='legacy_pre_eq_skip' if legacy_raster else 'field_boundary_v2')
     if physical_adc:
         result.update(adc=analog[0], clean_adc=analog[1], adc_gain=fixed_scale)
     return result

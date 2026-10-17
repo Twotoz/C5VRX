@@ -1,0 +1,18 @@
+HB t_s=10 stage=ready gain=82 menu=0 startup=1 busy=0
+HB t_s=15 stage=ready gain=82 menu=0 startup=1 busy=0
+HB t_s=20 stage=ready gain=82 menu=0 startup=1 busy=0
+STARTUP done ms=23991 filter=loaded dco_rows=30 dco_missing=0 sphase=settled profile=DEFAULT 12MHZ KP0.85 reason=no_video_at_startup
+HB t_s=25 stage=ready gain=83 menu=0 startup=0 busy=0
+C5VRX5 version=5.0.0-pr.212-sync-gate-g demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v5 uptime_s=25 heap_internal=7608
+TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=0 kp_target=0 kp_writes=2048 kp_verify_fail=0 program=U85Q-LP prog_switches=1 switch_wait_ms=0 kp_switches=0 kp_restart_fail=0 kp_restart_us=0 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=5604
+SYNC_OUTPUT_PROBE source=native_dac manual=1 gpio=8 bit=4 output_x100=100 self_gate_excluded=1 absolute_time=0 camera_qualified=0 restored=1 pin_mutated=0 error=none api=0 cleanup=0 duration_us=52828 callbacks=0 symbols=0 halves=0 epochs=1 endings=0 low=0 h=0 broad=0 h_periods=0 pal32=0 ntsc32=0 broad5=0 broad6=0 pal_fields=0 ntsc_fields=0 bad_data=0 cancelled=0
+SYNC_GATE begin standard=PAL generation=2 fields=150 cpu_hz=240000000 automatic=0 burst_isr_limit_us=224
+SYNC_GATE end standard=PAL generation=2 reason=isr code=1 pulses=48000 eq=1500 broad=750 normal=45750 hold_min_cycles=624 hold_max_cycles=6624 eq_min_cycles=624 eq_max_cycles=630 broad_min_cycles=6612 broad_max_cycles=6624 normal_min_cycles=1194 normal_max_cycles=1200 late_max_ticks=52 batches=150 batch_max_cycles=39295 batch_max_pulses=6 batch_late_max_cycles=348 pulls_removed_mask=0x00001800 restored=1 monitor_lock_proven=0
+SYNC_GATE_TIMING failed_stage=0 field=150 half_index=0 kind=0 event_late_ticks=0 count_late_ticks=0 count_max_cycles=258 schedule_max_cycles=1934 rearm_max_cycles=485
+SYNC_GATE begin standard=NTSC generation=2 fields=180 cpu_hz=240000000 automatic=0 burst_isr_limit_us=224
+HB t_s=30 stage=ready gain=83 menu=0 startup=0 busy=0
+SYNC_GATE end standard=NTSC generation=2 reason=isr code=1 pulses=48870 eq=2160 broad=1080 normal=45630 hold_min_cycles=612 hold_max_cycles=6570 eq_min_cycles=612 eq_max_cycles=624 broad_min_cycles=6552 broad_max_cycles=6570 normal_min_cycles=1194 normal_max_cycles=1200 late_max_ticks=101 batches=180 batch_max_cycles=46636 batch_max_pulses=7 batch_late_max_cycles=360 pulls_removed_mask=0x00001800 restored=1 monitor_lock_proven=0
+SYNC_GATE_TIMING failed_stage=0 field=180 half_index=0 kind=0 event_late_ticks=0 count_late_ticks=0 count_max_cycles=252 schedule_max_cycles=2001 rearm_max_cycles=488
+C5VRX5 version=5.0.0-pr.212-sync-gate-g demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v5 uptime_s=32 heap_internal=7412
+TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=0 kp_target=0 kp_writes=2048 kp_verify_fail=0 program=U85Q-LP prog_switches=1 switch_wait_ms=0 kp_switches=0 kp_restart_fail=0 kp_restart_us=0 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=5604
+HB t_s=35 stage=ready gain=83 menu=0 startup=0 busy=0

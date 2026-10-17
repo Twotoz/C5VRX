@@ -13,6 +13,11 @@ static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static StaticSemaphore_t s_lock_storage;
 static SemaphoreHandle_t s_lock;
 static uint32_t s_generation, s_depth;
+static void (*s_observation_hook)(void);
+
+void phy_set_observation_hook(void (*hook)(void)) { s_observation_hook=hook; }
+void phy_observation_changed(void)
+{ if(s_observation_hook)s_observation_hook(); }
 
 static void lock_take(void)
 {
@@ -28,7 +33,9 @@ void phy_begin(void)
     lock_take();
     portENTER_CRITICAL(&s_mux);
     ++s_depth;
+    bool outer=s_depth==1u;
     portEXIT_CRITICAL(&s_mux);
+    if(outer)phy_observation_changed();
 }
 
 void phy_end(void)
@@ -102,6 +109,7 @@ bool phy_filter_set_code(int code)
     if (code != PHY_FILTER_CALIBRATED && (code < 0 || code > 63)) return false;
     lock_take();
     bool ok = s_filter_base_valid;
+    if(ok)phy_observation_changed();
     for (uint8_t i = 0; ok && i < 2; ++i) {
         uint8_t v = code == PHY_FILTER_CALIBRATED ? s_filter_base[i] :
                     (uint8_t)((s_filter_base[i] & ~63u) | (unsigned)code);
@@ -127,6 +135,7 @@ bool phy_filter_set_skirt(int offset)
     if (offset < 0 || offset > 60) return false;
     lock_take();
     bool ok = s_filter_base_valid;
+    if(ok)phy_observation_changed();
     for (uint8_t i = 2; ok && i < 8; ++i) {
         uint8_t v = offset ? dsp_filter_code(s_filter_base[i], offset) : s_filter_base[i];
         phy_i2c_writeReg(0x67, 1, 6 + i, v);
@@ -369,6 +378,7 @@ esp_err_t phy_dco_hold(int code_i, int code_q)
     if (code_i < 0 || code_i > 511 || code_q < 0 || code_q > 511) return ESP_ERR_INVALID_ARG;
     lock_take();
     if (s_dco_held) { lock_give(); return ESP_ERR_INVALID_STATE; }
+    phy_observation_changed();
     uint16_t live[PBUS_BLOCKS][2];
     read_live(live);
     enter_debug(live);
@@ -388,6 +398,7 @@ bool phy_dco_release(void)
 #else
     if (!s_dco_held) return false;
     lock_take();
+    phy_observation_changed();
     pbus_workmode_keep_gain();
     s_dco_held = false;
     lock_give();
@@ -413,6 +424,7 @@ bool phy_dco_nudge(int di, int dq, int out[2])
     lock_take();
     bool ok = s_dco_held;
     if (ok) {
+        phy_observation_changed();
         int i = s_dco_codes[0] + di, q = s_dco_codes[1] + dq;
         s_dco_codes[0] = i < 0 ? 0 : i > 511 ? 511 : i;
         s_dco_codes[1] = q < 0 ? 0 : q > 511 ? 511 : q;
@@ -421,5 +433,63 @@ bool phy_dco_nudge(int di, int dq, int out[2])
     }
     lock_give();
     return ok;
+#endif
+}
+
+bool phy_dco_read_pair(int out[2])
+{
+#ifndef C5VRX_PHY_PINNED
+    (void)out;
+    return false;
+#else
+    if (!out) return false;
+    lock_take();
+    int i = phy_pbus_rd(2, 2), q = phy_pbus_rd(3, 2);
+    bool ok = i == phy_pbus_rd(2, 2) && q == phy_pbus_rd(3, 2);
+    if (ok) { out[0] = i; out[1] = q; }
+    lock_give();
+    return ok;
+#endif
+}
+
+esp_err_t phy_dco_try_pair(uint32_t packed_gain, const int expected[2], const int target[2])
+{
+#ifndef C5VRX_PHY_PINNED
+    (void)packed_gain; (void)expected; (void)target;
+    return ESP_ERR_NOT_SUPPORTED;
+#else
+    if (!expected || !target || expected[0] < 0 || expected[0] > 511 || expected[1] < 0 || expected[1] > 511 ||
+        target[0] < 0 || target[0] > 511 || target[1] < 0 || target[1] > 511)
+        return ESP_ERR_INVALID_ARG;
+    int di = target[0] - expected[0], dq = target[1] - expected[1];
+    if ((di < 0 ? -di : di) + (dq < 0 ? -dq : dq) != 1) return ESP_ERR_INVALID_ARG;
+    lock_take();
+    int current[2];
+    uint16_t rf = phy_pbus_rd(8, 1), bb = phy_pbus_rd(0, 2), fine = phy_pbus_rd(1, 2);
+    bool gain_ok = rf == (packed_gain >> 12) && (bb & 127u) == ((packed_gain >> 4) & 127u) &&
+                   ((bb & ~127u) == 0u || (bb & ~127u) == 0x100u) && fine == (0xd0u | (packed_gain & 7u));
+    if (!gain_ok || !phy_dco_read_pair(current) || current[0] != expected[0] || current[1] != expected[1]) {
+        lock_give();
+        return ESP_ERR_INVALID_STATE;
+    }
+    phy_observation_changed();
+    if (!s_dco_held) {
+        uint16_t live[PBUS_BLOCKS][2];
+        read_live(live);
+        enter_debug(live);
+        s_dco_held = true;
+    }
+    dco_apply(target[0], target[1]);
+    bool ok = phy_dco_read_pair(current) && current[0] == target[0] && current[1] == target[1];
+    if (ok) {
+        s_dco_codes[0] = target[0]; s_dco_codes[1] = target[1];
+        lock_give();
+        return ESP_OK;
+    }
+    dco_apply(expected[0], expected[1]);
+    bool restored = phy_dco_read_pair(current) && current[0] == expected[0] && current[1] == expected[1];
+    s_dco_codes[0] = expected[0]; s_dco_codes[1] = expected[1];
+    lock_give();
+    return restored ? ESP_FAIL : ESP_ERR_INVALID_RESPONSE;
 #endif
 }
