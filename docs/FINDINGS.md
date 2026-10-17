@@ -791,7 +791,10 @@ guard can only correct after the camera returns.
   before authority: coherent camera H re-anchors H, V re-anchors on two
   field-spaced broad observations, and authority is granted only once H is
   aligned (>= 12 pulses) and V is confirmed at the grid's own broad slot on
-  two field-spaced fields, with nothing unapplied. Host: a camera +300 ticks
+  two field-spaced fields, with nothing unapplied. Both are current: in-phase H
+  confidence older than one field restarts from zero, and the grant needs H
+  within ~10 lines and V within two fields of the deciding pulse (review
+  follow-up: H-only then V-only granted before and is refused now). Host: a camera +300 ticks
   / +7 halflines with no model is acquired (1 H + 1 V jump); a PAL camera
   on the NTSC grid and pure noise are never granted (300 ms each).
 - False V re-anchor: both V observations must now be 1..4 whole fields
