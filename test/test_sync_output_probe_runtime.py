@@ -20,6 +20,7 @@ PREFIX = r'''
 #include <string.h>
 #define IRAM_ATTR
 #define DRAM_ATTR
+#define RTC_FAST_ATTR
 #define ESP_OK 0
 bool sync_output_live_source(void *arg,uint32_t *epoch);
 typedef int esp_err_t;
@@ -153,7 +154,7 @@ static void reset(void){
 static void parser_start(void){reset();s_probe.armed=true;s_probe.live=owner_live;s_probe.generation=7;sop_epoch(&s_probe);}
 static void event(rmt_symbol_word_t *words,size_t n,bool last){
  rmt_rx_done_event_data_t e={.received_symbols=words,.num_symbols=n,.flags={.is_last=last}};
- assert(!sop_received((void*)1,&e,&s_probe));++checks;
+ assert(!sop_received((void*)1,&e,&s_probe));sop_drain(&s_probe);++checks;
 }
 static void native_projection(void){
  if(!s_native){s_native=calloc(1,sizeof(*s_native));}
@@ -524,7 +525,7 @@ static void flag_resident_source(void){
  assert(model.field==sop_coast_field(100000u,clock_epoch_base+123300u,40960u,2u));
  assert(model.field>100000u && model.field<=model.last_h && model.last_h-model.field<400000u);
  assert(s_native->inverted.field==100000u&&s_native->inverted.qualified_fields==fields);
- s_native->inverted.h=clock_epoch_base;
+ s_native->inverted.h=clock_epoch_base-60000u;
  assert(sync_output_live_snapshot(&model)&&!model.tracking&&!model.valid);
  s_native->inverted.h=clock_epoch_base+123300u;
  sync_output_live_invalidate();
@@ -558,7 +559,7 @@ static void flag_lifecycle(void){
 }
 static void flag_idle_lifetime(void){
  reset();mode=1;assert(sop_session_begin(7,owner_live,true,false,true));
- vTaskDelay(1);
+ vTaskDelay(1);sop_drain(&s_probe);
  s_native->inverted.have_group=true;s_native->inverted.group=5000u;
  s_probe.ended=true;
  assert(sop_session_poll(s_session));
@@ -568,7 +569,7 @@ static void flag_idle_lifetime(void){
  assert(sop_session_poll(s_session)&&!s_native->inverted.have_group);
  assert(sop_session_end(s_session));checks+=5;
  reset();mode=1;assert(sop_session_begin(7,owner_live,true,false,true));
- vTaskDelay(1);s_native->inverted.have_group=true;
+ vTaskDelay(1);sop_drain(&s_probe);s_native->inverted.have_group=true;
  s_probe.prefix_n=0;s_probe.ended=true;
  assert(sop_session_poll(s_session)&&!s_native->inverted.have_group);
  assert(sop_session_end(s_session));checks+=2;

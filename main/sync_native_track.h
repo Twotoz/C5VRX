@@ -54,11 +54,14 @@ static inline void snt_h(sync_native_track_t *s,uint64_t tick)
      * occupied by vertical sync, while preserving that same global H grid. */
     if(s->have_selected) {
         uint64_t age=tick-s->h;
-        uint32_t period=(s->selected_line_ticks_x32+16u)>>5;
+        uint32_t line=s->selected_line_ticks_x32;
+        uint32_t period=(line+16u)>>5;
         if(age>100000u)s->have_selected=false;
-        else if(age>=period-24u) {
-            uint32_t rem=(uint32_t)age%period;
-            if(rem<=24u || period-rem<=24u)s->h=tick;
+        else if(line && age>=period-24u) {
+            uint32_t lines=((uint32_t)age*32u+line/2u)/line;
+            uint32_t expected=(lines*line+16u)>>5;
+            uint32_t err=(uint32_t)age>expected?(uint32_t)age-expected:expected-(uint32_t)age;
+            if(err<=24u)s->h=tick;
         }
     }
     bool accepted=false;

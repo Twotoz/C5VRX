@@ -52,7 +52,7 @@ static inline bool snft_h_for_v(sync_native_track_t *s,uint8_t standard,uint64_t
         const snt_h_candidate_t *c=&s->candidates[i];
         if(!c->used || c->standard!=standard || anchor<c->fit ||
            anchor-c->fit>=100000u || anchor<c->last ||
-           anchor-c->last>SNT_V_H_MAX_AGE_TICKS)continue;
+           anchor-c->last>16u*1290u)continue;
         uint32_t line=(c->line_ticks_x32+16u)>>5;
         uint32_t rem=(uint32_t)(anchor-c->last)%line;
         unsigned half=line/2u;
@@ -130,18 +130,23 @@ static inline void snft_observe_h(sync_native_flag_track_t *f,uint64_t tick)
     sync_native_track_t *s=f->native;
     bool selected=s->have_selected;uint64_t old_h=s->h;
     snt_h(s,tick);
-    if(!selected || s->have_selected)return;
+    if(!selected || s->h==tick)return;
     s->have_selected=true;s->h=old_h;
     uint64_t age=tick-old_h;
     if(age>UINT32_MAX)return;
-    uint32_t period=(s->selected_line_ticks_x32+16u)>>5;
-    if(!period)return;
+    uint32_t line=s->selected_line_ticks_x32;
+    uint32_t period=(line+16u)>>5;
+    if(!period || !line)return;
     uint32_t rem=(uint32_t)age%period;
-    if(rem>24u && period-rem>24u)return;
+    bool near_int=rem<=64u || period-rem<=64u;
+    uint64_t lines=((uint64_t)age*32u+line/2u)/line;
+    uint64_t expected=(lines*line+16u)/32u;
+    uint64_t err=age>expected?age-expected:expected-age;
+    if(!near_int && err>64u)return;
     for(unsigned i=0u;i<SNT_H_CANDIDATES;++i) {
         const snt_h_candidate_t *c=&s->candidates[i];
         if(c->used && c->standard==s->standard && c->fit==tick) {
-            s->h=tick;return;
+            s->h=tick;s->selected_line_ticks_x32=c->line_ticks_x32;return;
         }
     }
 }
@@ -151,12 +156,14 @@ static inline void sync_native_flag_high(sync_native_flag_track_t *f,uint64_t ti
     if(s->seen && tick<=s->last) {sync_native_flag_reset(f);return;}
     if(s->seen && tick-s->last>SNT_H_MAX_GAP_TICKS) {
         /* Idle removes unfinished evidence, not clock authority. */
-        memset(s->candidates,0,sizeof(s->candidates));s->have_h=false;
+        if(tick-s->last>16u*1290u) {
+            memset(s->candidates,0,sizeof(s->candidates));s->have_h=false;
+        }
         snft_partial_clear(f);f->pre_count=0u;
     }
     s->seen=true;s->last=tick;
     if(s->have_group && tick>s->group && tick-s->group>410000u)s->have_group=false;
-    if(width>=300u && width<=620u) {
+    if(width>=250u && width<=620u) {
         if(!s->have_broad) {
             if(!s->h_standard)return;
             s->have_broad=true;s->broad_start=tick;
@@ -174,7 +181,7 @@ static inline void sync_native_flag_high(sync_native_flag_track_t *f,uint64_t ti
         f->occupancy=(uint16_t)(f->occupancy+width);
         ++s->broad_n;s->broad=tick;return;
     }
-    if(width>=24u && width<=74u) {
+    if(width>=20u && width<=74u) {
         if(s->have_broad) {
             int med=snft_tail_median(f);
             uint64_t anchor=med<0?s->broad_start-(unsigned)-med:s->broad_start+(unsigned)med;
@@ -186,10 +193,11 @@ static inline void sync_native_flag_high(sync_native_flag_track_t *f,uint64_t ti
             if(f->pre_count && tick-f->pre[f->pre_count-1u]>4000u)f->pre_count=0u;
             if(f->pre_count<7u)f->pre[f->pre_count++]=tick;
             else {memmove(f->pre,f->pre+1,6u*sizeof(f->pre[0]));f->pre[6]=tick;}
+            if(width>=56u)snft_observe_h(f,tick);
         }
         return;
     }
-    if(width>=76u && width<=200u) {
+    if(width>=75u && width<=240u) {
         if(s->have_broad)snft_finish(f,tick);
         /* Short EQ evidence survives normal H-width aliases until its age
          * rules it out at the V candidate, rather than erasing on any alias. */

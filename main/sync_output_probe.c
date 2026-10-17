@@ -35,9 +35,22 @@ _Static_assert((SOP_MASK & UINT32_C(0x01801b00)) == 0u,
 #define SOP_ARM_MAX_US 700 /* below1ms RMT idle; permits bounded224us output IRQ */
 #define SOP_CLOCK_MIN_NS 1000u /* reject sub-us chatter; retain2.3us EQ lows */
 #define SOP_MARKER_MAX_TICKS 6000u /*16us marker plus a bounded vertical ISR */
-/* 48-symbol partial deliveries may contain about three milliseconds of H.
+/* Two 48-symbol ping-pong blocks plus control-loop polling span ~8ms of H.
  * This bounds delivery staleness, not per-line missing-sync detection. */
-#define SOP_MODEL_MAX_AGE_TICKS 100000u
+#define SOP_MODEL_MAX_AGE_TICKS 180000u
+
+#define SOP_RX_RING 12u
+typedef struct {
+    rmt_symbol_word_t symbols[SOP_SYMBOLS];
+    uint8_t count;
+    bool is_last,bad;
+} sop_rx_batch_t;
+typedef struct {
+    sop_rx_batch_t batches[SOP_RX_RING];
+    volatile uint32_t head,tail;
+    volatile bool overflow;
+} sop_rx_ring_t;
+static RTC_FAST_ATTR sop_rx_ring_t s_rx_ring;
 
 /* Allocate after receiver startup: even a small BSS increase can prevent
  * its contiguous control-task stack allocation. Keep storage alive permanently
@@ -144,8 +157,7 @@ static void sop_native_run(sop_context_t *s,uint32_t start,uint32_t width,bool i
                 sync_native_flag_high(inverted?&s_native->flag_inverted:&s_native->flag_native,
                                       (uint64_t)(offset+start),width);
             else sync_native_low(inverted?&s_native->inverted:&s_native->native,(uint64_t)(offset+start),width);
-            bool qualified=(s_native->resident && s_native->trace_flag)?s_native->inverted.valid:
-                (s_native->native.valid || s_native->inverted.valid);
+            bool qualified=s_native->native.valid || s_native->inverted.valid;
             if(qualified && !s_native->native_reported) {
                 ++s_native->native_qualified_epochs;s_native->native_reported=true;
             }
@@ -217,7 +229,46 @@ static bool sop_half(sop_context_t *s, uint32_t duration, bool level)
     return true;
 }
 
-static bool sop_received_inner(rmt_channel_handle_t channel,
+static void sop_parse_batch(sop_context_t *s,const sop_rx_batch_t *b)
+{
+    if(s->stop)return;
+    if(b->bad) {
+        ++s->bad_data; s->stop = true; return;
+    }
+    s->symbols += b->count;
+    bool marker = false;
+    for (size_t i = 0; i < b->count; ++i) {
+        rmt_symbol_word_t word = b->symbols[i];
+        if (!sop_half(s, word.duration0, word.level0)) { marker = true; break; }
+        if (!sop_half(s, word.duration1, word.level1)) { marker = true; break; }
+    }
+    if (marker && !b->is_last && !s->stop) {
+        ++s->bad_data; s->stop = true;
+    }
+    if (b->is_last) {
+        ++s->endings; s->ended = true;
+        sop_group(s);
+        /* No evidence may bridge an idle stop and a later receive epoch. */
+        s->run_valid = s->have_h = s->have_broad = s->have_group = false;
+        s->h_train = s->broad_train = 0u;
+    }
+}
+
+static void sop_drain(sop_context_t *s)
+{
+    while(s_rx_ring.tail!=s_rx_ring.head) {
+        uint32_t tail=s_rx_ring.tail;
+        __sync_synchronize();
+        sop_rx_batch_t batch=s_rx_ring.batches[tail%SOP_RX_RING];
+        __sync_synchronize();
+        s_rx_ring.tail=tail+1u;
+        sop_parse_batch(s,&batch);
+    }
+}
+
+/* Keep the RMT RX callback tiny and IRAM-resident so ESP-IDF's critical
+ * section inside rmt_rx_default_isr never delays GPTIMER sync output alarms. */
+static bool IRAM_ATTR sop_received_inner(rmt_channel_handle_t channel,
                                    const rmt_rx_done_event_data_t *event, void *arg)
 {
     (void)channel;
@@ -233,33 +284,28 @@ static bool sop_received_inner(rmt_channel_handle_t channel,
         s->cancelled = true; s->stop = true; return false;
     }
     ++s->callbacks;
+    uint32_t head=s_rx_ring.head;
     if (!event || event->num_symbols > SOP_SYMBOLS ||
         (event->num_symbols && !event->received_symbols) || s->ended) {
         ++s->bad_data; s->stop = true; return false;
     }
-    s->symbols += (uint32_t)event->num_symbols;
-    bool marker = false;
-    for (size_t i = 0; i < event->num_symbols; ++i) {
-        rmt_symbol_word_t word = event->received_symbols[i];
-        if (!sop_half(s, word.duration0, word.level0)) { marker = true; break; }
-        if (!sop_half(s, word.duration1, word.level1)) { marker = true; break; }
+    if (s_rx_ring.overflow || head - s_rx_ring.tail >= SOP_RX_RING) {
+        s_rx_ring.overflow = true; return false;
     }
-    if (marker && !event->flags.is_last && !s->stop) {
-        ++s->bad_data; s->stop = true;
-    }
-    if (event->flags.is_last) {
-        ++s->endings; s->ended = true;
-        sop_group(s);
-        /* No evidence may bridge an idle stop and a later receive epoch. */
-        s->run_valid = s->have_h = s->have_broad = s->have_group = false;
-        s->h_train = s->broad_train = 0u;
-    }
+    sop_rx_batch_t *b=&s_rx_ring.batches[head%SOP_RX_RING];
+    b->count=(uint8_t)event->num_symbols;
+    b->is_last=event->flags.is_last;
+    b->bad=false;
+    for(size_t i=0;i<event->num_symbols;++i)b->symbols[i]=event->received_symbols[i];
+    if(event->flags.is_last)s->ended=true;
+    __sync_synchronize();
+    s_rx_ring.head=head+1u;
     return false;
 }
 
 /* Single-core C5: snapshots reject a callback-interrupted copy. All callback
  * storage remains owned even after a failed disable/detach/delete. */
-static bool sop_received(rmt_channel_handle_t channel,
+static bool IRAM_ATTR sop_received(rmt_channel_handle_t channel,
     const rmt_rx_done_event_data_t *event,void *arg)
 {
     if(s_native)++s_native->sequence;
@@ -272,6 +318,8 @@ static bool sop_received(rmt_channel_handle_t channel,
 
 static void sop_epoch_mode(sop_context_t *s,bool preserve_native)
 {
+    s_rx_ring.head=s_rx_ring.tail=0u;
+    s_rx_ring.overflow=false;
     ++s->epochs;
     s->elapsed = s->run_width = 0u;
     s->run_valid = s->run_edge = s->have_h = s->have_broad = s->have_group = false;
@@ -526,14 +574,6 @@ static bool sop_session_begin(uint32_t generation, bool (*live)(uint32_t), bool 
     if(s_native){s_native->resident=resident;s_native->trace_flag=flag_source;s_native->rate_started=esp_timer_get_time();}
     if(s->edge_clock)s_probe.discard_before=UINT32_MAX; /* IRQs may precede handoff publication. */
 
-
-
-
-
-
-
-
-
     const rmt_rx_channel_config_t cfg = {.gpio_num = SOP_GPIO,
         .clk_src = RMT_CLK_SRC_PLL_F80M, .resolution_hz = 20000000u,
         .mem_block_symbols = 96u, .intr_priority = 2};
@@ -610,11 +650,12 @@ static bool sop_session_poll(sop_session_t *s)
 {
     if(!s_busy)return false;
     if(!s->live(s->generation)){s_probe.cancelled=true;s_probe.stop=true;s->failure="not_live";return false;}
+    sop_drain(&s_probe);
     if(s_probe.stop)return false;
     /* Only the comparator's ordinary idle ending may retain a completed
      * V candidate on this same uninterrupted absolute clock. PHY invalidation,
      * proactive rollover and failed marker calibration remain full resets. */
-    bool flag_idle=s->flag_source && s_probe.ended && !s->invalidated &&
+    bool flag_idle=s->flag_source && (s_probe.ended || s_rx_ring.overflow) && !s->invalidated &&
         esp_timer_get_time()-s->epoch_started<180000000;
     /* Abort and rearm before the 32-bit RMT-local elapsed counter wraps.
      * This is a source discontinuity, never synthetic camera evidence. */
@@ -622,11 +663,13 @@ static bool sop_session_poll(sop_session_t *s)
      * full RX disable/enable boundary as an invalidation, including the SDK's
      * interrupt-status clear, before reusing the channel and private marker.
      * Keep the independent absolute timer running throughout. */
-    if(s_probe.ended || s->invalidated || esp_timer_get_time()-s->epoch_started>=180000000) {
+    if(s_probe.ended || s_rx_ring.overflow || s->invalidated || esp_timer_get_time()-s->epoch_started>=180000000) {
         sop_source_pause();
         s_probe.armed=false;
         if(rmt_disable(s->channel)!=ESP_OK){s->failure="rollover_disable";return false;}
         s->enabled_rx=false;
+        sop_drain(&s_probe);
+        if(s_probe.stop)return false;
         if(rmt_enable(s->channel)!=ESP_OK){s->failure="rollover_enable";return false;}
         s->enabled_rx=true;s_probe.ended=true;
     }
@@ -647,14 +690,16 @@ static bool sop_session_poll(sop_session_t *s)
             if(!sync_edge_clock_disable_filter()){s->failure="clock_filter_pause";return false;}
             ++s->clock_rearms;
         }
+        if(s->forget_native)s->clock_stats.have_origin=false;
+        bool phase_ok=s->phase.valid || (s->clock_stats.have_origin && !s->clock_stats.regressions);
         bool retain_clock=s->resident && s->flag_source && s->invalidated &&
-            !s->forget_native && s->phase.valid;
+            !s->forget_native && phase_ok;
         if(retain_clock) {
             sop_flag_clock_reset(&s_native->flag_native);
             sop_flag_clock_reset(&s_native->flag_inverted);
             s->fresh_h_fit=true;
         }
-        sop_epoch_mode(&s_probe,retain_clock || (flag_idle && s->phase.valid));
+        sop_epoch_mode(&s_probe,retain_clock || (flag_idle && phase_ok));
         s_probe.armed=true;s->invalidated=false;s->forget_native=false;
         return sop_session_arm(s);
     }
@@ -665,6 +710,7 @@ static bool sop_session_end(sop_session_t *s)
 {
     sop_source_pause();
     s_probe.armed = false;
+    sop_drain(&s_probe);
     if(s->before_close && !s->before_close()) {
         s_clock_fault=true;
         return false; /* Keep dependent callback storage/timer owned. */
@@ -829,12 +875,16 @@ bool sync_output_live_snapshot(sync_output_live_model_t *out)
         uint32_t seq=s_native->sequence;
         if(seq&1u)continue;
         __sync_synchronize();
+        sop_drain(&s_probe);
         sync_native_track_t native=s_native->native;
         sync_native_track_t inverted=s_native->inverted;
-        bool high_pulse=s_session->flag_source || (inverted.valid && !native.valid);
+        bool high_pulse=s_session->flag_source?!native.valid || inverted.valid:
+            (inverted.valid && !native.valid);
         bool ambiguous=!s_session->flag_source && inverted.valid && native.valid;
         if(high_pulse)native=inverted;
         sync_phase_bracket_t phase=s_native->native_phase;
+        if(!phase.valid && native.valid && s_session->clock_stats.have_origin && !s_session->clock_stats.regressions)
+            phase=(sync_phase_bracket_t){.lo=s_session->clock_stats.last_lo,.hi=s_session->clock_stats.last_hi,.valid=true};
         bool armed=s_probe.armed,invalidated=s_session->invalidated;
         uint64_t now;
         if(!sync_edge_clock_read(&now))return false;
@@ -876,13 +926,19 @@ bool sync_output_live_diagnostics(char *out,size_t size)
         uint32_t seq=s_native->sequence;
         if(seq&1u)continue;
         __sync_synchronize();
+        sop_drain(&s_probe);
         sop_context_t probe=s_probe;
         sync_native_track_t native=s_native->native;
         sync_phase_bracket_t phase=s_native->native_phase;
-        bool inverted=s_session->flag_source || (s_native->inverted.valid && !native.valid);
+        bool inverted=s_session->flag_source?!native.valid || s_native->inverted.valid:
+            (s_native->inverted.valid && !native.valid);
         bool ambiguous=!s_session->flag_source && s_native->inverted.valid && native.valid;
         if(inverted)native=s_native->inverted;
         bool phase_checked=s_native->native_phase_checked;
+        if(!phase.valid && native.valid && s_session->clock_stats.have_origin && !s_session->clock_stats.regressions) {
+            phase=(sync_phase_bracket_t){.lo=s_session->clock_stats.last_lo,.hi=s_session->clock_stats.last_hi,.valid=true};
+            phase_checked=true;
+        }
         uint32_t qualified_epochs=s_native->native_qualified_epochs;
         uint32_t rearms=s_session->clock_rearms;
         bool invalidated=s_session->invalidated;
@@ -913,6 +969,7 @@ bool sync_output_live_trace_snapshot(snt_trace_t *out)
         uint32_t seq=s_native->sequence;
         if(seq&1u)continue;
         __sync_synchronize();
+        sop_drain(&s_probe);
         *out=s_native->trace;
         __sync_synchronize();
         if(seq==s_native->sequence)return true;

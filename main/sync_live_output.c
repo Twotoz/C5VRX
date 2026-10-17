@@ -36,7 +36,7 @@ typedef struct {
     uint32_t source_epoch;
     uint64_t rise,alarm_tick;
     bool flag,source_seen,low_seen,last_high,rise_valid;
-    bool native_authority,native_v_fresh;
+    bool native_authority,native_v_fresh,native_inverted;
     volatile uint32_t publication;
     uint32_t applied;
     slc_t pending_clock;
@@ -64,9 +64,9 @@ static void IRAM_ATTR fail(slo_t *s,uint32_t code)
     (void)sync_edge_clock_alarm_off();
 }
 
-/* GPIO2 mirrors internal DATA0 even while DAC OE is suppressed. A HIGH
- * already present at admission cannot become evidence until a new LOW/HIGH
- * transition is seen. Every source epoch, marker or invalidation clears it. */
+/* GPIO2 mirrors internal DATA0 even while DAC OE is suppressed. An active
+ * sync level already present at admission cannot become evidence until a new
+ * inactive/active transition is seen. Every source epoch, marker or invalidation clears it. */
 static bool IRAM_ATTR flag_native(slo_t *s,uint64_t now,const slo_tip_t *tip)
 {
     if(!s->native_authority || (tip->kind!=SLG_H && !s->native_v_fresh))return false;
@@ -75,7 +75,7 @@ static bool IRAM_ATTR flag_native(slo_t *s,uint64_t now,const slo_tip_t *tip)
         s->source_seen=false;s->low_seen=false;s->rise_valid=false;
         return false;
     }
-    bool high=(REG_READ(GPIO_IN_REG)&(1u<<2))!=0;
+    bool high=((REG_READ(GPIO_IN_REG)&(1u<<2))!=0)==s->native_inverted;
     if(!s->source_seen || epoch!=s->source_epoch) {
         s->source_seen=true;s->source_epoch=epoch;
         s->low_seen=!high;s->last_high=high;s->rise_valid=false;
@@ -247,6 +247,7 @@ static bool output_begin(const slg_model_t *model,slg_standard_t fallback,
     s->source=source;s->flag=source!=NULL;
     s->native_authority=model && model->qualified;
     s->native_v_fresh=s->native_authority;
+    s->native_inverted=true;
     const slg_config_t config={SLO_LEAD,s->flag?SLO_FLAG_LATE:SLO_LATE,
         s->flag?40u:100u,s->flag?40u:100u,UINT32_MAX,64u};
     s->planner=sync_live_gate_create(&config);
@@ -294,6 +295,13 @@ void sync_live_output_status(slo_status_t *out)
 }
 void sync_live_output_native_fresh(bool vertical)
 { if(s_output)s_output->native_v_fresh=vertical; }
+void sync_live_output_native_polarity(bool inverted)
+{
+    slo_t *s=s_output;
+    if(!s || s->native_inverted==inverted)return;
+    s->native_inverted=inverted;
+    s->source_seen=false;s->low_seen=false;s->rise_valid=false;
+}
 
 bool sync_live_output_begin(const slg_model_t *model,slg_standard_t fallback,
     uint32_t generation,slo_live_fn live,slo_native_fn native,void *arg)
@@ -308,11 +316,11 @@ bool sync_live_output_update(const slg_model_t *model)
     slo_t *s=s_output;
     uint64_t now;
     if(!s || !s->flag || !sync_live_output_poll() || !model || !model->qualified ||
-       !sync_edge_clock_read(&now) || now>UINT64_MAX-2000u)return false;
+       !sync_edge_clock_read(&now) || now>UINT64_MAX-5000u)return false;
     sync_live_gate_t *g=s->planner;
     if(!g)return false;
     slg_clock_seed_t seed;slc_t candidate;slg_pulse_t pulse;
-    bool ok=sync_live_gate_model(g,model,now+2000u) && sync_live_gate_arm(g) &&
+    bool ok=sync_live_gate_model(g,model,now+5000u) && sync_live_gate_arm(g) &&
         sync_live_gate_export(g,&seed) && slc_init(&candidate,&seed) && slc_next(&candidate,&pulse);
     if(!ok)return false;
     /* A confirmed model can replace nominal/old-standard timing. Task-side
