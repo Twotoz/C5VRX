@@ -24,6 +24,7 @@
 #include "kp_switch_guard.h"
 #include "transport_recovery.h"
 #include "output_level.h"
+#include "sync_flag.h"
 #include "sync_lut_context.h"
 #include "hal/parlio_ll.h"
 #include "kp_tables.h"
@@ -45,6 +46,8 @@
 #include "soc/bitscrambler_struct.h"
 #include "soc/parl_io_struct.h"
 #include "soc/pcr_struct.h"
+#include "soc/gpio_reg.h"
+#include "soc/io_mux_reg.h"
 
 /* U85Q UNTRAINED (model 1a09f5c092e8, C5VRX PR #190): closed-form 32-phase
  * tracker on the PAIR4411 shared word, origin cells as coarse quadrant
@@ -59,6 +62,7 @@ BITSCRAMBLER_PROGRAM(s_u85q, "u85q");
  * transport_set_lp() uses the normal pipeline start sequence; a live
  * instruction rewrite left the board video black while USB kept running. */
 BITSCRAMBLER_PROGRAM(s_u85q_lp, "u85q_lp");
+BITSCRAMBLER_PROGRAM(s_u85q_lp_flag, "u85q_lp_flag");
 static bool s_started;   /* live TX running (cleared while menu/status/recovery owns TX) */
 static bool s_prog_lp;   /* U85Q-LP instructions loaded */
 static const void *tracker_program(bool lp) { return lp ? s_u85q_lp : s_u85q; }
@@ -394,9 +398,58 @@ bool transport_set_output(unsigned level)
 typedef struct {
     const uint8_t *program;
     int level;
-    bool lp;
+    bool lp, flag;
     unsigned output, clipped;
 } restart_t;
+
+/* Finite V bench owns this only after startup. Ordinary verified state and
+ * s_lut_live remain the original restoration target throughout the bench. */
+typedef struct {
+    uint32_t iomux,matrix,pad,enable,output,clamp_matrix,generation;
+    bool active,saved,clamped,verified;
+    snt_trace_t trace;
+    char result[640];
+} flag_bench_t;
+static flag_bench_t *s_flag_bench;
+#define FLAG_PIN_MASK (UINT32_C(1)<<23)
+
+static bool IRAM_ATTR flag_pin_clamped(void)
+{
+    const flag_bench_t *s=s_flag_bench;
+    return s && s->saved && s->clamped &&
+        REG_READ(IO_MUX_GPIO23_REG)==s->iomux &&
+        REG_READ(GPIO_FUNC23_OUT_SEL_CFG_REG)==s->clamp_matrix &&
+        REG_READ(GPIO_PIN23_REG)==s->pad &&
+        (REG_READ(GPIO_ENABLE_REG)&FLAG_PIN_MASK)==FLAG_PIN_MASK &&
+        !(REG_READ(GPIO_OUT_REG)&FLAG_PIN_MASK);
+}
+static bool flag_pin_restored(void)
+{
+    const flag_bench_t *s=s_flag_bench;
+    return s && s->saved && !s->clamped &&
+        REG_READ(IO_MUX_GPIO23_REG)==s->iomux &&
+        REG_READ(GPIO_FUNC23_OUT_SEL_CFG_REG)==s->matrix &&
+        REG_READ(GPIO_PIN23_REG)==s->pad &&
+        (REG_READ(GPIO_ENABLE_REG)&FLAG_PIN_MASK)==s->enable &&
+        (REG_READ(GPIO_OUT_REG)&FLAG_PIN_MASK)==s->output;
+}
+/* Called only while TX is halted, after enable() and before TX_START.
+ * Disable this one pad before restoring its latent GPIO output latch. */
+static bool flag_pin_apply(bool flag)
+{
+    flag_bench_t *s=s_flag_bench;
+    if(!s || !s->active)return !flag;
+    if(!s->saved)return false;
+    REG_WRITE(GPIO_ENABLE_W1TC_REG,FLAG_PIN_MASK);
+    REG_WRITE(flag?GPIO_OUT_W1TC_REG:s->output?GPIO_OUT_W1TS_REG:GPIO_OUT_W1TC_REG,FLAG_PIN_MASK);
+    REG_WRITE(IO_MUX_GPIO23_REG,s->iomux);
+    REG_WRITE(GPIO_FUNC23_OUT_SEL_CFG_REG,flag?s->clamp_matrix:s->matrix);
+    REG_WRITE(GPIO_PIN23_REG,s->pad);
+    if(flag || s->enable)REG_WRITE(GPIO_ENABLE_W1TS_REG,FLAG_PIN_MASK);
+    s->clamped=flag;
+    if(flag)return flag_pin_clamped();
+    return flag_pin_restored();
+}
 
 static bool stop_part(void *ctx, tr_part_t part)
 {
@@ -425,6 +478,7 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
         r->lp = s_verified_lp;
         r->level = s_verified_level;
         r->output = s_verified_output;
+        r->flag = false;
         r->program = tracker_program(r->lp);
         memcpy(s_lut_work, s_lut_live, sizeof(s_lut_work));
     }
@@ -466,7 +520,10 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
         err = parlio_rx_unit_enable(s_rx, false);
         if (err == ESP_OK) s_rx_enabled = true;
         break;
-    case TR_TX_ENABLE: err = enable_tx(); break;
+    case TR_TX_ENABLE:
+        err = enable_tx();
+        if(err==ESP_OK && !flag_pin_apply(r->flag))return false;
+        break;
     case TR_RX_START: err = start_rx(); break;
     case TR_TX_START: err = start_rings_tail(); break;
     default: return false;
@@ -1066,7 +1123,8 @@ void transport_sync_live_print(void)
 /* ISR-safe transport identity check: no scheduler/PHY calls or mutation. */
 static bool IRAM_ATTR transport_sync_gate_live(uint32_t generation)
 {
-    return s_started && s_have_verified && s_lut_known && !s_transport_fault &&
+    return (!s_flag_bench || !s_flag_bench->active) &&
+        s_started && s_have_verified && s_lut_known && !s_transport_fault &&
         !s_stream_generation_overflow && !s_menu_active && !s_scan_active &&
         s_rx_enabled && s_tx_enabled && s_bs_enabled &&
         generation == s_stream_generation && generation == s_gate_context.generation &&
@@ -1130,6 +1188,90 @@ static void transport_sync_output_run(bool edge_clock)
 void transport_sync_output_probe(void) { transport_sync_output_run(false); }
 void transport_sync_output_clock_probe(void) { transport_sync_output_run(true); }
 
+static bool IRAM_ATTR flag_bench_live(uint32_t generation)
+{
+    const flag_bench_t *s=s_flag_bench;
+    return s && s->active && s->verified && flag_pin_clamped() &&
+        !s_lut_known && s_started && !s_transport_fault && !s_stream_generation_overflow &&
+        !s_menu_active && !s_scan_active && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
+        generation==s->generation && generation==s_stream_generation;
+}
+
+void transport_sync_flag_probe(void)
+{
+    if(s_flag_bench || s_gate_probe_busy || s_output_probe_busy || sync_service_active() ||
+       calibration_in_startup() || receiver_paused() || s_menu_active || s_scan_active ||
+       no_signal_active() || !phy_try_actuator(phy_generation())) {
+        printf("SYNC_FLAG refused=busy boot_default=OFF\n");return;
+    }
+    bool eligible=s_started && s_have_verified && s_lut_known && !s_transport_fault &&
+        !s_stream_generation_overflow && s_verified_level>=0 && s_verified_level<KP_LEVELS &&
+        s_prog_lp==s_verified_lp && s_output==s_verified_output;
+    if(!eligible){phy_end_actuator();printf("SYNC_FLAG refused=transport\n");return;}
+    flag_bench_t *s=calloc(1,sizeof(*s));
+    if(!s){phy_end_actuator();printf("SYNC_FLAG refused=memory\n");return;}
+    s->iomux=REG_READ(IO_MUX_GPIO23_REG);
+    s->matrix=REG_READ(GPIO_FUNC23_OUT_SEL_CFG_REG);
+    s->pad=REG_READ(GPIO_PIN23_REG);
+    s->enable=REG_READ(GPIO_ENABLE_REG)&FLAG_PIN_MASK;
+    s->output=REG_READ(GPIO_OUT_REG)&FLAG_PIN_MASK;
+    if((s->matrix&GPIO_FUNC23_OUT_SEL_M)!=48u ||
+       (s->matrix&(GPIO_FUNC23_OUT_INV_SEL_M|GPIO_FUNC23_OE_INV_SEL_M)) ||
+       (s->pad&GPIO_PIN23_PAD_DRIVER_M) || !s->enable ||
+       ((s->iomux&MCU_SEL_M)>>MCU_SEL_S)!=1u) {
+        free(s);phy_end_actuator();printf("SYNC_FLAG refused=pin_context\n");return;
+    }
+    s->clamp_matrix=(s->matrix&~(GPIO_FUNC23_OUT_SEL_M|GPIO_FUNC23_OUT_INV_SEL_M|
+        GPIO_FUNC23_OE_INV_SEL_M))|256u|GPIO_FUNC23_OE_SEL_M;
+    s->saved=true;s->active=true;s_flag_bench=s;s_output_probe_busy=true;
+    const int level=s_verified_level;
+    const bool lp=s_verified_lp;
+    const unsigned output=s_verified_output;
+    restart_t r={.program=lp?s_u85q_lp_flag:s_u85q,.level=level,.lp=lp,.flag=true,.output=output};
+    for(unsigned i=0;i<1024u;++i)s_lut_work[i]=sync_flag_entry(kp_tables[level][i],output,NULL);
+    ++s_control_epoch;
+    tr_result_t entered=tr_restart(&r,quiesce,restart_stage,true);
+    bool observed=false,restored=false;
+    if(entered==TR_APPLIED) {
+        /* The ordinary shadow deliberately remains unmodified for rollback.
+         * Every ordinary raw/synthesis consumer is excluded while it differs. */
+        s_started=true;s_lut_known=false;s->verified=true;s->generation=s_stream_generation;
+        observed=sync_output_flag_probe(s->generation,flag_bench_live,&s->trace,s->result,sizeof(s->result));
+        s->verified=false;
+        r=(restart_t){.program=tracker_program(lp),.level=level,.lp=lp,.output=output};
+        memcpy(s_lut_work,s_lut_live,sizeof(s_lut_work));
+        tr_result_t exited=tr_restart(&r,quiesce,restart_stage,true);
+        restored=exited!=TR_LATCHED;
+    } else restored=entered==TR_ROLLED_BACK;
+    if(restored) {
+        s_started=true;s_lut_known=true;
+        /* Both the normal exit and its rollback target the original ordinary
+         * verified shadow, never the transient comparator stream. */
+        restored=flag_pin_restored();
+    } else {
+        s_transport_fault=true;s_lut_known=false;
+        /* Do not reconnect DATA0 if a failed stop left flag TX running. */
+        if(!s_tx_enabled && !s_bs_enabled)(void)flag_pin_apply(false);
+    }
+    if(!restored){s_transport_fault=true;s_lut_known=false;}
+    ++s_control_epoch;
+    s->active=false;s_output_probe_busy=!restored;
+    phy_end_actuator();
+    printf("SYNC_FLAG_RESULT signal=48 threshold=19 threshold_domain=canonical output=%u kp=%d lp=%u "
+        "entered=%u observed=%u restored=%u fault=%u output_gates=0 boot_default=OFF\n",
+        output,level,(unsigned)lp,(unsigned)entered,(unsigned)observed,(unsigned)restored,(unsigned)s_transport_fault);
+    if(s->result[0])printf("%s",s->result);
+    printf("SYNC_FLAG_TRACE signal=48 level=0 count=%u triggered=%u frozen=%u dropped=%lu tick_hz=20000000\n",
+        s->trace.count,(unsigned)s->trace.triggered,(unsigned)s->trace.frozen,(unsigned long)s->trace.dropped);
+    unsigned first=(s->trace.head+SNT_TRACE_CAPACITY-s->trace.count)%SNT_TRACE_CAPACITY;
+    for(unsigned i=0;i<s->trace.count;++i) {
+        const snt_trace_low_t *low=&s->trace.lows[(first+i)%SNT_TRACE_CAPACITY];
+        printf("SYNC_FLAG_LOW i=%u epoch=%u tick=%lu width=%u\n",i,low->epoch,(unsigned long)low->tick,low->width);
+    }
+    printf("SYNC_FLAG_TRACE_END count=%u restored=%u\n",s->trace.count,(unsigned)restored);
+    if(restored){s_flag_bench=NULL;free(s);} /* retain failed ownership until reboot */
+}
+
 static bool transport_bench_context_copy(sync_bench_context_t *ctx, uint16_t *lut)
 {
     uintptr_t dst = (uintptr_t)lut, raw = (uintptr_t)s_raw_ring;
@@ -1172,6 +1314,7 @@ static bool transport_bench_cache_result(esp_err_t error)
 
 void transport_sync_bench(void)
 {
+    if(s_flag_bench){printf("SYNC_BENCH refused=flag_context\n");return;}
     if (sync_service_active()) { printf("SYNC_BENCH refused=service_active writes_live=0\n"); return; }
     /* The fixed512-byte start plus the longest1280-byte pulse fits2048.
      * Keep the transient benchmark allocation below fragmented heap blocks. */
@@ -1583,6 +1726,7 @@ static bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_capture(syn
 }
 bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_source_begin(sync_service_source_t *s, bool discover)
 {
+    if(s_flag_bench)return false;
     if(!s || s->leased || !transport_raw_read_begin(&s->token))return false;
     s->leased=true;
     s->faults=transport_sync_faults();

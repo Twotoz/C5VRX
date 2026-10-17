@@ -15,6 +15,7 @@ idf_component_register(
 
 target_bitscrambler_add_src("u85q.bsasm")
 target_bitscrambler_add_src("u85q_lp.bsasm")
+target_bitscrambler_add_src("u85q_lp_flag.bsasm")
 
 # Pulse preparation and bounded metadata service must not inherit the
 # application's debug-oriented -Og.

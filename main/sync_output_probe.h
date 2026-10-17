@@ -12,6 +12,10 @@
 #include "sync_native_trace.h"
 void sync_output_probe(uint32_t generation, bool (*live)(uint32_t));
 void sync_output_clock_probe(uint32_t generation, bool (*live)(uint32_t));
+/* Finite signal48 comparator bench. Caller must hold PHY ownership and prove
+ * GPIO23 clamped LOW plus the complete flag program/LUT binding in live(). */
+bool sync_output_flag_probe(uint32_t generation, bool (*live)(uint32_t),
+                            snt_trace_t *trace, char *result, size_t size);
 
 /* Resident observer. Task context only; caller serializes begin/poll/end
  * against transport mutations with short ownership, never a resident lease.

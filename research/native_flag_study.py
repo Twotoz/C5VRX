@@ -70,6 +70,7 @@ def main():
     ap.add_argument('--rms', type=float, default=3.2)
     ap.add_argument('--clean', action='store_true')
     ap.add_argument('--lp', action='store_true', help='Post-LP comparator is a theoretical upper bound, not the proposed raw flag.')
+    ap.add_argument('--thresholds', type=int, nargs='+', default=[19])
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     luts = [np.asarray(x, np.uint16) for x in tables()]
@@ -86,8 +87,11 @@ def main():
                         variants = {
                             'bit4_low': (codes & 16) == 0,
                             'bit4_high': (codes & 16) != 0,
-                            'code_below19': codes < 19,
                         }
+                        for threshold in args.thresholds:
+                            if not 1<=threshold<=63:
+                                raise ValueError('threshold must be in1..63')
+                            variants[f'code_below{threshold}']=codes<threshold
                         for name, bits in variants.items():
                             ident = len(rows)
                             runs = pulse_runs(bits, 40)

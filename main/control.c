@@ -286,6 +286,7 @@ static void command(int c, unsigned *menu_idle)
     }
     switch (c) {
     case '~': receiver_native_toggle(); break;
+    case 'V': transport_sync_flag_probe(); break;
     case 'u': transport_sync_live_toggle(); break;
     case 'U': transport_sync_flywheel_toggle(); break;
     case 'N': {

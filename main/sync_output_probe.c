@@ -52,7 +52,7 @@ typedef struct {
     int64_t rate_started;
     uint32_t rate_callbacks;
     volatile uint32_t sequence;
-    bool resident;
+    bool resident,trace_flag;
 } sop_native_t;
 static sop_native_t *s_native;
 
@@ -126,7 +126,7 @@ static void sop_native_run(sop_context_t *s,uint32_t start,uint32_t width,bool i
 static void sop_low(sop_context_t *s, uint32_t start, uint32_t width)
 {
     if(start<s->discard_before)return;
-    if(s_native && s_native->resident)snt_trace_low(&s_native->trace,s->epochs,start,width);
+    if(s_native && (s_native->resident || s_native->trace_flag))snt_trace_low(&s_native->trace,s->epochs,start,width);
     sop_native_run(s,start,width,false);
     ++s->low;
     if (width >= 76u && width <= 112u) {
@@ -285,7 +285,7 @@ static sync_phase_bracket_t sop_score_clock(sop_clock_stats_t *stats,
 typedef struct {
     uint32_t generation;
     bool (*live)(uint32_t);
-    bool edge_clock;
+    bool edge_clock, flag_source;
     uint32_t iomux;
     uint32_t matrix;
     uint32_t enabled;
@@ -392,7 +392,7 @@ static bool sop_session_arm(sop_session_t *s)
                     if(!low || !sync_edge_clock_read(&s->fall_after)){ready=false;s->failure="clock_fall_after";}
                 }
                 if(ready)esp_rom_delay_us(16);
-                if(ready)REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,(s->witness_matrix&~GPIO_FUNC2_OUT_SEL_M)|52u);
+                if(ready)REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,(s->witness_matrix&~GPIO_FUNC2_OUT_SEL_M)|(s->flag_source?48u:52u));
                 uint64_t native_start;
                 if(ready && (!sync_edge_clock_read(&native_start) || native_start<=s->epoch_quiet ||
                     native_start-s->epoch_quiet>UINT32_MAX-64u)) {
@@ -417,14 +417,14 @@ static bool sop_session_arm(sop_session_t *s)
     return true;
 }
 
-static bool sop_session_begin(uint32_t generation, bool (*live)(uint32_t), bool edge_clock, bool resident)
+static bool sop_session_begin(uint32_t generation, bool (*live)(uint32_t), bool edge_clock, bool resident, bool flag_source)
 {
     if(s_busy || s_quarantined || s_clock_fault)return false;
     if(!s_session)s_session=calloc(1,sizeof(*s_session));
     if(!s_session)return false;
     sop_session_t *s=s_session;
     memset(s,0,sizeof(*s));
-    s->generation=generation;s->live=live;s->edge_clock=edge_clock;s->resident=resident;
+    s->generation=generation;s->live=live;s->edge_clock=edge_clock;s->resident=resident;s->flag_source=flag_source;
     s->clock_closed=true;s->arm_us=-1;s->failure="none";
     if (s_busy || s_quarantined || s_clock_fault) {
         printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 refusal=busy_or_quarantined\n"); return false;
@@ -471,11 +471,11 @@ static bool sop_session_begin(uint32_t generation, bool (*live)(uint32_t), bool 
     s->witness_iomux = (s->mirror_iomux & ~(MCU_SEL_M | FUN_PU | FUN_PD)) |
         (1u << MCU_SEL_S) | FUN_IE;
     s->witness_matrix = (s->mirror_matrix & ~(GPIO_FUNC2_OUT_SEL_M |
-        GPIO_FUNC2_OUT_INV_SEL_M | GPIO_FUNC2_OE_INV_SEL_M)) | (s->edge_clock?256u:52u) | GPIO_FUNC2_OE_SEL_M;
+        GPIO_FUNC2_OUT_INV_SEL_M | GPIO_FUNC2_OE_INV_SEL_M)) | (s->edge_clock?256u:(s->flag_source?48u:52u)) | GPIO_FUNC2_OE_SEL_M;
     memset(&s_probe, 0, sizeof(s_probe));
     s_probe.generation = s->generation; s_probe.live = s->live;
     s_probe.marker_required=s->edge_clock;
-    if(s_native){s_native->resident=resident;s_native->rate_started=esp_timer_get_time();}
+    if(s_native){s_native->resident=resident;s_native->trace_flag=flag_source;s_native->rate_started=esp_timer_get_time();}
     if(s->edge_clock)s_probe.discard_before=UINT32_MAX; /* IRQs may precede handoff publication. */
 
 
@@ -610,26 +610,26 @@ static bool sop_session_end(sop_session_t *s)
         if(!s->clock_closed)s_clock_fault=true;
         uint32_t rmt_rise=s_probe.prefix[0]+s_probe.prefix[1];
         uint32_t rmt_fall=rmt_rise+s_probe.prefix[2];
-        if(!s->resident)printf("SYNC_PHASE_BRACKET manual=1 absolute_time=0 camera_qualified=0 prefix_n=%u rmt_rise=%lu rmt_fall=%lu rise_before=%llu rise_after=%llu fall_before=%llu fall_after=%llu valid=%u offset_lo=%lld offset_hi=%lld\n",
+        if(!s->resident && !s->flag_source)printf("SYNC_PHASE_BRACKET manual=1 absolute_time=0 camera_qualified=0 prefix_n=%u rmt_rise=%lu rmt_fall=%lu rise_before=%llu rise_after=%llu fall_before=%llu fall_after=%llu valid=%u offset_lo=%lld offset_hi=%lld\n",
             s_probe.prefix_n,(unsigned long)rmt_rise,(unsigned long)rmt_fall,
             (unsigned long long)s->rise_before,(unsigned long long)s->rise_after,
             (unsigned long long)s->fall_before,(unsigned long long)s->fall_after,
             (unsigned)s->phase.valid,(long long)s->phase.lo,(long long)s->phase.hi);
-        if(!s->resident)printf("SYNC_CLOCK_EPOCHS manual=1 camera_qualified=0 rearms=%lu valid=%lu refused=%lu pending=%lu regressions=%lu max_span_ticks=%lu last_origin_lo=%lld last_origin_hi=%lld timer_resets=0\n",
+        if(!s->resident && !s->flag_source)printf("SYNC_CLOCK_EPOCHS manual=1 camera_qualified=0 rearms=%lu valid=%lu refused=%lu pending=%lu regressions=%lu max_span_ticks=%lu last_origin_lo=%lld last_origin_hi=%lld timer_resets=0\n",
             (unsigned long)s->clock_rearms,(unsigned long)s->clock_stats.valid,
             (unsigned long)s->clock_stats.refused,(unsigned long)s->clock_stats.pending,
             (unsigned long)s->clock_stats.regressions,(unsigned long)s->clock_stats.max_span,
             (long long)s->clock_stats.last_lo,(long long)s->clock_stats.last_hi);
         const sync_native_track_t *nt=s_native->inverted.valid && !s_native->native.valid?
             &s_native->inverted:&s_native->native;
-        if(!s->resident)printf("SYNC_NATIVE_TIMING manual=1 camera_qualified=0 timing_valid=%u standard=%u qualified_epochs=%lu fields=%lu line_ticks_x32=%lu field_tick=%llu phase_span_ticks=%lld\n",
+        if(!s->resident && !s->flag_source)printf("SYNC_NATIVE_TIMING manual=1 camera_qualified=0 timing_valid=%u standard=%u qualified_epochs=%lu fields=%lu line_ticks_x32=%lu field_tick=%llu phase_span_ticks=%lld\n",
             (unsigned)(nt->valid && !(s_native->inverted.valid && s_native->native.valid)),(unsigned)nt->standard,
             (unsigned long)s_native->native_qualified_epochs,
             (unsigned long)nt->qualified_fields,
             (unsigned long)nt->line_ticks_x32,
             (unsigned long long)nt->field,
             s_native->native_phase.valid?(long long)(s_native->native_phase.hi-s_native->native_phase.lo):-1LL);
-        if(!s->resident)printf("SYNC_EDGE_CLOCK manual=1 absolute_time=0 camera_qualified=0 common_filter_ns=%lu timer_hz=20000000 ticks=%llu read_ok=%u edges_seen=%u closed=%u arm_us=%lld marker_ticks=%lu marker_level=%u marker_ok=%u native_after_ticks=%lu error=%s\n",
+        if(!s->resident && !s->flag_source)printf("SYNC_EDGE_CLOCK manual=1 absolute_time=0 camera_qualified=0 common_filter_ns=%lu timer_hz=20000000 ticks=%llu read_ok=%u edges_seen=%u closed=%u arm_us=%lld marker_ticks=%lu marker_level=%u marker_ok=%u native_after_ticks=%lu error=%s\n",
             (unsigned long)s->common_filter_ns,(unsigned long long)s->clock_ticks,
             (unsigned)s->clock_read_ok,(unsigned)(s_probe.halves!=0u),
             (unsigned)s->clock_closed,(long long)s->arm_us,(unsigned long)s_probe.first_duration,
@@ -651,12 +651,13 @@ static bool sop_session_end(sop_session_t *s)
         REG_READ(GPIO_FUNC8_OUT_SEL_CFG_REG) == s->matrix &&
         (REG_READ(GPIO_ENABLE_REG) & (1u << 8)) == s->enabled;
     bool exclusion = !s_probe.cancelled && s->live(s->generation);
-    if(!s->resident)printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 gpio=2 mirror_source_gpio=8 bit=4 output_x100=100 "
+    if(!s->resident && !s->flag_source)printf("SYNC_OUTPUT_PROBE source=native_dac manual=1 gpio=2 mirror_source_gpio=%u bit=%u output_x100=%u "
         "self_gate_excluded=%u absolute_time=0 camera_qualified=0 restored=%u "
         "pin_mutated=%u error=%s api=%d cleanup=%d duration_us=%lld "
         "callbacks=%lu symbols=%lu halves=%lu epochs=%lu endings=%lu low=%lu "
         "h=%lu broad=%lu h_periods=%lu pal32=%lu ntsc32=%lu broad5=%lu broad6=%lu "
         "pal_fields=%lu ntsc_fields=%lu bad_data=%lu cancelled=%u\n",
+        s->flag_source?23u:8u,s->flag_source?0u:4u,s->flag_source?0u:100u,
         (unsigned)exclusion, (unsigned)restored, (unsigned)s->pin_changed,
         s->failure, (int)s->err, (int)s->cleanup, (long long)(esp_timer_get_time() - s->began),
         (unsigned long)s_probe.callbacks, (unsigned long)s_probe.symbols,
@@ -679,7 +680,7 @@ static bool sop_session_end(sop_session_t *s)
 }
 
 bool sync_output_live_begin(uint32_t generation,bool (*live)(uint32_t))
-{ return sop_session_begin(generation,live,true,true); }
+{ return sop_session_begin(generation,live,true,true,false); }
 bool sync_output_live_active(void)
 { return s_busy && s_session && s_session->resident; }
 void sync_output_live_before_close(bool (*callback)(void))
@@ -796,17 +797,49 @@ bool sync_output_live_trace_snapshot(snt_trace_t *out)
     return false;
 }
 
-static void sync_output_probe_run(uint32_t generation,bool (*live)(uint32_t),bool edge_clock)
+static bool sync_output_probe_run(uint32_t generation,bool (*live)(uint32_t),bool edge_clock,bool flag_source)
 {
-    if(!sop_session_begin(generation,live,edge_clock,false))return;
+    if(!sop_session_begin(generation,live,edge_clock,false,flag_source))return false;
     while(esp_timer_get_time()-s_session->began<SOP_WINDOW_US && !s_probe.stop) {
         if(!sop_session_poll(s_session))break;
         vTaskDelay(1u);
     }
-    (void)sop_session_end(s_session);
+    bool observed=!s_probe.stop && !s_probe.cancelled;
+    return sop_session_end(s_session) && observed;
 }
 
 void sync_output_probe(uint32_t generation,bool (*live)(uint32_t))
-{ sync_output_probe_run(generation,live,false); }
+{ (void)sync_output_probe_run(generation,live,false,false); }
 void sync_output_clock_probe(uint32_t generation,bool (*live)(uint32_t))
-{ sync_output_probe_run(generation,live,true); }
+{ (void)sync_output_probe_run(generation,live,true,false); }
+
+bool sync_output_flag_probe(uint32_t generation,bool (*live)(uint32_t),
+                            snt_trace_t *trace,char *result,size_t size)
+{
+    if(trace)snt_trace_reset(trace);
+    if(result && size)snprintf(result,size,"SYNC_FLAG_CAPTURE signal=48 threshold=19 started=0 timing_valid=0\n");
+    if(!sop_session_begin(generation,live,true,false,true))return false;
+    while(esp_timer_get_time()-s_session->began<SOP_WINDOW_US && !s_probe.stop) {
+        if(!sop_session_poll(s_session))break;
+        vTaskDelay(1u);
+    }
+    bool observed=!s_probe.stop && !s_probe.cancelled;
+    bool closed=sop_session_end(s_session);
+    if(trace && s_native)*trace=s_native->trace;
+    if(result && size && s_native) {
+        const sync_native_track_t *lo=&s_native->native,*hi=&s_native->inverted;
+        bool ambiguous=lo->valid && hi->valid;
+        const sync_native_track_t *nt=hi->valid && !lo->valid?hi:lo;
+        snprintf(result,size,"SYNC_FLAG_CAPTURE signal=48 threshold=19 started=1 error=%s api=%d cleanup=%d "
+            "closed=%u callbacks=%lu symbols=%lu epochs=%lu phase_span_ticks=%lld "
+            "timing_valid=%u inverted=%u standard=%u fields=%lu line_ticks_x32=%lu "
+            "low_valid=%u high_valid=%u low_fields=%lu high_fields=%lu camera_qualified=0\n",
+            s_session->failure,(int)s_session->err,(int)s_session->cleanup,(unsigned)closed,
+            (unsigned long)s_probe.callbacks,(unsigned long)s_probe.symbols,(unsigned long)s_probe.epochs,
+            s_native->native_phase.valid?(long long)(s_native->native_phase.hi-s_native->native_phase.lo):-1LL,
+            (unsigned)(nt->valid && !ambiguous),(unsigned)(hi->valid && !lo->valid),
+            (unsigned)nt->standard,(unsigned long)nt->qualified_fields,(unsigned long)nt->line_ticks_x32,
+            (unsigned)lo->valid,(unsigned)hi->valid,(unsigned long)lo->qualified_fields,(unsigned long)hi->qualified_fields);
+    }
+    return observed && closed;
+}

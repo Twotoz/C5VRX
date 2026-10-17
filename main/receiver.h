@@ -87,6 +87,7 @@ void transport_sync_bench(void); /* manual private-RAM J benchmark; no live writ
 void transport_sync_gate_probe(bool pal); /* Z/z: brief PAL/NTSC DAC-OE diagnostic */
 void transport_sync_gate_probe_long(bool pal); /* Q/q: three-second manual gate test */
 void transport_sync_output_probe(void); /* Y: native DAC timing observation, LP/1x only */
+void transport_sync_flag_probe(void); /* V: finite comparator observation, restores original stream */
 void transport_sync_output_clock_probe(void); /* y: common-edge RMT/ETM experiment */
 void transport_sync_live_toggle(void); /* u: resident native observer bench */
 void transport_sync_flywheel_toggle(void); /* U: conditional DAC-OE holdover bench */
