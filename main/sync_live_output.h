@@ -13,7 +13,10 @@ typedef bool (*slo_native_fn)(uint64_t start,uint32_t width,slg_kind_t kind,void
 typedef struct {
     uint32_t repaired,suppressed,batches,max_late_ticks,queue_low,fault,missed,miss_kind;
     uint32_t max_irq_delay_ticks,max_callback_ticks,miss_phase,misses_by_phase[6],budget_yields;
-    bool active;
+    /* Camera-phase guard: tips left to a present off-grid camera, grid
+     * re-anchors (H incl. fine trims, V) from coherent native pulses. */
+    uint32_t yielded,guard_h_jumps,guard_v_jumps,guard_trims;
+    bool active,guard_yield;
 } slo_status_t;
 /* Explicit selected-standard fallback if model is NULL/unqualified. Native
  * callback must be cache-safe/IRAM; NULL admits no native suppression evidence. */
@@ -36,3 +39,9 @@ bool sync_live_output_update(const slg_model_t *model);
  * not. H admission additionally comes from the caller's source predicate. */
 void sync_live_output_native_fresh(bool vertical);
 void sync_live_output_native_polarity(bool inverted);
+/* Task context, every native comparator pulse on the common clock (`high`
+ * is the comparator level). A present camera that runs off the held grid
+ * gets the OE back and the grid re-anchors to it; see sync_phase_guard.h. */
+void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high);
+/* Control tick: ends a yield once the camera has been gone for 100 ms. */
+void sync_live_output_guard_tick(void);

@@ -705,3 +705,38 @@ wakes gain/sentinel at 200 us, with mostly cheap gain-only measurements and
 rejected (modeled sustained -22 dB recovery 52 ms versus 20.4). Full envelope
 every 20 ms has context/age guard (40-ms expiry). Watchdog remains
 enabled; the next board log must verify idle/startup and CPU headroom.
+
+## Live flywheel: camera-phase guard against rolling (2026-10-17)
+
+Operator report (PR #212 board image): after the VTX was off, after heavy
+static, or without an obvious trigger, the picture slowly rolled
+horizontally and part of the top of the picture appeared at the bottom.
+
+- Cause (code reading, host-reproduced): the ISR suppresses a repair only
+  when a native comparator edge falls within +-4 us of its own predicted
+  tip. A camera that is present but off the held grid therefore received a
+  second, competing sync. The grid could be off because the camera
+  returned at another phase, because the H period drifted while no model
+  update arrived, or because `transport_sync_live_tick` published models
+  whose V anchor was only coasted (H fresh, V not requalified), which
+  imposed a stale field position on a live camera.
+- Fix: `main/sync_phase_guard.h` compares every native H/broad pulse with
+  the running grid. Coherent off-grid H (12 pulses) yields the OE (the
+  camera's own sync reaches the monitor) and re-anchors H by the measured
+  offset; two fields with the same V offset re-anchor V by whole
+  halflines; aligned H with a mean offset >= 8 ticks is trimmed. Random
+  noise cannot build a score (199 seeds x 5000 pulses). A yield ends after
+  in-phase evidence or 100 ms without camera evidence. Models now move the
+  grid only with a fresh V anchor (`m.valid`).
+- Also reverted: the 40 ms authority expiry in `sync_native_flag_track.h`
+  (contradicted the tested retained-clock contract; a changed phase is
+  taken over after two confirmed groups and by the guard at the output).
+- Ring keeper (host-only): an unsteered rebuild line now decays the PLL
+  period toward the fitted holdover clock; a period left 118 Q16/line off
+  by noisy pulses crept 2.3 samples and failed the +50 ppm, kp 0.50 NTSC
+  weak gate (CI). Full kp/ppm/output matrix passes.
+- Evidence: host only (`test/test_sync_phase_guard.c`, guard scenarios in
+  `test/test_sync_live_output_runtime.py`). New counters in `T`:
+  `SYNC_FLYWHEEL ... guard_yield yielded h_jumps v_jumps trims`. Board and
+  monitor-lock confirmation pending; IRQ-blackout misses (338 us) are a
+  separate, unsolved output-deadline problem.

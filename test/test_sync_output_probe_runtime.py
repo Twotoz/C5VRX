@@ -74,6 +74,9 @@ static unsigned clock_prepares,clock_arms,clock_pauses;
 static bool scheduler_held,flag_source_seen;
 static void vTaskSuspendAll(void){assert(!scheduler_held);scheduler_held=true;}
 static int xTaskResumeAll(void){assert(scheduler_held);scheduler_held=false;return 0;}
+static bool irq_masked; /* marker edge brackets: short, never nested, scheduler held */
+static void portDISABLE_INTERRUPTS(void){assert(scheduler_held&&!irq_masked);irq_masked=true;}
+static void portENABLE_INTERRUPTS(void){assert(irq_masked);irq_masked=false;}
 static bool sync_edge_clock_prepare(void){++clock_calls;++clock_prepares;assert((registers[GPIO_ENABLE_REG]&(1u<<2))&&!(registers[GPIO_OUT_REG]&(1u<<2)));clock_prepared=clock_fail!=1u;return clock_prepared;}
 static bool sync_edge_clock_arm(void){++clock_calls;++clock_arms;assert(scheduler_held&&clock_prepared&&receiving&&!(registers[GPIO_OUT_REG]&(1u<<2)));if(clock_fail==4u)now+=701;clock_armed=clock_fail!=2u;return clock_armed;}
 static bool sync_edge_clock_enable_filter(void){++clock_calls;assert(scheduler_held&&clock_armed&&!(registers[GPIO_OUT_REG]&(1u<<2)));return clock_fail!=5u;}

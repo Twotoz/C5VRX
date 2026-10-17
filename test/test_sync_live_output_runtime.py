@@ -66,6 +66,9 @@ int main(void){
  for(unsigned standard=1;standard<=2;++standard)for(unsigned native=0;native<=1;++native){
   reset();native_ok=native;
   assert(sync_live_output_begin(NULL,(slg_standard_t)standard,7,owner,present,NULL));
+  /* A nominal clock without camera authority never clamps OE. */
+  for(unsigned i=0;i<200;++i){fire();assert(!clears&&!s_output->status.repaired);}
+  s_output->native_authority=true; /* repair path after independent authority */
   for(unsigned i=0;i<3000;++i){assert(sync_live_output_poll());fire();
    assert(s_output->status.active&&!s_output->status.fault);
    assert((registers[0]&SLO_MASK)==SLO_MASK);++checks;}
@@ -82,7 +85,7 @@ int main(void){
  assert(!clears&&s_output->status.active&&!s_output->status.fault&&s_output->status.missed==1&&alarm_enabled);assert(sync_live_output_end());++checks;
  reset();registers[0]&=~(1u<<8);assert(!sync_live_output_begin(NULL,SLG_PAL,7,owner,NULL,NULL)&&!s_output);++checks;
  reset();assert(sync_live_output_begin(NULL,SLG_PAL,7,owner,NULL,NULL));
- s_output->clock.exhausted=true;fire();assert(s_output->status.fault==2&&clears==1);
+ s_output->native_authority=true;s_output->clock.exhausted=true;fire();assert(s_output->status.fault==2&&clears==1);
  assert(sync_live_output_end());++checks;
  /* Comparator pin contract: no ordinary pin23 mux may be admitted. */
  reset();assert(!sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL)&&!s_output);++checks;
@@ -118,6 +121,9 @@ int main(void){
  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
  high_start=s_output->tip.start-10;high_end=UINT64_MAX;fire();
+ assert(!s_output->status.repaired&&!s_output->status.suppressed&&!clears); /* no authority: no clamp */
+ s_output->native_authority=true;s_output->native_v_fresh=true;
+ high_start=0;fire();
  assert(s_output->status.repaired&&!s_output->status.suppressed); /* unqualified noise cannot cancel */
  assert(sync_live_output_end());++checks;
  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
@@ -143,6 +149,7 @@ int main(void){
  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
  uint64_t initial_origin=s_output->tip.start-(s_output->tip.half*5720u+4u)/9u;
+ s_output->native_authority=true;
  cycles=(s_output->tip.start+100000u)*12u; /*5ms unavailable CPU*/
  check_repair_admission=true;
  unsigned callbacks=0;
@@ -174,12 +181,12 @@ int main(void){
  unsigned allocations=heap_allocations,frees=heap_frees;
  for(unsigned repeat=0;repeat<100u;++repeat)assert(sync_live_output_update(&model));
  assert(heap_allocations==allocations&&heap_frees==frees);
- assert(s_output->pending_slew && s_output->tip.start==old_tip && alarm_enabled);
+ assert((s_output->pending_mode==SLO_PUB_SLEW) && s_output->tip.start==old_tip && alarm_enabled);
  unsigned publication=s_output->publication;
  fire();assert(s_output->applied==publication && s_output->standard==SLG_NTSC);
  assert(!s_output->status.fault);++checks;
  model.last_h+=(40676u+32u)/64u;model.observed_at=cycles/12;
- assert(sync_live_output_update(&model)&&!s_output->pending_slew);++checks;
+ assert(sync_live_output_update(&model)&&!(s_output->pending_mode==SLO_PUB_SLEW));++checks;
  model.qualified=false;assert(!sync_live_output_update(&model));++checks;
  model.qualified=true;model.line_ticks_x32=0u;
  slc_t running=s_output->clock;slo_tip_t running_tip=s_output->tip;
@@ -191,7 +198,7 @@ int main(void){
  model=(slg_model_t){.field=cycles/12-30000u,.last_h=cycles/12-4400u,
    .observed_at=cycles/12,.line_ticks_x32=40960u,.receive_epoch=2,
    .uncertainty_ticks=64,.standard=SLG_PAL,.qualified=true};
- assert(sync_live_output_update(&model)&&!s_output->pending_slew);
+ assert(sync_live_output_update(&model)&&!(s_output->pending_mode==SLO_PUB_SLEW));
  fire();assert(s_output->standard==SLG_PAL&&!s_output->status.fault);++checks;
  for(unsigned i=0;i<100;++i)fire();
  assert(sync_live_output_end());
@@ -206,7 +213,7 @@ int main(void){
  model=(slg_model_t){.field=cycles/12-30000u,.last_h=cycles/12-4400u,
    .observed_at=cycles/12,.line_ticks_x32=40960u,.receive_epoch=2,
    .uncertainty_ticks=64,.standard=SLG_PAL,.qualified=true};
- assert(sync_live_output_update(&model)&&!s_output->pending_slew);
+ assert(sync_live_output_update(&model)&&!(s_output->pending_mode==SLO_PUB_SLEW));
  uint64_t expired_candidate=s_output->pending_tip.start;
  publication=s_output->publication;
  cycles=(expired_candidate+1000u)*12u;
@@ -217,13 +224,77 @@ int main(void){
  /* Once a fresh full reseed is actually admitted, old source/edge history
   * must be discarded before the new phase gets fast native suppression. */
  model.field=cycles/12-30000u;model.last_h=cycles/12-4400u;model.observed_at=cycles/12;
- assert(sync_live_output_update(&model)&&!s_output->pending_slew);
+ assert(sync_live_output_update(&model)&&!(s_output->pending_mode==SLO_PUB_SLEW));
  s_output->source_seen=s_output->low_seen=s_output->rise_valid=true;
  s_output->last_high=true;s_output->rise=s_output->tip.start;
  fire();
  assert(s_output->native_authority&&s_output->standard==SLG_PAL);
  assert(!s_output->source_seen&&!s_output->low_seen&&!s_output->rise_valid);
  assert(!s_output->status.fault);assert(sync_live_output_end());++checks;
+ /* Camera-phase guard (board: slow horizontal roll and the top of the
+  * picture at the bottom after VTX off/static). A present camera off the
+  * held grid must get the OE back and re-anchor the grid; noise must not. */
+ for(unsigned scenario=0;scenario<5u;++scenario){
+  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+  s_output->native_authority=true;s_output->native_v_fresh=true;
+  for(unsigned i=0;i<20;++i)fire();
+  double halfline=s_output->clock.whole+(double)s_output->clock.increment/s_output->clock.denominator;
+  slo_tip_t t=s_output->tip;
+  /* Absolute position of halfline h on the running grid. */
+  #define GRID(h) ((double)t.start+((double)(h)-(double)t.half)*halfline)
+  uint64_t h0=t.half+((t.half&1u)!=s_output->clock.parity?1u:0u)+40u; /* future H line */
+  uint64_t old_start=t.start;uint64_t old_half=t.half;
+  if(scenario==0){ /* camera 300 ticks late: yield, then one H re-anchor */
+   for(unsigned k=0;k<SPG_LOCK;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+300.5),160u,true);
+   assert(s_output->yield&&s_output->status.guard_h_jumps==1u&&s_output->pending_mode==SLO_PUB_JUMP_H);
+   int32_t jump=s_output->pending_shift;assert(jump>=295&&jump<=305);
+   unsigned before=s_output->status.yielded;
+   fire();assert(s_output->applied==s_output->publication);
+   assert(s_output->tip.start>=(uint64_t)(old_start+(s_output->tip.half-old_half)*halfline)+jump-2u);
+   for(unsigned i=0;i<10;++i)fire();
+   assert(s_output->status.yielded>before); /* camera owns sync until confirmed */
+   uint64_t guard=s_output->guard_after;
+   t=s_output->tip;h0=t.half+((t.half&1u)!=s_output->clock.parity?1u:0u);
+   while(GRID(h0)<(double)guard)h0+=2u;
+   for(unsigned k=0;k<SPG_LOCK;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+0.5),160u,true);
+   assert(!s_output->yield&&s_output->status.guard_h_jumps==1u);
+   unsigned clamps=clears;fire();fire();assert(clears>clamps); /* holdover repairs resume */
+  }
+  if(scenario==1){ /* incoherent noise at random phases: never yields or jumps */
+   uint32_t lcg=12345u;
+   for(unsigned k=0;k<4000u;++k){lcg=lcg*1103515245u+12345u;
+    sync_live_output_native_pulse((uint64_t)(GRID(h0)+k*97.0+(lcg>>20)%1271u),80u+(lcg>>8)%150u,true);
+    assert(!s_output->yield);}
+   assert(!s_output->status.guard_h_jumps&&!s_output->status.guard_v_jumps);
+  }
+  if(scenario==2){ /* H in phase, V 7 halflines late on two fields: V re-anchor */
+   for(unsigned k=0;k<SPG_LOCK;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+0.5),160u,true);
+   uint64_t f0=h0+600u-((h0+600u)%525u)+6u+7u; /* camera first broad at index section+7 */
+   sync_live_output_native_pulse((uint64_t)(GRID(f0)+0.5),541u,true);
+   sync_live_output_native_pulse((uint64_t)(GRID(f0+1u)+0.5),541u,true); /* same train */
+   assert(!s_output->status.guard_v_jumps);
+   sync_live_output_native_pulse((uint64_t)(GRID(f0+525u)+0.5),541u,true);
+   assert(s_output->status.guard_v_jumps==1u&&s_output->pending_mode==SLO_PUB_JUMP_V&&s_output->pending_shift==7);
+   assert(s_output->yield);
+   uint16_t index=s_output->clock.index;fire();
+   assert(s_output->clock.index==(uint16_t)((index+525u-7u+1u)%525u)||s_output->clock.index==(uint16_t)((index+525u-7u+2u)%525u));
+  }
+  if(scenario==3){ /* small coherent drift: one fine trim, no yield */
+   for(unsigned k=0;k<SPG_TRIM_N;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+20.5),160u,true);
+   assert(!s_output->yield&&s_output->status.guard_trims==1u&&s_output->pending_shift>=19&&s_output->pending_shift<=21);
+  }
+  if(scenario==4){ /* camera disappears while yielding: holdover resumes after 100 ms */
+   for(unsigned k=0;k<SPG_LOCK;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+500.5),160u,true);
+   assert(s_output->yield);
+   sync_live_output_guard_tick();assert(s_output->yield);
+   cycles+=(uint64_t)(SPG_HOLD_TICKS+(uint64_t)(GRID(h0+2u*SPG_LOCK)-cycles/12.0)+1000u)*12u;
+   sync_live_output_guard_tick();assert(!s_output->yield&&!s_output->status.guard_yield);
+  }
+  assert(!s_output->status.fault&&(registers[0]&SLO_MASK)==SLO_MASK);
+  assert(sync_live_output_end());++checks;
+  #undef GRID
+ }
  printf("PASS: %u actual conditional-output checks; no physical timing/monitor claim\n",checks);
 }
 '''
@@ -243,6 +314,7 @@ static void counted_free(void *p){++heap_frees;free(p);}
 #define heap_caps_calloc(n,s,caps) counted_calloc(n,s)\n'''
     api=stripped(ROOT/'main/sync_edge_clock.h')+stripped(ROOT/'main/sync_live_gate.h')
     api+=stripped(ROOT/'main/sync_live_output.h')+stripped(ROOT/'main/sync_live_clock.h')
+    api+=stripped(ROOT/'main/sync_phase_guard.h')
     source=stripped(ROOT/'main/sync_live_gate.c')+stripped(ROOT/'main/sync_live_output.c')
     with tempfile.TemporaryDirectory() as directory:
         p=Path(directory);(p/'run.c').write_text(prefix+api+source+HARNESS)

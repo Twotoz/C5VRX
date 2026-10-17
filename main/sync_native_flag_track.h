@@ -159,20 +159,10 @@ static inline void sync_native_flag_high(sync_native_flag_track_t *f,uint64_t ti
         if(tick-s->last>16u*1290u) {
             memset(s->candidates,0,sizeof(s->candidates));s->have_h=false;
         }
-        if(tick-s->last>810000u) {
-            /* VTX turned off: expire stale authority so new camera sync can re-acquire immediately */
-            s->valid=false;s->have_selected=false;s->have_group=false;
-            f->group_shifted=false;
-        }
         snft_partial_clear(f);f->pre_count=0u;
     }
     s->seen=true;s->last=tick;
-    if(s->have_group && tick>s->group && tick-s->group>410000u) {
-        s->have_group=false;
-        if(s->valid && tick>s->field && tick-s->field>810000u) {
-            s->valid=false;s->have_selected=false;f->group_shifted=false;
-        }
-    }
+    if(s->have_group && tick>s->group && tick-s->group>410000u)s->have_group=false;
     if(width>=250u && width<=620u) {
         if(!s->have_broad) {
             if(!s->h_standard)return;

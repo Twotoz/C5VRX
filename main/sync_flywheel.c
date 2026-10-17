@@ -1475,6 +1475,12 @@ static __attribute__((noinline)) unsigned run_tracking(sync_flywheel_t *f, const
             if (f->period_q16 < f->nominal_q16 - lim) f->period_q16 = f->nominal_q16 - lim;
             advance(f, base + (uint64_t)(int64_t)(f->period_q16 + err / pg));
         } else {
+            /* Rebuilding without a steerable pulse: decay toward the fitted
+             * holdover clock. A period last nudged by noisy pulses would
+             * otherwise freeze (+118 Q16/line = 2.3 samples per 1300 lines
+             * in the +50 ppm NTSC weak fixture). */
+            if (f->rebuild_lines && f->clock_known)
+                f->period_q16 += (f->coast_period_q16 - f->period_q16) / 16;
             advance(f, base + (uint64_t)(int64_t)f->period_q16);
         }
 

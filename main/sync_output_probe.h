@@ -59,3 +59,5 @@ bool sync_output_live_snapshot(sync_output_live_model_t *out);
 /* Task-side diagnostic snapshot, under the same serialized ownership. */
 bool sync_output_live_diagnostics(char *out,size_t size);
 bool sync_output_live_trace_snapshot(snt_trace_t *out);
+/* Resident flag session: receives each native pulse during drain (task). */
+void sync_output_live_pulse_hook(void (*hook)(uint64_t tick,uint32_t width,bool high));

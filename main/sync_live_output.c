@@ -5,6 +5,7 @@
 #include "sync_live_output.h"
 #include "sync_edge_clock.h"
 #include "sync_live_clock.h"
+#include "sync_phase_guard.h"
 #include "esp_attr.h"
 #include "esp_cpu.h"
 #include "esp_heap_caps.h"
@@ -42,12 +43,17 @@ typedef struct {
     slc_t pending_clock;
     slo_tip_t pending_tip;
     slg_standard_t standard;
-    bool pending_slew;
-    int8_t pending_shift;
+    uint8_t pending_mode;
+    int32_t pending_shift;
     uint32_t pending_period;
+    /* Task-owned camera-phase guard; the ISR reads only `yield`. */
+    spg_t guard;
+    uint64_t guard_after,last_broad;
+    volatile bool yield;
     slo_status_t status;
     bool saved,configured,quarantined;
 } slo_t;
+enum {SLO_PUB_SLEW=1,SLO_PUB_TAKEOVER,SLO_PUB_JUMP_H,SLO_PUB_JUMP_V};
 static slo_t *s_output;
 static DRAM_ATTR volatile unsigned s_output_phase;
 void sync_live_output_phase(unsigned phase)
@@ -133,6 +139,7 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
         else native=s->native && s->native(tip.start,tip.width,(slg_kind_t)tip.kind,s->native_arg);
         if(!s->status.active || !s->live(s->generation)){fail(s,1);return false;}
         if(native)++s->status.suppressed;
+        else if(s->native_authority && s->yield)++s->status.yielded;
         else if(s->native_authority) {
             REG_WRITE(GPIO_ENABLE_W1TC_REG,SLO_MASK);
             if(s->flag) {
@@ -164,17 +171,29 @@ advance:
             slc_t candidate=s->pending_clock;slo_tip_t candidate_tip=s->pending_tip;
             if(publication==s->publication) {
                 s->applied=publication;
-                if(s->pending_slew) {
-                    s->native_authority=true;
-                    int shift=s->pending_shift;
-                    if(shift>=0) {next.start+=(unsigned)shift;s->clock.tick+=(unsigned)shift;}
-                    else if(next.start>(unsigned)-shift && s->clock.tick>(unsigned)-shift) {
-                        next.start-=(unsigned)-shift;s->clock.tick-=(unsigned)-shift;
+                uint8_t mode=s->pending_mode;
+                if(mode==SLO_PUB_SLEW || mode==SLO_PUB_JUMP_H) {
+                    /* A camera-phase re-anchor shifts the whole grid (H and
+                     * V together) on the next tip; an expired tip is skipped
+                     * by admission, never emitted late. */
+                    int32_t shift=s->pending_shift;
+                    if(shift>=0) {next.start+=(uint32_t)shift;s->clock.tick+=(uint32_t)shift;}
+                    else if(next.start>(uint32_t)-shift && s->clock.tick>(uint32_t)-shift) {
+                        next.start-=(uint32_t)-shift;s->clock.tick-=(uint32_t)-shift;
                     }
+                }
+                if(mode==SLO_PUB_SLEW) {
+                    s->native_authority=true;
                     s->clock.whole=s->pending_period>>6;
                     s->clock.increment=(uint8_t)(s->pending_period&63u);
                     s->clock.denominator=64u;s->clock.remainder=0;
-                } else if(candidate_tip.start>now+SLO_LEAD) {
+                } else if(mode==SLO_PUB_JUMP_V) {
+                    /* Move the field position by whole halflines; physical
+                     * H tips keep their absolute half parity. */
+                    int32_t index=((int32_t)s->clock.index-s->pending_shift)%(int32_t)s->clock.halves;
+                    if(index<0)index+=s->clock.halves;
+                    s->clock.index=(uint16_t)index;
+                } else if(mode==SLO_PUB_TAKEOVER && candidate_tip.start>now+SLO_LEAD) {
                     s->clock=candidate;next=candidate_tip;
                     s->standard=candidate.halves==625u?SLG_PAL:SLG_NTSC;
                     s->native_authority=true;
@@ -345,11 +364,82 @@ bool sync_live_output_update(const slg_model_t *model)
      * (up to 16 ticks = 800ns per field) so the flywheel rapidly locks onto the camera without rolling. */
     bool slew=standard==model->standard && wanted==running && error>=-200 && error<=200;
     ++s->publication;__sync_synchronize();
-    s->pending_slew=slew;
-    s->pending_shift=(int8_t)(error>16?16:error< -16?-16:error);
+    s->pending_mode=slew?SLO_PUB_SLEW:SLO_PUB_TAKEOVER;
+    s->pending_shift=(int32_t)(error>16?16:error< -16?-16:error);
     s->pending_period=model->line_ticks_x32;
     s->pending_clock=candidate;
     s->pending_tip=(slo_tip_t){pulse.start,(uint16_t)pulse.width,(uint8_t)pulse.kind,pulse.index,pulse.half};
     __sync_synchronize();++s->publication;
+    if(!slew) {
+        /* A confirmed camera model replaces the grid: old guard evidence
+         * describes the previous phase. */
+        s->guard=(spg_t){0};s->yield=false;s->guard_after=now+20000u;
+    }
     return true;
+}
+
+/* Bounded task-side publication; refused while another is unapplied so a
+ * re-anchor can never overwrite a pending model takeover. */
+static bool guard_publish(slo_t *s,uint8_t mode,int32_t value)
+{
+    uint64_t now;
+    if((s->publication&1u) || s->publication!=s->applied || !sync_edge_clock_read(&now))return false;
+    ++s->publication;__sync_synchronize();
+    s->pending_mode=mode;s->pending_shift=value;
+    __sync_synchronize();++s->publication;
+    /* Pulses observed before the ISR applies it belong to the old grid. */
+    s->guard_after=now+20000u;
+    if(mode==SLO_PUB_JUMP_V)++s->status.guard_v_jumps;
+    else ++s->status.guard_h_jumps;
+    return true;
+}
+
+void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
+{
+    slo_t *s=s_output;
+    if(!s || !s->flag || !s->status.active || s->quarantined || !s->native_authority ||
+       high!=s->native_inverted || tick<s->guard_after)return;
+    bool h=width>=75u && width<=240u,broad=width>=250u && width<=620u;
+    if(!h && !broad)return;
+    slo_tip_t tip;slc_t clock;
+    do {tip=s->tip;clock=s->clock;__sync_synchronize();} while(tip.start!=s->tip.start);
+    if(!clock.denominator || !clock.halves)return;
+    /* Halfline in 1/denominator ticks, exactly as the ISR iterator steps. */
+    int64_t den=clock.denominator,half=(int64_t)clock.whole*den+clock.increment;
+    int64_t delta=((int64_t)tick-(int64_t)tip.start)*den;
+    spg_action_t action={SPG_NONE,0};
+    if(h) {
+        /* H lines sit on halves with the clock's parity. */
+        int64_t base=(tip.half&1u)==clock.parity?delta:delta-half;
+        int32_t offset=(int32_t)(spg_wrap(base,2*half)/den);
+        action=spg_h(&s->guard,offset,(int32_t)(2*half/den),tick);
+    } else {
+        bool first=tick<s->last_broad || tick-s->last_broad>3000u;
+        s->last_broad=tick;
+        if(!first)return;
+        int64_t halves=delta>=0?(delta+half/2)/half:-((-delta+half/2)/half);
+        int32_t index=(int32_t)(((int64_t)tip.index+halves)%clock.halves);
+        if(index<0)index+=clock.halves;
+        int32_t offset=spg_wrap((int64_t)index-clock.section,clock.halves);
+        action=spg_v(&s->guard,offset,tick);
+    }
+    if(action.kind==SPG_JUMP_H) {
+        bool trim=!s->guard.yield_h;
+        if(guard_publish(s,SLO_PUB_JUMP_H,action.value)) {
+            if(trim)++s->status.guard_trims;
+            spg_reset(&s->guard);
+        }
+    } else if(action.kind==SPG_JUMP_V && guard_publish(s,SLO_PUB_JUMP_V,action.value)) {
+        spg_reset(&s->guard);
+    }
+    s->yield=spg_yield(&s->guard,tick);
+}
+
+void sync_live_output_guard_tick(void)
+{
+    slo_t *s=s_output;
+    uint64_t now;
+    if(!s || !s->flag || !sync_edge_clock_read(&now))return;
+    s->yield=spg_yield(&s->guard,now);
+    s->status.guard_yield=s->yield;
 }
