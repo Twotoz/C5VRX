@@ -20,9 +20,9 @@
 #define SLO_LATE 160u
 /* Flag path: at most 1us late and at least 1us of useful tip remaining.
  * All widths terminate on the original absolute end, including late arrivals. */
-#define SLO_FLAG_LATE 20u
+#define SLO_FLAG_LATE 40u
 #define SLO_FLAG_MIN 20u
-#define SLO_PHASE_WINDOW 40u
+#define SLO_PHASE_WINDOW 80u
 #define SLO_BATCH_CYCLES (224u*240u)
 #define SLO_CATCHUP_LEAD 80u /*4us leaves driver/ISR epilogue time before retry*/
 typedef struct {uint64_t start;uint16_t width;uint8_t kind;uint16_t index;uint64_t half;} slo_tip_t;
@@ -341,10 +341,12 @@ bool sync_live_output_update(const slg_model_t *model)
      * does not establish the H halfslot: odd field offsets flip it. */
     unsigned wanted=seed.h_parity^((uint64_t)fields&1u);
     unsigned running=parity^((current.half-current.index)&1u);
-    bool slew=standard==model->standard && wanted==running && error>=-80 && error<=80;
+    /* If the phase error is within the slew window, correct it smoothly but aggressively
+     * (up to 16 ticks = 800ns per field) so the flywheel rapidly locks onto the camera without rolling. */
+    bool slew=standard==model->standard && wanted==running && error>=-200 && error<=200;
     ++s->publication;__sync_synchronize();
     s->pending_slew=slew;
-    s->pending_shift=(int8_t)(error>2?2:error< -2?-2:error);
+    s->pending_shift=(int8_t)(error>16?16:error< -16?-16:error);
     s->pending_period=model->line_ticks_x32;
     s->pending_clock=candidate;
     s->pending_tip=(slo_tip_t){pulse.start,(uint16_t)pulse.width,(uint8_t)pulse.kind,pulse.index,pulse.half};
