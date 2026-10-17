@@ -39,7 +39,7 @@ _Static_assert((SOP_MASK & UINT32_C(0x01801b00)) == 0u,
  * This bounds delivery staleness, not per-line missing-sync detection. */
 #define SOP_MODEL_MAX_AGE_TICKS 180000u
 
-#define SOP_RX_RING 12u
+#define SOP_RX_RING 32u
 typedef struct {
     rmt_symbol_word_t symbols[SOP_SYMBOLS];
     uint8_t count;
@@ -464,20 +464,26 @@ static bool sop_session_arm(sop_session_t *s)
                  * input path's delay. Both physical edges are bracketed by
                  * timer reads and flushed GPIO data readbacks. The marker
                  * remains confined to GPIO2 and below the source barrier. */
-                if(!sync_edge_clock_read(&s->rise_before)){ready=false;s->failure="clock_rise_before";}
-                if(ready) {
+                portDISABLE_INTERRUPTS();
+                bool rise_ok=sync_edge_clock_read(&s->rise_before);
+                if(rise_ok) {
                     __sync_synchronize();REG_WRITE(GPIO_OUT_W1TS_REG,SOP_MASK);
                     bool high=(REG_READ(GPIO_OUT_REG)&SOP_MASK)!=0u;__sync_synchronize();
-                    if(!high || !sync_edge_clock_read(&s->rise_after)){ready=false;s->failure="clock_rise_after";}
+                    rise_ok=high && sync_edge_clock_read(&s->rise_after);
                 }
+                portENABLE_INTERRUPTS();
+                if(!rise_ok){ready=false;s->failure="clock_rise_after";}
                 if(ready) {
                     esp_rom_delay_us(16);
-                    if(!sync_edge_clock_read(&s->fall_before)){ready=false;s->failure="clock_fall_before";}
-                }
-                if(ready) {
-                    __sync_synchronize();REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
-                    bool low=(REG_READ(GPIO_OUT_REG)&SOP_MASK)==0u;__sync_synchronize();
-                    if(!low || !sync_edge_clock_read(&s->fall_after)){ready=false;s->failure="clock_fall_after";}
+                    portDISABLE_INTERRUPTS();
+                    bool fall_ok=sync_edge_clock_read(&s->fall_before);
+                    if(fall_ok) {
+                        __sync_synchronize();REG_WRITE(GPIO_OUT_W1TC_REG,SOP_MASK);
+                        bool low=(REG_READ(GPIO_OUT_REG)&SOP_MASK)==0u;__sync_synchronize();
+                        fall_ok=low && sync_edge_clock_read(&s->fall_after);
+                    }
+                    portENABLE_INTERRUPTS();
+                    if(!fall_ok){ready=false;s->failure="clock_fall_after";}
                 }
                 if(ready)esp_rom_delay_us(16);
                 if(ready)REG_WRITE(GPIO_FUNC2_OUT_SEL_CFG_REG,(s->witness_matrix&~GPIO_FUNC2_OUT_SEL_M)|(s->flag_source?48u:52u));
@@ -935,7 +941,7 @@ bool sync_output_live_diagnostics(char *out,size_t size)
         bool ambiguous=!s_session->flag_source && s_native->inverted.valid && native.valid;
         if(inverted)native=s_native->inverted;
         bool phase_checked=s_native->native_phase_checked;
-        if(!phase.valid && native.valid && s_session->clock_stats.have_origin && !s_session->clock_stats.regressions) {
+        if(!phase.valid && s_session->clock_stats.have_origin && !s_session->clock_stats.regressions) {
             phase=(sync_phase_bracket_t){.lo=s_session->clock_stats.last_lo,.hi=s_session->clock_stats.last_hi,.valid=true};
             phase_checked=true;
         }
