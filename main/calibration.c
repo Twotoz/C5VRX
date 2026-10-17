@@ -574,7 +574,13 @@ typedef struct {
 /* CPU-only state in LP RAM: internal SRAM is the menu's DMA heap. */
 static RTC_FAST_ATTR dco_table_t s_dco;
 static RTC_FAST_ATTR int64_t s_dco_found_us[ARC_VENDOR_GAIN_MAX + 1u];
-static RTC_FAST_ATTR uint8_t s_env_buf[24u * PROBE_BYTES];
+/* One calibration-task scratch buffer: the noise envelope probe (startup,
+ * CALIBRATE, DC searches) and the live DC trim window never run nested and
+ * never on another task. Sharing it frees 4092 bytes of RTC_FAST, which
+ * doubles as boot heap. */
+static RTC_FAST_ATTR uint8_t s_cal_scratch[24u * PROBE_BYTES];
+_Static_assert(sizeof(s_cal_scratch) >= 4092u, "DC trim needs one control window");
+#define s_env_buf s_cal_scratch
 static uint8_t s_dco_banned[ARC_VENDOR_GAIN_MAX + 1u];
 static uint8_t s_dco_floor;
 static bool s_dco_dirty;
@@ -595,20 +601,30 @@ static void dco_context(dco_table_t *t, uint16_t freq)
     t->filter_bw20 = f.bw20;
 }
 
-static bool dco_same_context(const dco_table_t *a, const dco_table_t *b)
+/* Only the header of the wanted context is ever compared, so it is no
+ * longer a full 910-byte table (it lived in RTC_FAST to stay off the task
+ * stack: two full tables there took 1840 bytes before NVS frames). */
+typedef struct {
+    uint16_t freq;
+    uint8_t lo, hi, band5, iq_scale_sel;
+} dco_want_t;
+static dco_want_t dco_want_now(void)
 {
-    /* Filter fields are recorded but shared across profiles today. This is
-     * an assumption, not measured equivalence; DCO_CONTEXT prints both
-     * settings so a range capture can expose it. Rejecting the table here
-     * alone would discard all per-gain correction after a live profile
-     * switch, without a safe live replacement calibration. */
-    return a->version == b->version && a->freq == b->freq && a->lo == b->lo && a->hi == b->hi &&
-           a->band5 == b->band5 && a->iq_scale_sel == b->iq_scale_sel;
+    /* The compared fields of dco_context(), without a table on the stack. */
+    const arc_gain_table_t *table = rf_gain_table();
+    return (dco_want_t){rf_frequency_mhz(), arc_gain_highest_rf_stage_start(table), table->max_index,
+                        table->band5, phy_param[650]};
 }
-
-/* The wanted context lives off the task stack: two full tables on it took
- * 1840 bytes (-fstack-usage) before NVS added its own frames. */
-static RTC_FAST_ATTR dco_table_t s_dco_want;
+/* Filter fields are recorded but shared across profiles today. This is
+ * an assumption, not measured equivalence; DCO_CONTEXT prints both
+ * settings so a range capture can expose it. Rejecting the table here
+ * alone would discard all per-gain correction after a live profile
+ * switch, without a safe live replacement calibration. */
+static bool dco_matches(const dco_table_t *t, const dco_want_t *w)
+{
+    return t->version == DCO_VERSION && t->freq == w->freq && t->lo == w->lo && t->hi == w->hi &&
+           t->band5 == w->band5 && t->iq_scale_sel == w->iq_scale_sel;
+}
 
 /* Per-channel tables (dco_slots.h): slot blobs "dco0".."dco5" plus the
  * index "dco_idx". The single legacy "dco" table is adopted once. */
@@ -660,9 +676,8 @@ static void dco_index_load(void)
 
 static void dco_select(void)
 {
-    memset(&s_dco_want, 0, sizeof(s_dco_want));
-    dco_context(&s_dco_want, rf_frequency_mhz());
-    if (dco_same_context(&s_dco_want, &s_dco)) return;
+    const dco_want_t want = dco_want_now();
+    if (dco_matches(&s_dco, &want)) return;
     (void)phy_dco_release();
     memset(s_dco_found_us, 0, sizeof(s_dco_found_us));
     memset(s_dco_banned, 0, sizeof(s_dco_banned));
@@ -670,9 +685,9 @@ static void dco_select(void)
     s_dco_seed_mhz = 0;
     dco_index_load();
     memset(s_dco_templ, 0, sizeof(s_dco_templ));
-    const uint16_t freq = s_dco_want.freq;
+    const uint16_t freq = want.freq;
     const int own = dco_slot_of(&s_dco_index, freq);
-    if (own >= 0 && dco_load_slot((unsigned)own, &s_dco) && dco_same_context(&s_dco, &s_dco_want)) {
+    if (own >= 0 && dco_load_slot((unsigned)own, &s_dco) && dco_matches(&s_dco, &want)) {
         memcpy(s_dco_templ, s_dco_index.templ[own], sizeof(s_dco_templ));
         return;
     }
@@ -681,7 +696,7 @@ static void dco_select(void)
     if (near >= 0 && dco_load_slot((unsigned)near, &s_dco)) {
         const uint16_t from = s_dco.freq;
         s_dco.freq = freq;
-        if (dco_same_context(&s_dco, &s_dco_want)) {
+        if (dco_matches(&s_dco, &want)) {
             s_dco_seed_mhz = from;
             ++s_dco_seeds;
             unsigned ok = 0;
@@ -694,7 +709,8 @@ static void dco_select(void)
             return;
         }
     }
-    s_dco = s_dco_want;
+    memset(&s_dco, 0, sizeof(s_dco));
+    dco_context(&s_dco, freq);
 }
 
 void dco_post_gain(uint8_t g)
@@ -1038,7 +1054,7 @@ static int s_drift_avg[2];
 static uint32_t s_drift_nudges;
 static float s_temp_c = -100.0f;
 static dc_trim_t s_dc_trim;
-static RTC_FAST_ATTR uint8_t s_dc_live_window[4092];
+#define DC_LIVE_BYTES 4092u
 static uint32_t s_dc_trials, s_dc_rejected, s_dc_deadlines, s_dc_max_us;
 static bool s_dc_fault;
 static int64_t s_dc_last_trial;
@@ -1079,16 +1095,16 @@ static bool dc_trim_sample(const dc_trim_context_t *want, const int pair[2],
     int actual[2];
     if (!quiet_owner() || !dc_trim_snapshot(&current) || !dc_trim_same(&current, want) ||
         !phy_dco_read_pair(actual) || actual[0] != pair[0] || actual[1] != pair[1] ||
-        esp_timer_get_time() >= deadline || !copy_control_window(s_dc_live_window, sizeof(s_dc_live_window)))
+        esp_timer_get_time() >= deadline || !copy_control_window(s_cal_scratch, DC_LIVE_BYTES))
         return false;
     dsp_circle_t circle = {0};
     unsigned rails = 0;
-    dsp_circle_sums(s_dc_live_window, sizeof(s_dc_live_window), &circle);
-    for (unsigned k = 0; k < sizeof(s_dc_live_window); ++k) {
-        int i = dsp_i(s_dc_live_window[k]), q = dsp_q(s_dc_live_window[k]);
+    dsp_circle_sums(s_cal_scratch, DC_LIVE_BYTES, &circle);
+    for (unsigned k = 0; k < DC_LIVE_BYTES; ++k) {
+        int i = dsp_i(s_cal_scratch[k]), q = dsp_q(s_cal_scratch[k]);
         rails += i == -8 || i == 7 || q == -8 || q == 7;
     }
-    bool qualified = dc_live_fit(&circle, rails * 1000u / sizeof(s_dc_live_window),
+    bool qualified = dc_live_fit(&circle, rails * 1000u / DC_LIVE_BYTES,
                                   &center[0], &center[1], NULL);
     return qualified && esp_timer_get_time() < deadline && quiet_owner() &&
            dc_trim_snapshot(&current) && dc_trim_same(&current, want) &&

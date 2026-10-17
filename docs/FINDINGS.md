@@ -740,3 +740,21 @@ horizontally and part of the top of the picture appeared at the bottom.
   `SYNC_FLYWHEEL ... guard_yield yielded h_jumps v_jumps trims`. Board and
   monitor-lock confirmation pending; IRQ-blackout misses (338 us) are a
   separate, unsolved output-deadline problem.
+
+## RAM: shared scratch buffers (2026-10-17)
+
+Measured with `idf.py size` (IDF v6.0.2, esp32c5) against `b181e81`:
+HP SRAM 301,750 -> 297,662 bytes (-4,088, .bss), LP SRAM (RTC_FAST, also
+boot heap) 15,172 -> 10,164 bytes (-5,008). No behaviour change intended.
+
+- `control.c`: the 8,190-byte video-watch snapshot and the 4,092-byte
+  control window were consumed strictly in sequence on the control task;
+  they now share one buffer. A scan (receiver paused) uses the control
+  window plus a separate endpoint area of the same buffer instead of a
+  4,092-byte `malloc` that could refuse the scan (`SCAN refused=no_memory`).
+- `calibration.c`: the noise-envelope probe buffer and the live DC trim
+  window (calibration task only, never nested) share one RTC_FAST buffer;
+  the wanted DCO context is a 6-byte header instead of a 910-byte table.
+- Largest remaining item: the menu/no-signal raster `s_raster` (99,960
+  bytes, 56 UI rows x 1,600 bytes). Reducing it needs a row pool with a
+  descriptor-chain rebuild per redraw; not done without a board test.

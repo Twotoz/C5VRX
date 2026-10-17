@@ -58,8 +58,14 @@ volatile video_standard_t s_detected_std = VIDEO_STD_NTSC;
 volatile int64_t s_last_video_us;
 QueueHandle_t s_commands;
 
-static uint8_t s_window[CONTROL_BYTES];
-static uint8_t s_video_window[VIDEO_SYNC_BYTES];
+/* One control-task scratch buffer for strictly sequential uses: the video
+ * watch copies and consumes its 8190-byte snapshot first, the control
+ * window (gain/kp/AFC) is copied and consumed afterwards in the same tick,
+ * and a scan (receiver paused, no watch) uses the control window plus a
+ * separate endpoint area. Saves 4092 bytes of BSS and the scan's malloc. */
+static uint8_t s_control_scratch[VIDEO_SYNC_BYTES];
+static uint8_t *const s_window = s_control_scratch;
+static uint8_t *const s_video_window = s_control_scratch;
 static struct { uint32_t windows, copied, sync, max_work_us, max_sample_us, max_gap_us, stack_watermark; int64_t last_us; } s_video_watch;
 static uint8_t s_pal_votes, s_ntsc_votes;
 static uint8_t s_last_std = 0xFF;      /* last stable standard (NVS) */
@@ -167,7 +173,10 @@ static void after_retune(void)
  * carrier must sit within 3 MHz of the channel centre (a VTX also shows on
  * neighbouring channels through the filter, and the 50 ns offset estimate
  * wraps every 20 MHz). Among centred candidates the strongest wins. */
-static uint8_t *s_scan_buf;
+#define SCAN_BUF_OFFSET 4096u
+_Static_assert(SCAN_BUF_OFFSET >= CONTROL_BYTES && SCAN_BUF_OFFSET + SCAN_PAIRS <= VIDEO_SYNC_BYTES,
+               "scan endpoints must not overlap the control window");
+static uint8_t *const s_scan_buf = s_control_scratch + SCAN_BUF_OFFSET;
 
 static analog_video_t scan_confidence(void)
 {
@@ -188,7 +197,7 @@ static analog_video_t channel_confidence(uint8_t scan_gain, uint8_t max_gain, in
 {
     vTaskDelay(pdMS_TO_TICKS(90));
     metrics_t m = {0};
-    if (copy_control_window(s_window, sizeof(s_window))) m = measure_window(s_window, sizeof(s_window));
+    if (copy_control_window(s_window, CONTROL_BYTES)) m = measure_window(s_window, CONTROL_BYTES);
     if (quality) *quality = strength(&m, scan_gain);
     analog_video_t video = scan_confidence();
     /* A far VTX is starved at the scan gain: look again at maximum. */
@@ -205,8 +214,6 @@ static analog_video_t channel_confidence(uint8_t scan_gain, uint8_t max_gain, in
 static void scan(void)
 {
     if (!receiver_pause("SCAN")) return;
-    s_scan_buf = heap_caps_malloc(SCAN_PAIRS, MALLOC_CAP_INTERNAL);
-    if (!s_scan_buf) { printf("SCAN refused=no_memory\n"); receiver_resume(); return; }
     const size_t original = rf_channel_index();
     const uint8_t max_gain = rf_gain_table()->max_index, scan_gain = 52u;
     size_t best = original;
@@ -245,8 +252,6 @@ static void scan(void)
     }
     if (best_video < 0) best = original;
     (void)rf_set_channel(best);
-    heap_caps_free(s_scan_buf);
-    s_scan_buf = NULL;
     s_scan_active = false;
     receiver_set_gain(max_gain);
     receiver_resume();
@@ -424,7 +429,7 @@ static void control_task(void *arg)
             (void)xTaskResumeAll();
             bool observed = snapshot && video_gain == s_gain_epoch && video_context == afc_context() &&
                             !phy_busy() && esp_timer_get_time() - s_last_gain_write_us >= 500;
-            bool sync = observed && video_sync_present(s_video_window, sizeof(s_video_window), c5vrx_phase8_gain_lut);
+            bool sync = observed && video_sync_present(s_video_window, VIDEO_SYNC_BYTES, c5vrx_phase8_gain_lut);
             observed = observed && video_gain == s_gain_epoch && video_context == afc_context() && !phy_busy() &&
                        !receiver_paused() && !calibration_in_startup() && !s_menu_active;
             s_video_watch.copied += observed;
@@ -512,11 +517,11 @@ static void control_task(void *arg)
             diag_window(false, false, false);
             continue;
         }
-        const bool copied = copy_control_window(s_window, sizeof(s_window));
+        const bool copied = copy_control_window(s_window, CONTROL_BYTES);
         if (!copied) ++s_ladder_copy_fail;
         metrics_t m = {0};
         if (copied) {
-            m = measure_window(s_window, sizeof(s_window));
+            m = measure_window(s_window, CONTROL_BYTES);
             s_signal_strength = (s_signal_strength * 3 + strength(&m, s_current_gain) + 2) / 4;
         }
 
@@ -539,14 +544,14 @@ static void control_task(void *arg)
         s_ladder_ctx += ctx != afc_context();
         s_ladder_gain += now - s_last_gain_write_us < KP_GAIN_WRITE_GUARD_US;
         s_ladder_stuck += s_obs_stuck;
-        bool window_ok = ladder_ok && afc2_envelope_stationary(s_window, sizeof(s_window));
+        bool window_ok = ladder_ok && afc2_envelope_stationary(s_window, CONTROL_BYTES);
         const char *afc_window_reason = !copied ? "copy_missing" : settle ? "settle" :
             ctx != afc_context() ? "context" : phy_busy() ? "phy_busy" : !ladder_ok ? "gain_settle" :
             !window_ok ? "nonstationary" : "measured";
         if (settle) --settle;
         afc2_result_t r = {0};
         if (window_ok) {
-            r = afc2_measure(s_window, sizeof(s_window), c5vrx_phase8_gain_lut);
+            r = afc2_measure(s_window, CONTROL_BYTES, c5vrx_phase8_gain_lut);
             afc2_ctrl_observe_at(&afc, &r, (uint64_t)now);
         } else afc2_ctrl_miss(&afc);   /* settle and context changes reset via afc2_ctrl_sync */
         if (copied) s_cfo_khz = r.porch_pairs ? r.porch_khz : 0;
