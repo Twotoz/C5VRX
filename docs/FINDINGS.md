@@ -758,3 +758,27 @@ boot heap) 15,172 -> 10,164 bytes (-5,008). No behaviour change intended.
 - Largest remaining item: the menu/no-signal raster `s_raster` (99,960
   bytes, 56 UI rows x 1,600 bytes). Reducing it needs a row pool with a
   descriptor-chain rebuild per redraw; not done without a board test.
+
+## Live flywheel: holdover PLL (2026-10-17)
+
+Extends the camera-phase guard (above). The holdover period came from the
+probe's 32..64-line fit, quantised to 1/64 tick per halfline: up to ~24 us/s
+of drift once the camera is gone (a full line in ~2.6 s of static), which the
+guard can only correct after the camera returns.
+
+- `main/sync_clock_pll.h`: while the camera is aligned, every guard trim and
+  model slew is phase the grid lost against it; (trims + slews + residual) /
+  halflines over >= 1 s and >= 2000 aligned pulses is the period error.
+  Bounded at 200 ppm per window, restarted by any re-anchor or takeover.
+  The iterator fraction is now 16-bit (1/50000 tick per halfline).
+- Host result (`test/test_sync_live_output_runtime.py`): a camera 30 ppm
+  off nominal, 2.6 s aligned then 1 s pure holdover: 5.7 ticks (clean) and
+  -12.3 ticks (+-3 tick jitter, 30 % missing H, random noise pulses) versus
+  ~600 ticks uncorrected. Estimates 29,989 / 30,209 ppb.
+- Not implemented, because they would not change range or picture on
+  their own: a unified quality score (FIELD_DIAG already combines the
+  evidence; diagnostics only) and a separate fade detector (gain fade hold,
+  retained clock, AFC grace and guard expiry already cover short fades; an
+  adaptive hold needs board fade statistics first).
+- `T`: `SYNC_FLYWHEEL ... pll_updates pll_rejected pll_ppb`. Board and
+  monitor confirmation pending.

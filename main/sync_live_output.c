@@ -6,6 +6,7 @@
 #include "sync_edge_clock.h"
 #include "sync_live_clock.h"
 #include "sync_phase_guard.h"
+#include "sync_clock_pll.h"
 #include "esp_attr.h"
 #include "esp_cpu.h"
 #include "esp_heap_caps.h"
@@ -45,7 +46,11 @@ typedef struct {
     slg_standard_t standard;
     uint8_t pending_mode;
     int32_t pending_shift;
-    uint32_t pending_period;
+    uint32_t pending_whole;
+    uint16_t pending_increment,pending_denominator;
+    /* Long-baseline camera period; 0 until the PLL has one. */
+    scp_t pll;
+    uint64_t pll_period_q;
     /* Task-owned camera-phase guard; the ISR reads only `yield`. */
     spg_t guard;
     uint64_t guard_after,last_broad;
@@ -53,7 +58,7 @@ typedef struct {
     slo_status_t status;
     bool saved,configured,quarantined;
 } slo_t;
-enum {SLO_PUB_SLEW=1,SLO_PUB_TAKEOVER,SLO_PUB_JUMP_H,SLO_PUB_JUMP_V};
+enum {SLO_PUB_SLEW=1,SLO_PUB_TAKEOVER,SLO_PUB_JUMP_H,SLO_PUB_JUMP_V,SLO_PUB_PERIOD};
 static slo_t *s_output;
 static DRAM_ATTR volatile unsigned s_output_phase;
 void sync_live_output_phase(unsigned phase)
@@ -182,11 +187,11 @@ advance:
                         next.start-=(uint32_t)-shift;s->clock.tick-=(uint32_t)-shift;
                     }
                 }
-                if(mode==SLO_PUB_SLEW) {
-                    s->native_authority=true;
-                    s->clock.whole=s->pending_period>>6;
-                    s->clock.increment=(uint8_t)(s->pending_period&63u);
-                    s->clock.denominator=64u;s->clock.remainder=0;
+                if(mode==SLO_PUB_SLEW || mode==SLO_PUB_PERIOD) {
+                    if(mode==SLO_PUB_SLEW)s->native_authority=true;
+                    s->clock.whole=s->pending_whole;
+                    s->clock.increment=s->pending_increment;
+                    s->clock.denominator=s->pending_denominator;s->clock.remainder=0;
                 } else if(mode==SLO_PUB_JUMP_V) {
                     /* Move the field position by whole halflines; physical
                      * H tips keep their absolute half parity. */
@@ -366,14 +371,30 @@ bool sync_live_output_update(const slg_model_t *model)
     ++s->publication;__sync_synchronize();
     s->pending_mode=slew?SLO_PUB_SLEW:SLO_PUB_TAKEOVER;
     s->pending_shift=(int32_t)(error>16?16:error< -16?-16:error);
-    s->pending_period=model->line_ticks_x32;
+    /* A long-baseline PLL period beats the model's 1/64-tick fit; a new
+     * camera (takeover) starts over from the model. */
+    if(slew && s->pll_period_q) {
+        s->pending_whole=(uint32_t)(s->pll_period_q/SCP_DEN);
+        s->pending_increment=(uint16_t)(s->pll_period_q%SCP_DEN);s->pending_denominator=SCP_DEN;
+    } else if(slew && s->pll.active) {
+        /* Measuring: keep the running period, so the fit's +-1/64-tick
+         * jitter neither resets the window nor hides drift in it. */
+        s->pending_whole=s->clock.whole;
+        s->pending_increment=s->clock.increment;s->pending_denominator=s->clock.denominator;
+    } else {
+        s->pending_whole=model->line_ticks_x32>>6;
+        s->pending_increment=(uint16_t)(model->line_ticks_x32&63u);s->pending_denominator=64u;
+    }
     s->pending_clock=candidate;
     s->pending_tip=(slo_tip_t){pulse.start,(uint16_t)pulse.width,(uint8_t)pulse.kind,pulse.index,pulse.half};
     __sync_synchronize();++s->publication;
+    /* A slew moves the grid toward the camera like a guard trim. */
+    if(slew)scp_trim(&s->pll,s->pending_shift);
     if(!slew) {
         /* A confirmed camera model replaces the grid: old guard evidence
          * describes the previous phase. */
         s->guard=(spg_t){0};s->yield=false;s->guard_after=now+20000u;
+        s->pll.active=false;s->pll_period_q=0;
     }
     return true;
 }
@@ -390,7 +411,19 @@ static bool guard_publish(slo_t *s,uint8_t mode,int32_t value)
     /* Pulses observed before the ISR applies it belong to the old grid. */
     s->guard_after=now+20000u;
     if(mode==SLO_PUB_JUMP_V)++s->status.guard_v_jumps;
-    else ++s->status.guard_h_jumps;
+    else if(mode==SLO_PUB_JUMP_H)++s->status.guard_h_jumps;
+    return true;
+}
+
+static bool guard_publish_period(slo_t *s,uint64_t period_q)
+{
+    if((s->publication&1u) || s->publication!=s->applied)return false;
+    ++s->publication;__sync_synchronize();
+    s->pending_mode=SLO_PUB_PERIOD;
+    s->pending_whole=(uint32_t)(period_q/SCP_DEN);
+    s->pending_increment=(uint16_t)(period_q%SCP_DEN);s->pending_denominator=SCP_DEN;
+    __sync_synchronize();++s->publication;
+    ++s->status.pll_updates;
     return true;
 }
 
@@ -413,6 +446,17 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
         int64_t base=(tip.half&1u)==clock.parity?delta:delta-half;
         int32_t offset=(int32_t)(spg_wrap(base,2*half)/den);
         action=spg_h(&s->guard,offset,(int32_t)(2*half/den),tick);
+        if(spg_abs(offset)<=SPG_WINDOW && !s->guard.yield_h && action.kind==SPG_NONE) {
+            uint64_t period_q=scp_period_q(clock.whole,clock.increment,clock.denominator);
+            if(!s->pll.active || s->pll.period_q!=period_q)scp_start(&s->pll,period_q,tip.half,offset);
+            else {
+                scp_aligned(&s->pll);
+                uint64_t estimate;
+                if(s->publication==s->applied && !(s->publication&1u) &&
+                   scp_estimate(&s->pll,tip.half,offset,&estimate) &&
+                   guard_publish_period(s,estimate))s->pll_period_q=estimate;
+            }
+        }
     } else {
         bool first=tick<s->last_broad || tick-s->last_broad>3000u;
         s->last_broad=tick;
@@ -426,7 +470,8 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
     if(action.kind==SPG_JUMP_H) {
         bool trim=!s->guard.yield_h;
         if(guard_publish(s,SLO_PUB_JUMP_H,action.value)) {
-            if(trim)++s->status.guard_trims;
+            if(trim){++s->status.guard_trims;scp_trim(&s->pll,action.value);}
+            else s->pll.active=false; /* re-anchor: the window no longer measures drift */
             spg_reset(&s->guard);
         }
     } else if(action.kind==SPG_JUMP_V && guard_publish(s,SLO_PUB_JUMP_V,action.value)) {
@@ -442,4 +487,10 @@ void sync_live_output_guard_tick(void)
     if(!s || !s->flag || !sync_edge_clock_read(&now))return;
     s->yield=spg_yield(&s->guard,now);
     s->status.guard_yield=s->yield;
+    s->status.pll_rejected=s->pll.rejected;
+    /* Signed fine-period offset versus nominal, in parts per billion. */
+    if(s->pll_period_q) {
+        uint64_t nominal=s->standard==SLG_PAL?640u*(uint64_t)SCP_DEN:(5720u*(uint64_t)SCP_DEN+4u)/9u;
+        s->status.pll_ppb=(int32_t)(((int64_t)s->pll_period_q-(int64_t)nominal)*1000000000/(int64_t)nominal);
+    }
 }

@@ -295,6 +295,52 @@ int main(void){
   assert(sync_live_output_end());++checks;
   #undef GRID
  }
+ /* Holdover PLL: a camera 30 ppm slower than the nominal NTSC grid. The
+  * model period is quantised to 1/64 tick per halfline (up to ~24 us/s of
+  * holdover drift); after 2.6 s of aligned camera H the PLL period must
+  * track it, so 1 s of pure holdover drifts far less than the 600 ticks an
+  * uncorrected period loses. Phase alignment alone (guard trims) cannot. */
+ for(unsigned noisy=0;noisy<2u;++noisy){
+  /* noisy: +-3 tick edge jitter, 30 % of camera H missing, and one random
+   * H-width noise pulse per four lines at an arbitrary phase. */
+  uint32_t lcg=99u;
+  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+  s_output->native_authority=true;s_output->native_v_fresh=true;
+  for(unsigned i=0;i<20;++i)fire();
+  #define CENTRED(x,p) ((x)-(double)(long long)((x)/(p)+((x)>=0?0.5:-0.5))*(p))
+  slo_tip_t t=s_output->tip;slc_t c=s_output->clock;
+  double hl=c.whole+(double)c.increment/c.denominator;
+  double cam0=(double)t.start+((t.half&1u)!=c.parity?hl:0.0)+40.0*hl;
+  double cam_line=2.0*hl*(1.0+30e-6);
+  uint64_t k=0,start=cycles/12;
+  while(cycles/12<start+52000000u){
+   fire();
+   while(cam0+k*cam_line<=(double)(cycles/12)){
+    double at=cam0+k*cam_line;++k;
+    if(noisy){
+     lcg=lcg*1103515245u+12345u;
+     if((lcg>>16)%4u==0u)sync_live_output_native_pulse((uint64_t)(at+(lcg>>4)%1200u),90u+(lcg>>9)%140u,true);
+     if((lcg>>12)%10u<3u)continue;
+     at+=(double)((int)((lcg>>20)%7u)-3);
+    }
+    sync_live_output_native_pulse((uint64_t)(at+0.5),160u,true);}
+  }
+  sync_live_output_guard_tick();
+  assert(s_output->status.pll_updates>=1u&&!s_output->status.pll_rejected);
+  assert(s_output->status.pll_ppb>27000&&s_output->status.pll_ppb<33000);
+  uint64_t hold=cycles/12;
+  while(cycles/12<hold+20000000u)fire(); /* 1 s holdover: no camera pulses */
+  t=s_output->tip;c=s_output->clock;hl=c.whole+(double)c.increment/c.denominator;
+  double grid=(double)t.start+((t.half&1u)!=c.parity?hl:0.0);
+  double cam=cam0+(double)(long long)((grid-cam0)/cam_line+0.5)*cam_line;
+  double err=CENTRED(cam-grid,2.0*hl);
+  fprintf(stderr,"PLL holdover (%s): ppb=%ld updates=%lu drift after 1 s=%.1f ticks (uncorrected ~600)\n",noisy?"noisy":"clean",
+          (long)s_output->status.pll_ppb,(unsigned long)s_output->status.pll_updates,err);
+  assert(err>-40.0&&err<40.0);
+  assert(!s_output->status.fault&&sync_live_output_end());++checks;
+  #undef CENTRED
+ }
  printf("PASS: %u actual conditional-output checks; no physical timing/monitor claim\n",checks);
 }
 '''
@@ -314,7 +360,7 @@ static void counted_free(void *p){++heap_frees;free(p);}
 #define heap_caps_calloc(n,s,caps) counted_calloc(n,s)\n'''
     api=stripped(ROOT/'main/sync_edge_clock.h')+stripped(ROOT/'main/sync_live_gate.h')
     api+=stripped(ROOT/'main/sync_live_output.h')+stripped(ROOT/'main/sync_live_clock.h')
-    api+=stripped(ROOT/'main/sync_phase_guard.h')
+    api+=stripped(ROOT/'main/sync_phase_guard.h')+stripped(ROOT/'main/sync_clock_pll.h')
     source=stripped(ROOT/'main/sync_live_gate.c')+stripped(ROOT/'main/sync_live_output.c')
     with tempfile.TemporaryDirectory() as directory:
         p=Path(directory);(p/'run.c').write_text(prefix+api+source+HARNESS)

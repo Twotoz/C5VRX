@@ -7,7 +7,10 @@ typedef struct {
     uint64_t tick,half,field;
     uint32_t whole;
     uint16_t index,halves;
-    uint8_t remainder,increment,denominator,parity,section,eq_width;
+    /* 16-bit fraction: the holdover PLL (sync_clock_pll.h) needs finer
+     * than the planner's 1/64-tick halfline. */
+    uint16_t remainder,increment,denominator;
+    uint8_t parity,section,eq_width;
     bool exhausted;
 } slc_t;
 
@@ -24,8 +27,8 @@ static inline bool slc_init(slc_t *s,const slg_clock_seed_t *seed)
     uint16_t halves=seed->standard==SLG_PAL?625u:525u;
     *s=(slc_t){.tick=seed->origin+delta,.half=seed->next_half,
         .field=seed->next_half/halves,.index=(uint16_t)(seed->next_half%halves),
-        .whole=n/d,.remainder=(uint8_t)(r%d),.increment=(uint8_t)(n%d),
-        .denominator=(uint8_t)d,.parity=seed->h_parity,.halves=halves,
+        .whole=n/d,.remainder=(uint16_t)(r%d),.increment=(uint16_t)(n%d),
+        .denominator=(uint16_t)d,.parity=seed->h_parity,.halves=halves,
         .section=seed->standard==SLG_PAL?5u:6u,.eq_width=seed->standard==SLG_PAL?47u:46u};
     return s->whole>=600u && s->whole<=670u;
 }
@@ -38,7 +41,7 @@ static inline __attribute__((always_inline)) void slc_advance(slc_t *s)
     s->tick+=length;++s->half;
     unsigned rem=s->remainder+s->increment;
     if(rem>=s->denominator)rem-=s->denominator;
-    s->remainder=(uint8_t)rem;
+    s->remainder=(uint16_t)rem;
     if(++s->index==s->halves){s->index=0;++s->field;}
 }
 static inline __attribute__((always_inline)) bool slc_next(slc_t *s,slg_pulse_t *out)
