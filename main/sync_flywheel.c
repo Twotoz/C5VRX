@@ -1090,8 +1090,19 @@ static void observe_clock(sync_flywheel_t *f, uint64_t start)
                 uint64_t denominator = f->clock_n * f->clock_xx - f->clock_x * f->clock_x;
                 int64_t slope = numerator / (int64_t)denominator;
                 int64_t uncertainty = 4u * 65536u / lines;
+                int32_t previous = f->coast_period_q16;
                 f->coast_period_q16 = slope >= -uncertainty && slope <= uncertainty ?
                     f->nominal_q16 : f->nominal_q16 + (int32_t)slope;
+                /* The next field was scheduled using the previous estimate.
+                 * Keep its phase consistent when H fitting changes frequency;
+                 * otherwise the first fitted period leaves a permanent V error.
+                 * Never move a vertical train already being emitted. */
+                if (f->v_valid && !f->v_armed) {
+                    int64_t delta = (int64_t)f->coast_period_q16 - previous;
+                    int64_t correction = delta *
+                        (f->nominal_q16 == (int32_t)SFW_PAL_LINE_Q16 ? 625 : 525) / 2;
+                    f->v_next_q16 = (uint64_t)((int64_t)f->v_next_q16 + correction);
+                }
             }
             if (lines >= 1024u) {
                 f->clock_sample = start;
