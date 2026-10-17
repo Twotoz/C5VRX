@@ -1025,3 +1025,22 @@ A finite, self-restoring observer-only flag board bench is being implemented
 separately. No comparator firmware is flashed yet. Output-gate integration,
 camera/fade/return/monitor proof and defaults remain required. Do not redefine
 this unfinished goal as an emulator proof or a manual source probe.
+
+### Finite comparator bench L (2026-10-17)
+
+Commit79ec945 adds manual `V`: a50ms signal48 comparator observation using
+canonical unscaled DAC<19, after output scaling. GPIO23 is grounded before TX
+starts, so the flag never drives the physical DAC; the ordinary video loses at
+most one DAC code during the bench. LP uses a private flag-output program.
+The ordinary verified LUT/program remains the rollback target for BOTH entry
+and exit. Source observation and pin cleanup precede restoring ordinary video;
+trace printing follows PHY release. All flag activity is OFF at boot, and no
+output gates are enabled by this test. Failed restoration latches a fault.
+
+655360 mapping/scaling/state invariants pass. Actual observer runtime185 checks
+include signal48 selection, trace export, cancellation and SDK setup/rearm/
+cleanup failures. The new rearm-failure check found a false success return:
+a failed poll must report an incomplete measurement even if teardown succeeds.
+That is corrected. Firmware L builds (app0x18ff80 bytes); exported SHA256:
+9b4f2460f0170ab1b2428d364e8e523a0de9d6f95fb116bc01b4f6f786bd8bd4.
+Board execution and actual camera H/V qualification remain pending at this note.

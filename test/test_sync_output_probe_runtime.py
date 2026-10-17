@@ -69,7 +69,7 @@ static bool marker_sent;
 static unsigned clock_reads;
 static uint64_t clock_epoch_base,clock_epoch_stride;
 static unsigned clock_prepares,clock_arms,clock_pauses;
-static bool scheduler_held;
+static bool scheduler_held,flag_source_seen;
 static void vTaskSuspendAll(void){assert(!scheduler_held);scheduler_held=true;}
 static int xTaskResumeAll(void){assert(scheduler_held);scheduler_held=false;return 0;}
 static bool sync_edge_clock_prepare(void){++clock_calls;++clock_prepares;assert((registers[GPIO_ENABLE_REG]&(1u<<2))&&!(registers[GPIO_OUT_REG]&(1u<<2)));clock_prepared=clock_fail!=1u;return clock_prepared;}
@@ -85,6 +85,7 @@ static rmt_rx_event_callbacks_t mock_cb;
 static void *mock_context;
 #define REG_READ(address) registers[address]
 static void reg_write(unsigned address,uint32_t value){
+ if(address==GPIO_FUNC2_OUT_SEL_CFG_REG && (value&GPIO_FUNC2_OUT_SEL_M)==48u)flag_source_seen=true;
  assert(address==IO_MUX_GPIO2_REG||address==GPIO_FUNC2_OUT_SEL_CFG_REG||address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG||address==GPIO_OUT_W1TS_REG||address==GPIO_OUT_W1TC_REG);
  if(address==GPIO_ENABLE_W1TS_REG||address==GPIO_ENABLE_W1TC_REG||address==GPIO_OUT_W1TS_REG||address==GPIO_OUT_W1TC_REG)assert(value==(1u<<2));
  ++writes;
@@ -139,7 +140,7 @@ static void reset(void){
  memset(registers,0,sizeof(registers));registers[IO_MUX_GPIO8_REG]=1u<<MCU_SEL_S;
  registers[GPIO_FUNC8_OUT_SEL_CFG_REG]=52u|GPIO_FUNC8_OE_SEL_M;
  registers[GPIO_ENABLE_REG]=(1u<<8)|0x80000000u;
- writes=api_calls=fail_at=mode=receives=deletes=disables=0;
+ writes=api_calls=fail_at=mode=receives=deletes=disables=0;flag_source_seen=false;
  live_value=true;mutate_pin=channel_live=rx_enabled=receiving=false;now=0;
  memset(&mock_cb,0,sizeof(mock_cb));mock_context=NULL;
  s_busy=false;s_quarantined=NULL;memset(&s_probe,0,sizeof(s_probe));
@@ -404,7 +405,28 @@ static void restore_fault_lifecycle(void){
  ++checks;
 }
 
-int main(void){dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
+static void flag_lifecycle(void){
+ for(unsigned failure=0;failure<=8u;++failure){
+  reset();mode=failure==5u?3u:1u;fail_at=failure;
+  uint32_t saved[13];memcpy(saved,registers,sizeof(saved));
+  snt_trace_t trace;char result[640];
+  bool ok=sync_output_flag_probe(7,owner_live,&trace,result,sizeof(result));
+  if(ok!=(failure==0u))fprintf(stderr,"flag failure=%u ok=%u result=%s\n",failure,(unsigned)ok,result);
+  assert(ok==(failure==0u));
+  assert(!memcmp(saved,registers,sizeof(saved))&&!s_probe.armed&&!s_busy);
+  assert(now<51000&&!clock_prepared&&!clock_armed);
+  if(!failure){
+   assert(flag_source_seen&&trace.count==SNT_TRACE_CAPACITY);
+   assert(strstr(result,"signal=48 threshold=19 started=1")&&strstr(result,"closed=1"));
+  }
+  if(failure>=6u)assert(s_quarantined);
+  ++checks;
+ }
+ reset();mode=2;snt_trace_t trace;char result[640];
+ assert(!sync_output_flag_probe(7,owner_live,&trace,result,sizeof(result)));
+ assert(!s_busy&&!channel_live&&!clock_prepared);++checks;
+}
+int main(void){flag_lifecycle();dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''
 
 

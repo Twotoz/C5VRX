@@ -800,11 +800,12 @@ bool sync_output_live_trace_snapshot(snt_trace_t *out)
 static bool sync_output_probe_run(uint32_t generation,bool (*live)(uint32_t),bool edge_clock,bool flag_source)
 {
     if(!sop_session_begin(generation,live,edge_clock,false,flag_source))return false;
+    bool polled=true;
     while(esp_timer_get_time()-s_session->began<SOP_WINDOW_US && !s_probe.stop) {
-        if(!sop_session_poll(s_session))break;
+        if(!sop_session_poll(s_session)){polled=false;break;}
         vTaskDelay(1u);
     }
-    bool observed=!s_probe.stop && !s_probe.cancelled;
+    bool observed=polled && !s_probe.stop && !s_probe.cancelled;
     return sop_session_end(s_session) && observed;
 }
 
@@ -819,11 +820,12 @@ bool sync_output_flag_probe(uint32_t generation,bool (*live)(uint32_t),
     if(trace)snt_trace_reset(trace);
     if(result && size)snprintf(result,size,"SYNC_FLAG_CAPTURE signal=48 threshold=19 started=0 timing_valid=0\n");
     if(!sop_session_begin(generation,live,true,false,true))return false;
+    bool polled=true;
     while(esp_timer_get_time()-s_session->began<SOP_WINDOW_US && !s_probe.stop) {
-        if(!sop_session_poll(s_session))break;
+        if(!sop_session_poll(s_session)){polled=false;break;}
         vTaskDelay(1u);
     }
-    bool observed=!s_probe.stop && !s_probe.cancelled;
+    bool observed=polled && !s_probe.stop && !s_probe.cancelled;
     bool closed=sop_session_end(s_session);
     if(trace && s_native)*trace=s_native->trace;
     if(result && size && s_native) {
