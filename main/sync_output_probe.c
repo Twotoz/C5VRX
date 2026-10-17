@@ -11,6 +11,7 @@
 #include "sync_edge_clock.h"
 #include "sync_phase_bracket.h"
 #include "sync_native_track.h"
+#include "sync_native_flag_track.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,6 +47,7 @@ typedef struct {
     sync_phase_bracket_t native_phase;
     sync_native_track_t native;
     sync_native_track_t inverted;
+    sync_native_flag_track_t flag_native,flag_inverted;
     snt_trace_t trace;
     uint32_t native_qualified_epochs;
     bool native_phase_checked,native_reported;
@@ -115,7 +117,10 @@ static void sop_native_run(sop_context_t *s,uint32_t start,uint32_t width,bool i
     if(s_native && s->marker_required && s_native->native_phase.valid) {
         int64_t offset=s_native->native_phase.lo+(s_native->native_phase.hi-s_native->native_phase.lo)/2;
         if(offset>=-(int64_t)start && offset<=INT64_MAX-(int64_t)start) {
-            sync_native_low(inverted?&s_native->inverted:&s_native->native,(uint64_t)(offset+start),width);
+            if(s_native->trace_flag)
+                sync_native_flag_high(inverted?&s_native->flag_inverted:&s_native->flag_native,
+                                      (uint64_t)(offset+start),width);
+            else sync_native_low(inverted?&s_native->inverted:&s_native->native,(uint64_t)(offset+start),width);
             if((s_native->native.valid || s_native->inverted.valid) && !s_native->native_reported) {
                 ++s_native->native_qualified_epochs;s_native->native_reported=true;
             }
@@ -240,7 +245,7 @@ static bool sop_received(rmt_channel_handle_t channel,
     return wake;
 }
 
-static void sop_epoch(sop_context_t *s)
+static void sop_epoch_mode(sop_context_t *s,bool preserve_native)
 {
     ++s->epochs;
     s->elapsed = s->run_width = 0u;
@@ -250,12 +255,20 @@ static void sop_epoch(sop_context_t *s)
     memset(s->prefix,0,sizeof(s->prefix));
     if(s_native) {
         s_native->native_phase=(sync_phase_bracket_t){0};
-        sync_native_reset(&s_native->native);
-        sync_native_reset(&s_native->inverted);
+        if(!preserve_native) {
+            sync_native_reset(&s_native->native);
+            sync_native_reset(&s_native->inverted);
+            if(s_native->trace_flag) {
+                sync_native_flag_init(&s_native->flag_native,&s_native->native);
+                sync_native_flag_init(&s_native->flag_inverted,&s_native->inverted);
+            }
+        }
         s_native->native_phase_checked=false;s_native->native_reported=false;
     }
     s->discard_before=s->marker_required?UINT32_MAX:0u;
 }
+static void sop_epoch(sop_context_t *s)
+{ sop_epoch_mode(s,false); }
 
 typedef struct {
     uint32_t valid,refused,pending,max_span,regressions;
@@ -536,6 +549,11 @@ static bool sop_session_poll(sop_session_t *s)
     if(!s_busy)return false;
     if(!s->live(s->generation)){s_probe.cancelled=true;s_probe.stop=true;s->failure="not_live";return false;}
     if(s_probe.stop)return false;
+    /* Only the comparator's ordinary idle ending may retain a completed
+     * V candidate on this same uninterrupted absolute clock. PHY invalidation,
+     * proactive rollover and failed marker calibration remain full resets. */
+    bool flag_idle=s->flag_source && s_probe.ended && !s->invalidated &&
+        esp_timer_get_time()-s->epoch_started<180000000;
     /* Abort and rearm before the 32-bit RMT-local elapsed counter wraps.
      * This is a source discontinuity, never synthetic camera evidence. */
     /* A native idle ending is a hardware receive boundary too. Use the same
@@ -566,7 +584,8 @@ static bool sop_session_poll(sop_session_t *s)
             if(!sync_edge_clock_disable_filter()){s->failure="clock_filter_pause";return false;}
             ++s->clock_rearms;
         }
-        sop_epoch(&s_probe);s_probe.armed=true;s->invalidated=false;
+        sop_epoch_mode(&s_probe,flag_idle && s->phase.valid);
+        s_probe.armed=true;s->invalidated=false;
         return sop_session_arm(s);
     }
     return true;
@@ -832,16 +851,24 @@ bool sync_output_flag_probe(uint32_t generation,bool (*live)(uint32_t),
         const sync_native_track_t *lo=&s_native->native,*hi=&s_native->inverted;
         bool ambiguous=lo->valid && hi->valid;
         const sync_native_track_t *nt=hi->valid && !lo->valid?hi:lo;
+        bool fresh=nt->valid && !ambiguous && s_native->native_phase.valid &&
+            s_session->clock_read_ok && s_session->clock_ticks>=nt->last &&
+            s_session->clock_ticks-nt->last<=SOP_MODEL_MAX_AGE_TICKS;
         snprintf(result,size,"SYNC_FLAG_CAPTURE signal=48 threshold=19 started=1 error=%s api=%d cleanup=%d "
             "closed=%u callbacks=%lu symbols=%lu epochs=%lu phase_span_ticks=%lld "
             "timing_valid=%u inverted=%u standard=%u fields=%lu line_ticks_x32=%lu "
-            "low_valid=%u high_valid=%u low_fields=%lu high_fields=%lu camera_qualified=0\n",
+            "low_valid=%u high_valid=%u low_fields=%lu high_fields=%lu "
+            "low_hstd=%u high_hstd=%u low_group=%u high_group=%u "
+            "high_pre_seen=%u high_post_mask=%u high_broad=%u calibrated_epochs=%lu camera_qualified=0\n",
             s_session->failure,(int)s_session->err,(int)s_session->cleanup,(unsigned)closed,
             (unsigned long)s_probe.callbacks,(unsigned long)s_probe.symbols,(unsigned long)s_probe.epochs,
             s_native->native_phase.valid?(long long)(s_native->native_phase.hi-s_native->native_phase.lo):-1LL,
-            (unsigned)(nt->valid && !ambiguous),(unsigned)(hi->valid && !lo->valid),
+            (unsigned)fresh,(unsigned)(hi->valid && !lo->valid),
             (unsigned)nt->standard,(unsigned long)nt->qualified_fields,(unsigned long)nt->line_ticks_x32,
-            (unsigned)lo->valid,(unsigned)hi->valid,(unsigned long)lo->qualified_fields,(unsigned long)hi->qualified_fields);
+            (unsigned)lo->valid,(unsigned)hi->valid,(unsigned long)lo->qualified_fields,(unsigned long)hi->qualified_fields,
+            (unsigned)lo->h_standard,(unsigned)hi->h_standard,(unsigned)lo->have_group,(unsigned)hi->have_group,
+            (unsigned)s_native->flag_inverted.pre_count,(unsigned)s_native->flag_inverted.post_mask,
+            (unsigned)hi->broad_n,(unsigned long)s_session->clock_stats.valid);
     }
     return observed && closed;
 }

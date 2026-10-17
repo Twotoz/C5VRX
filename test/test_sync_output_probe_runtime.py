@@ -145,6 +145,7 @@ static void reset(void){
  memset(&mock_cb,0,sizeof(mock_cb));mock_context=NULL;
  s_busy=false;s_quarantined=NULL;memset(&s_probe,0,sizeof(s_probe));
  s_clock_fault=false;clock_calls=clock_fail=clock_reads=0;clock_prepared=clock_armed=scheduler_held=marker_sent=false;
+ if(s_native){s_native->trace_flag=false;s_native->resident=false;}
  clock_epoch_base=0;clock_epoch_stride=100000u;clock_prepares=clock_arms=clock_pauses=0;
 }
 static void parser_start(void){reset();s_probe.armed=true;s_probe.live=owner_live;s_probe.generation=7;sop_epoch(&s_probe);}
@@ -418,6 +419,7 @@ static void flag_lifecycle(void){
   if(!failure){
    assert(flag_source_seen&&trace.count==SNT_TRACE_CAPACITY);
    assert(strstr(result,"signal=48 threshold=19 started=1")&&strstr(result,"closed=1"));
+   assert(strstr(result,"camera_qualified=0\n")); /* bounded result was not truncated */
   }
   if(failure>=6u)assert(s_quarantined);
   ++checks;
@@ -426,7 +428,34 @@ static void flag_lifecycle(void){
  assert(!sync_output_flag_probe(7,owner_live,&trace,result,sizeof(result)));
  assert(!s_busy&&!channel_live&&!clock_prepared);++checks;
 }
-int main(void){flag_lifecycle();dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
+static void flag_idle_lifetime(void){
+ reset();mode=1;assert(sop_session_begin(7,owner_live,true,false,true));
+ vTaskDelay(1);
+ s_native->inverted.have_group=true;s_native->inverted.group=5000u;
+ s_probe.ended=true;
+ assert(sop_session_poll(s_session));
+ assert(s_native->inverted.have_group&&s_native->inverted.group==5000u);
+ assert(!s_native->native_phase.valid&&!s_native->native_phase_checked);
+ s_session->invalidated=true;
+ assert(sop_session_poll(s_session)&&!s_native->inverted.have_group);
+ assert(sop_session_end(s_session));checks+=5;
+ reset();mode=1;assert(sop_session_begin(7,owner_live,true,false,true));
+ vTaskDelay(1);s_native->inverted.have_group=true;
+ s_probe.prefix_n=0;s_probe.ended=true;
+ assert(sop_session_poll(s_session)&&!s_native->inverted.have_group);
+ assert(sop_session_end(s_session));checks+=2;
+}
+static void flag_profile_route(void){
+ parser_start();s_probe.marker_required=true;s_probe.discard_before=1000u;
+ s_native->trace_flag=true;s_native->native_phase_checked=true;
+ sync_native_flag_init(&s_native->flag_native,&s_native->native);
+ sync_native_flag_init(&s_native->flag_inverted,&s_native->inverted);
+ s_native->native_phase=(sync_phase_bracket_t){.lo=10000,.hi=10000,.valid=true};
+ for(unsigned i=0;i<45u;++i)sop_native_run(&s_probe,2000u+i*1271u,160u,true);
+ assert(s_native->inverted.h_standard==1u&&!s_native->native.h_standard);
+ assert(!s_native->inverted.valid);checks+=2;
+}
+int main(void){flag_idle_lifetime();flag_profile_route();flag_lifecycle();dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''
 
 
@@ -438,13 +467,15 @@ class Runtime(unittest.TestCase):
         phase = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', phase, flags=re.MULTILINE)
         native = (ROOT / 'main/sync_native_track.h').read_text()
         native = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', native, flags=re.MULTILINE)
+        flag = (ROOT / 'main/sync_native_flag_track.h').read_text()
+        flag = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', flag, flags=re.MULTILINE)
         api = (ROOT / "main/sync_output_probe.h").read_text()
         api = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', api, flags=re.MULTILINE)
         trace = (ROOT / 'main/sync_native_trace.h').read_text()
         trace = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', trace, flags=re.MULTILINE)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            (path / "probe.c").write_text(PREFIX + trace + api + phase + native + source + SUFFIX)
+            (path / "probe.c").write_text(PREFIX + trace + api + phase + native + flag + source + SUFFIX)
             compiler = os.environ.get("CC", "cc")
             subprocess.run([compiler, "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
                             str(path / "probe.c"), "-o", str(path / "probe")], check=True)

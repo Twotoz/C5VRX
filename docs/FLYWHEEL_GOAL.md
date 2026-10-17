@@ -1080,3 +1080,37 @@ preservation, lost output-low/matrix/enable writes, lost restoration writes and
 unowned/unsaved refusal. CI includes test_sync_flag_pin_runtime.py. It does not
 prove physical voltage or the entire transport transaction; camera evidence is
 still required. No firmware change or flash was needed for this test addition.
+
+### Actual flag camera trace and source grammar N (2026-10-17)
+
+Operator briefly enabled VTX. M first refused a busy PHY lease; prepared retry
+completed50ms and restored ordinary video, fault=0. RF reports NTSC/G38, but
+full native timing remains invalid. VTX switched off immediately afterwards.
+Evidence: board_native_flag_m_camera_2026-10-17.json, including the96 raw LOWs
+and95 HIGH intervals reconstructed only between adjacent LOWs in the same epoch.
+This~6ms frozen trace contains ONE vertical train, not a qualifying field pair.
+
+First65 HIGH intervals are141..179ticks (median162), with32-line spans40675,
+40676,40676,40680ticks: NTSC H timing, with a pulse too wide for the old76..112
+width gate. This is consistent with merged sync/burst; the exact analogue cause
+is not yet scoped. Pre-EQ widths47/51/56/35/66/56, anchored timing error<=18ticks;
+six broad widths541..543; four postEQ survive, then H at expected halfslot13.
+
+A separate sync_native_flag_track.h source profile uses76..200tick H,32..70tick
+EQ on an anchored halfline grid±24ticks. Broad5/6 width/spacing stays strict.
+Require ALL preEQ positions, at least n-2 DISTINCT postEQ positions, correct H
+delimiter10/11(PAL) or12/13(NTSC) halfslots, independently fresh H fit, and TWO
+matching broad groups at the existing field-period tolerance. Extra/duplicate/
+offgrid pulses refuse. Ordinary DATA4 grammar stays unchanged. Actual frozen
+capture now yields one completed group and explicitly no lock.
+
+Natural flag-source RMT idle may keep a completed first group on the continuous
+clock; stale partial train/H must be discarded and H reacquired independently.
+Every epoch recalibrates marker phase. PHY/source/clock changes, proactive
+rollover, or an invalid previous marker bracket still fully reset acquisition.
+Manual diagnostic timing_valid additionally requires fresh evidence on a valid
+phase. Source-specific diagnostic counts now expose where acquisition fails.
+
+Dedicated source tests1,000,055 pass (helper also ran sanitizers); unchanged
+strict suite1,000,137 and integrated observer194 pass. This is host evidence;
+N board build/camera result is pending at this note. Output gates remain OFF.

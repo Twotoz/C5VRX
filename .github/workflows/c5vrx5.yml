@@ -134,6 +134,8 @@ jobs:
           python3 test/test_sync_gate_probe_runtime.py
           python3 test/test_sync_output_probe_runtime.py
           python3 test/test_sync_flag_pin_runtime.py
+          cc -O2 -std=c11 -Wall -Wextra -Werror -Imain test/test_sync_native_flag_track.c -o /tmp/test_sync_native_flag_track
+          /tmp/test_sync_native_flag_track
           python3 test/test_sync_edge_clock_runtime.py
           python3 test/test_sync_native_witness_runtime.py
           python3 research/native_flag_emulator.py --output /tmp/native_flag_emulator.json
