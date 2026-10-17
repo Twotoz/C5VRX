@@ -411,6 +411,7 @@ typedef struct {
     char result[640];
 } flag_bench_t;
 static flag_bench_t *s_flag_bench;
+static flag_bench_t *s_flag_storage;
 #define FLAG_PIN_MASK (UINT32_C(1)<<23)
 
 static bool IRAM_ATTR flag_pin_clamped(void)
@@ -1208,8 +1209,13 @@ void transport_sync_flag_probe(void)
         !s_stream_generation_overflow && s_verified_level>=0 && s_verified_level<KP_LEVELS &&
         s_prog_lp==s_verified_lp && s_output==s_verified_output;
     if(!eligible){phy_end_actuator();printf("SYNC_FLAG refused=transport\n");return;}
-    flag_bench_t *s=calloc(1,sizeof(*s));
+    /* Keep the first diagnostic allocation: observer setup retains its own
+     * storage, and freeing/reallocating this block fragmented the small heap
+     * enough that a second bench could not allocate it on the actual C5. */
+    if(!s_flag_storage)s_flag_storage=calloc(1,sizeof(*s_flag_storage));
+    flag_bench_t *s=s_flag_storage;
     if(!s){phy_end_actuator();printf("SYNC_FLAG refused=memory\n");return;}
+    memset(s,0,sizeof(*s));
     s->iomux=REG_READ(IO_MUX_GPIO23_REG);
     s->matrix=REG_READ(GPIO_FUNC23_OUT_SEL_CFG_REG);
     s->pad=REG_READ(GPIO_PIN23_REG);
@@ -1219,7 +1225,7 @@ void transport_sync_flag_probe(void)
        (s->matrix&(GPIO_FUNC23_OUT_INV_SEL_M|GPIO_FUNC23_OE_INV_SEL_M)) ||
        (s->pad&GPIO_PIN23_PAD_DRIVER_M) || !s->enable ||
        ((s->iomux&MCU_SEL_M)>>MCU_SEL_S)!=1u) {
-        free(s);phy_end_actuator();printf("SYNC_FLAG refused=pin_context\n");return;
+        phy_end_actuator();printf("SYNC_FLAG refused=pin_context\n");return;
     }
     s->clamp_matrix=(s->matrix&~(GPIO_FUNC23_OUT_SEL_M|GPIO_FUNC23_OUT_INV_SEL_M|
         GPIO_FUNC23_OE_INV_SEL_M))|256u|GPIO_FUNC23_OE_SEL_M;
@@ -1269,7 +1275,7 @@ void transport_sync_flag_probe(void)
         printf("SYNC_FLAG_LOW i=%u epoch=%u tick=%lu width=%u\n",i,low->epoch,(unsigned long)low->tick,low->width);
     }
     printf("SYNC_FLAG_TRACE_END count=%u restored=%u\n",s->trace.count,(unsigned)restored);
-    if(restored){s_flag_bench=NULL;free(s);} /* retain failed ownership until reboot */
+    if(restored)s_flag_bench=NULL; /* retain failed ownership until reboot */
 }
 
 static bool transport_bench_context_copy(sync_bench_context_t *ctx, uint16_t *lut)

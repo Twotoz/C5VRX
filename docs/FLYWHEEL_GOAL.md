@@ -1044,3 +1044,24 @@ a failed poll must report an incomplete measurement even if teardown succeeds.
 That is corrected. Firmware L builds (app0x18ff80 bytes); exported SHA256:
 9b4f2460f0170ab1b2428d364e8e523a0de9d6f95fb116bc01b4f6f786bd8bd4.
 Board execution and actual camera H/V qualification remain pending at this note.
+
+L board follow-up: the first finite50ms session completes and restores ordinary
+LP video with zero transport faults and no qualified H/V model, VTX off. Three
+subsequent attempts refuse memory: freeing its temporary bench block fragments
+the already small heap after permanent observer allocation. Evidence:
+research/data/board_native_flag_l_2026-10-17.json.
+
+M retains and reuses that diagnostic block; failed ownership still remains
+latched until reboot. Build/flash verified SHA256:
+29005f8e4e35f39248f249e16cd2796c3aac96cb591cdb6f961a8d6c5d9434ac.
+Three consecutive finite sessions now complete with restored=1/fault=0 and
+ordinary transport dma_faults=0, program=U85Q-LP. Heap free1404 bytes after
+persistent bench/observer allocation. These sessions received only marker-sized
+symbol batches and no usable phase/H/V model. Successful cleanup is not evidence
+of useful sync. See board_native_flag_m_2026-10-17.json. M remains flashed; all
+observer/output gates OFF. Camera measurement awaits the operator.
+
+An additional exploratory threshold sweep (16..21) is archived separately in
+native_flag_threshold_study_2026-10-17.json. Many fullfield model cases still
+fail; changing the threshold alone is not a demonstrated solution. No firmware
+threshold change follows from this sweep.

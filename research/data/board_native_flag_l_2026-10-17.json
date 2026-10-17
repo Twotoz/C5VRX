@@ -1,0 +1,39 @@
+{
+  "project": "C5VRX by Twotoz and contributors",
+  "firmware": "5.0.0-pr.212-sync-flag-l",
+  "binary_sha256": "9b4f2460f0170ab1b2428d364e8e523a0de9d6f95fb116bc01b4f6f786bd8bd4",
+  "scope": "VTX off based on ordinary RF detected=none; no camera or monitor proof. One completed50ms signal48 observation with canonical stream/pin restoration. Three subsequent attempts refused allocation. M reserves/reuses the bench block; its board result is pending.",
+  "logs": [
+    {
+      "file": "c5vrx-flag-l-off-20261017-105529.log",
+      "sha256": "2bb59dd793aeaa15e5aa16d5e8a56d4790906599467e0b1f260053bae9f2d872",
+      "selected_lines": [
+        "C5VRX5 version=5.0.0-pr.212-sync-flag-l demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v5 uptime_s=6 heap_internal=5260",
+        "TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=0 kp_target=0 kp_writes=2048 kp_verify_fail=0 program=U85Q-LP prog_switches=1 switch_wait_ms=486 kp_switches=0 kp_restart_fail=0 kp_restart_us=0 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=6983",
+        "SYNC_FLAG refused=busy boot_default=OFF",
+        "C5VRX5 version=5.0.0-pr.212-sync-flag-l demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v5 uptime_s=11 heap_internal=5260",
+        "TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=0 kp_target=0 kp_writes=2048 kp_verify_fail=0 program=U85Q-LP prog_switches=1 switch_wait_ms=0 kp_switches=0 kp_restart_fail=0 kp_restart_us=0 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=6983"
+      ]
+    },
+    {
+      "file": "c5vrx-flag-l-finite-20261017-105556.log",
+      "sha256": "0af7623711663af3b805ca95be8a6ccd1c7bb8c9d875924518ab9dded22a5246",
+      "selected_lines": [
+        "SYNC_FLAG_RESULT signal=48 threshold=19 threshold_domain=canonical output=0 kp=0 lp=1 entered=0 observed=1 restored=1 fault=0 output_gates=0 boot_default=OFF",
+        "SYNC_FLAG_CAPTURE signal=48 threshold=19 started=1 error=none api=0 cleanup=0 closed=1 callbacks=12 symbols=319 epochs=12 phase_span_ticks=-1 timing_valid=0 inverted=0 standard=0 fields=0 line_ticks_x32=0 low_valid=0 high_valid=0 low_fields=0 high_fields=0 camera_qualified=0",
+        "SYNC_FLAG_TRACE_END count=96 restored=1",
+        "C5VRX5 version=5.0.0-pr.212-sync-flag-l demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v5 uptime_s=33 heap_internal=2860",
+        "TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=0 kp_target=0 kp_writes=4096 kp_verify_fail=0 program=U85Q-LP prog_switches=1 switch_wait_ms=0 kp_switches=0 kp_restart_fail=0 kp_restart_us=0 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=6983"
+      ]
+    },
+    {
+      "file": "c5vrx-flag-l-repeat-20261017-105610.log",
+      "sha256": "2f8b50f2d07e96182d2ad702a10fbc77eb744eadd5d51b45feaeb2bc5857ee03",
+      "selected_lines": [
+        "STATUS channel=A1 freq=5865 afc_locked=0 standard=AUTO detected=SYNC_FLAG refused=memory",
+        "SYNC_FLAG refused=memory",
+        "SYNC_FLAG refused=memory"
+      ]
+    }
+  ]
+}
