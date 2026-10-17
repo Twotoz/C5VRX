@@ -320,7 +320,7 @@ bool sync_live_output_update(const slg_model_t *model)
     sync_live_gate_t *g=s->planner;
     if(!g)return false;
     slg_clock_seed_t seed;slc_t candidate;slg_pulse_t pulse;
-    bool ok=sync_live_gate_model(g,model,now+5000u) && sync_live_gate_arm(g) &&
+    bool ok=sync_live_gate_model(g,model,now+20000u) && sync_live_gate_arm(g) &&
         sync_live_gate_export(g,&seed) && slc_init(&candidate,&seed) && slc_next(&candidate,&pulse);
     if(!ok)return false;
     /* A confirmed model can replace nominal/old-standard timing. Task-side
