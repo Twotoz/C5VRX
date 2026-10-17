@@ -1274,3 +1274,14 @@ anyway) before reserving descriptors. `rf_start` no longer calls
 `sdkconfig.defaults` uses two static Wi-Fi RX and management buffers without
 A-MPDU (the zero promiscuous filter delivers no frames). Static HP SRAM fell
 from 297698 to 295118 bytes; the heap gain needs the board readout.
+
+Menu follow-up (same day, board): after the heap gain the startup status
+screen and a menu opened before the flywheel started worked, but with the
+flywheel active the menu still failed (`chunks=42` of 47; the observer keeps
+its session storage by design). The menu raster is now one progressive
+field (NTSC 262 / PAL 312 lines, burst closed per field), which halves the
+cyclic chain to 748 / 905 descriptors (8976 / 10860 bytes), allocated in
+word-aligned 384-byte chunks. `test_no_signal_raster.c` checks the
+half-line sync grid across the loop wrap and one field's broad pulses.
+Build and host test only; board check of this last change pending (COM10
+disconnected before the flash).

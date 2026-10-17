@@ -36,11 +36,16 @@
 /* Longest line remainder after the shortest prefix (NTSC lines are <= 2544). */
 #define MENU_TAIL_BYTES (2560u - MENU_NTSC_PREFIX_BYTES)
 #define MENU_PHASES 8u
-/* One complete two-field frame is enough for the monochrome menu.  Closing
- * the burst phase over that frame keeps the waveform cyclic without the old
- * eight-field descriptor chain (which needed ~76 KiB and could not be
- * allocated after Wi-Fi/PHY startup on the C5). */
-#define MENU_FIELDS 2u
+/* One progressive field (NTSC 262 lines, PAL 312 lines; the "240p/288p"
+ * form game consoles emit) repeats for the monochrome menu: both interlaced
+ * fields showed the same picture. It halves the cyclic descriptor chain
+ * (NTSC 1499 -> ~750 nodes, PAL 1811 -> ~905), which did not fit next to
+ * the live flywheel (board 2026-10-18, menu ESP_ERR_NO_MEM). The burst
+ * phase closes over the field. Earlier chains: eight fields ~76 KiB, one
+ * interlaced frame ~18/22 KiB. */
+#define MENU_FIELDS 1u
+#define MENU_NTSC_FIELD_HALVES 524u
+#define MENU_PAL_FIELD_HALVES 624u
 #define MENU_MAX_NODES 1840u
 
 typedef enum { VIDEO_STD_NTSC, VIDEO_STD_PAL } video_standard_t;
@@ -59,6 +64,11 @@ void menu_raster_init(menu_raster_t *raster, video_standard_t standard);
 bool menu_raster_emit(const menu_raster_t *raster, video_standard_t standard,
                       menu_segment_fn emit, void *ctx);
 uint32_t menu_half_sample(video_standard_t standard, unsigned half);
+
+static inline unsigned menu_field_halves(video_standard_t standard)
+{
+    return standard == VIDEO_STD_PAL ? MENU_PAL_FIELD_HALVES : MENU_NTSC_FIELD_HALVES;
+}
 
 static inline unsigned menu_prefix_bytes(video_standard_t standard)
 {

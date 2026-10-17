@@ -4,24 +4,28 @@
 
 /* ITU-R BT.470: PAL 625/50, NTSC 525/59.94. Round cumulative NTSC
  * half-line time (11440/9 samples) to a DMA word, never each line independently.
- * Within a cycle the longest edge error is 44.45 ns. The four-frame NTSC
- * loop adds only 0.25 ppm period error (see the carrier adjustment below). */
+ * Within a cycle the longest edge error is 44.45 ns. */
 uint32_t menu_half_sample(video_standard_t standard, unsigned half)
 {
     return standard == VIDEO_STD_PAL ? half * 1280u :
            ((half * 2860u + 4u) / 9u) * 4u;
 }
 
+/* Burst cycles per progressive field: 262 x 227.5 for NTSC, PAL rounded
+ * down from 312 x 283.75 + offset (-25 Hz). */
+static double menu_burst_cycles(video_standard_t standard)
+{
+    return standard == VIDEO_STD_PAL ? 88530.0 : 59605.0;
+}
+
 void menu_raster_init(menu_raster_t *r, video_standard_t standard)
 {
     const double tau = 6.2831853071795864769;
-    /* Close the colour-reference carrier over one complete two-field frame.
-     * The menu itself is monochrome.  The resulting offsets are only
-     * +6.25 Hz for PAL and about +10.7 Hz for NTSC, while reducing the cyclic
-     * descriptor allocation from ~76 KiB to less than 20 KiB. */
-    const double frequency = standard == VIDEO_STD_PAL ?
-                             177345.0 * 40000000.0 / 1600000.0 :
-                             119438.0 * 40000000.0 / 1334668.0;
+    /* Close the colour-reference carrier over one progressive field (an
+     * integer number of cycles per loop). The menu itself is monochrome; the
+     * offsets are a few Hz to tens of Hz. */
+    const double frequency = menu_burst_cycles(standard) * 40000000.0 /
+                             (double)menu_half_sample(standard, menu_field_halves(standard));
     const unsigned burst_start = standard == VIDEO_STD_PAL ? 224u : 212u;
     const unsigned burst_samples = standard == VIDEO_STD_PAL ? 90u : 100u;
     memset(r, 20, sizeof(*r));
@@ -43,10 +47,13 @@ bool menu_raster_emit(const menu_raster_t *r, video_standard_t standard,
                       menu_segment_fn emit, void *ctx)
 {
     const bool pal = standard == VIDEO_STD_PAL;
-    const unsigned field_halves = pal ? 625 : 525;
+    const unsigned field_halves = menu_field_halves(standard);
     const unsigned eq = pal ? 5 : 6;
-    /* A complete interlaced frame.  Burst phase is closed at this loop. */
+    /* One progressive field; burst phase is closed at this loop. NTSC's
+     * 18 vertical half-lines leave 253 full lines; PAL's 15 leave one
+     * half-line before the pre-equalizing pulses, as in its first field. */
     const unsigned total_halves = field_halves * MENU_FIELDS;
+    const double loop_samples = (double)menu_half_sample(standard, total_halves);
     /* Centre the UI in the active picture, clear of vertical blanking. */
     const unsigned text_start = menu_ui_first_line(standard);
     const unsigned y_repeat = menu_ui_y_repeat(standard);
@@ -77,17 +84,13 @@ bool menu_raster_emit(const menu_raster_t *r, video_standard_t standard,
         /* Carrier phase from absolute sample time, including at loop wrap.
          * Phase bins quantize only the burst start phase; samples within each
          * burst retain the exact PAL/NTSC carrier frequency. */
-        double cycles = pal ? (double)start * 177345.0 / 1600000.0 :
-                              (double)start * 119438.0 / 1334668.0;
+        double cycles = (double)start * menu_burst_cycles(standard) / loop_samples;
         cycles += pal ? ((h / 2) & 1u ? -0.375 : 0.375) : 0.5;
         int phase = (int)floor(cycles * MENU_PHASES + 0.5);
-        unsigned frame = h / 1250;
-        unsigned pal_line = (h / 2) % 625 + 1;
-        /* BT.470 figure 5a: alternate nine-line PAL burst blanking windows
-         * over four fields; NTSC suppresses burst only in its pulse train. */
-        bool burst = !pal || ((frame & 1u) ?
-            (pal_line > 5 && pal_line < 622 && !(pal_line >= 310 && pal_line <= 318)) :
-            (pal_line > 6 && pal_line < 623 && !(pal_line >= 311 && pal_line <= 319)));
+        /* PAL: no burst on the lines next to the vertical interval (BT.470
+         * figure 5a blanking, one field); NTSC only in its pulse train. */
+        unsigned pal_line = pos / 2u + 1u;
+        bool burst = !pal || (pal_line > 9u && pal_line < 311u);
         const uint8_t *prefix = burst ? r->prefix[(unsigned)phase % MENU_PHASES] : r->no_burst;
         if (!emit(ctx, prefix, prefix_bytes)) return false;
         unsigned line = pos / 2;
