@@ -16,6 +16,8 @@ typedef struct {
     /* Camera-phase guard: tips left to a present off-grid camera, grid
      * re-anchors (H incl. fine trims, V) from coherent native pulses. */
     uint32_t yielded,guard_h_jumps,guard_v_jumps,guard_trims;
+    /* Camera grids granted by the guard (coherent H + field-spaced V). */
+    uint32_t guard_acquired;
     /* Holdover PLL: fine-period updates/rejections, offset vs nominal. */
     uint32_t pll_updates,pll_rejected;
     int32_t pll_ppb;

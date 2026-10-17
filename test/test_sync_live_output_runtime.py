@@ -295,6 +295,44 @@ int main(void){
   assert(sync_live_output_end());++checks;
   #undef GRID
  }
+ /* Guard acquisition: no probe model (the strict EQ/broad/EQ grammar often
+  * failed on the board at range), a camera 300 ticks and 7 halflines off
+  * the nominal grid. Coherent H plus field-spaced V must grant authority on
+  * the camera's grid; a PAL camera on the NTSC grid and pure noise never. */
+ for(unsigned variant=0;variant<3u;++variant){
+  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+  assert(!s_output->native_authority);
+  for(unsigned i=0;i<20;++i)fire();
+  slo_tip_t t=s_output->tip;slc_t c=s_output->clock;
+  double hl=c.whole+(double)c.increment/c.denominator;
+  unsigned halves=variant==1u?625u:525u,section=variant==1u?5u:6u;
+  double chl=variant==1u?640.0:hl;
+  /* Camera halfline j: grid index (t.index + j + 7) at +300 ticks. */
+  double cam0=(double)t.start+300.0+40.0*hl;
+  uint64_t j=0,start=cycles/12;uint32_t lcg=5u;unsigned clamps=0;
+  while(cycles/12<start+6000000u){ /* 300 ms */
+   fire();
+   while(cam0+j*chl<=(double)(cycles/12)){
+    double at=cam0+j*chl;
+    unsigned idx=(unsigned)((t.index+40u+j+halves-7u)%halves);++j;
+    if(variant==2u){lcg=lcg*1103515245u+12345u;
+     sync_live_output_native_pulse((uint64_t)(at+(lcg>>8)%640u),(lcg>>4)%2u?160u:541u,true);continue;}
+    unsigned w=idx<section?47u:idx<2u*section?541u:idx<3u*section?47u:((j-1u)&1u)?0u:160u;
+    if(w)sync_live_output_native_pulse((uint64_t)(at+0.5),w,true);
+   }
+   if(s_output->native_authority&&!clamps)clamps=clears;
+  }
+  fprintf(stderr,"guard acquisition variant=%u acquired=%lu h_jumps=%lu v_jumps=%lu\n",variant,
+          (unsigned long)s_output->status.guard_acquired,(unsigned long)s_output->status.guard_h_jumps,
+          (unsigned long)s_output->status.guard_v_jumps);
+  if(variant==0u){
+   assert(s_output->native_authority&&s_output->status.guard_acquired==1u);
+   assert(s_output->status.guard_v_jumps==1u&&s_output->status.guard_h_jumps==1u);
+   assert(!s_output->yield&&clears>clamps); /* holdover repairs on the camera grid */
+  } else assert(!s_output->native_authority&&!s_output->status.guard_acquired&&!clears);
+  assert(!s_output->status.fault&&sync_live_output_end());++checks;
+ }
  /* Holdover PLL: a camera 30 ppm slower than the nominal NTSC grid. The
   * model period is quantised to 1/64 tick per halfline (up to ~24 us/s of
   * holdover drift); after 2.6 s of aligned camera H the PLL period must

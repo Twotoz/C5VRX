@@ -55,18 +55,31 @@ int main(void)
     for (unsigned k = 0; k < SPG_TRIM_N; ++k) a = spg_h(&t, -12, LINE, 100u + k);
     CHECK(a.kind == SPG_JUMP_H && a.value == -12 && !t.yield_h);
 
-    /* V: one wrong field is not enough, two identical ones are; a correct
-     * field confirms. V is ignored while H is yielding. */
+    /* V: one wrong field is not enough, two identical ones a whole field
+     * apart are; a correct field confirms. Not field-spaced: no jump. V is
+     * ignored while H is yielding. */
+    const uint64_t F = 333667u; /* NTSC field, ticks */
     spg_t v = {0};
-    CHECK(spg_v(&v, 7, 10u).kind == SPG_NONE);
-    CHECK(spg_v(&v, 3, 20u).kind == SPG_NONE);
-    a = spg_v(&v, 3, 30u);
+    CHECK(spg_v(&v, 7, 10u, F).kind == SPG_NONE);
+    CHECK(spg_v(&v, 3, 10u + F, F).kind == SPG_NONE);
+    a = spg_v(&v, 3, 10u + 2u * F + 40u, F);
     CHECK(a.kind == SPG_JUMP_V && a.value == 3 && v.yield_v);
     spg_reset(&v);
-    CHECK(spg_v(&v, 0, 40u).kind == SPG_NONE && v.yield_v);
-    CHECK(spg_v(&v, 0, 50u).kind == SPG_NONE && !v.yield_v);
+    CHECK(spg_v(&v, 0, 10u + 3u * F, F).kind == SPG_NONE && v.yield_v);
+    CHECK(spg_v(&v, 0, 10u + 4u * F, F).kind == SPG_NONE && !v.yield_v);
+    spg_t w = {0};
+    CHECK(spg_v(&w, 5, 1000u, F).kind == SPG_NONE);
+    CHECK(spg_v(&w, 5, 1000u + F / 2u, F).kind == SPG_NONE);      /* half a field: noise */
+    CHECK(spg_v(&w, 5, 1000u + F / 2u + 6u * F, F).kind == SPG_NONE); /* > SPG_V_FIELDS */
+    CHECK(!w.yield_v);
     v.yield_h = true;
-    CHECK(spg_v(&v, 5, 60u).kind == SPG_NONE && spg_v(&v, 5, 70u).kind == SPG_NONE);
+    CHECK(spg_v(&v, 5, 20u * F, F).kind == SPG_NONE && spg_v(&v, 5, 21u * F, F).kind == SPG_NONE);
+    /* Acquisition needs aligned H and confirmed V, no yield. */
+    spg_t q = {0};
+    for (unsigned k = 0; k < SPG_LOCK; ++k) spg_h(&q, 2, LINE, k);
+    CHECK(!spg_acquired(&q));
+    spg_v(&q, 0, F, F); CHECK(!spg_acquired(&q));
+    spg_v(&q, 0, 2u * F, F); CHECK(spg_acquired(&q));
 
     /* Expiry: a yield without evidence for > SPG_HOLD_TICKS ends. */
     spg_t e = {0};

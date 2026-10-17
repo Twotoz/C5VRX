@@ -1272,7 +1272,7 @@ void transport_sync_live_print(void)
     slo_status_t output;sync_live_output_status(&output);
     printf("SYNC_FLYWHEEL requested=%u active=%u repaired=%lu suppressed=%lu batches=%lu late_ticks=%lu missed=%lu miss_kind=%lu queue_low=%lu fault=%lu "
         "irq_delay_ticks=%lu callback_ticks=%lu budget_yields=%lu miss_phase=%lu miss_other=%lu miss_observer=%lu miss_snapshot=%lu miss_update=%lu miss_restart=%lu miss_reserved=%lu "
-        "guard_yield=%u yielded=%lu h_jumps=%lu v_jumps=%lu trims=%lu pll_updates=%lu pll_rejected=%lu pll_ppb=%ld monitor_lock_proven=0\n",
+        "guard_yield=%u yielded=%lu h_jumps=%lu v_jumps=%lu trims=%lu pll_updates=%lu pll_rejected=%lu pll_ppb=%ld acquired=%lu monitor_lock_proven=0\n",
         s?(unsigned)s->output_requested:0u,(unsigned)output.active,
         (unsigned long)output.repaired,(unsigned long)output.suppressed,(unsigned long)output.batches,
         (unsigned long)output.max_late_ticks,(unsigned long)output.missed,(unsigned long)output.miss_kind,
@@ -1285,7 +1285,8 @@ void transport_sync_live_print(void)
         (unsigned long)output.misses_by_phase[5],
         (unsigned)output.guard_yield,(unsigned long)output.yielded,(unsigned long)output.guard_h_jumps,
         (unsigned long)output.guard_v_jumps,(unsigned long)output.guard_trims,
-        (unsigned long)output.pll_updates,(unsigned long)output.pll_rejected,(long)output.pll_ppb);
+        (unsigned long)output.pll_updates,(unsigned long)output.pll_rejected,(long)output.pll_ppb,
+        (unsigned long)output.guard_acquired);
 }
 
 /* ISR-safe transport identity check: no scheduler/PHY calls or mutation. */

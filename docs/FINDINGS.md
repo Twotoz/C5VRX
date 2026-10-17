@@ -782,3 +782,23 @@ guard can only correct after the camera returns.
   adaptive hold needs board fade statistics first).
 - `T`: `SYNC_FLYWHEEL ... pll_updates pll_rejected pll_ppb`. Board and
   monitor confirmation pending.
+
+## Live flywheel: guard acquisition and field-spaced V (2026-10-17)
+
+- Acquisition: board captures often showed `camera_qualified=0` (the strict
+  EQ/broad/EQ grammar failed), and without a qualified model the flywheel
+  never repaired anything. The guard now also runs on the nominal clock
+  before authority: coherent camera H re-anchors H, V re-anchors on two
+  field-spaced broad observations, and authority is granted only once H is
+  aligned (>= 12 pulses) and V is confirmed at the grid's own broad slot on
+  two field-spaced fields, with nothing unapplied. Host: a camera +300 ticks
+  / +7 halflines with no model is acquired (1 H + 1 V jump); a PAL camera
+  on the NTSC grid and pure noise are never granted (300 ms each).
+- False V re-anchor: both V observations must now be 1..4 whole fields
+  apart (+-128 ticks); half-field or > 4-field coincidences are refused.
+- Not changed, deliberately: the 12-pulse H coherence before a yield (an
+  earlier yield would fire on random static many times per second), V
+  without broad pulses (EQ pulses are weaker still), and IRQ-blackout
+  misses (98 % `miss_other`, i.e. interrupts masked outside this code; the
+  timer ISR is already priority 3 and cache-safe; needs hardware-timed
+  output). `T`: `SYNC_FLYWHEEL ... acquired`. Board pending.

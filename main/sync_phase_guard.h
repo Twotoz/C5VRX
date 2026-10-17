@@ -24,6 +24,8 @@
 #define SPG_TRIM_MIN 8         /* ticks: smaller mean offsets are left alone */
 #define SPG_V_LOCK 2u          /* consecutive fields with the same V offset */
 #define SPG_HOLD_TICKS 2000000u /* 100 ms without camera evidence ends a yield */
+#define SPG_V_SPACING 128      /* ticks: V evidence must repeat on whole fields */
+#define SPG_V_FIELDS 4u        /* ...at most this many fields apart */
 
 typedef enum { SPG_NONE = 0, SPG_JUMP_H, SPG_JUMP_V } spg_kind_t;
 typedef struct { spg_kind_t kind; int32_t value; } spg_action_t;
@@ -32,7 +34,7 @@ typedef struct {
     int32_t h_offset, trim_sum, v_offset;
     uint8_t h_score, aligned, v_score, v_good;
     uint16_t trim_n;
-    uint64_t last_evidence;
+    uint64_t last_evidence, v_tick;
     bool yield_h, yield_v, have_v;
 } spg_t;
 
@@ -92,31 +94,54 @@ static inline spg_action_t spg_h(spg_t *g, int32_t offset, int32_t line, uint64_
     return action;
 }
 
+/* Real V repeats on whole fields (1..SPG_V_FIELDS); two noise trains at the
+ * same wrong slot almost never do. */
+static inline bool spg_field_spaced(uint64_t a, uint64_t b, uint64_t field)
+{
+    if (!field || b <= a) return false;
+    uint64_t d = b - a, n = (d + field / 2u) / field;
+    if (n < 1u || n > SPG_V_FIELDS) return false;
+    uint64_t e = d > n * field ? d - n * field : n * field - d;
+    return e <= SPG_V_SPACING;
+}
+
 /* offset: first broad pulse of a train minus the grid's first broad slot,
  * in whole halflines. Only meaningful while H is aligned. */
-static inline spg_action_t spg_v(spg_t *g, int32_t offset, uint64_t tick)
+static inline spg_action_t spg_v(spg_t *g, int32_t offset, uint64_t tick, uint64_t field_ticks)
 {
     spg_action_t action = {SPG_NONE, 0};
     if (g->yield_h) return action;
     if (!offset) {
+        if (g->v_good && !spg_field_spaced(g->v_tick, tick, field_ticks)) g->v_good = 0;
         if (g->v_good < 8u) ++g->v_good;
+        g->v_tick = tick;
         g->v_score = 0; g->have_v = false;
         g->last_evidence = tick;
         if (g->v_good >= SPG_V_LOCK) g->yield_v = false;
         return action;
     }
     g->v_good = 0;
-    if (g->have_v && offset == g->v_offset) {
+    if (g->have_v && offset == g->v_offset && spg_field_spaced(g->v_tick, tick, field_ticks)) {
         if (g->v_score < 8u) ++g->v_score;
         g->last_evidence = tick;
     } else {
         g->have_v = true; g->v_offset = offset; g->v_score = 1;
     }
+    g->v_tick = tick;
     if (g->v_score >= SPG_V_LOCK) {
         g->yield_v = true;
         action = (spg_action_t){SPG_JUMP_V, g->v_offset};
     }
     return action;
+}
+
+/* Camera acquisition without the probe's model: the grid already carries
+ * coherent camera H (aligned) and the camera's V on two field-spaced
+ * observations at the grid's own broad slot. Independent of the strict
+ * EQ/broad/EQ grammar, which board captures often failed at range. */
+static inline bool spg_acquired(const spg_t *g)
+{
+    return !g->yield_h && !g->yield_v && g->aligned >= SPG_LOCK && g->v_good >= SPG_V_LOCK;
 }
 
 /* Camera gone while yielding: resume holdover on the re-anchored grid. */

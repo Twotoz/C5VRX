@@ -430,7 +430,9 @@ static bool guard_publish_period(slo_t *s,uint64_t period_q)
 void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
 {
     slo_t *s=s_output;
-    if(!s || !s->flag || !s->status.active || s->quarantined || !s->native_authority ||
+    /* Without authority the grid is a nominal clock that emits nothing;
+     * the guard still aligns it to a coherent camera and may grant it. */
+    if(!s || !s->flag || !s->status.active || s->quarantined ||
        high!=s->native_inverted || tick<s->guard_after)return;
     bool h=width>=75u && width<=240u,broad=width>=250u && width<=620u;
     if(!h && !broad)return;
@@ -446,7 +448,7 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
         int64_t base=(tip.half&1u)==clock.parity?delta:delta-half;
         int32_t offset=(int32_t)(spg_wrap(base,2*half)/den);
         action=spg_h(&s->guard,offset,(int32_t)(2*half/den),tick);
-        if(spg_abs(offset)<=SPG_WINDOW && !s->guard.yield_h && action.kind==SPG_NONE) {
+        if(s->native_authority && spg_abs(offset)<=SPG_WINDOW && !s->guard.yield_h && action.kind==SPG_NONE) {
             uint64_t period_q=scp_period_q(clock.whole,clock.increment,clock.denominator);
             if(!s->pll.active || s->pll.period_q!=period_q)scp_start(&s->pll,period_q,tip.half,offset);
             else {
@@ -465,7 +467,7 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
         int32_t index=(int32_t)(((int64_t)tip.index+halves)%clock.halves);
         if(index<0)index+=clock.halves;
         int32_t offset=spg_wrap((int64_t)index-clock.section,clock.halves);
-        action=spg_v(&s->guard,offset,tick);
+        action=spg_v(&s->guard,offset,tick,(uint64_t)((clock.halves*half+den/2)/den));
     }
     if(action.kind==SPG_JUMP_H) {
         bool trim=!s->guard.yield_h;
@@ -478,6 +480,12 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
         spg_reset(&s->guard);
     }
     s->yield=spg_yield(&s->guard,tick);
+    /* Grant only on the grid the evidence describes: nothing unapplied. */
+    if(!s->native_authority && spg_acquired(&s->guard) &&
+       s->publication==s->applied && !(s->publication&1u)) {
+        s->native_authority=true;
+        ++s->status.guard_acquired;
+    }
 }
 
 void sync_live_output_guard_tick(void)
