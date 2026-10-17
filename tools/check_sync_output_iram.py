@@ -12,9 +12,9 @@ ROOTS = {
     "sec_alarm", "output_alarm",
     "sync_edge_clock_read", "sync_edge_clock_alarm_at", "sync_edge_clock_alarm_off",
     "transport_sync_live_valid", "transport_sync_native_source",
-    "sync_output_live_source",
+    "sync_output_live_source", "sop_received",
 }
-HELPERS = {"flag_native", "fail", "flag_pin_clamped"}  # may be fully inlined
+HELPERS = {"flag_native", "fail", "flag_pin_clamped", "sop_received_inner"}  # may be fully inlined
 
 
 def check(disassembly):
@@ -27,8 +27,10 @@ def check(disassembly):
             functions[current] = (int(header[1], 16), [])
         elif current:
             # Includes direct calls, tail calls and split-function branches.
-            # Ordinary local branches retain the function's IRAM address.
-            for target in re.finditer(r"\b([0-9a-f]{8}) <([^>]+)>", line):
+            # Ordinary local branches retain the function's IRAM address;
+            # strip objdump '# ...' comments on constant/address loads.
+            code = line.split("#", 1)[0]
+            for target in re.finditer(r"\b([0-9a-f]{8}) <([^>]+)>", code):
                 functions[current][1].append((int(target[1], 16), target[2]))
     errors = []
     for name in sorted(ROOTS | (HELPERS & functions.keys())):

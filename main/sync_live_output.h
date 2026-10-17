@@ -35,3 +35,4 @@ bool sync_live_output_update(const slg_model_t *model);
 /* Fresh vertical evidence admits native V tips; a retained clock alone does
  * not. H admission additionally comes from the caller's source predicate. */
 void sync_live_output_native_fresh(bool vertical);
+void sync_live_output_native_polarity(bool inverted);

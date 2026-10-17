@@ -1180,6 +1180,7 @@ void transport_sync_live_tick(void)
         bool have=sync_output_live_snapshot(&m);
         s->native_tracking=have && m.tracking;
         sync_live_output_native_fresh(have && m.valid);
+        if(have && m.tracking)sync_live_output_native_polarity(m.inverted);
         /* Acquisition and continuity are separate. The schedule coasts even
          * while the camera is healthy; individual real tips suppress repair
          * in the ISR. Missing RMT windows never destroy the output clock. */
@@ -1196,6 +1197,7 @@ void transport_sync_live_tick(void)
                 if(!sync_live_output_flag_begin(model.qualified?&model:NULL,fallback,
                     s->context.generation,transport_sync_live_valid,transport_sync_native_source,NULL))++s->failures;
                 sync_live_output_native_fresh(m.valid);
+                if(model.qualified)sync_live_output_native_polarity(m.inverted);
             } else if(output.active && m.tracking &&
                       (m.field!=s->model_field || (m.last_h!=s->model_h && now-s->model_update_us>=5000))) {
                 sync_live_output_phase(3u);
