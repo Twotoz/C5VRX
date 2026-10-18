@@ -246,9 +246,10 @@ another browser with Web Serial) has three tabs:
 Firmware is mirrored into the GitHub Pages site and downloaded same-origin.
 
 The **Terminal** view has a visual receiver menu for BAND, CHANNEL, SCAN,
-VIDEO, CALIBRATE, OUTPUT and EXIT. Use console keys `G`/`U` or the on-screen
-menu for GAIN/FLYWHEEL. Selecting a browser menu page only changes the view;
-its action button sends the command.
+VIDEO, CALIBRATE, OUTPUT, GAIN, FLYWHEEL and EXIT. GAIN/FLYWHEEL actions
+require firmware advertising `G`/`U` in its help. Their readouts show reported
+mode and requested/active flywheel state separately. Selecting a browser menu
+page only changes the view; its action button sends the command.
 It identifies C5VRX-5 from firmware help/status and displays the last reported
 band, channel, frequency, signal, video standard, output level, screen-menu
 state, scan result and calibration state. It updates by itself: the firmware

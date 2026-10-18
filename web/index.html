@@ -80,7 +80,7 @@
           <div id="paneAlpha" class="tab-pane active">
             <div id="alphaBuildWarning" class="warning-box">
               <strong>C5VRX-5 firmware</strong>
-              <span>The untrained U85Q demodulator, fixed ultrafine IQ, Direct Gain V5 and an analog filter that calibrates itself on the first boot (VTX off is best). Choose the latest build or an unmerged PR build. Use Full firmware when switching from another generation.</span>
+              <span>The untrained U85Q demodulator, fixed ultrafine IQ, Direct Gain V6 with carrier memory and an analog filter that calibrates itself on the first boot (VTX off is best). Choose the latest build or an unmerged PR build. Use Full firmware when switching from another generation.</span>
             </div>
             <div class="field">
               <label for="selectAlphaBuild">Build</label>
@@ -222,6 +222,8 @@
                 <button type="button" role="tab" id="menu-video" aria-controls="pane-video" aria-selected="false" tabindex="-1" data-menu="video">VIDEO</button>
                 <button type="button" role="tab" id="menu-calibrate" aria-controls="pane-calibrate" aria-selected="false" tabindex="-1" data-menu="calibrate">CALIBRATE</button>
                 <button type="button" role="tab" id="menu-output" aria-controls="pane-output" aria-selected="false" tabindex="-1" data-menu="output">OUTPUT</button>
+                <button type="button" role="tab" id="menu-gain" aria-controls="pane-gain" aria-selected="false" tabindex="-1" data-menu="gain">GAIN</button>
+                <button type="button" role="tab" id="menu-flywheel" aria-controls="pane-flywheel" aria-selected="false" tabindex="-1" data-menu="flywheel">FLYWHEEL</button>
                 <button type="button" role="tab" id="menu-exit" aria-controls="pane-exit" aria-selected="false" tabindex="-1" data-menu="exit">EXIT</button>
               </div>
               <div class="receiver-content">
@@ -259,8 +261,20 @@
                 <div role="tabpanel" id="pane-output" aria-labelledby="menu-output" hidden>
                   <h2>OUTPUT LEVEL</h2>
                   <dl class="readouts"><div><dt>Level</dt><dd data-value="output">—</dd></div></dl>
-                  <p class="hint">Cycles 1.0 / 1.5 / 2.0 / 2.5x; every boot starts at 1.0x. Higher levels can clip a wide VTX: check sync and white into 75 ohm.</p>
-                  <button type="button" class="command-button" data-command="g" data-hint="Cycle OUTPUT 1.0 to 5.0x in 0.5x steps? Higher levels may clip video. Successful changes are saved for reboot." disabled>Next output level <kbd>g</kbd></button>
+                  <p class="hint">Cycles 0.5x to 5.0x in 0.5x steps. Verified changes are saved and restored at boot; the default is 1.0x. Higher levels can clip: check sync and white into 75 ohm.</p>
+                  <button type="button" class="command-button" data-command="g" data-hint="Cycle OUTPUT 0.5 to 5.0x in 0.5x steps? Higher levels may clip video. Successful changes are saved for reboot." disabled>Next output level <kbd>g</kbd></button>
+                </div>
+                <div role="tabpanel" id="pane-gain" aria-labelledby="menu-gain" hidden>
+                  <h2>RX GAIN</h2>
+                  <dl class="readouts"><div><dt>Mode</dt><dd data-value="gainMode">—</dd></div><div><dt>Active gain</dt><dd data-value="gain">—</dd></div></dl>
+                  <p class="hint">AUTO uses Direct Gain V6. Cycle AUTO → MAX → fixed G78..G24. The choice is saved and restored at boot; AUTO is the default. Requires firmware advertising G in its help.</p>
+                  <button type="button" class="command-button" data-command="G" data-hint="Cycle AUTO / MAX / fixed receive gain. The choice is saved for reboot." disabled>Change gain mode <kbd>G</kbd></button>
+                </div>
+                <div role="tabpanel" id="pane-flywheel" aria-labelledby="menu-flywheel" hidden>
+                  <h2>SYNC FLYWHEEL</h2>
+                  <dl class="readouts"><div><dt>Requested</dt><dd data-value="flywheel">—</dd></div><div><dt>Output active</dt><dd data-value="flywheelActive">—</dd></div></dl>
+                  <p class="hint">Saved ON/OFF; default OFF. A saved ON restores at boot. Experimental: compare the actual camera and monitor on the ground. Requested ON does not mean output is active or the monitor is locked. Requires firmware advertising U in its help.</p>
+                  <button type="button" class="command-button" data-command="U" data-hint="Toggle the saved sync flywheel. Test on the ground; monitor-lock improvement is unproved." disabled>Toggle flywheel <kbd>U</kbd></button>
                 </div>
                 <div role="tabpanel" id="pane-exit" aria-labelledby="menu-exit" hidden>
                   <h2>BACK TO LIVE VIDEO</h2>

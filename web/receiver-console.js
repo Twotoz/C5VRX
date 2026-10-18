@@ -24,8 +24,12 @@ export class ReceiverConsole {
     this.version = '';
     this.current = false;
     this.directMenu = false;
+    this.gainControl = false;
+    this.flywheelControl = false;
     this.control = {};
     this.output = {};
+    this.gain = {};
+    this.flywheel = {};
     this.heartbeat = {};
     this.profile = {};
     this.scan = { active: false, candidates: 0, result: '', channel: '' };
@@ -53,9 +57,12 @@ export class ReceiverConsole {
       this.current = true;
       this.version = version[1] || version[2];
       if (version[2]) {
-        // A reboot resets OUTPUT to 1.0x and closes the menu; old values lie.
+        // Saved settings are restored by firmware; wait for fresh reports.
         this.control = {};
         this.output = {};
+        this.gain = {};
+        this.flywheel = {};
+        this.directMenu = this.gainControl = this.flywheelControl = false;
         this.scan = { active: false, candidates: 0, result: '', channel: '' };
         this.refused = '';
         events.add('ready');
@@ -64,6 +71,8 @@ export class ReceiverConsole {
     if (line.startsWith('C5VRX-5 keys:')) this.current = true;
     if (/^\s+v video standard AUTO\/NTSC\/PAL, e close menu/.test(line)) this.directMenu = true;
     if (!this.current) return;
+    if (/^\s+G RX gain /.test(line)) this.gainControl = true;
+    if (/^\s+U sync flywheel ON\/OFF /.test(line)) this.flywheelControl = true;
 
     if (line.startsWith('STATUS ')) {
       // Status beat (control.c control_print_beat, every 2 s).
@@ -83,6 +92,15 @@ export class ReceiverConsole {
       events.add('status');
     } else if (line.startsWith('OUTPUT level=')) {
       fields(line, this.output);
+    } else if (line.startsWith('GAIN ')) {
+      fields(line, this.gain);
+      if (this.gain.mode) events.add('changed');
+    } else if (line.startsWith('SYNC_FLYWHEEL ')) {
+      const report = fields(line);
+      if (report.requested !== undefined && report.active === undefined)
+        delete this.flywheel.active; // command accepted; actual output is not yet reported
+      Object.assign(this.flywheel, report);
+      if (report.requested !== undefined) events.add('changed');
     } else if (line.startsWith('PROFILE monitor ')) {
       this.profile.live = fields(line).mode === 'live_switch';
     } else if (line.startsWith('PROFILE active=')) {
@@ -174,7 +192,10 @@ export class ReceiverConsole {
       busy: this.receiverBusy(),
       refused: this.refused,
       stage: this.heartbeat.stage || '',
-      gain: this.heartbeat.gain || '',
+      gain: this.gain.gain || this.heartbeat.gain || '',
+      gainMode: this.gain.mode || '',
+      flywheel: this.flywheel.requested === undefined ? null : this.flywheel.requested === '1',
+      flywheelActive: this.flywheel.active === undefined ? null : this.flywheel.active === '1',
       kpMode: Number.isInteger(kp) ? KP_MODES[kp] || '' : '',
       profile: c.mode || this.profile.active || '',
       liveProfile: this.profile.live,
@@ -187,6 +208,8 @@ export class ReceiverConsole {
   }
 
   supports(key) {
+    if (key === 'G') return this.current && this.gainControl;
+    if (key === 'U') return this.current && this.flywheelControl;
     return ['T', 'h', '?'].includes(key) || (this.current && (!['v', 'e'].includes(key) || this.directMenu));
   }
 }

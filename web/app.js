@@ -542,7 +542,7 @@ const shortcutButtons = [...document.querySelectorAll('[data-command]')];
 const MAX_LOG_CHARS = 120000;
 // Keys whose effect the menu should show: one status report shortly after.
 // Scan and calibration report when they finish instead.
-const REFRESH_AFTER = new Set(['b', 'c', 'v', 'o', 'e', 'x', 'g', 'K', 'k', 'j', 'P', 'A']);
+const REFRESH_AFTER = new Set(['b', 'c', 'v', 'o', 'e', 'x', 'g', 'K', 'k', 'j', 'P', 'A', 'G', 'U']);
 const REFRESH_DELAY_MS = 700;
 const receiverConsole = new ReceiverConsole();
 let commandBusy = false;
@@ -566,6 +566,10 @@ function receiverValues(v) {
     standard: v.standard,
     detected: v.detected,
     output: v.output,
+    gainMode: v.gainMode,
+    gain: v.gain ? `G${v.gain}` : '',
+    flywheel: v.flywheel === null ? '' : v.flywheel ? 'ON' : 'OFF',
+    flywheelActive: v.flywheelActive === null ? '' : v.flywheelActive ? 'YES' : 'NO',
     menu: v.menu === null ? '' : v.menu ? 'OPEN' : 'CLOSED · LIVE VIDEO',
     calibrate: v.busy ? 'RUNNING · VIDEO STOPPED' : v.stage || v.statusAt ? 'READY' : '',
     scan: v.scan,
@@ -745,7 +749,8 @@ async function sendTerminalCommand(command) {
   }
   if (sent && command === 's') receiverConsole.startScan();
   // Firmware with the STATUS beat shows the effect within 2 s by itself.
-  if (sent && REFRESH_AFTER.has(command) && !receiverConsole.reportsByItself()) scheduleRefresh();
+  // GAIN/FLYWHEEL are reported by T, not the short STATUS beat.
+  if (sent && (['G', 'U'].includes(command) || (REFRESH_AFTER.has(command) && !receiverConsole.reportsByItself()))) scheduleRefresh();
   if (sent) renderReceiver();
   return sent;
 }
