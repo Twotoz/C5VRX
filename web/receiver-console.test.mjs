@@ -169,7 +169,7 @@ test('saved gain and flywheel controls require advertised firmware support', () 
   assert.equal(state.supports('G'), false, 'older C5VRX-5 is not sufficient');
   assert.equal(state.supports('U'), false);
   const help = '  G RX gain AUTO (Direct Gain V6) -> MAX -> fixed G78..G24 (saved; restored at boot),\n'
-    + '  U sync flywheel ON/OFF (saved; menu FLYWHEEL; default OFF),\n';
+    + '  U sync flywheel ON/OFF (saved; menu FLYWHEEL; default ON),\n';
   for (const character of help) state.push(character);
   assert.equal(state.supports('G'), true);
   assert.equal(state.supports('U'), true);

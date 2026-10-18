@@ -67,8 +67,8 @@ it is not a demonstrated video or range improvement.
   reception has no uncorrected DC.
 - **Automatic receive-chain care**: per-gain DC correction, verified live
   DC trials, passive sampling-phase monitoring and AFC carrier centring.
-- **Optional sync flywheel**: saved ON/OFF, default OFF. Camera/monitor
-  acceptance remains experimental; enable and compare on the ground.
+- **Sync flywheel**: saved ON/OFF, default ON (a saved OFF is kept).
+  Camera/monitor acceptance remains experimental; compare OFF on the ground.
 - **Simple menu**: band, channel, scan, video standard, calibrate, output
   level, gain, flywheel, exit.
 

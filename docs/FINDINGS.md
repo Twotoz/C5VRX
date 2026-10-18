@@ -647,7 +647,9 @@ Direct Gain V6 adds same-context carrier memory to V5: a 10-ms fade hold,
 eight-index climbs per 3 ms, and a one-write overload return to the remembered
 healthy gain. Host models cover this behavior; measured range benefit remains
 unproved. GAIN (`G`) saves AUTO (V6, default), MAX or fixed G78..G24.
-FLYWHEEL (`U`) is saved, defaults OFF and restores a saved ON.
+FLYWHEEL (`U`) is saved and restores a saved ON or OFF. Default without a
+saved setting: ON since 2026-10-18 (operator: the PR #218 witness fix held on
+the board; was OFF).
 Menu entry checks flywheel release before reserving 384-byte internal DMA
 descriptor chunks: about 18/22 KiB for interlaced NTSC/PAL, with a 9/11-KiB
 progressive fallback. Earlier board tests exposed heap fragmentation and

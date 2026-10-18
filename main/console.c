@@ -95,7 +95,7 @@ static void help(void)
            "  g OUTPUT 0.5x..5.0x in 0.5x steps (saved after application; restored at boot),\n"
            "  G RX gain AUTO (Direct Gain V6) -> MAX -> fixed G78..G24 (saved; restored at boot),\n"
            "  A live VTX profile switch on/off (continuous matching every 30 s; off = report only),\n"
-           "  U sync flywheel ON/OFF (saved; menu FLYWHEEL; default OFF),\n"
+           "  U sync flywheel ON/OFF (saved; menu FLYWHEEL; default ON),\n"
            "  I IQ snapshot, o menu open/close, n/x menu next/select, c next channel, b next band, s scan,\n"
            "  v video standard AUTO/NTSC/PAL, e close menu (web menu direct controls),\n"
            "  F calibrate (startup steps again; video stops), L bench IQ lane comparison (video stops ~3 s),\n"

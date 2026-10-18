@@ -914,10 +914,11 @@ bool transport_sync_live_release(void)
     return ok && !sync_output_live_active();
 }
 
-/* Saved user setting (menu FLYWHEEL, console U); OFF when never saved
- * (operator, 2026-10-18). OFF never allocates the observer/output, so its
- * heap stays free for the menu. */
-static bool s_flywheel_boot=false;
+/* Saved user setting (menu FLYWHEEL, console U); ON when never saved
+ * (operator, 2026-10-18, after the PR #218 witness fix held on the board).
+ * A saved OFF is respected and never allocates the observer/output, so
+ * its heap stays free for the menu. */
+static bool s_flywheel_boot=true;
 void transport_sync_flywheel_set_boot(bool on) { s_flywheel_boot=on; }
 bool transport_sync_flywheel_enabled(void)
 {
@@ -955,7 +956,7 @@ static bool IRAM_ATTR transport_sync_native_source(void *arg,uint32_t *epoch)
 
 void transport_sync_live_tick(void)
 {
-    /* Saved setting (default OFF): allocate lazily on the first control tick
+    /* Saved setting (default ON): allocate lazily on the first control tick
      * (after receiver startup, same as pressing U) so startup RAM is unchanged. */
     static bool boot_default_applied;
     if(!boot_default_applied) {
@@ -964,9 +965,9 @@ void transport_sync_live_tick(void)
             s_live_owner=calloc(1,sizeof(*s_live_owner));
             if(s_live_owner) {
                 s_live_owner->requested=s_live_owner->output_requested=true;
-                printf("SYNC_FLYWHEEL requested=1 boot=saved_on\n");
+                printf("SYNC_FLYWHEEL requested=1 boot=saved_or_default_on\n");
             } else printf("SYNC_FLYWHEEL refused=memory\n");
-        } else if(!s_flywheel_boot) printf("SYNC_FLYWHEEL requested=0 boot=saved_or_default_off\n");
+        } else if(!s_flywheel_boot) printf("SYNC_FLYWHEEL requested=0 boot=saved_off\n");
     }
     sync_live_owner_t *s=s_live_owner;
     if(!s || s->fault || !phy_try_actuator(phy_generation()))return;
@@ -1030,7 +1031,7 @@ void transport_sync_live_tick(void)
 void transport_sync_live_print(void)
 {
     sync_live_owner_t *s=s_live_owner;
-    printf("SYNC_LIVE requested=%u active=%u fault=%u starts=%lu stops=%lu failures=%lu boot_default=OFF\n",
+    printf("SYNC_LIVE requested=%u active=%u fault=%u starts=%lu stops=%lu failures=%lu boot_default=ON\n",
         s?(unsigned)s->requested:0u,(unsigned)sync_output_live_active(),s?(unsigned)s->fault:0u,
         s?(unsigned long)s->starts:0ul,s?(unsigned long)s->stops:0ul,s?(unsigned long)s->failures:0ul);
     sync_output_live_model_t model;
@@ -1043,7 +1044,7 @@ void transport_sync_live_print(void)
     }
     if(have_diag)printf("%s",diagnostic);
     if(have_model)
-        printf("SYNC_LIVE_MODEL valid=%u tracking=%u standard=%u line_ticks_x32=%lu last_h=%llu field=%llu now=%llu phase_span_ticks=%lld inverted=%u boot_default=OFF\n",
+        printf("SYNC_LIVE_MODEL valid=%u tracking=%u standard=%u line_ticks_x32=%lu last_h=%llu field=%llu now=%llu phase_span_ticks=%lld inverted=%u boot_default=ON\n",
             (unsigned)model.valid,(unsigned)model.tracking,(unsigned)model.standard,(unsigned long)model.line_ticks_x32,
             (unsigned long long)model.last_h,(unsigned long long)model.field,
             (unsigned long long)model.now,(long long)(model.phase_hi-model.phase_lo),(unsigned)model.inverted);

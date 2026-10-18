@@ -155,7 +155,7 @@ int main(void) {
     settings_save_gain_mode(255); assert(writes == 1 && commits == 1);
     settings_save_gain_mode(42); boot(); assert(gain_mode == 42 && output == 1);
     settings_save_gain_mode(0); boot(); assert(gain_restores == 1 && gain_mode == 0);
-    /* Flywheel: absent key keeps the default OFF, saved ON/OFF restored. */
+    /* Flywheel: absent key keeps the firmware default (ON), saved ON/OFF restored. */
     slots[3].n = 0; boot(); assert(!flywheel_restores && flywheel_boot == 0);
     writes = commits = 0; settings_save_flywheel(true); assert(writes == 1 && commits == 1);
     boot(); assert(flywheel_restores == 1 && flywheel_boot == 1 && gain_mode == 0 && output == 1);

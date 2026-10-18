@@ -867,8 +867,9 @@ Direct Gain V6 extends V5 with same-context carrier memory: hold 10 ms,
 then climb eight indices per 3 ms; overload above the remembered healthy gain
 returns to it in one write. Learned maps still require exact provenance.
 GAIN (console `G`) saves AUTO (default, V6), MAX or fixed G78..G24.
-FLYWHEEL (console `U`) is saved and defaults OFF without a valid setting;
-a saved ON is restored. Do not enable it implicitly or claim monitor lock.
+FLYWHEEL (console `U`) is saved and defaults ON without a valid setting
+(operator decision 2026-10-18, after the PR #218 witness fix held on the
+board); a saved OFF is respected. Do not claim monitor lock.
 Menu entry must hold flywheel restarts and verify observer/output release
 before allocating internal DMA descriptors in 384-byte chunks. Interlaced
 NTSC/PAL needs about 18/22 KiB; progressive fallback about 9/11 KiB.
