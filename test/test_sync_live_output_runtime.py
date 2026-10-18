@@ -411,7 +411,7 @@ int main(void){
   * holdover drift); after 2.6 s of aligned camera H the PLL period must
   * track it, so 1 s of pure holdover drifts far less than the 600 ticks an
   * uncorrected period loses. Phase alignment alone (guard trims) cannot. */
- for(unsigned noisy=0;noisy<3u;++noisy){
+ for(unsigned noisy=0;noisy<4u;++noisy){
   /* noisy: +-3 tick edge jitter, 30 % of camera H missing, and one random
    * H-width noise pulse per four lines at an arbitrary phase. noisy 2:
    * heavy static, three noise pulses per line for 10 s: the guard must
@@ -428,12 +428,23 @@ int main(void){
   double cam0=(double)t.start+((t.half&1u)!=c.parity?hl:0.0)+40.0*hl;
   double cam_line=2.0*hl*(1.0+30e-6);
   uint64_t k=0,start=cycles/12;unsigned long trims_converged=0;
-  while(cycles/12<start+(noisy==2u?200000000u:52000000u)){
+  double max_phase=0.0;
+  if(noisy==3u)deliver_coverage=false; /* actual 6-ms RMT delivery batches below */
+  while(cycles/12<start+(noisy>=2u?200000000u:52000000u)){
    fire();
    if(!trims_converged&&cycles/12>=start+60000000u)trims_converged=s_output->status.guard_trims+1u;
-   while(cam0+k*cam_line+1500.0<=(double)(cycles/12)){
+   if(noisy>=2u && trims_converged){
+    slc_t live=s_output->clock;slo_tip_t tip=s_output->tip;
+    double half=live.whole+(double)live.increment/live.denominator;
+    double grid=tip.start+((tip.half&1u)!=live.parity?half:0.0);
+    double error=CENTRED(cam0-grid,cam_line);if(error<0)error=-error;
+    if(error>max_phase)max_phase=error;
+   }
+   uint64_t delivered=cycles/12u;
+   if(noisy==3u)delivered=delivered/120000u*120000u;
+   while(cam0+k*cam_line+1500.0<=(double)delivered){
     double at=cam0+k*cam_line;++k;
-    if(noisy==2u){
+    if(noisy>=2u){
      uint64_t nt[12];unsigned c=0;lcg=lcg*1103515245u+12345u;uint32_t keep=lcg;
      for(unsigned n=0;n<12u;++n){lcg=lcg*1103515245u+12345u;if((lcg>>3)%4u==0u)nt[c++]=(uint64_t)(at+(lcg>>6)%1270u);}
      for(unsigned a=1;a<c;++a)for(unsigned b=a;b&&nt[b-1]>nt[b];--b){uint64_t x=nt[b];nt[b]=nt[b-1];nt[b-1]=x;}
@@ -452,16 +463,20 @@ int main(void){
   }
   sync_live_output_guard_tick();
   unsigned long late_trims=s_output->status.guard_trims+1u-trims_converged;
-  if(noisy==2u){
+  if(noisy>=2u){
    fprintf(stderr,"heavy static 3/line, 10 s: re-anchors=%lu trims=%lu (after 3 s: %lu) camera_present=%u\n",
            (unsigned long)s_output->status.guard_h_jumps,(unsigned long)s_output->status.guard_trims,late_trims,
            (unsigned)s_output->status.camera_present);
-   /* A PLL residual of ~0.2 ppm moves ~4 ticks/s: one 8-tick trim per ~2 s. */
+   /* Completed-run delivery changes the noise realization around a trim.
+    * Bound the actual camera/grid phase, not an incidental trim count. */
    assert(!s_output->status.guard_h_jumps&&s_output->status.camera_present);
+   fprintf(stderr,"completed-run phase: batch=%u max_error=%.1f ticks\n",noisy==3u?6000u:0u,max_phase);
+   assert(max_phase<=SLO_PHASE_WINDOW);
   }
   assert(s_output->status.pll_updates>=1u&&!s_output->status.pll_rejected);
   assert(s_output->status.pll_ppb>27000&&s_output->status.pll_ppb<33000);
   uint64_t hold=cycles/12;
+  deliver_coverage=true; /* fresh raw noise continues while camera H is absent */
   while(cycles/12<hold+20000000u)fire(); /* 1 s holdover: no camera pulses */
   t=s_output->tip;c=s_output->clock;hl=c.whole+(double)c.increment/c.denominator;
   double grid=(double)t.start+((t.half&1u)!=c.parity?hl:0.0);
@@ -471,7 +486,6 @@ int main(void){
           (long)s_output->status.pll_ppb,(unsigned long)s_output->status.pll_updates,err);
   (void)late_trims;
   assert(err>-40.0&&err<40.0);
-  if(noisy==2u)assert(late_trims<=8u);
   assert(!s_output->status.fault&&sync_live_output_end());++checks;
   #undef CENTRED
  }
@@ -489,6 +503,31 @@ int main(void){
   assert(clears==before); /* preserve live sync, including an unknown witness */
   assert(sync_live_output_end());++checks;
  }
+ /* Observer blindness is different from RF loss with fresh static samples.
+  * The ISR must refuse stale coverage even before the control task runs;
+  * resumed non-sync data cannot revive the previous H/V authority. */
+ reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
+ assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));grant();
+ deliver_coverage=false;
+ cycles+=(uint64_t)(SLO_OBSERVER_HOLD+40000u)*12u;
+ for(unsigned i=0;i<60u;++i)fire();
+ assert(!clears&&s_output->status.observer_yields);
+ sync_live_output_guard_tick();
+ assert(!s_output->native_authority&&!s_output->h_trusted&&!s_output->v_trusted);
+ assert(s_output->status.observer_gaps==1u&&!s_output->status.observer_fresh);
+ receive(cycles/12u-20u,20u,false);deliver_coverage=true;
+ for(unsigned i=0;i<100u;++i)fire();
+ assert(!clears&&!s_output->native_authority); /* reacquire both H and V */
+ grant();
+ uint32_t publication=s_output->publication;
+ receive(cycles/12u-SLO_OBSERVER_HOLD-200u,160u,true);
+ assert(!s_output->native_authority&&s_output->status.stale_native==1u);
+ assert(s_output->publication==publication&&!s_output->guard.have_h);
+ receive(UINT64_MAX-10u,160u,true);
+ assert(s_output->status.stale_native==2u&&!s_output->native_authority);
+ receive(cycles/12u+SLO_PHASE_WINDOW+1u,160u,true);
+ assert(s_output->status.stale_native==3u&&!s_output->native_authority);
+ assert(sync_live_output_end());++checks;
  printf("PASS: %u actual conditional-output checks; no physical timing/monitor claim\n",checks);
 }
 '''

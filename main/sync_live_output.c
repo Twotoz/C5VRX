@@ -108,6 +108,8 @@ static void observer_lost(slo_t *s,uint64_t now)
     s->native_authority=false;__sync_synchronize();
     s->observation_seen=false;s->h_trust_tick=s->v_trust_tick=0;
     s->h_trusted=s->v_trusted=false;s->camera_fresh=false;
+    s->status.h_trusted=s->status.v_trusted=s->status.camera_present=s->status.observer_fresh=false;
+    s->status.guard_yield=false;
     s->guard=(spg_t){0};s->yield=false;s->pll.active=false;
     s->source_seen=false;s->low_seen=false;s->rise_valid=false;
     s->guard_after=s->v_after=now;s->last_broad=0;
@@ -192,6 +194,11 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
             if(s->yield){++s->status.yielded;goto advance;}
             if(!(tip.kind==SLG_H?s->h_trusted:s->v_trusted)) {
                 ++s->status.camera_yields;goto advance;
+            }
+            if(s->flag) {
+                uint32_t epoch;
+                if(!s->source(s->native_arg,&epoch)){++s->status.source_yields;goto advance;}
+                if(!observer_current(s,now)){++s->status.observer_yields;goto advance;}
             }
         }
         bool native=false;

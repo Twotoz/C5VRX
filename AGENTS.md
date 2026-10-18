@@ -885,3 +885,13 @@ for the tip; already-late alarms keep miss accounting. RMT drains consume a
 snapshot of the producer head, and overdue gain timer callbacks coalesce.
 Host-tested scheduling changes only; RF sensitivity and physical sync/range
 gains are unmeasured. Preserve the native suppression and repair deadline.
+
+
+### Flywheel witness ownership (PR #218)
+
+An asserted native sync level or unreadable source must never be interpreted as
+permission to clamp, even after camera presence expires. H/V holdover requires
+fresh raw observer coverage; a coverage gap revokes authority until reacquired.
+Use completed sample timestamps and their grid/halfline for guard/PLL decisions,
+not task delivery time. Keep IRQ deadlines strict and hardware claims bounded.
+See `docs/FINDINGS.md`, "Flywheel witness freshness and delayed observations".

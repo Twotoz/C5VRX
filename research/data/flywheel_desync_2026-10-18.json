@@ -1,0 +1,53 @@
+{
+  "project": "C5VRX by Twotoz and the C5VRX contributors",
+  "date": "2026-10-18",
+  "firmware_reported": "5.0.229",
+  "tick_hz": 20000000,
+  "notes": [
+    "Selected raw status lines; verbose FIELD_TRACE omitted. Full source logs retained locally; hashes identify them.",
+    "HOST_STATUS timestamps are host-local wall clock; compare counters, not an exact pulse rate.",
+    "Operator confirmed stable picture after flywheel OFF. New PR218 firmware has not been hardware A/B tested.",
+    "Strict SYNC_LIVE_MODEL valid=0 is diagnostic, not the sole guard authority."
+  ],
+  "records": [
+    {
+      "source_log": "flywheel-desync-20261018-155342.log",
+      "sha256": "3240a7d337d384b9405740cd33abb852f47217fadec82f82eebf5d693cb0dac5",
+      "selected_lines": [
+        "HOST_STATUS 0 2026-10-18T15:53:44.959091",
+        "C5VRX5 version=5.0.229 demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v6 uptime_s=108 heap_internal=45848 heap_largest=43008 heap_dma=44068 heap_dma_largest=43008 heap_lp=1780",
+        "CONTROL channel=A1 freq=5865 offset_khz=-160 cfo_khz=0 afc_locked=1 afc_corrections=4 afc_weak_skips=1 afc_sign=+1(confirmed) standard=AUTO detected=NTSC signal=68 menu=0 deviation_x100=70 mode=MATCHED 10MHZ KP0.5 kp_auto=2 kp_steps=23 lp_switches=2 busy=0",
+        "TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=5 kp_target=5 kp_writes=14336 kp_verify_fail=0 program=U85Q flag_format=1 prog_switches=2 switch_wait_ms=3962 kp_switches=10 kp_restart_fail=0 kp_restart_us=8838 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=5431",
+        "SYNC_LIVE requested=1 active=1 fault=0 starts=1 stops=0 failures=0 boot_default=OFF",
+        "SYNC_LIVE_MODEL valid=0 tracking=0 standard=1 line_ticks_x32=40652 last_h=1537783232 field=1535418967 now=1542247982 phase_span_ticks=37 inverted=1 boot_default=OFF",
+        "SYNC_FLYWHEEL requested=1 active=1 repaired=808243 suppressed=355820 batches=2824 late_ticks=32426 missed=13299 miss_kind=2 queue_low=0 fault=0 irq_delay_ticks=32600 callback_ticks=104 budget_yields=23 miss_phase=0 miss_other=7786 miss_observer=5444 miss_snapshot=67 miss_update=0 miss_restart=2 miss_reserved=0 guard_yield=0 yielded=12391 h_jumps=11 v_jumps=11 trims=292 pll_updates=49 pll_rejected=0 pll_ppb=-3618 acquired=1 camera_present=0 camera_lines=221975 camera_yields=1379 h_trusted=1 v_trusted=1 std_switches=0 monitor_lock_proven=0",
+        "HOST_STATUS 1 2026-10-18T15:53:51.028930",
+        "C5VRX5 version=5.0.229 demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v6 uptime_s=113 heap_internal=45848 heap_largest=43008 heap_dma=44068 heap_dma_largest=43008 heap_lp=1780",
+        "CONTROL channel=A1 freq=5865 offset_khz=-160 cfo_khz=-914 afc_locked=1 afc_corrections=4 afc_weak_skips=1 afc_sign=+1(confirmed) standard=AUTO detected=NTSC signal=68 menu=0 deviation_x100=70 mode=MATCHED 10MHZ KP0.5 kp_auto=2 kp_steps=27 lp_switches=2 busy=0",
+        "TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=5 kp_target=5 kp_writes=14336 kp_verify_fail=0 program=U85Q flag_format=1 prog_switches=2 switch_wait_ms=0 kp_switches=10 kp_restart_fail=0 kp_restart_us=8838 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=5431",
+        "SYNC_LIVE requested=1 active=1 fault=0 starts=1 stops=0 failures=0 boot_default=OFF",
+        "SYNC_LIVE_MODEL valid=0 tracking=0 standard=1 line_ticks_x32=40676 last_h=1645224798 field=1645194900 now=1645995958 phase_span_ticks=35 inverted=1 boot_default=OFF",
+        "SYNC_FLYWHEEL requested=1 active=1 repaired=862203 suppressed=383221 batches=2988 late_ticks=32426 missed=14277 miss_kind=2 queue_low=0 fault=0 irq_delay_ticks=32600 callback_ticks=104 budget_yields=23 miss_phase=0 miss_other=8581 miss_observer=5608 miss_snapshot=86 miss_update=0 miss_restart=2 miss_reserved=0 guard_yield=0 yielded=12391 h_jumps=11 v_jumps=11 trims=293 pll_updates=54 pll_rejected=0 pll_ppb=-3398 acquired=1 camera_present=0 camera_lines=233119 camera_yields=1379 h_trusted=1 v_trusted=1 std_switches=0 monitor_lock_proven=0"
+      ]
+    },
+    {
+      "source_log": "flywheel-off-20261018-155452.log",
+      "sha256": "8830dd1eec941fb6906ec020ebd50707bd4f2b4e90b526219e73641813ff4230",
+      "selected_lines": [
+        "C5VRX5 version=5.0.229 demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v6 uptime_s=175 heap_internal=45848 heap_largest=43008 heap_dma=44068 heap_dma_largest=43008 heap_lp=1780",
+        "CONTROL channel=A1 freq=5865 offset_khz=-191 cfo_khz=-962 afc_locked=1 afc_corrections=6 afc_weak_skips=1 afc_sign=+1(confirmed) standard=AUTO detected=NTSC signal=64 menu=0 deviation_x100=70 mode=MATCHED 10MHZ KP0.5 kp_auto=2 kp_steps=59 lp_switches=2 busy=0",
+        "TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=6 kp_target=6 kp_writes=23552 kp_verify_fail=0 program=U85Q flag_format=1 prog_switches=2 switch_wait_ms=0 kp_switches=19 kp_restart_fail=0 kp_restart_us=9015 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=5431",
+        "SYNC_LIVE requested=1 active=1 fault=0 starts=1 stops=0 failures=0 boot_default=OFF",
+        "SYNC_LIVE_MODEL valid=0 tracking=0 standard=1 line_ticks_x32=40674 last_h=2880120537 field=2876082246 now=2880876305 phase_span_ticks=53 inverted=1 boot_default=OFF",
+        "SYNC_FLYWHEEL requested=1 active=1 repaired=1578483 suppressed=649249 batches=5135 late_ticks=32498 missed=23608 miss_kind=0 queue_low=0 fault=0 irq_delay_ticks=32672 callback_ticks=107 budget_yields=38 miss_phase=1 miss_other=16247 miss_observer=7213 miss_snapshot=143 miss_update=0 miss_restart=5 miss_reserved=0 guard_yield=0 yielded=24412 h_jumps=20 v_jumps=22 trims=365 pll_updates=102 pll_rejected=0 pll_ppb=-10321 acquired=1 camera_present=0 camera_lines=345624 camera_yields=3588 h_trusted=1 v_trusted=1 std_switches=0 monitor_lock_proven=0",
+        "SYNC_FLYWHEEL requested=0 saved=1",
+        "SYNC_LIVE_END error=none api=0 cleanup=0 restored=1 clock_closed=1 callbacks=18247 marker_ticks=341 arm_us=59",
+        "C5VRX5 version=5.0.229 demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v6 uptime_s=181 heap_internal=47380 heap_largest=43008 heap_dma=45600 heap_dma_largest=43008 heap_lp=1780",
+        "CONTROL channel=A1 freq=5865 offset_khz=-191 cfo_khz=-1039 afc_locked=1 afc_corrections=6 afc_weak_skips=1 afc_sign=+1(confirmed) standard=AUTO detected=NTSC signal=66 menu=0 deviation_x100=70 mode=MATCHED 10MHZ KP0.5 kp_auto=2 kp_steps=61 lp_switches=2 busy=0",
+        "TRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 kp_level=5 kp_target=5 kp_writes=25600 kp_verify_fail=0 program=U85Q flag_format=0 prog_switches=2 switch_wait_ms=3404 kp_switches=20 kp_restart_fail=0 kp_restart_us=5575 prog_verify_fail=0 prog_restart_fail=0 prog_restart_us=5431",
+        "SYNC_LIVE requested=0 active=0 fault=0 starts=1 stops=1 failures=0 boot_default=OFF",
+        "SYNC_FLYWHEEL requested=0 active=0 repaired=0 suppressed=0 batches=0 late_ticks=0 missed=0 miss_kind=0 queue_low=0 fault=0 irq_delay_ticks=0 callback_ticks=0 budget_yields=0 miss_phase=0 miss_other=0 miss_observer=0 miss_snapshot=0 miss_update=0 miss_restart=0 miss_reserved=0 guard_yield=0 yielded=0 h_jumps=0 v_jumps=0 trims=0 pll_updates=0 pll_rejected=0 pll_ppb=0 acquired=0 camera_present=0 camera_lines=0 camera_yields=0 h_trusted=0 v_trusted=0 std_switches=0 monitor_lock_proven=0"
+      ]
+    }
+  ]
+}
