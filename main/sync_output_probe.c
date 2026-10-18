@@ -267,7 +267,10 @@ static void sop_parse_batch(sop_context_t *s,const sop_rx_batch_t *b)
 
 static void sop_drain(sop_context_t *s)
 {
-    while(s_rx_ring.tail!=s_rx_ring.head) {
+    /* IRQs may publish while we parse. Leave new batches for the next poll
+     * instead of chasing a noisy producer while holding the PHY lease. */
+    const uint32_t head=s_rx_ring.head;
+    while(s_rx_ring.tail!=head) {
         uint32_t tail=s_rx_ring.tail;
         __sync_synchronize();
         sop_rx_batch_t batch=s_rx_ring.batches[tail%SOP_RX_RING];
@@ -985,4 +988,5 @@ bool sync_output_live_diagnostics(char *out,size_t size)
     }
     return false;
 }
+
 

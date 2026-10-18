@@ -653,3 +653,35 @@ descriptor chunks: about 18/22 KiB for interlaced NTSC/PAL, with a 9/11-KiB
 progressive fallback. Earlier board tests exposed heap fragmentation and
 camera/flywheel drift; boot/menu and flywheel ON/OFF must be checked on the
 cleaned build. [PR212](PR212.md) records the current scope and evidence limits.
+
+
+
+## Bounded background work during sync loss (2026-10-18)
+
+Extends C5VRX by Twotoz and the contributors' existing hardware dataplane
+and native-pulse flywheel on main `275606a64508`; see the legacy
+`pr-derived-findings.md` CPU-plane boundary and PR212's ownership rules.
+
+The output alarm used to spin from its early admission time to every tip,
+even without camera authority, while yielding to a returning camera, or
+without the H/V evidence needed to repair that tip. Those early alarms now
+advance the same clock and apply pending publications immediately. Allowed
+repairs keep their timing checks, original end time and native suppression.
+Already late alarms retain their miss/phase accounting. This avoids spending
+the admission lead in an ISR when no DAC write is permitted.
+
+RMT draining snapshots the producer head. Batches arriving during parsing
+remain queued for a subsequent drain instead of extending the current PHY
+lease. The existing overflow, source invalidation and rearm paths remain in
+force. The gain timer also coalesces overdue callbacks: a notification asks
+for the current completed IQ window; it cannot recover historical samples.
+
+Evidence: production-source host fixtures check early return in all three
+non-repair states, camera acquisition, wrong-standard recovery, noisy PLL
+holdover, delayed interrupt/backlog handling, and an RMT callback publishing
+a batch during parsing. These are software regressions, not measured CPU
+occupancy, physical H/V lock or RF sensitivity. No demod LUT, filter, gain
+policy, or acquired sample rate changes. Board checks still needed: compare
+IDLE availability, gain response, RMT overflow/rearms, output late/miss
+counters and goggle rolling on the same weak-signal setup, with flywheel
+both OFF and ON. Absolute RF/demod sensitivity remains unchanged.

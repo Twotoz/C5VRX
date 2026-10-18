@@ -160,6 +160,15 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
             if(callback>s->status.max_callback_ticks)
                 s->status.max_callback_ticks=callback>UINT32_MAX?UINT32_MAX:(uint32_t)callback;
         }
+        /* No repair authority: leave CVBS alone and skip the early-alarm
+         * spin. Still advance the clock and consume pending publications. */
+        if(now<tip.start) {
+            if(!s->native_authority)goto advance;
+            if(s->yield){++s->status.yielded;goto advance;}
+            if(!(tip.kind==SLG_H?s->h_trusted:s->v_trusted)) {
+                ++s->status.camera_yields;goto advance;
+            }
+        }
         bool native=false;
         uint32_t wait=esp_cpu_get_cycle_count();
         while(now<tip.start) {
@@ -541,3 +550,4 @@ void sync_live_output_guard_tick(void)
         s->status.pll_ppb=(int32_t)(((int64_t)s->pll_period_q-(int64_t)nominal)*1000000000/(int64_t)nominal);
     }
 }
+

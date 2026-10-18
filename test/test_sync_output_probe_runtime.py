@@ -159,6 +159,35 @@ static void event(rmt_symbol_word_t *words,size_t n,bool last){
  rmt_rx_done_event_data_t e={.received_symbols=words,.num_symbols=n,.flags={.is_last=last}};
  assert(!sop_received((void*)1,&e,&s_probe));sop_drain(&s_probe);++checks;
 }
+/* Publish a second batch while the first is being parsed, like an IRQ. */
+static unsigned injected;
+static void publish_during_parse(uint64_t tick,uint32_t width,bool high){
+ (void)tick;(void)width;(void)high;
+ if(injected++)return;
+ rmt_symbol_word_t word={.duration0=1186,.level0=1,.duration1=94,.level1=0};
+ rmt_rx_done_event_data_t e={.received_symbols=&word,.num_symbols=1};
+ assert(!sop_received((void*)1,&e,&s_probe));
+}
+static void bounded_drain(void){
+ parser_start();
+ if(!s_native)s_native=calloc(1,sizeof(*s_native));
+ assert(s_native);memset(s_native,0,sizeof(*s_native));
+ sync_native_flag_init(&s_native->flag_native,&s_native->native);
+ sync_native_flag_init(&s_native->flag_inverted,&s_native->inverted);
+ s_native->resident=s_native->trace_flag=s_native->native_phase_checked=true;
+ s_native->native_phase=(sync_phase_bracket_t){.lo=10000,.hi=10000,.valid=true};
+ s_probe.marker_required=true;
+ s_probe.first_duration=320; /* marker already consumed */
+ s_probe.run_valid=s_probe.run_edge=true;s_probe.run_level=false;s_probe.run_width=94;
+ sync_output_live_pulse_hook(publish_during_parse);injected=0;
+ rmt_symbol_word_t word={.duration0=1186,.level0=1,.duration1=94,.level1=0};
+ rmt_rx_done_event_data_t e={.received_symbols=&word,.num_symbols=1};
+ assert(!sop_received((void*)1,&e,&s_probe));
+ uint32_t head=s_rx_ring.head;sop_drain(&s_probe);
+ assert(injected&&s_rx_ring.tail==head&&s_rx_ring.head==head+1u);
+ sop_drain(&s_probe);assert(s_rx_ring.tail==s_rx_ring.head);
+ sync_output_live_pulse_hook(NULL);++checks;
+}
 static void native_projection(void){
  if(!s_native){s_native=calloc(1,sizeof(*s_native));}
  assert(s_native);
@@ -508,7 +537,7 @@ static void flag_profile_route(void){
  assert(s_native->inverted.h_standard==1u&&!s_native->native.h_standard);
  assert(!s_native->inverted.valid);checks+=2;
 }
-int main(void){flag_mutation_authority();coast_field_grid();flag_resident_source();flag_idle_lifetime();flag_profile_route();dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);printf("PASS: %u probe runtime checks\n",checks);return 0;}
+int main(void){bounded_drain();flag_mutation_authority();coast_field_grid();flag_resident_source();flag_idle_lifetime();flag_profile_route();dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''
 
 
@@ -540,3 +569,4 @@ class Runtime(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
