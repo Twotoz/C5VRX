@@ -157,6 +157,29 @@ bool phy_filter_set_skirt(int offset)
 int phy_filter_code(void) { return s_filter_code; }
 int phy_filter_skirt(void) { return s_filter_skirt; }
 
+int phy_filter_hw_mismatch(uint8_t hw[8], uint8_t want[8])
+{
+#ifdef C5VRX_PHY_PINNED
+    if (!s_filter_base_valid) return -1;
+    int bad = 0;
+    lock_take();
+    for (uint8_t i = 0; i < 8; ++i) {
+        uint8_t w = i < 2 ? (s_filter_code == PHY_FILTER_CALIBRATED ? s_filter_base[i] :
+                             (uint8_t)((s_filter_base[i] & ~63u) | (unsigned)s_filter_code)) :
+                    (s_filter_skirt ? dsp_filter_code(s_filter_base[i], s_filter_skirt) : s_filter_base[i]);
+        uint8_t h = phy_i2c_readReg(0x67, 1, 6 + i);
+        if (hw) hw[i] = h;
+        if (want) want[i] = w;
+        bad += h != w;
+    }
+    lock_give();
+    return bad;
+#else
+    (void)hw; (void)want;
+    return -1;
+#endif
+}
+
 int phy_filter_calibrated_code(void)
 {
 #ifdef C5VRX_PHY_PINNED

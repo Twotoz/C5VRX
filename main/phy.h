@@ -33,6 +33,12 @@ bool phy_filter_set_skirt(int offset);
 int phy_filter_code(void);
 int phy_filter_skirt(void);
 int phy_filter_calibrated_code(void);
+/* Hardware read-back of BBTOP 0x67 regs 6..13 against the bytes the shadow
+ * code/skirt imply. The write-time read-back alone cannot see a later
+ * vendor write (gain force, channel setup) restoring other bytes. Returns
+ * the number of mismatching registers (0 = live filter as set), -1 when
+ * unsupported; hw[8]/want[8] receive the bytes when not NULL. */
+int phy_filter_hw_mismatch(uint8_t hw[8], uint8_t want[8]);
 
 /* RX DC DACs (PBUS blocks 2/3 bank 2). A hold forces one pair in PBUS
  * debug mode with every owned live word re-asserted; any gain write or PHY

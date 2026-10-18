@@ -1420,6 +1420,11 @@ void calibration_print(void)
            s_filter_cal.normal.nbw_khz, s_filter_cal.narrow.valid, s_filter_cal.narrow.width_khz,
            s_filter_cal.narrow.nbw_khz, s_filter_cal.wide.valid, s_filter_cal.wide.width_khz,
            s_filter_cal.wide.nbw_khz, s_filter_cal.calibrated_nbw_khz);
+    uint8_t hw[8] = {0}, want[8] = {0};
+    const int bad = phy_filter_hw_mismatch(hw, want);
+    printf("FILTER_HW mismatch=%d hw=%02x%02x%02x%02x%02x%02x%02x%02x want=%02x%02x%02x%02x%02x%02x%02x%02x\n", bad,
+           hw[0], hw[1], hw[2], hw[3], hw[4], hw[5], hw[6], hw[7],
+           want[0], want[1], want[2], want[3], want[4], want[5], want[6], want[7]);
     printf("DCO held=%u gains_valid=%u floor_rows=%u missing_rows=%u floor=%u searches=%lu carrier_searches=%lu hook_holds=%lu aborts=%lu "
            "drift_avg_mcells=%d/%d nudges=%lu temp_c=%.1f\n", phy_dco_held(), valid, dco_rows(DCO_ROW_FLOOR), dco_rows(0),
            s_dco_floor,
