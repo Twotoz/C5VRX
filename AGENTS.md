@@ -485,14 +485,8 @@ all profiles alike (no equaliser possible). Profile gains (+1.7 / +3.2 dB) are S
 operator report 2026-10-11: much less static but little more range, so no
 range gain is claimed; firmware is build-tested, board test pending. No options menu, labs, native AGC, AutoFit/Fusion,
 flywheel or idle raster. Manual OUTPUT (PR #196 review follow-up, 2026-10-12)
-scales only DAC6 low LUT bits, with 1x default when no valid setting exists
-and shared 5-second restart guard; high gains may clip wide VTXs. The operator
-explicitly requested persistence on 2026-10-13: PR #212 saves the output only
-after a verified applied restart, including menu exit, and restores it before
-live TX starts. Failed/refused changes do not replace the saved level.
-The same request extends the selectable range to 1.0..5.0x in 0.5x steps;
-the four existing maps remain identical and higher levels retain DAC6 clipping.
-Automatic output-level servo
+scales only DAC6 low LUT bits, with 1x boot default and shared 5-second
+restart guard; high gains may clip wide VTXs. Automatic output-level servo
 is simulation-only (`research/output_level.py`): ideal sync/white references
 are not a proven live estimator or measured HDZero compatibility. Fresh
 settings default to AUTO kp+LP by explicit operator decision; saved manual
@@ -628,64 +622,6 @@ and host tests; board check pending.
 
 ### Instructions for future pipeline work
 
-PR #212 after main `14e190d9`: `docs/FIRMWARE_RANGE_AUDIT.md`, actual-C
-`research/range_policy.c`, 1414 scene/40 gate evidence rows. Reproduced B/W
-AFC prefilter rejection, lost-lock reset bypassing missed-window grace,
-picture-dependent gain/profile gates, short RX-tail copy selection, zero
-initial LP hold and unnecessary sentinel envelope work. Fixes preserve
-hardware streaming and verified restart. Four-seed physical-ADC comparisons
-show several-dB offset/filter mismatch losses; the apparent deviation-1.7
-filter benefit did not survive held-out tests. No measured RF range claim.
-Issue #213: latest operator requires real snow/weak picture preservation.
-PR #212 native-sync work now extends the DAC-OE gate experiment with a
-separate PARLIO DATA4 mirror on unused MTMS/GPIO2. Manual Y temporarily
-routes signal52 there, preserving the real DAC GPIO8 and all six DAC OEs;
-its RMT input cannot see DAC OE gating as source sync. Refuse an occupied
-GPIO2 output, restore all mirror pad/matrix/OE settings, and keep LP/1x
-qualification. Gate-H boots and restores on the C5 with no transport faults;
-the no-VTX capture has zero RMT events, so camera detection and an absolute
-source-clock anchor remain unproven. Manual Q/q gate tests are not an
-automatic flywheel. See docs/FLYWHEEL_GOAL.md and board_gate_h evidence.
-Lowercase y now adds an experimental isolated GPIO2 marker plus GPIO ETM
-START_COUNT timer. Only GPIO2's saved data bit may be driven/restored; all
-real DAC pins stay unchanged. Emit the first marker before enabling the
-variable filter: TRM8.16's ETM tap must not be assumed downstream of it.
-Reject marker mismatch, pre-handoff runs, unanchored RX restarts, excessive
-event rate and arm delay. Gate-L captures20/20 private markers on C5 with
-stable heap and exact cleanup; this is not qualified native-camera phase,
-an absolute timing bound, automatic activation or monitor-lock evidence.
-Gate-M adds a second filtered GPIO2 marker, bounding both transitions with
-timer reads, GPIO readbacks and fences. sync_phase_bracket.h intersects the
-two counter-offset intervals, refusing inconsistent/wide/overflowing bounds.
-40 physical marker trials produce valid digital intervals; warm heap is
-stable and no marker becomes native H/V evidence. This remains a manual
-clock experiment, not a continuously tracked camera or automatic flywheel.
-Black fallback defaults OFF every boot; `N` is its opt-in bench toggle.
-`docs/SYNC_KEEPER.md` / `research/sync_iq_mux.py` explore DMA synthetic-IQ
-sync/blanking plus unmodified active RX IQ. Exact-timing host cases preserve
-active information; 2 us drift overwrites ~4%, so true clock/field tracking
-and live source/prefetch proofs are mandatory. No live keeper/LCD cure.
-Supplied startup log shows gain_obs starving IDLE before any fast-sync checks.
-Keep 200-us gain/sentinel cadence; bound runnable gain batches at 800 us with
-a one-tick block. Full context-guarded envelope every 20 ms, expiry 40 ms.
-Uniform 1-ms sampling failed the modeled sustained-drop recovery bound
-(52 ms versus 20.4 ms); it is not selected. Board validation pending.
-Opt-in black PAL/NTSC NO SIGNAL raster after >=8 ms and
-four observed sync-negative windows; first confirmed sync resumes live.
-Missing copies/settle/other owners are not loss. RX/gain continue; raster
-ownership is separate from the interactive menu. Nominal 2 ms watchdog uses
-8190-byte proven snapshots, integer unwrapped-phase bins and timed plateau/
-porch evidence, separate from the unchanged 50 ms gain/AFC cadence. Raster
-prewarms while live runs; no allocation/burst regeneration on normal loss
-entry. `VIDEO_WATCH` logs actual timing/coverage/stack, not a hard deadline
-promise. 12 ms recovery grace,
-one-second failure backoff, descriptor reuse, bounded restart/rollback.
-Manual `B` remains an unchanged live-only restart A/B. Do not trigger from
-AFC lock loss alone or claim seamless camera alignment/affected-LCD cure:
-handoff has gaps and physical display/level/latency validation is pending.
-Last-field freeze needs a new decoded-video tap/capture/reconstruction path;
-the native field does not fit current free RAM. See the full audit.
-
 IQLaneFusion research extends U85 and the older adaptive-lane/history work:
 `docs/IQLANE_FUSION.md`, `research/iq_lane_fusion.py`. Exact Q10 cell
 likelihoods, mathematical bitset/gain screening, factorized phase/frequency
@@ -754,28 +690,11 @@ requirements by themselves**.
 
 ## Current realtime invariants (C5VRX-5)
 
-- **Direct Gain V6 is the default gain owner** (2026-10-18, operator request):
-  V5 plus a carrier memory (`main/gain.c` `DG6_*`, `docs/DIRECT_GAIN_V6.md`
-  section "Firmware V6 carrier memory"). The last healthy gain survives
-  tracking resets on the same channel/filter/lane/table (AFC offset ignored);
-  a lost carrier holds 10 ms, then climbs 8 indices per 3 ms (still reaching
-  the maximum); saturation above the remembered gain is one write back to it.
-  Host model only (`test/test_gain_fade.c`, `test/test_gain_v6_memory.c`).
-  Saved `gain_mode` (console `G`, menu GAIN): AUTO, MAX or fixed G78..G24;
-  fixed modes bypass the controller. This is an explicit user setting, not a
-  firmware gain pin: AUTO stays the default.
-- **(Previous V5 note, still valid for the native bench.)** The operator explicitly
-  requested periodic native acquisition on 2026-10-13. PR #212 adds an
-  OFF-at-boot, RAM-only `~` bench controller (`docs/NATIVE_AGC_REBUILD.md`):
-  nominal 20 ms, bounded landing/timeout/gap checks, exclusive gain ownership,
-  verified forced-gain/DC restoration and rollback. The saved native RF
-  setup is restricted to boot 5865 MHz / zero offset / BW40. Physical RF
-  restoration, true acquisition count and picture/range remain unverified.
-  Do not call landing candidates exactly one completed scan or enable this
-  by default without comparison. On a continuous carrier the
+- **Direct Gain V5 is the only gain owner.** There is no native hardware AGC
+  in C5VRX-5 (removed with C5VRX-3, 2026-10-12): on a continuous carrier the
   C5 packet AGC re-acquires every ~21 us on a different gain, which caused
-  line noise and grain (`legacy/c5vrx3/docs/native-agc-v2.md`). Do not make it
-  the default without a new hardware comparison that beats Direct Gain V5.
+  line noise and grain (`legacy/c5vrx3/docs/native-agc-v2.md`). Do not add it
+  back without a new hardware comparison that beats Direct Gain V5.
 - The live source is MODEM_DIAG Q4/I4 (fixed ultrafine lane) captured by
   PARLIO RX into the raw 32 KiB ring; the TX BitScrambler (U85Q or U85Q-LP)
   demodulates; the CPU never paces samples. VTX presence and USB must never
@@ -941,108 +860,17 @@ sample must participate before 2:1 reduction, and a live implementation must
 prove sustained hardware throughput plus state continuity before replacing the
 current gapless BitScrambler path.
 
+## PR #212 current receiver settings
 
-### 2026-10-16 N mirror clock scope
-
-`sync_output_probe.c` manual lowercase `y` can now restart multiple RMT receive
-epochs on one continuously running `sync_edge_clock` timer/link. Pause only the
-filter; calibrate each private marker pair independently and reject regressing
-origins. Keep marker/source barriers in RMT-local coordinates. Board evidence:
-`research/data/board_clock_n_2026-10-16.json` (334 valid fits over 320 rearms;
-21 manual calls). This is LP/1x diagnostics, not a production background observer
-or automatic flywheel. Do not carry its whole-call PHY lease into a continuous
-service. Camera H/V and monitor lock remain unqualified.
-
-
-### Resident sync observer B (2026-10-16)
-
-`u` is a RAM-only resident native observer bench, OFF at boot, still LP/1x only;
-control2ms poll holds only short PHY leases. Exact teardown precedes transport
-ownership changes; receive mutations invalidate evidence without resetting the
-timebase. H/V qualification now tolerates picture aliases and requires complete
-EQ/broad/EQ. `board_resident_b_2026-10-16.json` records C5 startup, gain activity,
-transport restart and5 clean start/stop cycles. This does not enable automatic
-flywheel or prove camera/monitor lock. New witness module is not yet in CMake.
-
-Control startup memory: keep the6144-byte control stack/TCB reserved by
-`control_prepare` after console startup and before RF/driver allocations. Later
-malloc was sensitive to tiny linked-image/BSS changes and caused boot loops.
-Do not shrink the stack to conceal fragmentation. User requests building forward
-rather than routine rollback flashes; that explicit preference supersedes any
-previous default recovery workflow while developing this feature.
-
-
-### Conditional output bench E (2026-10-17)
-
-Newer scope supersedes the resident B LP-only note: read-only `u` now supports
-both verified U85Q programs at1x. `U` enables conditional missing-model output;
-both remain OFF at boot. The IRAM backend uses a constant-memory incremental
-pulse iterator on the shared observer clock. Dependent output must close before
-the observer restores GPIO/matrix ownership or closes the clock. Late tips are
-skipped, not emitted outside the8us admission guard. Never describe software
-pulse counts as monitor-lock proof. Native per-line witness remains unconnected.
-See docs/FLYWHEEL_GOAL.md and board_conditional_output_2026-10-17.json for actual
-A-E failures, tests, hashes and remaining camera/monitor proof. Latest operator
-state: VTX OFF; do not interpret this capture as camera-on evidence.
-
-
-### Native observer G receive boundary (2026-10-17)
-
-E/F camera-on RF NTSC/AFC lock did not produce a qualified native H/V model.
-F had repeated empty idle epochs; freezing automatic kp did not solve it and
-AUTO kp+LP was restored. G uses full RMT disable/enable also at natural endings;
-timer/link remain continuous. G follow-up with RF detected=none shows private
-markers continuing (975 symbols/325 endings). This is not camera-sync proof.
-See board_native_observer_2026-10-17.json. VTX was getting warm; user was told
-it can be switched off. Do not keep it on for development or assume camera is
-still transmitting. Flywheel output remains OFF; camera qualification still open.
-
-
-### H/I trace supersedes the G idle-recovery inference (2026-10-17)
-
-H again reproduces frozen symbol counts and repeated empty epochs, both with
-VTX off and during a2-second camera test. Full RX disable/enable is NOT a proven
-complete fix. A96-entry diagnostic trace records received low durations only,
-with explicit local epoch IDs; it never grants camera validity. `i` prints it
-outside PHY ownership. H raw trace includes1-tick50ns lows despite the intended
-shared GPIO filter. I therefore tries RMT's independent1000ns input filter,
-retaining2.3us EQ; marker calibration must prove its offset rather than assuming
-RMT/ETM taps are simultaneous. I board result is pending at this note. Keep own
-gates excluded, and do not treat a raw low or a broad-width trigger as sync lock.
-Evidence: board_native_trace_h_2026-10-17.json and docs/FLYWHEEL_GOAL.md.
-
-
-I VTX-off follow-up: symbols6584->14596->23109, first trace45 lows/min20 ticks
-(1us), zero sub20-tick lows; valid marker phase spans37-38 ticks. Startup and
-cleanup succeed, no camera model. This8-second result is not a camera/monitor
-proof. Some empty epochs still occur. See board_native_filter_i_2026-10-17.json.
-
-
-### J state and explicit operator pause (2026-10-17)
-
-Current flashed J observes both HIGH/LOW DATA4 runs with separate full H/V
-qualifiers; both-valid ambiguity refuses fresh lock.175 runtime checks pass.
-J VTX-off and2-second camera tests still produce NO qualified native H/V model.
-See board_native_polarity_j_2026-10-17.json; ordinary RF NTSC detection is not
-native qualifier proof. Both observer and output bench are OFF after capture.
-User is away and explicitly requests pausing the goal when VTX must turn on;
-goal is paused, VTX can remain OFF. Do not resume experiments or ask to keep it
-on until user resumes. Comparator-flag hardware idea is unimplemented/unproven;
-pulse_find_tests helper was interrupted. Source goal checklist remains open.
-
-
-### Missing-H K build and comparator study (2026-10-17)
-
-J is still flashed; resumed shortcamera test fails nativeH/V, then cleanstop.
-VTX can remainOFF. NewH candidates accept1..4linegaps,>=16observedintervals in
-32..64slots, same normalizedPAL/NTSC fits; V's H-age allowance is derived7lines.
-Full V/EQ evidence requirements remain unchanged.1,000,137native tests and175
-actual observer checks pass. K builds, notflashed. Do not claim board success.
-Comparator emulator160cases preserves counters/addresses/nonLSB outputs; flag
-uses UNSCALEDword<19 inserted AFTER output_entry scaling. PhysicalLSB would be
-grounded, baselineDAC&~1; LPflag observes rawx, bypassesLPy. Synthetic fullfield
-study still has failures: missing-H+rawflag7/16 vs bit4zero/16 at RMS3.2/CN24;
-not a deliverable success gate. See latest FLYWHEEL_GOAL.md/data artifacts.
-A helper owns a finite observer-only flagbench implementation; no production
-comparator firmware flashed. Keep future U/gates explicitly excluded until its
-pin/program/LUT ownership contract and actual source are verified.
+This section supersedes older C5VRX-5 default/feature notes above.
+Direct Gain V6 extends V5 with same-context carrier memory: hold 10 ms,
+then climb eight indices per 3 ms; overload above the remembered healthy gain
+returns to it in one write. Learned maps still require exact provenance.
+GAIN (console `G`) saves AUTO (default, V6), MAX or fixed G78..G24.
+FLYWHEEL (console `U`) is saved and defaults OFF without a valid setting;
+a saved ON is restored. Do not enable it implicitly or claim monitor lock.
+Menu entry must hold flywheel restarts and verify observer/output release
+before allocating internal DMA descriptors in 384-byte chunks. Interlaced
+NTSC/PAL needs about 18/22 KiB; progressive fallback about 9/11 KiB.
+Keep the 6144-byte control stack reserved before RF/driver allocations.
+See [PR212](docs/PR212.md) for current behavior, evidence and board checks.

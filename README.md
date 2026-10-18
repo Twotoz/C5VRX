@@ -35,8 +35,9 @@ it is not a demonstrated video or range improvement.
   and multipath instead of dropping out. Board-validated on real video.
 - **Fixed ultrafine IQ** (ADC bits 9,6,5,4) at 40 MS/s, no CPU in the sample
   path.
-- **Direct Gain V5**: firmware gain with a zero-write healthy band, fast
-  overload handling and a learned, persisted gain map.
+- **Direct Gain V6**: V5 gain control plus carrier memory across brief fades
+  and same-context resets, with a learned, persisted gain map. GAIN selects
+  saved AUTO (default), MAX or a fixed gain.
 - **Narrow analog filter**, measured once per board at startup: the lowest
   noise bandwidth that still passes 12 MHz (plus a 10 MHz class for
   low-deviation VTXs and a 16 MHz class for wide ones; simulation-based,
@@ -64,10 +65,12 @@ it is not a demonstrated video or range improvement.
 - **DC correction for every gain row, also with the VTX on**: missing rows
   are measured once at startup on a quiet channel, so far-out (high gain)
   reception has no uncorrected DC.
-- **Automatic receive-chain care**: per-gain DC correction, DC drift
-  tracking, sampling-phase check, AFC that centres the VTX.
+- **Automatic receive-chain care**: per-gain DC correction, verified live
+  DC trials, passive sampling-phase monitoring and AFC carrier centring.
+- **Optional sync flywheel**: saved ON/OFF, default OFF. Camera/monitor
+  acceptance remains experimental; enable and compare on the ground.
 - **Simple menu**: band, channel, scan, video standard, calibrate, output
-  level, exit.
+  level, gain, flywheel, exit.
 
 ## Hardware
 
@@ -109,7 +112,8 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
   ground is required.
 - All values are standard E24; 1 % metal-film resistors are fine. Keep
   the wires from the pins to the node short.
-- Too dark or too dim on some goggles: try OUTPUT in the menu (1.0-2.5x).
+- Too dark or too dim on some goggles: try OUTPUT in the menu (0.5-5.0x,
+  saved). Higher levels can clip; check the loaded output on your display.
 - The XIAO is powered over USB-C or its 5 V pin as usual; the DAC needs no
   separate supply.
 
@@ -136,9 +140,13 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
 Menu items: **BAND** (next band), **CHANNEL** (next channel), **SCAN**
 (all 48 channels, picks the strongest centred analog video), **VIDEO**
 (AUTO / NTSC / PAL for the menu picture; AUTO follows the camera),
-**CALIBRATE** (on the ground: measure again), **OUTPUT** (1.0-2.5x DAC
-level), **EXIT**.
-The menu closes by itself after 30 s without a press.
+**CALIBRATE** (on the ground: measure again), **OUTPUT** (0.5-5.0x DAC
+level, saved), **GAIN** (AUTO / MAX / fixed G78..G24, saved), **FLYWHEEL**
+(ON/OFF, saved, default OFF), **EXIT**.
+The menu closes by itself after 30 s without a press. It releases the
+flywheel before allocating its DMA chain and retries a smaller progressive
+raster if the interlaced chain does not fit. Menu entry/exit includes a
+150-ms relock gap; verify the picture on the connected monitor.
 
 ## Flashing
 
@@ -185,13 +193,25 @@ cooldown. Live TX uses an owned fixed DMA ring and has a bounded
 20-ms readiness wait with task delays, so a failed start cannot keep the
 control task spinning indefinitely.
 
-`g` and menu **OUTPUT** cycle 1.0 / 1.5 / 2.0 / 2.5x. Every boot starts at
-1.0x. Increasing the level can help the weak sync reported in #200, but can
-clip a wide VTX; check both sync and white with the actual 75-ohm load.
+`g` and menu **OUTPUT** cycle 0.5x..5.0x in 0.5x steps. A successful,
+verified application is saved and restored at boot; the default without a
+valid setting is 1.0x. Higher levels may help weak sync but can clip a wide
+VTX; check both sync and white with the actual 75-ohm load.
 Only DAC bits 0..5 are transformed, preserving all phase/token bits across
 kp changes, LP changes, menu return and rollback. The menu raster retains
 its own levels. `T` reports the setting, clipped **LUT entries** (not an
 observed waveform clip rate), recovery errors and a latched failure.
+
+`G` and menu **GAIN** cycle AUTO (Direct Gain V6), MAX, then fixed
+G78 / G72 / G66 / G60 / G54 / G48 / G42 / G36 / G30 / G24. The choice is
+saved and restored at boot; AUTO is the default. V6 keeps the last healthy
+gain through same-context tracking resets, holds brief fades for 10 ms and
+then climbs gradually. This is host-tested behavior; extra range is unmeasured.
+
+`U` and menu **FLYWHEEL** toggle the saved sync flywheel. Without a valid
+saved setting it is OFF; a saved ON restores at boot. Check ON/OFF, menu
+return and the actual camera/monitor picture on the ground. Pulse counters
+do not prove monitor lock. Leave it OFF for a baseline RF comparison.
 
 A failed restart cleans up before one attempt at the last verified program
 and LUT, including its OUTPUT setting. Failed rollback latches live OFF;
@@ -210,7 +230,8 @@ The follow-up passive `research/output_probe_study.py` uses the production
 AFC/Direct Gain helpers; its conservative white reserve and wide-VTX
 confidence remain unqualified. Multi-Rescue comparisons against MATCHED
 are in `research/rescue_study.py` and `research/data/rescue_study.json`.
-The active acceptance list is `docs/PR196_TASK_PLAN.md`.
+The earlier acceptance list remains in `docs/PR196_TASK_PLAN.md`;
+[PR #212](docs/PR212.md) records the current receiver changes and merge checks.
 
 ## Web flasher
 
@@ -224,9 +245,10 @@ another browser with Web Serial) has three tabs:
 
 Firmware is mirrored into the GitHub Pages site and downloaded same-origin.
 
-The **Terminal** view has a visual receiver menu matching the module:
-BAND, CHANNEL, SCAN, VIDEO, CALIBRATE, OUTPUT and EXIT. Selecting a menu
-page only changes the browser view; its action button sends the command.
+The **Terminal** view has a visual receiver menu for BAND, CHANNEL, SCAN,
+VIDEO, CALIBRATE, OUTPUT and EXIT. Use console keys `G`/`U` or the on-screen
+menu for GAIN/FLYWHEEL. Selecting a browser menu page only changes the view;
+its action button sends the command.
 It identifies C5VRX-5 from firmware help/status and displays the last reported
 band, channel, frequency, signal, video standard, output level, screen-menu
 state, scan result and calibration state. It updates by itself: the firmware
@@ -263,10 +285,18 @@ inputs (`tools/firmware_input_hash.py`) keep the existing release, so a
 documentation or website change does not mint firmware. A successful build
 refreshes the Pages mirror (`deploy-web.yml`, always from trusted `main`).
 
+Before merging a firmware PR, require green firmware and web checks on its
+final head. Flash the matching artifact (verify its COMMIT and checksum),
+then check boot, menu entry/exit, saved settings and flywheel ON/OFF on the
+board. The PR channel is an unmerged build; successful host tests do not
+establish display lock or RF range. [PR #212 validation](docs/PR212.md)
+tracks the cleanup and remaining board check. After merge, verify the main
+release and Pages mirror contain the resulting firmware.
+
 ## Repository layout
 
 ```text
-main/        C5VRX-5 firmware (U85Q, Direct Gain V5, calibration, menu, console)
+main/        C5VRX-5 firmware (U85Q, Direct Gain V6, calibration, menu, console)
 test/        host tests (CI)
 research/    simulations, generators and data behind the design choices
 docs/        findings, field-test protocol, task plan, DAC schematic

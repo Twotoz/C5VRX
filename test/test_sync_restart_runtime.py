@@ -58,7 +58,7 @@ static sync_live_owner_t owner;
 static void reset(void){
  memset(&owner,0,sizeof(owner));s_live_owner=&owner;
  owner.requested=owner.authorized=owner.output_requested=true;
- owner.context=(sync_bench_context_t){7,2,4,true};owner.stream_generation=7;
+ owner.context=(sync_live_context_t){7,2,4,true};owner.stream_generation=7;
  s_stream_generation=7;s_started=s_have_verified=s_lut_known=s_verified_flag=s_flag_format=true;
  s_transport_fault=s_stream_generation_overflow=s_menu_active=s_scan_active=false;
  s_rx_enabled=s_tx_enabled=s_bs_enabled=s_prog_lp=s_verified_lp=true;
@@ -153,8 +153,8 @@ def function(source,signature):
 def main():
     source=(ROOT/'main/transport.c').read_text()
     a=source.index('typedef struct {\n    uint32_t generation;\n    int level;')
-    context=source[a:source.index('} sync_bench_context_t;',a)+len('} sync_bench_context_t;')]
-    a=source.index('typedef struct {\n    sync_bench_context_t context;')
+    context=source[a:source.index('} sync_live_context_t;',a)+len('} sync_live_context_t;')]
+    a=source.index('typedef struct {\n    sync_live_context_t context;')
     owner=source[a:source.index('static sync_live_owner_t *s_live_owner;',a)+len('static sync_live_owner_t *s_live_owner;')]
     names=['static bool IRAM_ATTR transport_sync_live_valid(uint32_t generation)',
         'static bool transport_sync_restart_begin(bool flag)',

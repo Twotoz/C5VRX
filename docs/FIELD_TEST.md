@@ -167,29 +167,6 @@ Repeat each comparison A/B/A (or ABBA) so that drift and fading average out.
 
 ## Reading the result
 
-### LCD No Signal recovery (issue #213)
-
-PR #212 defaults to real live snow: black replacement is OFF. For its
-opt-in black-raster bench, press `N`; it supplies PAL/NTSC NO SIGNAL after four
-observed negative sync windows spanning >=8 ms; it resumes on the first
-confirmed sync. RX/gain stay active. Watch `NO_SIGNAL` transitions and
-`VIDEO_OUTPUT source=NO_SIGNAL/LIVE/MENU/OFF`. Test strong startup, VTX off
-and return, short fades, weak video and both standards. Confirm that absent
-copies, B/W single-sync windows, menu/calibration and retunes do not falsely
-replace the picture. Measure detection/handoff/display recovery latency and
-75-ohm-loaded H/V levels. `VIDEO_WATCH` reports actual maximum work/sample
-time, inter-check gaps, coverage and stack watermark for the nominal 2 ms
-watchdog; verify under USB/observer load and weak RF. The handoff has restart gaps; seamless LCD lock
-through every fade has not been established.
-
-On the ground, PR #212's `B` restarts only verified live transport without
-OSD or configuration changes. Compare with brief OSD on/off and LCD input
-reset, each from an independently reproduced failure. Save `T/D` before and
-after, including `LCD_AB`, faults/rollback and OUTPUT. Scope H/V and
-sync/porch/white into the actual 75-ohm load. Record display, VTX/camera,
-PAL/NTSC and output level. The command interrupts video, shares the five-second
-cooldown and refuses busy/faulted states. See [the full audit](FIRMWARE_RANGE_AUDIT.md).
-
 - **Height or position changes the picture** → possible spatial propagation or antenna effect. Fix placement; long term, use antenna
   diversity.
 - **Same loss in the conducted test, independent of height** → receiver
@@ -208,35 +185,6 @@ margin, or from a lower dropout rate under comparable logged conditions.
 
 ## Merge evidence still required
 
-### Persistent output level (PR 212)
-
-Console `g` and the OUTPUT menu cycle 1.0x through 5.0x in 0.5x steps. A verified
-live change is saved in NVS; a menu selection is saved when exiting successfully
-to live video. Reboot restores that level before TX starts. Missing or invalid
-stored values use 1.0x; channel/video-standard settings keep their existing
-format. Refused changes and verified rollback leave the saved level unchanged.
-Compare all nine levels through successful changes and reboot, plus cooldown
-refusal and menu exit. Firmware tests/build do not establish a physical reboot.
-
-### Periodic native AGC bench (`~`, PR 212)
-
-After startup has completed, use `~` to toggle the RAM-only native controller;
-it is OFF at boot. This first implementation accepts only the original boot
-RF context (5865 MHz, zero offset, BW40), and refuses unsupported contexts or
-bad initial gain readback. `T` reports the selected gain owner and
-`NATIVE_AGC attempts/landing_candidates/faults/max_open_us`. A candidate is
-not a verified single hardware acquisition.
-
-Compare Direct Gain / native / native / Direct Gain at the same RF input.
-Capture raw IQ, actual CVBS and gain/DC readback. Confirm that overload,
-retune/calibration, timeout and sampling-gap exits return to Direct Gain;
-`FAULT_PAUSED` means restoration failed and must be investigated. Verify
-the actual number of gain walks per pulse, the nominal 20-ms scan cadence,
-held IQ/DC and absence of CPU watchdogs. No range claim follows from the
-register readback or the host tests.
-
-### Remaining main-path acceptance
-
 Host tests and compilation verify diagnostic semantics and recorder bounds;
 they do not prove extra attenuation tolerance or cure the reported picture
 cliff. Flash and check VTX-off/on startup, fresh/valid calibration, correct
@@ -254,3 +202,18 @@ replacement is the optional live profile switch (`A`, default on): set it
 OFF for an A/B that must keep one profile. There are no physical measurements
 attached to this diagnostic fix; the underlying RF/FM/DSP/output cause remains
 unresolved until those captures exist.
+
+## PR #212 boot, menu and flywheel checks
+
+Record the exact flashed commit/artifact and its checksum. Start with GAIN
+AUTO (Direct Gain V6 carrier memory) and FLYWHEEL OFF; these are the defaults
+without valid saved settings. Check boot, USB/status responsiveness and zero
+transport faults. Cycle GAIN (`G`) through AUTO/MAX/fixed and verify reboot
+persistence, then restore AUTO. Toggle FLYWHEEL (`U`) ON/OFF and check saved
+state, clean teardown and ordinary live output after OFF.
+Open and exit NTSC/PAL menus with flywheel OFF and ON: entry must release the
+observer/output before allocating 384-byte internal DMA chunks. Interlaced
+needs about 18/22 KiB, progressive fallback about 9/11 KiB; log heap/free
+block sizes and any deferred/refused entry. Verify the actual monitor picture.
+Board logs and host tests alone do not establish camera lock or range gain.
+See [PR212](PR212.md); final cleaned-build hardware validation is still pending.

@@ -1,15 +1,11 @@
 # Where can C5VRX-5 firmware still gain range?
 
-Follow-up after PR #211/main `14e190d9`: [firmware range audit](../docs/FIRMWARE_RANGE_AUDIT.md)
-(PR #212). Actual-C policy export, 1414 synthetic scenes, four-seed physical
-ADC offset/filter comparisons and 40 actual-C eligibility summaries expose
-avoidable configuration losses and preserve negative results. Reproduced
-B/W AFC, fade history, phase-gated gain/profile and DMA-tail copy defects
-have bounded fixes. Issue #213 now defaults to real live snow; `N` opts into
-black fallback for bench tests. [Real-snow sync keeper](../docs/SYNC_KEEPER.md)
-includes a host IQ-mux prototype, timing-error losses and live DMA/field-clock
-requirements. No live keeper or physical LCD/range improvement is established.
-The older studies below retain their original assumptions and results.
+Current receiver behavior and validation are summarized in
+[PR #212](../docs/PR212.md): AFC/copy/observer fixes, Direct Gain V6,
+saved GAIN/FLYWHEEL settings and default-OFF experimental sync output.
+Earlier working documents remain in Git history; the studies below keep their
+original model assumptions and results. No measured RF range improvement
+or affected-monitor cure is established.
 
 Simulation study, 2026-10-11. `sim.py` models the whole C5VRX-5 chain with
 the **bit-exact U85Q LUT** (two LUT16 lookups per 50 ns, `u85q.bsasm`), the
