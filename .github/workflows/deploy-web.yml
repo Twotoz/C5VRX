@@ -65,6 +65,41 @@ jobs:
 
       - name: Deploy GitHub Pages site
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/github-script@v7
+        timeout-minutes: 11
         env:
-          GITHUB_SHA: ${{ steps.pages-version.outputs.version }}
+          PAGES_BUILD_VERSION: ${{ steps.pages-version.outputs.version }}
+        with:
+          script: |
+            // GITHUB_SHA is a protected runner variable. Send the unique build
+            // version directly instead of trying to override it for deploy-pages.
+            const {data: {artifacts}} = await github.rest.actions.listWorkflowRunArtifacts({
+              ...context.repo, run_id: context.runId
+            });
+            const matches = artifacts.filter(artifact => artifact.name === 'github-pages' && !artifact.expired);
+            if (matches.length !== 1) throw new Error('Expected exactly one Pages artifact for this run');
+            const {data: deployment} = await github.request('POST /repos/{owner}/{repo}/pages/deployments', {
+              ...context.repo,
+              artifact_id: matches[0].id,
+              pages_build_version: process.env.PAGES_BUILD_VERSION,
+              oidc_token: await core.getIDToken()
+            });
+            const deploymentId = deployment.id || deployment.status_url.split('/').pop();
+            core.info(`Created Pages deployment ${deploymentId} for mirror version ${process.env.PAGES_BUILD_VERSION}`);
+            core.setOutput('page_url', deployment.page_url);
+            const deadline = Date.now() + 600000;
+            while (Date.now() < deadline) {
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              const {data: status} = await github.request('GET /repos/{owner}/{repo}/pages/deployments/{pages_deployment_id}', {
+                ...context.repo, pages_deployment_id: deploymentId
+              });
+              if (status.status === 'succeed') {
+                core.info('Pages deployment succeeded');
+                return;
+              }
+              if (/failed|cancelled/.test(status.status)) throw new Error(`Pages deployment ${status.status}`);
+            }
+            await github.request('POST /repos/{owner}/{repo}/pages/deployments/{pages_deployment_id}/cancel', {
+              ...context.repo, pages_deployment_id: deploymentId
+            });
+            throw new Error('Pages deployment timed out after 10 minutes');
