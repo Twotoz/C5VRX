@@ -212,8 +212,8 @@ unresolved until those captures exist.
 ## PR #212 boot, menu and flywheel checks
 
 Record the exact flashed commit/artifact and its checksum. Start with GAIN
-AUTO (Direct Gain V6 carrier memory) and FLYWHEEL OFF; these are the defaults
-without valid saved settings. Check boot, USB/status responsiveness and zero
+AUTO (Direct Gain V6 carrier memory) and FLYWHEEL ON; these are the defaults
+without valid saved settings (FLYWHEEL was OFF until 2026-10-18). Check boot, USB/status responsiveness and zero
 transport faults. Cycle GAIN (`G`) through AUTO/MAX/fixed and verify reboot
 persistence, then restore AUTO. Toggle FLYWHEEL (`U`) ON/OFF and check saved
 state, clean teardown and ordinary live output after OFF.
