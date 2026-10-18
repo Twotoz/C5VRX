@@ -22,8 +22,10 @@ typedef struct {
     uint32_t pll_updates,pll_rejected;
     int32_t pll_ppb;
     /* Tips left to a present camera: periodic native H within the hold. */
+    /* camera_yields: tips left untouched for lack of fresh matching H/V
+     * evidence (the type-specific trust below). */
     uint32_t camera_yields,camera_lines;
-    bool active,guard_yield,camera_present;
+    bool active,guard_yield,camera_present,h_trusted,v_trusted;
 } slo_status_t;
 /* Explicit selected-standard fallback if model is NULL/unqualified. Native
  * callback must be cache-safe/IRAM; NULL admits no native suppression evidence. */

@@ -95,7 +95,12 @@ void transport_sync_live_tick(void);   /* control loop; never holds a lifetime P
 bool transport_sync_live_cancel(void); /* stop/restore before transport ownership changes */
 /* Menu open: stop the flywheel output (not eligible under the menu anyway)
  * so its heap is free before the menu reserves descriptors. */
-void transport_sync_live_release(void);
+/* true once the flywheel observer and output are released (or none ran);
+ * false while the PHY is owned elsewhere: nothing may allocate then. */
+bool transport_sync_live_release(void);
+/* Hold the control owner from (re)starting the flywheel, e.g. while the menu
+ * builds its chain from another task. */
+void transport_sync_live_hold(bool on);
 void transport_sync_live_print(void);
 void transport_sync_live_trace_print(void);
 void sync_dma_c2m(const void *addr, size_t size);
@@ -198,6 +203,8 @@ void lane_compare_request(void);
 enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_CALIBRATE, MENU_OUTPUT, MENU_GAIN, MENU_EXIT, MENU_ITEMS };
 extern volatile int s_menu_cursor;
 bool menu_open(void);
+/* The last menu_open() was deferred by a busy PHY (retry, don't allocate). */
+bool menu_open_busy(void);
 void menu_close(void);
 void menu_render(void);
 void menu_set_standard_mode(std_mode_t mode);

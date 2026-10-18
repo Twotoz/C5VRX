@@ -1105,11 +1105,16 @@ bool transport_sync_live_cancel(void)
     return ok;
 }
 
-void transport_sync_live_release(void)
+static volatile bool s_sync_live_hold;
+void transport_sync_live_hold(bool on) { s_sync_live_hold=on; }
+
+bool transport_sync_live_release(void)
 {
-    if(!s_live_owner || !sync_output_live_active() || !phy_try_actuator(phy_generation()))return;
-    (void)transport_sync_live_cancel();
+    if(!s_live_owner || !sync_output_live_active())return true;
+    if(!phy_try_actuator(phy_generation()))return false;
+    bool ok=transport_sync_live_cancel();
     phy_end_actuator();
+    return ok && !sync_output_live_active();
 }
 
 void transport_sync_live_toggle(void)
@@ -1155,7 +1160,7 @@ void transport_sync_live_tick(void)
     }
     sync_live_owner_t *s=s_live_owner;
     if(!s || s->fault || !phy_try_actuator(phy_generation()))return;
-    bool eligible=s->requested && !calibration_in_startup() && !receiver_paused() &&
+    bool eligible=s->requested && !s_sync_live_hold && !calibration_in_startup() && !receiver_paused() &&
         !s_menu_active && !s_scan_active && !no_signal_active() && !sync_service_active() &&
         !s_gate_probe_busy && s_started && s_have_verified && s_lut_known && !s_transport_fault;
     bool active=sync_output_live_active();
@@ -1279,7 +1284,7 @@ void transport_sync_live_print(void)
     slo_status_t output;sync_live_output_status(&output);
     printf("SYNC_FLYWHEEL requested=%u active=%u repaired=%lu suppressed=%lu batches=%lu late_ticks=%lu missed=%lu miss_kind=%lu queue_low=%lu fault=%lu "
         "irq_delay_ticks=%lu callback_ticks=%lu budget_yields=%lu miss_phase=%lu miss_other=%lu miss_observer=%lu miss_snapshot=%lu miss_update=%lu miss_restart=%lu miss_reserved=%lu "
-        "guard_yield=%u yielded=%lu h_jumps=%lu v_jumps=%lu trims=%lu pll_updates=%lu pll_rejected=%lu pll_ppb=%ld acquired=%lu camera_present=%u camera_lines=%lu camera_yields=%lu monitor_lock_proven=0\n",
+        "guard_yield=%u yielded=%lu h_jumps=%lu v_jumps=%lu trims=%lu pll_updates=%lu pll_rejected=%lu pll_ppb=%ld acquired=%lu camera_present=%u camera_lines=%lu camera_yields=%lu h_trusted=%u v_trusted=%u monitor_lock_proven=0\n",
         s?(unsigned)s->output_requested:0u,(unsigned)output.active,
         (unsigned long)output.repaired,(unsigned long)output.suppressed,(unsigned long)output.batches,
         (unsigned long)output.max_late_ticks,(unsigned long)output.missed,(unsigned long)output.miss_kind,
@@ -1294,7 +1299,8 @@ void transport_sync_live_print(void)
         (unsigned long)output.guard_v_jumps,(unsigned long)output.guard_trims,
         (unsigned long)output.pll_updates,(unsigned long)output.pll_rejected,(long)output.pll_ppb,
         (unsigned long)output.guard_acquired,(unsigned)output.camera_present,
-        (unsigned long)output.camera_lines,(unsigned long)output.camera_yields);
+        (unsigned long)output.camera_lines,(unsigned long)output.camera_yields,
+        (unsigned)output.h_trusted,(unsigned)output.v_trusted);
 }
 
 /* ISR-safe transport identity check: no scheduler/PHY calls or mutation. */

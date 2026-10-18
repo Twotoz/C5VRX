@@ -35,6 +35,13 @@
  * Native pulses reach the task in batches, so the hold covers one field. */
 #define SLO_CAMERA_TOL 12u
 #define SLO_CAMERA_HOLD 400000u /* 20ms */
+/* Per-type repair authority (operator review 2026-10-18): a synthetic H tip
+ * needs camera H seen in phase on this grid, a V/EQ/broad tip additionally
+ * camera V confirmed at this grid's broad slot, both within the holdover
+ * window. Without that evidence nothing is clamped: untouched live CVBS
+ * beats a possibly conflicting second sync train. 5 s of holdover drifts
+ * < 5 us with the holdover PLL. */
+#define SLO_TRUST_TICKS 100000000u
 typedef struct {uint64_t start;uint16_t width;uint8_t kind;uint16_t index;uint64_t half;} slo_tip_t;
 typedef struct {
     sync_live_gate_t *planner;
@@ -68,9 +75,13 @@ typedef struct {
     uint64_t last_h_tick,camera_tick;
     volatile uint32_t camera_tick32;
     volatile bool camera_fresh;
+    /* Task-owned evidence ages; the ISR reads only the two flags. */
+    uint64_t h_trust_tick,v_trust_tick;
+    volatile bool h_trusted,v_trusted;
     slo_status_t status;
     bool saved,configured,quarantined;
 } slo_t;
+static void slo_trust(slo_t *s,uint64_t now);
 enum {SLO_PUB_SLEW=1,SLO_PUB_TAKEOVER,SLO_PUB_JUMP_H,SLO_PUB_JUMP_V,SLO_PUB_PERIOD};
 static slo_t *s_output;
 static DRAM_ATTR volatile unsigned s_output_phase;
@@ -91,6 +102,15 @@ static void IRAM_ATTR fail(slo_t *s,uint32_t code)
 /* GPIO2 mirrors internal DATA0 even while DAC OE is suppressed. An active
  * sync level already present at admission cannot become evidence until a new
  * inactive/active transition is seen. Every source epoch, marker or invalidation clears it. */
+/* True when the comparator shows sync level now, or the source cannot be
+ * read (fail safe: never clamp over an unknown camera state). */
+static bool IRAM_ATTR flag_level(slo_t *s)
+{
+    uint32_t epoch=0;
+    if(!s->source(s->native_arg,&epoch))return true;
+    return ((REG_READ(GPIO_IN_REG)&(1u<<2))!=0)==s->native_inverted;
+}
+
 static bool IRAM_ATTR flag_native(slo_t *s,uint64_t now,const slo_tip_t *tip)
 {
     if(!s->native_authority || (tip->kind!=SLG_H && !s->native_v_fresh))return false;
@@ -157,17 +177,27 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
         else native=s->native && s->native(tip.start,tip.width,(slg_kind_t)tip.kind,s->native_arg);
         if(!s->status.active || !s->live(s->generation)){fail(s,1);return false;}
         const bool camera=s->camera_fresh && (uint32_t)now-s->camera_tick32<SLO_CAMERA_HOLD;
+        const bool trusted=tip.kind==SLG_H?s->h_trusted:s->v_trusted;
+        /* With the camera present, a sync level already active at our tip is
+         * the camera's own pulse even when a late ISR missed its edge; an
+         * unreadable source while the camera is present is left alone too. */
+        if(!native && camera && s->flag && s->native_authority && trusted)native=flag_level(s);
         if(native)++s->status.suppressed;
-        else if(camera)++s->status.camera_yields;
-        else if(s->native_authority && s->yield)++s->status.yielded;
-        else if(s->native_authority) {
+        else if(!s->native_authority){}
+        else if(s->yield)++s->status.yielded;
+        else if(!trusted)++s->status.camera_yields;
+        else {
             REG_WRITE(GPIO_ENABLE_W1TC_REG,SLO_MASK);
+            bool camera_owned=false;
             if(s->flag) {
                 /* Restore native video promptly when a correctly phased source
                  * edge arrives; never extend a late repair beyond tip end. */
                 uint32_t hold=esp_cpu_get_cycle_count();
                 while(now<tip.start+tip.width) {
-                    if(flag_native(s,now,&tip))break;
+                    /* With the camera present its own V/EQ (or late H)
+                     * level also ends the repair: no second pulse over it. */
+                    if(flag_native(s,now,&tip)){camera_owned=camera;break;}
+                    if(camera && flag_level(s)){camera_owned=true;break;}
                     if(esp_cpu_get_cycle_count()-hold>(uint32_t)tip.width*12u ||
                        !sync_edge_clock_read(&now))break;
                 }
@@ -176,7 +206,9 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
                 while(esp_cpu_get_cycle_count()-start<(uint32_t)tip.width*12u){}
             }
             REG_WRITE(GPIO_ENABLE_W1TS_REG,SLO_MASK);
-            ++s->status.repaired;
+            /* A sliver the camera's own pulse cut short is its pulse. */
+            if(camera_owned)++s->status.suppressed;
+            else ++s->status.repaired;
         }
 advance:
         ++n;
@@ -410,6 +442,8 @@ bool sync_live_output_update(const slg_model_t *model)
          * describes the previous phase. */
         s->guard=(spg_t){0};s->yield=false;s->guard_after=now+20000u;
         s->pll.active=false;s->pll_period_q=0;
+        /* A qualified model is fresh camera H and V on the new grid. */
+        s->h_trust_tick=s->v_trust_tick=now;slo_trust(s,now);
     }
     return true;
 }
@@ -428,6 +462,15 @@ static bool guard_publish(slo_t *s,uint8_t mode,int32_t value)
     if(mode==SLO_PUB_JUMP_V)++s->status.guard_v_jumps;
     else if(mode==SLO_PUB_JUMP_H)++s->status.guard_h_jumps;
     return true;
+}
+
+static void slo_trust(slo_t *s,uint64_t now)
+{
+    bool h=s->native_authority && s->h_trust_tick && now>=s->h_trust_tick &&
+        now-s->h_trust_tick<=SLO_TRUST_TICKS;
+    bool v=h && s->v_trust_tick && now>=s->v_trust_tick && now-s->v_trust_tick<=SLO_TRUST_TICKS;
+    s->h_trusted=h;s->v_trusted=v;
+    s->status.h_trusted=h;s->status.v_trusted=v;
 }
 
 static bool guard_publish_period(slo_t *s,uint64_t period_q)
@@ -476,6 +519,8 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
         int64_t base=(tip.half&1u)==clock.parity?delta:delta-half;
         int32_t offset=(int32_t)(spg_wrap(base,2*half)/den);
         action=spg_h(&s->guard,offset,(int32_t)(2*half/den),tick);
+        if(spg_abs(offset)<=SPG_WINDOW && !s->guard.yield_h && s->guard.aligned>=SPG_LOCK)
+            s->h_trust_tick=tick;
         if(s->native_authority && spg_abs(offset)<=SPG_WINDOW && !s->guard.yield_h && action.kind==SPG_NONE) {
             uint64_t period_q=scp_period_q(clock.whole,clock.increment,clock.denominator);
             if(!s->pll.active || s->pll.period_q!=period_q)scp_start(&s->pll,period_q,tip.half,offset);
@@ -496,24 +541,32 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
         if(index<0)index+=clock.halves;
         int32_t offset=spg_wrap((int64_t)index-clock.section,clock.halves);
         action=spg_v(&s->guard,offset,tick,(uint64_t)((clock.halves*half+den/2)/den));
+        if(!offset && !s->guard.yield_h && s->guard.v_good>=SPG_V_LOCK)s->v_trust_tick=tick;
     }
     if(action.kind==SPG_JUMP_H) {
         bool trim=!s->guard.yield_h;
         if(guard_publish(s,SLO_PUB_JUMP_H,action.value)) {
             if(trim){++s->status.guard_trims;scp_trim(&s->pll,action.value);}
-            else s->pll.active=false; /* re-anchor: the window no longer measures drift */
+            else {
+                s->pll.active=false; /* re-anchor: the window no longer measures drift */
+                s->h_trust_tick=s->v_trust_tick=0; /* moved grid: confirm before repairing */
+                slo_trust(s,tick);
+            }
             spg_reset(&s->guard);
         }
     } else if(action.kind==SPG_JUMP_V && guard_publish(s,SLO_PUB_JUMP_V,action.value)) {
         spg_reset(&s->guard);
+        s->v_trust_tick=0;slo_trust(s,tick);
     }
     s->yield=spg_yield(&s->guard,tick);
     /* Grant only on the grid the evidence describes: nothing unapplied. */
     if(!s->native_authority && spg_acquired(&s->guard,tick) &&
        s->publication==s->applied && !(s->publication&1u)) {
         s->native_authority=true;
+        s->h_trust_tick=s->v_trust_tick=tick;
         ++s->status.guard_acquired;
     }
+    slo_trust(s,tick);
 }
 
 void sync_live_output_guard_tick(void)
@@ -525,6 +578,7 @@ void sync_live_output_guard_tick(void)
     s->status.guard_yield=s->yield;
     if(s->camera_fresh && (now<s->camera_tick || now-s->camera_tick>=SLO_CAMERA_HOLD))s->camera_fresh=false;
     s->status.camera_present=s->camera_fresh;
+    slo_trust(s,now);
     s->status.pll_rejected=s->pll.rejected;
     /* Signed fine-period offset versus nominal, in parts per billion. */
     if(s->pll_period_q) {

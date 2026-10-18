@@ -805,3 +805,36 @@ guard can only correct after the camera returns.
   misses (98 % `miss_other`, i.e. interrupts masked outside this code; the
   timer ISR is already priority 3 and cache-safe; needs hardware-timed
   output). `T`: `SYNC_FLYWHEEL ... acquired`. Board pending.
+
+## Live flywheel: per-type sync ownership and checked menu entry (2026-10-18)
+
+Review follow-up (PR #212 comment 6243377904, operator: shifts/rolling on a
+healthy camera with SyncRescue on; menu `ESP_ERR_NO_MEM` next to a live owner).
+
+- The 20 ms "camera present" yield skipped every tip, V/EQ/broad included,
+  on periodic H alone, and resumed 20 ms after a loss. Replaced by per-tip,
+  per-type authority: a synthetic H tip needs camera H seen in phase on this
+  grid (guard aligned) within 5 s, a V/EQ/broad tip additionally camera V
+  confirmed at this grid's broad slot within 5 s. Without that evidence the
+  tip is left untouched (`camera_yields`). A qualified model or a guard
+  acquisition counts as fresh H and V; any H or V re-anchor clears the trust
+  until it is confirmed again. With the camera present, sync level already
+  active at a tip (also a late ISR that missed the edge) is the camera's
+  pulse, and its level ends a repair at once (a broad tip used to hold the
+  full 27 us over the camera's own broad because the V edge path needs a
+  probe model).
+- Host (camera driving the comparator pin with H/EQ/broad): 3799 tips
+  suppressed, 0 repaired, longest overlap 2 ticks; one missing camera H is
+  filled exactly once; after the camera stops, holdover clamps at once on the
+  trusted H/V grid (no 20 ms gap). H trust without V trust: H gaps only, no
+  V/EQ/broad clamp; no trust: no clamp.
+- Menu: `transport_sync_live_release()` returned nothing and skipped the
+  release when the PHY was busy; `menu_open()` then built the chain anyway.
+  `main/menu_entry.h`: hold flywheel restarts -> checked release -> build ->
+  start; a refused release leaves live video and defers the menu (control
+  owner retries for 1 s, then refuses with a message); a failed build
+  unwinds the chain. The flywheel restarts after menu close only if it was
+  requested (unchanged control-tick logic). Host: `test/test_menu_entry.c`.
+- Not changed: IRQ-blackout misses (needs hardware-timed output). Board A/B
+  (flywheel OFF vs ON on a strong camera, fades, VTX off/on) still pending;
+  `T`: `SYNC_FLYWHEEL ... camera_yields h_trusted v_trusted`.

@@ -12,6 +12,7 @@
 #include "profile_logic.h"
 #include "video_loss.h"
 #include "video_sync.h"
+#include "menu_entry.h"
 #include "cn_estimate.h"
 #include "analog_video_detect.h"
 #include "driver/gpio.h"
@@ -46,6 +47,15 @@ bool control_prepare(void)
 }
 
 volatile bool s_menu_active;
+/* A long press/'o' while the PHY is busy: retry from this owner, bounded. */
+static menu_retry_t s_menu_retry;
+static bool menu_open_checked(void)
+{
+    if (menu_open()) { menu_retry_done(&s_menu_retry); s_menu_cursor = 0; return true; }
+    if (menu_open_busy()) menu_retry_busy(&s_menu_retry, esp_timer_get_time());
+    else menu_retry_done(&s_menu_retry);
+    return false;
+}
 volatile int s_signal_strength;
 volatile bool s_scan_active;
 volatile unsigned s_scan_progress;
@@ -321,7 +331,7 @@ static void command(int c, unsigned *menu_idle)
                (unsigned long)transport_switch_wait_ms());
         break;
     }
-    case 'o': if (s_menu_active) menu_close(); else if (menu_open()) s_menu_cursor = 0; break;
+    case 'o': if (s_menu_active) menu_close(); else (void)menu_open_checked(); break;
     case 'e': menu_close(); break;  /* idempotent web-menu EXIT */
     case 'v': cycle_video_standard(); break;
     case 'n': if (s_menu_active) { s_menu_cursor = (s_menu_cursor + 1) % MENU_ITEMS; menu_render(); } break;
@@ -477,7 +487,7 @@ static void control_task(void *arg)
             menu_idle = 0;
             if (btn >= LONG_TICKS && !long_fired) {
                 long_fired = true;
-                if (!s_menu_active) { if (menu_open()) s_menu_cursor = 0; }
+                if (!s_menu_active) (void)menu_open_checked();
                 else menu_action();
             }
         } else if (btn) {
@@ -487,6 +497,12 @@ static void control_task(void *arg)
             }
             btn = 0;
             long_fired = false;
+        }
+        if (!s_menu_active && s_menu_retry.pending) {
+            uint32_t refused = s_menu_retry.refused;
+            if (menu_retry_due(&s_menu_retry, esp_timer_get_time())) (void)menu_open_checked();
+            else if (s_menu_retry.refused != refused)
+                printf("[MENU] refused: sync release still waiting for the PHY after 1 s; live video kept\n");
         }
         if (s_menu_active) {
             if (++menu_idle >= MENU_IDLE_TICKS) { menu_close(); printf("[MENU] closed after 30 s idle\n"); }

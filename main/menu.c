@@ -10,6 +10,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "rf.h"
+#include "menu_entry.h"
 
 void transport_start_chain(dma_descriptor_t *first);
 void transport_stop_chain(void);
@@ -322,6 +323,31 @@ static esp_err_t build_chain(video_standard_t standard)
     return ESP_OK;
 }
 
+static esp_err_t s_entry_err;
+static unsigned s_entry_before;
+static bool entry_build(void)
+{
+    s_entry_err = build_chain(menu_standard());
+    if (s_entry_err == ESP_OK) return true;
+    ESP_LOGE("menu", "unavailable: %s (internal free=%u dma_before_release=%u dma_free=%u dma_largest=%u chunks=%u)",
+             esp_err_to_name(s_entry_err), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             s_entry_before, (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL),
+             s_chunk_count);
+    return false;
+}
+static void entry_start(void)
+{
+    s_menu_active = true;
+    transport_stop_tx();
+    transport_start_chain(node(0));
+}
+static const menu_entry_ops_t s_entry_ops = {
+    transport_sync_live_hold, transport_sync_live_release, entry_build, free_nodes, entry_start,
+};
+static menu_entry_t s_last_entry = MENU_ENTRY_OPENED;
+bool menu_open_busy(void) { return s_last_entry == MENU_ENTRY_BUSY; }
+
 bool menu_open(void)
 {
     if (s_menu_active) return true;
@@ -333,24 +359,13 @@ bool menu_open(void)
         return true;
     }
     /* Allocate and render before touching live video: if memory is short,
-     * flight video keeps running. The flywheel output stops under the menu
-     * anyway; release its heap first. */
-    const unsigned before_release = (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
-    transport_sync_live_release();
-    const unsigned dma_free = (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
-    const unsigned dma_largest = (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
-    esp_err_t err = build_chain(menu_standard());
-    if (err != ESP_OK) {
-        ESP_LOGE("menu", "unavailable: %s (internal free=%u dma_before_release=%u dma_free=%u dma_largest=%u chunks=%u)",
-                 esp_err_to_name(err), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                 before_release, dma_free, dma_largest, s_chunk_count);
-        free_nodes();
-        return false;
-    }
-    s_menu_active = true;
-    transport_stop_tx();
-    transport_start_chain(node(0));
-    return true;
+     * flight video keeps running. The flywheel observer/output must be
+     * released first and checked (menu_entry.h): a busy PHY refuses the
+     * menu for now instead of allocating next to a live output owner. */
+    s_entry_before = (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
+    s_last_entry = menu_entry_open(&s_entry_ops);
+    if (s_last_entry == MENU_ENTRY_BUSY) printf("[MENU] deferred: sync release waits for the PHY; live video kept\n");
+    return s_last_entry == MENU_ENTRY_OPENED;
 }
 
 void menu_close(void)
