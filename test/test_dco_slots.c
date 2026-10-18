@@ -63,6 +63,15 @@ int main(void)
           dco_mask_count(m, 54, 83) == 2u && dco_mask_get(m, 95) && !dco_mask_get(m, 96));
     dco_mask_put(m, 54, false);
     check("a measured row leaves the template", !dco_mask_get(m, 54) && dco_mask_count(m, 0, 95) == 2u);
+    /* Filter context of a DC table (board 2026-10-19: BW40 / code -1 table
+     * under the BW20 / code 16 / skirt 32 filter left 3.7 cells of DC). */
+    check("same filter: table valid", dco_filter_same(16, 32, 1u, 16, 32, 1u));
+    check("board case: BW40 code -1 table under BW20 code 16 is another filter",
+          !dco_filter_same(-1, 0, 0u, 16, 32, 1u));
+    check("code, skirt and bandwidth each count", !dco_filter_same(16, 32, 1u, 24, 32, 1u) &&
+          !dco_filter_same(16, 32, 1u, 16, 0, 1u) && !dco_filter_same(16, 32, 1u, 16, 32, 0u));
+    check("stale only with rows: an empty table takes the missing-row path",
+          dco_filter_stale(30u, false) && !dco_filter_stale(0u, false) && !dco_filter_stale(30u, true));
     printf("%s: %u checks, %u failures\n", s_fail ? "FAIL" : "PASS", s_run, s_fail);
     return s_fail ? 1 : 0;
 }

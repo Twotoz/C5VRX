@@ -859,3 +859,46 @@ C5VRX by Twotoz and the C5VRX contributors; extends Direct Gain V6 and its
   the unchanged main build failed the same route too (2026-10-19). After a
   replug the board came up in the ROM loader twice, so the board may stay
   powered through the video side; a RESET tap recovers it. Cause open.
+
+## DC table from another filter: 3.7 cells of DC and the gain parked on it (2026-10-19)
+
+C5VRX by Twotoz and the C5VRX contributors; extends the per-gain DC tables
+(`dco_slots.h`, PR #196) and the FLOOR-row work of PR #211. Relates to
+issue #222 track A (hidden loss in the gain allocation).
+
+- **Board** (main after #221, A1, no VTX received, four IQ snapshots at
+  G71): DC (-0.9, -3.6) cells, receiver noise 0.68 cells per axis. `T`:
+  `DCO held=1`, `DCO_CONTEXT table_bw20=0 table_code=-1 table_skirt=0`
+  against the live `active_bw20=1 active_code=16 active_skirt=32`,
+  `filter_same=0`; `SPHASE dc_mcell` -1.1..-2.6 / -2.1..-3.7 cells in every
+  status of 2026-10-18/19. The codes are held, but they were measured with
+  another analog filter.
+- **The gain parks on it.** p50 = 15 comes from the DC point (3.7^2 ~ 14),
+  inside the Direct Gain healthy band (13..32): the gain stays at G71
+  instead of the table maximum, the same mechanism as the 2026-10-13 G59
+  park, now through the filter context.
+- **Cost** (`research/dc_board_study.py`, `data/dc_board_study.json`;
+  bit-exact U85Q, deviation 0.69, 12 MHz, quantiser scaled to a fixed
+  receiver noise per axis instead of the Direct Gain radius used by
+  `situations.py`, two seeds): range limit (picture >= 0.9 and SINAD >= 0)
+  **14 dB C/N with the measured DC, 4-6 dB without it**; below 10 dB the
+  SINAD stays at -1.6 dB (the demodulator follows the DC point). The
+  2026-10-13 walk-edge state (DC 2.1 cells against 2.2 cells of noise at
+  G74) costs 0-0.3 dB in the same model. Simulation, not measured range.
+- **Cause.** `dco_matches()` compares frequency, gain table and IQ scale but
+  deliberately not the filter ("an assumption, not measured equivalence").
+  The board refutes the assumption.
+- **Fix.** `dco_filter_same()` / `dco_filter_stale()` (`dco_slots.h`, host
+  test `test/test_dco_slots.c`): at startup a table with rows measured under
+  another filter is measured again in full, like a manual CALIBRATE of the
+  DC rows, through the existing own-channel (VTX off) and quiet-channel
+  (VTX on) paths; the table takes the live filter only after a complete
+  pass (`done` or `floor`), so an interrupted pass is repeated at the next
+  boot. Live profile switches still keep the table (unchanged, see the
+  `dco_matches` comment); a WIDE profile with another filter therefore still
+  runs on codes of the normal filter until a boot measures it.
+- Host tests and an ESP-IDF 6.0.2 build pass. **Board check pending**: after
+  flashing, the first boot must log `DCO startup filter_stale=1 ...`, then
+  `T` must show `filter_same=1`, a small `SPHASE dc_mcell` and, without a
+  carrier, the gain at the table maximum; a 4-snapshot IQ DC measurement as
+  above should read well below one cell.

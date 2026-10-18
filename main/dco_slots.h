@@ -104,3 +104,24 @@ static inline void dco_index_touch(dco_index_t *x, unsigned slot, uint16_t freq)
     x->freq[slot] = freq;
     x->seq[slot] = x->next_seq++;
 }
+
+/* The DC DAC codes are only valid for the analog filter they were measured
+ * with: board 2026-10-19 (A1, G71, no carrier) held a table measured with
+ * BW40 / calibrated code (-1) under the live BW20 / code 16 / skirt 32
+ * normal filter and kept a DC of (-0.9, -3.6) cells against 0.68 cells of
+ * receiver noise per axis, which also parked Direct Gain at G71. A table
+ * from another filter is re-measured at startup like a manual CALIBRATE of
+ * the DC rows (calibration.c dco_startup). */
+static inline bool dco_filter_same(int table_code, int table_skirt, unsigned table_bw20, int code, int skirt,
+                                   unsigned bw20)
+{
+    return table_code == code && table_skirt == skirt && (table_bw20 != 0u) == (bw20 != 0u);
+}
+
+/* Startup must re-measure every row: a table whose rows exist but whose
+ * filter differs from the live one. An empty table (no rows) is the normal
+ * missing-row path. */
+static inline bool dco_filter_stale(unsigned valid_rows, bool filter_same)
+{
+    return valid_rows != 0u && !filter_same;
+}

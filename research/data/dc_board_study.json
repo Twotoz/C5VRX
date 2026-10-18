@@ -1,0 +1,1597 @@
+{
+ "cnrs": [
+  2.0,
+  4.0,
+  6.0,
+  8.0,
+  10.0,
+  12.0,
+  14.0,
+  16.0,
+  20.0
+ ],
+ "cases": {
+  "board G71, DC as measured kp0.85": {
+   "limit_db": 14.0,
+   "sinad": [
+    -1.5735036131385858,
+    -1.5638671153651587,
+    -1.5590974044443806,
+    -1.5762211506699406,
+    -1.8105007723819004,
+    0.810898818151204,
+    3.075440407492464,
+    4.673663761149349,
+    5.190482821633966
+   ]
+  },
+  "board G71, DC as measured kp0.50": {
+   "limit_db": 14.0,
+   "sinad": [
+    -1.5755515596724616,
+    -1.5644426065191388,
+    -1.5600629181483576,
+    -1.567441777067753,
+    -1.92045073667766,
+    1.4377558509633808,
+    4.0329384315253325,
+    5.418537497213859,
+    6.531877917373405
+   ]
+  },
+  "board G71, DC removed kp0.85": {
+   "limit_db": 6.0,
+   "sinad": [
+    -2.292618639629383,
+    -0.3161795502837897,
+    1.4334280195128177,
+    3.3218878928663447,
+    5.006294150879308,
+    6.520172966649827,
+    7.591907789748754,
+    8.749172437902422,
+    6.799115718831219
+   ]
+  },
+  "board G71, DC removed kp0.50": {
+   "limit_db": 4.0,
+   "sinad": [
+    -0.49562033861951527,
+    2.1113602035926964,
+    4.137929420175502,
+    5.754714119860461,
+    7.027730120703366,
+    7.856223732967691,
+    8.426970665050447,
+    9.0664585647937,
+    8.17336829342166
+   ]
+  },
+  "G83 (+12 dB), DC removed kp0.85": {
+   "limit_db": null,
+   "sinad": [
+    -3.2568897224986237,
+    -0.7302800005801365,
+    1.350690275811191,
+    2.8388110870820547,
+    3.186392871638404,
+    2.861112480955568,
+    2.4964727079252373,
+    2.203219720864987,
+    1.8029457171985594
+   ]
+  },
+  "G83 (+12 dB), DC removed kp0.50": {
+   "limit_db": 4.0,
+   "sinad": [
+    -0.12955794493235906,
+    2.387997803102113,
+    4.166792701261411,
+    5.1276015957590335,
+    5.3431625737653174,
+    5.068871492662369,
+    4.667314514899565,
+    4.325294985819511,
+    3.843399276871862
+   ]
+  },
+  "walk edge G74, DC as measured kp0.85": {
+   "limit_db": null,
+   "sinad": [
+    -3.918795095700264,
+    -1.4669359169362284,
+    1.0633312505950807,
+    2.7926999351273887,
+    3.6731161460826325,
+    3.5005619879515835,
+    2.990933465545348,
+    2.546309987135067,
+    1.9939057351366634
+   ]
+  },
+  "walk edge G74, DC as measured kp0.50": {
+   "limit_db": 4.0,
+   "sinad": [
+    -1.7628113045717464,
+    1.024474666103378,
+    3.560628305907647,
+    5.031300981877804,
+    5.677567105850166,
+    5.554725122285896,
+    5.165449061431176,
+    4.7028750989453005,
+    4.064789649206794
+   ]
+  },
+  "walk edge G74, DC removed kp0.85": {
+   "limit_db": null,
+   "sinad": [
+    -3.212067571215721,
+    -0.6505374940677604,
+    1.5375517537858514,
+    3.1464674818659626,
+    3.979968022507037,
+    3.631201606632711,
+    3.0359099360422492,
+    2.5662570245576526,
+    1.9988526294991962
+   ]
+  },
+  "walk edge G74, DC removed kp0.50": {
+   "limit_db": 4.0,
+   "sinad": [
+    -0.13105937183434163,
+    2.455557306252664,
+    4.329348494091503,
+    5.565975422576695,
+    6.037531609973566,
+    5.7840808389088885,
+    5.257886103710492,
+    4.755973494060252,
+    4.070263325059527
+   ]
+  }
+ },
+ "rows": [
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 2.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": -1.6418953670851997
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 2.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": -1.6480392648901971
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 2.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": -1.5051118591919719
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 2.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": -1.5030638544547261
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 4.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": -1.648630776372619
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 4.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": -1.646207346647076
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 4.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": -1.4791034543576984
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 4.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": -1.4826778663912017
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 6.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": -1.6358223905532256
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 6.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": -1.6377229313472603
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 6.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": -1.4823724183355358
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 6.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": -1.4824029049494547
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 8.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": -1.6475008753144746
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 8.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": -1.6479901056587498
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 8.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": -1.5049414260254066
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 8.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": -1.486893448476756
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 10.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": -1.8535529834584925
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 10.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": -1.969711711290445
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 10.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": -1.7674485613053081
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 10.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": -1.8711897620648752
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 12.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": 0.8350535288076024
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 12.0,
+   "seed": 21,
+   "picture": 0.27111111111111114,
+   "sinad": 1.4510511515858802
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 12.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": 0.7867441074948057
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 12.0,
+   "seed": 22,
+   "picture": 0.23076923076923078,
+   "sinad": 1.4244605503408811
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 14.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.0856720315634196
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 14.0,
+   "seed": 21,
+   "picture": 0.9820627802690582,
+   "sinad": 4.062232707687152
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 14.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.0652087834215083
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 14.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.003644155363512
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 16.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.714371301267792
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 16.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.458577673397077
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 16.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.632956221030907
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 16.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.3784973210306415
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 20.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.241495186227796
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 20.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 6.6043841532856
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 20.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.139470457040134
+  },
+  {
+   "label": "board G71, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 20.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 6.45937168146121
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 2.0,
+   "seed": 21,
+   "picture": 0.9954954954954955,
+   "sinad": -2.243177988933473
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 2.0,
+   "seed": 21,
+   "picture": 0.9819819819819819,
+   "sinad": -0.41818742872090614
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 2.0,
+   "seed": 22,
+   "picture": 0.9706959706959707,
+   "sinad": -2.3420592903252926
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 2.0,
+   "seed": 22,
+   "picture": 0.9598540145985401,
+   "sinad": -0.5730532485181244
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 4.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": -0.3170254827726455
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 4.0,
+   "seed": 21,
+   "picture": 0.9954954954954955,
+   "sinad": 2.1471303659354044
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 4.0,
+   "seed": 22,
+   "picture": 0.9963235294117647,
+   "sinad": -0.3153336177949339
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 4.0,
+   "seed": 22,
+   "picture": 0.9963235294117647,
+   "sinad": 2.0755900412499884
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 6.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 1.4931980058894265
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 6.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.17491244581363
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 6.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 1.3736580331362087
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 6.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.100946394537374
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 8.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.3940488619524745
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 8.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.814781462357351
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 8.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.249726923780215
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 8.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.694646777363571
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 10.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.054744337932448
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 10.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 7.133742366541364
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 10.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.957843963826169
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 10.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 6.921717874865366
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 12.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 6.640975814986689
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 12.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 8.001294497670386
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 12.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 6.399370118312965
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 12.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 7.7111529682649955
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 14.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 7.680587086292547
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 14.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 8.546997576944001
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 14.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 7.503228493204962
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 14.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 8.306943753156895
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 16.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 8.86848364948502
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 16.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 9.233871106070055
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 16.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 8.629861226319823
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 16.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 8.899046023517347
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 20.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 6.863561846440338
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 20.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 8.276541013314155
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.85",
+   "cnr": 20.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 6.734669591222099
+  },
+  {
+   "label": "board G71, DC removed",
+   "kp": "kp0.50",
+   "cnr": 20.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 8.070195573529164
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 2.0,
+   "seed": 21,
+   "picture": 0.9954954954954955,
+   "sinad": -3.1857023423066138
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 2.0,
+   "seed": 21,
+   "picture": 0.9819819819819819,
+   "sinad": -0.07239757187003965
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 2.0,
+   "seed": 22,
+   "picture": 0.9853479853479854,
+   "sinad": -3.3280771026906337
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 2.0,
+   "seed": 22,
+   "picture": 0.9061371841155235,
+   "sinad": -0.1867183179946785
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 4.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": -0.7182366827580428
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 4.0,
+   "seed": 21,
+   "picture": 0.9954954954954955,
+   "sinad": 2.425712174580318
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 4.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": -0.7423233184022303
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 4.0,
+   "seed": 22,
+   "picture": 0.9963235294117647,
+   "sinad": 2.350283431623908
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 6.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 1.413009565429685
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 6.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.241961348263329
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 6.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 1.2883709861926969
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 6.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.0916240542594915
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 8.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 2.886221857573436
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 8.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.195420161053908
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 8.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 2.791400316590673
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 8.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.059783030464159
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 10.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.2496438917148707
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 10.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.427649300471859
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 10.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.1231418515619374
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 10.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.258675847058777
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 12.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 2.8989070651612896
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 12.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.155600503377126
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 12.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 2.823317896749847
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 12.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.982142481947611
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 14.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 2.5073019062926027
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 14.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.700223622031274
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 14.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 2.485643509557872
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 14.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.634405407767856
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 16.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": 2.2144367766286637
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 16.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.345858949297094
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 16.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": 2.1920026651013105
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 16.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.304731022341929
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 20.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": 1.7999762722085806
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 20.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.8658064719085035
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.85",
+   "cnr": 20.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": 1.8059151621885383
+  },
+  {
+   "label": "G83 (+12 dB), DC removed",
+   "kp": "kp0.50",
+   "cnr": 20.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.820992081835221
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 2.0,
+   "seed": 21,
+   "picture": 0.9730941704035875,
+   "sinad": -3.8466865279094806
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 2.0,
+   "seed": 21,
+   "picture": 0.9237668161434978,
+   "sinad": -1.6712749620690903
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 2.0,
+   "seed": 22,
+   "picture": 0.8989169675090253,
+   "sinad": -3.9909036634910473
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 2.0,
+   "seed": 22,
+   "picture": 0.7570422535211268,
+   "sinad": -1.8543476470744025
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 4.0,
+   "seed": 21,
+   "picture": 0.9954954954954955,
+   "sinad": -1.4390956196783224
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 4.0,
+   "seed": 21,
+   "picture": 0.9819819819819819,
+   "sinad": 1.0639654151174807
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 4.0,
+   "seed": 22,
+   "picture": 0.9926470588235294,
+   "sinad": -1.4947762141941343
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 4.0,
+   "seed": 22,
+   "picture": 0.9854014598540146,
+   "sinad": 0.984983917089275
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 6.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 1.121674923281753
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 6.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.6459678919658955
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 6.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 1.0049875779084085
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 6.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.475288719849399
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 8.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 2.8465289791346082
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 8.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.104728124068
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 8.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 2.7388708911201687
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 8.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.9578738396876085
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 10.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.734456142244577
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 10.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.764944783242977
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 10.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.6117761499206886
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 10.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.5901894284573554
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 12.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.548474463706954
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 12.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.613603465081072
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 12.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.452649512196213
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 12.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.495846779490722
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 14.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.0054788610329113
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 14.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.189581878139149
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 14.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 2.9763880700577854
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 14.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.141316244723203
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 16.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 2.5621804069580225
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 16.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.722215448633521
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 16.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 2.530439567312111
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 16.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.683534749257079
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 20.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": 1.9985655591634135
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 20.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.095514869866283
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.85",
+   "cnr": 20.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": 1.9892459111099132
+  },
+  {
+   "label": "walk edge G74, DC as measured",
+   "kp": "kp0.50",
+   "cnr": 20.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.034064428547307
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 2.0,
+   "seed": 21,
+   "picture": 0.9864864864864865,
+   "sinad": -3.1355998890562375
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 2.0,
+   "seed": 21,
+   "picture": 0.9819819819819819,
+   "sinad": -0.05040706130318365
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 2.0,
+   "seed": 22,
+   "picture": 0.9816849816849816,
+   "sinad": -3.288535253375205
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 2.0,
+   "seed": 22,
+   "picture": 0.9743589743589743,
+   "sinad": -0.21171168236549961
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 4.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": -0.6432458955953125
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 4.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 2.4838938317821535
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 4.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": -0.6578290925402084
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 4.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 2.4272207807231747
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 6.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 1.5954780764007361
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 6.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.413201523764057
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 6.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 1.4796254311709667
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 6.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.24549546441895
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 8.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.205698078447546
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 8.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.648521110134004
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 8.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.0872368852843795
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 8.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.483429735019387
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 10.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.046911158508034
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 10.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 6.1373648861207855
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 10.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.91302488650604
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 10.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.937698333826348
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 12.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.68102759851104
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 12.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.875829660996813
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 12.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.5813756147543825
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 12.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.692332016820964
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 14.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 3.0496500022414725
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 14.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 5.29241423438711
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 14.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 3.022169869843026
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 14.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 5.223357973033874
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 16.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 2.585213681416774
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 16.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.78342667072972
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 16.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 2.547300367698531
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 16.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.728520317390784
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 20.0,
+   "seed": 21,
+   "picture": 0.0,
+   "sinad": 1.999157660491955
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 20.0,
+   "seed": 21,
+   "picture": 1.0,
+   "sinad": 4.095066103820159
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.85",
+   "cnr": 20.0,
+   "seed": 22,
+   "picture": 0.0,
+   "sinad": 1.9985475985064374
+  },
+  {
+   "label": "walk edge G74, DC removed",
+   "kp": "kp0.50",
+   "cnr": 20.0,
+   "seed": 22,
+   "picture": 1.0,
+   "sinad": 4.045460546298894
+  }
+ ]
+}
