@@ -777,24 +777,41 @@ known; unknown, it runs the wide class (~0.4 dB). The board never knew it.
   switch narrows after the lock and two agreeing results. Widening never
   waits. `T` PROFILE_GATES now reports `observed_unlocked`.
 
-Why the AFC does not lock (open, needs an IQ capture of a strong carrier):
+Why the AFC does not lock (board IQ 2026-10-18, cause still open):
 
 - Lock needs 16 window estimates with a median absolute deviation <= 80 kHz.
-  Close in (`walk3_close_check.log`, FIELD_TRACE with sync 100 %, 254
-  windows) the porch estimate has MAD 211 kHz and the 16-window gate passes
-  2 of 238 times. The values are bimodal, around -1000 and -500 kHz.
-- One control window is 4092 samples (102 us), 1-2 lines. `afc_bias.py`
-  models 8 lines (320 porch pairs) per window. With 1-2 lines the same model
-  still gives MAD <= 30 kHz at >= 10 dB C/N, and `afc2_measure()` on sim.py
-  video gives MAD 0-24 kHz. Thermal noise and the short window do not
-  explain the board; something in the real camera/VTX signal does (porch
-  window position against this camera's burst or active video, or a
-  per-line component that one line cannot average out). The 500 kHz mode
-  gap is close to NTSC setup (7.5 IRE at the board's ~80 kHz/IRE), but that
-  is a hypothesis.
-- Next: console `I` snapshots with the VTX close in, then `afc2_measure()`
-  per line on them. The current board captures (`weak_*.bin` at the edge,
-  VTX-off snapshots) contain no line `afc2_measure()` accepts.
+  Close in (`walk3_close_check.log`, 254 FIELD_TRACE windows with sync
+  100 %) the porch estimate has MAD 211 kHz; the 16-window gate passes 2 of
+  238 times.
+- It is not estimator noise. One control window holds 1-2 lines (4092
+  samples; `afc_bias.py` models 8), yet the same model with 1-2 lines and
+  `afc2_measure()` on sim.py video both stay at MAD <= 30 kHz at >= 10 dB.
+- **The whole signal moves.** 14 IQ snapshots with the VTX close in on A1
+  (`research/data/afc_2026-10-18/`, gain G27-42, AFC offset +500 kHz,
+  `research/afc_snapshot_levels.c`): within one 205 us snapshot the levels
+  agree within ~90 kHz, between snapshots the porch reads -903..-1472 kHz
+  and the sync tip moves with it (-2225..-2739 kHz); the span stays
+  1237-1345 kHz (deviation ~0.68). Sync and blanking shift together, so
+  this is a frequency shift of the received signal, not a misplaced porch
+  window.
+- **Timing** (`field_trace_20s.log`, 50 ms FIELD_TRACE windows, 20 s): the
+  porch sits near -1000 kHz, then every 0.4-0.8 s ramps down to
+  -1300..-1650 kHz over 0.1-0.3 s and snaps back. Gain (G35-37), gain
+  writes, kp and LP do not change with it.
+- Two candidates fit and these data cannot separate them: the VTX carrier
+  itself (supply/VCO pull) or an AC-coupled VTX modulator moving the
+  blanking level with picture brightness; the C5 LO moving by ~85 ppm is
+  less likely. Next test: the same 20 s with the camera lens covered (flat
+  black picture). If the excursions stay, the carrier moves; if they go,
+  picture content moves the blanking level.
+- Consequence for this PR: a carrier that swings ~0.5 MHz is exactly the
+  case in which a narrow filter hurts, so keeping narrowing behind the lock
+  is right for this VTX. The deviation itself is unaffected (span constant).
+  No AFC threshold is changed before the cause is known.
+
+The same stream also showed one task-watchdog report on `5.0.0-pr.218`
+(IDLE on CPU 0 starved, `gain_obs` running, MEPC 0x4202b688) in ~26 s of
+log; not investigated here.
 
 Same board, same status: the second-round fixes hold where they can be read
 passively: `DCO floor_rows=0` (30 rows valid), `LADDER copy_fail=0` in

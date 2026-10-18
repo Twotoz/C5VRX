@@ -1,0 +1,14 @@
+data/afc_2026-10-18/s_05.bin windows=3 lines=4 porch_khz=-1012 sync_khz=-2322 span_khz=1310
+data/afc_2026-10-18/s_07.bin no confirmed lines
+data/afc_2026-10-18/s_08.bin windows=3 lines=6 porch_khz=-994 sync_khz=-2292 span_khz=1297
+data/afc_2026-10-18/s_10.bin windows=3 lines=3 porch_khz=-944 sync_khz=-2245 span_khz=1300
+data/afc_2026-10-18/s_11.bin windows=3 lines=4 porch_khz=-1311 sync_khz=-2596 span_khz=1285
+data/afc_2026-10-18/s_12.bin windows=3 lines=4 porch_khz=-1407 sync_khz=-2705 span_khz=1298
+data/afc_2026-10-18/s_14.bin windows=3 lines=5 porch_khz=-1138 sync_khz=-2450 span_khz=1312
+data/afc_2026-10-18/s_15.bin windows=3 lines=5 porch_khz=-907 sync_khz=-2225 span_khz=1318
+data/afc_2026-10-18/s_16.bin windows=3 lines=5 porch_khz=-1385 sync_khz=-2654 span_khz=1269
+data/afc_2026-10-18/s_20.bin windows=3 lines=3 porch_khz=-1036 sync_khz=-2273 span_khz=1237
+data/afc_2026-10-18/s_21.bin windows=3 lines=5 porch_khz=-1153 sync_khz=-2398 span_khz=1245
+data/afc_2026-10-18/s_23.bin windows=3 lines=3 porch_khz=-903 sync_khz=-2248 span_khz=1345
+data/afc_2026-10-18/s_25.bin windows=3 lines=5 porch_khz=-1331 sync_khz=-2651 span_khz=1320
+data/afc_2026-10-18/s_27.bin windows=2 lines=2 porch_khz=-1472 sync_khz=-2739 span_khz=1267
