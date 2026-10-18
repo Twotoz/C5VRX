@@ -90,7 +90,10 @@ void transport_sync_output_probe(void); /* Y: native DAC timing observation, LP/
 void transport_sync_flag_probe(void); /* V: finite comparator observation, restores original stream */
 void transport_sync_output_clock_probe(void); /* y: common-edge RMT/ETM experiment */
 void transport_sync_live_toggle(void); /* u: resident native observer bench */
-void transport_sync_flywheel_toggle(void); /* U: conditional DAC-OE holdover bench */
+void transport_sync_flywheel_toggle(void); /* U / menu FLYWHEEL: toggle and save */
+void transport_sync_flywheel_set(bool on, bool save);
+bool transport_sync_flywheel_enabled(void);
+void transport_sync_flywheel_set_boot(bool on); /* settings_load: saved choice */
 void transport_sync_live_tick(void);   /* control loop; never holds a lifetime PHY lease */
 bool transport_sync_live_cancel(void); /* stop/restore before transport ownership changes */
 /* Menu open: stop the flywheel output (not eligible under the menu anyway)
@@ -200,7 +203,7 @@ bool calibration_dc_ok(uint8_t gain);
 void lane_compare_request(void);
 
 /* ---- menu.c ---- */
-enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_CALIBRATE, MENU_OUTPUT, MENU_GAIN, MENU_EXIT, MENU_ITEMS };
+enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_CALIBRATE, MENU_OUTPUT, MENU_GAIN, MENU_FLYWHEEL, MENU_EXIT, MENU_ITEMS };
 extern volatile int s_menu_cursor;
 bool menu_open(void);
 /* The last menu_open() was deferred by a busy PHY (retry, don't allocate). */
@@ -254,6 +257,7 @@ void settings_load(void);
 void settings_save(void);
 void settings_save_output(unsigned level); /* only after verified output application */
 void settings_save_gain_mode(uint8_t mode);
+void settings_save_flywheel(bool on);
 bool blob_load(const char *key, void *data, size_t size);
 bool blob_store(const char *key, const void *data, size_t size);
 

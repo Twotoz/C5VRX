@@ -15,6 +15,7 @@
  *   RANGE_DIAG        health report, console D
  *
  * tools/field_diag_compare.py compares two captured logs. */
+#include "esp_attr.h"
 #include "receiver.h"
 #include <stdio.h>
 #include <string.h>
@@ -38,7 +39,10 @@ typedef struct {
 } diag_event_t;
 
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
-static diag_record_t s_hist[DIAG_HISTORY];
+/* Control-task only (no DMA, no ISR): LP SRAM, which GDMA cannot use. The
+ * 4 KiB of HP SRAM it frees is what the interlaced menu chain needed next to
+ * the flywheel (board 2026-10-18: ~15 KiB DMA-capable free, 18 KiB needed). */
+static RTC_FAST_ATTR diag_record_t s_hist[DIAG_HISTORY];
 static diag_trace_t s_trace;
 static uint32_t s_seq;                  /* records written */
 static diag_event_t s_events[DIAG_EVENTS];

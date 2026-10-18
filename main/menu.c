@@ -50,9 +50,10 @@ static const uint8_t s_icons[MENU_ITEMS][8] = {
     {0x08, 0x08, 0x1c, 0x7f, 0x1c, 0x08, 0x08, 0x00},   /* calibrate */
     {0x00, 0x08, 0x18, 0x38, 0x78, 0x38, 0x18, 0x08},   /* output */
     {0x00, 0x02, 0x06, 0x0e, 0x1e, 0x3e, 0x7e, 0x00},   /* gain */
+    {0x3c, 0x42, 0x81, 0x99, 0x99, 0x81, 0x42, 0x3c},   /* flywheel */
     {0x7c, 0x44, 0x04, 0x1f, 0x04, 0x44, 0x7c, 0x00},   /* exit */
 };
-static const char *const s_items[MENU_ITEMS] = {"BAND", "CHANNEL", "SCAN", "VIDEO", "CALIBRATE", "OUTPUT", "GAIN", "EXIT"};
+static const char *const s_items[MENU_ITEMS] = {"BAND", "CHANNEL", "SCAN", "VIDEO", "CALIBRATE", "OUTPUT", "GAIN", "FLYWHEEL", "EXIT"};
 
 static void rect(int x, int y, int w, int h, uint8_t code)
 {
@@ -251,6 +252,13 @@ void menu_render(void)
              100, 47, UI_WHITE, 1);
         break;
     }
+    case MENU_FLYWHEEL:
+        title("SYNC FLYWHEEL", "HOLD: ON/OFF");
+        value_box(100, 22, 276, "FLYWHEEL", transport_sync_flywheel_enabled() ? "ON" : "OFF");
+        text("SAVED, APPLIES ON EXIT", 100, 36, UI_MUTED, 1);
+        text(transport_sync_flywheel_enabled() ? "FILLS SYNC WHEN THE CAMERA DROPS" :
+             "CAMERA SYNC ONLY", 100, 47, UI_WHITE, 1);
+        break;
     case MENU_CALIBRATE:
         title("CALIBRATE", "HOLD: CALIBRATE NOW");
         text("ON THE GROUND ONLY: VIDEO STOPS", 100, 24, UI_WHITE, 1);
@@ -298,13 +306,18 @@ static void free_nodes(void)
     s_chunk_count = s_node_capacity = s_node_count = 0;
 }
 
-/* Count the raster, reserve exactly that (grow only), link a cycle. */
-static esp_err_t build_chain(video_standard_t standard)
+static bool s_interlaced = true;
+
+/* Count the raster, reserve exactly that (grow only), link a cycle.
+ * Interlaced first; the progressive field only when its chain cannot be
+ * reserved (half the descriptors, but not every display keeps it). */
+static esp_err_t reserve_chain(video_standard_t standard, bool interlaced, unsigned *required)
 {
-    menu_raster_init(&s_raster, standard);
-    unsigned required = 0;
-    if (!menu_raster_emit(&s_raster, standard, count_segment, &required) || !required) return ESP_ERR_INVALID_SIZE;
-    unsigned chunks = (required + NODE_CHUNK - 1u) / NODE_CHUNK;
+    menu_raster_init(&s_raster, standard, interlaced);
+    *required = 0;
+    if (!menu_raster_emit(&s_raster, standard, interlaced, count_segment, required) || !*required)
+        return ESP_ERR_INVALID_SIZE;
+    unsigned chunks = (*required + NODE_CHUNK - 1u) / NODE_CHUNK;
     while (s_chunk_count < chunks) {
         dma_descriptor_t *c = heap_caps_aligned_alloc(4u, NODE_CHUNK * sizeof(dma_descriptor_t),
                                                       MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
@@ -312,8 +325,23 @@ static esp_err_t build_chain(video_standard_t standard)
         s_chunks[s_chunk_count++] = c;
         s_node_capacity += NODE_CHUNK;
     }
+    return ESP_OK;
+}
+
+static esp_err_t build_chain(video_standard_t standard)
+{
+    unsigned required = 0;
+    bool interlaced = true;
+    esp_err_t err = reserve_chain(standard, true, &required);
+    if (err == ESP_ERR_NO_MEM) {
+        interlaced = false;
+        err = reserve_chain(standard, false, &required);
+        if (err == ESP_OK) printf("[MENU] progressive fallback: interlaced chain did not fit\n");
+    }
+    if (err != ESP_OK) return err;
+    s_interlaced = interlaced;
     s_node_count = 0;
-    if (!menu_raster_emit(&s_raster, standard, append_segment, NULL) || s_node_count != required)
+    if (!menu_raster_emit(&s_raster, standard, interlaced, append_segment, NULL) || s_node_count != required)
         return ESP_ERR_INVALID_SIZE;
     for (unsigned k = 0; k < s_node_count; ++k) node(k)->next = node((k + 1u) % s_node_count);
     s_video_std = standard;
@@ -336,10 +364,17 @@ static bool entry_build(void)
              s_chunk_count);
     return false;
 }
+/* A short flat DAC level without sync between live video and the menu
+ * raster (both ways): the goggle drops its lock on the camera timing and
+ * locks fresh, instead of showing the menu briefly, inverting and going
+ * black (operator, 2026-10-18). Not in flight: only menu/status entry. */
+#define MENU_RELOCK_GAP_MS 150u
+
 static void entry_start(void)
 {
     s_menu_active = true;
     transport_stop_tx();
+    vTaskDelay(pdMS_TO_TICKS(MENU_RELOCK_GAP_MS));
     transport_start_chain(node(0));
 }
 static const menu_entry_ops_t s_entry_ops = {
@@ -372,6 +407,7 @@ void menu_close(void)
 {
     if (!s_menu_active) return;
     transport_stop_chain();
+    vTaskDelay(pdMS_TO_TICKS(MENU_RELOCK_GAP_MS));
     transport_resume_live();
     free_nodes();       /* GDMA no longer references the chain */
     s_menu_active = false;

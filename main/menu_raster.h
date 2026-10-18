@@ -36,16 +36,16 @@
 /* Longest line remainder after the shortest prefix (NTSC lines are <= 2544). */
 #define MENU_TAIL_BYTES (2560u - MENU_NTSC_PREFIX_BYTES)
 #define MENU_PHASES 8u
-/* One progressive field (NTSC 262 lines, PAL 312 lines; the "240p/288p"
- * form game consoles emit) repeats for the monochrome menu: both interlaced
- * fields showed the same picture. It halves the cyclic descriptor chain
- * (NTSC 1499 -> ~750 nodes, PAL 1811 -> ~905), which did not fit next to
- * the live flywheel (board 2026-10-18, menu ESP_ERR_NO_MEM). The burst
- * phase closes over the field. Earlier chains: eight fields ~76 KiB, one
- * interlaced frame ~18/22 KiB. */
-#define MENU_FIELDS 1u
-#define MENU_NTSC_FIELD_HALVES 524u
-#define MENU_PAL_FIELD_HALVES 624u
+/* Two loop forms, burst phase closed over each loop:
+ * - interlaced (default): one complete BT.470 two-field frame, NTSC 1499 /
+ *   PAL 1811 descriptors (~18 / 22 KiB);
+ * - progressive fallback: one field repeated (NTSC 262 / PAL 312 lines, the
+ *   "240p/288p" form), 748 / 905 descriptors, used only when the interlaced
+ *   chain cannot be allocated. The operator's display showed the progressive
+ *   menu briefly, then inverted and went black (board 2026-10-18), so it is
+ *   never the first choice. Earlier: eight fields ~76 KiB. */
+#define MENU_NTSC_FIELD_HALVES 525u
+#define MENU_PAL_FIELD_HALVES 625u
 #define MENU_MAX_NODES 1840u
 
 typedef enum { VIDEO_STD_NTSC, VIDEO_STD_PAL } video_standard_t;
@@ -60,14 +60,22 @@ typedef struct {
 } menu_raster_t;
 
 typedef bool (*menu_segment_fn)(void *ctx, const uint8_t *data, unsigned length);
-void menu_raster_init(menu_raster_t *raster, video_standard_t standard);
-bool menu_raster_emit(const menu_raster_t *raster, video_standard_t standard,
+void menu_raster_init(menu_raster_t *raster, video_standard_t standard, bool interlaced);
+bool menu_raster_emit(const menu_raster_t *raster, video_standard_t standard, bool interlaced,
                       menu_segment_fn emit, void *ctx);
 uint32_t menu_half_sample(video_standard_t standard, unsigned half);
 
-static inline unsigned menu_field_halves(video_standard_t standard)
+/* Half-lines per field: the interlaced field has the odd BT.470 count, the
+ * progressive field drops one half-line so every loop starts on the H grid. */
+static inline unsigned menu_field_halves(video_standard_t standard, bool interlaced)
 {
-    return standard == VIDEO_STD_PAL ? MENU_PAL_FIELD_HALVES : MENU_NTSC_FIELD_HALVES;
+    return (standard == VIDEO_STD_PAL ? MENU_PAL_FIELD_HALVES : MENU_NTSC_FIELD_HALVES) - (interlaced ? 0u : 1u);
+}
+
+/* Half-lines of one cyclic loop. */
+static inline unsigned menu_loop_halves(video_standard_t standard, bool interlaced)
+{
+    return menu_field_halves(standard, interlaced) * (interlaced ? 2u : 1u);
 }
 
 static inline unsigned menu_prefix_bytes(video_standard_t standard)

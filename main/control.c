@@ -286,6 +286,7 @@ static void menu_action(void)
     case MENU_CALIBRATE: menu_close(); filter_request(); return;   /* runs once the menu is closed */
     case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
     case MENU_GAIN: receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); break;
+    case MENU_FLYWHEEL: transport_sync_flywheel_set(!transport_sync_flywheel_enabled(), true); break;
     case MENU_VIDEO:
         cycle_video_standard();
         break;

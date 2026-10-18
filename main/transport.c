@@ -1122,14 +1122,33 @@ void transport_sync_live_toggle(void)
     printf("SYNC_LIVE requested=%u boot_default=OFF\n",(unsigned)s_live_owner->requested);
 }
 
+/* Saved user setting (menu FLYWHEEL, console U); OFF when never saved
+ * (operator, 2026-10-18). OFF never allocates the observer/output, so its
+ * heap stays free for the menu. */
+static bool s_flywheel_boot=false;
+void transport_sync_flywheel_set_boot(bool on) { s_flywheel_boot=on; }
+bool transport_sync_flywheel_enabled(void)
+{
+    return s_live_owner ? s_live_owner->output_requested : s_flywheel_boot;
+}
+
+void transport_sync_flywheel_set(bool on, bool save)
+{
+    if(on && !s_live_owner)s_live_owner=calloc(1,sizeof(*s_live_owner));
+    if(on && !s_live_owner){printf("SYNC_FLYWHEEL refused=memory\n");return;}
+    s_flywheel_boot=on;
+    if(s_live_owner) {
+        /* The control owner stops/starts it on its next tick. */
+        s_live_owner->output_requested=on;
+        s_live_owner->requested=on;
+    }
+    if(save)settings_save_flywheel(on);
+    printf("SYNC_FLYWHEEL requested=%u saved=%u\n",(unsigned)on,(unsigned)save);
+}
+
 void transport_sync_flywheel_toggle(void)
 {
-    if(!s_live_owner)s_live_owner=calloc(1,sizeof(*s_live_owner));
-    if(!s_live_owner){printf("SYNC_FLYWHEEL refused=memory\n");return;}
-    s_live_owner->output_requested=!s_live_owner->output_requested;
-    s_live_owner->requested=s_live_owner->output_requested;
-    printf("SYNC_FLYWHEEL requested=%u boot_default=ON bench=1\n",
-        (unsigned)s_live_owner->output_requested);
+    transport_sync_flywheel_set(!transport_sync_flywheel_enabled(),true);
 }
 
 static bool IRAM_ATTR transport_sync_native_source(void *arg,uint32_t *epoch)
@@ -1144,18 +1163,18 @@ static bool IRAM_ATTR transport_sync_native_source(void *arg,uint32_t *epoch)
 
 void transport_sync_live_tick(void)
 {
-    /* Boot default ON: allocate lazily on the first control tick (after
-     * receiver startup, same as pressing U) so startup RAM is unchanged. */
+    /* Saved setting (default OFF): allocate lazily on the first control tick
+     * (after receiver startup, same as pressing U) so startup RAM is unchanged. */
     static bool boot_default_applied;
     if(!boot_default_applied) {
         boot_default_applied=true;
-        if(!s_live_owner) {
+        if(!s_live_owner && s_flywheel_boot) {
             s_live_owner=calloc(1,sizeof(*s_live_owner));
             if(s_live_owner) {
                 s_live_owner->requested=s_live_owner->output_requested=true;
-                printf("SYNC_FLYWHEEL requested=1 boot_default=ON\n");
-            } else printf("SYNC_FLYWHEEL refused=memory boot_default=ON\n");
-        }
+                printf("SYNC_FLYWHEEL requested=1 boot=saved_on\n");
+            } else printf("SYNC_FLYWHEEL refused=memory\n");
+        } else if(!s_flywheel_boot) printf("SYNC_FLYWHEEL requested=0 boot=saved_or_default_off\n");
     }
     sync_live_owner_t *s=s_live_owner;
     if(!s || s->fault || !phy_try_actuator(phy_generation()))return;

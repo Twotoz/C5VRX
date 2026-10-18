@@ -14,12 +14,12 @@ static bool capture(void *ctx, const uint8_t *data, unsigned length)
 /* Waveform check of one cyclic loop: every sync leading edge sits on the
  * half-line grid, consecutive edges are a half or a full line apart
  * (including across the loop wrap), and the loop holds one field's broad
- * pulses: a single progressive field, no interlace offset. */
-static void check_wave(video_standard_t v, unsigned halves)
+ * pulses (one field progressive, two fields interlaced). */
+static void check_wave(video_standard_t v, bool interlaced, unsigned halves)
 {
     const unsigned total = menu_half_sample(v, halves);
     s_wave = malloc(total); assert(s_wave); s_wave_at = 0;
-    assert(menu_raster_emit(&raster, v, capture, NULL) && s_wave_at == total);
+    assert(menu_raster_emit(&raster, v, interlaced, capture, NULL) && s_wave_at == total);
     unsigned edges = 0, broad = 0, first = 0, last = 0;
     for (unsigned n = 0; n < total; ++n) {
         if (s_wave[n] || !s_wave[(n + total - 1u) % total]) continue;
@@ -38,7 +38,7 @@ static void check_wave(video_standard_t v, unsigned halves)
     }
     unsigned wrap = total - last + first, line = v == VIDEO_STD_PAL ? 2560u : 2540u;
     assert(wrap <= line + 4u && wrap + 4u >= line / 2u);
-    assert(broad == (v == VIDEO_STD_PAL ? 5u : 6u));
+    assert(broad == (v == VIDEO_STD_PAL ? 5u : 6u) * (interlaced ? 2u : 1u));
     free(s_wave);
 }
 typedef struct { uint64_t samples; unsigned nodes, sync, burst; } stats_t;
@@ -56,24 +56,28 @@ static bool segment(void *ctx, const uint8_t *data, unsigned length)
 }
 int main(void)
 {
-    for (unsigned standard = 0; standard < 2; ++standard) {
-        video_standard_t v = (video_standard_t)standard;
-        menu_raster_init(&raster, v);
-        memset(raster.ui, 20, sizeof(raster.ui));
-        stats_t s = {0};
-        assert(menu_raster_emit(&raster, v, segment, &s));
-        unsigned halves = menu_field_halves(v) * MENU_FIELDS;
-        assert(s.samples == menu_half_sample(v, halves));
-        assert(s.nodes && s.nodes <= MENU_MAX_NODES && s.sync > 1000 && s.burst > 1000);
-        assert(halves == (v == VIDEO_STD_PAL ? 624u : 524u));
-        assert(s.nodes <= (v == VIDEO_STD_PAL ? 940u : 780u)); /* fits beside the live flywheel */
-        check_wave(v, halves);
-        printf("%s nodes=%u descriptor_bytes=%u\n", v == VIDEO_STD_PAL ? "PAL" : "NTSC", s.nodes, s.nodes * 12u);
-        for (unsigned h = 1; h <= halves; ++h) {
-            unsigned length = menu_half_sample(v, h) - menu_half_sample(v, h - 1);
-            assert(v == VIDEO_STD_PAL ? length == 1280 : length == 1268 || length == 1272);
+    for (unsigned mode = 0; mode < 2; ++mode) {
+        const bool interlaced = mode == 0;
+        for (unsigned standard = 0; standard < 2; ++standard) {
+            video_standard_t v = (video_standard_t)standard;
+            menu_raster_init(&raster, v, interlaced);
+            memset(raster.ui, 20, sizeof(raster.ui));
+            stats_t s = {0};
+            assert(menu_raster_emit(&raster, v, interlaced, segment, &s));
+            unsigned halves = menu_loop_halves(v, interlaced);
+            assert(s.samples == menu_half_sample(v, halves));
+            assert(s.nodes && s.nodes <= MENU_MAX_NODES && s.sync > 1000 && s.burst > 1000);
+            assert(halves == (v == VIDEO_STD_PAL ? (interlaced ? 1250u : 624u) : (interlaced ? 1050u : 524u)));
+            if (!interlaced) assert(s.nodes <= (v == VIDEO_STD_PAL ? 940u : 780u));
+            check_wave(v, interlaced, halves);
+            printf("%s %s nodes=%u descriptor_bytes=%u\n", v == VIDEO_STD_PAL ? "PAL" : "NTSC",
+                   interlaced ? "interlaced" : "progressive", s.nodes, s.nodes * 12u);
+            for (unsigned h = 1; h <= halves; ++h) {
+                unsigned length = menu_half_sample(v, h) - menu_half_sample(v, h - 1);
+                assert(v == VIDEO_STD_PAL ? length == 1280 : length == 1268 || length == 1272);
+            }
         }
     }
-    puts("PASS: PAL/NTSC black raster, one progressive field, half-line sync grid across the wrap, sync/burst, DAC bounds and DMA alignment");
+    puts("PASS: PAL/NTSC interlaced and progressive menu rasters, half-line sync grid across the wrap, field broad pulses, sync/burst, DAC bounds and DMA alignment");
     return 0;
 }
