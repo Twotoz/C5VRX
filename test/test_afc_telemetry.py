@@ -70,7 +70,7 @@ class AfcTelemetryTest(unittest.TestCase):
         end = source.index("/* Verified kp ladder", start)
         declarations = source[start:end]
         start = source.index("void control_print(void)")
-        end = source.index('    printf("VIDEO_WATCH', start)
+        end = source.index('    printf("CONTROL channel=', start)
         actual = source[start:end] + "}\n"
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "afc.c"

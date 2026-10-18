@@ -1,6 +1,6 @@
 /* C5VRX by Twotoz/contributors: test fixture (formerly main/sync_gate_schedule.h,
  * the removed Z/z gate bench) that generates PAL/NTSC pulse schedules for the
- * native-track host tests. */
+ * native-track host tests.
  * Diagnostic timing only: this is not camera acquisition, phase alignment,
  * analogue pulse qualification, or proof of monitor lock. No GPIO/timer I/O.
  * Absolute rational time prevents field-by-field rounding accumulation. */
