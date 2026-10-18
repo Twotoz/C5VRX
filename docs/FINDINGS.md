@@ -897,8 +897,13 @@ issue #222 track A (hidden loss in the gain allocation).
   boot. Live profile switches still keep the table (unchanged, see the
   `dco_matches` comment); a WIDE profile with another filter therefore still
   runs on codes of the normal filter until a boot measures it.
-- Host tests and an ESP-IDF 6.0.2 build pass. **Board check pending**: after
-  flashing, the first boot must log `DCO startup filter_stale=1 ...`, then
-  `T` must show `filter_same=1`, a small `SPHASE dc_mcell` and, without a
-  carrier, the gain at the table maximum; a 4-snapshot IQ DC measurement as
-  above should read well below one cell.
+- **Board check** (2026-10-19, ELF `6722a826d`, A1, no VTX; data in
+  `research/data/dc_2026-10-19/`): the first boot logged `DCO startup
+  filter_stale=1 table_bw20=0 table_code=-1 ... live_code=16 live_skirt=32`
+  and measured all rows on the own channel (`searched=30 result=done`); `T`
+  then showed `DCO_CONTEXT ... filter_same=1`. Six IQ snapshots: gain **G82**
+  (was G71), receiver noise **2.15 cells** per axis (was 0.68), DC
+  **1.5-2.4 cells** (was 3.7), DC/noise **0.7** (was 5.3). In the model above
+  that state costs 0-0.3 dB instead of 8-10 dB. A residual Q offset of about
+  -1.5 cells stays after the search; a DC search should end within half a
+  cell, so this is open. No range measurement yet.
