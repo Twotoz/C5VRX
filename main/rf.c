@@ -3,14 +3,11 @@
  * adaptive-lane paths removed. */
 #include "rf.h"
 #include "phy.h"
-#include "native_acquire.h"
 #include <stdio.h>
 #include <string.h>
 #include "driver/gpio.h"
 #include "esp_event.h"
 #include "esp_attr.h"
-#include "esp_cpu.h"
-#include "esp_private/esp_clk.h"
 #include "esp_log.h"
 #include "esp_rom_gpio.h"
 #include "esp_system.h"
@@ -69,7 +66,6 @@ extern void phy_wifi_fbw_sel(uint32_t val);
 extern void phy_force_rx_gain(bool enable, uint8_t gain_idx);
 extern void phy_disable_agc(void);
 extern void phy_rfagc_disable(void);
-extern void phy_enable_agc(void);
 extern void phy_set_freq(uint16_t freq_mhz, int offset);
 extern void phy_chip_set_chan_offset(int offset_khz);
 
@@ -78,26 +74,6 @@ static uint32_t s_table_generation;
 static uint8_t s_gain = 52u;
 static void (*volatile s_post_gain_hook)(uint8_t gain);
 static rf_filter_t s_filter = {PHY_FILTER_CALIBRATED, 0, false};
-#ifdef C5VRX_PHY_PINNED
-extern uint16_t phy_pbus_rd(uint32_t block, uint32_t bank);
-#define NATIVE_RF_MASK 0xf7080000u
-static uint32_t s_native_rf_gate, s_native_rf_control;
-static bool s_native_vendor_valid;
-/* No debug-mode entry, forcing or GPIO remapping. Refuse malformed words. */
-static bool IRAM_ATTR native_tuple(uint32_t *word)
-{
-    /* Exact pinned phy_pbus_rd fields, independently checked by the vendor
-     * instruction fixture. Avoid three address-switch calls while acquiring;
-     * all prefix, tuple and timing checks remain unchanged. */
-    uint16_t rf = (REG32(0x600a08a8u) >> 9) & 511u;
-    uint16_t bb = REG32(0x600a0894u) & 511u;
-    uint16_t fine = (REG32(0x600a0898u) >> 9) & 511u;
-    /* Only called after the validated 5865/BW40/zero-offset bench guard.
-     * Vendor RX commands carry channel-mode bit eight in this readback.
-     * Keep that mode check; gain tables contain just the low seven bits. */
-    return native_acquire_pack_pbus(rf, bb, fine, 0x100u, word);
-}
-#endif
 
 static esp_err_t lock_rx_only(void)
 {
@@ -243,13 +219,6 @@ esp_err_t rf_start(void)
     /* The filter capacitors still hold the per-chip calibration from PHY
      * init; capture them before anything else writes the filter. */
     (void)phy_filter_capture_base();
-#ifdef C5VRX_PHY_PINNED
-    /* Before the first destructive rfagc_disable. A saved gate is not a
-     * universal channel/BW preset: this bench is restricted to boot RF context. */
-    s_native_rf_gate = REG32(0x600a705cu);
-    s_native_rf_control = REG32(0x600a284cu) & NATIVE_RF_MASK;
-    s_native_vendor_valid = true; /* a calibrated zero gate is valid too */
-#endif
     restore_lock();
     capture_table();
     phy_end();
@@ -299,167 +268,6 @@ void rf_force_gain(uint8_t gain)
 void rf_set_post_gain_hook(void (*hook)(uint8_t gain)) { s_post_gain_hook = hook; }
 const arc_gain_table_t *rf_gain_table(void) { return &s_table; }
 uint32_t rf_table_generation(void) { return s_table_generation; }
-
-rf_native_result_t IRAM_ATTR rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_t *open_us)
-{
-    if (!gain || !open_us) return RF_NATIVE_REFUSED;
-    *open_us = 0;
-#ifndef C5VRX_PHY_PINNED
-    (void)generation;
-    return RF_NATIVE_REFUSED;
-#else
-    /* Cycle timing requires the fixed, non-DFS clock used by this receiver.
-     * Never hide the enable interval by starting the clock after AGC opens. */
-#if defined(CONFIG_PM_ENABLE) && CONFIG_PM_ENABLE
-    printf("NATIVE_AGC refusal=dynamic_cpu_clock\n");
-    return RF_NATIVE_REFUSED;
-#endif
-    if (esp_clk_cpu_freq() != 240000000) {
-        printf("NATIVE_AGC refusal=cpu_clock requires_fixed_240mhz=1\n");
-        return RF_NATIVE_REFUSED;
-    }
-    const uint32_t ticks_per_us = 240u;
-    if (!s_native_vendor_valid || rf_frequency_mhz() != 5865u || rf_offset_khz() != 0 ||
-        s_filter.bw20) {
-        printf("NATIVE_AGC refusal=context saved=%u freq=%u offset_khz=%d bw20=%u\n",
-               s_native_vendor_valid, rf_frequency_mhz(), rf_offset_khz(), s_filter.bw20);
-        return RF_NATIVE_REFUSED;
-    }
-    if (!phy_try_actuator(generation)) {
-        printf("NATIVE_AGC refusal=phy_busy_or_generation expected=%lu actual=%lu\n",
-               (unsigned long)generation, (unsigned long)phy_generation());
-        return RF_NATIVE_REFUSED;
-    }
-    const uint8_t previous = s_gain;
-    uint32_t tuple_a = 0, tuple_b = 0;
-    arc_gain_tuple_t expected = {0};
-    /* Check current ownership and readback before releasing the DC hold. */
-    bool owned = (REG32(0x600a7030u) & (1u << 29)) &&
-                 (REG32(0x600a702cu) & (1u << 23)) && REG32(0x600a705cu) == 0 &&
-                 !(REG32(0x600a284cu) & NATIVE_RF_MASK);
-    bool readable = owned && arc_gain_tuple_decode(&s_table, previous, &expected) &&
-                    native_tuple(&tuple_a) && native_tuple(&tuple_b) &&
-                    tuple_a == expected.packed_state && tuple_b == tuple_a;
-    if (!readable) {
-        /* Capture refusal evidence while PHY ownership is still held and AGC
-         * is still forced. No diagnostic I/O inside an open acquisition. */
-        const uint32_t force = REG32(0x600a702cu), bb_gate = REG32(0x600a7030u);
-        const uint32_t rf_gate = REG32(0x600a705cu), rf_control = REG32(0x600a284cu);
-        const uint16_t raw_rf = phy_pbus_rd(8, 1), raw_bb = phy_pbus_rd(0, 2);
-        const uint16_t raw_fine = phy_pbus_rd(1, 2);
-        phy_end_actuator();
-        printf("NATIVE_AGC refusal=forced_readback gain=%u owned=%u expected=%08lx "
-               "tuple_a=%08lx tuple_b=%08lx raw_rf=%03x raw_bb=%03x raw_fine=%03x "
-               "force=%08lx bb_gate=%08lx rf_gate=%08lx rf_control=%08lx\n",
-               previous, owned, (unsigned long)expected.packed_state,
-               (unsigned long)tuple_a, (unsigned long)tuple_b,
-               (unsigned)raw_rf, (unsigned)raw_bb, (unsigned)raw_fine,
-               (unsigned long)force, (unsigned long)bb_gate,
-               (unsigned long)rf_gate, (unsigned long)rf_control);
-        return RF_NATIVE_REFUSED;
-    }
-    phy_observation_changed();
-    (void)phy_dco_release();
-    rf_native_result_t result = RF_NATIVE_REFUSED;
-    uint8_t adopted = previous;
-    uint32_t enable_ticks = 0, first_poll_ticks = 0, max_poll_gap_ticks = 0;
-    uint32_t last_poll_ticks = 0, polls_seen = 0, start_polls = 0, invalid_polls = 0;
-    uint32_t initial_word = 0, first_status = 0, last_status = 0;
-    uint32_t first_tuple = 0, last_tuple = 0, tuple_changes = 0;
-    /* Only tasks are held; timer/GDMA interrupts still run. PHY ownership
-     * excludes gain/retune/calibration writes throughout acquire and restore. */
-    vTaskSuspendAll();
-    REG32(0x600a705cu) = s_native_rf_gate;
-    REG32(0x600a284cu) = (REG32(0x600a284cu) & ~NATIVE_RF_MASK) | s_native_rf_control;
-    __asm__ __volatile__("fence iorw, iorw" ::: "memory");
-    if (REG32(0x600a705cu) == s_native_rf_gate &&
-        (REG32(0x600a284cu) & NATIVE_RF_MASK) == s_native_rf_control) {
-        native_acquire_t a = {0};
-        initial_word = REG32(0x600a7094u);
-        const uint8_t initial = (uint8_t)((initial_word >> 2) & 127u);
-        const uint32_t start = esp_cpu_get_cycle_count();
-        phy_enable_agc();
-        enable_ticks = esp_cpu_get_cycle_count() - start;
-        result = RF_NATIVE_TIMEOUT;
-        for (unsigned polls = 0; polls < 512u; ++polls) {
-            uint32_t tuple = 0;
-            bool valid = native_tuple(&tuple);
-            uint32_t status = REG32(0x600a7078u);
-            uint32_t elapsed_ticks = esp_cpu_get_cycle_count() - start;
-            if (!polls_seen) {
-                first_poll_ticks = elapsed_ticks;
-                first_status = status; first_tuple = tuple;
-            } else if (tuple != last_tuple) ++tuple_changes;
-            last_status = status; last_tuple = tuple;
-            uint32_t gap = elapsed_ticks - last_poll_ticks;
-            if (gap > max_poll_gap_ticks) max_poll_gap_ticks = gap;
-            last_poll_ticks = elapsed_ticks;
-            ++polls_seen;
-            bool start_seen = (uint8_t)status == initial;
-            if (start_seen) ++start_polls;
-            if (!valid) ++invalid_polls;
-            native_acquire_result_t evidence = native_acquire_observe_ticks(&a, elapsed_ticks, ticks_per_us,
-                start_seen, valid, tuple);
-            if (evidence == NATIVE_WAIT) continue;
-            phy_disable_agc();
-            *open_us = (esp_cpu_get_cycle_count() - start) / ticks_per_us;
-            if (evidence == NATIVE_LANDING) {
-                /* Decode only after closing: do not search 84 rows while
-                 * native AGC is free to begin another acquisition. */
-                bool stable = native_tuple(&tuple_a) && native_tuple(&tuple_b) &&
-                              tuple_a == a.gain && tuple_b == tuple_a;
-                result = stable && arc_gain_from_pbus(&s_table, (uint16_t)(tuple_a >> 12),
-                    (uint16_t)((tuple_a >> 4) & 127u), (uint16_t)(0xd0u | (tuple_a & 7u)), &adopted)
-                    && adopted >= 2u ? RF_NATIVE_LANDING : RF_NATIVE_BAD_GAIN;
-            } else result = evidence == NATIVE_GAP ? RF_NATIVE_GAP : RF_NATIVE_TIMEOUT;
-            break;
-        }
-        phy_disable_agc();
-        if (!*open_us) *open_us = (esp_cpu_get_cycle_count() - start) / ticks_per_us;
-    }
-    /* Fail closed to the previous forced row, not continuous native AGC. */
-    phy_disable_agc();
-    phy_rfagc_disable();
-    if (result != RF_NATIVE_LANDING) adopted = previous;
-    phy_force_rx_gain(true, adopted);
-    s_gain = adopted;
-    if (s_post_gain_hook) s_post_gain_hook(adopted);
-    for (unsigned attempt = 0; attempt < 2u; ++attempt) {
-        arc_gain_tuple_t final;
-        bool restored = (REG32(0x600a7030u) & (1u << 29)) &&
-            (REG32(0x600a702cu) & (1u << 23)) &&
-            (uint8_t)(REG32(0x600a702cu) >> 24) == adopted &&
-            REG32(0x600a705cu) == 0 && !(REG32(0x600a284cu) & NATIVE_RF_MASK) &&
-            arc_gain_tuple_decode(&s_table, adopted, &final) &&
-            native_tuple(&tuple_a) && native_tuple(&tuple_b) &&
-            tuple_a == final.packed_state && tuple_b == tuple_a;
-        if (restored) break;
-        if (attempt == 1u) { result = RF_NATIVE_RESTORE_FAILED; break; }
-        (void)phy_dco_release();
-        adopted = s_gain = previous;
-        phy_disable_agc();
-        phy_rfagc_disable();
-        phy_force_rx_gain(true, previous);
-        if (s_post_gain_hook) s_post_gain_hook(previous);
-        result = RF_NATIVE_BAD_GAIN;
-    }
-    *gain = adopted;
-    (void)xTaskResumeAll();
-    phy_end_actuator();
-    if (result != RF_NATIVE_LANDING)
-        printf("NATIVE_AGC timing result=%u enable_us=%lu first_poll_us=%lu max_gap_us=%lu "
-               "first_cycles=%lu max_gap_cycles=%lu polls=%lu start_polls=%lu invalid_polls=%lu "
-               "open_us=%lu initial_reg=%08lx first_status=%08lx last_status=%08lx "
-               "first_tuple=%08lx last_tuple=%08lx tuple_changes=%lu\n",
-               (unsigned)result, (unsigned long)(enable_ticks / ticks_per_us),
-               (unsigned long)(first_poll_ticks / ticks_per_us), (unsigned long)(max_poll_gap_ticks / ticks_per_us),
-               (unsigned long)first_poll_ticks, (unsigned long)max_poll_gap_ticks, (unsigned long)polls_seen,
-               (unsigned long)start_polls, (unsigned long)invalid_polls, (unsigned long)*open_us,
-               (unsigned long)initial_word, (unsigned long)first_status, (unsigned long)last_status,
-               (unsigned long)first_tuple, (unsigned long)last_tuple, (unsigned long)tuple_changes);
-    return result;
-#endif
-}
 
 bool rf_set_filter(rf_filter_t filter)
 {

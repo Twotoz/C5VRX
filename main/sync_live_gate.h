@@ -50,14 +50,7 @@ bool sync_live_gate_export(const sync_live_gate_t *gate,slg_clock_seed_t *out);
  * C5 ISR readers refuse interrupted publications instead of waiting. */
 sync_live_gate_t *sync_live_gate_create(const slg_config_t *config);
 void sync_live_gate_destroy(sync_live_gate_t *gate);
-bool sync_live_gate_model(sync_live_gate_t *gate,const slg_model_t *model,uint64_t now);
 /* Explicit selected-standard fallback; no claim of camera acquisition. */
 bool sync_live_gate_nominal(sync_live_gate_t *gate,slg_standard_t standard,
                            uint64_t first_eq,uint8_t h_half_parity,uint32_t receive_epoch,uint64_t now);
 bool sync_live_gate_arm(sync_live_gate_t *gate);
-void sync_live_gate_cancel(sync_live_gate_t *gate);
-void sync_live_gate_invalidate(sync_live_gate_t *gate,uint32_t receive_epoch);
-bool sync_live_gate_holdover(const sync_live_gate_t *gate,uint64_t now);
-bool sync_live_gate_next(sync_live_gate_t *gate,slg_pulse_t *pulse);
-slg_decision_t sync_live_gate_decide(const sync_live_gate_t *gate,const slg_pulse_t *pulse,
-                                   uint64_t now,slg_native_fn native,void *arg);

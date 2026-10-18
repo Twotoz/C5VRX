@@ -1,21 +1,13 @@
-/* C5VRX by Twotoz and contributors: native DAC timing observation.
- * Manual wrappers require the PHY actuator lease, verified LP/output1.0x and
- * no menu/restart while live(generation) remains true. GPIO2 must be unused;
- * it temporarily mirrors PARLIO DATA4 independently of the six DAC OEs.
- * GPIO8 and all DAC settings remain unchanged by this observer. The live
- * predicate is called from ISR context and must be IRAM safe. No activation
- * at boot; no camera-lock or analogue waveform claim follows from this probe. */
+/* C5VRX by Twotoz and contributors: native DAC timing observer for the sync
+ * flywheel. GPIO2 must be unused; it mirrors PARLIO DATA4 independently of
+ * the six DAC OEs. GPIO8 and all DAC settings remain unchanged by this
+ * observer. The live predicate is called from ISR context and must be IRAM
+ * safe. No camera-lock or analogue waveform claim follows from it. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 #include "sync_native_trace.h"
-void sync_output_probe(uint32_t generation, bool (*live)(uint32_t));
-void sync_output_clock_probe(uint32_t generation, bool (*live)(uint32_t));
-/* Finite signal48 comparator bench. Caller must hold PHY ownership and prove
- * GPIO23 clamped LOW plus the complete flag program/LUT binding in live(). */
-bool sync_output_flag_probe(uint32_t generation, bool (*live)(uint32_t),
-                            snt_trace_t *trace, char *result, size_t size);
 
 /* Resident observer. Task context only; caller serializes begin/poll/end
  * against transport mutations with short ownership, never a resident lease.
@@ -58,6 +50,5 @@ void sync_output_live_forget(void);
 bool sync_output_live_snapshot(sync_output_live_model_t *out);
 /* Task-side diagnostic snapshot, under the same serialized ownership. */
 bool sync_output_live_diagnostics(char *out,size_t size);
-bool sync_output_live_trace_snapshot(snt_trace_t *out);
 /* Resident flag session: receives each native pulse during drain (task). */
 void sync_output_live_pulse_hook(void (*hook)(uint64_t tick,uint32_t width,bool high));

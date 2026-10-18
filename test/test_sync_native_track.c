@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include "../main/sync_native_track.h"
-#include "../main/sync_gate_schedule.h"
+#include "sync_gate_schedule.h"
 
 static sync_native_track_t run(sgs_standard_t standard,unsigned mode,uint64_t origin)
 {

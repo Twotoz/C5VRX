@@ -62,41 +62,15 @@ jobs:
         working-directory: test
         run: |
           set -euo pipefail
-          for t in test_quiet test_profile test_diag test_afc test_afc_measure test_control_window test_video_loss test_video_sync test_cn_observation test_kp_ladder test_kp_lut_io test_kp_switch_guard test_transport_recovery test_calibration_noise test_sphase test_dco_slots; do
+          for t in test_quiet test_profile test_diag test_afc test_afc_measure test_control_window test_cn_observation test_kp_ladder test_kp_lut_io test_kp_switch_guard test_transport_recovery test_calibration_noise test_sphase test_dco_slots; do
             cc -O2 -std=c11 -Wall -Wextra -Werror -I../main "$t.c" -lm -o "/tmp/$t" && "/tmp/$t" | tail -1
           done
-          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_native_acquire.c ../main/arc_phy.c -o /tmp/test_native_acquire
-          /tmp/test_native_acquire
-          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_synth.c -o /tmp/test_sync_synth
-          /tmp/test_sync_synth
-          for t in test_sync_repair_ledger test_sync_stream_guard test_dma_progress test_sphase_monitor test_sync_transport_probe test_sync_memory_frontier test_dc_trim test_raw_access test_raw_history test_sync_done_progress test_sync_read_validation test_sync_bench_profile test_sync_reference_context test_sync_rolling test_sync_descriptor_window test_sync_period_bank test_sync_tip_policy test_sync_pulse_walk test_sync_pulse_find test_sync_gate_schedule test_sync_native_track test_sync_live_clock test_sync_native_trace test_sync_flag test_sync_phase_guard test_sync_clock_pll test_menu_entry; do
+          for t in test_dc_trim test_sync_native_track test_sync_live_clock test_sync_native_trace test_sync_flag test_sync_phase_guard test_sync_clock_pll test_menu_entry; do
             cc -O2 -std=c11 -Wall -Wextra -Werror -I../main "$t.c" -o "/tmp/$t"
             "/tmp/$t"
           done
-          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_source_envelope.c -lm -o /tmp/test_sync_source_envelope
-          /tmp/test_sync_source_envelope
           cc -O2 -std=c11 -Wall -Wextra -Werror test_sync_phase_bracket.c -o /tmp/test_sync_phase_bracket
           /tmp/test_sync_phase_bracket
-          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_pulse_chunks.c -lm -o /tmp/test_sync_pulse_chunks
-          /tmp/test_sync_pulse_chunks
-          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_private_bench.c ../main/sync_flywheel.c -o /tmp/test_sync_private_bench
-          /tmp/test_sync_private_bench
-          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_sync_prefix_equivalence.c -o /tmp/test_sync_prefix_equivalence
-          /tmp/test_sync_prefix_equivalence
-          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main -I../research test_sync_read_turn.c -o /tmp/test_sync_read_turn
-          /tmp/test_sync_read_turn
-          # Live repair stays host-only; firmware offers private J and read-only W diagnostics.
-          cc -O2 -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -I../main test_sync_flywheel.c ../main/sync_flywheel.c -lm -o /tmp/test_sync_flywheel
-          for kp in 0 1 2 3 4 5 6 7; do
-            for ppm in 0 50 -50; do
-              SFW_COMMIT=1 SFW_KP_LEVEL="$kp" SFW_CLOCK_PPM="$ppm" /tmp/test_sync_flywheel
-            done
-          done
-          for kp in 0 7; do
-            for output in 8 9; do
-              SFW_COMMIT=1 SFW_KP_LEVEL="$kp" SFW_OUTPUT_LEVEL="$output" /tmp/test_sync_flywheel
-            done
-          done
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_dc_live.c -lm -o /tmp/test_dc_live
           /tmp/test_dc_live ../research/data/walk_2026-10-13
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_no_signal_raster.c ../main/menu_raster.c -lm -o /tmp/test_no_signal_raster
@@ -105,35 +79,18 @@ jobs:
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_fade && /tmp/test_gain_fade | tail -1
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_gain_preset.c \
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_preset && /tmp/test_gain_preset | tail -1
-          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main -I../research test_gain_v6.c \
-            ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_v6 && /tmp/test_gain_v6
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_gain_v6_memory.c ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_v6_memory && /tmp/test_gain_v6_memory
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_afc_evidence.c -o /tmp/test_afc_evidence && /tmp/test_afc_evidence
-      - name: Pinned PHY PBUS command contract
-        shell: bash
-        run: |
-          . "$IDF_PATH/export.sh"
-          python3 research/native_pbus_contract.py
-          python3 research/native_pbus_read_contract.py
       - name: Diagnostic log semantics
         run: |
-          python3 tools/gen_sync_period_bank.py --check
-          python3 tools/gen_sync_tip_policy.py --check
           python3 test/test_field_diag_compare.py
           python3 test/test_diag_snapshot_runtime.py
-          python3 test/test_iq_snapshot.py
           python3 test/test_settings.py
-          python3 test/test_native_owner.py
           python3 test/test_phy_observation_hook.py
           python3 test/test_gain_map_context.py
-          python3 test/test_raw_access_runtime.py
           python3 test/test_afc_telemetry.py
           python3 test/test_sphase_runtime.py
-          python3 test/test_sync_transport_runtime.py
-          python3 test/test_sync_bench_runtime.py
           python3 test/test_sync_startup_runtime.py
-          python3 test/test_sync_service_runtime.py
-          python3 test/test_sync_gate_probe_runtime.py
           python3 test/test_sync_output_probe_runtime.py
           python3 test/test_sync_flag_pin_runtime.py
           python3 test/test_sync_format_runtime.py
@@ -141,9 +98,7 @@ jobs:
           cc -O2 -std=c11 -Wall -Wextra -Werror -Imain test/test_sync_native_flag_track.c -o /tmp/test_sync_native_flag_track
           /tmp/test_sync_native_flag_track
           python3 test/test_sync_edge_clock_runtime.py
-          python3 test/test_sync_native_witness_runtime.py
           python3 research/native_flag_emulator.py --output /tmp/native_flag_emulator.json
-          python3 test/test_sync_live_gate_runtime.py
           python3 test/test_sync_live_output_runtime.py
       - name: Analytic IQ lane reference
         shell: bash
@@ -153,8 +108,6 @@ jobs:
           OPENBLAS_NUM_THREADS=1 /tmp/iqf-test-env/bin/python test/test_iq_lane_fusion.py
           python3 "$IDF_PATH/tools/bsasm.py" research/iq_lane_mixed468.bsasm /tmp/iq_lane_mixed468.bsbin \
             -c "$IDF_PATH/components/esp_driver_bitscrambler/bsasm_targets/esp32c5.json"
-      - name: Synthetic field-sync source geometry (both parities and historical IQ hashes)
-        run: OPENBLAS_NUM_THREADS=1 /tmp/iqf-test-env/bin/python test/test_raster_geometry.py
       - name: U85Q-LP research program (assembles; emulator matches U85Q and the LP model)
         shell: bash
         run: |
@@ -165,16 +118,8 @@ jobs:
         run: /tmp/iqf-test-env/bin/python research/kp_morph.py check
       - name: Kp ladder at the range edge (control-loop window gate and switch confirmation)
         run: /tmp/iqf-test-env/bin/python research/ladder_gate.py check research/data/ladder_gate_rates.json
-      - name: Firmware range audit (current policy export and complete evidence datasets)
-        shell: bash
-        run: |
-          cc -O2 -std=c11 -Wall -Wextra -Werror -Imain research/range_policy.c -o /tmp/range_policy
-          /tmp/range_policy > /tmp/range_policy.jsonl
-          /tmp/iqf-test-env/bin/python research/firmware_range_audit.py check /tmp/range_policy.jsonl
       - name: OUTPUT research invariants (DAC-only changes and bounded policy)
-        run: |
-          /tmp/iqf-test-env/bin/python research/output_level.py --check
-          /tmp/iqf-test-env/bin/python research/output_abc.py --check
+        run: /tmp/iqf-test-env/bin/python research/output_level.py --check
       - name: Build C5VRX-5
         shell: bash
         run: |

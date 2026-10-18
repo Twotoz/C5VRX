@@ -22,12 +22,6 @@ void rf_force_gain(uint8_t gain);           /* caller owns the receiver */
 void rf_set_post_gain_hook(void (*hook)(uint8_t gain));
 const arc_gain_table_t *rf_gain_table(void);
 uint32_t rf_table_generation(void);
-typedef enum { RF_NATIVE_LANDING, RF_NATIVE_REFUSED, RF_NATIVE_TIMEOUT,
-               RF_NATIVE_GAP, RF_NATIVE_BAD_GAIN, RF_NATIVE_RESTORE_FAILED } rf_native_result_t;
-/* Opt-in bounded acquire/hold experiment. Restores forced gain/DC on every
- * exit; a landing candidate is not a verified physical scan-complete flag.
- * Returns applied gain only after stable PBUS readback and table decoding. */
-rf_native_result_t rf_native_acquire(uint32_t generation, uint8_t *gain, uint32_t *open_us);
 
 /* Analog receive filter. code PHY_FILTER_CALIBRATED = the chip's own
  * calibration; skirt = second stage offset; bw20 = digital filter BW20. */

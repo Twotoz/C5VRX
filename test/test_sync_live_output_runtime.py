@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-from test_sync_gate_probe_runtime import SDK
+from sync_sdk_stub import SDK
 
 ROOT=Path(__file__).resolve().parents[1]
 HARNESS=r'''

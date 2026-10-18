@@ -10,8 +10,6 @@
 #include "output_level.h"
 #include "kp_switch_guard.h"
 #include "profile_logic.h"
-#include "video_loss.h"
-#include "video_sync.h"
 #include "menu_entry.h"
 #include "cn_estimate.h"
 #include "analog_video_detect.h"
@@ -68,15 +66,12 @@ volatile video_standard_t s_detected_std = VIDEO_STD_NTSC;
 volatile int64_t s_last_video_us;
 QueueHandle_t s_commands;
 
-/* One control-task scratch buffer for strictly sequential uses: the video
- * watch copies and consumes its 8190-byte snapshot first, the control
- * window (gain/kp/AFC) is copied and consumed afterwards in the same tick,
- * and a scan (receiver paused, no watch) uses the control window plus a
- * separate endpoint area. Saves 4092 bytes of BSS and the scan's malloc. */
-static uint8_t s_control_scratch[VIDEO_SYNC_BYTES];
+/* One control-task scratch buffer: the control window (gain/kp/AFC) and,
+ * during a scan (receiver paused), a separate endpoint area. Saves the
+ * scan's malloc. */
+#define SCAN_BUF_OFFSET 4096u
+static uint8_t s_control_scratch[SCAN_BUF_OFFSET + SCAN_PAIRS];
 static uint8_t *const s_window = s_control_scratch;
-static uint8_t *const s_video_window = s_control_scratch;
-static struct { uint32_t windows, copied, sync, max_work_us, max_sample_us, max_gap_us, stack_watermark; int64_t last_us; } s_video_watch;
 static uint8_t s_pal_votes, s_ntsc_votes;
 static uint8_t s_last_std = 0xFF;      /* last stable standard (NVS) */
 static unsigned s_afc_corrections, s_afc_weak_skips;
@@ -183,9 +178,7 @@ static void after_retune(void)
  * carrier must sit within 3 MHz of the channel centre (a VTX also shows on
  * neighbouring channels through the filter, and the 50 ns offset estimate
  * wraps every 20 MHz). Among centred candidates the strongest wins. */
-#define SCAN_BUF_OFFSET 4096u
-_Static_assert(SCAN_BUF_OFFSET >= CONTROL_BYTES && SCAN_BUF_OFFSET + SCAN_PAIRS <= VIDEO_SYNC_BYTES,
-               "scan endpoints must not overlap the control window");
+_Static_assert(SCAN_BUF_OFFSET >= CONTROL_BYTES, "scan endpoints must not overlap the control window");
 static uint8_t *const s_scan_buf = s_control_scratch + SCAN_BUF_OFFSET;
 
 static analog_video_t scan_confidence(void)
@@ -303,35 +296,8 @@ static void command(int c, unsigned *menu_idle)
         return;
     }
     switch (c) {
-    case '~': receiver_native_toggle(); break;
-    case 'V': transport_sync_flag_probe(); break;
-    case 'u': transport_sync_live_toggle(); break;
     case 'G': receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); break;
     case 'U': transport_sync_flywheel_toggle(); break;
-    case 'N': {
-        bool enabled = !no_signal_enabled();
-        if (!enabled && no_signal_active()) {
-            if (receiver_paused() || !phy_try_actuator(phy_generation())) {
-                printf("NO_SIGNAL toggle refused=busy\n");
-                break;
-            }
-            (void)no_signal_end(s_kp_auto ? (int)s_kp.level : transport_kp_target(),
-                                s_kp_auto ? s_kp.lp : transport_lp());
-            phy_end_actuator();
-        }
-        no_signal_enable(enabled);
-        printf("NO_SIGNAL fallback=%s boot_default=OFF (OFF preserves actual live snow)\n", enabled ? "ON" : "OFF");
-        break;
-    }
-    case 'B': {
-        const bool owned = !receiver_paused() && !s_scan_active && !s_menu_active &&
-                           phy_try_actuator(phy_generation());
-        bool ok = owned && transport_bench_restart();
-        if (owned) phy_end_actuator();
-        printf("LCD_AB request=live_only result=%s wait_ms=%lu\n", ok ? "applied" : "refused_or_failed",
-               (unsigned long)transport_switch_wait_ms());
-        break;
-    }
     case 'o': if (s_menu_active) menu_close(); else (void)menu_open_checked(); break;
     case 'e': menu_close(); break;  /* idempotent web-menu EXIT */
     case 'v': cycle_video_standard(); break;
@@ -410,65 +376,15 @@ static void control_task(void *arg)
     uint8_t afc_lost = 0;
     unsigned settle = RETUNE_SETTLE_TICKS, btn = 0, boot_grace = 20, menu_idle = 0, menu_refresh = 0;
     bool long_fired = false, was_locked = false, ladder_was_active = true;
-    video_loss_t video_loss = {0};
-    int64_t raster_retry_us = 0;
-    int64_t prepare_retry_us = 0, next_control_us = esp_timer_get_time();
+    int64_t next_control_us = esp_timer_get_time();
     int seen_profile = profile_active();
     uint32_t seen_phy = phy_generation(), seen_control = s_control_epoch;
     uint32_t seen_restart_errors = transport_restart_errors();
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(2));
         transport_sync_live_tick();
-        int64_t watch_start = esp_timer_get_time();
-        uint32_t video_context = afc_context(), video_gain = s_gain_epoch;
-        if (video_loss.initialized && video_loss.context != video_context) s_video_watch.last_us = 0;
-        bool watch_eligible = no_signal_enabled() && !s_menu_active && !menu_status_active() && !calibration_in_startup() &&
-                              !s_scan_active && !receiver_paused() && !phy_busy() && !transport_faulted();
-        if (watch_eligible) {
-            if (s_video_watch.last_us && watch_start - s_video_watch.last_us > s_video_watch.max_gap_us)
-                s_video_watch.max_gap_us = (uint32_t)(watch_start - s_video_watch.last_us);
-            s_video_watch.last_us = watch_start;
-            ++s_video_watch.windows;
-            /* Prewarm before a fade; later entry only switches prepared DMA.
-             * PHY ownership also prevents calibration from taking TX here. */
-            if (!no_signal_active() && watch_start >= prepare_retry_us && phy_try_actuator(phy_generation())) {
-                bool prepared = no_signal_prepare();
-                phy_end_actuator();
-                prepare_retry_us = prepared ? watch_start + 50000 : watch_start + 1000000;
-            }
-            int64_t sample_start = esp_timer_get_time();
-            vTaskSuspendAll();
-            bool snapshot = copy_snapshot(s_video_window);
-            (void)xTaskResumeAll();
-            bool observed = snapshot && video_gain == s_gain_epoch && video_context == afc_context() &&
-                            !phy_busy() && esp_timer_get_time() - s_last_gain_write_us >= 500;
-            bool sync = observed && video_sync_present(s_video_window, VIDEO_SYNC_BYTES, c5vrx_phase8_gain_lut);
-            observed = observed && video_gain == s_gain_epoch && video_context == afc_context() && !phy_busy() &&
-                       !receiver_paused() && !calibration_in_startup() && !s_menu_active;
-            s_video_watch.copied += observed;
-            s_video_watch.sync += observed && sync;
-            int64_t watch_now = esp_timer_get_time();
-            uint32_t sample_us = (uint32_t)(watch_now - sample_start);
-            if (sample_us > s_video_watch.max_sample_us) s_video_watch.max_sample_us = sample_us;
-            bool want = video_loss_update(&video_loss, video_context, true, observed, sync,
-                                          (uint64_t)watch_now, no_signal_active());
-            if (watch_now >= raster_retry_us && want != no_signal_active() && phy_try_actuator(phy_generation())) {
-                int level = s_kp_auto ? (int)s_kp.level : transport_kp_target();
-                bool lp = s_kp_auto ? s_kp.lp : transport_lp();
-                bool ok = want ? no_signal_show() : no_signal_end(level, lp);
-                phy_end_actuator();
-                raster_retry_us = ok ? 0 : watch_now + 1000000;
-            }
-            uint32_t took = (uint32_t)(esp_timer_get_time() - watch_start);
-            if (took > s_video_watch.max_work_us) s_video_watch.max_work_us = took;
-            s_video_watch.stack_watermark = (uint32_t)uxTaskGetStackHighWaterMark(NULL);
-        } else {
-            s_video_watch.last_us = 0;
-            (void)video_loss_update(&video_loss, video_context, false, false, false,
-                                   (uint64_t)watch_start, no_signal_active());
-        }
-        /* Keep gain/AFC/ladder/button/menu timing at its original 50 ms.
-         * Fast raster ownership stays on this same task, never a racing ISR. */
+        /* The flywheel owner ticks every 2 ms; gain/AFC/ladder/button/menu
+         * timing stays at its original 50 ms. */
         int64_t control_now = esp_timer_get_time();
         if (control_now < next_control_us) continue;
         next_control_us = control_now + TICK_MS * 1000;
@@ -758,10 +674,6 @@ void control_print(void)
            (long long)afc2_evidence_age_ms(evidence.oldest_us,afc_now),
            (long long)afc2_evidence_age_ms(evidence.newest_us,afc_now),
            afc_snapshot.cn_x10, afc_snapshot.window, afc_snapshot.held);
-    printf("VIDEO_WATCH windows=%lu copied=%lu sync=%lu max_sample_us=%lu max_work_us=%lu max_gap_us=%lu stack_watermark=%lu\n",
-           (unsigned long)s_video_watch.windows, (unsigned long)s_video_watch.copied, (unsigned long)s_video_watch.sync,
-           (unsigned long)s_video_watch.max_sample_us, (unsigned long)s_video_watch.max_work_us,
-           (unsigned long)s_video_watch.max_gap_us, (unsigned long)s_video_watch.stack_watermark);
     printf("CONTROL channel=%s freq=%u offset_khz=%d cfo_khz=%d afc_locked=%u afc_corrections=%u "
            "afc_weak_skips=%u afc_sign=%+d(%s) standard=%s detected=%s signal=%d menu=%u deviation_x100=%d mode=%s "
            "kp_auto=%u%s kp_steps=%lu lp_switches=%lu busy=%u\n"

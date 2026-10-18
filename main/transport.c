@@ -9,7 +9,6 @@
 #include "driver/bitscrambler.h"
 #include "driver/parlio_rx.h"
 #include "driver/parlio_tx.h"
-#include "sync_gate_probe.h"
 #include "sync_output_probe.h"
 #include "sync_live_output.h"
 #include "esp_attr.h"
@@ -25,17 +24,10 @@
 #include "transport_recovery.h"
 #include "output_level.h"
 #include "sync_flag.h"
-#include "sync_lut_context.h"
 #include "hal/parlio_ll.h"
 #include "kp_tables.h"
 #include "snapshot.h"
 #include "control_window.h"
-#include "raw_access.h"
-#include "raw_history.h"
-#include "sync_transport_probe.h"
-#include "sync_memory_frontier.h"
-#include "sync_private_bench.h"
-#include "sync_service.h"
 #include "phase8_gain_lut.h"
 #include "esp_cpu.h"
 #include "esp_heap_caps.h"
@@ -88,7 +80,6 @@ static unsigned s_output, s_verified_output, s_output_clipped;
 static int s_verified_level;
 static bool s_verified_lp, s_have_verified;
 static uint32_t s_restart_errors, s_rollbacks, s_rollback_fail;
-static uint32_t s_bench_restarts, s_bench_restart_fail, s_bench_restart_us;
 #define LIVE_TX_NODES ((RAW_RING_BYTES + 4091u) / 4092u)
 DMA_ATTR __attribute__((aligned(64))) static dma_descriptor_t s_live_tx_nodes[LIVE_TX_NODES];
 int s_rx_dma_ch = -1, s_tx_dma_ch = -1;
@@ -403,24 +394,19 @@ typedef struct {
     unsigned output, clipped;
 } restart_t;
 
-/* Finite V bench owns this only after startup. Ordinary verified state and
- * s_lut_live remain the original restoration target throughout the bench. */
+/* Comparator-flag DAC pin ownership for the live flywheel format. Ordinary
+ * verified state and s_lut_live remain the restoration target. */
 typedef struct {
     uint32_t iomux,matrix,pad,enable,output,clamp_matrix,generation;
-    bool active,saved,clamped,verified,bench;
-} flag_bench_t;
-typedef struct {
-    snt_trace_t trace;
-    char result[640];
-} flag_diag_t;
-static flag_bench_t *s_flag_bench;
-static flag_bench_t *s_flag_storage;
-static flag_diag_t *s_flag_diag;
+    bool active,saved,clamped;
+} flag_pin_t;
+static flag_pin_t *s_flag_pin;
+static flag_pin_t *s_flag_storage;
 #define FLAG_PIN_MASK (UINT32_C(1)<<23)
 
 static bool IRAM_ATTR flag_pin_clamped(void)
 {
-    const flag_bench_t *s=s_flag_bench;
+    const flag_pin_t *s=s_flag_pin;
     return s && s->saved && s->clamped &&
         REG_READ(IO_MUX_GPIO23_REG)==s->iomux &&
         REG_READ(GPIO_FUNC23_OUT_SEL_CFG_REG)==s->clamp_matrix &&
@@ -430,7 +416,7 @@ static bool IRAM_ATTR flag_pin_clamped(void)
 }
 static bool flag_pin_restored(void)
 {
-    const flag_bench_t *s=s_flag_bench;
+    const flag_pin_t *s=s_flag_pin;
     return s && s->saved && !s->clamped &&
         REG_READ(IO_MUX_GPIO23_REG)==s->iomux &&
         REG_READ(GPIO_FUNC23_OUT_SEL_CFG_REG)==s->matrix &&
@@ -442,7 +428,7 @@ static bool flag_pin_restored(void)
  * Disable this one pad before restoring its latent GPIO output latch. */
 static bool flag_pin_apply(bool flag)
 {
-    flag_bench_t *s=s_flag_bench;
+    flag_pin_t *s=s_flag_pin;
     if(!s || !s->active)return !flag;
     if(!s->saved)return false;
     REG_WRITE(GPIO_ENABLE_W1TC_REG,FLAG_PIN_MASK);
@@ -458,11 +444,11 @@ static bool flag_pin_apply(bool flag)
 
 /* Pin identity is acquired once, before any comparator program can run.
  * The small ownership record is independent of optional diagnostic buffers. */
-static bool flag_pin_acquire(bool bench)
+static bool flag_pin_acquire(void)
 {
-    if(s_flag_bench)return false;
+    if(s_flag_pin)return false;
     if(!s_flag_storage)s_flag_storage=calloc(1,sizeof(*s_flag_storage));
-    flag_bench_t *s=s_flag_storage;
+    flag_pin_t *s=s_flag_storage;
     if(!s)return false;
     memset(s,0,sizeof(*s));
     s->iomux=REG_READ(IO_MUX_GPIO23_REG);s->matrix=REG_READ(GPIO_FUNC23_OUT_SEL_CFG_REG);
@@ -474,7 +460,7 @@ static bool flag_pin_acquire(bool bench)
        ((s->iomux&MCU_SEL_M)>>MCU_SEL_S)!=1u)return false;
     s->clamp_matrix=(s->matrix&~(GPIO_FUNC23_OUT_SEL_M|GPIO_FUNC23_OUT_INV_SEL_M|
         GPIO_FUNC23_OE_INV_SEL_M))|256u|GPIO_FUNC23_OE_SEL_M;
-    s->saved=true;s->active=true;s->bench=bench;s_flag_bench=s;
+    s->saved=true;s->active=true;s_flag_pin=s;
     return true;
 }
 
@@ -789,17 +775,12 @@ static bool transport_flag_format(bool flag)
     if(s_transport_fault || !s_started || !s_have_verified || !s_lut_known)return false;
     if(s_verified_flag==flag)return true;
     if(!transport_sync_live_cancel())return false;
-    if(flag) {
-        if(!flag_pin_acquire(false))return false;
-        /* Optional V trace memory must not compete with the resident output
-         * backend. Pin ownership itself uses only the small separate record. */
-        free(s_flag_diag);s_flag_diag=NULL;
-    }
+    if(flag && !flag_pin_acquire())return false;
     s_flag_format=flag;
     bool ok=resume_live(kp_tables[s_verified_level]);
     if(!s_transport_fault && !s_verified_flag) {
         if(!flag_pin_restored()){s_transport_fault=true;s_lut_known=false;return false;}
-        s_flag_bench->active=false;s_flag_bench=NULL;
+        s_flag_pin->active=false;s_flag_pin=NULL;
     } else if(!s_transport_fault && !flag_pin_clamped()) {
         s_transport_fault=true;s_lut_known=false;return false;
     }
@@ -810,37 +791,6 @@ void transport_resume_live(void)
 {
     if (!resume_live(NULL)) printf("TRANSPORT menu return failed; inspect T recovery status\n");
     kp_switch_mark(&s_switch_guard, esp_timer_get_time());
-}
-
-/* RX stayed active while the loss raster owned TX. Load the ladder's latest
- * target in the required exit restart, rather than briefly restoring an old
- * non-LP program then waiting five seconds for another restart. Publish only
- * after the usual full verification; rollback restores the verified target. */
-bool transport_resume_raster(int level, bool lp)
-{
-    if (!no_signal_active() || s_started || s_transport_fault || level < 0 || level >= KP_LEVELS)
-        return false;
-    s_prog_lp = lp;
-    bool ok = resume_live(kp_tables[level]);
-    kp_switch_mark(&s_switch_guard, esp_timer_get_time());
-    return ok;
-}
-
-/* Manual bench A/B only: no synthetic raster, no settings changes. The
- * control task serializes this with menu/program actions and holds the PHY
- * actuator lock. Reuse the verified restart, rollback and shared cooldown. */
-bool transport_bench_restart(void)
-{
-    int64_t began = esp_timer_get_time();
-    if (s_menu_active || !s_started || !s_have_verified || !s_lut_known ||
-        s_transport_fault || !kp_switch_ready(&s_switch_guard, began)) return false;
-    ++s_bench_restarts;
-    bool ok = resume_live(s_lut_live);
-    int64_t finished = esp_timer_get_time();
-    kp_switch_mark(&s_switch_guard, finished);
-    s_bench_restart_us = (uint32_t)(finished - began);
-    if (!ok) ++s_bench_restart_fail;
-    return ok;
 }
 
 void transport_poll_faults(void)
@@ -866,169 +816,21 @@ uint32_t transport_fault_count(void)
     return s_tx_empty + s_rx_overflow + s_dma_faults + s_bs_overload;
 }
 
-/* Read-only real-hardware bridge toward the keeper. T samples are diagnostic,
- * not a continuous service loop. Unknown clock/FIFO proof remains explicit;
- * no synthesized bytes, DMA descriptors, LUT or clock registers are written. */
-/* Caller holds independent task-scheduler ownership and has validated channel
- * indices. Paired calls must bracket all metadata observations. DONE is used
- * separately from EOF, which this cyclic stream intentionally suppresses. */
-static sync_memory_registers_t transport_memory_registers(void)
-{
-    return (sync_memory_registers_t){
-        AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val,
-        AHB_DMA.done_des_addr[s_rx_dma_ch].in_done_des_addr.val,
-        AHB_DMA.channel[s_tx_dma_ch].out.out_dscr_bf0.val,
-        AHB_DMA.done_des_addr[s_tx_dma_ch].out_done_des_addr.val,
-        AHB_DMA.channel[s_tx_dma_ch].out.out_dscr.val,
-        AHB_DMA.channel[s_tx_dma_ch].out.out_state.val,
-        PCR.sysclk_conf.val, PCR.ahb_freq_conf.val, PCR.bus_clk_update.val,
-        PCR.parl_clk_rx_conf.val, PCR.parl_clk_tx_conf.val};
-}
-
-static void transport_sync_probe_print(void)
-{
-    static sync_transport_probe_t probe;
-    static sync_memory_frontier_t memory;
-    sync_memory_registers_t memory_first = {0}, memory_last = {0};
-    dma_progress_layout_t rx = {0}, tx = {0};
-    dma_progress_limits_t limits = {
-        .min_rate_hz = IQ_RATE_HZ, .max_rate_hz = IQ_RATE_HZ,
-        .clock_proven = false, .bounds_proven = false
-    };
-    dma_progress_capture_t c = {
-        .min_rate_hz = IQ_RATE_HZ, .max_rate_hz = IQ_RATE_HZ
-    };
-    uint32_t rx_clock = 0, tx_clock = 0, rx_fifo = 0, tx_fifo = 0;
-    uint32_t rx_written = 0, rx_read = 0, tx_read = 0;
-    /* Preserve the first actual mismatch for the console, after releasing PHY.
-     * Discovery may begin at any RX descriptor, so compare cyclic offsets. */
-    unsigned geometry_side = 0, geometry_index = 0, geometry_error = 0;
-    uint32_t geometry_offset = 0, geometry_bytes = 0, geometry_size = 0, geometry_cached = 0;
-    uintptr_t geometry_next = 0, geometry_expected = 0;
-    /* Separate raw metadata ownership from the analog PHY lease. A DC trial
-     * can hold PHY for milliseconds while the running DMA remains observable.
-     * C5 is single-core: no task can restart transport during this short copy.
-     * Interrupts/GDMA continue. This is observation, not a write-time WCET. */
-    vTaskSuspendAll();
-    bool owned = true;
-    c.ownership_verified = owned;
-    c.first_read_us = esp_timer_get_time();
-    c.generation = s_stream_generation;
-    c.running = owned && s_started && s_have_verified && s_lut_known && !s_transport_fault &&
-                !s_stream_generation_overflow && !s_menu_active && s_rx_enabled && s_tx_enabled && s_bs_enabled;
-    if (owned && s_rx_dma_ch >= 0 && s_rx_dma_ch < 3 && s_tx_dma_ch >= 0 && s_tx_dma_ch < 3) {
-        memory_first = transport_memory_registers();
-        c.rx_descriptor = AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val;
-        c.tx_descriptor = AHB_DMA.channel[s_tx_dma_ch].out.out_dscr_bf0.val;
-        rx_fifo = AHB_DMA.channel[s_rx_dma_ch].in.infifo_status.infifo_cnt_chn;
-        tx_fifo = AHB_DMA.channel[s_tx_dma_ch].out.outfifo_status.outfifo_cnt_chn;
-        rx_clock = PCR.parl_clk_rx_conf.val;
-        tx_clock = PCR.parl_clk_tx_conf.val;
-        rx_written = PARL_IO.rx_st0.rx_fifo_wr_bit_cnt;
-        rx_read = PARL_IO.rx_st1.rx_fifo_rd_bit_cnt;
-        tx_read = PARL_IO.tx_st0.tx_fifo_rd_bit_cnt;
-        bool buffers = s_rx_node_count == DMA_PROGRESS_NODES && LIVE_TX_NODES == DMA_PROGRESS_NODES;
-        if (!buffers) geometry_error = 1; /* discovered descriptor count */
-        for (unsigned i = 0; buffers && i < DMA_PROGRESS_NODES; ++i) {
-            const dma_descriptor_t *r = s_rx_nodes[i].dscr, *t = &s_live_tx_nodes[i];
-            uintptr_t base = (uintptr_t)s_raw_ring;
-            uintptr_t rb = (uintptr_t)s_rx_nodes[i].buffer, tb = (uintptr_t)t->buffer;
-            if (!r || rb < base || rb - base >= sizeof(s_raw_ring) ||
-                tb < base || tb - base >= sizeof(s_raw_ring) ||
-                r->buffer != s_rx_nodes[i].buffer || r->dw0.size != s_rx_nodes[i].length) {
-                geometry_error = 2; geometry_side = 1; geometry_index = i;
-                geometry_offset = (uint32_t)(rb - base);
-                geometry_bytes = s_rx_nodes[i].length;
-                geometry_size = r ? r->dw0.size : 0;
-                geometry_cached = r ? r->dw0.length : 0;
-                buffers = false; break;
-            }
-            rx.nodes[i] = (dma_progress_node_t){(uintptr_t)r, (uintptr_t)r->next,
-                                               (uint32_t)(rb - base), s_rx_nodes[i].length};
-            tx.nodes[i] = (dma_progress_node_t){(uintptr_t)t, (uintptr_t)t->next,
-                                               (uint32_t)(tb - base), t->dw0.length};
-        }
-        if (buffers) {
-            for (unsigned side = 1; side <= 2 && !geometry_error; ++side) {
-                const dma_progress_layout_t *layout = side == 1 ? &rx : &tx;
-                if (dma_progress_layout_valid(layout)) continue;
-                for (unsigned i = 0; i < DMA_PROGRESS_NODES; ++i) {
-                    const dma_progress_node_t *n = &layout->nodes[i];
-                    const dma_progress_node_t *next = &layout->nodes[(i + 1u) % DMA_PROGRESS_NODES];
-                    bool shape = n->offset < DMA_PROGRESS_RING &&
-                        n->bytes >= 1u && n->bytes <= 4092u &&
-                        n->bytes <= DMA_PROGRESS_RING - n->offset;
-                    unsigned error = !shape ? 3 : n->next != next->address ? 4 :
-                        (n->offset + n->bytes) % DMA_PROGRESS_RING != next->offset ? 5 :
-                        !n->address || (n->address & 3u) ? 6 : 0;
-                    if (!error) continue;
-                    geometry_error = error; geometry_side = side; geometry_index = i;
-                    geometry_offset = n->offset; geometry_bytes = n->bytes;
-                    geometry_next = n->next; geometry_expected = next->address;
-                    geometry_size = side == 1 ? s_rx_nodes[i].dscr->dw0.size : s_live_tx_nodes[i].dw0.size;
-                    geometry_cached = side == 1 ? s_rx_nodes[i].length : s_live_tx_nodes[i].dw0.length;
-                    break;
-                }
-                if (!geometry_error) { geometry_error = 7; geometry_side = side; }
-            }
-        }
-        limits.geometry_proven = buffers && dma_progress_layout_valid(&rx) && dma_progress_layout_valid(&tx);
-    }
-    if (s_rx_dma_ch >= 0 && s_rx_dma_ch < 3 && s_tx_dma_ch >= 0 && s_tx_dma_ch < 3) {
-        memory_last = transport_memory_registers();
-    }
-    c.last_read_us = esp_timer_get_time();
-    (void)xTaskResumeAll();
-    sync_memory_observe(&memory, &rx, &tx, &memory_first, &memory_last, &c);
-    sync_transport_probe_update(&probe, &rx, &tx, &limits, &c);
-    printf("SYNC_PROBE mode=read_only writes=0 continuous=0 valid=%u reason=%s blocked=%lu result=%u "
-           "stream_gen=%lu epoch=%lu geometry=%u clock_proven=%u fifo_proven=%u "
-           "rx_bf0=%08lx tx_bf0=%08lx capture_us=%llu rx_clock=%08lx tx_clock=%08lx "
-           "rx_l1_bytes=%lu tx_l1_bytes=%lu rx_wr_bits=%lu rx_rd_bits=%lu tx_rd_bits=%lu "
-           "rx_nodes=%d tx_nodes=%u geom_error=%u geom_side=%u geom_index=%u geom_offset=%lu "
-           "geom_bytes=%lu geom_size=%lu geom_cached=%lu geom_next=%08lx geom_expected=%08lx "
-           "mem_candidate=%u mem_result=%u mem_progress=%u mem_stable=%u "
-           "mem_writes_safe=0 mem_block=publication_prefix_wcet_readers_unverified "
-           "rx_done=%08lx tx_done=%08lx tx_next=%08lx tx_state=%08lx "
-           "hp_root=%08lx ahb_div=%08lx bus_update=%08lx ahb_hz=%lu "
-           "memory_bound=%lu prefix_candidate=%lu Rlo=%llu Rhi=%llu Thi=%llu\n",
-           probe.frontiers.valid, sync_transport_probe_reason(&probe), (unsigned long)probe.blocked,
-           (unsigned)probe.result, (unsigned long)c.generation, (unsigned long)probe.progress.epoch,
-           limits.geometry_proven, limits.clock_proven, limits.bounds_proven,
-           (unsigned long)c.rx_descriptor, (unsigned long)c.tx_descriptor,
-           (unsigned long long)(c.last_read_us - c.first_read_us), (unsigned long)rx_clock,
-           (unsigned long)tx_clock, (unsigned long)rx_fifo, (unsigned long)tx_fifo,
-           (unsigned long)rx_written, (unsigned long)rx_read, (unsigned long)tx_read,
-           s_rx_node_count, (unsigned)LIVE_TX_NODES, geometry_error, geometry_side, geometry_index,
-           (unsigned long)geometry_offset, (unsigned long)geometry_bytes, (unsigned long)geometry_size,
-           (unsigned long)geometry_cached, (unsigned long)geometry_next, (unsigned long)geometry_expected,
-           memory.conditional_valid, (unsigned)memory.result, (unsigned)memory.progress_result, memory.tuple_stable,
-           (unsigned long)memory_last.rx_done, (unsigned long)memory_last.tx_done,
-           (unsigned long)memory_last.tx_next, (unsigned long)memory_last.tx_state,
-           (unsigned long)memory_last.sysclk, (unsigned long)memory_last.ahb_div,
-           (unsigned long)memory_last.bus_update, (unsigned long)memory.ahb_hz,
-           (unsigned long)memory.memory_bound_hz, (unsigned long)memory.inflight_prefix_bytes,
-           (unsigned long long)memory.conditional.rx_lo, (unsigned long long)memory.conditional.rx_hi,
-           (unsigned long long)memory.conditional.tx_prefetch_hi);
-}
-
-/* Manual J probe: only private allocated RAM is a destination. */
+/* Transport identity the live flywheel was started on. */
 typedef struct {
     uint32_t generation;
     int level;
     unsigned output;
     bool lp;
-} sync_bench_context_t;
+} sync_live_context_t;
 
-static sync_bench_context_t s_gate_context;
-static bool s_gate_probe_busy;
 static bool s_output_probe_busy;
 
 /* Allocate after startup so observer state cannot fragment the control stack
  * allocation. Lifecycle is serialized by short PHY ownership, not held while
  * the resident peripheral observes video or the control task sleeps. */
 typedef struct {
-    sync_bench_context_t context;
+    sync_live_context_t context;
     bool requested,authorized,fault,output_requested;
     bool coasting_restart;
     uint32_t stream_generation;
@@ -1112,16 +914,6 @@ bool transport_sync_live_release(void)
     return ok && !sync_output_live_active();
 }
 
-void transport_sync_live_toggle(void)
-{
-    if(!s_live_owner)s_live_owner=calloc(1,sizeof(*s_live_owner));
-    if(!s_live_owner){printf("SYNC_LIVE refused=memory\n");return;}
-    s_live_owner->requested=!s_live_owner->requested;
-    if(!s_live_owner->requested)s_live_owner->output_requested=false;
-    /* Actual start/stop occurs on the control owner, under short PHY lease. */
-    printf("SYNC_LIVE requested=%u boot_default=OFF\n",(unsigned)s_live_owner->requested);
-}
-
 /* Saved user setting (menu FLYWHEEL, console U); OFF when never saved
  * (operator, 2026-10-18). OFF never allocates the observer/output, so its
  * heap stays free for the menu. */
@@ -1179,8 +971,7 @@ void transport_sync_live_tick(void)
     sync_live_owner_t *s=s_live_owner;
     if(!s || s->fault || !phy_try_actuator(phy_generation()))return;
     bool eligible=s->requested && !s_sync_live_hold && !calibration_in_startup() && !receiver_paused() &&
-        !s_menu_active && !s_scan_active && !no_signal_active() && !sync_service_active() &&
-        !s_gate_probe_busy && s_started && s_have_verified && s_lut_known && !s_transport_fault;
+        !s_menu_active && !s_scan_active && s_started && s_have_verified && s_lut_known && !s_transport_fault;
     bool active=sync_output_live_active();
     if(active && (!eligible || !transport_sync_live_valid(s->context.generation))) {
         (void)transport_sync_live_cancel();active=false;
@@ -1193,7 +984,7 @@ void transport_sync_live_tick(void)
         if(!transport_flag_format(true)) {++s->failures;s->retry_us=now+1000000;}
     }
     if(eligible && s_verified_flag && !s->fault && !active && now>=s->retry_us && !s_output_probe_busy) {
-        s->context=(sync_bench_context_t){s_stream_generation,s_verified_level,s_verified_output,s_verified_lp};
+        s->context=(sync_live_context_t){s_stream_generation,s_verified_level,s_verified_output,s_verified_lp};
         s->stream_generation=s_stream_generation;
         s->authorized=true;
         phy_set_observation_hook(sync_output_live_invalidate);
@@ -1234,28 +1025,6 @@ void transport_sync_live_tick(void)
     }
     sync_live_output_phase(0u);
     phy_end_actuator();
-}
-
-void transport_sync_live_trace_print(void)
-{
-    snt_trace_t trace;
-    bool have=false,flag=false;
-    if(phy_try_actuator(phy_generation())) {
-        have=sync_output_live_trace_snapshot(&trace);
-        flag=s_verified_flag;
-        phy_end_actuator();
-    }
-    /* UART output may block. Release PHY ownership before formatting/draining. */
-    if(!have){printf("SYNC_NATIVE_TRACE available=0\n");return;}
-    printf("SYNC_NATIVE_TRACE available=1 level=%u tick_domain=%s count=%u triggered=%u frozen=%u dropped=%lu tick_hz=20000000 epoch_mod=65536 camera_qualified=0\n",
-        flag?1u:0u,flag?"common":"local",trace.count,(unsigned)trace.triggered,(unsigned)trace.frozen,(unsigned long)trace.dropped);
-    unsigned first=(trace.head+SNT_TRACE_CAPACITY-trace.count)%SNT_TRACE_CAPACITY;
-    for(unsigned i=0;i<trace.count;++i) {
-        const snt_trace_low_t *low=&trace.lows[(first+i)%SNT_TRACE_CAPACITY];
-        printf("SYNC_NATIVE_%s i=%u epoch=%u tick=%lu width=%u\n",
-            flag?"HIGH":"LOW",i,low->epoch,(unsigned long)low->tick,low->width);
-    }
-    printf("SYNC_NATIVE_TRACE_END count=%u\n",trace.count);
 }
 
 void transport_sync_live_print(void)
@@ -1300,317 +1069,12 @@ void transport_sync_live_print(void)
         (unsigned)output.h_trusted,(unsigned)output.v_trusted,(unsigned long)output.std_switches);
 }
 
-/* ISR-safe transport identity check: no scheduler/PHY calls or mutation. */
-static bool IRAM_ATTR transport_sync_gate_live(uint32_t generation)
-{
-    return (!s_flag_bench || !s_flag_bench->active) &&
-        s_started && s_have_verified && s_lut_known && !s_transport_fault &&
-        !s_stream_generation_overflow && !s_menu_active && !s_scan_active &&
-        s_rx_enabled && s_tx_enabled && s_bs_enabled &&
-        generation == s_stream_generation && generation == s_gate_context.generation &&
-        s_verified_level == s_gate_context.level && s_verified_lp == s_gate_context.lp &&
-        s_prog_lp == s_gate_context.lp && s_verified_output == s_gate_context.output &&
-        s_output == s_gate_context.output;
-}
 
-static void transport_sync_gate_run(bool pal, bool longer)
-{
-    if (s_gate_probe_busy || s_output_probe_busy || sync_service_active() || calibration_in_startup() || phy_busy()) {
-        printf("SYNC_GATE refused=context_busy\n");
-        return;
-    }
-    if (!phy_try_actuator(phy_generation())) {
-        printf("SYNC_GATE refused=ownership\n");
-        return;
-    }
-    vTaskSuspendAll();
-    s_gate_context = (sync_bench_context_t){s_stream_generation, s_verified_level,
-        s_verified_output, s_verified_lp};
-    bool live = transport_sync_gate_live(s_gate_context.generation);
-    if (live) s_gate_probe_busy = true;
-    (void)xTaskResumeAll();
-    if (!live) {
-        phy_end_actuator();
-        printf("SYNC_GATE refused=transport\n");
-        return;
-    }
-    if (longer) sync_gate_probe_long(pal, s_gate_context.generation, transport_sync_gate_live);
-    else sync_gate_probe(pal, s_gate_context.generation, transport_sync_gate_live);
-    s_gate_probe_busy = false;
-    phy_end_actuator();
-}
-
-void transport_sync_gate_probe(bool pal) { transport_sync_gate_run(pal, false); }
-void transport_sync_gate_probe_long(bool pal) { transport_sync_gate_run(pal, true); }
-
-static void transport_sync_output_run(bool edge_clock)
-{
-    if (s_gate_probe_busy || s_output_probe_busy || sync_service_active() ||
-        calibration_in_startup() || !phy_try_actuator(phy_generation())) {
-        printf("SYNC_OUTPUT refused=context_busy\n");
-        return;
-    }
-    vTaskSuspendAll();
-    s_gate_context = (sync_bench_context_t){s_stream_generation, s_verified_level,
-        s_verified_output, s_verified_lp};
-    bool live = transport_sync_gate_live(s_gate_context.generation);
-    bool supported = live && s_gate_context.lp && s_gate_context.output == 0u;
-    if (supported) s_output_probe_busy = true;
-    (void)xTaskResumeAll();
-    if (supported) {
-        if(edge_clock)sync_output_clock_probe(s_gate_context.generation, transport_sync_gate_live);
-        else sync_output_probe(s_gate_context.generation, transport_sync_gate_live);
-        s_output_probe_busy = false;
-    } else printf("SYNC_OUTPUT refused=%s\n", live ? "requires_lp_output_1x" : "transport");
-    phy_end_actuator();
-}
-
-void transport_sync_output_probe(void) { transport_sync_output_run(false); }
-void transport_sync_output_clock_probe(void) { transport_sync_output_run(true); }
-
-static bool IRAM_ATTR flag_bench_live(uint32_t generation)
-{
-    const flag_bench_t *s=s_flag_bench;
-    return s && s->active && s->verified && flag_pin_clamped() &&
-        !s_lut_known && s_started && !s_transport_fault && !s_stream_generation_overflow &&
-        !s_menu_active && !s_scan_active && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
-        generation==s->generation && generation==s_stream_generation;
-}
-
-void transport_sync_flag_probe(void)
-{
-    if(s_flag_bench || s_gate_probe_busy || s_output_probe_busy || sync_service_active() ||
-       calibration_in_startup() || receiver_paused() || s_menu_active || s_scan_active ||
-       no_signal_active() || !phy_try_actuator(phy_generation())) {
-        printf("SYNC_FLAG refused=busy boot_default=OFF\n");return;
-    }
-    bool eligible=s_started && s_have_verified && s_lut_known && !s_transport_fault &&
-        !s_stream_generation_overflow && s_verified_level>=0 && s_verified_level<KP_LEVELS &&
-        s_prog_lp==s_verified_lp && s_output==s_verified_output;
-    if(!eligible){phy_end_actuator();printf("SYNC_FLAG refused=transport\n");return;}
-    if(!s_flag_diag)s_flag_diag=calloc(1,sizeof(*s_flag_diag));
-    if(!s_flag_diag || !flag_pin_acquire(true)) {
-        phy_end_actuator();printf("SYNC_FLAG refused=memory_or_pin_context\n");return;
-    }
-    flag_bench_t *s=s_flag_bench;
-    flag_diag_t *d=s_flag_diag;memset(d,0,sizeof(*d));
-    s_output_probe_busy=true;
-    const int level=s_verified_level;
-    const bool lp=s_verified_lp;
-    const unsigned output=s_verified_output;
-    restart_t r={.program=lp?s_u85q_lp_flag:s_u85q,.level=level,.lp=lp,.flag=true,.output=output};
-    for(unsigned i=0;i<1024u;++i)s_lut_work[i]=sync_flag_entry(kp_tables[level][i],output,NULL);
-    ++s_control_epoch;
-    tr_result_t entered=tr_restart(&r,quiesce,restart_stage,true);
-    bool observed=false,restored=false;
-    if(entered==TR_APPLIED) {
-        /* The ordinary shadow deliberately remains unmodified for rollback.
-         * Every ordinary raw/synthesis consumer is excluded while it differs. */
-        s_started=true;s_lut_known=false;s->verified=true;s->generation=s_stream_generation;
-        observed=sync_output_flag_probe(s->generation,flag_bench_live,&d->trace,d->result,sizeof(d->result));
-        s->verified=false;
-        r=(restart_t){.program=tracker_program(lp),.level=level,.lp=lp,.output=output};
-        memcpy(s_lut_work,s_lut_live,sizeof(s_lut_work));
-        tr_result_t exited=tr_restart(&r,quiesce,restart_stage,true);
-        restored=exited!=TR_LATCHED;
-    } else restored=entered==TR_ROLLED_BACK;
-    if(restored) {
-        s_started=true;s_lut_known=true;
-        /* Both the normal exit and its rollback target the original ordinary
-         * verified shadow, never the transient comparator stream. */
-        restored=flag_pin_restored();
-    } else {
-        s_transport_fault=true;s_lut_known=false;
-        /* Do not reconnect DATA0 if a failed stop left flag TX running. */
-        if(!s_tx_enabled && !s_bs_enabled)(void)flag_pin_apply(false);
-    }
-    if(!restored){s_transport_fault=true;s_lut_known=false;}
-    ++s_control_epoch;
-    s->active=false;s_output_probe_busy=!restored;
-    phy_end_actuator();
-    printf("SYNC_FLAG_RESULT signal=48 threshold=19 threshold_domain=canonical output=%u kp=%d lp=%u "
-        "entered=%u observed=%u restored=%u fault=%u output_gates=0 boot_default=OFF\n",
-        output,level,(unsigned)lp,(unsigned)entered,(unsigned)observed,(unsigned)restored,(unsigned)s_transport_fault);
-    if(d->result[0])printf("%s",d->result);
-    printf("SYNC_FLAG_TRACE signal=48 level=1 tick_domain=common sparse=structural_plus4 count=%u triggered=%u frozen=%u dropped=%lu tick_hz=20000000\n",
-        d->trace.count,(unsigned)d->trace.triggered,(unsigned)d->trace.frozen,(unsigned long)d->trace.dropped);
-    unsigned first=(d->trace.head+SNT_TRACE_CAPACITY-d->trace.count)%SNT_TRACE_CAPACITY;
-    for(unsigned i=0;i<d->trace.count;++i) {
-        const snt_trace_low_t *low=&d->trace.lows[(first+i)%SNT_TRACE_CAPACITY];
-        printf("SYNC_FLAG_HIGH i=%u epoch=%u tick=%lu width=%u\n",i,low->epoch,(unsigned long)low->tick,low->width);
-    }
-    printf("SYNC_FLAG_TRACE_END count=%u restored=%u\n",d->trace.count,(unsigned)restored);
-    if(restored)s_flag_bench=NULL; /* retain failed ownership until reboot */
-}
-
-static bool transport_bench_context_copy(sync_bench_context_t *ctx, uint16_t *lut)
-{
-    uintptr_t dst = (uintptr_t)lut, raw = (uintptr_t)s_raw_ring;
-    if (!ctx || !lut || dst > UINTPTR_MAX - sizeof(s_lut_live) ||
-        (dst < raw + sizeof(s_raw_ring) && raw < dst + sizeof(s_lut_live))) return false;
-    vTaskSuspendAll();
-    bool valid = s_started && s_have_verified && s_lut_known && !s_transport_fault &&
-        !s_stream_generation_overflow && !s_menu_active && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
-        s_verified_level >= 0 && s_verified_level < KP_LEVELS && s_verified_output < OUTPUT_LEVELS &&
-        s_prog_lp == s_verified_lp && s_output == s_verified_output;
-    if (valid) {
-        *ctx = (sync_bench_context_t){s_stream_generation,s_verified_level,s_verified_output,s_verified_lp};
-        memcpy(lut,s_lut_live,sizeof(s_lut_live));
-    }
-    (void)xTaskResumeAll();
-    return valid && sync_lut_context_matches(lut,kp_tables[ctx->level],ctx->output);
-}
-
-static bool transport_bench_context_valid(const sync_bench_context_t *ctx)
-{
-    vTaskSuspendAll();
-    bool valid = s_started && s_have_verified && s_lut_known && !s_transport_fault &&
-        !s_stream_generation_overflow && !s_menu_active && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
-        s_stream_generation == ctx->generation && s_verified_level == ctx->level &&
-        s_verified_lp == ctx->lp && s_prog_lp == ctx->lp &&
-        s_verified_output == ctx->output && s_output == ctx->output;
-    (void)xTaskResumeAll();
-    return valid;
-}
-
-static bool transport_bench_cache_result(esp_err_t error)
-{
-    if (error == ESP_OK) return true;
-#if !SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
-    /* Pinned esp_cache_msync returns NOT_SUPPORTED for noncacheable SRAM. */
-    if (error == ESP_ERR_NOT_SUPPORTED) return true;
-#endif
-    return false;
-}
-
-void transport_sync_bench(void)
-{
-    if(s_flag_bench){printf("SYNC_BENCH refused=flag_context\n");return;}
-    if (sync_service_active()) { printf("SYNC_BENCH refused=service_active writes_live=0\n"); return; }
-    /* The fixed512-byte start plus the longest1280-byte pulse fits2048.
-     * Keep the transient benchmark allocation below fragmented heap blocks. */
-    enum { PRIVATE_RING=2048, WORKSPACE=1280, LUT_BYTES=2048, REFERENCE_BYTES=2048,
-           COPY_BYTES=1344, PHASE_BYTES=256,
-           ALLOCATION=PRIVATE_RING+WORKSPACE+LUT_BYTES+REFERENCE_BYTES+COPY_BYTES+64+PHASE_BYTES };
-    static portMUX_TYPE copy_mux = portMUX_INITIALIZER_UNLOCKED;
-    static bool called;
-    uint8_t *memory = heap_caps_aligned_alloc(64,ALLOCATION,MALLOC_CAP_INTERNAL|MALLOC_CAP_DMA|MALLOC_CAP_8BIT);
-    if (!memory) { printf("SYNC_BENCH refused=memory writes_live=0\n"); return; }
-    uintptr_t begin = (uintptr_t)memory, raw = (uintptr_t)s_raw_ring;
-    if (begin > UINTPTR_MAX-ALLOCATION || (begin < raw+sizeof(s_raw_ring) && raw < begin+ALLOCATION)) {
-        heap_caps_free(memory); printf("SYNC_BENCH refused=private_alias writes_live=0\n"); return;
-    }
-    memset(memory,0xa5,ALLOCATION);
-    uint8_t *workspace=memory+PRIVATE_RING;
-    uint16_t *lut=(uint16_t *)(workspace+WORKSPACE);
-    uint16_t *reference=(uint16_t *)((uint8_t *)lut+LUT_BYTES);
-    uint8_t *destination=(uint8_t *)reference+REFERENCE_BYTES;
-    uint8_t *phase=memory+ALLOCATION-PHASE_BYTES;
-    memcpy(phase,c5vrx_phase8_gain_lut,PHASE_BYTES);
-    sync_bench_context_t context;
-    if (!transport_bench_context_copy(&context,lut)) {
-        heap_caps_free(memory); printf("SYNC_BENCH refused=context writes_live=0\n"); return;
-    }
-    memcpy(reference,kp_tables[context.level],REFERENCE_BYTES);
-    sfw_ring_t ring = {.ring=memory,.ring_bytes=PRIVATE_RING,.phase=phase,
-        .verified_kp_x100=kp_level_x100[context.level],.program_verified=true,.decoder_lut=lut,
-        .reference_lut=reference,.verified_output=context.output,
-        .workspace=workspace,.workspace_bytes=WORKSPACE};
-    bool first_call=!called; called=true;
-    int64_t t0=esp_timer_get_time(); uint32_t c0=esp_cpu_get_cycle_count();
-    bool warm=sfw_bench_prewarm(&ring);
-    uint32_t warm_cycles=esp_cpu_get_cycle_count()-c0;
-    uint64_t warm_us=(uint64_t)(esp_timer_get_time()-t0);
-    printf("SYNC_BENCH begin private_bytes=%u private_ring=%u input=private_synthetic writes_live=0 first_call=%u "
-           "prewarm_cycles=%lu prewarm_us=%llu kp=%u lp=%u output=%u stream_gen=%lu "
-           "cpu_hz=%lu phase_ram=1 reference_ram=1 irq_latency_measured=0 live_wcet_proven=0\n",ALLOCATION,PRIVATE_RING,first_call,(unsigned long)warm_cycles,
-           (unsigned long long)warm_us,kp_level_x100[context.level],context.lp,context.output,
-           (unsigned long)context.generation,(unsigned long)esp_clk_cpu_freq());
-    bool valid=warm;
-    for (unsigned standard=0; valid && standard<2; ++standard) for (unsigned kind=0; valid && kind<4; ++kind) {
-        if (kind==SFW_BENCH_FIRST_EQ && !context.lp) {
-            printf("SYNC_BENCH pulse standard=%s kind=%u eligible=0 reason=lp_model_only writes_live=0\n",
-                   standard?"PAL":"NTSC",kind);
-            continue;
-        }
-        uint32_t prepare_max_cycles=0,copy_max_cycles=0,refused=0,bytes=0;
-        uint64_t prepare_max_us=0,copy_max_us=0;
-        uint32_t prepare_min_cycles=UINT32_MAX;
-        uint64_t prepare_min_us=UINT64_MAX;
-        sfw_bench_profile_t profile={0}, fastest={0};
-        ring.benchmark_profile=&profile;
-        int cache_in=ESP_OK,cache_out=ESP_OK;
-        for (unsigned run=0; valid && run<4; ++run) {
-            valid=transport_bench_context_valid(&context) && sfw_bench_seed_private(&ring,(uint16_t)(run*8192u));
-            if (!valid) break;
-            sfw_private_pulse_t pulse;
-            t0=esp_timer_get_time(); c0=esp_cpu_get_cycle_count();
-            valid=sfw_bench_prepare_private(&ring,standard!=0,(sfw_bench_kind_t)kind,&pulse);
-            uint32_t elapsed_cycles=esp_cpu_get_cycle_count()-c0;
-            uint64_t elapsed_us=(uint64_t)(esp_timer_get_time()-t0);
-            if (elapsed_cycles>prepare_max_cycles) prepare_max_cycles=elapsed_cycles;
-            if (elapsed_us>prepare_max_us) prepare_max_us=elapsed_us;
-            if (elapsed_cycles<prepare_min_cycles) { prepare_min_cycles=elapsed_cycles; fastest=profile; }
-            if (elapsed_us<prepare_min_us) prepare_min_us=elapsed_us;
-            if (!valid || !transport_bench_context_valid(&context)) { valid=false; break; }
-            bytes=pulse.bytes; refused+=pulse.bootstrap_refused;
-            uint32_t rounded=(bytes+63u)&~63u;
-            if (!bytes || rounded>COPY_BYTES) { valid=false; break; }
-            memset(destination,0xa5,COPY_BYTES+64);
-            esp_err_t initialized=esp_cache_msync(destination,COPY_BYTES+64,ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            if (!transport_bench_cache_result(initialized)) { valid=false; break; }
-            /* Measured envelope includes entry/exit and possible pre-entry IRQ
-             * delay. No search, synthesis, printing or PHY access is masked. */
-            t0=esp_timer_get_time(); c0=esp_cpu_get_cycle_count();
-            portENTER_CRITICAL(&copy_mux);
-            cache_in=esp_cache_msync(destination,rounded,ESP_CACHE_MSYNC_FLAG_DIR_M2C);
-            if (transport_bench_cache_result(cache_in)) {
-                memcpy(destination,workspace,bytes);
-                cache_out=esp_cache_msync(destination,rounded,ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            }
-            portEXIT_CRITICAL(&copy_mux);
-            elapsed_cycles=esp_cpu_get_cycle_count()-c0;
-            elapsed_us=(uint64_t)(esp_timer_get_time()-t0);
-            if (elapsed_cycles>copy_max_cycles) copy_max_cycles=elapsed_cycles;
-            if (elapsed_us>copy_max_us) copy_max_us=elapsed_us;
-            valid=transport_bench_cache_result(cache_in) && transport_bench_cache_result(cache_out) &&
-                !memcmp(destination,workspace,bytes) && transport_bench_context_valid(&context);
-            for (unsigned k=bytes; valid && k<COPY_BYTES+64; ++k) if (destination[k]!=0xa5) valid=false;
-        }
-        printf("SYNC_BENCH pulse standard=%s kind=%u valid=%u bytes=%lu prepare_max_cycles=%lu "
-               "prepare_max_us=%llu private_copy_envelope_cycles=%lu private_copy_envelope_us=%llu "
-               "prepare_min_cycles=%lu prepare_min_us=%llu cache_in=%d cache_out=%d bootstrap_refused=%lu first_eq_lp_model_only=%u writes_live=0\n",
-               standard?"PAL":"NTSC",kind,valid,(unsigned long)bytes,(unsigned long)prepare_max_cycles,
-               (unsigned long long)prepare_max_us,(unsigned long)copy_max_cycles,(unsigned long long)copy_max_us,
-               (unsigned long)prepare_min_cycles,(unsigned long long)prepare_min_us,
-               cache_in,cache_out,(unsigned long)refused,kind==SFW_BENCH_FIRST_EQ);
-        printf("SYNC_PROFILE standard=%s kind=%u sample=min_cycles mask=%u init=%lu prefix=%lu "
-               "regular=%lu selection=%lu body=%lu commit=%lu states0=%u states1=%u "
-               "minmask_builds=%lu minmask_in_selection=%u includes_preemption=1 writes_live=0\n",
-               standard?"PAL":"NTSC",kind,fastest.stage_mask,
-               (unsigned long)(fastest.init_done-fastest.begin),
-               (unsigned long)((fastest.stage_mask&4u)?fastest.prefix_done-fastest.init_done:0),
-               (unsigned long)((fastest.stage_mask&8u)?fastest.regular_done-fastest.prefix_done:0),
-               (unsigned long)((fastest.stage_mask&16u)?fastest.selection_done-fastest.regular_done:0),
-               (unsigned long)(fastest.body_done-((fastest.stage_mask&16u)?fastest.selection_done:fastest.init_done)),
-               (unsigned long)(fastest.commit_done-fastest.body_done),
-               fastest.prefix_states[0],fastest.prefix_states[1],
-               (unsigned long)fastest.minmask_builds,fastest.minmask_in_selection);
-        ring.benchmark_profile=NULL;
-        vTaskDelay(1);
-    }
-    heap_caps_free(memory);
-    printf("SYNC_BENCH end valid=%u writes_live=0 keeper_enabled=0 irq_latency_measured=0 live_wcet_proven=0\n",valid);
-}
 
 void transport_print(void)
 {
-    printf("VIDEO_OUTPUT source=%s standard=%s fallback_enabled=%u\n", no_signal_active() ? "NO_SIGNAL" :
-           s_menu_active ? "MENU" : s_started ? "LIVE" : "OFF",
-           s_video_std == VIDEO_STD_PAL ? "PAL" : "NTSC", no_signal_enabled());
-    printf("LCD_AB live_restarts=%lu failed=%lu last_us=%lu\n",
-           (unsigned long)s_bench_restarts, (unsigned long)s_bench_restart_fail,
-           (unsigned long)s_bench_restart_us);
+    printf("VIDEO_OUTPUT source=%s standard=%s\n", s_menu_active ? "MENU" : s_started ? "LIVE" : "OFF",
+           s_video_std == VIDEO_STD_PAL ? "PAL" : "NTSC");
     printf("OUTPUT level=%s boot_restore=saved default=1.0x clipped_lut_entries=%u recovery_errors=%lu rollbacks=%lu "
            "rollback_fail=%lu fault_latched=%u live=%u\n", transport_output_name(), s_output_clipped,
            (unsigned long)s_restart_errors, (unsigned long)s_rollbacks, (unsigned long)s_rollback_fail,
@@ -1631,7 +1095,6 @@ void transport_print(void)
            (unsigned long)s_control_copy.source_invalid, (unsigned long)s_control_copy.pointer_invalid,
            (unsigned long)s_control_copy.lapped, (unsigned long)s_control_copy.timed_out,
            (unsigned long)s_control_copy.max_us, (unsigned long)s_control_copy.max_advance);
-    transport_sync_probe_print();
 }
 
 int ring_node_index(uint32_t addr)
@@ -1651,32 +1114,9 @@ static bool completed_plan(int active, size_t need, control_copy_plan_t *out)
     return control_copy_plan(lengths, (unsigned)s_rx_node_count, (unsigned)active, need, out);
 }
 
-/* All CPU raw-byte readers below share this independent ownership gate.
- * DMA continues; leases end before private-buffer analysis/USB printing. */
-static raw_access_t s_raw_access;
-static raw_access_context_t transport_raw_context(void)
-{
-    return (raw_access_context_t){s_stream_generation,s_control_epoch,s_gain_epoch,phy_generation()};
-}
-static bool transport_raw_read_begin(raw_access_token_t *token)
-{
-    vTaskSuspendAll();
-    bool ok=raw_access_read_begin(&s_raw_access,transport_raw_context(),
-                                  s_rx_enabled && !s_stream_generation_overflow,token);
-    (void)xTaskResumeAll();
-    return ok;
-}
-static bool transport_raw_read_end(raw_access_token_t *token)
-{
-    vTaskSuspendAll();
-    bool ok=raw_access_read_end(&s_raw_access,token,transport_raw_context(),
-                                s_rx_enabled && !s_stream_generation_overflow);
-    (void)xTaskResumeAll();
-    return ok;
-}
 
 /* The newest completed descriptor, copied and proven not lapped. */
-static bool copy_control_window_unleased(uint8_t *dst, size_t bytes)
+bool copy_control_window(uint8_t *dst, size_t bytes)
 {
     ++s_control_copy.calls;
     if (s_rx_dma_ch < 0 || s_rx_node_count < 3) { ++s_control_copy.not_ready; return false; }
@@ -1723,7 +1163,7 @@ static bool copy_control_window_unleased(uint8_t *dst, size_t bytes)
 }
 
 /* Four separated 64-byte regions of the newest completed descriptor. */
-static bool copy_probe_window_unleased(uint8_t dst[PROBE_BYTES], int *node)
+bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node)
 {
     static const size_t offset[PROBE_REGIONS] = {512u, 1536u, 2560u, 4028u};
     if (s_rx_dma_ch < 0 || s_rx_node_count < 2) return false;
@@ -1747,7 +1187,7 @@ static bool copy_probe_window_unleased(uint8_t dst[PROBE_BYTES], int *node)
     return true;
 }
 
-static bool copy_sentinel_window_unleased(uint8_t dst[64])
+bool copy_sentinel_window(uint8_t dst[64])
 {
     if (s_rx_dma_ch < 0 || s_rx_node_count < 3) return false;
     const int64_t start = esp_timer_get_time();
@@ -1765,7 +1205,7 @@ static bool copy_sentinel_window_unleased(uint8_t dst[64])
 
 /* 8190 contiguous bytes (204.75 us) ending where the active descriptor
  * began, valid only if RX could not have reached them during the copy. */
-static bool copy_snapshot_unleased(uint8_t *dst)
+bool copy_snapshot(uint8_t *dst)
 {
     if (s_rx_dma_ch < 0 || s_rx_node_count < 4) return false;
     int64_t start = esp_timer_get_time();
@@ -1797,7 +1237,7 @@ static bool copy_snapshot_unleased(uint8_t *dst)
 }
 
 /* Endpoint bytes (odd ring byte of each pair) of the newest `n` pairs. */
-static bool copy_recent_endpoints_unleased(uint8_t *dst, size_t n)
+bool copy_recent_endpoints(uint8_t *dst, size_t n)
 {
     if (s_rx_dma_ch < 0 || s_rx_node_count < 2 || 2u * n > sizeof(s_raw_ring) / 2u) return false;
     int idx = ring_node_index(rx_active_addr());
@@ -1812,148 +1252,6 @@ static bool copy_recent_endpoints_unleased(uint8_t *dst, size_t n)
         pos = (pos + 2u) % sizeof(s_raw_ring);
     }
     return true;
-}
-
-/* Bounded evidence readers. Shared-ring writes remain disabled: future
- * integration must preserve raw_history's full protected interval, or check
- * repair-ledger intersections, in addition to exclusive token ownership. */
-bool copy_control_window(uint8_t *dst, size_t bytes)
-{
-    if (!dst || !raw_history_request(RHR_CONTROL,bytes)) return false;
-    raw_access_token_t token;
-    if (!transport_raw_read_begin(&token)) return false;
-    bool copied=copy_control_window_unleased(dst,bytes);
-    bool current=transport_raw_read_end(&token);
-    return copied && current;
-}
-bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node)
-{
-    if (!dst || !raw_history_request(RHR_PROBE,PROBE_BYTES)) return false;
-    raw_access_token_t token;
-    if (!transport_raw_read_begin(&token)) return false;
-    bool copied=copy_probe_window_unleased(dst,node);
-    bool current=transport_raw_read_end(&token);
-    return copied && current;
-}
-bool copy_sentinel_window(uint8_t dst[64])
-{
-    if (!dst || !raw_history_request(RHR_SENTINEL,64u)) return false;
-    raw_access_token_t token;
-    if (!transport_raw_read_begin(&token)) return false;
-    bool copied=copy_sentinel_window_unleased(dst);
-    bool current=transport_raw_read_end(&token);
-    return copied && current;
-}
-bool copy_snapshot(uint8_t *dst)
-{
-    if (!dst || !raw_history_request(RHR_SNAPSHOT,C5V4_LEVEL_SAMPLE_BYTES)) return false;
-    raw_access_token_t token;
-    if (!transport_raw_read_begin(&token)) return false;
-    bool copied=copy_snapshot_unleased(dst);
-    bool current=transport_raw_read_end(&token);
-    return copied && current;
-}
-bool copy_recent_endpoints(uint8_t *dst, size_t n)
-{
-    if (!dst || !raw_history_request(RHR_ENDPOINTS,n)) return false;
-    raw_access_token_t token;
-    if (!transport_raw_read_begin(&token)) return false;
-    bool copied=copy_recent_endpoints_unleased(dst,n);
-    bool current=transport_raw_read_end(&token);
-    return copied && current;
-}
-
-/* Manual W detector: primary DONE metadata, independent of BF0 prefetch.
- * Task-scheduler serialization prevents transport state mutation during each
- * metadata capture. DMA/interrupts continue; never clear fault/status bits. */
-static uint32_t transport_sync_faults(void)
-{
-    return s_dma_faults + s_tx_empty + s_rx_overflow + s_bs_overload;
-}
-static bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_capture(sync_done_capture_t *c)
-{
-    vTaskSuspendAll();
-    *c=(sync_done_capture_t){0};
-    c->first_us=(uint64_t)esp_timer_get_time();
-    c->context=transport_raw_context();
-    c->metadata_owned=true;
-    c->live=s_started && s_have_verified && s_lut_known && !s_transport_fault &&
-        !s_stream_generation_overflow && !s_menu_active && s_rx_enabled && s_tx_enabled && s_bs_enabled &&
-        s_rx_dma_ch>=0 && s_rx_dma_ch<3 && s_tx_dma_ch>=0 && s_tx_dma_ch<3;
-    if(c->live) {
-        sync_memory_registers_t m=transport_memory_registers();
-        uint32_t ahb=0;
-        c->done=m.rx_done; c->bf0=m.rx_bf0;
-        c->rx_clock=m.rx_clock; c->tx_clock=m.tx_clock;
-        c->memory_rate_bound=sync_memory_clock(&m,&ahb)?192000000u:0;
-        c->live=!(AHB_DMA.in_intr[s_rx_dma_ch].raw.val & 0xfcu) &&
-            !(AHB_DMA.out_intr[s_tx_dma_ch].raw.val & 0x7cu) &&
-            !PARL_IO.int_raw.tx_fifo_rempty_int_raw && !PARL_IO.int_raw.rx_fifo_wovf_int_raw &&
-            !BITSCRAMBLER.state[BITSCRAMBLER_DIR_TX].eof_overload;
-    }
-    c->last_us=(uint64_t)esp_timer_get_time();
-    (void)xTaskResumeAll();
-    return c->live && c->memory_rate_bound;
-}
-bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_source_begin(sync_service_source_t *s, bool discover)
-{
-    if(s_flag_bench)return false;
-    if(!s || s->leased || !transport_raw_read_begin(&s->token))return false;
-    s->leased=true;
-    s->faults=transport_sync_faults();
-    bool ok=transport_sync_capture(&s->first);
-    if(ok && discover) {
-        vTaskSuspendAll();
-        ok=s_rx_node_count==DMA_PROGRESS_NODES;
-        for(unsigned i=0;ok && i<DMA_PROGRESS_NODES;++i) {
-            const dma_descriptor_t *d=s_rx_nodes[i].dscr;
-            uintptr_t b=(uintptr_t)s_rx_nodes[i].buffer, base=(uintptr_t)s_raw_ring;
-            ok=d && b>=base && b-base<sizeof(s_raw_ring) &&
-                d->buffer==s_rx_nodes[i].buffer && d->dw0.size==s_rx_nodes[i].length;
-            if(ok)s->layout.nodes[i]=(dma_progress_node_t){(uintptr_t)d,(uintptr_t)d->next,
-                (uint32_t)(b-base),s_rx_nodes[i].length};
-        }
-        s->ring=(sfw_ring_t){.ring=s_raw_ring,.ring_bytes=sizeof(s_raw_ring),
-            .decoder_lut=s_lut_live}; /* actual pointer, never copied or written */
-        (void)xTaskResumeAll();
-        ok=ok && dma_progress_layout_valid(&s->layout);
-    }
-    ok=transport_sync_capture(&s->last) && ok;
-    /* A normal DONE edge between captures is not a missed service wake.
-     * Retry the paired observation once, immediately, under the same READ
-     * lease. No raw reads have occurred and no progress was accepted yet.
-     * A second crossing remains UNSTABLE; all lifetime/time checks remain. */
-    if(ok && s->first.done!=s->last.done) {
-        s->first=s->last;
-        ok=transport_sync_capture(&s->last);
-    }
-    ok=ok &&
-        raw_access_same(s->token.context,s->last.context) && s->faults==transport_sync_faults();
-    if(!ok){(void)transport_sync_source_end(s);return false;}
-#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
-    sync_dma_m2c(s_raw_ring,sizeof(s_raw_ring));
-#else
-    /* s_raw_ring is DMA_ATTR internal SRAM. On C5 it bypasses L1: the
-     * pinned cache API only discovers a noncacheable range and returns
-     * NOT_SUPPORTED. Keep load ordering without that flash-resident walk.
-     * This shortcut applies only to this fixed internal ring. */
-    __sync_synchronize();
-#endif
-    return true;
-}
-bool IRAM_ATTR __attribute__((optimize("O2"))) transport_sync_source_end(sync_service_source_t *s)
-{
-    if(!s || !s->leased)return false;
-    bool ok=transport_sync_capture(&s->last);
-    ok=transport_sync_capture(&s->finish_last) && ok;
-    if(ok && s->last.done!=s->finish_last.done) {
-        s->last=s->finish_last;
-        ok=transport_sync_capture(&s->finish_last);
-    }
-    ok=ok && s->faults==transport_sync_faults();
-    bool current=transport_raw_read_end(&s->token);
-    s->leased=false;
-    return ok && current;
 }
 
 /* Sampling phase: holding the RX divider one count higher for ~1 us moves

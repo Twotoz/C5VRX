@@ -1,6 +1,0 @@
-NATIVE_AGC enabled=1 period_us=20000 timeout_us=60 boot_default=OFF ram_only=1 bench=1
-NATIVE_AGC refusal=forced_readback gain=83 owned=1 expected=001e77f0 tuple_a=00000000 tuple_b=00000000 raw_rf=1e7 raw_bb=17f raw_fine=0d0 force=53c053e2 bb_gate=e3c5a6d5 rf_gate=00000000 rf_control=00000000
-NATIVE_AGC disabled=result_1 owner=direct_gain_v5 open_us=0
-STATUS channel=A1 freq=5865 afc_locked=0 standard=AUTO detected=none signal=7 menu=0 mode=DEFAULT 12MHZ KP0.85 kp_auto=2 output=2.0x live=1 busy=0
-STATUS channel=A1 freq=5865 afc_locked=0 standard=AUTO detected=none signal=5 menu=0 mode=DEFAULT 12MHZ KP0.85 kp_auto=2 output=2.0x live=1 busy=0
-HB t_s=380 stage=ready gain=83 menu=0 startup=0 busy=0

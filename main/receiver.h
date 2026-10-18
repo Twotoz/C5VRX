@@ -59,7 +59,6 @@ extern int s_rx_node_count;
 esp_err_t transport_start(void);
 void transport_stop_tx(void);
 void transport_resume_live(void);
-bool transport_bench_restart(void); /* issue #213: live-only, unchanged verified configuration */
 bool transport_resume_raster(int level, bool lp); /* confirmed ladder target at raster exit */
 void transport_start_chain(dma_descriptor_t *first);
 /* One tracker topology (U85Q / U85Q-LP); a profile only picks the filter
@@ -83,13 +82,6 @@ void transport_stop_chain(void);
 void transport_poll_faults(void);
 uint32_t transport_fault_count(void);
 void transport_print(void);
-void transport_sync_bench(void); /* manual private-RAM J benchmark; no live writes */
-void transport_sync_gate_probe(bool pal); /* Z/z: brief PAL/NTSC DAC-OE diagnostic */
-void transport_sync_gate_probe_long(bool pal); /* Q/q: three-second manual gate test */
-void transport_sync_output_probe(void); /* Y: native DAC timing observation, LP/1x only */
-void transport_sync_flag_probe(void); /* V: finite comparator observation, restores original stream */
-void transport_sync_output_clock_probe(void); /* y: common-edge RMT/ETM experiment */
-void transport_sync_live_toggle(void); /* u: resident native observer bench */
 void transport_sync_flywheel_toggle(void); /* U / menu FLYWHEEL: toggle and save */
 void transport_sync_flywheel_set(bool on, bool save);
 bool transport_sync_flywheel_enabled(void);
@@ -105,7 +97,6 @@ bool transport_sync_live_release(void);
  * builds its chain from another task. */
 void transport_sync_live_hold(bool on);
 void transport_sync_live_print(void);
-void transport_sync_live_trace_print(void);
 void sync_dma_c2m(const void *addr, size_t size);
 void sync_dma_m2c(const void *addr, size_t size);
 int ring_node_index(uint32_t addr);
@@ -152,7 +143,6 @@ uint8_t receiver_gain_mode(void);
 void receiver_set_gain_mode(uint8_t mode, bool save);
 uint8_t receiver_gain_mode_next(uint8_t mode);
 const char *receiver_gain_mode_name(uint8_t mode, char *buf, unsigned size);
-void receiver_native_toggle(void); /* ~: RAM-only bounded native acquire/hold bench */
 
 /* ---- control.c ---- */
 extern volatile bool s_menu_active;
@@ -214,12 +204,6 @@ void menu_set_standard_mode(std_mode_t mode);
 void status_screen(const char *title, const char *line1, const char *line2, int percent);
 void status_screen_end(void);
 bool menu_status_active(void);
-bool no_signal_active(void);
-bool no_signal_enabled(void);
-void no_signal_enable(bool enabled);
-bool no_signal_prepare(void);
-bool no_signal_show(void);
-bool no_signal_end(int level, bool lp);
 
 /* ---- profile.c ---- */
 #include "afc.h"

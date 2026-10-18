@@ -26,3 +26,7 @@ build_ci/
 sdkconfig.*
 !sdkconfig.defaults
 !sdkconfig.*.defaults
+
+# Raw board logs and captures stay out of git; summarize results in docs/.
+research/data/board_*
+*.raw.log

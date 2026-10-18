@@ -262,61 +262,6 @@ static void native_polarity_fixture(bool ntsc,bool inverted){
         chosen->qualified_fields>=1u&&!other->valid);
  ++checks;
 }
-static void lifecycle(void){
- for(unsigned failure=0;failure<=8;++failure){
-  reset();fail_at=failure;uint32_t saved[13];memcpy(saved,registers,sizeof(saved));
-  sync_output_probe(7,owner_live);
-  assert(!memcmp(registers,saved,sizeof(saved))&&!s_probe.armed&&!s_busy);
-  assert(now<=100000);assert(!rx_enabled||s_quarantined);
-  if(failure==6||failure==7||failure==8){assert(s_quarantined);unsigned calls=api_calls;
-   sync_output_probe(7,owner_live);assert(api_calls==calls);
-   rmt_symbol_word_t w={.duration0=1186,.level0=1,.duration1=94,.level1=0};
-   unsigned callbacks=s_probe.callbacks;event(&w,1,false);assert(s_probe.callbacks==callbacks);
-  }else assert(!channel_live);
-  ++checks;
- }
- reset();mode=1;sync_output_probe(7,owner_live);
- assert(s_probe.h>1000&&s_probe.pal32>10&&!s_probe.bad_data&&now==50000);
- reset();registers[GPIO_FUNC8_OUT_SEL_CFG_REG]&=~GPIO_FUNC8_OE_SEL_M;
- uint32_t native_matrix=registers[GPIO_FUNC8_OUT_SEL_CFG_REG];
- mode=1;sync_output_probe(7,owner_live);
- assert(s_probe.h>1000&&!s_probe.bad_data&&receives&&
-        registers[GPIO_FUNC8_OUT_SEL_CFG_REG]==native_matrix);
- reset();mode=2;sync_output_probe(7,owner_live);assert(s_probe.cancelled&&now==1000);
- reset();mutate_pin=true;uint32_t saved=registers[GPIO_FUNC8_OUT_SEL_CFG_REG];
- sync_output_probe(7,owner_live);assert(registers[GPIO_FUNC8_OUT_SEL_CFG_REG]==saved&&!receives);
- reset();registers[GPIO_FUNC8_OUT_SEL_CFG_REG]^=1u;sync_output_probe(7,owner_live);assert(!api_calls&&!writes);
- reset();live_value=false;sync_output_probe(7,owner_live);assert(!api_calls&&!writes);
- reset();sync_output_probe(7,NULL);assert(!api_calls&&!writes);
- reset();s_busy=true;sync_output_probe(7,owner_live);assert(!api_calls&&!writes);
- reset();registers[GPIO_ENABLE_REG]|=1u<<2;
- sync_output_probe(7,owner_live);assert(!api_calls&&!writes);
- reset();registers[GPIO_PIN2_REG]|=GPIO_PIN2_PAD_DRIVER_M;
- sync_output_probe(7,owner_live);assert(!api_calls&&!writes);
- reset();registers[IO_MUX_GPIO2_REG]=FUN_PU|FUN_PD|0x100000u;
- registers[GPIO_FUNC2_OUT_SEL_CFG_REG]=0x200000u|256u;
- uint32_t saved_all[13];memcpy(saved_all,registers,sizeof(saved_all));
- sync_output_probe(7,owner_live);assert(receives&&!memcmp(saved_all,registers,sizeof(saved_all)));
- reset();mode=1;sync_output_clock_probe(7,owner_live);
- assert(clock_calls==11u&&!clock_prepared&&!clock_armed&&s_probe.h>1000&&!s_clock_fault);
- reset();mode=1;registers[GPIO_OUT_REG]=(1u<<2)|0x80000000u;
- uint32_t data_before=registers[GPIO_OUT_REG];sync_output_clock_probe(7,owner_live);
- assert(registers[GPIO_OUT_REG]==data_before&&!s_probe.marker_invalid);
- reset();sync_output_clock_probe(7,owner_live);
- assert(receives>1u&&s_probe.epochs>1u&&!clock_prepared&&clock_prepares==1u&&clock_arms==1u);
- reset();mode=3;sync_output_clock_probe(7,owner_live);
- assert(s_probe.epochs>20u&&s_probe.h>1000u&&clock_prepares==1u&&clock_arms==1u&&clock_pauses>20u);
- reset();mode=3;clock_epoch_stride=UINT64_C(1)<<40;sync_output_clock_probe(7,owner_live);
- assert(s_probe.epochs>20u&&s_probe.h>1000u&&clock_prepares==1u&&clock_arms==1u);
- reset();mode=4;sync_output_clock_probe(7,owner_live);
- assert(receives==2u&&s_probe.epochs==2u&&now<50000&&!clock_prepared);
- for(unsigned i=1;i<=5u;++i){reset();mode=1;clock_fail=i;
-  sync_output_clock_probe(7,owner_live);assert(!clock_prepared&&!clock_armed);
-  assert(s_clock_fault==(i==3u));}
- parser_start();s_probe.callbacks=256u;
- rmt_symbol_word_t rate_word={.duration0=1186,.level0=1,.duration1=94,.level1=0};
- event(&rate_word,1,false);assert(s_probe.stop&&s_probe.rate_limited&&!s_probe.symbols);
-}
 
 static void resident_lifecycle(void){
  reset();mode=1;
@@ -326,13 +271,12 @@ static void resident_lifecycle(void){
  assert(!sync_output_live_begin(7,owner_live));
  for(unsigned i=0;i<350u;++i){vTaskDelay(1);assert(sync_output_live_poll());}
  assert(s_probe.callbacks>256u&&!s_probe.rate_limited&&clock_prepares==1&&clock_arms==1);
- snt_trace_t trace;char diagnostic[768];
- assert(sync_output_live_trace_snapshot(&trace)&&trace.count==SNT_TRACE_CAPACITY);
+ char diagnostic[768];
+ assert(s_native->trace.count==SNT_TRACE_CAPACITY);
  assert(sync_output_live_diagnostics(diagnostic,sizeof(diagnostic))&&strstr(diagnostic,"SYNC_LIVE_DIAG "));
  assert(!sync_output_live_diagnostics(diagnostic,1u)&&!diagnostic[0]);
  ++s_native->sequence;
- assert(!sync_output_live_trace_snapshot(&trace)&&
-        !sync_output_live_diagnostics(diagnostic,sizeof(diagnostic))&&!diagnostic[0]);
+ assert(!sync_output_live_diagnostics(diagnostic,sizeof(diagnostic))&&!diagnostic[0]);
  ++s_native->sequence;
  checks+=4;
  /* Inject a qualified model to test publication/lifetime independently of
@@ -407,7 +351,6 @@ static void restore_fault_lifecycle(void){
  assert(!sync_output_live_end()&&s_clock_fault&&!s_busy&&!channel_live);
  unsigned calls=api_calls;
  assert(!sync_output_live_begin(7,owner_live));
- sync_output_probe(7,owner_live);
  assert(api_calls==calls&&!sync_output_live_end());
  ++checks;
 }
@@ -538,28 +481,6 @@ static void flag_resident_source(void){
  assert(!sync_output_live_source(NULL,&epoch));
  checks+=18;
 }
-static void flag_lifecycle(void){
- for(unsigned failure=0;failure<=8u;++failure){
-  reset();mode=failure==5u?3u:1u;fail_at=failure;
-  uint32_t saved[13];memcpy(saved,registers,sizeof(saved));
-  snt_trace_t trace;char result[640];
-  bool ok=sync_output_flag_probe(7,owner_live,&trace,result,sizeof(result));
-  if(ok!=(failure==0u))fprintf(stderr,"flag failure=%u ok=%u result=%s\n",failure,(unsigned)ok,result);
-  assert(ok==(failure==0u));
-  assert(!memcmp(saved,registers,sizeof(saved))&&!s_probe.armed&&!s_busy);
-  assert(now<51000&&!clock_prepared&&!clock_armed);
-  if(!failure){
-   assert(flag_source_seen&&trace.count==SNT_TRACE_CAPACITY);
-   assert(strstr(result,"signal=48 threshold=19 started=1")&&strstr(result,"closed=1"));
-   assert(strstr(result,"camera_qualified=0\n")); /* bounded result was not truncated */
-  }
-  if(failure>=6u)assert(s_quarantined);
-  ++checks;
- }
- reset();mode=2;snt_trace_t trace;char result[640];
- assert(!sync_output_flag_probe(7,owner_live,&trace,result,sizeof(result)));
- assert(!s_busy&&!channel_live&&!clock_prepared);++checks;
-}
 static void flag_idle_lifetime(void){
  reset();mode=1;assert(sop_session_begin(7,owner_live,true,false,true));
  vTaskDelay(1);sop_drain(&s_probe);
@@ -587,7 +508,7 @@ static void flag_profile_route(void){
  assert(s_native->inverted.h_standard==1u&&!s_native->native.h_standard);
  assert(!s_native->inverted.valid);checks+=2;
 }
-int main(void){flag_mutation_authority();coast_field_grid();flag_resident_source();flag_idle_lifetime();flag_profile_route();flag_lifecycle();dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);lifecycle();printf("PASS: %u probe runtime checks\n",checks);return 0;}
+int main(void){flag_mutation_authority();coast_field_grid();flag_resident_source();flag_idle_lifetime();flag_profile_route();dependent_teardown();restore_fault_lifecycle();resident_lifecycle();native_projection();parser_tests();fixture(false);fixture(true);native_polarity_fixture(false,false);native_polarity_fixture(false,true);native_polarity_fixture(true,false);native_polarity_fixture(true,true);printf("PASS: %u probe runtime checks\n",checks);return 0;}
 '''
 
 
@@ -614,8 +535,6 @@ class Runtime(unittest.TestCase):
             result = subprocess.run([str(path / "probe")], text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout[-6000:])
             self.assertIn("PASS:", result.stdout)
-            self.assertIn("camera_qualified=0", result.stdout)
-            self.assertIn("self_gate_excluded=0", result.stdout)
             print(result.stdout, end="")
 
 

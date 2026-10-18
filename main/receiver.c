@@ -12,7 +12,6 @@
 #include "phase8_gain_lut.h"
 #include "phy.h"
 #include "rf.h"
-#include "native_acquire.h"
 
 direct_gain_t s_gain;
 volatile uint8_t s_current_gain = 62u;
@@ -130,80 +129,10 @@ static void gain_map_bind(const dg_map_context_t *context, uint32_t control, uin
 static volatile cn_observation_t s_cn;
 static volatile uint32_t s_cn_sequence;
 static uint32_t s_cn_windows;
-static volatile bool s_native_enabled, s_native_scanning;
-static int64_t s_native_next;
-static uint32_t s_native_control, s_native_phy;
-static uint32_t s_native_attempts, s_native_landings, s_native_faults, s_native_max_open;
 
 bool receiver_active(void)
 {
-    return !s_paused && !s_menu_active && !s_native_scanning && !phy_busy();
-}
-
-void receiver_native_toggle(void)
-{
-    if (s_native_scanning || s_paused || s_menu_active || calibration_in_startup() ||
-        !phy_try_actuator(phy_generation())) {
-        printf("NATIVE_AGC toggle refused=busy_or_startup\n");
-        return;
-    }
-    const bool enabled = !s_native_enabled;
-    s_native_control = s_control_epoch;
-    s_native_phy = phy_generation();
-    s_native_next = 0;
-    /* The observer owns the gain model. Toggling without an analog change
-     * must not reset that model from the control task while it is sampled. */
-    __sync_synchronize();
-    s_native_enabled = enabled;
-    phy_end_actuator();
-    printf("NATIVE_AGC enabled=%u period_us=%u timeout_us=%u boot_default=OFF ram_only=1 bench=1\n",
-           s_native_enabled, NATIVE_PERIOD_US, NATIVE_TIMEOUT_US);
-}
-
-static bool native_tick(uint32_t control, uint32_t phy)
-{
-    if (!s_native_enabled) return false;
-    /* The toggle publishes its mode while holding this same lease. A timer
-     * wake before it releases must defer, not turn contention into an RF
-     * fault. Keep ownership through the recursive RF acquisition and model
-     * publication, so a mode change cannot race an opened window. */
-    if (!phy_try_actuator(phy)) return true;
-    if (!s_native_enabled) { phy_end_actuator(); return false; }
-    if (s_paused || s_menu_active) { phy_end_actuator(); return true; }
-    if (control != s_native_control || phy != s_native_phy || calibration_in_startup()) {
-        s_native_enabled = false;
-        dg_reset(&s_gain, rf_gain_table(), s_current_gain);
-        phy_end_actuator();
-        printf("NATIVE_AGC disabled=context_changed owner=direct_gain_v6\n");
-        return false;
-    }
-    int64_t now = esp_timer_get_time();
-    if (now < s_native_next) { phy_end_actuator(); return true; }
-    s_native_next = now + NATIVE_PERIOD_US; /* no catch-up scan burst after a pause */
-    s_native_scanning = true;
-    uint8_t applied = s_current_gain;
-    uint32_t opened = 0;
-    ++s_native_attempts;
-    rf_native_result_t result = rf_native_acquire(phy, &applied, &opened);
-    if (opened > s_native_max_open) s_native_max_open = opened;
-    if (result != RF_NATIVE_REFUSED) {
-        s_current_gain = applied;
-        s_last_gain_write_us = esp_timer_get_time();
-        ++s_gain_epoch;
-        dg_reset(&s_gain, rf_gain_table(), applied);
-    }
-    if (result == RF_NATIVE_LANDING) ++s_native_landings;
-    else {
-        ++s_native_faults;
-        s_native_enabled = false;
-        if (result == RF_NATIVE_RESTORE_FAILED) s_paused = true;
-    }
-    s_native_scanning = false;
-    phy_end_actuator();
-    if (result != RF_NATIVE_LANDING)
-        printf("NATIVE_AGC disabled=result_%u owner=%s open_us=%lu\n", (unsigned)result,
-               s_paused ? "FAULT_PAUSED" : "direct_gain_v6", (unsigned long)opened);
-    return s_native_enabled || s_paused;
+    return !s_paused && !s_menu_active && !phy_busy();
 }
 
 bool receiver_paused(void) { return s_paused; }
@@ -239,15 +168,15 @@ void receiver_set_gain(uint8_t gain)
 
 static void apply_target(uint8_t target, uint32_t control, uint32_t phy)
 {
-    if (s_native_enabled || phy != phy_generation() || phy_busy() || control != s_control_epoch || !receiver_active()) return;
+    if (phy != phy_generation() || phy_busy() || control != s_control_epoch || !receiver_active()) return;
     if (target == s_current_gain) return;
     const arc_gain_table_t *t = rf_gain_table();
     if (target < 2u) target = 2u;
     if (target > t->max_index) target = t->max_index;
-    /* Toggle and write share PHY ownership. A task preemption between the
-     * first mode check and the write must not let Direct Gain fight native. */
+    /* A task preemption between the first check and the write must not let
+     * another PHY owner change the analog state underneath this write. */
     if (!phy_try_actuator(phy)) return;
-    if (s_native_enabled || control != s_control_epoch || !receiver_active()) {
+    if (control != s_control_epoch || !receiver_active()) {
         phy_end_actuator();
         return;
     }
@@ -341,7 +270,6 @@ static void observer_task(void *arg)
         }
         uint32_t control = s_control_epoch, table = rf_table_generation(), phy = phy_generation();
         const dg_map_context_t context = map_context();
-        bool native_owner = native_tick(control, phy);
         if (s_paused) continue;
         if (!was_active || control != seen_control || table != seen_table || phy != seen_phy ||
             s_gain.current_gain != s_current_gain || !dg_map_matches(&s_gain, rf_gain_table(), &context)) {
@@ -358,12 +286,8 @@ static void observer_task(void *arg)
                            s_overload_control_epoch == control && s_overload_phy == phy &&
                            (uint64_t)esp_timer_get_time() - o.observed_us <= 1000u;
             __sync_lock_release(&s_overload_state);
-            if (current && native_owner) {
-                s_native_enabled = native_owner = false;
-                printf("NATIVE_AGC disabled=overload owner=direct_gain_v6\n");
-            }
             if (current) apply_target(gain_decision(&o), control, phy);
-            if (!native_owner) continue;
+            continue;
         }
         uint32_t gain_epoch = s_gain_epoch;
         int node = -1;
@@ -388,10 +312,6 @@ static void observer_task(void *arg)
         const dg_map_context_t after_context = map_context();
         if (phy != phy_generation() || phy_busy() || gain_epoch != s_gain_epoch || control != s_control_epoch ||
             table != rf_table_generation() || !dg_map_context_equal(&context, &after_context)) continue;
-        if (native_owner && (o.clip_pm >= 125u || o.p95 >= 95u)) {
-            s_native_enabled = native_owner = false;
-            printf("NATIVE_AGC disabled=overload owner=direct_gain_v6\n");
-        }
         if (measure_cn) {
             ++s_cn_sequence;
             __sync_synchronize();
@@ -405,7 +325,7 @@ static void observer_task(void *arg)
          * by the AFC within the last 500 ms (never from receiver noise). */
         const int64_t video = s_last_video_us;
         s_gain.learn_enabled = video != 0 && t0 - video < 500000;
-        if (!native_owner) apply_target(gain_decision(&o), control, phy);
+        apply_target(gain_decision(&o), control, phy);
         uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
         if (us > s_obs_us_max) s_obs_us_max = us;
         ++s_obs_windows;
@@ -428,11 +348,6 @@ void receiver_start(void)
 
 void receiver_print(void)
 {
-    printf("NATIVE_AGC enabled=%u scanning=%u period_us=%u timeout_us=%u attempts=%lu landing_candidates=%lu "
-           "faults=%lu max_open_us=%lu completed_scans=UNVERIFIED ram_only=1\n",
-           s_native_enabled, s_native_scanning, NATIVE_PERIOD_US, NATIVE_TIMEOUT_US,
-           (unsigned long)s_native_attempts, (unsigned long)s_native_landings,
-           (unsigned long)s_native_faults, (unsigned long)s_native_max_open);
     printf("CN_OBSERVER windows=%lu period_us=%u max_age_us=%u\n", (unsigned long)s_cn_windows,
            CN_OBSERVE_PERIOD_US, CN_OBSERVE_MAX_AGE_US);
     char mode[16];
@@ -441,7 +356,7 @@ void receiver_print(void)
            "writes=%lu holds=%lu overloads=%lu bursts=%lu fade_holds=%lu damp=%lu map_learned=%lu learn_refused=%lu "
            "map_imports=%lu preset_imports=%lu "
            "obs_windows=%lu obs_us_max=%lu\n",
-           s_native_enabled ? "native_acquire_hold" : s_paused ? "paused" :
+           s_paused ? "paused" :
            s_gain_mode == GAIN_MODE_AUTO ? "direct_gain_v6" : "manual",
            receiver_gain_mode_name(s_gain_mode, mode, sizeof(mode)),
            s_current_gain, (unsigned)s_gain.state, s_obs_p50, s_obs_p95, s_obs_coherence, s_obs_env_ratio_x100,

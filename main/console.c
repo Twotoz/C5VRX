@@ -1,7 +1,6 @@
 /* C5VRX-5 by Twotoz and the C5VRX contributors: USB serial console.
  * Polled, never paces the realtime path. */
 #include "receiver.h"
-#include "sync_service.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "esp_app_desc.h"
@@ -28,7 +27,6 @@ static void status(void)
     profile_print();
     calibration_print();
     transport_print();
-    sync_service_print();
     transport_sync_live_print();
 }
 
@@ -74,18 +72,7 @@ static void help(void)
            "  g OUTPUT 0.5x..5.0x in 0.5x steps (saved after application; restored at boot),\n"
            "  G RX gain AUTO (Direct Gain V6) -> MAX -> fixed G78..G24 (saved; restored at boot),\n"
            "  A live VTX profile switch on/off (continuous matching every 30 s; off = report only),\n"
-           "  ~ bench: bounded native AGC every 20 ms (RAM-only, OFF at boot; after startup),\n"
-           "  W bench: read-only continuous sync detector toggle (OFF at boot),\n"
-           "  J bench: private-RAM sync synthesis/copy timing (no live writes),\n"
-           "  Z/z bench: brief PAL/NTSC sync via DAC output-enable (changes video; OFF at boot),\n"
-           "  Y bench: filtered native DAC sync observation (LP/1x only; OFF at boot),\n"
-           "  y bench: native mirror with common-edge RMT/ETM clock (experimental),\n"
-           "  V bench: finite50ms comparator19 observation; restores video, DAC LSB grounded temporarily,\n"
-           "  u: resident comparator observer, U flywheel ON/OFF (saved; menu FLYWHEEL; default OFF),\n"
-           "  i bench: bounded native pulse history (read-only; enable u first),\n"
-           "  Q/q bench: three-second PAL/NTSC DAC sync gate test (changes video),\n"
-           "  B bench: restart live transport without OSD (interrupts video; issue #213 A/B),\n"
-           "  N black NO SIGNAL fallback on/off (default OFF: preserve real snow; bench only),\n"
+           "  U sync flywheel ON/OFF (saved; menu FLYWHEEL; default OFF),\n"
            "  I IQ snapshot, o menu open/close, n/x menu next/select, c next channel, b next band, s scan,\n"
            "  v video standard AUTO/NTSC/PAL, e close menu (web menu direct controls),\n"
            "  F calibrate (startup steps again; video stops), L bench IQ lane comparison (video stops ~3 s),\n"
@@ -127,24 +114,14 @@ static void console_task(void *arg)
         while (xQueueReceive(s_keys, &c, pdMS_TO_TICKS(100)) == pdTRUE) {
             switch (c) {
             case 'T': status(); break;
-            case 't': transport_sync_live_print(); break;
-            case 'i': transport_sync_live_trace_print(); break;
             case 'I': snapshot(); break;
-            case 'J': transport_sync_bench(); break;
-            case 'Z': transport_sync_gate_probe(true); break;
-            case 'z': transport_sync_gate_probe(false); break;
-            case 'Y': transport_sync_output_probe(); break;
-            case 'y': transport_sync_output_clock_probe(); break;
-            case 'Q': transport_sync_gate_probe_long(true); break;
-            case 'q': transport_sync_gate_probe_long(false); break;
-            case 'W': sync_service_toggle(); break;
             case 'F': filter_request(); break;
             case 'D': diag_report(); break;
             case 'M': receiver_print_map(); break;
             case 'R': diag_toggle_stream(); break;
             case 'L': lane_compare_request(); break;
             case 'h': case '?': help(); break;
-            case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'K': case 'k': case 'j': case 'P': case 'g': case 'A': case 'B': case 'N': case '~': case 'u': case 'U': case 'V': case 'G': {
+            case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'K': case 'k': case 'j': case 'P': case 'g': case 'A': case 'U': case 'G': {
                 int command = c;
                 if (s_commands) (void)xQueueSend(s_commands, &command, 0);
                 break;

@@ -128,23 +128,3 @@ uint8_t arc_gain_highest_rf_stage_start(const arc_gain_table_t *table)
         start += table->spans[i];
     return start <= table->max_index ? (uint8_t)start : table->max_index;
 }
-
-bool arc_gain_from_pbus(const arc_gain_table_t *t, uint16_t rf, uint16_t bb,
-                        uint16_t fine, uint8_t *index)
-{
-    if (!t || !index || !t->band5 || t->max_index > ARC_VENDOR_GAIN_MAX ||
-        rf > 511u || bb > 127u || (fine & ~7u) != 0xd0u) return false;
-    unsigned matches = 0;
-    uint8_t found = 0;
-    for (unsigned g = 0; g <= t->max_index; ++g) {
-        arc_gain_tuple_t tuple;
-        if (arc_gain_tuple_decode(t, (uint8_t)g, &tuple) && tuple.rf_code == rf &&
-            tuple.bb_code == bb && tuple.fine_code == (fine & 7u)) {
-            ++matches;
-            found = (uint8_t)g;
-        }
-    }
-    if (matches != 1u) return false;
-    *index = found;
-    return true;
-}
