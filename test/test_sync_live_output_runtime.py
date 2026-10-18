@@ -90,7 +90,7 @@ int main(void){
  unsigned checks=0;
  for(unsigned standard=1;standard<=2;++standard)for(unsigned native=0;native<=1;++native){
   reset();native_ok=native;
-  assert(sync_live_output_begin(NULL,(slg_standard_t)standard,7,owner,present,NULL));
+  assert(sync_live_output_begin((slg_standard_t)standard,7,owner,present,NULL));
   /* A nominal clock without camera authority never clamps OE. */
   for(unsigned i=0;i<200;++i){fire();assert(!clears&&!s_output->status.repaired);}
   grant(); /* repair path after independent authority */
@@ -103,26 +103,26 @@ int main(void){
   assert(s_output->status.max_callback_ticks<=3u); /* exclude later tips in V batches */
   assert(sync_live_output_end()&&!alarm_enabled&&!memcmp(saved,registers,sizeof(saved)));++checks;
  }
- reset();assert(sync_live_output_begin(NULL,SLG_PAL,7,owner,NULL,NULL));
+ reset();assert(sync_live_output_begin(SLG_PAL,7,owner,NULL,NULL));
  live_ok=false;fire();assert(!clears&&s_output->status.fault==1);assert(sync_live_output_end());++checks;
- reset();assert(sync_live_output_begin(NULL,SLG_PAL,7,owner,NULL,NULL));
+ reset();assert(sync_live_output_begin(SLG_PAL,7,owner,NULL,NULL));
  cycles=(alarm_tick+SLO_LEAD+SLO_LATE+1u)*12u;fire();
  assert(!clears&&s_output->status.active&&!s_output->status.fault&&s_output->status.missed==1&&alarm_enabled);assert(sync_live_output_end());++checks;
- reset();registers[0]&=~(1u<<8);assert(!sync_live_output_begin(NULL,SLG_PAL,7,owner,NULL,NULL)&&!s_output);++checks;
- reset();assert(sync_live_output_begin(NULL,SLG_PAL,7,owner,NULL,NULL));
+ reset();registers[0]&=~(1u<<8);assert(!sync_live_output_begin(SLG_PAL,7,owner,NULL,NULL)&&!s_output);++checks;
+ reset();assert(sync_live_output_begin(SLG_PAL,7,owner,NULL,NULL));
  grant();s_output->clock.exhausted=true;fire();assert(s_output->status.fault==2&&clears==1);
  assert(sync_live_output_end());++checks;
  /* Comparator pin contract: no ordinary pin23 mux may be admitted. */
- reset();assert(!sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL)&&!s_output);++checks;
+ reset();assert(!sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL)&&!s_output);++checks;
  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
  registers[GPIO_OUT_REG/4]=1u<<23;
- assert(!sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL)&&!s_output);++checks;
+ assert(!sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL)&&!s_output);++checks;
  for(unsigned mode=0;mode<6;++mode){
   reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
   memcpy(saved,registers,sizeof(saved));
-  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+  assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));
   /* This fixture tests the fast witness after independent camera authority. */
-  grant();s_output->native_v_fresh=true;
+  grant();
   assert(registers[pads[0]/4]==saved[pads[0]/4]);
   uint64_t tip=s_output->tip.start,end=tip+s_output->tip.width;
   /* 0 absent;1 genuine early edge;2 late edge;3 stale HIGH;
@@ -144,15 +144,15 @@ int main(void){
   assert(sync_live_output_end()&&!memcmp(saved,registers,sizeof(saved)));++checks;
  }
  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
- assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+ assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));
  high_start=s_output->tip.start-10;high_end=UINT64_MAX;fire();
  assert(!s_output->status.repaired&&!s_output->status.suppressed&&!clears); /* no authority: no clamp */
- grant();s_output->native_v_fresh=true;
+ grant();
  high_start=0;fire();
  assert(s_output->status.repaired&&!s_output->status.suppressed); /* unqualified noise cannot cancel */
  assert(sync_live_output_end());++checks;
  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
- assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+ assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));
  cycles=(s_output->tip.start+SLO_FLAG_LATE+1u)*12u;
  fire();assert(!clears&&s_output->status.missed&&s_output->status.active);
  assert(sync_live_output_end());++checks;
@@ -160,7 +160,7 @@ int main(void){
   * accounting must survive an overdue first tip without treating later tips
   * in the same batch as fresh interrupt deliveries. */
  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
- assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+ assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));
  uint64_t delayed_tip=s_output->tip.start;
  clock_extra_cycles=120u;sync_live_output_phase(4u);
  cycles=(delayed_tip+30u)*12u;fire();
@@ -172,7 +172,7 @@ int main(void){
  /* A long masked/cache interval skips stale backlog in bounded chunks,
   * without permanently stopping sync or changing the absolute halfline grid. */
  reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
- assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+ assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));
  uint64_t initial_origin=s_output->tip.start-(s_output->tip.half*5720u+4u)/9u;
  grant();
  cycles=(s_output->tip.start+100000u)*12u; /*5ms unavailable CPU*/
@@ -191,78 +191,13 @@ int main(void){
  for(unsigned i=0;i<30u;++i)fire();
  assert(!s_output->status.fault&&s_output->status.repaired&&clears==sets);
  assert(sync_live_output_end());++checks;
- /* Model publications leave the running timer/pulse intact until ISR boundary. */
- reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
- assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
- for(unsigned i=0;i<50;++i)fire();
- uint64_t old_tip=s_output->tip.start;
- uint16_t index=s_output->tip.index;
- assert(index>20u);
- uint64_t origin=old_tip-((uint64_t)index*40676u+32u)/64u;
- slg_model_t model={.field=origin+(6u*40676u+32u)/64u,
-   .last_h=origin+((uint64_t)(index-2u)*40676u+32u)/64u,
-   .observed_at=cycles/12,.line_ticks_x32=40676u,.receive_epoch=1,
-   .uncertainty_ticks=64,.standard=SLG_NTSC,.qualified=true};
- unsigned allocations=heap_allocations,frees=heap_frees;
- for(unsigned repeat=0;repeat<100u;++repeat)assert(sync_live_output_update(&model));
- assert(heap_allocations==allocations&&heap_frees==frees);
- assert((s_output->pending_mode==SLO_PUB_SLEW) && s_output->tip.start==old_tip && alarm_enabled);
- unsigned publication=s_output->publication;
- fire();assert(s_output->applied==publication && s_output->standard==SLG_NTSC);
- assert(!s_output->status.fault);++checks;
- model.last_h+=(40676u+32u)/64u;model.observed_at=cycles/12;
- assert(sync_live_output_update(&model)&&!(s_output->pending_mode==SLO_PUB_SLEW));++checks;
- model.qualified=false;assert(!sync_live_output_update(&model));++checks;
- model.qualified=true;model.line_ticks_x32=0u;
- slc_t running=s_output->clock;slo_tip_t running_tip=s_output->tip;
- publication=s_output->publication;
- assert(!sync_live_output_update(&model));
- assert(!memcmp(&running,&s_output->clock,sizeof(running))&&
-        !memcmp(&running_tip,&s_output->tip,sizeof(running_tip))&&s_output->publication==publication);
- assert(heap_allocations==allocations&&heap_frees==frees);++checks;
- model=(slg_model_t){.field=cycles/12-30000u,.last_h=cycles/12-4400u,
-   .observed_at=cycles/12,.line_ticks_x32=40960u,.receive_epoch=2,
-   .uncertainty_ticks=64,.standard=SLG_PAL,.qualified=true};
- assert(sync_live_output_update(&model)&&!(s_output->pending_mode==SLO_PUB_SLEW));
- fire();assert(s_output->standard==SLG_PAL&&!s_output->status.fault);++checks;
- for(unsigned i=0;i<100;++i)fire();
- assert(sync_live_output_end());
- /* A delayed full-reseed publication is consumed without granting native
-  * authority to the still-running nominal clock. This is the measured board
-  * failure regime: ISR delay longer than the candidate's future lead. */
- reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
- assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
- uint64_t nominal_origin=s_output->tip.start-(s_output->tip.half*5720u+4u)/9u;
- for(unsigned i=0;i<50;++i)fire();
- assert(!s_output->native_authority);
- model=(slg_model_t){.field=cycles/12-30000u,.last_h=cycles/12-4400u,
-   .observed_at=cycles/12,.line_ticks_x32=40960u,.receive_epoch=2,
-   .uncertainty_ticks=64,.standard=SLG_PAL,.qualified=true};
- assert(sync_live_output_update(&model)&&!(s_output->pending_mode==SLO_PUB_SLEW));
- uint64_t expired_candidate=s_output->pending_tip.start;
- publication=s_output->publication;
- cycles=(expired_candidate+1000u)*12u;
- fire();
- assert(s_output->applied==publication&&!s_output->native_authority);
- assert(s_output->standard==SLG_NTSC&&!s_output->status.fault);
- assert(s_output->tip.start==nominal_origin+(s_output->tip.half*5720u+4u)/9u);++checks;
- /* Once a fresh full reseed is actually admitted, old source/edge history
-  * must be discarded before the new phase gets fast native suppression. */
- model.field=cycles/12-30000u;model.last_h=cycles/12-4400u;model.observed_at=cycles/12;
- assert(sync_live_output_update(&model)&&!(s_output->pending_mode==SLO_PUB_SLEW));
- s_output->source_seen=s_output->low_seen=s_output->rise_valid=true;
- s_output->last_high=true;s_output->rise=s_output->tip.start;
- fire();
- assert(s_output->native_authority&&s_output->standard==SLG_PAL);
- assert(!s_output->source_seen&&!s_output->low_seen&&!s_output->rise_valid);
- assert(!s_output->status.fault);assert(sync_live_output_end());++checks;
  /* Camera-phase guard (board: slow horizontal roll and the top of the
   * picture at the bottom after VTX off/static). A present camera off the
   * held grid must get the OE back and re-anchor the grid; noise must not. */
  for(unsigned scenario=0;scenario<5u;++scenario){
   reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
-  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
-  grant();s_output->native_v_fresh=true;
+  assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));
+  grant();
   for(unsigned i=0;i<20;++i)fire();
   double halfline=s_output->clock.whole+(double)s_output->clock.increment/s_output->clock.denominator;
   slo_tip_t t=s_output->tip;
@@ -323,12 +258,12 @@ int main(void){
  /* Guard acquisition: no probe model (the strict EQ/broad/EQ grammar often
   * failed on the board at range), a camera 300 ticks and 7 halflines off
   * the nominal grid. Coherent H plus field-spaced V must grant authority on
-  * the camera's grid; a PAL camera on the NTSC grid and pure noise never.
+  * the camera's grid; pure noise never; a PAL camera on the NTSC grid only after the guard restarts on PAL.
   * Variant 3: camera H only for 100 ms, then only V-like broad trains: old H
   * confidence must not combine with new V evidence. */
  for(unsigned variant=0;variant<4u;++variant){
   reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
-  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+  assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));
   assert(!s_output->native_authority);
   for(unsigned i=0;i<20;++i)fire();
   slo_tip_t t=s_output->tip;slc_t c=s_output->clock;
@@ -337,8 +272,8 @@ int main(void){
   double chl=variant==1u?640.0:hl;
   /* Camera halfline j: grid index (t.index + j + 7) at +300 ticks. */
   double cam0=(double)t.start+300.0+40.0*hl;
-  uint64_t j=0,start=cycles/12;uint32_t lcg=5u;unsigned clamps=0;
-  if(variant==0u){ /* the same camera drives the comparator pin */
+  uint64_t j=0,start=cycles/12;uint32_t lcg=5u;unsigned clamps=0;uint64_t acquired_at=0;
+  if(variant<=1u){ /* the same camera drives the comparator pin */
    cam_gpio=true;cam_g0=cam0;cam_ghl=chl;cam_gidx0=t.index+40u;cam_ghalves=halves;
    cam_gsection=section;cam_gvoff=7u;}
   while(cycles/12<start+6000000u){ /* 300 ms */
@@ -353,7 +288,8 @@ int main(void){
     if(variant==3u && (at>(double)start+2000000.0)!=(w==541u))w=0u; /* H only, then V only */
     if(w)sync_live_output_native_pulse((uint64_t)(at+0.5),w,true);
    }
-   if(s_output->native_authority&&!clamps)clamps=clears;
+   if(!s_output->native_authority)assert(clears==clamps); /* nothing before authority */
+   else if(!acquired_at){acquired_at=cycles/12;assert(s_output->status.guard_acquired==1u);}
   }
   fprintf(stderr,"guard acquisition variant=%u acquired=%lu h_jumps=%lu v_jumps=%lu\n",variant,
           (unsigned long)s_output->status.guard_acquired,(unsigned long)s_output->status.guard_h_jumps,
@@ -384,7 +320,20 @@ int main(void){
    while(cycles/12<gone+400000u)fire(); /* 20 ms */
    sync_live_output_guard_tick();
    assert(full_clamps>h_before+200u&&s_output->status.v_trusted);
-  } else assert(!s_output->native_authority&&!s_output->status.guard_acquired&&!clears);
+  } else if(variant==1u){
+   /* One owner: the guard sees a coherent camera it cannot hold (PAL lines
+    * drift 9 ticks/line on the NTSC grid), re-anchors without ever locking,
+    * restarts once on the PAL grid and acquires there. */
+   fprintf(stderr,"standard switch: std_switches=%lu standard=%u acquired after %.1f ms\n",
+           (unsigned long)s_output->status.std_switches,(unsigned)s_output->standard,
+           (double)(acquired_at-start)/20000.0);
+   assert(s_output->status.std_switches==1u&&s_output->standard==SLG_PAL);
+   assert(s_output->native_authority&&acquired_at);
+   sync_live_output_guard_tick();
+   assert(s_output->status.h_trusted&&s_output->status.v_trusted&&s_output->status.camera_present);
+   assert(s_output->status.suppressed>500u&&!full_clamps&&!s_output->status.repaired);
+  } else assert(!s_output->native_authority&&!s_output->status.guard_acquired&&!clears&&
+                !s_output->status.std_switches);
   assert(!s_output->status.fault&&sync_live_output_end());++checks;
  }
  /* Per-type repair authority (review 2026-10-18): fresh camera H on the grid
@@ -392,7 +341,7 @@ int main(void){
   * gaps are filled); without any trust nothing is clamped. */
  for(unsigned trust=0;trust<2u;++trust){
   reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
-  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
+  assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));
   s_output->native_authority=true;
   s_output->h_trust_tick=trust?cycles/12:0u;s_output->v_trust_tick=0u;
   s_output->h_trusted=trust;s_output->v_trusted=false;
@@ -415,8 +364,8 @@ int main(void){
    * H-width noise pulse per four lines at an arbitrary phase. */
   uint32_t lcg=99u;
   reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
-  assert(sync_live_output_flag_begin(NULL,SLG_NTSC,7,owner,source,NULL));
-  grant();s_output->native_v_fresh=true;
+  assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));
+  grant();
   for(unsigned i=0;i<20;++i)fire();
   #define CENTRED(x,p) ((x)-(double)(long long)((x)/(p)+((x)>=0?0.5:-0.5))*(p))
   slo_tip_t t=s_output->tip;slc_t c=s_output->clock;

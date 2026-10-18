@@ -40,14 +40,14 @@ bool transport_sync_live_cancel(void);
 '''
 MIDDLE=r'''
 static void sync_output_live_invalidate(void){
- assert(!s_live_owner->native_tracking);++invalidates;event('I');
+ assert(s_live_owner->coasting_restart);++invalidates;event('I');
 }
 static bool sync_output_live_source(void *arg,uint32_t *epoch){
  (void)arg;++source_calls;if(epoch)*epoch=99;return true;
 }
 typedef struct {bool flag;} restart_t;
 static bool stop_part(void *context,tr_part_t part){
- (void)context;assert(!s_live_owner->native_tracking);
+ (void)context;
  if(s_live_owner->coasting_restart)assert(invalidates&&!output_ends&&!observer_ends);
  else assert(!s_live_owner->authorized&&output_ends&&observer_ends);
  event(part==TR_TX?'T':part==TR_BS?'B':'R');return true;
@@ -57,7 +57,7 @@ SUFFIX=r'''
 static sync_live_owner_t owner;
 static void reset(void){
  memset(&owner,0,sizeof(owner));s_live_owner=&owner;
- owner.requested=owner.authorized=owner.output_requested=owner.native_tracking=true;
+ owner.requested=owner.authorized=owner.output_requested=true;
  owner.context=(sync_bench_context_t){7,2,4,true};owner.stream_generation=7;
  s_stream_generation=7;s_started=s_have_verified=s_lut_known=s_verified_flag=s_flag_format=true;
  s_transport_fault=s_stream_generation_overflow=s_menu_active=s_scan_active=false;
@@ -88,7 +88,7 @@ int main(void){unsigned checks=0;
  assert(!owner.coasting_restart&&owner.context.generation==7&&owner.stream_generation==8);
  assert(owner.context.level==6&&owner.context.output==8&&!owner.context.lp);
  assert(transport_sync_live_valid(7)&&!transport_sync_live_valid(8));
- assert(!owner.native_tracking&&!output_ends&&!observer_ends&&observer_active);++checks;
+ assert(!output_ends&&!observer_ends&&observer_active);++checks;
  /* Rollback performs a second quiesce on the same clock, then rebinds the
   * previous verified configuration to the replacement DMA generation. */
  reset();assert(quiesce(&request));++s_stream_generation;

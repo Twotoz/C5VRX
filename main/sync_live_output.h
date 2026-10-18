@@ -21,36 +21,31 @@ typedef struct {
     /* Holdover PLL: fine-period updates/rejections, offset vs nominal. */
     uint32_t pll_updates,pll_rejected;
     int32_t pll_ppb;
-    /* Tips left to a present camera: periodic native H within the hold. */
     /* camera_yields: tips left untouched for lack of fresh matching H/V
-     * evidence (the type-specific trust below). */
-    uint32_t camera_yields,camera_lines;
+     * evidence (the type-specific trust below); camera_lines: in-phase
+     * camera H pulses; std_switches: PAL/NTSC restarts by the guard. */
+    uint32_t camera_yields,camera_lines,std_switches;
     bool active,guard_yield,camera_present,h_trusted,v_trusted;
 } slo_status_t;
-/* Explicit selected-standard fallback if model is NULL/unqualified. Native
- * callback must be cache-safe/IRAM; NULL admits no native suppression evidence. */
-bool sync_live_output_begin(const slg_model_t *model,slg_standard_t fallback,
+/* Starts on the nominal grid of `fallback` without authority; the guard
+ * acquires the camera. Native callback must be cache-safe/IRAM; NULL admits
+ * no native suppression evidence. */
+bool sync_live_output_begin(slg_standard_t fallback,
     uint32_t generation,slo_live_fn live,slo_native_fn native,void *arg);
 bool sync_live_output_poll(void);
 bool sync_live_output_end(void);
 void sync_live_output_status(slo_status_t *out);
-/* Task-side diagnostic tag: 0 other,1 observer,2 snapshot,3 model update,
+/* Task-side diagnostic tag: 0 other,1 observer,2 snapshot,3 reserved,
  *4 transport restart,5 reserved. ISR records only bounded counters. */
 void sync_live_output_phase(unsigned phase);
 
 /* Production comparator source: HIGH sync on GPIO2, DAC GPIO23 clamped LOW. */
-bool sync_live_output_flag_begin(const slg_model_t *model,slg_standard_t fallback,
+bool sync_live_output_flag_begin(slg_standard_t fallback,
     uint32_t generation,slo_live_fn live,slo_source_fn source,void *arg);
-/* Only independently confirmed models may take over retained phase/standard.
- * Task publishes a bounded update; ISR consumes between complete tips. */
-bool sync_live_output_update(const slg_model_t *model);
-/* Fresh vertical evidence admits native V tips; a retained clock alone does
- * not. H admission additionally comes from the caller's source predicate. */
-void sync_live_output_native_fresh(bool vertical);
 void sync_live_output_native_polarity(bool inverted);
 /* Task context, every native comparator pulse on the common clock (`high`
- * is the comparator level). A present camera that runs off the held grid
- * gets the OE back and the grid re-anchors to it; see sync_phase_guard.h. */
+ * is the comparator level). The only input that moves the grid: the guard
+ * acquires, re-anchors, trims and times it (sync_phase_guard.h). */
 void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high);
 /* Control tick: ends a yield once the camera has been gone for 100 ms. */
 void sync_live_output_guard_tick(void);

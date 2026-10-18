@@ -838,3 +838,29 @@ healthy camera with SyncRescue on; menu `ESP_ERR_NO_MEM` next to a live owner).
 - Not changed: IRQ-blackout misses (needs hardware-timed output). Board A/B
   (flywheel OFF vs ON on a strong camera, fades, VTX off/on) still pending;
   `T`: `SYNC_FLYWHEEL ... camera_yields h_trusted v_trusted`.
+
+Single grid owner (PR #212, operator 2026-10-18: "beter, slimmer, simpeler").
+
+- Board cause of `repaired > suppressed` on a strong camera: the ISR's native
+  source was gated on the probe's strict H/V model (`native_tracking`). On
+  the board the model rarely qualified (`camera_qualified=0`), so the ISR saw
+  no camera edges and repaired over the camera. The source now only reflects
+  marker/RX validity (and is false during a coasting restart).
+- The camera-phase guard is now the only owner of the flywheel grid. The
+  probe-model publication path (`sync_live_output_update`, slew/reseed from a
+  model, `native_fresh`, the periodic-H presence detector, `model_*` in
+  transport) is removed; the probe only reports comparator polarity.
+  `begin`/`flag_begin` always start on the nominal grid without authority;
+  authority comes from guard acquisition (coherent H plus field-spaced V).
+  Camera presence = in-phase guard H within one field (`camera_present`).
+- PAL/NTSC: four unlocked H re-anchors within 20 ms of each other (the
+  camera's line period drifts 9 ticks/line against the other standard, so
+  the guard never lines up) restart the grid on the other standard without
+  authority (`std_switches`). Jumps from separate camera bursts in static
+  do not add up.
+- Host: PAL camera on the NTSC grid: one switch, four H jumps, acquired on
+  PAL after 80 ms, no clamp before authority, then 0 repaired / >500
+  suppressed with the camera on the pin. NTSC camera: unchanged (3799
+  suppressed, 0 repaired, 2-tick overlap). Noise and stale-H variants: no
+  acquisition and no switch. Board check pending (`T`: `std_switches`,
+  `acquired`, `camera_present`).

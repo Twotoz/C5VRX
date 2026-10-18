@@ -1,7 +1,13 @@
 /* C5VRX by Twotoz/contributors. Camera-period increments run entirely in
  * the alarm ISR: no task refill or flash planner is needed during holdover.
  * Vertical tips separated by4.7us share a bounded ISR, exposing real DAC data
- * in every gap. No hard WCET or physical monitor-lock claim follows. */
+ * in every gap. No hard WCET or physical monitor-lock claim follows.
+ *
+ * One owner (2026-10-18): the camera-phase guard (sync_phase_guard.h) alone
+ * moves this grid - acquisition, H/V re-anchors, trims, the holdover PLL,
+ * per-type repair trust, camera presence and the PAL/NTSC choice - from the
+ * same native pulses. The probe's strict H/V model no longer drives output:
+ * it never qualified a camera on the board and duplicated every decision. */
 #include "sync_live_output.h"
 #include "sync_edge_clock.h"
 #include "sync_live_clock.h"
@@ -27,14 +33,16 @@
 #define SLO_PHASE_WINDOW 80u
 #define SLO_BATCH_CYCLES (224u*240u)
 #define SLO_CATCHUP_LEAD 80u /*4us leaves driver/ISR epilogue time before retry*/
-/* Camera presence, independent of the output grid: native H tips spaced one
- * to four line periods (+-0.6us at 20MHz). Repairs only fill real gaps; a
- * grid that drifted off the camera can never add a second sync while the
- * camera's own pulses arrive (operator: sync lost after a while, clocks
- * drifting apart; board 2026-10-18, repaired>suppressed on a strong camera).
- * Native pulses reach the task in batches, so the hold covers one field. */
-#define SLO_CAMERA_TOL 12u
+/* Camera presence: the guard's in-phase H score (>= SPG_LOCK, which random
+ * static cannot build) within one field. Native pulses reach the task in
+ * batches, so the hold covers one field. */
 #define SLO_CAMERA_HOLD 400000u /* 20ms */
+/* Re-anchors without ever locking in phase: the camera runs the other
+ * standard (PAL and NTSC lines differ by 9 ticks, the guard cannot hold).
+ * Such re-anchors follow each other within ~2 ms; jumps further apart
+ * (separate camera bursts in static) do not add up. */
+#define SLO_STD_JUMPS 4u
+#define SLO_STD_GAP 400000u /* 20 ms */
 /* Per-type repair authority (operator review 2026-10-18): a synthetic H tip
  * needs camera H seen in phase on this grid, a V/EQ/broad tip additionally
  * camera V confirmed at this grid's broad slot, both within the holdover
@@ -53,7 +61,7 @@ typedef struct {
     uint32_t source_epoch;
     uint64_t rise,alarm_tick;
     bool flag,source_seen,low_seen,last_high,rise_valid;
-    bool native_authority,native_v_fresh,native_inverted;
+    bool native_authority,native_inverted;
     volatile uint32_t publication;
     uint32_t applied;
     slc_t pending_clock;
@@ -72,17 +80,19 @@ typedef struct {
     volatile bool yield;
     /* Task writes; the ISR needs both the 32-bit tick and the task's
      * freshness flag, so a torn or wrapped tick never reads as present. */
-    uint64_t last_h_tick,camera_tick;
     volatile uint32_t camera_tick32;
     volatile bool camera_fresh;
-    /* Task-owned evidence ages; the ISR reads only the two flags. */
+    /* Task-owned evidence ages (last in-phase camera H, last confirmed V);
+     * the ISR reads only the two flags. */
     uint64_t h_trust_tick,v_trust_tick;
+    uint8_t unlocked_jumps;
+    uint64_t last_jump_tick;
     volatile bool h_trusted,v_trusted;
     slo_status_t status;
     bool saved,configured,quarantined;
 } slo_t;
 static void slo_trust(slo_t *s,uint64_t now);
-enum {SLO_PUB_SLEW=1,SLO_PUB_TAKEOVER,SLO_PUB_JUMP_H,SLO_PUB_JUMP_V,SLO_PUB_PERIOD};
+enum {SLO_PUB_RESEED=1,SLO_PUB_JUMP_H,SLO_PUB_JUMP_V,SLO_PUB_PERIOD};
 static slo_t *s_output;
 static DRAM_ATTR volatile unsigned s_output_phase;
 void sync_live_output_phase(unsigned phase)
@@ -113,7 +123,7 @@ static bool IRAM_ATTR flag_level(slo_t *s)
 
 static bool IRAM_ATTR flag_native(slo_t *s,uint64_t now,const slo_tip_t *tip)
 {
-    if(!s->native_authority || (tip->kind!=SLG_H && !s->native_v_fresh))return false;
+    if(!s->native_authority)return false;
     uint32_t epoch=0;
     if(!s->source(s->native_arg,&epoch)) {
         s->source_seen=false;s->low_seen=false;s->rise_valid=false;
@@ -224,7 +234,7 @@ advance:
             if(publication==s->publication) {
                 s->applied=publication;
                 uint8_t mode=s->pending_mode;
-                if(mode==SLO_PUB_SLEW || mode==SLO_PUB_JUMP_H) {
+                if(mode==SLO_PUB_JUMP_H) {
                     /* A camera-phase re-anchor shifts the whole grid (H and
                      * V together) on the next tip; an expired tip is skipped
                      * by admission, never emitted late. */
@@ -234,8 +244,7 @@ advance:
                         next.start-=(uint32_t)-shift;s->clock.tick-=(uint32_t)-shift;
                     }
                 }
-                if(mode==SLO_PUB_SLEW || mode==SLO_PUB_PERIOD) {
-                    if(mode==SLO_PUB_SLEW)s->native_authority=true;
+                if(mode==SLO_PUB_PERIOD) {
                     s->clock.whole=s->pending_whole;
                     s->clock.increment=s->pending_increment;
                     s->clock.denominator=s->pending_denominator;s->clock.remainder=0;
@@ -245,12 +254,12 @@ advance:
                     int32_t index=((int32_t)s->clock.index-s->pending_shift)%(int32_t)s->clock.halves;
                     if(index<0)index+=s->clock.halves;
                     s->clock.index=(uint16_t)index;
-                } else if(mode==SLO_PUB_TAKEOVER && candidate_tip.start>now+SLO_LEAD) {
+                } else if(mode==SLO_PUB_RESEED && candidate_tip.start>now+SLO_LEAD) {
+                    /* Other standard, nominal phase, no authority: the guard
+                     * re-acquires the camera on it before anything is
+                     * clamped. Edges of the old grid are discarded. */
                     s->clock=candidate;next=candidate_tip;
                     s->standard=candidate.halves==625u?SLG_PAL:SLG_NTSC;
-                    s->native_authority=true;
-                    /* No edge sampled on the previous phase/standard may
-                     * suppress a tip after this confirmed clock takeover. */
                     s->source_seen=false;s->low_seen=false;s->rise_valid=false;
                 }
             }
@@ -306,7 +315,7 @@ bool sync_live_output_end(void)
     sync_live_gate_destroy(s->planner);free(s);s_output=NULL;return true;
 }
 
-static bool output_begin(const slg_model_t *model,slg_standard_t fallback,
+static bool output_begin(slg_standard_t fallback,
     uint32_t generation,slo_live_fn live,slo_native_fn native,slo_source_fn source,void *arg)
 {
     if(s_output || !live || !live(generation) || esp_clk_cpu_freq()!=240000000)return false;
@@ -316,16 +325,12 @@ static bool output_begin(const slg_model_t *model,slg_standard_t fallback,
     if(!s)return false;
     s_output=s;s->live=live;s->generation=generation;s->native=native;s->native_arg=arg;
     s->source=source;s->flag=source!=NULL;
-    s->native_authority=model && model->qualified;
-    s->native_v_fresh=s->native_authority;
-    s->native_inverted=true;
+    s->native_inverted=true; /* authority comes from the guard only */
     const slg_config_t config={SLO_LEAD,s->flag?SLO_FLAG_LATE:SLO_LATE,
         s->flag?40u:100u,s->flag?40u:100u,UINT32_MAX,64u};
     s->planner=sync_live_gate_create(&config);
     if(!s->planner)goto failed;
-    if(model && model->qualified) {
-        if(!sync_live_gate_model(s->planner,model,now+20000u))goto failed;
-    } else if(!sync_live_gate_nominal(s->planner,fallback,now+20000u,0u,0u,now))goto failed;
+    if(!sync_live_gate_nominal(s->planner,fallback,now+20000u,0u,0u,now))goto failed;
     if(!sync_live_gate_arm(s->planner))goto failed;
     slg_clock_seed_t seed;slg_pulse_t first;
     if(!sync_live_gate_export(s->planner,&seed) || !slc_init(&s->clock,&seed) ||
@@ -364,8 +369,6 @@ void sync_live_output_status(slo_status_t *out)
 {
     if(out)*out=s_output?s_output->status:(slo_status_t){0};
 }
-void sync_live_output_native_fresh(bool vertical)
-{ if(s_output)s_output->native_v_fresh=vertical; }
 void sync_live_output_native_polarity(bool inverted)
 {
     slo_t *s=s_output;
@@ -374,82 +377,37 @@ void sync_live_output_native_polarity(bool inverted)
     s->source_seen=false;s->low_seen=false;s->rise_valid=false;
 }
 
-bool sync_live_output_begin(const slg_model_t *model,slg_standard_t fallback,
+bool sync_live_output_begin(slg_standard_t fallback,
     uint32_t generation,slo_live_fn live,slo_native_fn native,void *arg)
-{ return output_begin(model,fallback,generation,live,native,NULL,arg); }
+{ return output_begin(fallback,generation,live,native,NULL,arg); }
 
-bool sync_live_output_flag_begin(const slg_model_t *model,slg_standard_t fallback,
+bool sync_live_output_flag_begin(slg_standard_t fallback,
     uint32_t generation,slo_live_fn live,slo_source_fn source,void *arg)
-{ return source && output_begin(model,fallback,generation,live,NULL,source,arg); }
+{ return source && output_begin(fallback,generation,live,NULL,source,arg); }
 
-bool sync_live_output_update(const slg_model_t *model)
+/* The camera runs the other standard: restart on its nominal grid. */
+static bool slo_reseed(slo_t *s,uint64_t now)
 {
-    slo_t *s=s_output;
-    uint64_t now;
-    if(!s || !s->flag || !sync_live_output_poll() || !model || !model->qualified ||
-       !sync_edge_clock_read(&now) || now>UINT64_MAX-5000u)return false;
-    sync_live_gate_t *g=s->planner;
-    if(!g)return false;
+    if((s->publication&1u) || s->publication!=s->applied || now>UINT64_MAX-20000u)return false;
+    slg_standard_t other=s->standard==SLG_PAL?SLG_NTSC:SLG_PAL;
     slg_clock_seed_t seed;slc_t candidate;slg_pulse_t pulse;
-    bool ok=sync_live_gate_model(g,model,now+20000u) && sync_live_gate_arm(g) &&
-        sync_live_gate_export(g,&seed) && slc_init(&candidate,&seed) && slc_next(&candidate,&pulse);
-    if(!ok)return false;
-    /* A confirmed model can replace nominal/old-standard timing. Task-side
-     * planning never owns the shared timer or writes output pins. */
-    /* Compare the complete field phase at the currently scheduled halfslot.
-     * Same-standard small corrections slew <=100ns per publication; missing
-     * evidence never erases the existing iterator. Large confirmed changes
-     * use the newly acquired field rather than interpreting noise as drift. */
-    slo_tip_t current;uint8_t parity;slg_standard_t standard;
-    do {current=s->tip;parity=s->clock.parity;standard=s->standard;
-        __sync_synchronize();} while(current.start!=s->tip.start);
-    uint64_t target=seed.origin+((uint64_t)current.index*model->line_ticks_x32+32u)/64u;
-    uint64_t field_ticks=((uint64_t)(model->standard==SLG_PAL?625u:525u)*model->line_ticks_x32+32u)/64u;
-    int64_t error=(int64_t)target-(int64_t)current.start;
-    int64_t fields=(error>=0?(error+(int64_t)field_ticks/2):(error-(int64_t)field_ticks/2))/(int64_t)field_ticks;
-    error-=fields*(int64_t)field_ticks;
-    /* PAL and NTSC fields have an odd halfline count. Same V phase alone
-     * does not establish the H halfslot: odd field offsets flip it. */
-    unsigned wanted=seed.h_parity^((uint64_t)fields&1u);
-    unsigned running=parity^((current.half-current.index)&1u);
-    /* If the phase error is within the slew window, correct it smoothly but aggressively
-     * (up to 16 ticks = 800ns per field) so the flywheel rapidly locks onto the camera without rolling. */
-    bool slew=standard==model->standard && wanted==running && error>=-200 && error<=200;
+    if(!sync_live_gate_nominal(s->planner,other,now+20000u,0u,0u,now) || !sync_live_gate_arm(s->planner) ||
+       !sync_live_gate_export(s->planner,&seed) || !slc_init(&candidate,&seed) ||
+       !slc_next(&candidate,&pulse))return false;
+    s->native_authority=false;
     ++s->publication;__sync_synchronize();
-    s->pending_mode=slew?SLO_PUB_SLEW:SLO_PUB_TAKEOVER;
-    s->pending_shift=(int32_t)(error>16?16:error< -16?-16:error);
-    /* A long-baseline PLL period beats the model's 1/64-tick fit; a new
-     * camera (takeover) starts over from the model. */
-    if(slew && s->pll_period_q) {
-        s->pending_whole=(uint32_t)(s->pll_period_q/SCP_DEN);
-        s->pending_increment=(uint16_t)(s->pll_period_q%SCP_DEN);s->pending_denominator=SCP_DEN;
-    } else if(slew && s->pll.active) {
-        /* Measuring: keep the running period, so the fit's +-1/64-tick
-         * jitter neither resets the window nor hides drift in it. */
-        s->pending_whole=s->clock.whole;
-        s->pending_increment=s->clock.increment;s->pending_denominator=s->clock.denominator;
-    } else {
-        s->pending_whole=model->line_ticks_x32>>6;
-        s->pending_increment=(uint16_t)(model->line_ticks_x32&63u);s->pending_denominator=64u;
-    }
-    s->pending_clock=candidate;
+    s->pending_mode=SLO_PUB_RESEED;s->pending_clock=candidate;
     s->pending_tip=(slo_tip_t){pulse.start,(uint16_t)pulse.width,(uint8_t)pulse.kind,pulse.index,pulse.half};
     __sync_synchronize();++s->publication;
-    /* A slew moves the grid toward the camera like a guard trim. */
-    if(slew)scp_trim(&s->pll,s->pending_shift);
-    if(!slew) {
-        /* A confirmed camera model replaces the grid: old guard evidence
-         * describes the previous phase. */
-        s->guard=(spg_t){0};s->yield=false;s->guard_after=now+20000u;
-        s->pll.active=false;s->pll_period_q=0;
-        /* A qualified model is fresh camera H and V on the new grid. */
-        s->h_trust_tick=s->v_trust_tick=now;slo_trust(s,now);
-    }
+    s->guard=(spg_t){0};s->yield=false;s->guard_after=now+20000u;
+    s->pll.active=false;s->pll_period_q=0;s->unlocked_jumps=0;
+    s->h_trust_tick=s->v_trust_tick=0;s->camera_fresh=false;
+    ++s->status.std_switches;
     return true;
 }
 
 /* Bounded task-side publication; refused while another is unapplied so a
- * re-anchor can never overwrite a pending model takeover. */
+ * re-anchor can never overwrite a pending reseed. */
 static bool guard_publish(slo_t *s,uint8_t mode,int32_t value)
 {
     uint64_t now;
@@ -488,19 +446,6 @@ static bool guard_publish_period(slo_t *s,uint64_t period_q)
 void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
 {
     slo_t *s=s_output;
-    if(s && s->flag && s->status.active && !s->quarantined && high==s->native_inverted &&
-       width>=75u && width<=240u) {
-        uint64_t d=tick>s->last_h_tick?tick-s->last_h_tick:0u;
-        for(uint32_t k=1u;k<=4u && d;++k) {
-            uint32_t line=s->standard==SLG_PAL?1280u*k:(12711u*k+5u)/10u;
-            if(d+SLO_CAMERA_TOL>=line && d<=line+SLO_CAMERA_TOL) {
-                s->camera_tick=tick;s->camera_tick32=(uint32_t)tick;
-                __sync_synchronize();s->camera_fresh=true;++s->status.camera_lines;
-                break;
-            }
-        }
-        s->last_h_tick=tick;
-    }
     /* Without authority the grid is a nominal clock that emits nothing;
      * the guard still aligns it to a coherent camera and may grant it. */
     if(!s || !s->flag || !s->status.active || s->quarantined ||
@@ -519,8 +464,12 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
         int64_t base=(tip.half&1u)==clock.parity?delta:delta-half;
         int32_t offset=(int32_t)(spg_wrap(base,2*half)/den);
         action=spg_h(&s->guard,offset,(int32_t)(2*half/den),tick);
-        if(spg_abs(offset)<=SPG_WINDOW && !s->guard.yield_h && s->guard.aligned>=SPG_LOCK)
-            s->h_trust_tick=tick;
+        if(spg_abs(offset)<=SPG_WINDOW && !s->guard.yield_h && s->guard.aligned>=SPG_LOCK) {
+            /* In-phase camera H: present now, trusted for holdover. */
+            s->h_trust_tick=tick;s->unlocked_jumps=0;
+            s->camera_tick32=(uint32_t)tick;__sync_synchronize();s->camera_fresh=true;
+            ++s->status.camera_lines;
+        }
         if(s->native_authority && spg_abs(offset)<=SPG_WINDOW && !s->guard.yield_h && action.kind==SPG_NONE) {
             uint64_t period_q=scp_period_q(clock.whole,clock.increment,clock.denominator);
             if(!s->pll.active || s->pll.period_q!=period_q)scp_start(&s->pll,period_q,tip.half,offset);
@@ -545,12 +494,18 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
     }
     if(action.kind==SPG_JUMP_H) {
         bool trim=!s->guard.yield_h;
+        /* Re-anchored SLO_STD_JUMPS times without the camera ever lining up:
+         * its line period is not this standard's. Restart instead of jump. */
+        if(!trim && (tick<s->last_jump_tick || tick-s->last_jump_tick>SLO_STD_GAP))s->unlocked_jumps=0;
+        if(!trim && s->unlocked_jumps+1u>=SLO_STD_JUMPS && slo_reseed(s,tick))return;
         if(guard_publish(s,SLO_PUB_JUMP_H,action.value)) {
             if(trim){++s->status.guard_trims;scp_trim(&s->pll,action.value);}
             else {
                 s->pll.active=false; /* re-anchor: the window no longer measures drift */
                 s->h_trust_tick=s->v_trust_tick=0; /* moved grid: confirm before repairing */
                 slo_trust(s,tick);
+                if(s->unlocked_jumps<UINT8_MAX)++s->unlocked_jumps;
+                s->last_jump_tick=tick;
             }
             spg_reset(&s->guard);
         }
@@ -576,7 +531,7 @@ void sync_live_output_guard_tick(void)
     if(!s || !s->flag || !sync_edge_clock_read(&now))return;
     s->yield=spg_yield(&s->guard,now);
     s->status.guard_yield=s->yield;
-    if(s->camera_fresh && (now<s->camera_tick || now-s->camera_tick>=SLO_CAMERA_HOLD))s->camera_fresh=false;
+    if(s->camera_fresh && (now<s->h_trust_tick || now-s->h_trust_tick>=SLO_CAMERA_HOLD))s->camera_fresh=false;
     s->status.camera_present=s->camera_fresh;
     slo_trust(s,now);
     s->status.pll_rejected=s->pll.rejected;

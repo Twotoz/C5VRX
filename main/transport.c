@@ -1030,12 +1030,9 @@ static bool s_output_probe_busy;
 typedef struct {
     sync_bench_context_t context;
     bool requested,authorized,fault,output_requested;
-    bool native_tracking;
     bool coasting_restart;
     uint32_t stream_generation;
     int64_t retry_us;
-    int64_t model_update_us;
-    uint64_t model_h,model_field;
     size_t channel;
     uint32_t starts,stops,failures;
 } sync_live_owner_t;
@@ -1068,7 +1065,6 @@ static bool transport_sync_restart_begin(bool flag)
     if(!s->coasting_restart && !transport_sync_live_valid(s->context.generation))return false;
     s->coasting_restart=true;
     sync_live_output_phase(4u);
-    s->native_tracking=false;
     sync_output_live_invalidate(); /* revoke source before stopping any producer */
     return true;
 }
@@ -1092,7 +1088,6 @@ bool transport_sync_live_cancel(void)
 {
     if(!s_live_owner)return true;
     s_live_owner->authorized=false;
-    s_live_owner->native_tracking=false;
     s_live_owner->coasting_restart=false;
     sync_live_output_phase(0u);
     __sync_synchronize();
@@ -1140,7 +1135,11 @@ void transport_sync_flywheel_toggle(void)
 static bool IRAM_ATTR transport_sync_native_source(void *arg,uint32_t *epoch)
 {
     (void)arg;
-    return s_live_owner && s_live_owner->native_tracking && sync_output_live_source(NULL,epoch);
+    /* Source validity only (markers, RX rearm, receive mutations). Gating
+     * on the probe's strict model hid every native edge from the ISR on the
+     * board (camera_qualified=0): tips were repaired over the camera.
+     * A coasting restart has stopped the producers: nothing is native. */
+    return s_live_owner && !s_live_owner->coasting_restart && sync_output_live_source(NULL,epoch);
 }
 
 void transport_sync_live_tick(void)
@@ -1183,53 +1182,32 @@ void transport_sync_live_tick(void)
         if(sync_output_live_begin_flag(s->context.generation,transport_sync_live_valid)) {
             sync_output_live_before_close(sync_live_output_end);
             s_output_probe_busy=true;++s->starts;active=true;
-            s->model_h=s->model_field=0u;s->model_update_us=0;
             s->channel=rf_channel_index();
         } else {s->authorized=false;++s->failures;s->retry_us=now+1000000;}
     }
     if(active && s->channel!=rf_channel_index()) {
         sync_output_live_forget();s->channel=rf_channel_index();
     }
-    if(!sync_output_live_source(NULL,NULL))s->native_tracking=false;
     sync_live_output_phase(1u);
     if(active && !sync_output_live_poll()) {
         ++s->failures;(void)transport_sync_live_cancel();s->retry_us=now+1000000;
     }
     if(active && sync_output_live_active()) {
         sync_live_output_phase(2u);
-        sync_output_live_model_t m;
         slo_status_t output;sync_live_output_status(&output);
+        /* The snapshot drains native pulses into the output's guard, which
+         * alone owns the grid; the probe's H/V model only reports which
+         * comparator polarity carries sync. */
+        sync_output_live_model_t m;
         bool have=sync_output_live_snapshot(&m);
-        s->native_tracking=have && m.tracking;
-        sync_live_output_native_fresh(have && m.valid);
         if(have && m.tracking)sync_live_output_native_polarity(m.inverted);
-        /* Acquisition and continuity are separate. The schedule coasts even
-         * while the camera is healthy; individual real tips suppress repair
-         * in the ISR. Missing RMT windows never destroy the output clock. */
         if(!s->output_requested && output.active) {
             if(!sync_live_output_end())s->fault=true;
-        } else if(s->output_requested && have) {
-            slg_model_t model={.field=m.field,.last_h=m.last_h,.observed_at=m.now,
-                .line_ticks_x32=m.line_ticks_x32,.receive_epoch=m.generation,
-                .uncertainty_ticks=(uint32_t)(m.phase_hi-m.phase_lo),
-                .standard=(slg_standard_t)m.standard,.qualified=m.standard!=0u};
-            if(!output.active && !output.fault) {
-                slg_standard_t fallback=s_std_mode==STD_MODE_PAL?SLG_PAL:
-                    s_std_mode==STD_MODE_NTSC?SLG_NTSC:s_video_std==VIDEO_STD_NTSC?SLG_NTSC:SLG_PAL;
-                if(!sync_live_output_flag_begin(model.qualified?&model:NULL,fallback,
-                    s->context.generation,transport_sync_live_valid,transport_sync_native_source,NULL))++s->failures;
-                sync_live_output_native_fresh(m.valid);
-                if(model.qualified)sync_live_output_native_polarity(m.inverted);
-            } else if(output.active && m.tracking && m.valid &&
-                      (m.field!=s->model_field || (m.last_h!=s->model_h && now-s->model_update_us>=5000))) {
-                /* Only a fresh V anchor may move the grid: a coasted field
-                 * (weak/static camera, V not requalified) imposed a stale V
-                 * on a present camera. H-only drift is the guard's trim. */
-                sync_live_output_phase(3u);
-                if(sync_live_output_update(&model)) {
-                    s->model_field=m.field;s->model_h=m.last_h;s->model_update_us=now;
-                }
-            }
+        } else if(s->output_requested && have && !output.active && !output.fault) {
+            slg_standard_t fallback=s_std_mode==STD_MODE_PAL?SLG_PAL:
+                s_std_mode==STD_MODE_NTSC?SLG_NTSC:s_video_std==VIDEO_STD_NTSC?SLG_NTSC:SLG_PAL;
+            if(!sync_live_output_flag_begin(fallback,s->context.generation,transport_sync_live_valid,
+                transport_sync_native_source,NULL))++s->failures;
         }
         sync_live_output_guard_tick();
         sync_live_output_status(&output);
@@ -1284,7 +1262,7 @@ void transport_sync_live_print(void)
     slo_status_t output;sync_live_output_status(&output);
     printf("SYNC_FLYWHEEL requested=%u active=%u repaired=%lu suppressed=%lu batches=%lu late_ticks=%lu missed=%lu miss_kind=%lu queue_low=%lu fault=%lu "
         "irq_delay_ticks=%lu callback_ticks=%lu budget_yields=%lu miss_phase=%lu miss_other=%lu miss_observer=%lu miss_snapshot=%lu miss_update=%lu miss_restart=%lu miss_reserved=%lu "
-        "guard_yield=%u yielded=%lu h_jumps=%lu v_jumps=%lu trims=%lu pll_updates=%lu pll_rejected=%lu pll_ppb=%ld acquired=%lu camera_present=%u camera_lines=%lu camera_yields=%lu h_trusted=%u v_trusted=%u monitor_lock_proven=0\n",
+        "guard_yield=%u yielded=%lu h_jumps=%lu v_jumps=%lu trims=%lu pll_updates=%lu pll_rejected=%lu pll_ppb=%ld acquired=%lu camera_present=%u camera_lines=%lu camera_yields=%lu h_trusted=%u v_trusted=%u std_switches=%lu monitor_lock_proven=0\n",
         s?(unsigned)s->output_requested:0u,(unsigned)output.active,
         (unsigned long)output.repaired,(unsigned long)output.suppressed,(unsigned long)output.batches,
         (unsigned long)output.max_late_ticks,(unsigned long)output.missed,(unsigned long)output.miss_kind,
@@ -1300,7 +1278,7 @@ void transport_sync_live_print(void)
         (unsigned long)output.pll_updates,(unsigned long)output.pll_rejected,(long)output.pll_ppb,
         (unsigned long)output.guard_acquired,(unsigned)output.camera_present,
         (unsigned long)output.camera_lines,(unsigned long)output.camera_yields,
-        (unsigned)output.h_trusted,(unsigned)output.v_trusted);
+        (unsigned)output.h_trusted,(unsigned)output.v_trusted,(unsigned long)output.std_switches);
 }
 
 /* ISR-safe transport identity check: no scheduler/PHY calls or mutation. */
