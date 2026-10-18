@@ -45,10 +45,9 @@ static void write_reg(unsigned addr,uint32_t value) {
 #define REG_WRITE(addr,value) write_reg(addr,value)
 '''
 SUFFIX = r'''
-static flag_bench_t storage;
+static flag_pin_t storage;
 static uint32_t original[9];
 static void reset(unsigned enable,unsigned output) {
- (void)s_flag_diag;
  memset(reg,0,sizeof(reg));
  reg[IO_MUX_GPIO23_REG]=0x12341000u;
  reg[GPIO_FUNC23_OUT_SEL_CFG_REG]=48u;
@@ -56,12 +55,12 @@ static void reset(unsigned enable,unsigned output) {
  reg[GPIO_ENABLE_REG]=0x415aa55au | (enable?FLAG_PIN_MASK:0u);
  reg[GPIO_OUT_REG]=0x104a595au | (output?FLAG_PIN_MASK:0u);
  memcpy(original,reg,sizeof(reg));
- storage=(flag_bench_t){.iomux=reg[IO_MUX_GPIO23_REG],
+ storage=(flag_pin_t){.iomux=reg[IO_MUX_GPIO23_REG],
   .matrix=reg[GPIO_FUNC23_OUT_SEL_CFG_REG],.pad=reg[GPIO_PIN23_REG],
   .enable=reg[GPIO_ENABLE_REG]&FLAG_PIN_MASK,
   .output=reg[GPIO_OUT_REG]&FLAG_PIN_MASK,.clamp_matrix=256u|1024u,
   .saved=true,.active=true};
- s_flag_storage=&storage;s_flag_bench=s_flag_storage;
+ s_flag_storage=&storage;s_flag_pin=s_flag_storage;
  writes=drop=0;writes_started=false;
 }
 static void unrelated_unchanged(void) {
@@ -96,7 +95,7 @@ int main(void) {
  assert(!flag_pin_apply(true)&&writes==0);++checks;
  storage.saved=true;storage.active=false;
  assert(!flag_pin_apply(true)&&flag_pin_apply(false)&&writes==0);++checks;
- s_flag_bench=NULL;
+ s_flag_pin=NULL;
  assert(!flag_pin_apply(true)&&flag_pin_apply(false)&&writes==0);++checks;
  printf("PASS: %u actual flag-pad restoration/fault checks\n",checks);
  return 0;
