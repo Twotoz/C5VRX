@@ -36,10 +36,12 @@
  * Deviation: the AFC measures the sync tip and the burst-free porch of
  * confirmed lines (burst or line timing); their distance is deviation x 1.914 MHz (40 of 140
  * IRE over 6.7 MHz). A decision needs three batches of 32 estimates, each
- * with a spread <= 8 % and all medians within 5 % of each other, on a
- * centred (AFC locked) carrier in the healthy gain band, at a
- * C/N estimate >= 8 dB (a weak carrier reads the deviation narrow). The
- * estimator and thresholds are pure (profile_logic.h) and host-tested. */
+ * with a spread <= 8 % and all medians within 5 % of each other, in the
+ * healthy gain band, at a C/N estimate >= 8 dB (a weak carrier reads the
+ * deviation narrow). A carrier offset moves sync and porch together, so the
+ * measurement does not wait for the AFC lock; only narrowing the filter
+ * does (profile_logic.h). The estimator and thresholds are pure
+ * (profile_logic.h) and host-tested. */
 #include "receiver.h"
 #include "profile_logic.h"
 #include "phy.h"
@@ -201,6 +203,7 @@ static void live_apply(void)
     if (p < 0 || p == s_profile) { s_switch_pending = -1; return; }
     if (s_menu_active || calibration_in_startup() || transport_faulted()) return;
     if (transport_switch_wait_ms()) return;                  /* retry after the cooldown */
+    if (profile_narrowing(p, s_profile) && !s_afc_locked) return;   /* lock lost while waiting */
     rf_filter_t f;
     const int cls = p == PROFILE_DEFAULT ? FILTER_NORMAL : p == PROFILE_WIDE ? FILTER_WIDE : FILTER_NARROW;
     if (!filter_setting(cls, &f)) { s_switch_pending = -1; ++s_live_switch_fail; return; }
@@ -240,8 +243,11 @@ static void live_decided(int dev_x100, int64_t now)
         if (blob_store("vtxdev", s_dev_table, sizeof(s_dev_table))) s_mon.stored_us = now;
     }
     dev_monitor_decided(&s_mon, dev_x100, want, s_profile, now);
-    const bool switch_now = profile_live_switch_wanted(s_live_switch, want, s_profile, s_mon.agree_streak);
+    const bool switch_now = profile_live_switch_wanted(s_live_switch, want, s_profile, s_mon.agree_streak,
+                                                       s_afc_locked);
     const char *what = want == s_profile ? "confirms" : switch_now ? "switching from" :
+                       s_live_switch && profile_narrowing(want, s_profile) && s_mon.agree_streak >= DEV_NARROW_AGREE ?
+                           "awaits the AFC lock (narrow filter needs a centred carrier); active stays" :
                        s_live_switch ? "awaits a second agreeing result; active stays" :
                        profile_width_rank(want) > profile_width_rank(s_profile) ? "WARNING too narrow:" :
                        "pending for the next boot/CALIBRATE; active stays";
@@ -266,7 +272,7 @@ void profile_observe(const afc2_result_t *r)
     }
     if (s_dev.result_x100 >= 0) return;
     if (!r->sync_pairs || !r->porch_pairs) { ++s_gate.pairs; return; }
-    if (!s_afc_locked) { ++s_gate.lock; return; }
+    s_gate.lock += !s_afc_locked;   /* measured anyway: the span is offset-free */
     s_gate.last_freq = rf_frequency_mhz();
     s_gate.last_span = r->polarity < 0 ? r->porch_khz - r->sync_khz : r->sync_khz - r->porch_khz;
     s_gate.last_cn = CN_UNKNOWN_X10;
@@ -317,6 +323,10 @@ void profile_commit(int dev_x100)
             vTaskDelay(pdMS_TO_TICKS(800));
             status_screen_end();
         }
+    } else if (profile_narrowing(p, s_profile) && !s_afc_locked) {
+        /* The deviation counts (ladder class); the narrow filter waits for a
+         * centred carrier and comes from the live switch after the lock. */
+        s_reason = "narrow_awaits_afc_lock";
     } else {
         char line[48];
         snprintf(line, sizeof(line), "VTX DEVIATION %d.%02d", dev_x100 / 100, dev_x100 % 100);
@@ -342,7 +352,7 @@ void profile_print(void)
            s_measuring == MEASURE_STARTUP ? "startup" : s_measuring == MEASURE_LIVE ? "live" : "off",
            s_dev.n, s_dev.batches, s_dev.rejected, (unsigned long)s_observed, (unsigned long)s_gated,
            (unsigned long)s_gated_cn);
-    printf("PROFILE_GATES no_pairs=%lu unlocked=%lu amplitude=%lu clip=%lu gain_not_held=%lu "
+    printf("PROFILE_GATES no_pairs=%lu observed_unlocked=%lu amplitude=%lu clip=%lu gain_not_held=%lu "
            "cn_missing=%lu cn_below=%lu last_cn_x10=%d cn_checked=%u last_span_khz=%d "
            "last_freq_mhz=%u min_cn_x10=%d\n",
            (unsigned long)s_gate.pairs, (unsigned long)s_gate.lock, (unsigned long)s_gate.amplitude,

@@ -170,20 +170,36 @@ int main(void)
     }
     /* Live profile switch: widen at once, narrow after two agreeing results. */
     check("live switch: report-only never switches",
-          !profile_live_switch_wanted(false, PROFILE_DEFAULT, PROFILE_KP050, 5u), "");
+          !profile_live_switch_wanted(false, PROFILE_DEFAULT, PROFILE_KP050, 5u, true), "");
     check("live switch: narrow -> DEFAULT on the first result",
-          profile_live_switch_wanted(true, PROFILE_DEFAULT, PROFILE_KP050, 1u), "");
+          profile_live_switch_wanted(true, PROFILE_DEFAULT, PROFILE_KP050, 1u, true), "");
     check("live switch: DEFAULT -> WIDE on the first result",
-          profile_live_switch_wanted(true, PROFILE_WIDE, PROFILE_DEFAULT, 1u), "");
+          profile_live_switch_wanted(true, PROFILE_WIDE, PROFILE_DEFAULT, 1u, true), "");
     check("live switch: kp0.6 -> kp0.5 waits for agreement",
-          !profile_live_switch_wanted(true, PROFILE_KP050, PROFILE_KP060, 1u) &&
-          profile_live_switch_wanted(true, PROFILE_KP050, PROFILE_KP060, 2u), "");
+          !profile_live_switch_wanted(true, PROFILE_KP050, PROFILE_KP060, 1u, true) &&
+          profile_live_switch_wanted(true, PROFILE_KP050, PROFILE_KP060, 2u, true), "");
     check("live switch: WIDE -> DEFAULT waits for agreement",
-          !profile_live_switch_wanted(true, PROFILE_DEFAULT, PROFILE_WIDE, 1u) &&
-          profile_live_switch_wanted(true, PROFILE_DEFAULT, PROFILE_WIDE, 2u), "");
+          !profile_live_switch_wanted(true, PROFILE_DEFAULT, PROFILE_WIDE, 1u, true) &&
+          profile_live_switch_wanted(true, PROFILE_DEFAULT, PROFILE_WIDE, 2u, true), "");
     check("live switch: same or invalid profile never",
-          !profile_live_switch_wanted(true, PROFILE_DEFAULT, PROFILE_DEFAULT, 9u) &&
-          !profile_live_switch_wanted(true, -1, PROFILE_DEFAULT, 9u), "");
+          !profile_live_switch_wanted(true, PROFILE_DEFAULT, PROFILE_DEFAULT, 9u, true) &&
+          !profile_live_switch_wanted(true, -1, PROFILE_DEFAULT, 9u, true), "");
+    /* The deviation is measured without the AFC lock (the span is offset-
+     * free), so the lock now gates only the narrow filter: narrowing waits
+     * for it, widening never does. */
+    check("live switch: narrowing waits for the AFC lock",
+          !profile_live_switch_wanted(true, PROFILE_KP050, PROFILE_DEFAULT, 5u, false) &&
+          !profile_live_switch_wanted(true, PROFILE_KP060, PROFILE_DEFAULT, 5u, false) &&
+          !profile_live_switch_wanted(true, PROFILE_DEFAULT, PROFILE_WIDE, 5u, false) &&
+          profile_live_switch_wanted(true, PROFILE_KP050, PROFILE_DEFAULT, 2u, true), "");
+    check("live switch: widening needs no AFC lock",
+          profile_live_switch_wanted(true, PROFILE_DEFAULT, PROFILE_KP050, 1u, false) &&
+          profile_live_switch_wanted(true, PROFILE_WIDE, PROFILE_DEFAULT, 1u, false) &&
+          profile_live_switch_wanted(true, PROFILE_WIDE, PROFILE_KP060, 1u, false), "");
+    check("narrowing order: KP050 < KP060 < DEFAULT < WIDE",
+          profile_narrowing(PROFILE_KP050, PROFILE_KP060) && profile_narrowing(PROFILE_KP060, PROFILE_DEFAULT) &&
+          profile_narrowing(PROFILE_DEFAULT, PROFILE_WIDE) && !profile_narrowing(PROFILE_WIDE, PROFILE_DEFAULT) &&
+          !profile_narrowing(PROFILE_DEFAULT, PROFILE_DEFAULT), "");
     /* The 10-minute run again with the switch applied: a VTX that widens
      * from 0.69 to 1.70 leaves the narrow profile on the first wide result,
      * and a clean narrow VTX is entered only after two agreeing results. */
@@ -205,7 +221,7 @@ int main(void)
             if (r < 0) continue;
             int want = profile_class(r, true, true);
             dev_monitor_decided(&m, r, want, active, t);
-            if (profile_live_switch_wanted(true, want, active, m.agree_streak)) {
+            if (profile_live_switch_wanted(true, want, active, m.agree_streak, true)) {
                 if (profile_width_rank(want) < profile_width_rank(active)) { ++narrow_entries; if (narrow_at < 0) narrow_at = t; }
                 else if (left_at < 0 && t >= 300000000LL) left_at = t;
                 active = want;

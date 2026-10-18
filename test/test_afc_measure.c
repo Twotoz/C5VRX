@@ -8,6 +8,7 @@
 
 static uint8_t raw[4096];
 static unsigned checks, failures;
+static double s_offset_hz;   /* carrier offset: shifts every level alike */
 static void check(const char *name, bool ok)
 {
     ++checks; failures += !ok;
@@ -18,7 +19,7 @@ static void fm(unsigned period, int polarity, bool burst, double picture_hz)
     double phase = .3;
     for (unsigned k = 0; k < sizeof(raw); ++k) {
         unsigned pos = (k + period - 160u) % period;
-        double hz = pos < 188 ? -2914000. : pos < 400 || pos >= period - 100 ? -1000000. : picture_hz;
+        double hz = (pos < 188 ? -2914000. : pos < 400 || pos >= period - 100 ? -1000000. : picture_hz) + s_offset_hz;
         if (burst && pos >= 228 && pos < 308)
             hz += 957000. * sin(6.283185307179586 * (period == 2560 ? 4433618.75 : 3579545.45) * k / 40000000.);
         phase += 6.283185307179586 * hz / 40000000. * -polarity;
@@ -49,6 +50,20 @@ int main(void)
     check("wrong sync period without burst is rejected", !afc2_measure(raw, sizeof(raw), c5vrx_phase8_gain_lut).lines);
     fm(2560, -1, false, 7500000.);
     check("fast picture FM does not block timing-confirmed sync", afc2_measure(raw, sizeof(raw), c5vrx_phase8_gain_lut).lines > 0);
+    /* The deviation (profile.c) is the sync-to-porch span: a carrier offset
+     * moves both levels, never their distance, so it is measured before the
+     * AFC has locked. */
+    bool span_ok = true, porch_ok = true;
+    for (int off = -1000; off <= 1000; off += 250) {
+        s_offset_hz = off * 1000.;
+        fm(2560, -1, true, 2000000.);
+        afc2_result_t r = afc2_measure(raw, sizeof(raw), c5vrx_phase8_gain_lut);
+        span_ok = span_ok && r.lines && abs(abs(r.porch_khz - r.sync_khz) - 1914) <= 60;
+        porch_ok = porch_ok && r.lines && abs(r.porch_khz - (-1000 + off)) <= 60;
+    }
+    s_offset_hz = 0.;
+    check("carrier offset +-1 MHz: span unchanged (deviation needs no AFC lock)", span_ok);
+    check("carrier offset +-1 MHz: porch follows the offset", porch_ok);
     uint32_t seed = 42;
     bool noise_ok = true;
     for (unsigned n = 0; n < 64; ++n) {

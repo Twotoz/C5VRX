@@ -746,3 +746,57 @@ Before claiming the board issue fixed, compare this PR build OFF/ON on the same
 camera: boot/menu/restart, native return, witness age/gaps, RMT rearm/overflow,
 IRQ delay and missed tips, plus operator-visible rolling. The board remains
 on the stable OFF setting while this software change is prepared.
+
+## Deviation measured without the AFC lock (2026-10-18)
+
+C5VRX by Twotoz and the C5VRX contributors; extends the PR #196 VTX
+matching and the PR #211 ladder. The kp + LP ladder is worth 1.6 dB
+(deviation 1.0) to 3.35 dB (0.69) in simulation only when the deviation is
+known; unknown, it runs the wide class (~0.4 dB). The board never knew it.
+
+- **The lock gate kept every window out.** `profile_observe()` returned
+  before measuring while the AFC was unlocked. Walks of 2026-10-13: the
+  PROFILE line reads `observed=0` in every log, also `walk3_close_check.log`
+  close in (254 FIELD_TRACE windows with sync 100 %). Board `5.0.0-pr.218`
+  (2026-10-18, 2.5 h uptime): `PROFILE_GATES unlocked=1499` against
+  `observed=537`; `deviation_x100` for the session stayed -1.
+- **The span does not need the lock.** A carrier offset moves sync tip and
+  porch together. The real `afc2_measure()` on `research/sim.py` video
+  (4092-byte windows, 12 and 10 MHz filter, PAL/NTSC, deviation
+  0.69/1.0/1.4/1.7, C/N 8 and 12 dB, offset -1..+1 MHz): median span within
+  19 kHz (1.4 %) of the centred carrier, inside the estimator's 8 % batch
+  spread and 5 % agreement; no wide VTX reads narrow. Host test
+  `test_afc_measure.c` checks the span over -1..+1 MHz in 250 kHz steps.
+- **Change:** the measurement no longer waits for the lock, so the session
+  deviation (the ladder's class) is set as soon as the other gates pass
+  (confirmed sync, C/N >= 8 dB, healthy band, no clipping, held gain).
+  Narrowing the filter still needs the lock (`profile_narrowing`,
+  `profile_live_switch_wanted`; README section 3: a -0.5 MHz residual costs
+  the narrow settings at the edge). A startup result that asks for a narrow
+  profile while unlocked keeps DEFAULT (`narrow_awaits_afc_lock`); the live
+  switch narrows after the lock and two agreeing results. Widening never
+  waits. `T` PROFILE_GATES now reports `observed_unlocked`.
+
+Why the AFC does not lock (open, needs an IQ capture of a strong carrier):
+
+- Lock needs 16 window estimates with a median absolute deviation <= 80 kHz.
+  Close in (`walk3_close_check.log`, FIELD_TRACE with sync 100 %, 254
+  windows) the porch estimate has MAD 211 kHz and the 16-window gate passes
+  2 of 238 times. The values are bimodal, around -1000 and -500 kHz.
+- One control window is 4092 samples (102 us), 1-2 lines. `afc_bias.py`
+  models 8 lines (320 porch pairs) per window. With 1-2 lines the same model
+  still gives MAD <= 30 kHz at >= 10 dB C/N, and `afc2_measure()` on sim.py
+  video gives MAD 0-24 kHz. Thermal noise and the short window do not
+  explain the board; something in the real camera/VTX signal does (porch
+  window position against this camera's burst or active video, or a
+  per-line component that one line cannot average out). The 500 kHz mode
+  gap is close to NTSC setup (7.5 IRE at the board's ~80 kHz/IRE), but that
+  is a hypothesis.
+- Next: console `I` snapshots with the VTX close in, then `afc2_measure()`
+  per line on them. The current board captures (`weak_*.bin` at the edge,
+  VTX-off snapshots) contain no line `afc2_measure()` accepts.
+
+Same board, same status: the second-round fixes hold where they can be read
+passively: `DCO floor_rows=0` (30 rows valid), `LADDER copy_fail=0` in
+180,562 windows. Host tests and an ESP-IDF 6.0.2 build pass; the change is
+not board-tested and no range gain is measured.

@@ -388,8 +388,11 @@ profile needs a fresh measurement in the bounded startup phase (waits up to
 20 s for a VTX switched on after a VTX-off calibration). Afterwards
 continuous VTX matching (`profile_logic.h` dev_monitor, host test
 `test/test_profile.c`) starts a passive measurement every 30 s on live
-video, gated on burst-confirmed sync, AFC lock, C/N >= 8 dB (a weak carrier
-reads the deviation narrow), no clipping and held gain; a cycle that cannot
+video, gated on burst-confirmed sync, C/N >= 8 dB (a weak carrier
+reads the deviation narrow), no clipping and held gain; not on the AFC lock
+(2026-10-18: the sync-to-porch span is offset-free, and the lock gate kept
+the deviation unknown on the board; narrowing the filter still needs the
+lock, `profile_live_switch_wanted`); a cycle that cannot
 decide within 120 s restarts. Each result updates the session deviation
 (kp ladder class), is logged with agree/mismatch streaks and kept as PENDING
 (NVS only on a class change or >= 0.03 change, at most every 5 min).

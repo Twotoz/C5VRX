@@ -111,10 +111,18 @@ static inline int profile_base_level_for(int p) { return (85 - profile_base_kp_x
  * After startup, a passive measurement cycle starts every 30 s on live video
  * (no retune, filter or tracker change). A cycle uses the estimator above
  * and only windows that pass the reliability gates (burst-confirmed sync,
- * AFC lock, C/N >= DEV_MONITOR_MIN_CN_X10, no clipping, held gain): at a low
+ * C/N >= DEV_MONITOR_MIN_CN_X10, no clipping, held gain): at a low
  * C/N the porch estimate is pulled toward the receiver centre
  * (research/afc_bias.py), which would read the deviation too narrow and
- * point at a narrow profile that hurts. A cycle that cannot decide within
+ * point at a narrow profile that hurts. The AFC lock is not a measurement
+ * gate: sync tip and porch move together with a carrier offset, so their
+ * distance does not (afc2_measure on sim.py video, +-1 MHz, 10/12 MHz
+ * filter, deviation 0.69-1.7, C/N 8 and 12 dB: median span within 19 kHz
+ * (1.4 %) of the centred carrier; test test_afc_measure.c). The lock gate kept every window out on the board
+ * (2026-10-13 walks: observed=0 with sync 100 % close in; 2026-10-18:
+ * 1499 of 2036 windows), so the deviation and the ladder class it sets
+ * stayed unknown. Only narrowing the filter needs a centred carrier
+ * (profile_live_switch_wanted). A cycle that cannot decide within
  * DEV_MONITOR_TIMEOUT_US starts over, so batches never mix situations far
  * apart in time. The result updates the session deviation (kp ladder class)
  * and is kept as PENDING for the next boot or CALIBRATE; the active profile
@@ -207,9 +215,19 @@ static inline int profile_width_rank(int p)
     return p == PROFILE_KP050 ? 0 : p == PROFILE_KP060 ? 1 : p == PROFILE_WIDE ? 3 : 2;
 }
 
-static inline bool profile_live_switch_wanted(bool enabled, int want, int active, unsigned agree_streak)
+/* A narrow filter clips an off-centre carrier (research README section 3:
+ * a -0.5 MHz residual already costs the narrow settings at the edge), so
+ * narrowing needs a centred carrier, i.e. the AFC lock. Widening never
+ * does: a wider filter only gains margin for an offset. */
+static inline bool profile_narrowing(int want, int active)
+{
+    return profile_width_rank(want) < profile_width_rank(active);
+}
+
+static inline bool profile_live_switch_wanted(bool enabled, int want, int active, unsigned agree_streak,
+                                              bool centred)
 {
     if (!enabled || want < 0 || want >= PROFILES || want == active) return false;
-    if (profile_width_rank(want) > profile_width_rank(active)) return true;   /* widen at once */
-    return agree_streak >= DEV_NARROW_AGREE;
+    if (!profile_narrowing(want, active)) return true;   /* widen at once */
+    return centred && agree_streak >= DEV_NARROW_AGREE;
 }

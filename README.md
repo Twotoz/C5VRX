@@ -50,12 +50,14 @@ it is not a demonstrated video or range improvement.
   with the default profile; the narrow profile is chosen only when this
   boot measured the VTX in the startup phase. **Continuous VTX matching**
   then measures the deviation passively every 30 s on live video (burst-
-  confirmed sync, AFC lock, C/N >= 8 dB, no clipping, held gain). Each
+  confirmed sync, C/N >= 8 dB, no clipping, held gain; no AFC lock needed,
+  a carrier offset does not change the sync-to-porch span). Each
   result is logged (`PROFILE live`), shown in `T` with agree/mismatch
   streaks and feeds the kp ladder's deviation class. With the **live
   switch** on (default, console `A`, NVS `prof_live`) a reliable result
   changes the profile in flight: wider (narrow -> DEFAULT -> WIDE) after one
-  result, narrower only after two agreeing results, each through a filter
+  result, narrower only after two agreeing results and with the AFC locked
+  (a narrow filter needs a centred carrier), each through a filter
   relock plus the verified tracker restart (a few ms, shared 5 s cooldown;
   board test pending). `A` off = report only: the result waits as pending
   for the next boot or CALIBRATE.
