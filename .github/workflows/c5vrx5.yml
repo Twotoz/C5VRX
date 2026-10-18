@@ -80,6 +80,8 @@ jobs:
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_gain_preset.c \
             ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_preset && /tmp/test_gain_preset | tail -1
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_gain_v6_memory.c ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_v6_memory && /tmp/test_gain_v6_memory
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_gain_measure.c ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_gain_measure
+          /tmp/test_gain_measure ../research/data/walk_2026-10-13 ../research/data/afc_2026-10-18 | tail -1
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_afc_evidence.c -o /tmp/test_afc_evidence && /tmp/test_afc_evidence
       - name: Diagnostic log semantics
         run: |

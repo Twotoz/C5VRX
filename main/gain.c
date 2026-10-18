@@ -12,6 +12,14 @@ static uint8_t s_power[256];
 static uint8_t s_flags[256];
 static bool s_lut_ready;
 
+/* The cell's I and Q value as one-hot bits (I + 8 in bits 0-15, Q + 8 in
+ * 16-31): a signed nibble XOR 8 is its value + 8. OR-ing them gives every
+ * value seen, so the span needs no per-sample sign extension or min/max. */
+static inline uint32_t iq_bits(uint8_t raw)
+{
+    return 1u << ((raw >> 4) ^ 8u) | 1u << (((raw & 15u) ^ 8u) + 16u);
+}
+
 /* Direct mode: act on the first window outside the healthy band and jump
  * straight to the predicted destination. The healthy band stays a strict
  * zero-write zone, so a steady carrier gets no gain writes. */
@@ -83,13 +91,34 @@ static dg_observation_t measure(const uint8_t *samples, size_t bytes,
     prepare_lut();
     uint16_t hist[114] = {0};
     unsigned origin = 0, clip = 0, coherent = 0, repeats = 0;
-    uint8_t prior_phase = 0, prior_raw = 0;
-    int i_min = 7, i_max = -8, q_min = 7, q_max = -8;
+    /* Every per-sample quantity depends only on the byte (tables) or on the
+     * byte and its predecessor. The sentinel and the observer run this on
+     * ~1.3 MB/s; the former per-sample sign extension, wrap and min/max cost
+     * ~125 instructions a byte and with it ~55 % of the CPU, which starved
+     * IDLE into the task watchdog (board 2026-10-18, docs/FINDINGS.md).
+     * Results are identical (test/test_gain_measure.c). */
+    uint32_t iq_seen = iq_bits(samples[0]);
+    uint8_t prior_raw = samples[0], prior_phase = phase8_lut[prior_raw];
+    ++hist[s_power[prior_raw]];
+    origin += s_flags[prior_raw] & 1u;
+    clip += s_flags[prior_raw] >> 1;
+    for (size_t n = 1; n < bytes; ++n) {
+        const uint8_t raw = samples[n], power = s_power[raw], phase = phase8_lut[raw];
+        ++hist[power];
+        origin += s_flags[raw] & 1u;
+        clip += s_flags[raw] >> 1;
+        iq_seen |= iq_bits(raw);
+        /* |wrap(phase - prior)| <= 32 codes (45 degrees) */
+        coherent += power >= 8u && (uint8_t)(phase - prior_phase + 32u) <= 64u;
+        repeats += raw == prior_raw;
+        prior_phase = phase;
+        prior_raw = raw;
+    }
     int64_t sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, sxp = 0, syp = 0;
     uint64_t spp = 0;
-    for (size_t n = 0; n < bytes; ++n) {
-        uint8_t raw = samples[n], power = s_power[raw];
-        if (envelope) {
+    if (envelope) {
+        for (size_t n = 0; n < bytes; ++n) {
+            const uint8_t raw = samples[n];
             const int x = 2 * ((int8_t)(raw & 240u) >> 4) + 1;
             const int y = 2 * ((int8_t)((raw & 15u) << 4) >> 4) + 1;
             const int p = x * x + y * y;
@@ -98,22 +127,6 @@ static dg_observation_t measure(const uint8_t *samples, size_t bytes,
             sxp += x * p; syp += y * p;
             spp += (unsigned)(p * p);
         }
-        ++hist[power];
-        origin += s_flags[raw] & 1u;
-        clip += (s_flags[raw] >> 1) & 1u;
-        uint8_t phase = phase8_lut[raw];
-        if (n && power >= 8) {
-            int delta = (((int)phase - (int)prior_phase + 128) & 255) - 128;
-            if (abs_i(delta) <= 32) ++coherent;
-        }
-        repeats += n && raw == prior_raw;
-        if (raw != prior_raw || !n) {
-            int si = (int8_t)(raw & 240u) >> 4, sq = (int8_t)((raw & 15u) << 4) >> 4;
-            i_min = si < i_min ? si : i_min; i_max = si > i_max ? si : i_max;
-            q_min = sq < q_min ? sq : q_min; q_max = sq > q_max ? sq : q_max;
-        }
-        prior_phase = phase;
-        prior_raw = raw;
     }
     unsigned cumulative = 0;
     bool p50 = false, p90 = false;
@@ -146,8 +159,10 @@ static dg_observation_t measure(const uint8_t *samples, size_t bytes,
         const double ratio = mp <= 0.0 ? 0.0 : var > 0.0 ? 100.0 * mp * mp / var : 65535.0;
         r.env_ratio_x100 = (uint16_t)(ratio > 65535.0 ? 65535.0 : ratio + .5);
     }
-    int span = i_max - i_min > q_max - q_min ? i_max - i_min : q_max - q_min;
-    r.span = (uint8_t)(span < 0 ? 0 : span);
+    const uint32_t i_seen = iq_seen & 0xffffu, q_seen = iq_seen >> 16;   /* never empty: bytes >= 1 */
+    const int i_span = (31 - __builtin_clz(i_seen)) - __builtin_ctz(i_seen);
+    const int q_span = (31 - __builtin_clz(q_seen)) - __builtin_ctz(q_seen);
+    r.span = (uint8_t)(i_span > q_span ? i_span : q_span);
     return r;
 }
 

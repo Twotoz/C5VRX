@@ -817,3 +817,44 @@ Same board, same status: the second-round fixes hold where they can be read
 passively: `DCO floor_rows=0` (30 rows valid), `LADDER copy_fail=0` in
 180,562 windows. Host tests and an ESP-IDF 6.0.2 build pass; the change is
 not board-tested and no range gain is measured.
+
+## Task watchdog: the gain observers took half the CPU (2026-10-18)
+
+C5VRX by Twotoz and the C5VRX contributors; extends Direct Gain V6 and its
+200 us observer/sentinel (`receiver.c`, `gain.c`).
+
+- **Symptom.** `task_wdt: IDLE (CPU 0)` with `gain_obs` running, about once
+  every few minutes on `5.0.0-pr.218` and on main after PR #220 (MEPC in
+  `measure()`, `gain.c:106`). The calibration task (priority 1) starves
+  with IDLE.
+- **Measured** (local diagnostic build: FreeRTOS run-time counters per task
+  and cycle counters per section, 10 s windows, not committed). `gain_obs`
+  32-54 %, `gain_fast` 20 %, `control` 18-23 %, `esp_timer` 6.5 %; IDLE
+  0.2-17 % (0.3 % in the window before a watchdog report). `measure()`
+  costs 28-29 us for the sentinel's 64 bytes and 100-155 us for the
+  observer's 256 bytes: ~125 instructions per byte (-O2 disassembly),
+  ~1.3 MB/s in total.
+- **Ruled out on the board:** flash cache (`measure()` in IRAM and the
+  phase table in DRAM: unchanged, 29 us) and compiler level alone (-O2:
+  29 -> 24 us).
+- **Fix.** Every per-sample quantity depends on the byte or on the byte and
+  its predecessor: power, flags and phase from tables, I/Q span from one-hot
+  bits OR-ed per sample (no sign extension or min/max), the 45-degree test as
+  one unsigned compare, and the envelope moments in their own loop that runs
+  only for the 20 ms C/N probe. `test/test_gain_measure.c` compares every
+  field with the former implementation (kept verbatim in the test) on 13,800
+  windows: random bytes of sizes 1-8190, fixed points/rails, a rotating
+  carrier at every phase step and the board IQ captures; a deliberate
+  one-code change makes it fail.
+- **Board** (diagnostic build with the table-driven measure): sentinel
+  15-16 us, observer 49-60 us; IDLE 18-33 % in the worst of three windows
+  (was 0.2-17 %); no watchdog report in that run.
+- **Open: USB console after a warm reset.** Builds with the first version of
+  this change (an extra 1 KB `.bss` table for the I/Q bits) ran normally from
+  a cold start (picture, console, `T`), but after the flash/download route's
+  watchdog reset (`` ` `` -> ROM -> `write-mem 0x600b1034` + watchdog reset)
+  the USB serial console stayed silent while the receiver kept a picture
+  (3 of 3; the builds without it came back 6 of 6). This version computes
+  the one-hot bits without a table, so `.bss` and `.data` are as before. The
+  warm-reset route still has to be checked with it on the board; the cause
+  of the silent console is not established.
