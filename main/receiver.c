@@ -340,7 +340,9 @@ void receiver_start(void)
                     ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xTaskCreate(sentinel_task, "gain_fast", 3072, NULL, 4, &s_sentinel) == pdPASS ?
                     ESP_OK : ESP_ERR_NO_MEM);
-    const esp_timer_create_args_t args = {.callback = tick_cb, .dispatch_method = ESP_TIMER_TASK, .name = "gain_tick"};
+    /* Notifications request a fresh snapshot, not replay of missed samples. */
+    const esp_timer_create_args_t args = {.callback = tick_cb, .dispatch_method = ESP_TIMER_TASK,
+        .name = "gain_tick", .skip_unhandled_events = true};
     esp_timer_handle_t timer;
     ESP_ERROR_CHECK(esp_timer_create(&args, &timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(timer, 200));
@@ -382,3 +384,4 @@ void receiver_print_map(void)
             printf(" %u:%u:%u:%u", k, blob.power_q10[k], blob.confidence[k], blob.uncertainty_pm[k]);
     printf("\n");
 }
+

@@ -92,7 +92,23 @@ int main(void){
   reset();native_ok=native;
   assert(sync_live_output_begin((slg_standard_t)standard,7,owner,present,NULL));
   /* A nominal clock without camera authority never clamps OE. */
-  for(unsigned i=0;i<200;++i){fire();assert(!clears&&!s_output->status.repaired);}
+  for(unsigned i=0;i<200;++i){
+   uint64_t tip_start=s_output->tip.start;
+   fire();assert(!clears&&!s_output->status.repaired);
+   assert(cycles/12<tip_start); /* no authority: return before the early-alarm lead expires */
+  }
+  grant();
+  s_output->yield=true;
+  for(unsigned i=0;i<100;++i){
+   uint64_t tip_start=s_output->tip.start;
+   fire();assert(!clears&&cycles/12<tip_start);
+  }
+  s_output->yield=false;
+  s_output->h_trusted=s_output->v_trusted=false;
+  for(unsigned i=0;i<100;++i){
+   uint64_t tip_start=s_output->tip.start;
+   fire();assert(!clears&&cycles/12<tip_start);
+  }
   grant(); /* repair path after independent authority */
   for(unsigned i=0;i<3000;++i){assert(sync_live_output_poll());fire();
    assert(s_output->status.active&&!s_output->status.fault);
@@ -453,3 +469,4 @@ static void counted_free(void *p){++heap_frees;free(p);}
 
 
 if __name__=='__main__':main()
+

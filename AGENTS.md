@@ -874,3 +874,14 @@ before allocating internal DMA descriptors in 384-byte chunks. Interlaced
 NTSC/PAL needs about 18/22 KiB; progressive fallback about 9/11 KiB.
 Keep the 6144-byte control stack reserved before RF/driver allocations.
 See [PR212](docs/PR212.md) for current behavior, evidence and board checks.
+
+
+
+### Bounded sync-loss background work (2026-10-18)
+
+See `docs/FINDINGS.md`, "Bounded background work during sync loss". Early
+output alarms without repair authority must advance/publish without waiting
+for the tip; already-late alarms keep miss accounting. RMT drains consume a
+snapshot of the producer head, and overdue gain timer callbacks coalesce.
+Host-tested scheduling changes only; RF sensitivity and physical sync/range
+gains are unmeasured. Preserve the native suppression and repair deadline.
