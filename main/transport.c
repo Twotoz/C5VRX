@@ -1071,6 +1071,22 @@ void transport_sync_live_print(void)
         "observer_gaps=%lu stale_native=%lu\n",(unsigned)output.observer_fresh,(unsigned long)output.sample_age_ticks,
         (unsigned long)output.observer_yields,(unsigned long)output.source_yields,
         (unsigned long)output.observer_gaps,(unsigned long)output.stale_native);
+    /* ISR occupancy since the previous print (task side, 240 MHz cycles);
+     * a restarted output (counters went back) starts a new interval. */
+    static uint64_t prev_us,prev_isr,prev_wait,prev_wasted,prev_hold;
+    const uint64_t now_us=(uint64_t)esp_timer_get_time();
+    if(output.isr_cycles<prev_isr || output.wait_cycles<prev_wait || output.suppressed_wait_cycles<prev_wasted ||
+       output.hold_cycles<prev_hold)prev_us=0;
+    const uint64_t span=prev_us && now_us>prev_us ? (now_us-prev_us)*240u : 0u;
+    #define SLO_PERMILLE(x,p) (span ? (unsigned long)(((x)-(p))*1000u/span) : 0ul)
+    printf("SYNC_FLYWHEEL_LOAD active=%u interval_ms=%lu isr_calls=%lu max_isr_us=%lu isr_permille=%lu wait_permille=%lu "
+        "suppressed_wait_permille=%lu hold_permille=%lu measured_not_estimated=1\n",(unsigned)output.active,
+        (unsigned long)(span/240000u),(unsigned long)output.isr_calls,(unsigned long)(output.max_isr_cycles/240u),
+        SLO_PERMILLE(output.isr_cycles,prev_isr),SLO_PERMILLE(output.wait_cycles,prev_wait),
+        SLO_PERMILLE(output.suppressed_wait_cycles,prev_wasted),SLO_PERMILLE(output.hold_cycles,prev_hold));
+    #undef SLO_PERMILLE
+    prev_us=now_us;prev_isr=output.isr_cycles;prev_wait=output.wait_cycles;
+    prev_wasted=output.suppressed_wait_cycles;prev_hold=output.hold_cycles;
 }
 
 

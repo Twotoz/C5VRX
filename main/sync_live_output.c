@@ -168,10 +168,9 @@ static bool IRAM_ATTR flag_native(slo_t *s,uint64_t now,const slo_tip_t *tip)
     return distance<=SLO_PHASE_WINDOW && now<tip->start+tip->width;
 }
 
-static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
+static bool IRAM_ATTR output_alarm_run(slo_t *s,uint64_t count,uint32_t batch_start)
 {
-    slo_t *s=arg;
-    uint32_t batch_start=esp_cpu_get_cycle_count(),n=0;
+    uint32_t n=0;
     for(;;) {
         if(!s->status.active)return false;
         if(!s->live(s->generation)){fail(s,1);return false;}
@@ -202,11 +201,15 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
             }
         }
         bool native=false;
-        uint32_t wait=esp_cpu_get_cycle_count();
-        while(now<tip.start) {
-            if(s->flag)native=flag_native(s,now,&tip);
-            if(esp_cpu_get_cycle_count()-wait>(SLO_LEAD+SLO_LATE)*12u ||
-               !sync_edge_clock_read(&now)){fail(s,4);return false;}
+        uint32_t wait=esp_cpu_get_cycle_count(),waited=0;
+        if(now<tip.start) {
+            while(now<tip.start) {
+                if(s->flag)native=flag_native(s,now,&tip);
+                if(esp_cpu_get_cycle_count()-wait>(SLO_LEAD+SLO_LATE)*12u ||
+                   !sync_edge_clock_read(&now)){fail(s,4);return false;}
+            }
+            waited=esp_cpu_get_cycle_count()-wait;
+            s->status.wait_cycles+=waited;
         }
         uint64_t late=now-tip.start;
         if(late>s->status.max_late_ticks)
@@ -232,12 +235,13 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
         /* An asserted live sync level always owns this interval. Historical
          * camera presence cannot grant permission to overwrite that level. */
         if(!native && s->flag && s->native_authority && trusted)native=flag_level(s);
-        if(native)++s->status.suppressed;
+        if(native){++s->status.suppressed;s->status.suppressed_wait_cycles+=waited;}
         else if(!s->native_authority){}
         else if(s->yield)++s->status.yielded;
         else if(!trusted)++s->status.camera_yields;
         else {
             REG_WRITE(GPIO_ENABLE_W1TC_REG,SLO_MASK);
+            const uint32_t clamp=esp_cpu_get_cycle_count();
             bool camera_owned=false;
             if(s->flag) {
                 /* Restore native video promptly when a correctly phased source
@@ -255,6 +259,7 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
                 while(esp_cpu_get_cycle_count()-start<(uint32_t)tip.width*12u){}
             }
             REG_WRITE(GPIO_ENABLE_W1TS_REG,SLO_MASK);
+            s->status.hold_cycles+=esp_cpu_get_cycle_count()-clamp;
             /* A sliver the camera's own pulse cut short is its pulse. */
             if(camera_owned)++s->status.suppressed;
             else ++s->status.repaired;
@@ -324,6 +329,20 @@ advance:
             return false;
         }
     }
+}
+
+/* Aggregate CPU occupancy (PR #218 review): total and worst ISR cycles,
+ * the early-alarm spin, the part of it a native pulse then made useless,
+ * and the clamp holds. Counters only; nothing is printed from the ISR. */
+static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
+{
+    slo_t *s=arg;
+    const uint32_t start=esp_cpu_get_cycle_count();
+    const bool again=output_alarm_run(s,count,start);
+    const uint32_t spent=esp_cpu_get_cycle_count()-start;
+    ++s->status.isr_calls;s->status.isr_cycles+=spent;
+    if(spent>s->status.max_isr_cycles)s->status.max_isr_cycles=spent;
+    return again;
 }
 
 bool sync_live_output_poll(void)

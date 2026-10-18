@@ -27,6 +27,10 @@ typedef struct {
     uint32_t camera_yields,camera_lines,std_switches;
     /* Missing source coverage is not evidence of missing camera sync. */
     uint32_t observer_yields,source_yields,observer_gaps,stale_native,sample_age_ticks;
+    /* CPU cycles (240 MHz): ISR total and worst single call, early-alarm
+     * spin, the spin before tips a native pulse then suppressed, clamps. */
+    uint32_t isr_calls,max_isr_cycles;
+    uint64_t isr_cycles,wait_cycles,suppressed_wait_cycles,hold_cycles;
     bool observer_fresh;
     bool active,guard_yield,camera_present,h_trusted,v_trusted;
 } slo_status_t;

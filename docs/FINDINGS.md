@@ -729,6 +729,17 @@ of the measured 1.63-ms interrupt stalls. The bounded background work from
 PR #217 is included with its original authorship; pulse deadlines and native
 priority remain strict. No demod LUT, RF gain policy or sample path changes.
 
+Review follow-up (PR #218 comments): `SYNC_FLYWHEEL_LOAD` reports measured
+`output_alarm` occupancy since the previous print: ISR calls, worst single ISR
+(us) and per-mille CPU for the whole ISR, the early-alarm spin, the spin before
+tips a native pulse then suppressed, and clamp holds. The ~19 % figure in the
+review is a ceiling estimate; these counters replace it with a measurement per
+scenario (strong camera, weak, none, flywheel OFF). Board numbers are pending;
+hardware-timed OE gating is not attempted before them. Separately, gain-driven
+LP (G70 on / G65 off) now applies only under Direct Gain AUTO: a manual MAX or
+fixed G70+ forced U85Q-LP on a strong carrier; manual gain falls back to the
+C/N rule (`kp_ladder_gain_evidence`, `test/test_kp_ladder.c`). Host tests only.
+
 Before claiming the board issue fixed, compare this PR build OFF/ON on the same
 camera: boot/menu/restart, native return, witness age/gaps, RMT rearm/overflow,
 IRQ delay and missed tips, plus operator-visible rolling. The board remains

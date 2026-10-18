@@ -14,7 +14,7 @@ ROOTS = {
     "transport_sync_live_valid", "transport_sync_native_source",
     "sync_output_live_source", "sop_received",
 }
-HELPERS = {"flag_native", "fail", "flag_pin_clamped", "sop_received_inner"}  # may be fully inlined
+HELPERS = {"output_alarm_run", "flag_native", "flag_level", "fail", "flag_pin_clamped", "sop_received_inner"}  # may be fully inlined
 
 
 def check(disassembly):

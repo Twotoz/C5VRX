@@ -63,6 +63,15 @@
 #define KP_LP_GAIN_ON  70u
 #define KP_LP_GAIN_OFF 65u
 
+/* Only Direct Gain AUTO turns the gain index into evidence of the received
+ * level. A manual MAX or fixed G70+ is the operator's choice, not a faded
+ * link, and used to force LP on a strong carrier (PR #218 review): manual
+ * gain returns 0, so the program falls back to the C/N rule. */
+static inline uint8_t kp_ladder_gain_evidence(bool auto_gain, uint8_t gain)
+{
+    return auto_gain ? gain : 0u;
+}
+
 typedef struct {
     uint8_t level;          /* current target level, 0 = kp 0.85 */
     bool lp;                /* U85Q-LP program (post-detection low-pass) */

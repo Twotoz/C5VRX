@@ -577,7 +577,8 @@ static void control_task(void *arg)
              * only when the narrow filter measured close to their 10 MHz model. */
             s_kp.narrow = kp_ladder_narrow_rows(profile_base_level(profile) > 0, calibration_narrow_width_khz());
             s_kp.wide = profile == PROFILE_WIDE;   /* the 16 MHz rows of a measured wide VTX */
-            s_kp.gain = s_current_gain;            /* LP follows the gain (kp_ladder.h KP_LP_GAIN_*) */
+            /* LP follows the AUTO gain (kp_ladder.h KP_LP_GAIN_*); manual gain uses C/N. */
+            s_kp.gain = kp_ladder_gain_evidence(receiver_gain_mode() == GAIN_MODE_AUTO, s_current_gain);
             const bool program_usable = program_ok && ctx == afc_context();
             uint8_t level = kp_ladder_update_evidence(&s_kp, cn_x10, ladder_ok, program_usable,
                                                       profile_live_deviation_x100(), now, s_kp_auto == 2);

@@ -874,6 +874,9 @@ before allocating internal DMA descriptors in 384-byte chunks. Interlaced
 NTSC/PAL needs about 18/22 KiB; progressive fallback about 9/11 KiB.
 Keep the 6144-byte control stack reserved before RF/driver allocations.
 See [PR212](docs/PR212.md) for current behavior, evidence and board checks.
+Gain-driven LP (G70/G65) follows the gain only in AUTO; manual MAX/fixed
+gain uses the C/N rule (PR #218 follow-up). `SYNC_FLYWHEEL_LOAD` measures
+flywheel ISR occupancy; board numbers pending (`docs/FINDINGS.md`).
 
 
 

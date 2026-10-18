@@ -146,6 +146,11 @@ int main(void){
     (s_output->status.repaired>=3000&&clears==s_output->status.repaired));
   assert((native||s_output->status.batches>0)&&s_output->status.queue_low==0);
   assert(s_output->status.max_callback_ticks<=3u); /* exclude later tips in V batches */
+  { const slo_status_t *o=&s_output->status; /* occupancy counters stay consistent */
+   assert(o->isr_calls>=3000u&&o->max_isr_cycles&&o->isr_cycles>=o->max_isr_cycles);
+   assert(o->wait_cycles&&o->wait_cycles+o->hold_cycles<=o->isr_cycles);
+   assert(native?(o->suppressed_wait_cycles==o->wait_cycles&&!o->hold_cycles):
+     (!o->suppressed_wait_cycles&&o->hold_cycles));++checks; }
   assert(sync_live_output_end()&&!alarm_enabled&&!memcmp(saved,registers,sizeof(saved)));++checks;
  }
  reset();assert(sync_live_output_begin(SLG_PAL,7,owner,NULL,NULL));

@@ -278,6 +278,22 @@ int main(void)
         for (int k = 0; k < 100; ++k, tg += TICK_US) (void)kp_ladder_update_lp(&gl, 200, true, 0, tg, true);
         check("gain G60: back to U85Q after the release hold", !gl.lp);
     }
+    {   /* Manual MAX / fixed G70+ is not a faded link: C/N rule decides. */
+        check("gain evidence: AUTO passes the index, manual reads unknown",
+              kp_ladder_gain_evidence(true, 83) == 83 && kp_ladder_gain_evidence(false, 83) == 0 &&
+              kp_ladder_gain_evidence(false, 72) == 0);
+        kp_ladder_t ml;
+        int64_t tm = 0;
+        kp_ladder_reset(&ml);
+        ml.gain = kp_ladder_gain_evidence(false, 83);
+        for (int k = 0; k < 200; ++k, tm += TICK_US) (void)kp_ladder_update_lp(&ml, 200, true, 100, tm, true);
+        check("manual G83, 20 dB C/N: stays U85Q", !ml.lp);
+        for (int k = 0; k < 200; ++k, tm += TICK_US) (void)kp_ladder_update_lp(&ml, 40, true, 100, tm, true);
+        check("manual G83, 4 dB C/N: LP by the C/N rule", ml.lp);
+        for (int k = 0; k < 200; ++k, tm += TICK_US)
+            (void)kp_ladder_update_evidence(&ml, CN_UNKNOWN_X10, false, true, 100, tm, true);
+        check("manual gain without usable IQ: holds the program", ml.lp);
+    }
     {   /* Gain policy reaches the real switch guard even with no usable IQ:
          * failed copies, unknown C/N, or continuous gain writes. */
         kp_ladder_t gl;
