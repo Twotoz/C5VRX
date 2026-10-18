@@ -25,6 +25,9 @@ typedef struct {
      * evidence (the type-specific trust below); camera_lines: in-phase
      * camera H pulses; std_switches: PAL/NTSC restarts by the guard. */
     uint32_t camera_yields,camera_lines,std_switches;
+    /* Missing source coverage is not evidence of missing camera sync. */
+    uint32_t observer_yields,source_yields,observer_gaps,stale_native,sample_age_ticks;
+    bool observer_fresh;
     bool active,guard_yield,camera_present,h_trusted,v_trusted;
 } slo_status_t;
 /* Starts on the nominal grid of `fallback` without authority; the guard

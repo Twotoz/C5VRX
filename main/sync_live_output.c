@@ -48,6 +48,9 @@
  * beats a possibly conflicting second sync train. 5 s of holdover drifts
  * < 5 us with the holdover PLL. */
 #define SLO_TRUST_TICKS 100000000u
+/* Same 9-ms delivery bound as the native observer model. This measures
+ * source coverage independently of whether H/V can be found in the samples. */
+#define SLO_OBSERVER_HOLD 180000u
 typedef struct {uint64_t start;uint16_t width;uint8_t kind;uint16_t index;uint64_t half;} slo_tip_t;
 typedef struct {
     sync_live_gate_t *planner;
@@ -84,10 +87,32 @@ typedef struct {
      * the ISR reads only the two flags. */
     uint64_t h_trust_tick,v_trust_tick;
     volatile bool h_trusted,v_trusted;
+    uint64_t observation_end;
+    uint64_t grid_after; /* ISR: first source timestamp described by this grid */
+    volatile uint32_t observation_tick32;
+    volatile bool observation_seen;
     slo_status_t status;
     bool saved,configured,quarantined;
 } slo_t;
 static void slo_trust(slo_t *s,uint64_t now);
+
+static inline __attribute__((always_inline)) bool observer_current(const slo_t *s,uint64_t now)
+{
+    return s->observation_seen && (uint32_t)((uint32_t)now-s->observation_tick32)<=SLO_OBSERVER_HOLD;
+}
+
+/* Task-side revocation: fresh samples cannot revive old H/V authority after
+ * a coverage gap. Keep the clock, but reacquire on post-gap source data. */
+static void observer_lost(slo_t *s,uint64_t now)
+{
+    s->native_authority=false;__sync_synchronize();
+    s->observation_seen=false;s->h_trust_tick=s->v_trust_tick=0;
+    s->h_trusted=s->v_trusted=false;s->camera_fresh=false;
+    s->guard=(spg_t){0};s->yield=false;s->pll.active=false;
+    s->source_seen=false;s->low_seen=false;s->rise_valid=false;
+    s->guard_after=s->v_after=now;s->last_broad=0;
+    ++s->status.observer_gaps;
+}
 enum {SLO_PUB_RESEED=1,SLO_PUB_JUMP_H,SLO_PUB_JUMP_V,SLO_PUB_PERIOD};
 static slo_t *s_output;
 static DRAM_ATTR volatile unsigned s_output_phase;
@@ -188,15 +213,18 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
             if(s->status.misses_by_phase[phase]!=UINT32_MAX)++s->status.misses_by_phase[phase];
             goto advance;
         }
-        if(s->flag)native=flag_native(s,now,&tip);
+        if(s->flag) {
+            uint32_t epoch;
+            if(!s->source(s->native_arg,&epoch)){++s->status.source_yields;goto advance;}
+            if(!observer_current(s,now)){++s->status.observer_yields;goto advance;}
+            native=flag_native(s,now,&tip);
+        }
         else native=s->native && s->native(tip.start,tip.width,(slg_kind_t)tip.kind,s->native_arg);
         if(!s->status.active || !s->live(s->generation)){fail(s,1);return false;}
-        const bool camera=s->camera_fresh && (uint32_t)now-s->camera_tick32<SLO_CAMERA_HOLD;
         const bool trusted=tip.kind==SLG_H?s->h_trusted:s->v_trusted;
-        /* With the camera present, a sync level already active at our tip is
-         * the camera's own pulse even when a late ISR missed its edge; an
-         * unreadable source while the camera is present is left alone too. */
-        if(!native && camera && s->flag && s->native_authority && trusted)native=flag_level(s);
+        /* An asserted live sync level always owns this interval. Historical
+         * camera presence cannot grant permission to overwrite that level. */
+        if(!native && s->flag && s->native_authority && trusted)native=flag_level(s);
         if(native)++s->status.suppressed;
         else if(!s->native_authority){}
         else if(s->yield)++s->status.yielded;
@@ -209,10 +237,9 @@ static bool IRAM_ATTR output_alarm(uint64_t count,void *arg)
                  * edge arrives; never extend a late repair beyond tip end. */
                 uint32_t hold=esp_cpu_get_cycle_count();
                 while(now<tip.start+tip.width) {
-                    /* With the camera present its own V/EQ (or late H)
-                     * level also ends the repair: no second pulse over it. */
-                    if(flag_native(s,now,&tip)){camera_owned=camera;break;}
-                    if(camera && flag_level(s)){camera_owned=true;break;}
+                    /* Native level or lost witness ownership immediately ends
+                     * a repair, even after the camera-presence timer expired. */
+                    if(flag_native(s,now,&tip) || flag_level(s)){camera_owned=true;break;}
                     if(esp_cpu_get_cycle_count()-hold>(uint32_t)tip.width*12u ||
                        !sync_edge_clock_read(&now))break;
                 }
@@ -267,6 +294,7 @@ advance:
                     s->standard=candidate.halves==625u?SLG_PAL:SLG_NTSC;
                     s->source_seen=false;s->low_seen=false;s->rise_valid=false;
                 }
+                s->grid_after=next.start;
             }
         }
         s->tip=next;
@@ -453,10 +481,28 @@ static bool guard_publish_period(slo_t *s,uint64_t period_q)
 void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
 {
     slo_t *s=s_output;
+    if(!s || !s->flag || !s->status.active || s->quarantined)return;
+    uint64_t now;
+    if(!sync_edge_clock_read(&now))return;
+    /* Every completed marker-excluded run is coverage, including non-sync
+     * runs in real snow. Delayed H/V must not move today's grid or renew its
+     * authority. Only the phase bracket's edge uncertainty may be future. */
+    if(tick>UINT64_MAX-width || (tick+width>now && tick+width-now>SLO_PHASE_WINDOW) ||
+       (now>=tick+width && now-(tick+width)>SLO_OBSERVER_HOLD)) {
+        ++s->status.stale_native;
+        if(s->observation_seen)observer_lost(s,now);
+        return;
+    }
+    if(s->observation_seen && now>=s->observation_end &&
+       now-s->observation_end>SLO_OBSERVER_HOLD)observer_lost(s,now);
+    if(!s->observation_seen || tick+width>s->observation_end) {
+        s->observation_end=tick+width;s->observation_tick32=(uint32_t)(tick+width);
+        __sync_synchronize();s->observation_seen=true;
+    }
     /* Without authority the grid is a nominal clock that emits nothing;
      * the guard still aligns it to a coherent camera and may grant it. */
-    if(!s || !s->flag || !s->status.active || s->quarantined ||
-       high!=s->native_inverted || tick<s->guard_after)return;
+    if(high!=s->native_inverted || tick<s->guard_after || tick<s->grid_after ||
+       s->publication!=s->applied || (s->publication&1u))return;
     bool h=width>=75u && width<=240u,broad=width>=250u && width<=620u;
     if(!h && !broad)return;
     slo_tip_t tip;slc_t clock;
@@ -483,12 +529,19 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
          * static a random pulse in the window is not camera evidence. */
         if(s->native_authority && camera && action.kind==SPG_NONE) {
             uint64_t period_q=scp_period_q(clock.whole,clock.increment,clock.denominator);
-            if(!s->pll.active || s->pll.period_q!=period_q)scp_start(&s->pll,period_q,tip.half,offset);
+            /* RMT delivers historical runs. The PLL baseline belongs to the
+             * observed H, not the ISR's current (possibly many lines later)
+             * tip. Mixing those two times turns delivery jitter into drift. */
+            int64_t dhalf=delta>=0?(delta+half/2)/half:-((-delta+half/2)/half);
+            if((dhalf<0 && tip.half<(uint64_t)-dhalf) ||
+               (dhalf>=0 && tip.half>UINT64_MAX-(uint64_t)dhalf))return;
+            uint64_t observed_half=dhalf<0?tip.half-(uint64_t)-dhalf:tip.half+(uint64_t)dhalf;
+            if(!s->pll.active || s->pll.period_q!=period_q)scp_start(&s->pll,period_q,observed_half,offset);
             else {
                 scp_aligned(&s->pll);
                 uint64_t estimate;
                 if(s->publication==s->applied && !(s->publication&1u) &&
-                   scp_estimate(&s->pll,tip.half,offset,&estimate) &&
+                   scp_estimate(&s->pll,observed_half,offset,&estimate) &&
                    guard_publish_period(s,estimate))s->pll_period_q=estimate;
             }
         }
@@ -530,7 +583,7 @@ void sync_live_output_native_pulse(uint64_t tick,uint32_t width,bool high)
         s->h_trust_tick=s->v_trust_tick=tick;
         ++s->status.guard_acquired;
     }
-    slo_trust(s,tick);
+    slo_trust(s,now);
 }
 
 void sync_live_output_guard_tick(void)
@@ -538,6 +591,10 @@ void sync_live_output_guard_tick(void)
     slo_t *s=s_output;
     uint64_t now;
     if(!s || !s->flag || !sync_edge_clock_read(&now))return;
+    if(s->observation_seen && !observer_current(s,now))observer_lost(s,now);
+    s->status.observer_fresh=observer_current(s,now);
+    s->status.sample_age_ticks=!s->observation_seen || now<s->observation_end ? UINT32_MAX :
+        now-s->observation_end>UINT32_MAX?UINT32_MAX:(uint32_t)(now-s->observation_end);
     s->yield=spg_yield(&s->guard,now);
     s->status.guard_yield=s->yield;
     if(s->camera_fresh && (now<s->h_trust_tick || now-s->h_trust_tick>=SLO_CAMERA_HOLD))s->camera_fresh=false;

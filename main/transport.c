@@ -1067,6 +1067,10 @@ void transport_sync_live_print(void)
         (unsigned long)output.guard_acquired,(unsigned)output.camera_present,
         (unsigned long)output.camera_lines,(unsigned long)output.camera_yields,
         (unsigned)output.h_trusted,(unsigned)output.v_trusted,(unsigned long)output.std_switches);
+    printf("SYNC_FLYWHEEL_WITNESS observer_fresh=%u sample_age_ticks=%lu observer_yields=%lu source_yields=%lu "
+        "observer_gaps=%lu stale_native=%lu\n",(unsigned)output.observer_fresh,(unsigned long)output.sample_age_ticks,
+        (unsigned long)output.observer_yields,(unsigned long)output.source_yields,
+        (unsigned long)output.observer_gaps,(unsigned long)output.stale_native);
 }
 
 
