@@ -864,3 +864,40 @@ Single grid owner (PR #212, operator 2026-10-18: "beter, slimmer, simpeler").
   suppressed, 0 repaired, 2-tick overlap). Noise and stale-H variants: no
   acquisition and no switch. Board check pending (`T`: `std_switches`,
   `acquired`, `camera_present`).
+
+Guard evidence per line, not per pulse (PR #212 review 2026-10-18: "h_jumps
+and trims must not keep rising").
+
+- Measured first (host, real `sync_live_output.c`, 30 ppm camera, +-3 ticks
+  jitter, 30 % of camera H missing, 10 s): with the per-pulse guard, from
+  ~1 noise pulse per line the camera was lost and re-anchored 44 times in
+  10 s; from 2 per line it was never held. `h_jumps` also counted every
+  trim (`guard_publish`), so the status looked like constant re-anchoring.
+  In static the holdover PLL learned from random in-window pulses
+  (-2328 ppb instead of +30000; 295 ticks drift after 1 s).
+- `main/sync_phase_guard.h` now keeps a phase histogram: 32 bins per grid
+  line, hit or no hit per line, running mean over 64 lines (~4 ms). A camera
+  is the best bin pair standing >= 25 % of lines and >= 7 sigma (from the
+  measured noise rate) above the other bins; a second histogram on the
+  other standard's line reports a PAL/NTSC camera directly (`SPG_STD`),
+  replacing the four-failed-jumps rule. A median-type tracker gives the
+  camera's fine phase; a re-anchor needs it and the histogram to agree.
+  Trims need |mean| >= 8 ticks and >= 4 standard errors (exact integer
+  test; the rounded sqrt had let 2.9-sigma noise trims through). Trims keep
+  the histogram (`spg_shift`); V re-anchors keep H lock (`spg_reset_v`);
+  late pulses of a closed line are ignored. The PLL learns only from camera
+  H held in phase. `h_jumps` counts re-anchors only.
+- Host results: in-phase camera, 0..4 noise pulses/line, 30..100 %
+  presence: 0 re-anchors; held 100 % at >= 65 % presence (30 % presence in
+  >= 2 noise/line: 81-95 %). Pure noise up to 6/line, 59 seeds, 885,000
+  lines: 0 locks. PAL camera on the NTSC grid: standard switch after 63
+  lines, 0 jumps. Firmware sweep 0.25..6 noise/line: 0 re-anchors, ~70
+  trims in 10 s at every level (the 30 ppm drift before the PLL converges),
+  PLL within 0.3 ppm, holdover drift <= 6 ticks after 1 s. Regression:
+  `test_sync_live_output_runtime.py` heavy static (3/line, 10 s): 0
+  re-anchors, <= 8 trims after 3 s. Cost: ~200 integer operations per line
+  with pulses, task side; the ISR is unchanged.
+- Not changed: interrupt latency. Misses from IRQ blackouts (measured up to
+  338 us, `miss_other`) are unaffected by these commits; the guard only
+  decides where and whether a tip is due, the GPTimer ISR still has to run
+  on time. That needs hardware-timed output (route B). Board check pending.

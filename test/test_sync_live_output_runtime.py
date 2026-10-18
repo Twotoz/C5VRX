@@ -206,7 +206,7 @@ int main(void){
   uint64_t h0=t.half+((t.half&1u)!=s_output->clock.parity?1u:0u)+40u; /* future H line */
   uint64_t old_start=t.start;uint64_t old_half=t.half;
   if(scenario==0){ /* camera 300 ticks late: yield, then one H re-anchor */
-   for(unsigned k=0;k<SPG_LOCK;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+300.5),160u,true);
+   for(unsigned k=0;k<SPG_ACQ_LINES&&!s_output->status.guard_h_jumps;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+300.5),160u,true);
    assert(s_output->yield&&s_output->status.guard_h_jumps==1u&&s_output->pending_mode==SLO_PUB_JUMP_H);
    int32_t jump=s_output->pending_shift;assert(jump>=295&&jump<=305);
    unsigned before=s_output->status.yielded;
@@ -217,7 +217,7 @@ int main(void){
    uint64_t guard=s_output->guard_after;
    t=s_output->tip;h0=t.half+((t.half&1u)!=s_output->clock.parity?1u:0u);
    while(GRID(h0)<(double)guard)h0+=2u;
-   for(unsigned k=0;k<SPG_LOCK;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+0.5),160u,true);
+   for(unsigned k=0;k<SPG_ACQ_LINES;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+0.5),160u,true);
    assert(!s_output->yield&&s_output->status.guard_h_jumps==1u);
    unsigned clamps=clears;fire();fire();assert(clears>clamps); /* holdover repairs resume */
   }
@@ -229,7 +229,9 @@ int main(void){
    assert(!s_output->status.guard_h_jumps&&!s_output->status.guard_v_jumps);
   }
   if(scenario==2){ /* H in phase, V 7 halflines late on two fields: V re-anchor */
-   for(unsigned k=0;k<SPG_LOCK;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+0.5),160u,true);
+   for(unsigned k=0;k<SPG_ACQ_LINES;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+0.5),160u,true);
+   assert(spg_in_phase(&s_output->guard));
+   h0+=2u*SPG_ACQ_LINES;
    uint64_t f0=h0+600u-((h0+600u)%525u)+6u+7u; /* camera first broad at index section+7 */
    sync_live_output_native_pulse((uint64_t)(GRID(f0)+0.5),541u,true);
    sync_live_output_native_pulse((uint64_t)(GRID(f0+1u)+0.5),541u,true); /* same train */
@@ -241,14 +243,15 @@ int main(void){
    assert(s_output->clock.index==(uint16_t)((index+525u-7u+1u)%525u)||s_output->clock.index==(uint16_t)((index+525u-7u+2u)%525u));
   }
   if(scenario==3){ /* small coherent drift: one fine trim, no yield */
-   for(unsigned k=0;k<SPG_TRIM_N;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+20.5),160u,true);
+   for(unsigned k=0;k<SPG_ACQ_LINES+SPG_TRIM_N&&!s_output->status.guard_trims;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+20.5),160u,true);
    assert(!s_output->yield&&s_output->status.guard_trims==1u&&s_output->pending_shift>=19&&s_output->pending_shift<=21);
   }
   if(scenario==4){ /* camera disappears while yielding: holdover resumes after 100 ms */
-   for(unsigned k=0;k<SPG_LOCK;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+500.5),160u,true);
+   unsigned k=0;
+   for(;k<SPG_ACQ_LINES&&!s_output->yield;++k)sync_live_output_native_pulse((uint64_t)(GRID(h0+2u*k)+500.5),160u,true);
    assert(s_output->yield);
    sync_live_output_guard_tick();assert(s_output->yield);
-   cycles+=(uint64_t)(SPG_HOLD_TICKS+(uint64_t)(GRID(h0+2u*SPG_LOCK)-cycles/12.0)+1000u)*12u;
+   cycles+=(uint64_t)(SPG_HOLD_TICKS+(uint64_t)(GRID(h0+2u*k)-cycles/12.0)+1000u)*12u;
    sync_live_output_guard_tick();assert(!s_output->yield&&!s_output->status.guard_yield);
   }
   assert(!s_output->status.fault&&(registers[0]&SLO_MASK)==SLO_MASK);
@@ -359,9 +362,12 @@ int main(void){
   * holdover drift); after 2.6 s of aligned camera H the PLL period must
   * track it, so 1 s of pure holdover drifts far less than the 600 ticks an
   * uncorrected period loses. Phase alignment alone (guard trims) cannot. */
- for(unsigned noisy=0;noisy<2u;++noisy){
+ for(unsigned noisy=0;noisy<3u;++noisy){
   /* noisy: +-3 tick edge jitter, 30 % of camera H missing, and one random
-   * H-width noise pulse per four lines at an arbitrary phase. */
+   * H-width noise pulse per four lines at an arbitrary phase. noisy 2:
+   * heavy static, three noise pulses per line for 10 s: the guard must
+   * neither re-anchor nor keep trimming once the PLL holds the period
+   * (the per-pulse guard lost the camera from one per line). */
   uint32_t lcg=99u;
   reset();registers[(GPIO_FUNC0_OUT_SEL_CFG_REG+4u*23)/4]=256;
   assert(sync_live_output_flag_begin(SLG_NTSC,7,owner,source,NULL));
@@ -372,20 +378,38 @@ int main(void){
   double hl=c.whole+(double)c.increment/c.denominator;
   double cam0=(double)t.start+((t.half&1u)!=c.parity?hl:0.0)+40.0*hl;
   double cam_line=2.0*hl*(1.0+30e-6);
-  uint64_t k=0,start=cycles/12;
-  while(cycles/12<start+52000000u){
+  uint64_t k=0,start=cycles/12;unsigned long trims_converged=0;
+  while(cycles/12<start+(noisy==2u?200000000u:52000000u)){
    fire();
+   if(!trims_converged&&cycles/12>=start+60000000u)trims_converged=s_output->status.guard_trims+1u;
    while(cam0+k*cam_line<=(double)(cycles/12)){
     double at=cam0+k*cam_line;++k;
-    if(noisy){
+    if(noisy==2u){
+     uint64_t nt[12];unsigned c=0;lcg=lcg*1103515245u+12345u;uint32_t keep=lcg;
+     for(unsigned n=0;n<12u;++n){lcg=lcg*1103515245u+12345u;if((lcg>>3)%4u==0u)nt[c++]=(uint64_t)(at+(lcg>>6)%1270u);}
+     for(unsigned a=1;a<c;++a)for(unsigned b=a;b&&nt[b-1]>nt[b];--b){uint64_t x=nt[b];nt[b]=nt[b-1];nt[b-1]=x;}
+     if((keep>>12)%10u>=3u)sync_live_output_native_pulse((uint64_t)(at+(double)((int)((keep>>20)%7u)-3)+0.5),160u,true);
+     for(unsigned n=0;n<c;++n)sync_live_output_native_pulse(nt[n],90u+(unsigned)(nt[n]%140u),true);
+     continue;
+    }
+    if(noisy){ /* RMT order: the camera edge, then the later noise pulse */
      lcg=lcg*1103515245u+12345u;
-     if((lcg>>16)%4u==0u)sync_live_output_native_pulse((uint64_t)(at+(lcg>>4)%1200u),90u+(lcg>>9)%140u,true);
-     if((lcg>>12)%10u<3u)continue;
-     at+=(double)((int)((lcg>>20)%7u)-3);
+     bool noise=(lcg>>16)%4u==0u;uint64_t nt=(uint64_t)(at+(lcg>>4)%1200u);uint32_t nw=90u+(lcg>>9)%140u;
+     if((lcg>>12)%10u>=3u)sync_live_output_native_pulse((uint64_t)(at+(double)((int)((lcg>>20)%7u)-3)+0.5),160u,true);
+     if(noise)sync_live_output_native_pulse(nt,nw,true);
+     continue;
     }
     sync_live_output_native_pulse((uint64_t)(at+0.5),160u,true);}
   }
   sync_live_output_guard_tick();
+  unsigned long late_trims=s_output->status.guard_trims+1u-trims_converged;
+  if(noisy==2u){
+   fprintf(stderr,"heavy static 3/line, 10 s: re-anchors=%lu trims=%lu (after 3 s: %lu) camera_present=%u\n",
+           (unsigned long)s_output->status.guard_h_jumps,(unsigned long)s_output->status.guard_trims,late_trims,
+           (unsigned)s_output->status.camera_present);
+   /* A PLL residual of ~0.2 ppm moves ~4 ticks/s: one 8-tick trim per ~2 s. */
+   assert(!s_output->status.guard_h_jumps&&late_trims<=8u&&s_output->status.camera_present);
+  }
   assert(s_output->status.pll_updates>=1u&&!s_output->status.pll_rejected);
   assert(s_output->status.pll_ppb>27000&&s_output->status.pll_ppb<33000);
   uint64_t hold=cycles/12;
@@ -394,8 +418,9 @@ int main(void){
   double grid=(double)t.start+((t.half&1u)!=c.parity?hl:0.0);
   double cam=cam0+(double)(long long)((grid-cam0)/cam_line+0.5)*cam_line;
   double err=CENTRED(cam-grid,2.0*hl);
-  fprintf(stderr,"PLL holdover (%s): ppb=%ld updates=%lu drift after 1 s=%.1f ticks (uncorrected ~600)\n",noisy?"noisy":"clean",
+  fprintf(stderr,"PLL holdover (%s): ppb=%ld updates=%lu drift after 1 s=%.1f ticks (uncorrected ~600)\n",noisy==2u?"heavy static":noisy?"noisy":"clean",
           (long)s_output->status.pll_ppb,(unsigned long)s_output->status.pll_updates,err);
+  (void)late_trims;
   assert(err>-40.0&&err<40.0);
   assert(!s_output->status.fault&&sync_live_output_end());++checks;
   #undef CENTRED
