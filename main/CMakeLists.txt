@@ -19,6 +19,24 @@ target_bitscrambler_add_src("u85q_lp_flag.bsasm")
 # sync alarms) must not inherit the application's debug-oriented -Og.
 set_source_files_properties(control.c sync_output_probe.c sync_live_gate.c sync_live_output.c PROPERTIES COMPILE_OPTIONS "-O2")
 
+# Firmware identity in every log (FIRMWARE line, fw= fields): CI passes the
+# exact head commit; local builds ask git at configure time and mark a dirty
+# tree. The ELF SHA-256 printed beside it identifies the binary itself.
+if(NOT C5VRX5_COMMIT)
+    execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+                    OUTPUT_VARIABLE C5VRX5_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE git_rc)
+    if(git_rc EQUAL 0 AND C5VRX5_COMMIT)
+        execute_process(COMMAND git status --porcelain --untracked-files=no WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+                        OUTPUT_VARIABLE git_dirty OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        if(git_dirty)
+            set(C5VRX5_COMMIT "${C5VRX5_COMMIT}-dirty")
+        endif()
+    else()
+        set(C5VRX5_COMMIT "unknown")
+    endif()
+endif()
+target_compile_definitions(${COMPONENT_LIB} PRIVATE C5VRX5_COMMIT="${C5VRX5_COMMIT}")
+
 # Filter capacitor and DC DAC access uses PHY internals recovered from this
 # exact ESP-IDF 6.0.2 libphy; any other PHY binary builds with them refused.
 set(C5_PHY_ARCHIVE "$ENV{IDF_PATH}/components/esp_phy/lib/esp32c5/libphy.a")

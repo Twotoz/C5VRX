@@ -247,3 +247,5 @@ bool blob_store(const char *key, const void *data, size_t size);
 
 /* ---- console.c ---- */
 void console_start(void);
+const char *firmware_id(void);   /* "<version>+<commit 12>", the fw= field of log lines */
+void firmware_print(void);       /* FIRMWARE line: version, full commit, ELF SHA-256, build time */

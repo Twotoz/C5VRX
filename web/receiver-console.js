@@ -56,6 +56,9 @@ export class ReceiverConsole {
     if (version) {
       this.current = true;
       this.version = version[1] || version[2];
+      // fw=<version>+<commit>: PR channels reuse one version string.
+      const fw = line.match(/\bfw=(\S+)/);
+      if (fw) this.version = fw[1];
       if (version[2]) {
         // Saved settings are restored by firmware; wait for fresh reports.
         this.control = {};

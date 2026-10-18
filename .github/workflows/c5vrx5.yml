@@ -124,7 +124,8 @@ jobs:
         shell: bash
         run: |
           . "$IDF_PATH/export.sh"
-          idf.py -DC5VRX5_VERSION="${{ steps.version.outputs.version }}" build
+          idf.py -DC5VRX5_VERSION="${{ steps.version.outputs.version }}" \
+            -DC5VRX5_COMMIT="${{ github.event.pull_request.head.sha || github.sha }}" build
           python3 tools/check_sync_output_iram.py build/c5vrx5.elf
       - name: Package firmware for web flashing
         shell: bash

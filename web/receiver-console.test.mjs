@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { ReceiverConsole } from './receiver-console.js';
 
+test('fw= names the exact build: PR channels share one version string', () => {
+  const state = new ReceiverConsole();
+  state.push('C5VRX5 5.0.0-pr.218 ready: R1 5658 MHz, U85Q (\'h\' for keys) fw=5.0.0-pr.218+c080a01c2db0\n');
+  assert.equal(state.version, '5.0.0-pr.218+c080a01c2db0');
+  state.push('C5VRX5 version=5.0.0-pr.218 demod=U85Q fw=5.0.0-pr.218+0123456789ab\n');
+  assert.equal(state.version, '5.0.0-pr.218+0123456789ab');
+});
+
 test('firmware identity and status survive arbitrary USB chunk boundaries', () => {
   const state = new ReceiverConsole();
   const report = 'C5VRX5 version=v5.0.123 demod=U85Q\r\nCONTROL channel=R1 freq=5658 standard=AUTO detected=PAL signal=71 menu=0\r\nOUTPUT level=1.5x live=1\r\n';

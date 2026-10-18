@@ -220,7 +220,7 @@ static void print_record(const char *tag, const diag_record_t *r)
            "gain=%u max=%u rf_stage=%u rf_code=%u bb=%u fine=%u p50=%d p95=%d coherence=%d origin_pm=%d clip_pm=%d "
            "cn_est_x10=%d cn_model_valid=%u offset_khz=%d cfo_khz=%d afc=%u afc_step=%u filter_ok=%u "
            "filter_code=%d skirt=%u bw20_requested=%u freq=%u profile=%s sphase_ok=%u dc_ok=%u "
-           "fault=%u faults_delta=%lu gain_writes=%lu fade_holds=%lu overloads=%lu in_spec=%u kp_x100=%d lp=%u\n", tag,
+           "fault=%u faults_delta=%lu gain_writes=%lu fade_holds=%lu overloads=%lu in_spec=%u kp_x100=%d lp=%u fw=%s\n", tag,
            (unsigned long)r->t_s, (unsigned long)r->t_ms, r->video_pct, r->coverage_pct, r->sync_measured_pct,
            r->gain, r->gain_max, r->rf_stage, r->rf_code, r->bb_code, r->fine_code,
            r->p50, r->p95, r->coherence, r->origin_pm, r->clip_pm, r->cn_x10, r->cn_x10 != CN_UNKNOWN_X10,
@@ -229,7 +229,7 @@ static void print_record(const char *tag, const diag_record_t *r)
            r->frequency_mhz, profile_name(r->profile), !(r->flags & DIAG_F_SPHASE_BAD),
            !(r->flags & DIAG_F_NO_DC), !!(r->flags & DIAG_F_FAULT), (unsigned long)r->faults,
            (unsigned long)r->gain_writes, (unsigned long)r->fade_holds, (unsigned long)r->overloads,
-           !(r->flags & DIAG_F_OUT_OF_SPEC), r->kp_level < 0 ? -1 : 85 - 5 * r->kp_level, r->lp);
+           !(r->flags & DIAG_F_OUT_OF_SPEC), r->kp_level < 0 ? -1 : 85 - 5 * r->kp_level, r->lp, firmware_id());
 }
 
 static void print_event(const diag_event_t *e)
@@ -245,6 +245,7 @@ static void print_event(const diag_event_t *e)
 void diag_toggle_stream(void)
 {
     s_stream = !s_stream;
+    firmware_print();
     printf("FIELD_DIAG stream=%u (one line per second; R toggles)\n", s_stream);
 }
 
@@ -330,6 +331,7 @@ void diag_report(void)
     const bool tuple_ok = arc_gain_tuple_decode(table, g, &t);
     const uint8_t top = arc_gain_highest_rf_stage_start(table);
 
+    firmware_print();
     printf("RANGE_DIAG channel=%s freq=%u in_spec=%u%s\n", rf_channel()->name, mhz, rf_freq_in_spec(mhz),
            rf_freq_in_spec(mhz) ? "" : " WARNING above the documented C5 range (5180-5885 MHz), not characterised");
     printf("RANGE_DIAG filter requested code=%d skirt=%u bw=%s class=%s applied=%u (read back code=%d skirt=%d) "

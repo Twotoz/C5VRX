@@ -646,12 +646,12 @@ void control_start(void)
 void control_print_beat(void)
 {
     printf("STATUS channel=%s freq=%u afc_locked=%u standard=%s detected=%s signal=%d menu=%u mode=%s kp_auto=%u "
-           "output=%s live=%u busy=%u\n",
+           "output=%s live=%u busy=%u fw=%s\n",
            rf_channel()->name, rf_frequency_mhz(), s_afc_locked,
            s_std_mode == STD_MODE_AUTO ? "AUTO" : s_std_mode == STD_MODE_PAL ? "PAL" : "NTSC",
            s_detected_std_valid ? (s_detected_std == VIDEO_STD_PAL ? "PAL" : "NTSC") : "none",
            s_signal_strength, s_menu_active, profile_name(profile_active()), s_kp_auto, transport_output_name(),
-           profile_live_mode(), menu_status_active());
+           profile_live_mode(), menu_status_active(), firmware_id());
 }
 
 void control_print(void)

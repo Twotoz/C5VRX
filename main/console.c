@@ -13,15 +13,38 @@
 
 extern volatile const char *s_boot_stage;
 
+#ifndef C5VRX5_COMMIT
+#define C5VRX5_COMMIT "unknown"
+#endif
+
+/* "<version>+<commit 12>": PR channels reuse one version string, so the
+ * commit is what tells two pr-N builds apart in a saved log. */
+const char *firmware_id(void)
+{
+    static char id[64];
+    if (!id[0]) snprintf(id, sizeof(id), "%s+%.12s", esp_app_get_description()->version, C5VRX5_COMMIT);
+    return id;
+}
+
+void firmware_print(void)
+{
+    const esp_app_desc_t *d = esp_app_get_description();
+    char elf[65] = "";
+    (void)esp_app_get_elf_sha256(elf, sizeof(elf));
+    printf("FIRMWARE id=%s version=%s commit=%s elf_sha256=%s built=\"%s %s\" idf=%s\n", firmware_id(), d->version,
+           C5VRX5_COMMIT, elf[0] ? elf : "unknown", d->date, d->time, d->idf_ver);
+}
+
 static void status(void)
 {
+    firmware_print();
     printf("C5VRX5 version=%s demod=U85Q_1a09f5c092e8 lane=ultrafine gain_owner=direct_gain_v6 "
-           "uptime_s=%lld heap_internal=%u heap_largest=%u heap_dma=%u heap_dma_largest=%u heap_lp=%u\n",
+           "uptime_s=%lld heap_internal=%u heap_largest=%u heap_dma=%u heap_dma_largest=%u heap_lp=%u fw=%s\n",
            esp_app_get_description()->version,
            esp_timer_get_time() / 1000000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT),
            (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
-           (unsigned)heap_caps_get_free_size(MALLOC_CAP_RTCRAM));
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_RTCRAM), firmware_id());
     control_print();
     receiver_print();
     profile_print();
@@ -46,8 +69,8 @@ static void snapshot(void)
     }
     uint32_t hash = 2166136261u;
     for (unsigned k = 0; k < C5V4_LEVEL_SAMPLE_BYTES; ++k) hash = (hash ^ raw[k]) * 16777619u;
-    printf("IQSNAP_BEGIN bytes=%u rate_hz=%u format=Ihigh_Qlow gain=%u lane=2 freq_mhz=%u fnv1a=%08lx\n",
-           C5V4_LEVEL_SAMPLE_BYTES, IQ_RATE_HZ, s_current_gain, rf_frequency_mhz(), (unsigned long)hash);
+    printf("IQSNAP_BEGIN bytes=%u rate_hz=%u format=Ihigh_Qlow gain=%u lane=2 freq_mhz=%u fnv1a=%08lx fw=%s\n",
+           C5V4_LEVEL_SAMPLE_BYTES, IQ_RATE_HZ, s_current_gain, rf_frequency_mhz(), (unsigned long)hash, firmware_id());
     static const char hex[] = "0123456789abcdef";
     char line[513];
     for (unsigned offset = 0; offset < C5V4_LEVEL_SAMPLE_BYTES; offset += 256) {

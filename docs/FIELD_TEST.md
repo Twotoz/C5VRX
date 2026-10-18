@@ -40,6 +40,12 @@ for an A/B that must exclude it.
 
 ## What the firmware reports
 
+- **Build identity.** The first boot line, every status dump (`s`), `D`
+  and `R` print `FIRMWARE id=<version>+<commit> commit=<full sha>
+  elf_sha256=<binary hash> built=... idf=...`; the 2-s `STATUS` beat,
+  every `FIELD_DIAG` record, the `ready` line and `IQSNAP_BEGIN` carry
+  `fw=<version>+<commit>`. PR channels reuse one version string, so
+  compare the commit. A local build reads `-dirty` with uncommitted edits.
 - **`D`: RANGE_DIAG health report.** It shows:
   - channel, plus a warning above 5885 MHz (R8, E6-E8 are outside
     Espressif's documented C5 range);
