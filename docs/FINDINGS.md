@@ -849,12 +849,13 @@ C5VRX by Twotoz and the C5VRX contributors; extends Direct Gain V6 and its
 - **Board** (diagnostic build with the table-driven measure): sentinel
   15-16 us, observer 49-60 us; IDLE 18-33 % in the worst of three windows
   (was 0.2-17 %); no watchdog report in that run.
-- **Open: USB console after a warm reset.** Builds with the first version of
-  this change (an extra 1 KB `.bss` table for the I/Q bits) ran normally from
-  a cold start (picture, console, `T`), but after the flash/download route's
-  watchdog reset (`` ` `` -> ROM -> `write-mem 0x600b1034` + watchdog reset)
-  the USB serial console stayed silent while the receiver kept a picture
-  (3 of 3; the builds without it came back 6 of 6). This version computes
-  the one-hot bits without a table, so `.bss` and `.data` are as before. The
-  warm-reset route still has to be checked with it on the board; the cause
-  of the silent console is not established.
+- **Board, this version** (cold start via RESET, ELF `127d6b3aa`): normal
+  startup and console, 0 task-watchdog reports in 5 minutes of continuous
+  heartbeat (VTX not received in that run).
+- **Not caused by this change: silent USB console after the flash route.**
+  After `` ` `` -> ROM -> flash -> `write-mem 0x600b1034` + watchdog reset
+  the USB serial console sometimes stays silent while the receiver keeps a
+  picture. It first looked tied to this change (3 failures with it), but
+  the unchanged main build failed the same route too (2026-10-19). After a
+  replug the board came up in the ROM loader twice, so the board may stay
+  powered through the video side; a RESET tap recovers it. Cause open.
