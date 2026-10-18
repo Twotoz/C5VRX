@@ -41,15 +41,14 @@ static int fail_forward=-1,fail_rollback=-1;
 static bool physical_clamp,cancel_ok,acquire_ok;
 static int before_level;static unsigned before_output;
 static bool before_lp,before_flag;
-static struct {bool active;} owner_storage,*s_flag_bench;
-static void *s_flag_diag;
+static struct {bool active;} owner_storage,*s_flag_pin;
 static bool transport_sync_live_cancel(void){++cancels;return cancel_ok;}
-static bool flag_pin_acquire(bool bench){
- assert(!bench&&!s_flag_bench);++acquires;if(!acquire_ok)return false;
- owner_storage.active=true;s_flag_bench=&owner_storage;return true;
+static bool flag_pin_acquire(void){
+ assert(!s_flag_pin);++acquires;if(!acquire_ok)return false;
+ owner_storage.active=true;s_flag_pin=&owner_storage;return true;
 }
-static bool flag_pin_restored(void){return s_flag_bench&&s_flag_bench->active&&!physical_clamp;}
-static bool flag_pin_clamped(void){return s_flag_bench&&s_flag_bench->active&&physical_clamp;}
+static bool flag_pin_restored(void){return s_flag_pin&&s_flag_pin->active&&!physical_clamp;}
+static bool flag_pin_clamped(void){return s_flag_pin&&s_flag_pin->active&&physical_clamp;}
 static void settings_save_output(unsigned output){assert(output==s_verified_output);++settings_writes;}
 static const char *transport_program_name(void){return s_prog_lp?"LP":"normal";}
 static const char *transport_output_name(void){return "fixture";}
@@ -70,7 +69,7 @@ STAGES = r'''
             assert(s_lut_work[i]==expected);++checks;
         }
     }
-    if(stage==TR_TX_ENABLE){assert(!r->flag||s_flag_bench);physical_clamp=r->flag;}
+    if(stage==TR_TX_ENABLE){assert(!r->flag||s_flag_pin);physical_clamp=r->flag;}
     ++stages;
     return (int)stage!=(rollback?fail_rollback:fail_forward);
 }
@@ -83,7 +82,6 @@ static void snapshot(void){
  before_output=s_verified_output;before_lp=s_verified_lp;before_flag=s_verified_flag;
 }
 static void reset(unsigned level,unsigned output,bool lp){
- assert(!s_flag_diag);
  s_started=s_lut_known=s_have_verified=true;s_transport_fault=false;
  s_prog_lp=s_verified_lp=lp;s_flag_format=s_verified_flag=false;
  s_output=s_verified_output=output;s_verified_level=(int)level;s_kp_target=(uint8_t)level;
@@ -91,7 +89,7 @@ static void reset(unsigned level,unsigned output,bool lp){
  for(unsigned i=0;i<1024;++i){bool clipped;
   s_lut_live[i]=output_entry(kp_tables[level][i],output,&clipped);s_output_clipped+=clipped;
  }
- s_flag_bench=NULL;owner_storage.active=false;physical_clamp=false;
+ s_flag_pin=NULL;owner_storage.active=false;physical_clamp=false;
  cancel_ok=acquire_ok=true;fail_forward=fail_rollback=-1;
  settings_writes=cancels=acquires=stages=restart_finishes=0;restart_finish_ok=false;
  s_restart_errors=s_rollback_fail=s_rollbacks=s_control_epoch=0;snapshot();
@@ -101,7 +99,7 @@ static void verify(bool flag,unsigned level,unsigned output,bool lp){
  assert(restart_finishes&&restart_finish_ok);
  assert(s_verified_flag==flag&&s_flag_format==flag&&s_verified_level==(int)level);
  assert(s_verified_lp==lp&&s_verified_output==output&&physical_clamp==flag);
- assert(flag?(s_flag_bench&&s_flag_bench->active):!s_flag_bench);
+ assert(flag?(s_flag_pin&&s_flag_pin->active):!s_flag_pin);
  unsigned clipped_count=0;
  for(unsigned i=0;i<1024;++i){bool clipped;
   uint16_t expected=flag?sync_flag_entry(kp_tables[level][i],output,&clipped):
@@ -149,13 +147,13 @@ int main(void){
   reset(3,9,false);if(exit){assert(transport_flag_format(true));snapshot();}
   fail_forward=TR_TX_START;fail_rollback=TR_TX_START;
   assert(!transport_flag_format(!exit));
-  assert(s_transport_fault&&!s_lut_known&&s_rollback_fail==1&&s_flag_bench);
+  assert(s_transport_fault&&!s_lut_known&&s_rollback_fail==1&&s_flag_pin);
   assert(restart_finishes==(exit?2u:1u)&&!restart_finish_ok);
   assert(!memcmp(before,s_lut_live,sizeof(before))&&!settings_writes);
   unsigned previous=stages;assert(!transport_flag_format(exit)&&stages==previous);++checks;
  }
  reset(0,0,false);cancel_ok=false;assert(!transport_flag_format(true)&&!acquires&&!stages);++checks;
- reset(0,0,false);acquire_ok=false;assert(!transport_flag_format(true)&&!stages&&!s_flag_bench);++checks;
+ reset(0,0,false);acquire_ok=false;assert(!transport_flag_format(true)&&!stages&&!s_flag_pin);++checks;
  printf("PASS: %u actual format/publication/recovery checks; no physical claim\n",checks);
 }
 '''
