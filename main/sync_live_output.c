@@ -426,7 +426,17 @@ failed:
 
 void sync_live_output_status(slo_status_t *out)
 {
-    if(out)*out=s_output?s_output->status:(slo_status_t){0};
+    if(!out)return;
+    slo_t *s=s_output;
+    if(!s){*out=(slo_status_t){0};return;}
+    /* The single-core ISR updates 64-bit cycle totals in two 32-bit stores.
+     * Retry if it interrupted this task-side snapshot; no IRQ masking or
+     * extra interrupt-path work is needed. Calls advances on every return. */
+    uint32_t calls;
+    do {
+        calls=s->status.isr_calls;__sync_synchronize();
+        *out=s->status;__sync_synchronize();
+    } while(calls!=s->status.isr_calls);
 }
 void sync_live_output_native_polarity(bool inverted)
 {
