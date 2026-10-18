@@ -53,6 +53,18 @@ jobs:
         with:
           path: pages-site/
 
+      # Release publication can refresh the mirror several times at the same
+      # main commit. Pages identifies deployments by pages_build_version; the
+      # deploy action normally uses GITHUB_SHA, reusing the previous deployment.
+      - name: Give this mirror refresh a unique deployment version
+        id: pages-version
+        shell: bash
+        run: |
+          version="$(printf '%s' "$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" | sha1sum | cut -d ' ' -f1)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Deploy GitHub Pages site
         id: deployment
         uses: actions/deploy-pages@v4
+        env:
+          GITHUB_SHA: ${{ steps.pages-version.outputs.version }}
