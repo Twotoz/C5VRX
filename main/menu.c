@@ -161,7 +161,13 @@ void menu_render(void)
     text(buf, 128, 0, UI_MUTED, 1);
     snprintf(buf, sizeof(buf), "G%u", s_current_gain);
     text(buf, 208, 0, UI_WHITE, 1);
-    text(s_afc_locked ? "VIDEO" : "SEARCH", 248, 0, UI_MUTED, 1);
+    /* Range warnings take the place of the link state: they cost range
+     * without any sign in the picture. */
+    char dc_need[24];
+    const bool dc_cal = calibration_dc_needed(dc_need, sizeof(dc_need)) != 0;
+    const bool gain_fixed = receiver_gain_mode() != GAIN_MODE_AUTO;
+    if (dc_cal || gain_fixed) text(dc_cal ? "DC CAL!" : "GAIN!", 248, 0, UI_WHITE, 1);
+    else text(s_afc_locked ? "VIDEO" : "SEARCH", 248, 0, UI_MUTED, 1);
     int bars = s_signal_strength <= 0 ? 0 : s_signal_strength >= 100 ? 5 : (s_signal_strength + 19) / 20;
     for (int i = 0; i < 5; ++i) rect(320 + i * 3, 7 - (2 + i), 2, 2 + i, i < bars ? UI_WHITE : UI_DIVIDER);
     text(std_name(s_video_std), 344, 0, UI_WHITE, 1);
@@ -238,7 +244,7 @@ void menu_render(void)
         value_box(100, 22, 276, "MODE", receiver_gain_mode_name(receiver_gain_mode(), mode, sizeof(mode)));
         snprintf(buf, sizeof(buf), "G%u", s_current_gain);
         value_box(100, 34, 276, "ACTIVE GAIN", buf);
-        text(receiver_gain_mode() == GAIN_MODE_AUTO ? "AUTO FOLLOWS THE SIGNAL (V6)" : "FIXED GAIN, SAVED",
+        text(receiver_gain_mode() == GAIN_MODE_AUTO ? "AUTO FOLLOWS THE SIGNAL (V6)" : "FIXED: COSTS RANGE, USE AUTO",
              100, 47, UI_WHITE, 1);
         break;
     }
@@ -251,8 +257,15 @@ void menu_render(void)
         break;
     case MENU_CALIBRATE:
         title("CALIBRATE", "HOLD: CALIBRATE NOW");
-        text("ON THE GROUND ONLY: VIDEO STOPS", 100, 24, UI_WHITE, 1);
-        text("FOR UP TO 2 MIN. VTX OFF IS BEST", 100, 33, UI_MUTED, 1);
+        if (dc_cal) {
+            char line[48];
+            snprintf(line, sizeof(line), "DC CAL NEEDED: %s", dc_need);
+            text(line, 100, 24, UI_WHITE, 1);
+            text("REPAIRED AT NEXT BOOT, OR HOLD", 100, 33, UI_MUTED, 1);
+        } else {
+            text("ON THE GROUND ONLY: VIDEO STOPS", 100, 24, UI_WHITE, 1);
+            text("FOR UP TO 2 MIN. VTX OFF IS BEST", 100, 33, UI_MUTED, 1);
+        }
         text("NEVER RUNS BY ITSELF IN FLIGHT", 100, 47, UI_MUTED, 1);
         break;
     default:

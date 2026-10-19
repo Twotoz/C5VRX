@@ -357,6 +357,14 @@ void diag_report(void)
     VERDICT(!rf_filter_applied(), "CALIBRATION_OR_PHY filter not read back as requested");
     VERDICT(!calibration_sphase_settled(), "CALIBRATION_OR_PHY sampling phase not settled (repaired at boot only)");
     VERDICT(!calibration_dc_ok(g), "NOT_CALIBRATED DC correction missing for this gain (VTX off at boot fills it)");
+    char need[24];
+    if (calibration_dc_needed(need, sizeof(need))) {
+        printf("RANGE_DIAG verdict=DC_CAL_NEEDED profile=%s (in-flight DC health; re-measured at the next boot, "
+               "or CALIBRATE now)\n", need);
+        any = true;
+    }
+    VERDICT(receiver_gain_mode() != GAIN_MODE_AUTO,
+            "GAIN_FIXED a fixed gain is saved across boots and costs range (menu GAIN or console G to AUTO)");
     VERDICT(!rf_freq_in_spec(mhz), "UNKNOWN out-of-spec channel: compare with a channel <= 5885 MHz");
     VERDICT(g >= table->max_index && cn != CN_UNKNOWN_X10 && cn <= DIAG_FLOOR_CN_X10,
             "POSSIBLE_RF_FLOOR table maximum and C/N estimate <= 2 dB (no carrier, or at the receiver noise)");

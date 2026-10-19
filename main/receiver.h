@@ -178,6 +178,10 @@ enum { FILTER_NORMAL, FILTER_NARROW, FILTER_WIDE };
 bool filter_setting(int filter_class, rf_filter_t *out);
 /* The DC table of filter f is complete on the current channel (startup). */
 bool calibration_dc_ready(rf_filter_t f);
+/* DC CAL NEEDED on this channel (dc_health.h): the flagged profiles in buf
+ * ("NARROW", "NORMAL+WIDE"), the number of flags as the result; the next
+ * boot re-measures them. */
+unsigned calibration_dc_needed(char *buf, size_t size);
 void calibration_print(void);
 void dco_post_gain(uint8_t gain);
 /* Chain state for the diagnostics (no side effects). */
