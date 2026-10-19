@@ -962,3 +962,46 @@ Board: XIAO ESP32-C5, A1, no VTX; data in `research/data/filter_2026-10-19/`.
 - **Open:** a DC wander of about half a cell over seconds remains below the
   trim's reach (2 dB C/N steps cannot resolve its cost); carrier-on checks of
   the live profile switch onto the narrow table and of the trim at the edge.
+
+## Boot-to-boot range: the DC of every channel setup (2026-10-19, PR #224)
+
+Operator: "some boots or calibrations the range is great, some terrible".
+`tools/boot_loop.py` reboots the board N times with the VTX off and records
+IQ snapshots and `T` per boot; `research/sensitivity_model.py` turns every
+snapshot into a range limit (required C/N, 20.7 MHz chip channel).
+
+- **The variation is all DC.** Baseline (trial trim), six boots, 60 s after
+  startup: DC 1.0-3.8 cells, range limit **2-8 dB C/N**; without the DC every
+  boot is 2-3 dB (noise bandwidth 13.0-13.5 MHz, noise 1.9 cells, digital
+  path 0.03-0.1 dB). Up to 6 dB, about twice the range, between boots of one
+  calibration.
+- **Not in any register.** PBUS bank 1 (vendor) and bank 2 (ours) read the
+  same on every boot (279-280/226-227, 253/224) while the boot DC ranged
+  0.7-3.7 (I) and -1.8 to -4.2 cells (Q): analog state of the channel setup,
+  no deterministic correction. Within a boot it wanders 1-2 cells over
+  seconds.
+- **The trial trim could not follow.** 0-9 accepted steps per boot (0-3 with
+  a median estimator for clipped clouds): single steps on 0.1-0.9 s samples of
+  a low-priority task, verify-or-revert, a deadband.
+- **Live DC servo** (`main/dc_servo.h`, test `test_dc_servo`): the mean of
+  every settled observer probe per gain row (the AGC already sums I and Q),
+  a computed step on both DAC codes per row from the learned slope. Clipping
+  biases the mean towards zero but never across it, so the loop converges.
+  Six boots: DC 0.3-0.8 cells after 60 s, range limit **2-4 dB** on every
+  boot. Learned slope 170-550 mcells per code: one code is ~0.4 cells, the
+  analog floor of the correction.
+- **Channel round** (8 x next channel, back): 2-4 dB on four of six boots;
+  two were 7-8 dB. One learned a negative slope from the new table's DC jump
+  (now: steps are forgotten on any context change, a measured slope never
+  flips sign on one measurement); in the other G83 sat at 0.3 cells while
+  G82 held 3.9, with Direct Gain moving between rows faster than one row
+  collected a mean (now: one probe sum per row, every row corrected). Board
+  repeat of both fixes with a channel round and a hard calibration: pending.
+- **Video quality** (`main/video_quality.h`, `T VIDEO_Q`): the spread of the
+  demodulated frequency on the sync tips and the back porch, which are flat
+  by definition, against the sync-to-blanking distance; and sync lines found
+  per window. It sees what the no-carrier model cannot (sampling phase,
+  profile, offset): the closed loops on it follow. The 2026-10-19 edge
+  snapshots with 3-4 cells of DC find no line at all.
+- **Live LUT re-centring is no fine DC actuator:** a kp/LUT restart costs
+  5.5-7.5 ms of video (`kp_restart_us`) behind a 5 s guard.
