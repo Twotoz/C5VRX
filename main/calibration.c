@@ -866,7 +866,10 @@ static int dco_quiet_search(uint8_t g)
         /* Less gain, even less noise, and no flip found: the rows below
          * cannot be searched either. Codes measured on a carrier stay. */
         for (int k = g; k >= (int)s_dco.lo; --k) {
-            if (s_dco.e[k].valid != DCO_ROW_OK) s_dco.e[k].valid = DCO_ROW_FLOOR;
+            /* Own codes measured on a carrier stay; template codes (another
+             * channel or another filter) are not this context's and go. */
+            if (s_dco.e[k].valid != DCO_ROW_OK || dco_mask_get(s_dco_templ, (unsigned)k))
+                s_dco.e[k].valid = DCO_ROW_FLOOR;
             dco_row_measured((unsigned)k);   /* measured: nothing to correct here */
         }
         s_dco_floor = (uint8_t)(g + 1);
@@ -942,7 +945,7 @@ static const char *dco_quiet_rows(bool manual, bool refine, int64_t deadline, co
  * is restored. The DC DAC offsets are baseband offsets per gain row, so the
  * codes are stored for the own channel; the live drift nudges trim the
  * remaining difference. Startup only, behind the status screen. */
-static const char *dco_remote_search(bool manual, int64_t deadline, unsigned *done)
+static const char *dco_remote_search(bool manual, bool refine, int64_t deadline, unsigned *done)
 {
     *done = 0;
     const size_t original = rf_channel_index();
@@ -958,7 +961,7 @@ static const char *dco_remote_search(bool manual, int64_t deadline, unsigned *do
     receiver_resume();
     char line1[48];
     snprintf(line1, sizeof(line1), "ON QUIET CHANNEL %s (VTX MAY STAY ON)", rf_channel()->name);
-    const char *why = quiet ? dco_quiet_rows(manual, false, deadline, line1, done) : "no_quiet_channel";
+    const char *why = quiet ? dco_quiet_rows(manual, refine, deadline, line1, done) : "no_quiet_channel";
     /* Back to the exact original tuning, checked like the filter sweep. */
     (void)receiver_pause("DCO_REMOTE");
     bool restored = rf_channel_index() == original;
@@ -983,27 +986,37 @@ static const char *dco_remote_search(bool manual, int64_t deadline, unsigned *do
 static void dco_startup(bool manual, int64_t deadline)
 {
     dco_select();
-    const unsigned missing = dco_rows(0), templ = dco_template_rows();
+    const unsigned missing = dco_rows(0);
     const bool carrier = video_recent();
     /* Codes measured with another analog filter do not fit the live one
      * (dco_slots.h dco_filter_same: 3.7 cells of DC left on the board, and
-     * the gain parked on it). Such a table is measured again in full, like
-     * a manual CALIBRATE of the DC rows, through the same own/quiet-channel
-     * paths; its filter is updated only after a complete pass. */
+     * the gain parked on it). Every row with a result (codes or FLOOR) is
+     * then marked as a template row, i.e. not measured in this context; a
+     * row leaves that mask only on a new result (dco_row_measured), the mask
+     * is stored with the table, so an interrupted pass goes on at the next
+     * boot, and the table takes the live filter only when no template row
+     * is left. Template rows are measured on the own channel (VTX off) or a
+     * quiet channel (VTX on). */
     const rf_filter_t live = rf_filter();
-    const bool stale = dco_filter_stale(dco_valid_rows(),
+    const unsigned results = dco_valid_rows() + dco_rows(DCO_ROW_FLOOR);
+    const bool stale = dco_filter_stale(results,
         dco_filter_same(s_dco.filter_code, s_dco.filter_skirt, s_dco.filter_bw20, live.code, (int)live.skirt,
                         live.bw20));
+    if (stale && !dco_template_rows()) {
+        for (unsigned g = s_dco.lo; g <= s_dco.hi && g <= ARC_VENDOR_GAIN_MAX; ++g)
+            if (s_dco.e[g].valid) dco_mask_put(s_dco_templ, g, true);
+        s_dco_dirty = true;
+    }
+    const unsigned templ = dco_template_rows();
     if (stale)
         printf("DCO startup filter_stale=1 table_bw20=%u table_code=%d table_skirt=%d live_bw20=%u live_code=%d "
-               "live_skirt=%u (all rows measured again)\n", (unsigned)s_dco.filter_bw20, (int)s_dco.filter_code,
-               (int)s_dco.filter_skirt, (unsigned)live.bw20, live.code, (unsigned)live.skirt);
-    const bool all = manual || stale;
-    /* Template rows (from another channel) are used as they are; they are
-     * replaced only when the own channel can be measured without a detour:
-     * VTX off at boot. With the VTX on there is no quiet-channel trip. */
-    const bool refine = !all && !missing && templ && !carrier && noise_like();
-    if (!all && !missing && !refine) {
+               "live_skirt=%u rows_to_measure=%u\n", (unsigned)s_dco.filter_bw20, (int)s_dco.filter_code,
+               (int)s_dco.filter_skirt, (unsigned)live.bw20, live.code, (unsigned)live.skirt, templ);
+    /* Template rows from another channel are replaced only when the own
+     * channel can be measured without a detour (VTX off at boot); rows of
+     * another filter also go to a quiet channel. */
+    const bool refine = !manual && !missing && templ && (stale || (!carrier && noise_like()));
+    if (!manual && !missing && !refine) {
         printf("DCO startup skip=complete rows=%u floor_rows=%u template_rows=%u\n", dco_valid_rows(),
                dco_rows(DCO_ROW_FLOOR), templ);
         return;
@@ -1012,35 +1025,37 @@ static void dco_startup(bool manual, int64_t deadline)
     const char *why;
     const char *where = refine ? "own_refine" : "own";
     if (!carrier && noise_like()) {
-        why = dco_quiet_rows(all, refine, deadline, refine ? "OWN CHANNEL, VTX OFF" : "KEEP THE VTX OFF", &done);
+        why = dco_quiet_rows(manual, refine, deadline, refine ? "OWN CHANNEL, VTX OFF" : "KEEP THE VTX OFF", &done);
     } else {
         /* A carrier on the own channel: measure on a quiet channel; only if
          * there is none, the current row on the carrier's circle. */
         where = "quiet_channel";
-        why = dco_remote_search(all, deadline, &done);
+        why = dco_remote_search(manual, refine, deadline, &done);
         if (!strcmp(why, "no_quiet_channel") || !strcmp(why, "busy")) {
-            bool ok = carrier && dco_carrier_search(all);
+            bool ok = carrier && dco_carrier_search(manual);
             printf("DCO startup carrier=%u result=%s gain=%u missing_rows=%u\n", carrier, ok ? "stored" : "skip",
                    s_current_gain, missing);
             where = "carrier";
         }
     }
+    const bool complete = !strcmp(why, "floor") || !strcmp(why, "done");
     /* The noise floor ends the search before the last row: that is the
      * normal end, not a stall, so the bar completes and says so. */
-    if (!strcmp(why, "floor") || !strcmp(why, "done"))
+    if (complete)
         status_screen("DC CALIBRATED", "LOWER GAINS NEED NO DC CORRECTION", "", 100);
     else
         status_screen("DC NOT COMPLETE", why, "SAFE DEFAULT, RETRY NEXT BOOT", -1);
     vTaskDelay(pdMS_TO_TICKS(800));
-    if (stale && (!strcmp(why, "floor") || !strcmp(why, "done"))) {
-        s_dco.filter_code = live.code;          /* every row now belongs to the live filter */
+    if (stale && complete && !dco_template_rows()) {
+        s_dco.filter_code = live.code;          /* every row now has a result in the live filter */
         s_dco.filter_skirt = (int8_t)live.skirt;
         s_dco.filter_bw20 = live.bw20;
         s_dco_dirty = true;
     }
     if (s_dco_dirty && dco_save()) s_dco_dirty = false;
-    printf("DCO startup where=%s result=%s searched=%u rows=%u floor_rows=%u missing=%u floor_from_gain=%u\n", where,
-           why, done, dco_valid_rows(), dco_rows(DCO_ROW_FLOOR), dco_rows(0), s_dco_floor);
+    printf("DCO startup where=%s result=%s searched=%u rows=%u floor_rows=%u missing=%u template_rows=%u "
+           "floor_from_gain=%u\n", where, why, done, dco_valid_rows(), dco_rows(DCO_ROW_FLOOR), dco_rows(0),
+           dco_template_rows(), s_dco_floor);
 }
 
 /* Live: hold the stored codes after gain writes and guard them; never a
