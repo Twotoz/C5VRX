@@ -956,6 +956,9 @@ Board: XIAO ESP32-C5, A1, no VTX; data in `research/data/filter_2026-10-19/`.
 
   Simulation at measured board levels; no range walk yet. The digital path
   (quantisation, sampling phase, folding) costs 0.03-0.16 dB.
+- **1 dB steps** (`data/sensitivity_2026-10-19_fine.json`): with the live
+  trim the limit is **3 dB C/N** (DC 1.16 cells, of which the DC costs 1 dB;
+  2 dB without it), against 14 dB before #223: 11 dB in this model.
 - **Open:** a DC wander of about half a cell over seconds remains below the
   trim's reach (2 dB C/N steps cannot resolve its cost); carrier-on checks of
   the live profile switch onto the narrow table and of the trim at the edge.

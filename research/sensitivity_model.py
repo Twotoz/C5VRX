@@ -43,7 +43,8 @@ import sim  # noqa: E402
 import situations  # noqa: E402
 
 CHANNEL_NBW_HZ = 20.7e6     # the chip channel the C/N is referred to (board, widest filter)
-CNRS = tuple(float(c) for c in range(0, 21, 2))
+# 1 dB where the limits lie, 2 dB above: small loss terms stay visible.
+CNRS = tuple(float(c) for c in list(range(0, 13)) + [14, 16, 18, 20])
 SEEDS = (31, 32)
 
 
