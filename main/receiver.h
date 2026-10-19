@@ -176,6 +176,8 @@ bool calibration_in_startup(void);
  * false when that class was not calibrated. */
 enum { FILTER_NORMAL, FILTER_NARROW, FILTER_WIDE };
 bool filter_setting(int filter_class, rf_filter_t *out);
+/* The DC table of filter f is complete on the current channel (startup). */
+bool calibration_dc_ready(rf_filter_t f);
 void calibration_print(void);
 void dco_post_gain(uint8_t gain);
 /* Chain state for the diagnostics (no side effects). */

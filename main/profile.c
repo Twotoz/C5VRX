@@ -197,13 +197,15 @@ void profile_live_begin(void)
 /* In-flight profile switch, control task only (the only restart caller).
  * Nothing changes unless the shared restart guard is ready, so the filter
  * relock and the tracker restart happen together or not at all. */
+static bool narrow_ready(int p);
+
 static void live_apply(void)
 {
     const int p = s_switch_pending;
     if (p < 0 || p == s_profile) { s_switch_pending = -1; return; }
     if (s_menu_active || calibration_in_startup() || transport_faulted()) return;
     if (transport_switch_wait_ms()) return;                  /* retry after the cooldown */
-    if (profile_narrowing(p, s_profile) && !s_afc_locked) return;   /* lock lost while waiting */
+    if (profile_narrowing(p, s_profile) && !narrow_ready(p)) return;   /* lock lost while waiting */
     rf_filter_t f;
     const int cls = p == PROFILE_DEFAULT ? FILTER_NORMAL : p == PROFILE_WIDE ? FILTER_WIDE : FILTER_NARROW;
     if (!filter_setting(cls, &f)) { s_switch_pending = -1; ++s_live_switch_fail; return; }
@@ -231,6 +233,14 @@ static void live_apply(void)
            s_names[p], s_live_dev);
 }
 
+/* Narrowing onto profile p: a centred carrier and that filter's DC table. */
+static bool narrow_ready(int p)
+{
+    rf_filter_t f;
+    const int cls = p == PROFILE_DEFAULT ? FILTER_NORMAL : p == PROFILE_WIDE ? FILTER_WIDE : FILTER_NARROW;
+    return s_afc_locked && filter_setting(cls, &f) && calibration_dc_ready(f);
+}
+
 static void live_decided(int dev_x100, int64_t now)
 {
     size_t ch = rf_channel_index();
@@ -244,10 +254,11 @@ static void live_decided(int dev_x100, int64_t now)
     }
     dev_monitor_decided(&s_mon, dev_x100, want, s_profile, now);
     const bool switch_now = profile_live_switch_wanted(s_live_switch, want, s_profile, s_mon.agree_streak,
-                                                       s_afc_locked);
+                                                       narrow_ready(want));
     const char *what = want == s_profile ? "confirms" : switch_now ? "switching from" :
                        s_live_switch && profile_narrowing(want, s_profile) && s_mon.agree_streak >= DEV_NARROW_AGREE ?
-                           "awaits the AFC lock (narrow filter needs a centred carrier); active stays" :
+                           (s_afc_locked ? "awaits the narrow filter's DC table (next boot); active stays" :
+                                           "awaits the AFC lock (narrow filter needs a centred carrier); active stays") :
                        s_live_switch ? "awaits a second agreeing result; active stays" :
                        profile_width_rank(want) > profile_width_rank(s_profile) ? "WARNING too narrow:" :
                        "pending for the next boot/CALIBRATE; active stays";
@@ -323,10 +334,11 @@ void profile_commit(int dev_x100)
             vTaskDelay(pdMS_TO_TICKS(800));
             status_screen_end();
         }
-    } else if (profile_narrowing(p, s_profile) && !s_afc_locked) {
+    } else if (profile_narrowing(p, s_profile) && !narrow_ready(p)) {
         /* The deviation counts (ladder class); the narrow filter waits for a
-         * centred carrier and comes from the live switch after the lock. */
-        s_reason = "narrow_awaits_afc_lock";
+         * centred carrier and its own DC table, and comes from the live
+         * switch once both hold. */
+        s_reason = s_afc_locked ? "narrow_awaits_dc_table" : "narrow_awaits_afc_lock";
     } else {
         char line[48];
         snprintf(line, sizeof(line), "VTX DEVIATION %d.%02d", dev_x100 / 100, dev_x100 % 100);

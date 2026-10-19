@@ -217,17 +217,19 @@ static inline int profile_width_rank(int p)
 
 /* A narrow filter clips an off-centre carrier (research README section 3:
  * a -0.5 MHz residual already costs the narrow settings at the edge), so
- * narrowing needs a centred carrier, i.e. the AFC lock. Widening never
- * does: a wider filter only gains margin for an offset. */
+ * narrowing needs a centred carrier, i.e. the AFC lock, and the DC table of
+ * the narrow filter (DC codes are per filter, 2026-10-19: another filter's
+ * codes left 2-3.7 cells of DC). The caller passes both as narrow_ok.
+ * Widening never waits: a wider filter only gains margin for an offset. */
 static inline bool profile_narrowing(int want, int active)
 {
     return profile_width_rank(want) < profile_width_rank(active);
 }
 
 static inline bool profile_live_switch_wanted(bool enabled, int want, int active, unsigned agree_streak,
-                                              bool centred)
+                                              bool narrow_ok)
 {
     if (!enabled || want < 0 || want >= PROFILES || want == active) return false;
     if (!profile_narrowing(want, active)) return true;   /* widen at once */
-    return centred && agree_streak >= DEV_NARROW_AGREE;
+    return narrow_ok && agree_streak >= DEV_NARROW_AGREE;
 }

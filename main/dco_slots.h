@@ -17,7 +17,9 @@
 #include <stdint.h>
 
 #define DCO_SLOTS          6u
-#define DCO_INDEX_VERSION  2u
+/* 3: tables per (frequency, filter): the codes depend on the analog
+ * filter (2026-10-19), and the profiles use different filters. */
+#define DCO_INDEX_VERSION  3u
 #define DCO_MASK_ROWS      96u   /* >= ARC_VENDOR_GAIN_MAX + 1 gain rows */
 #define DCO_MASK_BYTES     (DCO_MASK_ROWS / 8u)
 
@@ -29,7 +31,21 @@ typedef struct {
     uint16_t seq[DCO_SLOTS];    /* use order, higher = more recent */
     uint16_t next_seq;
     dco_mask_t templ[DCO_SLOTS]; /* rows still taken from another channel */
+    uint16_t filt[DCO_SLOTS];   /* dco_filter_key() of the slot's table */
 } dco_index_t;
+
+/* Version 2 layout, for the one-time upgrade (calibration.c). */
+typedef struct {
+    uint16_t version;
+    uint16_t freq[DCO_SLOTS], seq[DCO_SLOTS], next_seq;
+    dco_mask_t templ[DCO_SLOTS];
+} dco_index_v2_t;
+
+/* One number per physical filter setting (code -1..63, skirt, BW20). */
+static inline uint16_t dco_filter_key(int code, int skirt, unsigned bw20)
+{
+    return (uint16_t)((bw20 ? 0x8000u : 0u) | (((unsigned)(code + 1) & 0x7fu) << 8) | ((unsigned)skirt & 0xffu));
+}
 
 static inline bool dco_mask_get(const uint8_t *m, unsigned row)
 {
@@ -53,18 +69,18 @@ static inline void dco_index_init(dco_index_t *x)
     *x = (dco_index_t){.version = DCO_INDEX_VERSION, .next_seq = 1u};
 }
 
-static inline int dco_slot_of(const dco_index_t *x, uint16_t freq)
+static inline int dco_slot_of(const dco_index_t *x, uint16_t freq, uint16_t key)
 {
     for (unsigned k = 0; k < DCO_SLOTS; ++k)
-        if (freq && x->freq[k] == freq) return (int)k;
+        if (freq && x->freq[k] == freq && x->filt[k] == key) return (int)k;
     return -1;
 }
 
 /* Slot to store `freq` in: its own slot, else an empty one, else the least
  * recently used. */
-static inline unsigned dco_slot_for_store(const dco_index_t *x, uint16_t freq)
+static inline unsigned dco_slot_for_store(const dco_index_t *x, uint16_t freq, uint16_t key)
 {
-    int own = dco_slot_of(x, freq);
+    int own = dco_slot_of(x, freq, key);
     if (own >= 0) return (unsigned)own;
     unsigned best = 0;
     for (unsigned k = 0; k < DCO_SLOTS; ++k) {
@@ -74,19 +90,26 @@ static inline unsigned dco_slot_for_store(const dco_index_t *x, uint16_t freq)
     return best;
 }
 
-/* Nearest stored frequency other than `freq` (ties: the more recent one),
+/* Template for (freq, key) without its own table: a table of the same
+ * filter first (the codes depend on the filter much more than on the
+ * channel), then the nearest frequency (ties: the more recent one),
  * preferring tables measured on their own channel over tables that still
- * hold template rows; -1 when nothing is stored. */
-static inline int dco_nearest_slot(const dco_index_t *x, uint16_t freq)
+ * hold template rows; -1 when nothing is stored. A table of another filter
+ * is only a starting point: its rows stay template rows (calibration.c). */
+static inline int dco_nearest_slot(const dco_index_t *x, uint16_t freq, uint16_t key)
 {
     int best = -1;
     unsigned best_d = 0;
-    bool measured_exists = false;
+    bool same_filter = false, measured_exists = false;
     for (unsigned k = 0; k < DCO_SLOTS; ++k)
-        if (x->freq[k] && x->freq[k] != freq && !dco_mask_count(x->templ[k], 0, DCO_MASK_ROWS - 1u))
+        if (x->freq[k] && !(x->freq[k] == freq && x->filt[k] == key) && x->filt[k] == key) same_filter = true;
+    for (unsigned k = 0; k < DCO_SLOTS; ++k)
+        if (x->freq[k] && !(x->freq[k] == freq && x->filt[k] == key) && (!same_filter || x->filt[k] == key) &&
+            !dco_mask_count(x->templ[k], 0, DCO_MASK_ROWS - 1u))
             measured_exists = true;
     for (unsigned k = 0; k < DCO_SLOTS; ++k) {
-        if (!x->freq[k] || x->freq[k] == freq) continue;
+        if (!x->freq[k] || (x->freq[k] == freq && x->filt[k] == key)) continue;
+        if (same_filter && x->filt[k] != key) continue;
         if (measured_exists && dco_mask_count(x->templ[k], 0, DCO_MASK_ROWS - 1u)) continue;
         unsigned d = x->freq[k] > freq ? (unsigned)(x->freq[k] - freq) : (unsigned)(freq - x->freq[k]);
         if (best < 0 || d < best_d || (d == best_d && x->seq[k] > x->seq[best])) { best = (int)k; best_d = d; }
@@ -94,7 +117,7 @@ static inline int dco_nearest_slot(const dco_index_t *x, uint16_t freq)
     return best;
 }
 
-static inline void dco_index_touch(dco_index_t *x, unsigned slot, uint16_t freq)
+static inline void dco_index_touch(dco_index_t *x, unsigned slot, uint16_t freq, uint16_t key)
 {
     if (slot >= DCO_SLOTS) return;
     if (x->next_seq == UINT16_MAX) {            /* renumber, keeping the order */
@@ -102,6 +125,7 @@ static inline void dco_index_touch(dco_index_t *x, unsigned slot, uint16_t freq)
         x->next_seq = UINT16_MAX / 2u + 1u;
     }
     x->freq[slot] = freq;
+    x->filt[slot] = key;
     x->seq[slot] = x->next_seq++;
 }
 

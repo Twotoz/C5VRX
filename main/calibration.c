@@ -610,19 +610,24 @@ static void dco_context(dco_table_t *t, uint16_t freq)
 typedef struct {
     uint16_t freq;
     uint8_t lo, hi, band5, iq_scale_sel;
+    uint16_t key;            /* dco_filter_key() of the live filter */
 } dco_want_t;
+static uint16_t live_filter_key(void)
+{
+    const rf_filter_t f = rf_filter();
+    return dco_filter_key(f.code, (int)f.skirt, f.bw20);
+}
 static dco_want_t dco_want_now(void)
 {
     /* The compared fields of dco_context(), without a table on the stack. */
     const arc_gain_table_t *table = rf_gain_table();
     return (dco_want_t){rf_frequency_mhz(), arc_gain_highest_rf_stage_start(table), table->max_index,
-                        table->band5, phy_param[650]};
+                        table->band5, phy_param[650], live_filter_key()};
 }
-/* Filter fields are recorded but shared across profiles today. This is
- * an assumption, not measured equivalence; DCO_CONTEXT prints both
- * settings so a range capture can expose it. Rejecting the table here
- * alone would discard all per-gain correction after a live profile
- * switch, without a safe live replacement calibration. */
+/* The header without the filter: a table of another filter can still seed
+ * this one (its rows then stay template rows until measured here). Which
+ * filter a table serves is s_dco_serving; its own filter fields say what it
+ * was measured with (dco_startup re-measures when they differ). */
 static bool dco_matches(const dco_table_t *t, const dco_want_t *w)
 {
     return t->version == DCO_VERSION && t->freq == w->freq && t->lo == w->lo && t->hi == w->hi &&
@@ -636,6 +641,8 @@ static bool s_dco_index_loaded;
 static uint16_t s_dco_seed_mhz;     /* the current table was seeded from this channel, 0 = own */
 static uint32_t s_dco_seeds;
 static dco_mask_t s_dco_templ;      /* rows of the current table that come from a template */
+static uint16_t s_dco_serving;      /* dco_filter_key() of the filter the current table is for */
+static bool s_dco_serving_valid;
 
 static unsigned dco_template_rows(void) { return dco_mask_count(s_dco_templ, s_dco.lo, s_dco.hi); }
 
@@ -654,10 +661,12 @@ static bool dco_load_slot(unsigned slot, dco_table_t *out)
 static bool dco_save(void)
 {
     char key[8];
-    const unsigned slot = dco_slot_for_store(&s_dco_index, s_dco.freq);
+    const uint16_t filt = s_dco_serving_valid ? s_dco_serving :
+                          dco_filter_key(s_dco.filter_code, s_dco.filter_skirt, s_dco.filter_bw20);
+    const unsigned slot = dco_slot_for_store(&s_dco_index, s_dco.freq, filt);
     dco_slot_key(slot, key);
     if (!blob_store(key, &s_dco, sizeof(s_dco))) return false;
-    dco_index_touch(&s_dco_index, slot, s_dco.freq);
+    dco_index_touch(&s_dco_index, slot, s_dco.freq, filt);
     memcpy(s_dco_index.templ[slot], s_dco_templ, sizeof(s_dco_templ));
     if (!blob_store("dco_idx", &s_dco_index, sizeof(s_dco_index))) return false;
     s_dco_seed_mhz = 0;
@@ -670,9 +679,28 @@ static void dco_index_load(void)
     s_dco_index_loaded = true;
     if (blob_load("dco_idx", &s_dco_index, sizeof(s_dco_index)) && s_dco_index.version == DCO_INDEX_VERSION) return;
     dco_index_init(&s_dco_index);
+    /* Version 2 (one table per frequency): keep the measured tables, each
+     * under the filter its header records. */
+    dco_index_v2_t v2;
+    if (blob_load("dco_idx", &v2, sizeof(v2)) && v2.version == 2u) {
+        for (unsigned k = 0; k < DCO_SLOTS; ++k) {
+            s_dco_index.freq[k] = v2.freq[k];
+            s_dco_index.seq[k] = v2.seq[k];
+            memcpy(s_dco_index.templ[k], v2.templ[k], sizeof(dco_mask_t));
+            if (v2.freq[k] && dco_load_slot(k, &s_dco))
+                s_dco_index.filt[k] = dco_filter_key(s_dco.filter_code, s_dco.filter_skirt, s_dco.filter_bw20);
+            else
+                s_dco_index.freq[k] = 0;
+        }
+        s_dco_index.next_seq = v2.next_seq;
+        memset(&s_dco, 0, sizeof(s_dco));
+        if (blob_store("dco_idx", &s_dco_index, sizeof(s_dco_index))) printf("DCO index upgraded to per-filter slots\n");
+        return;
+    }
     /* Adopt the single table of earlier builds as the first slot. */
     memset(s_dco_templ, 0, sizeof(s_dco_templ));   /* measured on its own channel */
     if (blob_load("dco", &s_dco, sizeof(s_dco)) && s_dco.version == DCO_VERSION && s_dco.freq) {
+        s_dco_serving_valid = false;   /* dco_save() keys it by its own filter fields */
         if (dco_save()) printf("DCO adopted the legacy table freq=%u as slot 0\n", s_dco.freq);
     }
 }
@@ -680,7 +708,7 @@ static void dco_index_load(void)
 static void dco_select(void)
 {
     const dco_want_t want = dco_want_now();
-    if (dco_matches(&s_dco, &want)) return;
+    if (s_dco_serving_valid && s_dco_serving == want.key && dco_matches(&s_dco, &want)) return;
     (void)phy_dco_release();
     memset(s_dco_found_us, 0, sizeof(s_dco_found_us));
     memset(s_dco_banned, 0, sizeof(s_dco_banned));
@@ -689,13 +717,15 @@ static void dco_select(void)
     dco_index_load();
     memset(s_dco_templ, 0, sizeof(s_dco_templ));
     const uint16_t freq = want.freq;
-    const int own = dco_slot_of(&s_dco_index, freq);
+    s_dco_serving = want.key;
+    s_dco_serving_valid = true;
+    const int own = dco_slot_of(&s_dco_index, freq, want.key);
     if (own >= 0 && dco_load_slot((unsigned)own, &s_dco) && dco_matches(&s_dco, &want)) {
         memcpy(s_dco_templ, s_dco_index.templ[own], sizeof(s_dco_templ));
         return;
     }
-    /* No own table: start from the nearest measured channel. */
-    const int near = dco_nearest_slot(&s_dco_index, freq);
+    /* No own table: start from the nearest one, the same filter first. */
+    const int near = dco_nearest_slot(&s_dco_index, freq, want.key);
     if (near >= 0 && dco_load_slot((unsigned)near, &s_dco)) {
         const uint16_t from = s_dco.freq;
         s_dco.freq = freq;
@@ -707,8 +737,8 @@ static void dco_select(void)
                 dco_mask_put(s_dco_templ, g, s_dco.e[g].valid != 0);
                 ok += s_dco.e[g].valid != 0;
             }
-            printf("DCO template freq=%u from=%u rows=%u (nearest measured channel; replaced by own measurements)\n",
-                   freq, from, ok);
+            printf("DCO template freq=%u from=%u rows=%u (nearest table, same_filter=%u; replaced by own measurements)\n",
+                   freq, from, ok, s_dco_index.filt[near] == want.key);
             return;
         }
     }
@@ -1058,6 +1088,80 @@ static void dco_startup(bool manual, int64_t deadline)
            dco_template_rows(), s_dco_floor);
 }
 
+/* DC readiness per physical filter on the current channel, summarised after
+ * every startup DC pass: a profile switch may only narrow onto a filter whose
+ * table is complete there (no missing or template rows, measured with that
+ * filter); otherwise it would fly on codes of another filter. */
+#define DCO_READY_MAX 3u
+static struct { uint16_t freq, key; bool ready; } s_dco_ready[DCO_READY_MAX];
+
+static bool dco_current_complete(void)
+{
+    const rf_filter_t live = rf_filter();
+    return !dco_rows(0) && !dco_template_rows() &&
+           dco_filter_same(s_dco.filter_code, s_dco.filter_skirt, s_dco.filter_bw20, live.code, (int)live.skirt,
+                           live.bw20);
+}
+
+static void dco_ready_note(void)
+{
+    const uint16_t key = live_filter_key(), freq = rf_frequency_mhz();
+    unsigned slot = 0;
+    for (unsigned k = 0; k < DCO_READY_MAX; ++k) {
+        if (s_dco_ready[k].freq == freq && s_dco_ready[k].key == key) { slot = k; break; }
+        if (s_dco_ready[k].freq != freq) slot = k;
+    }
+    s_dco_ready[slot].freq = freq;
+    s_dco_ready[slot].key = key;
+    s_dco_ready[slot].ready = dco_current_complete();
+}
+
+bool calibration_dc_ready(rf_filter_t f)
+{
+    const uint16_t key = dco_filter_key(f.code, (int)f.skirt, f.bw20), freq = rf_frequency_mhz();
+    for (unsigned k = 0; k < DCO_READY_MAX; ++k)
+        if (s_dco_ready[k].freq == freq && s_dco_ready[k].key == key) return s_dco_ready[k].ready;
+    return false;
+}
+
+/* Startup: the DC tables of the other profile filters too (NORMAL, NARROW,
+ * WIDE, each distinct physical setting once), so a profile switch in flight
+ * finds the codes of its own filter. Each filter is set up in its own
+ * analog branch (rf_set_filter) and goes through dco_startup(); a pass cut
+ * by the budget continues at the next boot (template/missing rows). */
+static void dco_startup_profiles(bool manual, int64_t deadline)
+{
+    const rf_filter_t live = rf_filter();
+    dco_ready_note();
+    rf_filter_t todo[3];
+    unsigned n = 0;
+    static const int classes[3] = {FILTER_NORMAL, FILTER_NARROW, FILTER_WIDE};
+    for (unsigned c = 0; c < 3u; ++c) {
+        rf_filter_t f;
+        if (!filter_setting(classes[c], &f) || rf_filter_equal(f, live)) continue;
+        bool dup = false;
+        for (unsigned k = 0; k < n; ++k) dup |= rf_filter_equal(todo[k], f);
+        if (!dup) todo[n++] = f;
+    }
+    for (unsigned k = 0; k < n && esp_timer_get_time() < deadline; ++k) {
+        printf("DCO startup profile_filter bw20=%u code=%d skirt=%u\n", (unsigned)todo[k].bw20, todo[k].code,
+               (unsigned)todo[k].skirt);
+        if (!rf_set_filter(todo[k])) continue;
+        receiver_set_gain(rf_gain_table()->max_index);
+        vTaskDelay(pdMS_TO_TICKS(50));
+        dco_startup(manual, deadline);
+        dco_ready_note();
+    }
+    if (n) {
+        if (!rf_set_filter(live)) printf("DCO startup error: live filter not restored\n");
+        dco_select();
+    }
+    for (unsigned k = 0; k < DCO_READY_MAX; ++k)
+        if (s_dco_ready[k].freq)
+            printf("DCO_READY freq=%u filter_key=%04x ready=%u\n", s_dco_ready[k].freq, s_dco_ready[k].key,
+                   s_dco_ready[k].ready);
+}
+
 /* Live: hold the stored codes after gain writes and guard them; never a
  * search (a search steps the DC for seconds). */
 static void dco_service(void)
@@ -1316,6 +1420,8 @@ static void startup_phase(bool manual)
         }
         printf("STARTUP step=dco\n");
         if (esp_timer_get_time() < deadline) dco_startup(manual, deadline);
+        if (esp_timer_get_time() < deadline) dco_startup_profiles(manual, deadline);
+        else dco_ready_note();
         printf("STARTUP step=deviation\n");
         /* Video needs a moment back on the own channel before measuring. */
         status_screen_end();
