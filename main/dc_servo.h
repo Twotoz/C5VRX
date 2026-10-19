@@ -34,14 +34,16 @@ typedef struct {
     int last_dc[2];     /* DC before the last step */
     int last_step[2];   /* codes of the last step, 0 = none pending */
     uint8_t bad[2];     /* consecutive steps that did not reduce |DC| */
-    uint32_t steps, learned, relearned;
+    uint8_t known[2];   /* slope measured (not the default) */
+    uint32_t steps, learned, relearned, sign_rejects, forgotten;
 } dc_servo_t;
 
 static inline int dc_servo_abs(int v) { return v < 0 ? -v : v; }
 
 static inline void dc_servo_init(dc_servo_t *s)
 {
-    *s = (dc_servo_t){{DC_SERVO_SLOPE_DEFAULT, DC_SERVO_SLOPE_DEFAULT}, {0, 0}, {0, 0}, {0, 0}, 0, 0, 0};
+    *s = (dc_servo_t){{DC_SERVO_SLOPE_DEFAULT, DC_SERVO_SLOPE_DEFAULT}, {0, 0}, {0, 0}, {0, 0}, {0, 0},
+                      0, 0, 0, 0, 0};
 }
 
 /* Mean of the accumulated probes in mcells. Sums are in dsp units (2v+1,
@@ -66,12 +68,17 @@ static inline void dc_servo_decide(dc_servo_t *s, const int dc[2], int step[2])
             const int slope = moved / s->last_step[a];
             if (dc_servo_abs(moved) >= 150 && dc_servo_abs(slope) >= DC_SERVO_SLOPE_MIN &&
                 dc_servo_abs(slope) <= DC_SERVO_SLOPE_MAX) {
-                /* Smooth a known slope; take the first measurement as is. */
-                s->slope[a] = s->slope[a] && (s->slope[a] > 0) == (slope > 0) ? (s->slope[a] + slope) / 2 : slope;
-                ++s->learned;
+                /* Smooth a known slope; take the first measurement as is. A
+                 * known slope never flips sign on one measurement: the DAC
+                 * polarity does not change, a DC jump of something else does
+                 * (board 2026-10-19: a channel round taught -88 for +400 and
+                 * left 3.6 cells). Repeated failure relearns it (bad). */
+                if (!s->known[a]) { s->slope[a] = slope; s->known[a] = 1; ++s->learned; }
+                else if ((s->slope[a] > 0) == (slope > 0)) { s->slope[a] = (s->slope[a] + slope) / 2; ++s->learned; }
+                else ++s->sign_rejects;
             }
             if (dc_servo_abs(dc[a]) >= dc_servo_abs(s->last_dc[a]) && dc_servo_abs(dc[a]) > DC_SERVO_DEADBAND) {
-                if (++s->bad[a] >= 2u) { s->slope[a] = 0; s->bad[a] = 0; ++s->relearned; }
+                if (++s->bad[a] >= 2u) { s->slope[a] = 0; s->known[a] = 0; s->bad[a] = 0; ++s->relearned; }
             } else {
                 s->bad[a] = 0;
             }
@@ -109,5 +116,6 @@ static inline void dc_servo_applied(dc_servo_t *s, const int dc[2], const int st
 /* The row or context changed before the next mean: no slope evidence. */
 static inline void dc_servo_forget_step(dc_servo_t *s)
 {
+    if (s->last_step[0] || s->last_step[1]) ++s->forgotten;
     s->last_step[0] = s->last_step[1] = 0;
 }

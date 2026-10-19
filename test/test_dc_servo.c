@@ -121,6 +121,25 @@ int main(void)
     dc_servo_decide(&s, small, step);
     check("inside the deadband: no step", step[0] == 0 && step[1] == 0);
 
+    /* A DC jump that is not the step's effect (a channel round): forgotten
+     * by the caller, or, if not, a measured slope does not flip sign. */
+    dc_servo_init(&s);
+    (void)run(2.0, 2.0, 400, 400, 1.9, 0., 12, &s, NULL);   /* slopes measured, ~+400 */
+    const int learned_i = s.slope[0], learned_q = s.slope[1];
+    int d0[2] = {1500, 1500}, st0[2], st1[2];
+    dc_servo_decide(&s, d0, st0);
+    dc_servo_applied(&s, d0, st0);
+    int jump[2] = {1500 + 600, 1500 + 700};            /* new channel: unrelated jump against the step */
+    dc_servo_decide(&s, jump, st1);
+    check("unrelated DC jump: a measured slope keeps its sign", s.known[0] && s.known[1] && s.slope[0] > 0 &&
+          s.slope[1] > 0 && s.sign_rejects >= 1u && learned_i > 0 && learned_q > 0);
+    dc_servo_init(&s);
+    dc_servo_decide(&s, d0, st0);
+    dc_servo_applied(&s, d0, st0);
+    dc_servo_forget_step(&s);
+    dc_servo_decide(&s, jump, st1);
+    check("forgotten step: no slope evidence taken", s.slope[0] == DC_SERVO_SLOPE_DEFAULT &&
+          s.slope[1] == DC_SERVO_SLOPE_DEFAULT && s.forgotten == 1u);
     printf("%u/%u dc servo checks passed\n", s_run - s_fail, s_run);
     return s_fail != 0;
 }

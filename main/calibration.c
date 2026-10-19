@@ -1371,6 +1371,9 @@ static bool s_servo_ready;
  * row without own codes, too few samples or another context, PHY busy,
  * write refused. */
 static uint32_t s_servo_skip[5], s_servo_writes, s_servo_estimates;
+/* What the last step was made in: a later mean from another channel, table,
+ * filter or row, or after any other gain write, is no evidence of its effect. */
+static struct { uint32_t control, reloads; uint16_t freq, key; uint8_t gain; int64_t us; } s_servo_ctx;
 
 static void drift_temperature(void)
 {
@@ -1428,6 +1431,10 @@ static void drift_service(void)
         dc_servo_forget_step(&s_servo);
         return;
     }
+    if (s_servo_ctx.control != s_control_epoch || s_servo_ctx.reloads != s_dco_reloads ||
+        s_servo_ctx.freq != rf_frequency_mhz() || s_servo_ctx.key != live_filter_key() || s_servo_ctx.gain != g ||
+        s_last_gain_write_us > s_servo_ctx.us)
+        dc_servo_forget_step(&s_servo);
     int step[2];
     dc_servo_decide(&s_servo, dc, step);
     const int base[2] = {dco_offset(g, 0), dco_offset(g, 1)};
@@ -1459,6 +1466,9 @@ static void drift_service(void)
         s_drift_offset[g][1] = base[1] + applied[1];
         s_drift_set[g] = true;
         dc_servo_applied(&s_servo, dc, applied);
+        s_servo_ctx.control = s_control_epoch; s_servo_ctx.reloads = s_dco_reloads;
+        s_servo_ctx.freq = rf_frequency_mhz(); s_servo_ctx.key = live_filter_key(); s_servo_ctx.gain = g;
+        s_servo_ctx.us = s_last_gain_write_us;      /* set by dc_trim_invalidate above */
         ++s_servo_writes;
     }
     phy_end_actuator();
@@ -1752,12 +1762,13 @@ void calibration_print(void)
                    g <= ARC_VENDOR_GAIN_MAX ? s_dco.e[g].valid : 0u, g <= ARC_VENDOR_GAIN_MAX ? s_dco_banned[g] : 0u);
     }
     printf("DC_SERVO dc_mcells=%d/%d slope_mcells_per_code=%d/%d offset=%d/%d own_row=%u steps=%lu writes=%lu "
-           "estimates=%lu learned=%lu relearned=%lu skip=%lu/%lu/%lu/%lu/%lu fault=%u table_reloads=%lu reload_why=%u "
+           "estimates=%lu learned=%lu relearned=%lu sign_rejects=%lu forgotten=%lu skip=%lu/%lu/%lu/%lu/%lu fault=%u table_reloads=%lu reload_why=%u "
            "volatile=1\n", s_drift_avg[0], s_drift_avg[1], s_servo.slope[0], s_servo.slope[1],
            dco_offset(s_current_gain, 0), dco_offset(s_current_gain, 1),
            s_current_gain <= ARC_VENDOR_GAIN_MAX ? (unsigned)s_drift_set[s_current_gain] : 0u,
            (unsigned long)s_servo.steps, (unsigned long)s_servo_writes, (unsigned long)s_servo_estimates,
            (unsigned long)s_servo.learned, (unsigned long)s_servo.relearned,
+           (unsigned long)s_servo.sign_rejects, (unsigned long)s_servo.forgotten,
            (unsigned long)s_servo_skip[0], (unsigned long)s_servo_skip[1], (unsigned long)s_servo_skip[2],
            (unsigned long)s_servo_skip[3], (unsigned long)s_servo_skip[4], (unsigned)s_dc_fault,
            (unsigned long)s_dco_reloads, (unsigned)s_dco_reload_why);
