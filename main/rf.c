@@ -269,10 +269,30 @@ void rf_set_post_gain_hook(void (*hook)(uint8_t gain)) { s_post_gain_hook = hook
 const arc_gain_table_t *rf_gain_table(void) { return &s_table; }
 uint32_t rf_table_generation(void) { return s_table_generation; }
 
+/* The analog filter branch follows the PHY bandwidth mode at the last
+ * channel setup, not the later phy_wifi_fbw_sel(): set up in BW20 the RX0
+ * capacitor code sets the width and the second-stage skirt has no effect,
+ * set up in BW40 it is the other way round (board 2026-10-19, same boot:
+ * code 63 / skirt 0 11.9 vs 19.7 MHz noise bandwidth, code 16 / skirt 32
+ * 21.1 vs 13.0 MHz; ESPARGOS esp-sdr: "individual digital register writes do
+ * not update the PHY's PBUS analog-control tables"). channel_setup() selects
+ * the mode first; a filter that changes the mode repeats the setup. */
+static esp_err_t channel_setup(uint16_t mhz);
+static bool s_setup_valid, s_setup_bw20;
+static uint16_t s_freq;   /* tentative: defined with the channel table below */
+static int s_offset_khz;
+
 bool rf_set_filter(rf_filter_t filter)
 {
     phy_begin();
     s_filter = filter;
+    if (!s_setup_valid || s_setup_bw20 != filter.bw20) {
+        const int offset = s_offset_khz;
+        if (channel_setup(s_freq) == ESP_OK) {
+            if (offset) phy_chip_set_chan_offset(offset);
+            capture_table();   /* a setup may regenerate the vendor gain table */
+        }
+    }
     restore_lock();
     bool ok = rf_filter_applied();
     phy_end();
@@ -329,17 +349,27 @@ static const struct { uint8_t channel; uint16_t mhz; } s_centres[] = {
     {165, 5825}, {169, 5845}, {173, 5865}, {177, 5885},
 };
 
+/* Under phy_begin(). The bandwidth mode goes first: the setup builds the
+ * analog filter branch from it (see rf_set_filter). */
+static esp_err_t channel_setup(uint16_t mhz)
+{
+    unsigned best = 0;
+    for (unsigned k = 1; k < sizeof(s_centres) / sizeof(s_centres[0]); ++k)
+        if (abs((int)mhz - (int)s_centres[k].mhz) < abs((int)mhz - (int)s_centres[best].mhz)) best = k;
+    phy_wifi_fbw_sel(s_filter.bw20 ? 0u : 1u);
+    esp_err_t err = esp_wifi_set_channel(s_centres[best].channel, WIFI_SECOND_CHAN_NONE);
+    if (err == ESP_OK && mhz != s_centres[best].mhz) phy_set_freq(mhz, 0);
+    if (err == ESP_OK) { s_setup_valid = true; s_setup_bw20 = s_filter.bw20; }
+    return err;
+}
+
 esp_err_t rf_set_channel(size_t index)
 {
     if (index >= FPV_CHANNELS) return ESP_ERR_INVALID_ARG;
     uint16_t mhz = s_channels[index / 8u][index % 8u].freq_mhz;
     if (mhz < C5_MIN_MHZ || mhz > C5_MAX_MHZ) return ESP_ERR_NOT_SUPPORTED;
-    unsigned best = 0;
-    for (unsigned k = 1; k < sizeof(s_centres) / sizeof(s_centres[0]); ++k)
-        if (abs((int)mhz - (int)s_centres[k].mhz) < abs((int)mhz - (int)s_centres[best].mhz)) best = k;
     phy_begin();
-    esp_err_t err = esp_wifi_set_channel(s_centres[best].channel, WIFI_SECOND_CHAN_NONE);
-    if (err == ESP_OK && mhz != s_centres[best].mhz) phy_set_freq(mhz, 0);
+    esp_err_t err = channel_setup(mhz);
     restore_lock();
     if (err == ESP_OK) {
         /* A retune may regenerate the vendor gain table. */

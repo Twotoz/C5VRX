@@ -282,8 +282,11 @@ bool calibration_sphase_settled(void)
  * 14 MHz (enough for every tested VTX deviation, docs/FINDINGS.md) and whose
  * noise stays incoherent (so Direct Gain still recognises "no carrier")
  * is kept. Built on ESPARGOS esp-sdr's C5 BANDWIDTH control (GPL-3.0). */
-/* 3: wide class; 4: codes 52/62/63 (one new sweep after the update) */
-#define FILTER_VERSION     4u
+/* 3: wide class; 4: codes 52/62/63 (one new sweep after the update);
+ * 5: settings measured in the analog branch they fly in (rf_set_filter sets
+ * the bandwidth mode up before measuring; every earlier sweep mixed the two
+ * branches, board 2026-10-19: chosen 12.5 MHz flew at 19.7 MHz) */
+#define FILTER_VERSION     5u
 /* Two classes from one sweep (research: 12 MHz helps every tested VTX
  * deviation and keeps strong-signal sharpness; 10 MHz adds up to ~1.7 dB
  * for deviation <= ~1.1 but hurts wide VTXs, so it is used only when the
