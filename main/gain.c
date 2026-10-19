@@ -10,6 +10,7 @@
  * once; the observer only reads tables and counts a histogram. */
 static uint8_t s_power[256];
 static uint8_t s_flags[256];
+static int8_t s_ci[256], s_cq[256];   /* 2*value+1 per axis */
 static bool s_lut_ready;
 
 /* The cell's I and Q value as one-hot bits (I + 8 in bits 0-15, Q + 8 in
@@ -77,10 +78,55 @@ static void prepare_lut(void)
         int ci = 2 * i + 1, cq = 2 * q + 1;
         int power = (ci * ci + cq * cq + 2) / 4;
         s_power[raw] = (uint8_t)power;
+        s_ci[raw] = (int8_t)ci;
+        s_cq[raw] = (int8_t)cq;
         s_flags[raw] = (power <= 4 ? 1u : 0u) |
                        ((i == -8 || i == 7 || q == -8 || q == 7) ? 2u : 0u);
     }
     s_lut_ready = true;
+}
+
+/* Phase of (x, y) in 256 codes per turn, 0 along +I (c5vrx_phase8_gain_lut
+ * on its own grid within one code; test/test_gain_measure.c). */
+static uint8_t phase8(int x, int y)
+{
+    const unsigned ax = (unsigned)abs_i(x), ay = (unsigned)abs_i(y);
+    const unsigned lo = ax < ay ? ax : ay, hi = ax < ay ? ay : ax;
+    if (!hi) return 0;
+    const unsigned t = (lo << 8) / hi;                                  /* tan, Q8 */
+    unsigned a = (32u * t + ((11u * t * (256u - t)) >> 8) + 128u) >> 8; /* atan, first octant */
+    if (ay > ax) a = 64u - a;
+    if (x < 0) a = 128u - a;
+    if (y < 0) a = 256u - a;
+    return (uint8_t)a;
+}
+
+/* A window whose points sit around a DC point far from the origin read as a
+ * strong, coherent carrier: power and phase are taken from the origin. On
+ * the board (2026-10-19, weak VTX at a distance, after the live switch to
+ * MATCHED) 3.5-4 cells of DC with 0.8 cells of carrier and noise around it
+ * read P50 ~22 and coherence 96-100, inside the healthy band, so Direct Gain
+ * held G71-G77 instead of climbing while the picture was gone. Such a window
+ * is judged around its own DC, rounded to whole cells: only when the DC
+ * dominates (|mean|^2 >= the spread around it, and >= 1.5 cells) in a probe
+ * of >= 256 bytes. A carrier's circle has a small mean against a large
+ * spread (research/data/afc_2026-10-18, 840 probes close in: at most 0.74
+ * of it; the 2026-10-19 edge snapshots: 1-6 in ~78 % of the probes) and
+ * keeps the origin-based result bit for bit; so do the 64-byte
+ * sentinel and a fixed IQ point (dg_stuck, measured as before). Clipping,
+ * repeats and the span stay raw. */
+#define DG_CENTER_MIN_BYTES 256u
+static bool dc_dominated(int64_t sx, int64_t sy, uint64_t s2, size_t bytes, int *di, int *dq)
+{
+    if (bytes < DG_CENTER_MIN_BYTES) return false;
+    const int64_t n = (int64_t)bytes;
+    const int64_t dc2 = sx * sx + sy * sy;            /* (n * mean)^2, dsp units (2 x cell) */
+    const int64_t spread = n * (int64_t)s2 - dc2;     /* n^2 x variance */
+    if (dc2 < spread || dc2 < 9 * n * n) return false;
+    /* Whole cells: 2n per cell in sums of dsp units; round half away. */
+    *di = (int)((sx >= 0 ? sx + n : sx - n) / (2 * n));
+    *dq = (int)((sy >= 0 ? sy + n : sy - n) / (2 * n));
+    return *di || *dq;
 }
 
 static dg_observation_t measure(const uint8_t *samples, size_t bytes,
@@ -91,6 +137,8 @@ static dg_observation_t measure(const uint8_t *samples, size_t bytes,
     prepare_lut();
     uint16_t hist[114] = {0};
     unsigned origin = 0, clip = 0, coherent = 0, repeats = 0;
+    int32_t cx = s_ci[samples[0]], cy = s_cq[samples[0]];
+    uint32_t cp = s_power[samples[0]];
     /* Every per-sample quantity depends only on the byte (tables) or on the
      * byte and its predecessor. The sentinel and the observer run this on
      * ~1.3 MB/s; the former per-sample sign extension, wrap and min/max cost
@@ -108,11 +156,36 @@ static dg_observation_t measure(const uint8_t *samples, size_t bytes,
         origin += s_flags[raw] & 1u;
         clip += s_flags[raw] >> 1;
         iq_seen |= iq_bits(raw);
+        cx += s_ci[raw];
+        cy += s_cq[raw];
+        cp += power;
         /* |wrap(phase - prior)| <= 32 codes (45 degrees) */
         coherent += power >= 8u && (uint8_t)(phase - prior_phase + 32u) <= 64u;
         repeats += raw == prior_raw;
         prior_phase = phase;
         prior_raw = raw;
+    }
+    /* Sum of x^2 + y^2 is 4 * power - 2 per sample (x, y odd). */
+    const uint32_t i_seen = iq_seen & 0xffffu, q_seen = iq_seen >> 16;   /* never empty: bytes >= 1 */
+    const int i_span = (31 - __builtin_clz(i_seen)) - __builtin_ctz(i_seen);
+    const int q_span = (31 - __builtin_clz(q_seen)) - __builtin_ctz(q_seen);
+    r.span = (uint8_t)(i_span > q_span ? i_span : q_span);
+    r.repeat_pm = bytes > 1u ? (uint16_t)(repeats * 1000u / (bytes - 1u)) : 0;
+    int di, dq;
+    if (!dg_stuck(&r) && dc_dominated(cx, cy, 4ull * cp - 2ull * bytes, bytes, &di, &dq)) {
+        memset(hist, 0, sizeof(hist));
+        origin = coherent = 0;
+        uint8_t prior = 0;
+        for (size_t n = 0; n < bytes; ++n) {
+            const int x = s_ci[samples[n]] - 2 * di, y = s_cq[samples[n]] - 2 * dq;
+            const int p = (x * x + y * y + 2) / 4;
+            const uint8_t power = (uint8_t)(p > 113 ? 113 : p), phase = phase8(x, y);
+            ++hist[power];
+            origin += power <= 4u;
+            if (n) coherent += power >= 8u && (uint8_t)(phase - prior + 32u) <= 64u;
+            prior = phase;
+        }
+        r.centered = 1;
     }
     int64_t sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, sxp = 0, syp = 0;
     uint64_t spp = 0;
@@ -142,7 +215,6 @@ static dg_observation_t measure(const uint8_t *samples, size_t bytes,
     r.origin_pm = (uint16_t)(origin * 1000u / bytes);
     r.clip_pm = (uint16_t)(clip * 1000u / bytes);
     r.coherence = bytes > 1u ? (uint8_t)(coherent * 100u / (bytes - 1u)) : 0;
-    r.repeat_pm = bytes > 1u ? (uint16_t)(repeats * 1000u / (bytes - 1u)) : 0;
     /* Envelope C/N: integer raw moments in the existing sample loop, then
      * translate the moments to the window's DC centre once per probe.
      * No per-sample floating point or extra passes in the fast observer. */
@@ -159,10 +231,6 @@ static dg_observation_t measure(const uint8_t *samples, size_t bytes,
         const double ratio = mp <= 0.0 ? 0.0 : var > 0.0 ? 100.0 * mp * mp / var : 65535.0;
         r.env_ratio_x100 = (uint16_t)(ratio > 65535.0 ? 65535.0 : ratio + .5);
     }
-    const uint32_t i_seen = iq_seen & 0xffffu, q_seen = iq_seen >> 16;   /* never empty: bytes >= 1 */
-    const int i_span = (31 - __builtin_clz(i_seen)) - __builtin_ctz(i_seen);
-    const int q_span = (31 - __builtin_clz(q_seen)) - __builtin_ctz(q_seen);
-    r.span = (uint8_t)(i_span > q_span ? i_span : q_span);
     return r;
 }
 

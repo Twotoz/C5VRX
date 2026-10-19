@@ -41,6 +41,7 @@ typedef struct {
     uint16_t repeat_pm;     /* samples equal to the one before, per mille */
     uint8_t span;           /* code range of the wider IQ axis over the window */
     uint16_t env_ratio_x100; /* DC-removed envelope mean^2/var of |z|^2, x100 (noise 100) */
+    uint8_t centered;        /* judged around the window DC (DC-dominated, gain.c) */
     uint64_t observed_us;
 } dg_observation_t;
 

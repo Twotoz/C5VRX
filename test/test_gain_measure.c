@@ -111,12 +111,22 @@ static bool same(const dg_observation_t *a, const dg_observation_t *b)
            a->clip_pm == b->clip_pm && a->coherence == b->coherence && a->repeat_pm == b->repeat_pm &&
            a->span == b->span && a->env_ratio_x100 == b->env_ratio_x100 && a->observed_us == b->observed_us;
 }
+/* Windows judged around their DC (gain.c dc_dominated) differ from the
+ * origin-based reference by design in P50/P90/P95, origin and coherence;
+ * everything else, and every other window, stays identical. */
+static unsigned s_centered;
 static bool compare(const uint8_t *s, size_t n)
 {
     dg_observation_t g = dg_measure_gain(s, n, c5vrx_phase8_gain_lut, 7u);
     dg_observation_t e = dg_measure(s, n, c5vrx_phase8_gain_lut, 7u);
     dg_observation_t rg = ref_measure(s, n, c5vrx_phase8_gain_lut, 7u, false);
     dg_observation_t re = ref_measure(s, n, c5vrx_phase8_gain_lut, 7u, true);
+    if (g.centered != e.centered) return false;
+    if (g.centered) {
+        ++s_centered;
+        return g.clip_pm == rg.clip_pm && g.repeat_pm == rg.repeat_pm && g.span == rg.span &&
+               e.env_ratio_x100 == re.env_ratio_x100 && !dg_stuck(&rg) && n >= 256u;
+    }
     return same(&g, &rg) && same(&e, &re);
 }
 static void check(const char *name, bool ok, unsigned cases)
@@ -139,6 +149,7 @@ int main(int argc, char **argv)
             ok = ok && compare(buf, sizes[z]); ++cases;
         }
     check("random bytes, sizes 1..8190", ok, cases);
+    printf("     centered so far: %u\n", s_centered);
     /* Few distinct codes: fixed points, repeats, one axis pinned, rails. */
     cases = 0; ok = true;
     for (unsigned k = 0; k < 4000; ++k) {
@@ -152,6 +163,7 @@ int main(int argc, char **argv)
         ok = ok && compare(buf, 256); ++cases;
     }
     check("fixed points, repeats and rails", ok, cases);
+    printf("     centered so far: %u\n", s_centered);
     /* A rotating carrier (coherence path) at every step size. */
     cases = 0; ok = true;
     for (int step = -128; step < 128; ++step) {
@@ -163,9 +175,12 @@ int main(int argc, char **argv)
         ok = ok && compare(buf, 256); ++cases;
     }
     check("rotating carrier, every phase step", ok, cases);
+    printf("     centered so far: %u\n", s_centered);
     /* Board IQ captures (VTX off, edge, close in): 64- and 256-byte windows. */
     cases = 0; ok = true;
+    unsigned edge = 0, edge_centered = 0, edge_low = 0, edge_was_band = 0;
     for (int a = 1; a < argc; ++a) {
+        const bool edge_dir = strstr(argv[a], "edge_dc") != NULL;
         DIR *d = opendir(argv[a]);
         if (!d) { printf("FAIL cannot open %s\n", argv[a]); ++failures; continue; }
         struct dirent *e;
@@ -180,11 +195,62 @@ int main(int argc, char **argv)
             fclose(f);
             for (size_t o = 0; o + 256u <= n; o += 64u) {
                 ok = ok && compare(buf + o, 64) && compare(buf + o, 256); cases += 2;
+                if (edge_dir && strstr(e->d_name, "far_0") == NULL) {
+                    const dg_observation_t m = dg_measure_gain(buf + o, 256, c5vrx_phase8_gain_lut, 1u);
+                    const dg_observation_t r = ref_measure(buf + o, 256, c5vrx_phase8_gain_lut, 1u, false);
+                    ++edge; edge_centered += m.centered;
+                    edge_was_band += r.p50 >= 13u; edge_low += r.p50 >= 13u && m.p50 < 13u;
+                }
             }
         }
         closedir(d);
     }
     check("board IQ captures", ok && (argc < 2 || cases > 0), cases);
+    /* 2026-10-19 edge: 2-4.5 cells of DC around a weak carrier (G71-G77),
+     * read in the healthy band (P50 >= 13) and held there. Most probes are
+     * now judged around the DC, and most in-band ones fall below it. */
+    if (edge) {
+        printf("     edge DC probes: %u, centred %u, in band before %u, below band now %u\n", edge, edge_centered,
+               edge_was_band, edge_low);
+        check("edge DC snapshots: centred, and out of the healthy band",
+              edge_centered * 10u >= edge * 7u && edge_low * 10u >= edge_was_band * 6u, edge);
+    }
+    /* A weak carrier around a DC point reads like the same carrier without
+     * the DC (gain.c dc_dominated): P50 identical, coherence within 3. */
+    cases = 0; ok = true;
+    for (int step = -40; step <= 40; step += 3)
+        for (int di = -4; di <= 4; di += 4)
+            for (int dq = -3; dq <= 3; dq += 3) {
+                if (!di && !dq) continue;
+                static uint8_t base[256], moved[256];
+                for (size_t j = 0; j < 256; ++j) {
+                    const double a = (double)step * (double)j * 6.283185307179586 / 256.0 + 0.3;
+                    const int i = (int)__builtin_floor(1.6 * __builtin_cos(a)), q = (int)__builtin_floor(1.6 * __builtin_sin(a));
+                    base[j] = (uint8_t)(((unsigned)i & 15u) << 4 | ((unsigned)q & 15u));
+                    moved[j] = (uint8_t)(((unsigned)(i + di) & 15u) << 4 | ((unsigned)(q + dq) & 15u));
+                }
+                const dg_observation_t b = dg_measure_gain(base, 256, c5vrx_phase8_gain_lut, 1u);
+                const dg_observation_t m = dg_measure_gain(moved, 256, c5vrx_phase8_gain_lut, 1u);
+                ok = ok && !b.centered && m.centered && m.p50 == b.p50 && m.p95 == b.p95 &&
+                     m.origin_pm == b.origin_pm && abs_i((int)m.coherence - (int)b.coherence) <= 3;
+                ++cases;
+            }
+    check("weak carrier around a DC point reads as without it", ok, cases);
+    /* A strong carrier far from a 1-2 cell DC keeps the origin-based result. */
+    cases = 0; ok = true;
+    for (int step = -128; step < 128; step += 5) {
+        for (size_t j = 0; j < 256; ++j) {
+            const double a = (double)step * (double)j * 6.283185307179586 / 256.0;
+            const int i = (int)__builtin_floor(1.5 + 5.0 * __builtin_cos(a)), q = (int)__builtin_floor(-1.0 + 5.0 * __builtin_sin(a));
+            buf[j] = (uint8_t)(((unsigned)(i < -8 ? -8 : i > 7 ? 7 : i) & 15u) << 4 | ((unsigned)(q < -8 ? -8 : q > 7 ? 7 : q) & 15u));
+        }
+        const dg_observation_t o = dg_measure_gain(buf, 256, c5vrx_phase8_gain_lut, 1u);
+        ok = ok && (!o.centered || step == 0);   /* step 0 is a fixed point, not a carrier */
+        ++cases;
+    }
+    check("strong carrier with a small DC is not centred", ok, cases);
+    printf("     centered so far: %u\n", s_centered);
+    printf("     centered so far: %u\n", s_centered);
     printf("%s: %u checks, %u failures\n", failures ? "FAIL" : "PASS", checks, failures);
     return failures != 0;
 }
