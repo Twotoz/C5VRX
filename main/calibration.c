@@ -38,6 +38,7 @@
 #include "sphase_logic.h"
 #include "dco_slots.h"
 #include "dc_health.h"
+#include "dc_servo.h"
 #include "rf.h"
 #include "soc/pcr_struct.h"
 
@@ -1353,35 +1354,23 @@ static void dco_service(void)
     }
 }
 
-/* Quiet-independent active-row DC: qualify the real carrier twice, try one
- * code, then verify or restore the previous pair. No DAC polarity is assumed.
- * The PHY lease covers the short trial, but tasks/interrupts and the hardware
- * video path remain runnable. A preempted trial is rejected on resumption;
- * its measured duration is reported, not presented as a hard deadline. */
+/* Live DC servo (dc_servo.h): the DC of the active row, measured as the
+ * mean of every settled observer probe (receiver_dc_take), corrected each
+ * calibration tick by a computed step on both DAC codes. It replaces the
+ * trial trim (single steps on 0.1-0.9 s samples, refusing clipped windows),
+ * which left 1-3.8 cells after 60 s on five of six boots (2026-10-19). The
+ * correction is the row's offset on its stored codes (dco_offset: rows
+ * without one take the nearest), re-held after every gain write. */
+#define DC_TRIM_MAX_OFFSET 48   /* codes around the stored ones (the search spans +-96) */
 static int s_drift_avg[2];
-static int s_dc_slope[2];           /* learned mcells per code (signed), 0 = unknown */
-static uint32_t s_dc_noise_samples;
-/* Trim range around the stored codes (the search spans +-96) and the faster
- * period while the DC is more than a cell off. */
-#define DC_TRIM_MAX_OFFSET 48
-#define DC_TRIM_FAST_MCELLS 1000
-#define DC_TRIM_FAST_US 300000
-#define DC_TRIM_AVERAGE 8u      /* windows averaged before a trial */
-#define DC_TRIM_AVERAGE_FAST 3u /* ... when the DC is above DC_TRIM_FAST_MCELLS */
-/* Lease-free 4092-byte sample. It is checked against the context and the
- * held pair before and after, so its age needs no tight bound: with 25 ms the
- * low-priority calibration task, preempted by live video, finished late on
- * every sample with a carrier (board 2026-10-19: 38 of 39 refused late), and
- * the trim never ran with the VTX on. */
-#define DC_TRIM_SAMPLE_US 1000000
-#define DC_TRIM_VERIFY_BYTES 1024u   /* trial check inside DC_TRIM_DEADLINE_US */
-static uint32_t s_drift_nudges;
 static float s_temp_c = -100.0f;
-static dc_trim_t s_dc_trim;
-#define DC_LIVE_BYTES 4092u
-static uint32_t s_dc_trials, s_dc_rejected, s_dc_deadlines, s_dc_max_us;
 static bool s_dc_fault;
-static int64_t s_dc_last_trial;
+static dc_servo_t s_servo;
+static bool s_servo_ready;
+/* No step (T DC_SERVO skip=): state (menu, scan, startup, gain not held),
+ * row without own codes, too few samples or another context, PHY busy,
+ * write refused. */
+static uint32_t s_servo_skip[5], s_servo_writes, s_servo_estimates;
 
 static void drift_temperature(void)
 {
@@ -1412,189 +1401,71 @@ static void dc_trim_invalidate(void)
     ++s_gain_epoch; /* A physical DC change invalidates amplitude/CN evidence too. */
 }
 
-/* Refusals (T DC_LIVE refuse=): owner, context, pair, deadline, copy,
- * unqualified window, changed after the copy. */
-static uint32_t s_dc_refuse[7];
-/* Refused after the copy: late, owner, context, pair; and which context
- * field (dc_trim_context_t order) had changed. */
-static uint32_t s_dc_after[4], s_dc_field[13], s_dc_sample_max_us;
-/* No trial on a sample: not yet consistent, inside the deadband, period,
- * range, PHY lease busy, pair changed. */
-static uint32_t s_dc_hold[6];
-static bool dc_trim_sample(const dc_trim_context_t *want, const int pair[2],
-                            int64_t deadline, int center[2], size_t bytes)
-{
-    dc_trim_context_t current;
-    int actual[2];
-    if (!quiet_owner()) { ++s_dc_refuse[0]; return false; }
-    if (!dc_trim_snapshot(&current) || !dc_trim_same(&current, want)) { ++s_dc_refuse[1]; return false; }
-    if (!phy_dco_read_pair(actual) || actual[0] != pair[0] || actual[1] != pair[1]) { ++s_dc_refuse[2]; return false; }
-    if (esp_timer_get_time() >= deadline) { ++s_dc_refuse[3]; return false; }
-    if (!copy_control_window(s_cal_scratch, bytes)) { ++s_dc_refuse[4]; return false; }
-    dsp_circle_t circle = {0};
-    unsigned rails = 0;
-    dsp_circle_sums(s_cal_scratch, bytes, &circle);
-    for (unsigned k = 0; k < bytes; ++k) {
-        int i = dsp_i(s_cal_scratch[k]), q = dsp_q(s_cal_scratch[k]);
-        rails += i == -8 || i == 7 || q == -8 || q == 7;
-    }
-    bool qualified = dc_live_fit(&circle, rails * 1000u / bytes,
-                                  &center[0], &center[1], NULL);
-    if (!qualified && dc_live_noise_mean(&circle, rails * 1000u / bytes, &center[0], &center[1])) {
-        qualified = true;
-        ++s_dc_noise_samples;
-    }
-    if (!qualified) { ++s_dc_refuse[5]; return false; }
-    const bool late = esp_timer_get_time() >= deadline, owner = quiet_owner();
-    const bool snap = dc_trim_snapshot(&current), same = snap && dc_trim_same(&current, want);
-    const bool held = phy_dco_read_pair(actual) && actual[0] == pair[0] && actual[1] == pair[1];
-    const bool still = !late && owner && same && held;
-    if (!still) {
-        ++s_dc_refuse[6];
-        ++s_dc_after[late ? 0 : !owner ? 1 : !same ? 2 : 3];
-        if (snap && !same) {
-            const uint32_t *a = (const uint32_t *)&current, *b = (const uint32_t *)want;
-            for (unsigned k = 0; k < sizeof(current) / 4u && k < 13u; ++k) s_dc_field[k] += a[k] != b[k];
-        }
-    }
-    return still;
-}
-
-/* Why the trim did not sample (T DC_LIVE skip=): fault, owner, gain state,
- * recent gain write, no snapshot, sample refused. */
-static uint32_t s_dc_skip[6];
 static void drift_service(void)
 {
     drift_temperature();
-    int64_t now = esp_timer_get_time();
-    const unsigned why = s_dc_fault ? 0u : !quiet_owner() ? 1u :
-        (s_gain.state != DG_HOLD || s_current_gain > ARC_VENDOR_GAIN_MAX || rf_lane() != RF_LANE_ULTRAFINE) ? 2u :
-        (now < s_last_gain_write_us || now - s_last_gain_write_us < 500) ? 3u : 6u;
-    if (why < 6u) {
-        ++s_dc_skip[why];
-        s_dc_trim.have = false;
+    if (!s_servo_ready) { dc_servo_init(&s_servo); s_servo_ready = true; }
+    int64_t si, sq;
+    uint32_t samples, epoch;
+    uint8_t g;
+    const bool have = receiver_dc_take(DC_SERVO_MIN_SAMPLES, &si, &sq, &samples, &epoch, &g);
+    if (s_dc_fault || s_startup || !quiet_owner() || s_gain.state != DG_HOLD || rf_lane() != RF_LANE_ULTRAFINE) {
+        ++s_servo_skip[0];
+        dc_servo_forget_step(&s_servo);
         return;
     }
-    /* The 4092-byte sample takes longer than the 2 ms trial deadline on
-     * this CPU, so every sample used to expire and no trim ever ran (board
-     * 2026-10-19: trials=0). It needs no PHY lease: it is checked against
-     * the context and the held pair afterwards. Only a trial takes the lease,
-     * and its check reads a short window inside the deadline. */
+    int dc[2];
+    if (!have || epoch != s_gain_epoch || g != s_current_gain || !dc_servo_mean(si, sq, samples, dc)) {
+        ++s_servo_skip[2];
+        return;
+    }
+    ++s_servo_estimates;
+    s_drift_avg[0] = dc[0]; s_drift_avg[1] = dc[1];
+    dc_health_drift(true, dc);
+    if (g > ARC_VENDOR_GAIN_MAX || g < s_dco.lo || g > s_dco.hi || s_dco.e[g].valid != DCO_ROW_OK ||
+        s_dco_banned[g] || s_dco.freq != rf_frequency_mhz() || !phy_dco_held()) {
+        ++s_servo_skip[1];
+        dc_servo_forget_step(&s_servo);
+        return;
+    }
+    int step[2];
+    dc_servo_decide(&s_servo, dc, step);
+    const int base[2] = {dco_offset(g, 0), dco_offset(g, 1)};
+    for (int a = 0; a < 2; ++a) {
+        if (base[a] + step[a] > DC_TRIM_MAX_OFFSET) step[a] = DC_TRIM_MAX_OFFSET - base[a];
+        if (base[a] + step[a] < -DC_TRIM_MAX_OFFSET) step[a] = -DC_TRIM_MAX_OFFSET - base[a];
+    }
+    if (!step[0] && !step[1]) return;
     dc_trim_context_t context;
-    if (!dc_trim_snapshot(&context)) { ++s_dc_skip[4]; return; }
-    int pair[2], center[2];
-    bool measured = phy_dco_read_pair(pair) &&
-                    dc_trim_sample(&context, pair, now + DC_TRIM_SAMPLE_US, center, DC_LIVE_BYTES);
-    const int64_t took = esp_timer_get_time() - now;
-    if (took > (int64_t)s_dc_sample_max_us) s_dc_sample_max_us = took > UINT32_MAX ? UINT32_MAX : (uint32_t)took;
-    if (!measured) { ++s_dc_skip[5]; s_dc_trim.have = false; return; }
-    s_drift_avg[0] = center[0]; s_drift_avg[1] = center[1];
-    /* The receiver DC itself wanders by about half a cell over seconds
-     * (board 2026-10-19, fixed G83, no VTX), so two single windows rarely
-     * agreed within 150 mcells and no trial ever started. Decide on the mean
-     * of at least DC_TRIM_AVERAGE windows in one context and pair instead. */
-    static int s_dc_sum[2];
-    static unsigned s_dc_n;
-    const bool same = s_dc_trim.have && dc_trim_same(&context, &s_dc_trim.context) &&
-        pair[0] == s_dc_trim.pair[0] && pair[1] == s_dc_trim.pair[1];
-    if (!same) { s_dc_sum[0] = s_dc_sum[1] = 0; s_dc_n = 0; }
-    if (s_dc_n == 2u * DC_TRIM_AVERAGE) {        /* keep a running mean */
-        s_dc_sum[0] -= s_dc_sum[0] / (int)s_dc_n;
-        s_dc_sum[1] -= s_dc_sum[1] / (int)s_dc_n;
-        --s_dc_n;
+    int pair[2];
+    if (!dc_trim_snapshot(&context) || !phy_try_actuator(context.phy)) { ++s_servo_skip[3]; return; }
+    if (!phy_dco_read_pair(pair)) { phy_end_actuator(); ++s_servo_skip[3]; return; }
+    /* One axis per write (phy_dco_try_pair checks the gain and the pair). */
+    int cur[2] = {pair[0], pair[1]};
+    bool fault = false;
+    for (int a = 0; a < 2 && !fault; ++a) {
+        if (!step[a]) continue;
+        int target[2] = {cur[0], cur[1]};
+        target[a] += step[a];
+        if (target[a] < 0 || target[a] > 511) continue;
+        const esp_err_t err = phy_dco_try_pair(context.packed_gain, cur, target);
+        if (err == ESP_OK) { cur[0] = target[0]; cur[1] = target[1]; }
+        else { fault = err == ESP_ERR_INVALID_RESPONSE; ++s_servo_skip[4]; break; }
     }
-    s_dc_sum[0] += center[0]; s_dc_sum[1] += center[1]; ++s_dc_n;
-    center[0] = s_dc_sum[0] / (int)s_dc_n;
-    center[1] = s_dc_sum[1] / (int)s_dc_n;
-    s_drift_avg[0] = center[0]; s_drift_avg[1] = center[1];
-    /* A DC above a cell is unambiguous against the ~0.5-cell wander: act on
-     * DC_TRIM_AVERAGE_FAST windows. With Direct Gain moving between rows
-     * at the range edge, eight windows of up to 0.9 s each in one row were
-     * rarely reached (board 2026-10-19). */
-    const bool large = abs(center[0]) > DC_TRIM_FAST_MCELLS || abs(center[1]) > DC_TRIM_FAST_MCELLS;
-    bool consistent = same && s_dc_n >= (large ? DC_TRIM_AVERAGE_FAST : DC_TRIM_AVERAGE);
-    dc_health_drift(consistent, center);
-    if (!dc_trim_same(&context, &s_dc_trim.context)) {
-        s_dc_trim.direction[0] = s_dc_trim.direction[1] = 1;
+    const int applied[2] = {cur[0] - pair[0], cur[1] - pair[1]};
+    if (applied[0] || applied[1]) {
+        dc_trim_invalidate();               /* the accumulator restarts on the new pair */
+        s_drift_offset[g][0] = base[0] + applied[0];
+        s_drift_offset[g][1] = base[1] + applied[1];
+        s_drift_set[g] = true;
+        dc_servo_applied(&s_servo, dc, applied);
+        ++s_servo_writes;
     }
-    s_dc_trim.context = context;
-    memcpy(s_dc_trim.pair, pair, sizeof(pair));
-    memcpy(s_dc_trim.center, center, sizeof(center));
-    s_dc_trim.have = true;
-    int axis = abs(center[0]) >= abs(center[1]) ? 0 : 1;
-    const int64_t period = abs(center[axis]) > DC_TRIM_FAST_MCELLS ? DC_TRIM_FAST_US : DC_TRIM_PERIOD_US;
-    if (!consistent) { ++s_dc_hold[0]; return; }
-    if (abs(center[axis]) <= DC_TRIM_DEADBAND_MCELLS) { ++s_dc_hold[1]; return; }
-    if (now - s_dc_last_trial < period) { ++s_dc_hold[2]; return; }
-    /* Step: from the learned slope when known, else two codes in the last
-     * good direction; one axis, at most PHY_DCO_TRY_MAX codes. */
-    int direction = s_dc_trim.direction[axis];
-    if (!direction) direction = 1;
-    int step = 2 * direction;
-    if (s_dc_slope[axis]) {
-        step = -center[axis] / s_dc_slope[axis];
-        if (!step) step = (center[axis] > 0) == (s_dc_slope[axis] > 0) ? -1 : 1;
-    }
-    if (step > PHY_DCO_TRY_MAX) step = PHY_DCO_TRY_MAX;
-    if (step < -PHY_DCO_TRY_MAX) step = -PHY_DCO_TRY_MAX;
-    direction = step > 0 ? 1 : -1;
-    int target[2] = {pair[0], pair[1]};
-    if (target[axis] + step < 0 || target[axis] + step > 511) { ++s_dc_hold[3]; return; }
-    const int base[2] = {dco_offset(context.gain, 0), dco_offset(context.gain, 1)};
-    if (abs(base[axis] + step) > DC_TRIM_MAX_OFFSET) { ++s_dc_hold[3]; return; }
-    target[axis] += step;
-    int held[2];
-    if (!phy_try_actuator(context.phy)) { ++s_dc_hold[4]; return; }
-    if (!phy_dco_read_pair(held) || held[0] != pair[0] || held[1] != pair[1]) {
-        ++s_dc_hold[5];
-        phy_end_actuator();
-        return;
-    }
-    s_dc_last_trial = esp_timer_get_time();
-    ++s_dc_trials;
-    dc_trim_invalidate();
-    esp_err_t applied = phy_dco_try_pair(context.packed_gain, pair, target);
-    bool accepted = false, fault = applied == ESP_ERR_INVALID_RESPONSE;
-    if (applied == ESP_OK) {
-        /* Keep the analog lease, but never suspend tasks/interrupts or acquire
-         * a raw-ring lease. Keeper H/V holdover must continue independently. */
-        dc_trim_context_t trial;
-        dc_trim_context_t expected = context;
-        expected.gain_epoch = s_gain_epoch;
-        int after[2];
-        const int64_t began = esp_timer_get_time(), deadline = began + DC_TRIM_DEADLINE_US;
-        s_last_gain_write_us = began;
-        while (esp_timer_get_time() - began < DC_TRIM_SETTLE_US) { /* preemptible fresh-RX guard */ }
-        accepted = dc_trim_snapshot(&trial) && dc_trim_same(&trial, &expected) &&
-                   dc_trim_sample(&expected, target, deadline, after, DC_TRIM_VERIFY_BYTES) &&
-                   dc_trim_improves(center, after);
-        if (!accepted) {
-            if (esp_timer_get_time() >= deadline) ++s_dc_deadlines;
-            /* An unqualified/missing/late sample never keeps the trial pair. */
-            dc_trim_invalidate();
-            fault = phy_dco_try_pair(context.packed_gain, target, pair) != ESP_OK;
-        } else {
-            ++s_drift_nudges;
-            s_drift_offset[context.gain][0] = base[0];      /* the row now has its own trim */
-            s_drift_offset[context.gain][1] = base[1];
-            s_drift_offset[context.gain][axis] += step;
-            s_drift_set[context.gain] = true;
-            const int moved = after[axis] - center[axis];
-            if (abs(moved) >= 100) s_dc_slope[axis] = moved / step;   /* mcells per code */
-            s_dc_trim.direction[axis] = direction;
-            s_drift_avg[0] = after[0]; s_drift_avg[1] = after[1];
-        }
-    }
-    if (!accepted) { ++s_dc_rejected; s_dc_trim.direction[axis] = -direction; }
-    s_dc_trim.have = false;
-    (void)dc_trim_snapshot(&s_dc_trim.context); /* retain learned direction across own epoch change */
-    uint64_t duration = (uint64_t)(esp_timer_get_time() - s_dc_last_trial);
-    if (duration > s_dc_max_us) s_dc_max_us = duration > UINT32_MAX ? UINT32_MAX : (uint32_t)duration;
     phy_end_actuator();
     if (fault) {
         s_dc_fault = true;
         (void)receiver_pause("DC_LIVE_RESTORE_FAILED");
-        printf("DC_LIVE fault=restore_failed gain=%lu; gain owner paused\n", (unsigned long)context.gain);
+        printf("DC_SERVO fault=restore_failed gain=%u; gain owner paused\n", g);
     }
 }
 
@@ -1869,7 +1740,7 @@ void calibration_print(void)
            "drift_avg_mcells=%d/%d nudges=%lu temp_c=%.1f\n", phy_dco_held(), valid, dco_rows(DCO_ROW_FLOOR), dco_rows(0),
            s_dco_floor,
            (unsigned long)s_dco_searches, (unsigned long)s_dco_carrier_searches, (unsigned long)s_dco_hook_holds,
-           (unsigned long)s_dco_aborts, s_drift_avg[0], s_drift_avg[1], (unsigned long)s_drift_nudges,
+           (unsigned long)s_dco_aborts, s_drift_avg[0], s_drift_avg[1], (unsigned long)s_servo_writes,
            (double)s_temp_c);
     {
         int b1[2], b2[2];
@@ -1880,30 +1751,16 @@ void calibration_print(void)
                    g <= ARC_VENDOR_GAIN_MAX ? s_dco.e[g].code[1] : -1,
                    g <= ARC_VENDOR_GAIN_MAX ? s_dco.e[g].valid : 0u, g <= ARC_VENDOR_GAIN_MAX ? s_dco_banned[g] : 0u);
     }
-    printf("DC_LIVE trials=%lu accepted=%lu rejected=%lu deadlines=%lu max_trial_us=%lu fault=%u "
-           "deadline_us=%u settle_us=%u noise_samples=%lu slope_mcells_per_code=%d/%d offset=%d/%d "
-           "skip=%lu/%lu/%lu/%lu/%lu/%lu refuse=%lu/%lu/%lu/%lu/%lu/%lu/%lu table_reloads=%lu reload_why=%u "
-           "volatile=1\n",
-           (unsigned long)s_dc_trials,
-           (unsigned long)s_drift_nudges, (unsigned long)s_dc_rejected, (unsigned long)s_dc_deadlines,
-           (unsigned long)s_dc_max_us, (unsigned)s_dc_fault, DC_TRIM_DEADLINE_US, DC_TRIM_SETTLE_US,
-           (unsigned long)s_dc_noise_samples, s_dc_slope[0], s_dc_slope[1],
+    printf("DC_SERVO dc_mcells=%d/%d slope_mcells_per_code=%d/%d offset=%d/%d own_row=%u steps=%lu writes=%lu "
+           "estimates=%lu learned=%lu relearned=%lu skip=%lu/%lu/%lu/%lu/%lu fault=%u table_reloads=%lu reload_why=%u "
+           "volatile=1\n", s_drift_avg[0], s_drift_avg[1], s_servo.slope[0], s_servo.slope[1],
            dco_offset(s_current_gain, 0), dco_offset(s_current_gain, 1),
-           (unsigned long)s_dc_skip[0], (unsigned long)s_dc_skip[1], (unsigned long)s_dc_skip[2],
-           (unsigned long)s_dc_skip[3], (unsigned long)s_dc_skip[4], (unsigned long)s_dc_skip[5],
-           (unsigned long)s_dc_refuse[0], (unsigned long)s_dc_refuse[1], (unsigned long)s_dc_refuse[2],
-           (unsigned long)s_dc_refuse[3], (unsigned long)s_dc_refuse[4], (unsigned long)s_dc_refuse[5],
-           (unsigned long)s_dc_refuse[6],
+           s_current_gain <= ARC_VENDOR_GAIN_MAX ? (unsigned)s_drift_set[s_current_gain] : 0u,
+           (unsigned long)s_servo.steps, (unsigned long)s_servo_writes, (unsigned long)s_servo_estimates,
+           (unsigned long)s_servo.learned, (unsigned long)s_servo.relearned,
+           (unsigned long)s_servo_skip[0], (unsigned long)s_servo_skip[1], (unsigned long)s_servo_skip[2],
+           (unsigned long)s_servo_skip[3], (unsigned long)s_servo_skip[4], (unsigned)s_dc_fault,
            (unsigned long)s_dco_reloads, (unsigned)s_dco_reload_why);
-    printf("DC_LIVE_HOLD consistent/deadband/period/range/lease/pair=%lu/%lu/%lu/%lu/%lu/%lu own_trim=%u\n",
-           (unsigned long)s_dc_hold[0], (unsigned long)s_dc_hold[1], (unsigned long)s_dc_hold[2],
-           (unsigned long)s_dc_hold[3], (unsigned long)s_dc_hold[4], (unsigned long)s_dc_hold[5],
-           s_current_gain <= ARC_VENDOR_GAIN_MAX ? (unsigned)s_drift_set[s_current_gain] : 0u);
-    printf("DC_LIVE_AFTER sample_max_us=%lu late/owner/context/pair=%lu/%lu/%lu/%lu fields=",
-           (unsigned long)s_dc_sample_max_us, (unsigned long)s_dc_after[0],
-           (unsigned long)s_dc_after[1], (unsigned long)s_dc_after[2], (unsigned long)s_dc_after[3]);
-    for (unsigned k = 0; k < 13u; ++k) printf("%s%lu", k ? "/" : "", (unsigned long)s_dc_field[k]);
-    printf("\n");
     dc_health_print();
     unsigned stored = 0;
     for (unsigned k = 0; k < DCO_SLOTS; ++k) stored += s_dco_index.freq[k] != 0;

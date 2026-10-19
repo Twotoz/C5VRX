@@ -171,6 +171,8 @@ static dg_observation_t measure(const uint8_t *samples, size_t bytes,
     const int q_span = (31 - __builtin_clz(q_seen)) - __builtin_ctz(q_seen);
     r.span = (uint8_t)(i_span > q_span ? i_span : q_span);
     r.repeat_pm = bytes > 1u ? (uint16_t)(repeats * 1000u / (bytes - 1u)) : 0;
+    r.sum_i = cx;
+    r.sum_q = cy;
     int di, dq;
     if (!dg_stuck(&r) && dc_dominated(cx, cy, 4ull * cp - 2ull * bytes, bytes, &di, &dq)) {
         memset(hist, 0, sizeof(hist));

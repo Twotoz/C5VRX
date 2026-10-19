@@ -178,6 +178,10 @@ enum { FILTER_NORMAL, FILTER_NARROW, FILTER_WIDE };
 bool filter_setting(int filter_class, rf_filter_t *out);
 /* The DC table of filter f is complete on the current channel (startup). */
 bool calibration_dc_ready(rf_filter_t f);
+/* Observer DC accumulator (receiver.c) for the live DC servo: the probe sums
+ * of one gain row and context once they hold min_samples, then restarts. */
+bool receiver_dc_take(uint32_t min_samples, int64_t *si, int64_t *sq, uint32_t *samples, uint32_t *gain_epoch,
+                      uint8_t *gain);
 /* DC CAL NEEDED on this channel (dc_health.h): the flagged profiles in buf
  * ("NARROW", "NORMAL+WIDE"), the number of flags as the result; the next
  * boot re-measures them. */
@@ -213,6 +217,8 @@ bool menu_status_active(void);
 
 /* ---- profile.c ---- */
 #include "afc.h"
+#include "video_quality.h"
+void control_video_quality(vq_t *out);   /* control.c: last second */
 const char *profile_name(int profile);
 int profile_active(void);
 int profile_deviation_x100(size_t channel);
