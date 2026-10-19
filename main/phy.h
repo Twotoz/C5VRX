@@ -57,6 +57,10 @@ esp_err_t phy_dco_search_flat(bool (*measure)(int dc[2]), phy_dco_result_t *res)
 esp_err_t phy_dco_hold(int code_i, int code_q);
 bool phy_dco_release(void);
 bool phy_dco_held(void);
+/* PBUS DC words, read back: bank 1 (written by the vendor PHY) and bank 2
+ * (the pair the hold forces), I then Q. false without the pinned PHY. */
+bool phy_dco_banks(int bank1[2], int bank2[2]);
+#define PHY_DCO_TRY_MAX 8   /* codes per verified live trial (phy_dco_try_pair) */
 bool phy_dco_nudge(int di, int dq, int out[2]);
 /* Sample the actual current DAC pair twice; no mode change or assumed codes.
  * try_pair requires the caller's PHY actuator lease and an exact actual

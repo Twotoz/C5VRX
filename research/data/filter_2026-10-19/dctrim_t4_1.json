@@ -1,0 +1,12 @@
+{
+  "bytes": "8190",
+  "rate_hz": "40000000",
+  "format": "Ihigh_Qlow",
+  "gain": "83",
+  "lane": "2",
+  "freq_mhz": "5865",
+  "fnv1a": "98cebc23",
+  "fw": "5",
+  "timestamp_utc": "2026-10-19T01:25:37.173274+00:00",
+  "scope": "204.75us contiguous snapshot; capture-start state unknown; no full vertical/range validation"
+}

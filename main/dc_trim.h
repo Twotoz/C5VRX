@@ -4,9 +4,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
-#define DC_TRIM_DEADBAND_MCELLS 300
+/* The receiver DC wanders about half a cell by itself (board 2026-10-19);
+ * 300 made the trim hunt (2 of 3 trials rejected, each one resetting the
+ * gain epoch). 600 mcells is ~0.3 of the noise per axis at the range edge,
+ * where research/sensitivity_model.py finds no measurable cost. */
+#define DC_TRIM_DEADBAND_MCELLS 600
 #define DC_TRIM_SETTLE_US 300u
-#define DC_TRIM_DEADLINE_US 2000u
+/* Trial check (settle, a fresh window, the sums): 2 ms expired on every
+ * trial on the board (2026-10-19, deadlines == trials). */
+#define DC_TRIM_DEADLINE_US 8000u
 #define DC_TRIM_PERIOD_US 2000000u
 typedef struct {
     uint32_t gain, gain_epoch, control, phy, table, frequency, offset,
