@@ -82,8 +82,12 @@ int main(void)
     b[FLOG_BLOCK_HEAD + 5] ^= 1;
 
     flog_second_t u;
-    check("summary round trip, every field", flog_unpack_second(b + FLOG_BLOCK_HEAD + 2, FLOG_SECOND_LEN, &u) &&
-          !memcmp(&u, &s, sizeof(s)));
+    uint8_t again[FLOG_SECOND_LEN];
+    const bool unpacked = flog_unpack_second(b + FLOG_BLOCK_HEAD + 2, FLOG_SECOND_LEN, &u);
+    flog_pack_second(&u, again);   /* compare the packed bytes, not struct padding */
+    check("summary round trip, every field", unpacked && !memcmp(again, b + FLOG_BLOCK_HEAD + 2, FLOG_SECOND_LEN) &&
+          u.t_s == 77u && u.vq_snr_x10 == -45 && u.dc_i == -20 && u.off_q == 96 && u.afc_offset_khz == -1250 &&
+          u.temp_c == -12 && u.flags == 0x0a05u);
     check("a short summary is refused", !flog_unpack_second(b + FLOG_BLOCK_HEAD + 2, FLOG_SECOND_LEN - 1u, &u));
 
     /* A record that would cross the CRC word ends the walk. */
@@ -102,6 +106,21 @@ int main(void)
     iq[4000] ^= 0x10;
     check("a changed IQ byte is caught", !flog_snap_ok(sh, iq));
 
+    /* Snapshot ring: priorities when full. */
+    {
+        uint8_t trig[4] = {FLOG_SNAP_DROPOUT, FLOG_SNAP_PERIODIC, FLOG_SNAP_PERIODIC, FLOG_SNAP_VQ_DROP};
+        uint32_t seq[4] = {1, 5, 2, 3};
+        bool used[4] = {true, true, false, true};
+        check("an empty slot first", flog_snap_victim(trig, seq, used, 4, FLOG_SNAP_PERIODIC) == 2);
+        used[2] = true;
+        check("full: the oldest periodic goes first", flog_snap_victim(trig, seq, used, 4, FLOG_SNAP_DROPOUT) == 2);
+        check("a periodic snapshot replaces only a periodic one", flog_snap_victim(trig, seq, used, 4, FLOG_SNAP_PERIODIC) == 2);
+        uint8_t important[4] = {FLOG_SNAP_DROPOUT, FLOG_SNAP_DROPOUT, FLOG_SNAP_VQ_DROP, FLOG_SNAP_DROPOUT};
+        check("all more important: a periodic one is skipped", flog_snap_victim(important, seq, used, 4, FLOG_SNAP_PERIODIC) < 0);
+        check("a dropout replaces the least important, oldest", flog_snap_victim(important, seq, used, 4, FLOG_SNAP_DROPOUT) == 2);
+        uint8_t drops[4] = {FLOG_SNAP_DROPOUT, FLOG_SNAP_DROPOUT, FLOG_SNAP_DROPOUT, FLOG_SNAP_DROPOUT};
+        check("all dropouts: the oldest dropout goes", flog_snap_victim(drops, seq, used, 4, FLOG_SNAP_DROPOUT) == 0);
+    }
     printf("%u/%u flight log checks passed\n", s_run - s_fail, s_run);
     return s_fail != 0;
 }

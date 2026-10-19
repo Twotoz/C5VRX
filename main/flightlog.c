@@ -30,6 +30,11 @@
 static const esp_partition_t *s_part;
 static bool s_ready;
 static uint32_t s_session, s_seq, s_snap_seq;
+/* What each snapshot slot holds (flog_snap_victim). */
+static uint8_t s_slot_trigger[FLOG_SNAP_SLOTS];
+static uint32_t s_slot_seq[FLOG_SNAP_SLOTS];
+static bool s_slot_used[FLOG_SNAP_SLOTS];
+static uint32_t s_snap_skipped;
 static unsigned s_block;            /* record block (0..FLOG_RECORD_BLOCKS-1) being written */
 static unsigned s_used;             /* record bytes in it */
 static bool s_block_open;
@@ -149,6 +154,8 @@ static void flush(void)
 
 static void snapshot(uint8_t trigger)
 {
+    const int victim = flog_snap_victim(s_slot_trigger, s_slot_seq, s_slot_used, FLOG_SNAP_SLOTS, trigger);
+    if (victim < 0) { ++s_snap_skipped; return; }   /* every slot holds a more important moment */
     if (s_menu_active || receiver_paused() || calibration_in_startup()) return;
     if (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) < C5V4_LEVEL_SAMPLE_BYTES + 8192u)
         return;
@@ -172,12 +179,15 @@ static void snapshot(uint8_t trigger)
     };
     uint8_t head[FLOG_SNAP_HEAD];
     flog_snap_head(head, &s, raw);
-    const unsigned slot = s_snap_seq % FLOG_SNAP_SLOTS;
+    const unsigned slot = (unsigned)victim;
     const size_t at = snap_offset(slot);
     bool ok = esp_partition_erase_range(s_part, at, FLOG_SNAP_SECTORS * FLOG_SECTOR) == ESP_OK &&
               flash_write(at, head, sizeof(head)) && flash_write(at + FLOG_SNAP_HEAD, raw, FLOG_SNAP_BYTES);
     free(raw);
     if (!ok) { ++s_flash_errors; return; }
+    s_slot_used[slot] = true;
+    s_slot_trigger[slot] = trigger;
+    s_slot_seq[slot] = s_snap_seq;
     ++s_snap_seq;
     ++s_snapshots;
     s_snap_last_us = esp_timer_get_time();
@@ -270,7 +280,11 @@ void flightlog_start(void)
     for (unsigned k = 0; k < FLOG_SNAP_SLOTS; ++k) {
         uint8_t sh[16];
         if (esp_partition_read(s_part, snap_offset(k), sh, sizeof(sh)) != ESP_OK) continue;
-        if (flog_get32(sh) == FLOG_MAGIC_SNAP && flog_get32(sh + 12) + 1u > s_snap_seq) s_snap_seq = flog_get32(sh + 12) + 1u;
+        if (flog_get32(sh) != FLOG_MAGIC_SNAP) continue;
+        s_slot_used[k] = true;
+        s_slot_trigger[k] = sh[5];
+        s_slot_seq[k] = flog_get32(sh + 12);
+        if (s_slot_seq[k] + 1u > s_snap_seq) s_snap_seq = s_slot_seq[k] + 1u;
     }
     s_ready = true;
     session_record();
@@ -430,6 +444,7 @@ static void erase_all(void)
     s_queue_len = 0;
     taskEXIT_CRITICAL(&s_qlock);
     s_block = 0; s_used = 0; s_block_open = false; s_seq = 1; s_snap_seq = 0;
+    memset(s_slot_used, 0, sizeof(s_slot_used));
     ++s_session;
     xSemaphoreGive(s_flash_lock);
     printf("FLOG erased=%u session=%lu\n", ok, (unsigned long)s_session);
@@ -443,9 +458,9 @@ void flightlog_console(char key)
     const int64_t now = esp_timer_get_time();
     if (key == 'Y') {
         printf("FLOG status ok=1 format=%u session=%lu block=%u used=%u seq=%lu blocks_used=%u blocks_written=%lu "
-               "snapshots=%lu snapshot_seq=%lu queue=%u dropped=%lu flash_errors=%lu\n", FLOG_FORMAT,
+               "snapshots=%lu snapshot_seq=%lu snapshots_skipped=%lu queue=%u dropped=%lu flash_errors=%lu\n", FLOG_FORMAT,
                (unsigned long)s_session, s_block, s_used, (unsigned long)s_seq, used_blocks(),
-               (unsigned long)s_blocks_written, (unsigned long)s_snapshots, (unsigned long)s_snap_seq, s_queue_len,
+               (unsigned long)s_blocks_written, (unsigned long)s_snapshots, (unsigned long)s_snap_seq, (unsigned long)s_snap_skipped, s_queue_len,
                (unsigned long)s_dropped, (unsigned long)s_flash_errors);
     } else if (key == 'W') {
         dump();

@@ -220,6 +220,31 @@ static inline bool flog_unpack_second(const uint8_t *p, uint8_t len, flog_second
     return true;
 }
 
+/* Which snapshot slot a new one takes when the ring is full: the moments
+ * that went wrong outlive the routine ones. Priority dropout > picture drop
+ * > first carrier > periodic; an empty slot first, else the oldest slot of
+ * the lowest priority not above the new one; -1 when every slot holds a
+ * more important snapshot (the new one is skipped). */
+static inline unsigned flog_snap_priority(uint8_t trigger)
+{
+    return trigger == FLOG_SNAP_DROPOUT ? 4u : trigger == FLOG_SNAP_VQ_DROP ? 3u :
+           trigger == FLOG_SNAP_FIRST_CARRIER ? 2u : 1u;
+}
+
+static inline int flog_snap_victim(const uint8_t *trigger, const uint32_t *seq, const bool *used, unsigned slots,
+                                   uint8_t new_trigger)
+{
+    int best = -1;
+    unsigned best_pri = 0;
+    for (unsigned k = 0; k < slots; ++k) {
+        if (!used[k]) return (int)k;
+        const unsigned pri = flog_snap_priority(trigger[k]);
+        if (pri > flog_snap_priority(new_trigger)) continue;
+        if (best < 0 || pri < best_pri || (pri == best_pri && seq[k] < seq[best])) { best = (int)k; best_pri = pri; }
+    }
+    return best;
+}
+
 /* Snapshot slot head (64 bytes): magic, format, trigger, IQ bytes, session,
  * sequence, t_ms, frequency, gain, lane, filter key, profile, kp, lp, DC
  * offsets (codes) and residual (mcells) of the row, CRC-32 over the head's

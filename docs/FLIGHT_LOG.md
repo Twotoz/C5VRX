@@ -117,6 +117,13 @@ bytes shorter than `I` so a slot is exactly two sectors)
 with a header: session, uptime, trigger, gain, frequency, filter key,
 profile, kp/LP, DC offsets of the row, sampling-phase position.
 
+When the record ring is full the oldest block is erased and reused: the most
+recent ~7 hours are always there. The snapshot ring keeps the moments that
+went wrong longest: a new snapshot takes an empty slot, else the oldest slot
+of the lowest priority not above its own (dropout > picture drop > first
+carrier > periodic); a periodic one never replaces a dropout and is skipped
+(`snapshots_skipped` in `Y`) when every slot is more important.
+
 Triggers, at most one per 10 s:
 
 - dropout onset;
