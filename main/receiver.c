@@ -263,6 +263,8 @@ void receiver_dc_reset_all(void)
     taskEXIT_CRITICAL(&s_dc_acc_lock);
 }
 
+static uint32_t s_sat_one_sided, s_sat_two_sided, s_sat_run;
+
 static void tick_cb(void *arg)
 {
     (void)arg;
@@ -363,6 +365,16 @@ static void observer_task(void *arg)
         s_obs_clip_pm = o.clip_pm;
         s_obs_coherence = o.coherence;
         s_obs_stuck = dg_stuck(&o);
+        /* Saturated windows by the rails they reach: both rails of an axis
+         * is a large signal; one side only is the cloud pushed against a rail
+         * by DC (diagnostic, T GAIN sat=). */
+        if (o.clip_pm >= 100u || o.p95 >= 95u) {
+            const bool both = (o.rails & 3u) == 3u || (o.rails & 12u) == 12u;
+            if (both) ++s_sat_two_sided; else ++s_sat_one_sided;
+            if (++s_sat_run == 50u) flightlog_snapshot_request(FLOG_SNAP_OVERLOAD);   /* a burst, ~10 ms */
+        } else {
+            s_sat_run = 0;
+        }
         const dg_map_context_t after_context = map_context();
         if (phy != phy_generation() || phy_busy() || gain_epoch != s_gain_epoch || control != s_control_epoch ||
             table != rf_table_generation() || !dg_map_context_equal(&context, &after_context)) continue;
@@ -406,6 +418,8 @@ void receiver_start(void)
 
 void receiver_print(void)
 {
+    printf("GAIN_SAT one_sided=%lu two_sided=%lu (saturated observer windows: one rail per axis = DC-pushed, both = large signal)\n",
+           (unsigned long)s_sat_one_sided, (unsigned long)s_sat_two_sided);
     printf("CN_OBSERVER windows=%lu period_us=%u max_age_us=%u\n", (unsigned long)s_cn_windows,
            CN_OBSERVE_PERIOD_US, CN_OBSERVE_MAX_AGE_US);
     char mode[16];

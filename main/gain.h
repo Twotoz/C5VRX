@@ -43,6 +43,7 @@ typedef struct {
     uint16_t env_ratio_x100; /* DC-removed envelope mean^2/var of |z|^2, x100 (noise 100) */
     uint8_t centered;        /* judged around the window DC (DC-dominated, gain.c) */
     int32_t sum_i, sum_q;    /* sums of 2v+1 per axis (dsp units): the probe DC for the servo */
+    uint8_t rails;           /* rails reached: bit 0 I-8, 1 I+7, 2 Q-8, 3 Q+7 */
     uint64_t observed_us;
 } dg_observation_t;
 

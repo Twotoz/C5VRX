@@ -55,7 +55,7 @@ enum {
     FLOG_E_DROPOUT = 10, FLOG_E_RECOVERED = 11, FLOG_E_SNAPSHOT = 12, FLOG_E_DROPPED = 13,
 };
 
-enum { FLOG_SNAP_DROPOUT = 1, FLOG_SNAP_VQ_DROP = 2, FLOG_SNAP_FIRST_CARRIER = 3, FLOG_SNAP_PERIODIC = 4 };
+enum { FLOG_SNAP_DROPOUT = 1, FLOG_SNAP_VQ_DROP = 2, FLOG_SNAP_FIRST_CARRIER = 3, FLOG_SNAP_PERIODIC = 4, FLOG_SNAP_OVERLOAD = 5 };
 
 /* Fixed little-endian helpers (no struct packing assumptions). */
 static inline void flog_put16(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
@@ -227,7 +227,7 @@ static inline bool flog_unpack_second(const uint8_t *p, uint8_t len, flog_second
  * more important snapshot (the new one is skipped). */
 static inline unsigned flog_snap_priority(uint8_t trigger)
 {
-    return trigger == FLOG_SNAP_DROPOUT ? 4u : trigger == FLOG_SNAP_VQ_DROP ? 3u :
+    return trigger == FLOG_SNAP_DROPOUT ? 4u : trigger == FLOG_SNAP_VQ_DROP || trigger == FLOG_SNAP_OVERLOAD ? 3u :
            trigger == FLOG_SNAP_FIRST_CARRIER ? 2u : 1u;
 }
 

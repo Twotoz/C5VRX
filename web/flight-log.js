@@ -23,7 +23,7 @@ export const SPHASE = ['unverified', 'settled', 'drifted', 'unsettled', 'noise_l
 export const PROFILES = ['DEFAULT', 'MATCHED', 'NARROW', 'WIDE'];
 export const RESET_REASONS = ['unknown', 'power-on', 'external', 'software', 'panic', 'interrupt watchdog',
   'task watchdog', 'watchdog', 'deep sleep', 'brownout', 'SDIO', 'USB', 'JTAG', 'eFuse', 'power glitch', 'CPU lockup'];
-const TRIGGERS = { 1: 'dropout', 2: 'picture drop', 3: 'first carrier', 4: 'periodic' };
+const TRIGGERS = { 1: 'dropout', 2: 'picture drop', 3: 'first carrier', 4: 'periodic', 5: 'overload burst' };
 
 let crcTable;
 export function crc32(bytes, crc = 0) {
