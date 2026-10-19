@@ -87,9 +87,6 @@ typedef struct {
     const char *window, *held;
 } afc_evidence_snapshot_t;
 static afc_evidence_snapshot_t s_afc_evidence = {.window="boot", .held="boot", .cn_x10=CN_UNKNOWN_X10};
-static vq_acc_t s_vq_acc;
-static vq_t s_vq;
-static uint32_t s_vq_periods;
 /* Verified kp ladder (kp_ladder.h), NVS "kp_auto": 0 off, 1 kp only,
  * 2 kp plus the live U85Q <-> U85Q-LP switch. K cycles 0 -> 1 -> 2 -> 0;
  * k steps one kp level and P toggles the program by hand for the bench test
@@ -376,6 +373,11 @@ static uint32_t afc_context(void)
     for (unsigned k = 0; k < 5u; ++k) h = (h ^ parts[k]) * 16777619u;
     return h;
 }
+
+/* End-to-end video quality, one-second periods (video_quality.h). */
+static vq_acc_t s_vq_acc;
+static vq_t s_vq;
+static uint32_t s_vq_periods;
 
 static void control_task(void *arg)
 {
@@ -685,11 +687,6 @@ void control_print(void)
     const bool afc_gain_current=afc_snapshot.qualified_us && afc_snapshot.qualified_gain_epoch==s_gain_epoch;
     (void)xTaskResumeAll();
     const afc2_evidence_t evidence=afc_snapshot.history;
-    vq_t vq;
-    control_video_quality(&vq);
-    printf("VIDEO_Q known=%u snr_x10=%d lines_x100=%u lines=%lu windows=%lu periods=%lu (end-to-end: sync/porch "
-           "spread of the demodulated video, last second)\n", vq.known, vq.snr_x10, vq.lines_x100,
-           (unsigned long)vq.lines, (unsigned long)vq.windows, (unsigned long)s_vq_periods);
     printf("AFC_EVIDENCE latest_valid=%u context_current=%u qualified_gain_current=%u sticky_lock=%u target_khz=%d "
            "last_qualified_raw_porch_khz=%ld last_qualified_residual_khz=%ld qualified_age_ms=%lld sample_age_ms=%lld "
            "n=%u timestamped=%u stable=%u median_residual_khz=%ld mad_khz=%ld oldest_age_ms=%lld newest_age_ms=%lld "
@@ -720,5 +717,10 @@ void control_print(void)
            (unsigned long)s_ladder_ctx, (unsigned long)s_ladder_copy_fail, (unsigned long)s_ladder_stuck,
            (unsigned long)s_guard_confirms, (unsigned long)s_auto_candidate.resets, s_kp.level, s_kp.lp,
            (long)(s_kp.release_hold_us / 1000), (long)(s_kp.cn_q4 / 16));
+    vq_t vq;
+    control_video_quality(&vq);
+    printf("VIDEO_Q known=%u snr_x10=%d lines_x100=%u lines=%lu windows=%lu periods=%lu (end-to-end: sync/porch "
+           "spread of the demodulated video, last second)\n", vq.known, vq.snr_x10, vq.lines_x100,
+           (unsigned long)vq.lines, (unsigned long)vq.windows, (unsigned long)s_vq_periods);
 }
 

@@ -120,7 +120,7 @@ static void usb_reader_task(void *arg)
         }
         /* Heartbeat: shows the board is alive whatever the console does. */
         static int64_t beat;
-        if (esp_timer_get_time() - beat > 5000000) {
+        if (esp_timer_get_time() - beat > 5000000 && !flightlog_dumping()) {
             beat = esp_timer_get_time();
             printf("HB t_s=%lld stage=%s gain=%u menu=%u startup=%u busy=%u\n", beat / 1000000, s_boot_stage,
                    s_current_gain, s_menu_active, calibration_in_startup(), menu_status_active());

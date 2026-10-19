@@ -39,6 +39,8 @@ static uint32_t s_dropped, s_dropped_logged, s_blocks_written, s_snapshots, s_fl
 static portMUX_TYPE s_qlock = portMUX_INITIALIZER_UNLOCKED;
 static SemaphoreHandle_t s_flash_lock;
 static volatile uint8_t s_snap_request;
+static volatile bool s_dumping;
+bool flightlog_dumping(void) { return s_dumping; }
 static int64_t s_snap_last_us = -FLOG_SNAP_GAP_US;
 
 bool flightlog_ready(void) { return s_ready; }
@@ -377,7 +379,9 @@ static void dump_range(size_t offset, size_t len)
         if (esp_partition_read(s_part, offset + k, chunk, n) != ESP_OK) { printf("FLOG_ERR read=%u\n", (unsigned)(offset + k)); return; }
         for (size_t j = 0; j < n; ++j) { line[2 * j] = hex[chunk[j] >> 4]; line[2 * j + 1] = hex[chunk[j] & 15]; }
         line[2 * n] = 0;
-        printf("FLOG_D %u %s\n", (unsigned)(offset + k), line);
+        /* Every line carries its CRC: other tasks print too, and a reader
+         * re-requests a dump for any line that did not arrive intact. */
+        printf("FLOG_D %u %s %08lx\n", (unsigned)(offset + k), line, (unsigned long)flog_crc32(0, chunk, n));
         vTaskDelay(1);
     }
 }
@@ -385,6 +389,7 @@ static void dump_range(size_t offset, size_t len)
 static void dump(void)
 {
     xSemaphoreTake(s_flash_lock, portMAX_DELAY);
+    s_dumping = true;
     flush();
     unsigned blocks = 0, snaps = 0;
     for (unsigned k = 0; k < FLOG_RECORD_BLOCKS; ++k) {
@@ -409,6 +414,7 @@ static void dump(void)
             dump_range(snap_offset(k), FLOG_SNAP_SECTORS * FLOG_SECTOR);
     }
     printf("FLOG_END blocks=%u snapshots=%u\n", blocks, snaps);
+    s_dumping = false;
     xSemaphoreGive(s_flash_lock);
 }
 

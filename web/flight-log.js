@@ -40,20 +40,53 @@ export function crc32(bytes, crc = 0) {
   return ~crc >>> 0;
 }
 
-// Collects a console dump. push() takes complete lines; `done` after FLOG_END.
+// Collects a console dump. push() takes complete lines. Every FLOG_D line
+// carries a CRC-32: other firmware tasks print too, so a line can arrive
+// damaged; it is dropped and, after FLOG_END, `needsPass` asks for another
+// dump (key W) that fills in only what is still missing. `done` once every
+// announced block and snapshot arrived intact, or after MAX_PASSES.
+const LINE_BYTES = 256;
+export const MAX_PASSES = 4;
+const LINE = /^FLOG_D (\d+) ([0-9a-f]+) ([0-9a-f]{8})$/;
+
+function unit(offset) {
+  if (offset < SECTOR) return { start: 0, lines: [0] };
+  const sector = Math.floor(offset / SECTOR);
+  const start = sector >= SNAP_FIRST ? (SNAP_FIRST + Math.floor((sector - SNAP_FIRST) / SNAP_SECTORS) * SNAP_SECTORS) * SECTOR : sector * SECTOR;
+  const length = sector >= SNAP_FIRST ? SNAP_SECTORS * SECTOR : SECTOR;
+  const lines = [];
+  for (let o = start; o < start + length; o += LINE_BYTES) lines.push(o);
+  return { start, lines };
+}
+
 export class FlightLogCapture {
   constructor() { this.reset(); }
   reset() {
     this.image = new Uint8Array(PARTITION_BYTES).fill(0xff);
+    this.got = new Set();
     this.active = false;
     this.done = false;
+    this.needsPass = false;
+    this.passes = 0;
+    this.damaged = 0;
     this.error = '';
-    this.expectedBytes = 0;
-    this.receivedBytes = 0;
     this.info = {};
   }
-  start() { this.reset(); this.active = true; }
-  get progress() { return this.expectedBytes ? Math.min(1, this.receivedBytes / this.expectedBytes) : 0; }
+  start() { this.reset(); this.nextPass(); }
+  nextPass() { this.active = true; this.needsPass = false; this.passes += 1; }
+  get expectedBytes() { return 32 + Number(this.info.blocks || 0) * SECTOR + Number(this.info.snapshots || 0) * SNAP_SECTORS * SECTOR; }
+  get progress() { return this.expectedBytes > 32 ? Math.min(1, (this.got.size * LINE_BYTES) / this.expectedBytes) : 0; }
+  // Complete units: header, record blocks, snapshot slots.
+  completeness() {
+    const units = new Map();
+    for (const o of this.got) { const u = unit(o); units.set(u.start, u.lines); }
+    let header = false, blocks = 0, snapshots = 0;
+    for (const [start, lines] of units) {
+      if (!lines.every((o) => this.got.has(o))) continue;
+      if (start === 0) header = true; else if (start >= SNAP_FIRST * SECTOR) snapshots++; else blocks++;
+    }
+    return { header, blocks, snapshots };
+  }
   // Returns true when the line belonged to the dump.
   push(line) {
     const at = line.indexOf('FLOG');
@@ -63,18 +96,26 @@ export class FlightLogCapture {
     if (!this.active) return line.startsWith('FLOG_D ');
     if (line.startsWith('FLOG_BEGIN')) {
       for (const [, k, v] of line.matchAll(/(\w+)=(\S+)/g)) this.info[k] = v;
-      this.expectedBytes = 32 + Number(this.info.blocks || 0) * SECTOR + Number(this.info.snapshots || 0) * SNAP_SECTORS * SECTOR;
       return true;
     }
     if (line.startsWith('FLOG_D ')) {
-      const [, offset, hex] = line.split(' ');
-      const o = Number(offset);
-      if (!Number.isInteger(o) || !hex || hex.length % 2 || o + hex.length / 2 > PARTITION_BYTES) return true;
-      for (let i = 0; i < hex.length / 2; i++) this.image[o + i] = parseInt(hex.substr(i * 2, 2), 16);
-      this.receivedBytes += hex.length / 2;
+      const m = line.match(LINE);
+      const o = m ? Number(m[1]) : NaN;
+      if (!m || m[2].length % 2 || o + m[2].length / 2 > PARTITION_BYTES) { this.damaged++; return true; }
+      const chunk = new Uint8Array(m[2].length / 2);
+      for (let i = 0; i < chunk.length; i++) chunk[i] = parseInt(m[2].substr(i * 2, 2), 16);
+      if (crc32(chunk) !== parseInt(m[3], 16)) { this.damaged++; return true; }
+      this.image.set(chunk, o);
+      this.got.add(o);
       return true;
     }
-    if (line.startsWith('FLOG_END')) { this.active = false; this.done = true; return true; }
+    if (line.startsWith('FLOG_END')) {
+      this.active = false;
+      const c = this.completeness();
+      const whole = c.header && c.blocks >= Number(this.info.blocks || 0) && c.snapshots >= Number(this.info.snapshots || 0);
+      if (whole || this.passes >= MAX_PASSES) this.done = true; else this.needsPass = true;
+      return true;
+    }
     if (line.startsWith('FLOG_ERR')) { this.error = line; return true; }
     return line.startsWith('FLOG');
   }

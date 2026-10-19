@@ -799,9 +799,17 @@ function flightLogFeed(text) {
     flightLogStatus.textContent = flightLog.error;
   } else if (flightLog.active) {
     flightLogStatus.textContent = `Reading flight log… ${Math.round(flightLog.progress * 100)}%`;
+  } else if (flightLog.needsPass && serialConsole.state === 'connected') {
+    // Some lines arrived damaged (other console output): read again, keep what arrived intact.
+    flightLog.nextPass();
+    flightLogStatus.textContent = `Reading flight log… pass ${flightLog.passes} for ${flightLog.damaged} damaged line(s)`;
+    serialConsole.send('W');
   } else if (flightLog.done && !flightLogResult) {
     flightLogResult = decodeImage(flightLog.image);
     renderFlightLog();
+    const c = flightLog.completeness();
+    if (c.blocks < Number(flightLog.info.blocks || 0) || c.snapshots < Number(flightLog.info.snapshots || 0))
+      flightLogStatus.textContent += ` Some parts stayed damaged after ${flightLog.passes} passes; read again for the rest.`;
   }
   syncFlightLogControls(serialConsole.state === 'connected');
 }

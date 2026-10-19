@@ -78,17 +78,32 @@ test('a corrupted snapshot is reported, not trusted', () => {
   assert.equal(decodeImage(img).snapshots[0].ok, false);
 });
 
-test('console dump lines rebuild the image; missing partition is explained', () => {
+test('console dump lines rebuild the image; damaged lines get another pass; missing partition is explained', () => {
   const img = image();
   const cap = new FlightLogCapture();
   cap.start();
-  assert.equal(cap.push('FLOG_BEGIN format=1 bytes=1572864 blocks=1 snapshots=1 session=7 fw=x'), true);
   const hex = (o, n) => Array.from(img.subarray(o, o + n), (b) => b.toString(16).padStart(2, '0')).join('');
-  for (let o = SECTOR * 5; o < SECTOR * 6; o += 256) assert.equal(cap.push(`STATUS x=1 FLOG_D ${o} ${hex(o, 256)}`), true);
-  for (let o = SNAP_FIRST * SECTOR; o < (SNAP_FIRST + 2) * SECTOR; o += 256) cap.push(`FLOG_D ${o} ${hex(o, 256)}`);
-  assert.ok(cap.progress > 0.99);
+  const line = (o) => `FLOG_D ${o} ${hex(o, o === 0 ? 32 : 256)} ${crc32(img.subarray(o, o + (o === 0 ? 32 : 256))).toString(16).padStart(8, '0')}`;
+  const offsets = [0];
+  for (let o = SECTOR * 5; o < SECTOR * 6; o += 256) offsets.push(o);
+  for (let o = SNAP_FIRST * SECTOR; o < (SNAP_FIRST + 2) * SECTOR; o += 256) offsets.push(o);
+  assert.equal(cap.push('FLOG_BEGIN format=1 bytes=1572864 blocks=1 snapshots=1 session=7 fw=x'), true);
+  for (const o of offsets) {
+    let l = line(o);
+    if (o === SECTOR * 5 + 512) l = l.slice(0, 300) + 'HB t_s=12 stage=ready' + l.slice(300);   // another task's line inside
+    if (o === SECTOR * 5 + 768) l = l.replace(/ ([0-9a-f]{8})$/, ' 00000000');                 // looks like hex, wrong CRC
+    assert.equal(cap.push(`STATUS x=1 ${l}`), true);
+  }
   assert.equal(cap.push('FLOG_END blocks=1 snapshots=1'), true);
+  assert.equal(cap.damaged, 2);
+  assert.equal(cap.done, false);
+  assert.equal(cap.needsPass, true);
+  cap.nextPass();
+  for (const o of offsets) cap.push(line(o));
+  cap.push('FLOG_END blocks=1 snapshots=1');
   assert.equal(cap.done, true);
+  assert.equal(cap.passes, 2);
+  assert.ok(cap.progress > 0.99);
   assert.equal(decodeImage(cap.image).sessions[0].seconds.length, 2);
   const missing = new FlightLogCapture();
   missing.start();

@@ -8,6 +8,7 @@ page reads the same dump in the browser (web/flight-log.js).
     python tools/flight_log.py decode flight.c5log out_dir  # CSV, events, snapshots
 """
 import argparse
+import re
 import csv
 import json
 import struct
@@ -40,40 +41,77 @@ def crc32(data, crc=0):
     return zlib.crc32(data, crc) & 0xffffffff
 
 
-def dump(port, out):
+LINE = re.compile(r'FLOG_D (\d+) ([0-9a-f]+) ([0-9a-f]{8})$')
+LINE_BYTES = 256
+
+
+def unit(offset):
+    """The dump unit holding `offset` (header, a record block, or a snapshot
+    slot): its start and the line offsets a complete dump of it sends."""
+    if offset < SECTOR:
+        return 0, [0]
+    sector = offset // SECTOR
+    if sector >= SNAP_FIRST:
+        start = (SNAP_FIRST + (sector - SNAP_FIRST) // SNAP_SECTORS * SNAP_SECTORS) * SECTOR
+        length = SNAP_SECTORS * SECTOR
+    else:
+        start, length = sector * SECTOR, SECTOR
+    return start, list(range(start, start + length, LINE_BYTES))
+
+
+def complete(got):
+    """Starts of the units whose every line arrived intact."""
+    return {start for start, lines in {unit(o) [0]: unit(o)[1] for o in got}.items() if all(o in got for o in lines)}
+
+
+def dump(port, out, passes=4):
+    """Console W, repeated for any line that did not arrive intact (other
+    tasks print too); every FLOG_D line carries its CRC-32."""
     import serial
     s = serial.Serial()
     s.port, s.baudrate, s.timeout, s.dtr, s.rts = port, 115200, .2, False, False
     s.open()
-    s.reset_input_buffer()
-    s.write(b'W')
-    image = bytearray(b'\xff' * PARTITION)
-    buf, begun, end = b'', False, time.monotonic() + 120
-    while time.monotonic() < end:
-        buf += s.read(65536)
-        lines = buf.split(b'\n')
-        buf = lines.pop()
-        for raw in lines:
-            line = raw.decode(errors='replace').strip()
-            at = line.find('FLOG_')
-            line = line[at:] if at >= 0 else line
-            if line.startswith('FLOG_BEGIN'):
-                begun = True
-                print(line)
-            elif line.startswith('FLOG_D ') and begun:
-                _, offset, data = line.split(' ', 2)
-                chunk = bytes.fromhex(data)
-                image[int(offset):int(offset) + len(chunk)] = chunk
-            elif line.startswith('FLOG_END'):
-                print(line)
-                Path(out).write_bytes(bytes(image))
-                print(f'wrote {out}')
-                return
-            elif line.startswith('FLOG partition=missing'):
-                sys.exit(line)
-        if begun:
-            end = max(end, time.monotonic() + 10)
-    sys.exit('no FLOG_END (timeout)')
+    image = bytearray(bytes([0xff]) * PARTITION)
+    got, bad, want = set(), 0, None
+    for attempt in range(passes):
+        s.reset_input_buffer()
+        s.write(b'W')
+        buf, end, finished = b'', time.monotonic() + 30, False
+        while time.monotonic() < end and not finished:
+            data = s.read(65536)
+            if data:
+                end = time.monotonic() + 30
+            buf += data
+            lines = buf.split(b'\n')
+            buf = lines.pop()
+            for raw in lines:
+                line = raw.decode(errors='replace').strip()
+                at = line.find('FLOG')
+                line = line[at:] if at >= 0 else line
+                if line.startswith('FLOG partition=missing'):
+                    sys.exit(line)
+                if line.startswith('FLOG_BEGIN'):
+                    info = dict(kv.split('=', 1) for kv in line.split()[1:] if '=' in kv)
+                    want = (int(info.get('blocks', 0)), int(info.get('snapshots', 0)))
+                elif line.startswith('FLOG_D '):
+                    m = LINE.match(line)
+                    chunk = bytes.fromhex(m[2]) if m and len(m[2]) % 2 == 0 else None
+                    if chunk is None or zlib.crc32(chunk) != int(m[3], 16):
+                        bad += 1
+                        continue
+                    o = int(m[1])
+                    image[o:o + len(chunk)] = chunk
+                    got.add(o)
+                elif line.startswith('FLOG_END'):
+                    finished = True
+        done = complete(got)
+        blocks = sum(1 for start in done if 0 < start < SNAP_FIRST * SECTOR)
+        snaps = sum(1 for start in done if start >= SNAP_FIRST * SECTOR)
+        print(f'pass {attempt + 1}: {blocks} blocks, {snaps} snapshots complete; {bad} damaged lines so far')
+        if want and blocks >= want[0] and snaps >= want[1] and 0 in got:
+            break
+    Path(out).write_bytes(bytes(image))
+    print(f'wrote {out}')
 
 
 def records(block):
