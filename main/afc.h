@@ -62,6 +62,13 @@ typedef struct {
     uint16_t burst_x10;      /* mean burst amplitude in phase codes x10 */
     uint16_t period_40m;     /* measured accepted-run spacing; 0 without two agreeing runs */
     uint16_t width_40m;      /* mean accepted sync width, smoothed detector */
+    /* Video quality: the instantaneous frequency is flat on the sync tips and
+     * the back porch by definition, so its spread there is the noise of the
+     * demodulated video, whatever caused it (DC, sampling phase, filter,
+     * profile, offset, interference). snr_x10 = 20 log10(|porch - sync| /
+     * that spread) x10, 0 without lines. Sums are in phase codes. */
+    int64_t sync_sum, porch_sum, sync_sq, porch_sq;
+    int16_t snr_x10;
 } afc2_result_t;
 
 /* Burst amplitude (codes x10) at one subcarrier over the burst window, using
@@ -226,6 +233,21 @@ static inline unsigned afc2_run_score(const uint8_t *s, size_t n, size_t end,
 
 #define AFC2_MAX_RUNS 8u
 
+/* Video SNR from the flat parts of the line (afc2_result_t snr_x10): the
+ * sync-to-blanking distance over the pooled spread on both. */
+static inline int16_t afc2_snr_x10(int64_t sync_sum, int64_t sync_sq, uint32_t sync_n,
+                                   int64_t porch_sum, int64_t porch_sq, uint32_t porch_n)
+{
+    if (sync_n < 32u || porch_n < 32u) return 0;
+    const double ms = (double)sync_sum / sync_n, mp = (double)porch_sum / porch_n;
+    const double var = ((double)sync_sq - ms * (double)sync_sum + (double)porch_sq - mp * (double)porch_sum) /
+                       (double)(sync_n + porch_n - 2u);
+    const double span = ms > mp ? ms - mp : mp - ms;
+    if (var <= 0.) return 600;
+    const double snr = 10. * log10(span * span / var);
+    return (int16_t)(snr > 60. ? 600 : snr < -30. ? -300 : snr * 10. + (snr >= 0 ? .5 : -.5));
+}
+
 static inline afc2_result_t afc2_measure(const uint8_t *s, size_t n,
                                          const uint8_t lut[256])
 {
@@ -299,7 +321,7 @@ static inline afc2_result_t afc2_measure(const uint8_t *s, size_t n,
     if (best < 0 || !score[best]) return r;
     r.polarity = (int8_t)(best ? 1 : -1);
 
-    int64_t sync_sum = 0, porch_sum = 0;
+    int64_t sync_sum = 0, porch_sum = 0, sync_sq = 0, porch_sq = 0;
     int burst_sum = 0, burst_n = 0, std_votes = 0;
     size_t last_start = 0;
     int last_std = 0;
@@ -328,19 +350,20 @@ static inline afc2_result_t afc2_measure(const uint8_t *s, size_t n,
         }
         std_votes += std_id == 2 ? 1 : -1;
         uint32_t old_sync_pairs = r.sync_pairs, old_porch_pairs = r.porch_pairs;
-        int64_t old_sync_sum = sync_sum, old_porch_sum = porch_sum;
+        int64_t old_sync_sum = sync_sum, old_porch_sum = porch_sum, old_sync_sq = sync_sq, old_porch_sq = porch_sq;
         for (size_t j = start + AFC2_TIP_GUARD; j < end - AFC2_TIP_GUARD; ++j) {
             int d = afc2_delta(s[j], s[j + 1], lut);
-            if (d != INT16_MIN) { sync_sum += d; ++r.sync_pairs; }
+            if (d != INT16_MIN) { sync_sum += d; sync_sq += (int64_t)d * d; ++r.sync_pairs; }
         }
         for (size_t j = p0; j < p1; ++j) {
             int d = afc2_delta(s[j], s[j + 1], lut);
-            if (d != INT16_MIN) { porch_sum += d; ++r.porch_pairs; }
+            if (d != INT16_MIN) { porch_sum += d; porch_sq += (int64_t)d * d; ++r.porch_pairs; }
         }
         if ((r.sync_pairs - old_sync_pairs) * 4u < (end - start - 2u * AFC2_TIP_GUARD) * 3u ||
             (r.porch_pairs - old_porch_pairs) * 4u < AFC2_PORCH_LEN * 3u) {
             r.sync_pairs = old_sync_pairs; r.porch_pairs = old_porch_pairs;
             sync_sum = old_sync_sum; porch_sum = old_porch_sum;
+            sync_sq = old_sync_sq; porch_sq = old_porch_sq;
             if (burst) { --burst_n; burst_sum -= amp; }
             std_votes -= std_id == 2 ? 1 : -1;
             continue;
@@ -362,5 +385,10 @@ static inline afc2_result_t afc2_measure(const uint8_t *s, size_t n,
     if (r.lines) r.standard = std_votes > 0 ? 2u : std_votes < 0 ? 1u : 0u;
     r.sync_khz = afc2_codes_to_khz(sync_sum, r.sync_pairs);
     r.porch_khz = afc2_codes_to_khz(porch_sum, r.porch_pairs);
+    r.sync_sum = sync_sum;
+    r.porch_sum = porch_sum;
+    r.sync_sq = sync_sq;
+    r.porch_sq = porch_sq;
+    r.snr_x10 = afc2_snr_x10(sync_sum, sync_sq, r.sync_pairs, porch_sum, porch_sq, r.porch_pairs);
     return r;
 }

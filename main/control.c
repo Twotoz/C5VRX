@@ -85,6 +85,9 @@ typedef struct {
     const char *window, *held;
 } afc_evidence_snapshot_t;
 static afc_evidence_snapshot_t s_afc_evidence = {.window="boot", .held="boot", .cn_x10=CN_UNKNOWN_X10};
+static vq_acc_t s_vq_acc;
+static vq_t s_vq;
+static uint32_t s_vq_periods;
 /* Verified kp ladder (kp_ladder.h), NVS "kp_auto": 0 off, 1 kp only,
  * 2 kp plus the live U85Q <-> U85Q-LP switch. K cycles 0 -> 1 -> 2 -> 0;
  * k steps one kp level and P toggles the program by hand for the bench test
@@ -488,7 +491,9 @@ static void control_task(void *arg)
         if (window_ok) {
             r = afc2_measure(s_window, CONTROL_BYTES, c5vrx_phase8_gain_lut);
             afc2_ctrl_observe_at(&afc, &r, (uint64_t)now);
+            vq_add(&s_vq_acc, &r);
         } else afc2_ctrl_miss(&afc);   /* settle and context changes reset via afc2_ctrl_sync */
+        if (vq_close(&s_vq_acc, now, &s_vq)) ++s_vq_periods;
         if (copied) s_cfo_khz = r.porch_pairs ? r.porch_khz : 0;
         /* Burst or line timing confirmed the syncs (afc2_measure). */
         bool valid = window_ok && r.lines && r.standard && r.porch_pairs && r.sync_pairs;
@@ -654,6 +659,9 @@ void control_print_beat(void)
            profile_live_mode(), menu_status_active(), firmware_id());
 }
 
+/* End-to-end video quality of the last second (video_quality.h). */
+void control_video_quality(vq_t *out) { vTaskSuspendAll(); *out = s_vq; (void)xTaskResumeAll(); }
+
 void control_print(void)
 {
     vTaskSuspendAll();
@@ -663,6 +671,11 @@ void control_print(void)
     const bool afc_gain_current=afc_snapshot.qualified_us && afc_snapshot.qualified_gain_epoch==s_gain_epoch;
     (void)xTaskResumeAll();
     const afc2_evidence_t evidence=afc_snapshot.history;
+    vq_t vq;
+    control_video_quality(&vq);
+    printf("VIDEO_Q known=%u snr_x10=%d lines_x100=%u lines=%lu windows=%lu periods=%lu (end-to-end: sync/porch "
+           "spread of the demodulated video, last second)\n", vq.known, vq.snr_x10, vq.lines_x100,
+           (unsigned long)vq.lines, (unsigned long)vq.windows, (unsigned long)s_vq_periods);
     printf("AFC_EVIDENCE latest_valid=%u context_current=%u qualified_gain_current=%u sticky_lock=%u target_khz=%d "
            "last_qualified_raw_porch_khz=%ld last_qualified_residual_khz=%ld qualified_age_ms=%lld sample_age_ms=%lld "
            "n=%u timestamped=%u stable=%u median_residual_khz=%ld mad_khz=%ld oldest_age_ms=%lld newest_age_ms=%lld "
