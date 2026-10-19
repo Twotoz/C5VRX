@@ -1,0 +1,138 @@
+# Flight log (design, C5VRX-5)
+
+C5VRX by Twotoz and the C5VRX contributors. Status: design, not yet built.
+
+"Some boots are great, some terrible" happened in the field, without a
+laptop. A log has to answer four questions afterwards, and nothing goes in
+that does not help answer one of them:
+
+1. How good was the link, and when did it go bad?
+2. Was the receiver in its best state then, or did a fixable impairment
+   (DC, gain, filter, sampling phase, AFC, profile) cost dB?
+3. What changed just before (boot, channel, profile, calibration, temperature,
+   a reset)?
+4. What did the raw signal look like at the worst moments?
+
+## Storage
+
+A `flightlog` data partition of 1.5 MiB (the 8 MiB flash uses ~3.1 MiB):
+
+| region | size | content |
+| --- | ---: | --- |
+| header | 4 KiB | magic, layout, format version |
+| record ring | 1 MiB - 4 KiB | sessions, per-second summaries, events |
+| snapshot ring | 512 KiB | 64 IQ snapshots of 8 KiB |
+
+Records are buffered in RAM and written as one 4 KiB block (about every two
+minutes); a sector is erased only when the ring wraps into it, as often as
+the gain map is already saved. Video is hardware and never waits for flash.
+A battery pulled mid-write loses at most the unwritten block.
+
+## Versioning and robustness
+
+- **Header** (first sector): magic `C5LG`, `log_format`, region sizes. A
+  firmware that finds another layout reformats the partition once (the log
+  is diagnostic data, not configuration).
+- **Block** (4 KiB): magic, `log_format`, session id, block sequence number,
+  uptime of the first record, record count, CRC-32 over the block. The head
+  is found at boot by the highest valid sequence number; a block with a bad
+  CRC is skipped, never trusted.
+- **Record**: `type` (1 byte), `length` (1 byte), payload. A reader skips
+  unknown types by their length; a newer firmware only appends fields at the
+  end of a payload, never reorders or reuses them, so an old reader still
+  reads the fields it knows. `log_format` changes only when that rule cannot
+  be kept.
+- **Units** are fixed per field below and never change meaning.
+
+## Session record (once per boot)
+
+What the receiver was, how it was set and calibrated, and why it started.
+
+| field | why |
+| --- | --- |
+| session id (counter), `log_format` | order sessions without a real-time clock |
+| firmware version (`5.0.N`), git hash, build flags | which code produced the log |
+| `CAL_GENERATION`, filter blob version, DC index version | which calibration semantics |
+| reset reason (power-on, brownout, watchdog, panic, software) | a brownout in flight explains a black screen without any RF cause |
+| chip revision, board id (hash of the MAC, not the MAC) | unit-to-unit differences without identifying a person |
+| PHY context: gain table maximum, band5, IQ scale | the DC rows and the gain table the log refers to |
+| settings: channel, standard mode, output level, gain mode, flywheel, kp mode, live profile switch, AFC sign | user settings that cost range (fixed gain) are visible |
+| calibration this boot: what ran (filter, DC rows per filter, sampling phase, deviation), result, duration | "this boot calibrated" vs "loaded" |
+| filter settings NORMAL/NARROW/WIDE (bw20, code, skirt, width, noise bandwidth) | calibration-to-calibration differences |
+| DC tables: rows, template rows, ready per filter; repair flags | a stale or partial table |
+| sampling phase: state, chosen position, contrast | the per-boot choice our noise model cannot see |
+| boot DC (before the servo) and temperature | the boot offset the servo had to remove |
+
+## Carrier record (when the VTX or its measurement changes)
+
+What was received, so a log can be compared across VTXs and cameras.
+
+| field | why |
+| --- | --- |
+| channel, frequency, AFC offset applied | where the receiver listened |
+| porch frequency (raw, kHz), AFC residual | the VTX's real frequency and its drift |
+| deviation (x100) and the batches it came from | which profile fits; a VTX outside the profiles |
+| profile chosen and reason | why MATCHED / DEFAULT / WIDE |
+| standard (PAL/NTSC), colour burst present, line period, sync width, polarity | camera type and settings |
+
+Written at the first carrier of a session, after every deviation measurement
+that changes the result, and on a channel change.
+
+## Per-second summary (fixed 40 bytes)
+
+One per second while the receiver runs; ~7 hours in the ring.
+
+| group | fields (unit) |
+| --- | --- |
+| time | uptime (s) |
+| link | `VIDEO_Q` SNR (0.1 dB), lines found per window (x100), C/N estimate median (0.1 dB), share of windows with sync (%), dropout category |
+| gain | min / median / max index, max clip (per mille / 4), gain writes, overloads |
+| DC | residual I and Q of the active row (0.05 cells, signed), offset I and Q of the active row (codes), servo corrections |
+| AFC | offset applied (kHz), porch residual (kHz), corrections |
+| demodulator | profile, kp level, LP (packed), sampling-phase state and last probe excess |
+| environment | temperature (degC) |
+| flags | menu, scan, calibrating, paused, fault latched, flywheel active, status screen |
+
+Counters are per second (saturating), not per event.
+
+## Events (rare, ~20-200 bytes)
+
+uptime (ms) and type, then:
+
+- channel change (from, to, why: menu, console, scan), profile switch (from,
+  to, reason, deviation), kp/LP switch (from, to, result, restart time);
+- calibration start/end (manual or startup, what, result), `DC CAL NEEDED`
+  (reason, filter), gain mode change, menu open/close;
+- fault or latch (DC restore, transport rollback, live off);
+- **dropout onset**: the existing 16-before/16-after trace at 50 ms
+  (`diag_trace.h`), and its end with duration;
+- snapshot taken (index, trigger).
+
+## IQ snapshots (64 x 8 KiB ring)
+
+8190 bytes of contiguous IQ (the console `I` format, Ihigh_Qlow, 40 MS/s)
+with a header: session, uptime, trigger, gain, frequency, filter key,
+profile, kp/LP, DC offsets of the row, sampling-phase position.
+
+Triggers, at most one per 10 s:
+
+- dropout onset;
+- `VIDEO_Q` more than 6 dB below its 30-second median;
+- the first carrier of a session (reference), and one every 10 minutes.
+
+Every snapshot can be run through `research/sensitivity_model.py` and the
+bit-exact U85Q chain afterwards, and a bad one becomes a CI regression case.
+
+## Deliberately not logged
+
+- Per-window or per-probe data and every gain write: the per-second summary
+  and its counters answer the questions; more is noise.
+- Anything that can be derived from other fields.
+- The MAC address, location or anything else that identifies a person.
+
+## Reading it
+
+Console `Y`: log status; `YY`: dump as text records over USB; `YYY`: erase.
+`tools/flight_log.py`: decode a dump, plot SNR / gain / DC / temperature
+over time with the events and snapshot marks, and write the snapshots as
+`.bin` + `.json` for the research tools.
