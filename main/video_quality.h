@@ -30,7 +30,11 @@ typedef struct {
 } vq_t;
 
 #define VQ_PERIOD_US    1000000LL
-#define VQ_MIN_WINDOWS  20u
+/* The AFC measures one window per 50 ms control tick, at most 20 a second
+ * and fewer when a window is not stationary: 20 was never reached and every
+ * second read unknown (board blackbox 2026-10-19: SNR 0 throughout a session
+ * at 16 dB C/N). Five windows are a quarter of a second of evidence. */
+#define VQ_MIN_WINDOWS  5u
 
 static inline void vq_add(vq_acc_t *a, const afc2_result_t *r)
 {
