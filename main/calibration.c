@@ -1449,8 +1449,14 @@ static bool servo_write_active(uint8_t g, const int step[2], int applied[2], boo
     return applied[0] || applied[1];
 }
 
+/* One-sided clipping seen by the gain observer (calibration_dc_urgent). */
+static TaskHandle_t s_cal_task;
+static volatile bool s_dc_urgent;
+static uint32_t s_dc_urgent_wakes;
+
 static void drift_service(void)
 {
+    s_dc_urgent = false;
     drift_temperature();
     if (!s_servo_ready) { dc_servo_init(&s_servo); s_servo_ready = true; }
     if (s_dc_fault || s_startup || !quiet_owner() || rf_lane() != RF_LANE_ULTRAFINE) {
@@ -1717,14 +1723,35 @@ static void lane_compare(void)
     receiver_resume();
 }
 
+/* One-sided clipping seen by the gain observer: run the DC servo now. */
+/* Woken early, the servo still decides on the full DC_SERVO_MIN_SAMPLES of
+ * the row (they accumulate continuously): faster, never noisier. Deciding
+ * on 10000 samples (~8 ms) chased the flicker noise (board 2026-10-19: 804
+ * wakes, 335 steps, 25 sign rejects in a minute without a VTX). */
+void calibration_dc_urgent(void)
+{
+    static int64_t last;
+    const int64_t now = esp_timer_get_time();
+    if (s_dc_urgent || now - last < 100000) return;
+    last = now;
+    s_dc_urgent = true;
+    if (s_cal_task) xTaskNotifyGive(s_cal_task);
+}
+
 static void calibration_task(void *arg)
 {
     (void)arg;
+    s_cal_task = xTaskGetCurrentTaskHandle();
     rf_set_post_gain_hook(dco_post_gain);
     printf("STARTUP task up\n");
     startup_phase(false);
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(250));
+        if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(250))) {
+            /* Woken for DC: only the servo, the rest keeps its 250 ms pace. */
+            ++s_dc_urgent_wakes;
+            drift_service();
+            continue;
+        }
         if (s_manual_requested && !s_menu_active) { s_manual_requested = false; startup_phase(true); continue; }
         if (s_lane_requested && !s_menu_active) { s_lane_requested = false; lane_compare(); continue; }
         dco_service();
@@ -1853,13 +1880,13 @@ void calibration_print(void)
                    g <= ARC_VENDOR_GAIN_MAX ? s_dco.e[g].valid : 0u, g <= ARC_VENDOR_GAIN_MAX ? s_dco_banned[g] : 0u);
     }
     printf("DC_SERVO dc_mcells=%d/%d slope_mcells_per_code=%d/%d offset=%d/%d own_row=%u steps=%lu writes=%lu "
-           "estimates=%lu learned=%lu relearned=%lu sign_rejects=%lu forgotten=%lu skip=%lu/%lu/%lu/%lu/%lu fault=%u table_reloads=%lu reload_why=%u "
+           "estimates=%lu learned=%lu relearned=%lu sign_rejects=%lu forgotten=%lu urgent_wakes=%lu skip=%lu/%lu/%lu/%lu/%lu fault=%u table_reloads=%lu reload_why=%u "
            "volatile=1\n", s_drift_avg[0], s_drift_avg[1], s_servo.slope[0], s_servo.slope[1],
            dco_offset(s_current_gain, 0), dco_offset(s_current_gain, 1),
            s_current_gain <= ARC_VENDOR_GAIN_MAX ? (unsigned)s_drift_set[s_current_gain] : 0u,
            (unsigned long)s_servo.steps, (unsigned long)s_servo_writes, (unsigned long)s_servo_estimates,
            (unsigned long)s_servo.learned, (unsigned long)s_servo.relearned,
-           (unsigned long)s_servo.sign_rejects, (unsigned long)s_servo.forgotten,
+           (unsigned long)s_servo.sign_rejects, (unsigned long)s_servo.forgotten, (unsigned long)s_dc_urgent_wakes,
            (unsigned long)s_servo_skip[0], (unsigned long)s_servo_skip[1], (unsigned long)s_servo_skip[2],
            (unsigned long)s_servo_skip[3], (unsigned long)s_servo_skip[4], (unsigned)s_dc_fault,
            (unsigned long)s_dco_reloads, (unsigned)s_dco_reload_why);

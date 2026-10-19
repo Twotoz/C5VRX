@@ -34,6 +34,9 @@ EVENTS = {1: 'channel', 2: 'profile', 3: 'kp', 4: 'cal_start', 5: 'cal_end', 6: 
 DROPOUT = ['CALIBRATION_OR_PHY', 'FAST_EVIDENCE_LOSS', 'AT_RF_FLOOR', 'DEMOD_CLIFF', 'UNKNOWN']
 SPHASE = ['unverified', 'settled', 'drifted', 'unsettled', 'noise_limited', 'probe_failed']
 PROFILES = ['DEFAULT', 'MATCHED', 'NARROW', 'WIDE']
+RX_STATES = ['', 'ACQUIRE', 'TRACK', 'EDGE', 'RECOVER', 'FAULT', 'OWNED']
+RX_REASONS = ['none', 'no_carrier', 'weak_signal', 'dc_clipping', 'overload', 'dc_residual', 'sync_loss_with_rf',
+              'owned', 'fault', 'low_picture_snr']
 TRIGGERS = {1: 'dropout', 2: 'vq_drop', 3: 'first_carrier', 4: 'periodic', 5: 'overload'}
 
 
@@ -138,6 +141,9 @@ def second(p):
     d['lp'] = (d['demod'] >> 5) & 1
     d['sphase_state'] = SPHASE[d['sphase']] if d['sphase'] < len(SPHASE) else 'unknown'
     d['dropout_category'] = DROPOUT[d['dropout'] - 1] if 0 < d['dropout'] <= len(DROPOUT) else ''
+    rx = p[33] if len(p) > 33 else 0
+    d['rx_state'] = RX_STATES[rx & 7] if (rx & 7) < len(RX_STATES) else '?'
+    d['rx_reason'] = (RX_REASONS[rx >> 3] if (rx >> 3) < len(RX_REASONS) else '?') if rx else ''
     return d
 
 

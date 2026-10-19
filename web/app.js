@@ -843,7 +843,8 @@ function renderFlightLog() {
     const minutes = sum.durationS >= 60 ? `${Math.floor(sum.durationS / 60)} min ${sum.durationS % 60} s` : `${sum.durationS} s`;
     const cells = [`#${sum.session}${sum.freq ? ` · ${sum.freq} MHz` : ''}`, minutes, `${sum.pictureS} s`,
       sum.snrMedian === null ? '—' : `${fmt(sum.snrMedian)} / ${fmt(sum.snrWorst)} dB`, String(sum.dropouts),
-      fmt(sum.dcWorst, 2, ' cells'), fmt(sum.tempMax, 0, ' °C'), fmt(sum.deviation, 2), sum.resetReason, sum.firmware];
+      fmt(sum.dcWorst, 2, ' cells'), fmt(sum.tempMax, 0, ' °C'), fmt(sum.deviation, 2),
+      `${sum.states.TRACK} / ${sum.states.EDGE} / ${sum.states.RECOVER} s`, sum.topReason || '—', sum.resetReason, sum.firmware];
     for (const text of cells) { const td = document.createElement('td'); td.textContent = text; row.append(td); }
     row.tabIndex = 0;
     row.addEventListener('click', () => selectFlightSession(s, row));

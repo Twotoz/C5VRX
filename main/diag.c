@@ -17,6 +17,8 @@
  * tools/field_diag_compare.py compares two captured logs. */
 #include "esp_attr.h"
 #include "receiver.h"
+#include "rx_state.h"
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include "cn_estimate.h"
@@ -61,6 +63,33 @@ static struct {
     bool afc_step;
 } s_acc;
 static bool s_in_dropout;
+/* Receiver state supervisor, shadow mode (rx_state.h): names the situation
+ * each second for D and the flight log; never writes the PHY. */
+static rx_state_t s_rx;
+static bool s_rx_ready;
+static void rx_supervise(const diag_record_t *r)
+{
+    static uint32_t overloads, one_sided;
+    static bool have;
+    if (!s_rx_ready) { rx_state_init(&s_rx); s_rx_ready = true; }
+    vq_t vq;
+    control_video_quality(&vq);
+    int dc[2], off[2];
+    uint32_t servo;
+    uint8_t sph;
+    int8_t temp;
+    calibration_flog_live(dc, off, &servo, &sph, &temp);
+    const int dcm = (int)sqrtf((float)dc[0] * dc[0] + (float)dc[1] * dc[1]);
+    const rx_obs_t o = {
+        .video_pct = r->video_pct, .cn_x10 = r->cn_x10, .vq_known = vq.known && vq.lines, .vq_snr_x10 = vq.snr_x10,
+        .overloads = (uint16_t)(have ? s_gain.overloads - overloads : 0u),
+        .one_sided_clips = (uint16_t)(have ? s_gain.one_sided_clips - one_sided : 0u),
+        .dc_mcells = dcm, .fault = (r->flags & DIAG_F_FAULT) != 0 || receiver_paused(),
+        .owned = s_menu_active || s_scan_active || calibration_in_startup(),
+    };
+    overloads = s_gain.overloads; one_sided = s_gain.one_sided_clips; have = true;
+    (void)rx_state_step(&s_rx, &o);
+}
 static uint8_t s_last_category;
 static uint32_t s_segment_start_seq;
 static uint32_t s_seen_faults;
@@ -130,7 +159,9 @@ static void close_second(int64_t now)
     s_hist[s_seq % DIAG_HISTORY] = r;
     ++s_seq;
     taskEXIT_CRITICAL(&s_lock);
-    flightlog_second(&r, s_acc.gain_min, s_acc.gain_max, s_in_dropout ? (uint8_t)(s_last_category + 1u) : 0u);
+    rx_supervise(&r);
+    flightlog_second(&r, s_acc.gain_min, s_acc.gain_max, s_in_dropout ? (uint8_t)(s_last_category + 1u) : 0u,
+                     rx_state_byte(&s_rx));
 
     if (!s_in_dropout && diag_video_lost(&r)) {
         diag_record_t look[DIAG_LOOKBACK];
@@ -351,6 +382,11 @@ void diag_report(void)
            "calibration=%s\n", f.code, f.skirt, f.bw20 ? "BW20" : "BW40", cls, rf_filter_applied(), phy_filter_code(),
            phy_filter_skirt(), calibration_filter_result());
     profile_print();
+    printf("RANGE_DIAG rx_state=%s reason=%s dwell_s=%lu track_s=%lu edge_s=%lu recover_s=%lu acquire_s=%lu "
+           "(shadow supervisor: names the situation, never acts)\n", rx_state_name(s_rx.state),
+           rx_reason_name(s_rx.reason), (unsigned long)s_rx.dwell_s, (unsigned long)s_rx.seconds[RX_TRACK],
+           (unsigned long)s_rx.seconds[RX_EDGE], (unsigned long)s_rx.seconds[RX_RECOVER],
+           (unsigned long)s_rx.seconds[RX_ACQUIRE]);
     printf("RANGE_DIAG afc locked=%u offset_khz=%d cfo_khz=%d\n", s_afc_locked, rf_offset_khz(), s_cfo_khz);
     printf("RANGE_DIAG gain index=%u max=%u rf_stage=%u rf_code=%u bb=%u fine=%u top_rf_stage_from=%u at_max=%u "
            "state=%u\n", g, table->max_index, tuple_ok ? t.rf_stage : 0xffu, tuple_ok ? t.rf_code : 0u,

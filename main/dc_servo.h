@@ -32,7 +32,15 @@
 #define DC_SERVO_SLOPE_DEFAULT 150      /* mcells per code until learned (board: 170-550) */
 #define DC_SERVO_SLOPE_MIN     30
 #define DC_SERVO_SLOPE_MAX     800
-#define DC_SERVO_PROBE         2        /* codes, to learn a slope */
+#define DC_SERVO_PROBE         3        /* codes, to learn a slope */
+/* The DC wanders by itself (flicker, ~0.3 cells between means), so a small
+ * step's effect drowns in it: a slope is learned only from steps of at least
+ * DC_SERVO_LEARN_STEP codes (~0.6-1.2 cells), and a step counts as failed
+ * only while the DC stays above DC_SERVO_BAD_MCELLS, DC_SERVO_BAD_RUN times
+ * running (board 2026-10-19: 32 relearns in 100 s with 2 / no floor). */
+#define DC_SERVO_LEARN_STEP    3
+#define DC_SERVO_BAD_MCELLS    800
+#define DC_SERVO_BAD_RUN       3u
 
 typedef struct {
     int slope[2];       /* mcells per code, signed, shared by the rows; 0 = unknown (probe first) */
@@ -70,7 +78,8 @@ static inline void dc_servo_decide(dc_servo_t *s, unsigned r, const int dc[2], i
         if (s->row[r].last_step[a]) {
             const int moved = dc[a] - s->row[r].last_dc[a];
             const int slope = moved / s->row[r].last_step[a];
-            if (dc_servo_abs(moved) >= 150 && dc_servo_abs(slope) >= DC_SERVO_SLOPE_MIN &&
+            if (dc_servo_abs(s->row[r].last_step[a]) >= DC_SERVO_LEARN_STEP &&
+                dc_servo_abs(moved) >= 150 && dc_servo_abs(slope) >= DC_SERVO_SLOPE_MIN &&
                 dc_servo_abs(slope) <= DC_SERVO_SLOPE_MAX) {
                 /* Smooth a known slope; take the first measurement as is. A
                  * known slope never flips sign on one measurement: the DAC
@@ -81,8 +90,8 @@ static inline void dc_servo_decide(dc_servo_t *s, unsigned r, const int dc[2], i
                 else if ((s->slope[a] > 0) == (slope > 0)) { s->slope[a] = (s->slope[a] + slope) / 2; ++s->learned; }
                 else ++s->sign_rejects;
             }
-            if (dc_servo_abs(dc[a]) >= dc_servo_abs(s->row[r].last_dc[a]) && dc_servo_abs(dc[a]) > DC_SERVO_DEADBAND) {
-                if (++s->row[r].bad[a] >= 2u) {
+            if (dc_servo_abs(dc[a]) >= dc_servo_abs(s->row[r].last_dc[a]) && dc_servo_abs(dc[a]) > DC_SERVO_BAD_MCELLS) {
+                if (++s->row[r].bad[a] >= DC_SERVO_BAD_RUN) {
                     s->slope[a] = 0; s->known[a] = 0; s->row[r].bad[a] = 0; ++s->relearned;
                 }
             } else {

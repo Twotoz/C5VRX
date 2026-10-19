@@ -176,6 +176,7 @@ typedef struct {
     uint8_t sphase;          /* state code */
     int8_t temp_c;
     uint16_t flags;          /* diag flags (low byte) | menu/scan/startup/paused/fault (high) */
+    uint8_t rx_state;        /* rx_state.h: state + 1 | reason << 3; 0 = not recorded */
 } flog_second_t;
 
 #define FLOG_SECOND_LEN 34u
@@ -198,7 +199,7 @@ static inline void flog_pack_second(const flog_second_t *s, uint8_t p[FLOG_SECON
     flog_put16(p + 25, (uint16_t)s->afc_residual_khz);
     p[27] = s->afc_corrections; p[28] = s->demod; p[29] = s->sphase; p[30] = (uint8_t)s->temp_c;
     flog_put16(p + 31, s->flags);
-    p[33] = 0;   /* reserved */
+    p[33] = s->rx_state;
 }
 
 static inline bool flog_unpack_second(const uint8_t *p, uint8_t len, flog_second_t *s)
@@ -217,6 +218,7 @@ static inline bool flog_unpack_second(const uint8_t *p, uint8_t len, flog_second
     s->afc_residual_khz = (int16_t)flog_get16(p + 25);
     s->afc_corrections = p[27]; s->demod = p[28]; s->sphase = p[29]; s->temp_c = (int8_t)p[30];
     s->flags = (uint16_t)flog_get16(p + 31);
+    s->rx_state = p[33];
     return true;
 }
 

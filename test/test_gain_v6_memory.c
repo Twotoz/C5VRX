@@ -112,6 +112,34 @@ int main(void)
     uint8_t burst = step(&g, clipped(t));
     CHECK(burst == 30, "a single clipped window at the remembered gain is a burst, not an overload (G%u)", burst);
 
+    /* One-sided clipping (DC on a rail, gain.h dg_one_sided) is not overload:
+     * no carrier at the table maximum, the noise cloud pushed onto Q-8 by
+     * DC (board blackbox 2026-10-19: bursts of 255+ writes, 10-20 steps
+     * down). Clipping on both rails of an axis still cuts the gain. */
+    {
+        static direct_gain_t h;
+        dg_map_context_t c = context(5865, 0);
+        dg_reset_context(&h, &table, table.max_index, &c);
+        uint64_t u = 1000;
+        for (int k = 0; k < 40; ++k, u += 200) step(&h, empty(u));
+        const uint8_t top = h.current_gain;
+        const uint32_t writes = h.writes;
+        dg_observation_t dc = {.p50 = 6, .p90 = 30, .p95 = 40, .origin_pm = 300, .clip_pm = 160, .coherence = 30,
+                               .repeat_pm = 200, .span = 9, .rails = 4u /* Q-8 only */};
+        for (int k = 0; k < 200; ++k, u += 200) { dc.observed_us = u; step(&h, dc); }
+        CHECK(h.current_gain == top && h.writes == writes && h.overloads == 0 && h.one_sided_clips == 200,
+              "one-sided clipping leaves the gain (gain %u of %u, writes %lu, overloads %lu, one-sided %lu)",
+              h.current_gain, top, (unsigned long)(h.writes - writes), (unsigned long)h.overloads,
+              (unsigned long)h.one_sided_clips);
+        dg_observation_t big = dc;
+        big.rails = 4u | 8u;   /* Q-8 and Q+7: a carrier too large for the window */
+        for (int k = 0; k < 40; ++k, u += 200) { big.observed_us = u; step(&h, big); }
+        CHECK(h.current_gain < top && h.overloads > 0, "two-sided clipping still cuts the gain (gain %u, top %u)",
+              h.current_gain, top);
+        dg_observation_t legacy = dc;
+        legacy.rails = 0;      /* no rail evidence: the old rule */
+        CHECK(!dg_one_sided(&legacy) && dg_one_sided(&dc) && !dg_one_sided(&big), "rail classification");
+    }
     printf("%s: %u checks, %u failures\n", s_fail ? "FAIL" : "PASS", s_run, s_fail);
     return s_fail ? 1 : 0;
 }

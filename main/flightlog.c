@@ -299,7 +299,7 @@ void flightlog_start(void)
 
 /* ---- per-second summary and traces (diag.c) ----------------------------- */
 
-void flightlog_second(const diag_record_t *r, uint8_t gain_min, uint8_t gain_max, uint8_t dropout)
+void flightlog_second(const diag_record_t *r, uint8_t gain_min, uint8_t gain_max, uint8_t dropout, uint8_t rx_state)
 {
     if (!s_ready) return;
     static uint32_t gw, ov, sw, ac;
@@ -329,6 +329,7 @@ void flightlog_second(const diag_record_t *r, uint8_t gain_min, uint8_t gain_max
         .sphase = sph, .temp_c = temp,
         .flags = (uint16_t)(r->flags | (s_menu_active ? 0x100u : 0u) | (s_scan_active ? 0x200u : 0u) |
                             (calibration_in_startup() ? 0x400u : 0u) | (receiver_paused() ? 0x800u : 0u)),
+        .rx_state = rx_state,
     };
     gw = r->gain_writes; ov = r->overloads; sw = servo_writes; ac = afc_corr; have = true;
     uint8_t p[FLOG_SECOND_LEN];

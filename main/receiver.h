@@ -182,6 +182,8 @@ bool calibration_dc_ready(rf_filter_t f);
  * (codes), servo writes so far, sampling-phase state code, temperature. */
 void calibration_flog_live(int dc[2], int off[2], uint32_t *servo_writes, uint8_t *sphase, int8_t *temp_c);
 uint16_t calibration_generation_id(void);
+/* gain observer: one-sided clipping (DC on a rail), run the DC servo now. */
+void calibration_dc_urgent(void);
 /* control.c: AFC offset applied, porch residual (kHz), corrections so far. */
 void control_flog_afc(int16_t *offset_khz, int16_t *residual_khz, uint32_t *corrections);
 /* Observer DC sums per gain row (receiver.c) for the live DC servo: a row's

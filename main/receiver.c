@@ -371,6 +371,7 @@ static void observer_task(void *arg)
         if (o.clip_pm >= 100u || o.p95 >= 95u) {
             const bool both = (o.rails & 3u) == 3u || (o.rails & 12u) == 12u;
             if (both) ++s_sat_two_sided; else ++s_sat_one_sided;
+            if (o.clip_pm >= 100u && dg_one_sided(&o)) calibration_dc_urgent();   /* real clipping, not a touch */
             if (++s_sat_run == 50u) flightlog_snapshot_request(FLOG_SNAP_OVERLOAD);   /* a burst, ~10 ms */
         } else {
             s_sat_run = 0;
@@ -418,8 +419,8 @@ void receiver_start(void)
 
 void receiver_print(void)
 {
-    printf("GAIN_SAT one_sided=%lu two_sided=%lu (saturated observer windows: one rail per axis = DC-pushed, both = large signal)\n",
-           (unsigned long)s_sat_one_sided, (unsigned long)s_sat_two_sided);
+    printf("GAIN_SAT one_sided=%lu two_sided=%lu to_dc_servo=%lu (saturated observer windows: one rail per axis = DC-pushed, both = large signal; one-sided ones go to the DC servo, not the gain)\n",
+           (unsigned long)s_sat_one_sided, (unsigned long)s_sat_two_sided, (unsigned long)s_gain.one_sided_clips);
     printf("CN_OBSERVER windows=%lu period_us=%u max_age_us=%u\n", (unsigned long)s_cn_windows,
            CN_OBSERVE_PERIOD_US, CN_OBSERVE_MAX_AGE_US);
     char mode[16];

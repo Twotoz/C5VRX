@@ -675,7 +675,8 @@ uint8_t dg_tick(direct_gain_t *g, const dg_observation_t *o)
     dg_observation_t prior = g->last_tracking;
     g->last_tracking = *o;
     bool no_carrier = o->p50 <= 4 && o->origin_pm >= 650 && o->coherence < 20;
-    bool saturated = o->clip_pm >= 100 || o->p95 >= 95;
+    bool saturated = (o->clip_pm >= 100 && !dg_one_sided(o)) || o->p95 >= 95;
+    if (o->clip_pm >= 100 && dg_one_sided(o)) ++g->one_sided_clips;
     if (!no_carrier) g->carrier_us = o->observed_us;
     /* V6: a carrier clipping above its remembered gain returns to it at
      * once (see DG6_CLIMB_STEP). At or below it, V5's burst gate and

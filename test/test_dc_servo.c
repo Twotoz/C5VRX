@@ -173,6 +173,34 @@ int main(void)
         printf("     rows G83/G82 alternating: worst |DC| %.2f cells\n", worst);
         check("alternating rows with different offsets: both below 0.35 cells", worst <= .35);
     }
+    /* Flicker: the DC itself wanders on the decision scale (board
+     * 2026-10-19: ~0.3 cells between 250 ms means, 1/f below ~100 kHz). The
+     * servo must not read a step drowned in it as a wrong slope: 300 steps,
+     * 32 relearns and 50 sign rejects in 100 s on the board. */
+    {
+        dc_servo_t f;
+        dc_servo_init(&f);
+        int code[2] = {0, 0};
+        double wander[2] = {0, 0};
+        unsigned steps = 0;
+        double sq = 0;
+        for (unsigned p = 0; p < 400; ++p) {
+            for (int a = 0; a < 2; ++a) wander[a] = 0.9 * wander[a] + 0.3 * gauss();   /* AR(1), ~0.7 cells rms */
+            const double ti = 1.2 + wander[0] + code[0] * 0.4, tq = -0.8 + wander[1] + code[1] * 0.4;
+            int64_t si, sqq;
+            measure(ti, tq, 1.9, DC_SERVO_MIN_SAMPLES, &si, &sqq);
+            int dc[2], step[2];
+            if (!dc_servo_mean(si, sqq, DC_SERVO_MIN_SAMPLES, dc)) continue;
+            dc_servo_decide(&f, 83u, dc, step);
+            if (step[0] || step[1]) { code[0] += step[0]; code[1] += step[1]; dc_servo_applied(&f, 83u, dc, step); ++steps; }
+            if (p >= 100) sq += ti * ti + tq * tq;
+        }
+        const double rms = sqrt(sq / 300.);
+        printf("     flicker: %u steps in 400 periods, relearned %lu, sign rejects %lu, |DC| rms %.2f cells\n", steps,
+               (unsigned long)f.relearned, (unsigned long)f.sign_rejects, rms);
+        check("flicker: no slope relearning from noise", f.relearned <= 1u && f.sign_rejects <= 10u);
+        check("flicker: DC stays near the wander floor (<= 1.0 cell rms)", rms <= 1.0);
+    }
     printf("%u/%u dc servo checks passed\n", s_run - s_fail, s_run);
     return s_fail != 0;
 }

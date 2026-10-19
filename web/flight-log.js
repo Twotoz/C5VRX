@@ -21,6 +21,8 @@ export const EVENTS = { 1: 'channel', 2: 'profile', 3: 'kp', 4: 'cal_start', 5: 
 export const DROPOUT = ['CALIBRATION_OR_PHY', 'FAST_EVIDENCE_LOSS', 'AT_RF_FLOOR', 'DEMOD_CLIFF', 'UNKNOWN'];
 export const SPHASE = ['unverified', 'settled', 'drifted', 'unsettled', 'noise_limited', 'probe_failed'];
 export const PROFILES = ['DEFAULT', 'MATCHED', 'NARROW', 'WIDE'];
+export const RX_STATES = ['', 'ACQUIRE', 'TRACK', 'EDGE', 'RECOVER', 'FAULT', 'OWNED'];
+export const RX_REASONS = ['none', 'no_carrier', 'weak_signal', 'dc_clipping', 'overload', 'dc_residual', 'sync_loss_with_rf', 'owned', 'fault', 'low_picture_snr'];
 export const RESET_REASONS = ['unknown', 'power-on', 'external', 'software', 'panic', 'interrupt watchdog',
   'task watchdog', 'watchdog', 'deep sleep', 'brownout', 'SDIO', 'USB', 'JTAG', 'eFuse', 'power glitch', 'CPU lockup'];
 const TRIGGERS = { 1: 'dropout', 2: 'picture drop', 3: 'first carrier', 4: 'periodic', 5: 'overload burst' };
@@ -141,7 +143,8 @@ export function decodeSecond(p) {
     clip: p[15] * 4, gainWrites: p[16], overloads: p[17], dcI: d.getInt8(18) * 0.05, dcQ: d.getInt8(19) * 0.05,
     offI: d.getInt8(20), offQ: d.getInt8(21), servo: p[22], afcOffset: d.getInt16(23, true),
     afcResidual: d.getInt16(25, true), afcSteps: p[27], profile: PROFILES[p[28] & 3], kp: (p[28] >> 2) & 7,
-    lp: (p[28] >> 5) & 1, sphase: SPHASE[p[29]] ?? 'unknown', temp: d.getInt8(30), flags: d.getUint16(31, true)
+    lp: (p[28] >> 5) & 1, sphase: SPHASE[p[29]] ?? 'unknown', temp: d.getInt8(30), flags: d.getUint16(31, true),
+    rxState: RX_STATES[p[33] & 7] ?? '', rxReason: p[33] ? RX_REASONS[p[33] >> 3] ?? 'unknown' : ''
   };
   s.cn = s.cn <= -990 ? null : s.cn / 10;
   s.temp = s.temp <= -100 ? null : s.temp;
@@ -228,14 +231,16 @@ export function summarize(session) {
     dropouts: session.events.filter((e) => e.event === 'dropout').length,
     dcWorst: sec.length ? Math.max(...sec.map((s) => s.dc)) : null,
     tempMax: median(sec.map((s) => s.temp)) === null ? null : Math.max(...sec.filter((s) => s.temp !== null).map((s) => s.temp)),
-    deviation: session.carriers.length ? session.carriers[session.carriers.length - 1].deviation : null
+    deviation: session.carriers.length ? session.carriers[session.carriers.length - 1].deviation : null,
+    states: Object.fromEntries(['TRACK', 'EDGE', 'RECOVER', 'ACQUIRE'].map((st) => [st, sec.filter((s) => s.rxState === st).length])),
+    topReason: (() => { const c = {}; for (const s of sec) if (s.rxReason && s.rxReason !== 'none' && s.rxReason !== 'owned') c[s.rxReason] = (c[s.rxReason] ?? 0) + 1; return Object.entries(c).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''; })()
   };
 }
 
 export function secondsCsv(session) {
   const keys = ['t', 'snr', 'lines', 'cn', 'video', 'dropoutCategory', 'gainMin', 'gain', 'gainMax', 'clip', 'gainWrites',
     'overloads', 'dcI', 'dcQ', 'offI', 'offQ', 'servo', 'afcOffset', 'afcResidual', 'afcSteps', 'profile', 'kp', 'lp',
-    'sphase', 'temp', 'flags'];
+    'sphase', 'temp', 'flags', 'rxState', 'rxReason'];
   const rows = session.seconds.map((s) => keys.map((k) => (s[k] === null || s[k] === undefined ? '' : typeof s[k] === 'number' ? +s[k].toFixed(3) : s[k])).join(','));
   return [keys.join(','), ...rows].join('\n') + '\n';
 }
