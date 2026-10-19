@@ -264,7 +264,7 @@ void menu_render(void)
             text("REPAIRED AT NEXT BOOT, OR HOLD", 100, 33, UI_MUTED, 1);
         } else {
             text("ON THE GROUND ONLY: VIDEO STOPS", 100, 24, UI_WHITE, 1);
-            text("FOR UP TO 2 MIN. VTX OFF IS BEST", 100, 33, UI_MUTED, 1);
+            text("FOR A FEW MIN. VTX OFF IS BEST", 100, 33, UI_MUTED, 1);
         }
         text("NEVER RUNS BY ITSELF IN FLIGHT", 100, 47, UI_MUTED, 1);
         break;

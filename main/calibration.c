@@ -8,7 +8,8 @@
  * never in flight: a receiver must not drop the picture because it decided
  * to calibrate. The final sampling-phase qualification and the deviation
  * step run on the live picture, but still inside this bounded phase (a
- * repair slip there briefly disturbs it). Startup, bounded to ~2 minutes:
+ * repair slip there briefly disturbs it). Startup, bounded to ~2 minutes
+ * (8 for a full calibration):
  *  1. sampling phase: PARLIO must not sample MODEM_DIAG mid-transition;
  *  2. narrow analog filter, only when none is stored: one sweep on the own
  *     channel (VTX off) or a quiet channel >= 40 MHz away (VTX on);
@@ -1658,10 +1659,17 @@ static void deviation_startup(int64_t deadline)
 }
 
 #define STARTUP_BUDGET_US 120000000LL
+/* A full calibration (first boot, a new calibration generation, CALIBRATE)
+ * measures the filter and three DC tables: 2 minutes covered the filter and
+ * 19 of 30 rows of one table (board 2026-10-19), and the rest took two more
+ * boots. It gets the time to finish once; a normal boot is unchanged. */
+#define STARTUP_FULL_BUDGET_US 480000000LL
 static void startup_phase(bool manual)
 {
     s_startup = true;
-    const int64_t t0 = esp_timer_get_time(), deadline = t0 + STARTUP_BUDGET_US;
+    const bool full = manual || s_filter_cal.version != FILTER_VERSION || !s_filter_cal.normal.valid;
+    const int64_t t0 = esp_timer_get_time();
+    const int64_t deadline = t0 + (full ? STARTUP_FULL_BUDGET_US : STARTUP_BUDGET_US);
     /* Direct Gain first finds its state (table maximum without a carrier). */
     for (unsigned k = 0; k < 40u && s_gain.state == DG_SETTLE; ++k) vTaskDelay(pdMS_TO_TICKS(100));
     vTaskDelay(pdMS_TO_TICKS(manual ? 200 : 1500));
@@ -1802,8 +1810,37 @@ static void calibration_task(void *arg)
     }
 }
 
+/* Calibration generation ("cal_gen" in NVS). A calibration made by an
+ * earlier firmware is not trusted: what a table means changed more than once
+ * (DC codes measured in the wrong analog filter branch, one table for every
+ * filter; docs/FINDINGS.md 2026-10-19), and an upgrade path that keeps old
+ * codes kept exactly those errors. A boot with another generation discards
+ * the filter calibration, every DC table and the repair flags, and runs the
+ * full first-boot calibration. Raise CAL_GENERATION whenever a firmware
+ * changes what a stored calibration means. */
+#define CAL_GENERATION 1u
+static void calibration_generation(void)
+{
+    uint16_t stored = 0;
+    if (blob_load("cal_gen", &stored, sizeof(stored)) && stored == CAL_GENERATION) return;
+    printf("CALIBRATION generation stored=%u firmware=%u: calibration of an earlier firmware discarded, full "
+           "calibration this boot\n", stored, CAL_GENERATION);
+    const filter_blob_t none = {0};
+    dco_index_init(&s_dco_index);
+    s_dco_index_loaded = true;                 /* never adopt or upgrade the old tables */
+    dc_flags_init(&s_dc_flags);
+    s_dc_flags_loaded = true;
+    const bool ok = blob_store("filter", &none, sizeof(none)) &&
+                    blob_store("dco_idx", &s_dco_index, sizeof(s_dco_index)) &&
+                    blob_store("dc_recal", &s_dc_flags, sizeof(s_dc_flags));
+    const uint16_t now = CAL_GENERATION;
+    if (!ok || !blob_store("cal_gen", &now, sizeof(now)))
+        printf("CALIBRATION error: generation not stored, discarded again next boot\n");
+}
+
 void calibration_start(void)
 {
+    calibration_generation();
     rf_filter_t loaded;
     if (blob_load("filter", &s_filter_cal, sizeof(s_filter_cal)) && filter_setting(FILTER_NORMAL, &loaded)) {
         rf_set_filter(loaded);

@@ -121,8 +121,10 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
 
 ## First boot
 
-1. Flash (below) and power the receiver, best with the **VTX off**, for up
-   to two minutes: the goggles show CALIBRATING with the time left. With a
+1. Flash (below) and power the receiver, best with the **VTX off**, for a
+   few minutes (at most eight): the goggles show CALIBRATING with the
+   progress. A firmware with a new calibration generation discards the
+   calibration of an earlier firmware and calibrates fully once. With a
    VTX on it calibrates the filter on a quiet channel and comes back.
    Results are stored; later boots skip what is already measured. The
    first DC measurement is the template for every channel: switching
