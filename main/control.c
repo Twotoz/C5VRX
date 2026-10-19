@@ -19,6 +19,8 @@
 #include "phase8_gain_lut.h"
 #include "phy.h"
 #include "rf.h"
+#include "flightlog.h"
+#include "flightlog_format.h"
 
 #define BOOT_BUTTON      GPIO_NUM_28    /* XIAO ESP32-C5 BOOT */
 #define TICK_MS          50
@@ -165,6 +167,11 @@ static int strength(const metrics_t *m, uint8_t gain)
 static void after_retune(void)
 {
     ++s_control_epoch;
+    {
+        uint8_t e[3] = {(uint8_t)rf_channel_index()};
+        flog_put16(e + 1, rf_frequency_mhz());
+        flightlog_event(FLOG_E_CHANNEL, e, sizeof(e));
+    }
     s_cfo_khz = 0;
     s_afc_locked = false;
     standard_reset();
@@ -657,6 +664,13 @@ void control_print_beat(void)
            s_detected_std_valid ? (s_detected_std == VIDEO_STD_PAL ? "PAL" : "NTSC") : "none",
            s_signal_strength, s_menu_active, profile_name(profile_active()), s_kp_auto, transport_output_name(),
            profile_live_mode(), menu_status_active(), firmware_id());
+}
+
+void control_flog_afc(int16_t *offset_khz, int16_t *residual_khz, uint32_t *corrections)
+{
+    *offset_khz = (int16_t)rf_offset_khz();
+    *residual_khz = (int16_t)s_afc_evidence.residual_khz;
+    *corrections = s_afc_corrections;
 }
 
 /* End-to-end video quality of the last second (video_quality.h). */

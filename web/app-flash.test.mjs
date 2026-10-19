@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { ReceiverConsole, MENU_COMMAND_KEYS } from './receiver-console.js';
+import { FlightLogCapture, decodeImage, summarize, secondsCsv } from './flight-log.js';
 
 // Exercise the actual click handler with a mock loader: never touch USB hardware.
 const source = fs.readFileSync(process.env.APP_SOURCE_PATH || new URL('./app.js', import.meta.url), 'utf8').replace(/^import .*;\r?\n/gm, '');
@@ -26,6 +27,7 @@ function harness(sourceName, packageType = 'merged', confirmed = true) {
   const downloads = [], flashes = [], alerts = [], commands = [], lifecycle = [];
   const context = vm.createContext({
     console, URL, Date, TextDecoder, TextEncoder, ReceiverConsole, MENU_COMMAND_KEYS, setTimeout, clearTimeout,
+    FlightLogCapture, decodeImage, summarize, secondsCsv,
     setInterval: () => 0, clearInterval() {},
     document: { baseURI: 'https://c5vrx.com/', getElementById: get, visibilityState: 'visible',
       querySelectorAll: selector => selector === '[data-command]' ? shortcuts : [], addEventListener() {}, createElement: () => get('option') },

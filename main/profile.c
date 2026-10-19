@@ -120,8 +120,27 @@ bool profile_set(int p)
             return false;
         }
     }
+    if (s_profile != p) {
+        const uint8_t e[2] = {(uint8_t)s_profile, (uint8_t)p};
+        flightlog_event(FLOG_E_PROFILE, e, sizeof(e));
+    }
     s_profile = p;
     return true;
+}
+
+/* Flight log: what was received (docs/FLIGHT_LOG.md carrier record). */
+static void carrier_record(int dev_x100)
+{
+    uint8_t c[20] = {0};
+    flog_put32(c, (uint32_t)(esp_timer_get_time() / 1000));
+    flog_put16(c + 4, rf_frequency_mhz());
+    flog_put16(c + 6, (uint16_t)(int16_t)rf_offset_khz());
+    flog_put32(c + 8, (uint32_t)(int32_t)s_cfo_khz);
+    flog_put16(c + 12, (uint16_t)(int16_t)dev_x100);
+    c[14] = (uint8_t)s_profile;
+    c[15] = s_detected_std_valid ? (uint8_t)(s_detected_std == VIDEO_STD_PAL ? 2 : 1) : 0u;
+    c[16] = (uint8_t)rf_channel_index();
+    flightlog_record(FLOG_T_CARRIER, c, 17);
 }
 
 bool profile_live_mode(void) { return s_live_switch; }
@@ -245,6 +264,7 @@ static void live_decided(int dev_x100, int64_t now)
 {
     size_t ch = rf_channel_index();
     if (ch != s_live_channel) return;
+    if (s_live_dev != dev_x100) carrier_record(dev_x100);
     s_live_dev = dev_x100;
     const int want = profile_for_deviation(dev_x100);
     const bool class_changed = s_dev_table[ch] == 0 || profile_for_deviation(s_dev_table[ch]) != want;
@@ -349,6 +369,7 @@ void profile_commit(int dev_x100)
     }
     printf("PROFILE channel=%s deviation_x100=%d profile=%s reason=%s\n", rf_channel()->name, dev_x100,
            s_names[s_profile], s_reason);
+    carrier_record(dev_x100);
 }
 
 void profile_set_reason(const char *reason) { s_reason = reason; }

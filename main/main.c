@@ -30,6 +30,8 @@ void app_main(void)
     ESP_ERROR_CHECK(rf_start());
     s_boot_stage = "settings";
     settings_load();
+    s_boot_stage = "flightlog";
+    flightlog_start();
     /* Start at the first index of the highest RF stage; Direct Gain V6 takes
      * over at once (table maximum without a carrier). */
     receiver_set_gain(arc_gain_highest_rf_stage_start(rf_gain_table()));

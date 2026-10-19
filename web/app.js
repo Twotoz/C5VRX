@@ -1,6 +1,7 @@
 import { ESPLoader, Transport } from './esptool.js';
 import { SerialTerminal } from './serial-terminal.js';
 import { ReceiverConsole, MENU_COMMAND_KEYS } from './receiver-console.js';
+import { FlightLogCapture, decodeImage, summarize, secondsCsv } from './flight-log.js';
 
 const $ = id => document.getElementById(id);
 
@@ -621,7 +622,7 @@ function flushLog() {
 function visibleLog(text) {
   const parts = (logLinePartial + text).split('\n');
   const tail = parts.pop();
-  const isStatus = line => line.replace(/\r$/, '').startsWith('STATUS ');
+  const isStatus = line => { const l = line.replace(/\r$/, ''); return l.startsWith('STATUS ') || l.startsWith('FLOG_D '); };
   let out = parts.filter(line => !isStatus(line)).map(line => `${line}\n`).join('');
   if (tail.length <= 4096 && (tail.startsWith('STATUS ') || 'STATUS '.startsWith(tail))) {
     logLinePartial = tail;
@@ -633,6 +634,7 @@ function visibleLog(text) {
 }
 
 function appendSerial(text) {
+  flightLogFeed(text);
   // Batch the log text: FIELD_DIAG and IQ dumps arrive in many small reads.
   logPending = (logPending + visibleLog(text)).slice(-MAX_LOG_CHARS);
   if (!logTimer) logTimer = setTimeout(flushLog, 50);
@@ -698,6 +700,7 @@ function syncDeviceControls() {
   btnConnect.disabled = portBusy;
   btnConnect.title = terminalConnected ? 'Releases the terminal and connects the flasher' : '';
   btnTerminalConnect.disabled = portBusy;
+  syncFlightLogControls(terminalConnected);
   btnTerminalConnect.textContent = terminalConnected ? 'Disconnect' : serialConsole.state === 'connecting' ? 'Connecting…' : 'Connect receiver';
   btnTerminalConnect.title = isConnected ? 'Releases the flasher and connects the terminal' : '';
   terminalBaud.disabled = !terminalIdle;
@@ -777,6 +780,156 @@ $('downloadLog').addEventListener('click', () => {
   link.download = `c5vrx-${new Date().toISOString().replace(/[:.]/g, '-')}.log`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+// ---- Flight log (web/flight-log.js, docs/FLIGHT_LOG.md) -------------------
+const flightLog = new FlightLogCapture();
+let flightLogPartial = '';
+let flightLogResult = null;
+let flightLogSelected = null;
+const flightLogStatus = $('flightLogStatus');
+
+function flightLogFeed(text) {
+  const parts = (flightLogPartial + text).split('\n');
+  flightLogPartial = parts.pop().slice(-1100);
+  let touched = false;
+  for (const line of parts) touched = flightLog.push(line.replace(/\r$/, '')) || touched;
+  if (!touched) return;
+  if (flightLog.error) {
+    flightLogStatus.textContent = flightLog.error;
+  } else if (flightLog.active) {
+    flightLogStatus.textContent = `Reading flight log… ${Math.round(flightLog.progress * 100)}%`;
+  } else if (flightLog.done && !flightLogResult) {
+    flightLogResult = decodeImage(flightLog.image);
+    renderFlightLog();
+  }
+  syncFlightLogControls(serialConsole.state === 'connected');
+}
+
+function syncFlightLogControls(connected) {
+  $('btnReadFlightLog').disabled = !connected || commandBusy || flightLog.active;
+  $('btnEraseFlightLog').disabled = !connected || commandBusy || flightLog.active;
+  $('btnDownloadFlightLog').disabled = !flightLog.done;
+  $('btnDownloadFlightCsv').disabled = !flightLogResult?.sessions.length;
+}
+
+function download(name, data, type) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const fmt = (v, digits = 1, unit = '') => (v === null || v === undefined || !Number.isFinite(v) ? '—' : `${v.toFixed(digits)}${unit}`);
+
+function renderFlightLog() {
+  const { sessions, snapshots } = flightLogResult;
+  const table = $('flightLogSessions');
+  const body = table.querySelector('tbody');
+  body.textContent = '';
+  for (const s of [...sessions].reverse()) {
+    const sum = summarize(s);
+    const row = document.createElement('tr');
+    const minutes = sum.durationS >= 60 ? `${Math.floor(sum.durationS / 60)} min ${sum.durationS % 60} s` : `${sum.durationS} s`;
+    const cells = [`#${sum.session}${sum.freq ? ` · ${sum.freq} MHz` : ''}`, minutes, `${sum.pictureS} s`,
+      sum.snrMedian === null ? '—' : `${fmt(sum.snrMedian)} / ${fmt(sum.snrWorst)} dB`, String(sum.dropouts),
+      fmt(sum.dcWorst, 2, ' cells'), fmt(sum.tempMax, 0, ' °C'), fmt(sum.deviation, 2), sum.resetReason, sum.firmware];
+    for (const text of cells) { const td = document.createElement('td'); td.textContent = text; row.append(td); }
+    row.tabIndex = 0;
+    row.addEventListener('click', () => selectFlightSession(s, row));
+    row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectFlightSession(s, row); } });
+    body.append(row);
+  }
+  table.hidden = !sessions.length;
+  const seconds = sessions.reduce((n, s) => n + s.seconds.length, 0);
+  flightLogStatus.textContent = sessions.length
+    ? `${sessions.length} session(s), ${Math.round(seconds / 60)} min recorded, ${snapshots.length} IQ snapshot(s). Click a session for its chart.`
+    : 'The flight log is empty.';
+  if (sessions.length) selectFlightSession(sessions[sessions.length - 1], body.firstElementChild);
+}
+
+function selectFlightSession(session, row) {
+  flightLogSelected = session;
+  for (const r of $('flightLogSessions').querySelectorAll('tbody tr')) r.classList.toggle('selected', r === row);
+  drawFlightChart(session);
+  syncFlightLogControls(serialConsole.state === 'connected');
+}
+
+function drawFlightChart(session) {
+  const canvas = $('flightLogChart');
+  const sec = session.seconds;
+  canvas.hidden = !sec.length;
+  $('flightLogLegend').hidden = !sec.length;
+  if (!sec.length) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height, pad = 28;
+  const css = getComputedStyle(document.documentElement);
+  const color = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  ctx.clearRect(0, 0, w, h);
+  const t0 = sec[0].t, t1 = sec[sec.length - 1].t || t0 + 1;
+  const x = (t) => pad + ((t - t0) / Math.max(1, t1 - t0)) * (w - 2 * pad);
+  const y = (v) => h - pad - (Math.max(0, Math.min(25, v)) / 25) * (h - 2 * pad);   /* 0..25 on one axis */
+  ctx.strokeStyle = color('--border', '#888');
+  ctx.globalAlpha = 0.4;
+  for (let v = 0; v <= 25; v += 5) { ctx.beginPath(); ctx.moveTo(pad, y(v)); ctx.lineTo(w - pad, y(v)); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = color('--text-muted', '#888');
+  ctx.font = '11px system-ui, sans-serif';
+  for (let v = 0; v <= 25; v += 5) ctx.fillText(String(v), 4, y(v) + 4);
+  ctx.fillText(`${Math.round((t1 - t0) / 60)} min`, w - pad - 30, h - 8);
+  ctx.fillStyle = 'rgba(220, 60, 60, 0.25)';
+  for (const s of sec) if (s.dropout) ctx.fillRect(x(s.t) - 1, pad, 3, h - 2 * pad);
+  const series = [
+    ['#2f8fdf', (s) => (s.lines > 0 ? s.snr : null)],
+    ['#3aa76d', (s) => s.gain / 4],
+    ['#e08a1e', (s) => s.dc * 5],
+    ['#9a6ad6', (s) => (s.temp === null ? null : s.temp / 4)]
+  ];
+  for (const [stroke, value] of series) {
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let pen = false;
+    for (const s of sec) {
+      const v = value(s);
+      if (v === null) { pen = false; continue; }
+      if (pen) ctx.lineTo(x(s.t), y(v)); else ctx.moveTo(x(s.t), y(v));
+      pen = true;
+    }
+    ctx.stroke();
+  }
+}
+
+$('btnReadFlightLog').addEventListener('click', async () => {
+  if (serialConsole.state !== 'connected' || commandBusy) return;
+  flightLog.start();
+  flightLogResult = null;
+  flightLogStatus.textContent = 'Reading flight log…';
+  syncFlightLogControls(true);
+  commandBusy = true;
+  try { await serialConsole.send('W'); } finally { commandBusy = false; syncDeviceControls(); }
+});
+$('btnEraseFlightLog').addEventListener('click', async () => {
+  if (serialConsole.state !== 'connected' || commandBusy) return;
+  if (!window.confirm('Erase the whole flight log on the receiver? Download it first if you want to keep it.')) return;
+  commandBusy = true;
+  try { await serialConsole.send('X'); await new Promise((r) => setTimeout(r, 300)); await serialConsole.send('X'); }
+  finally { commandBusy = false; syncDeviceControls(); }
+  flightLog.reset();
+  flightLogResult = null;
+  $('flightLogSessions').hidden = true;
+  $('flightLogChart').hidden = true;
+  $('flightLogLegend').hidden = true;
+  flightLogStatus.textContent = 'Erasing the flight log (about 20 s)…';
+});
+$('btnDownloadFlightLog').addEventListener('click', () => {
+  if (flightLog.done) download(`c5vrx-flight-${new Date().toISOString().replace(/[:.]/g, '-')}.c5log`, flightLog.image, 'application/octet-stream');
+});
+$('btnDownloadFlightCsv').addEventListener('click', () => {
+  const s = flightLogSelected ?? flightLogResult?.sessions.at(-1);
+  if (s) download(`c5vrx-session-${s.session}.csv`, secondsCsv(s), 'text/csv;charset=utf-8');
 });
 
 // Receiver menu pages: browsing never sends anything.

@@ -1,6 +1,8 @@
 # Flight log (design, C5VRX-5)
 
-C5VRX by Twotoz and the C5VRX contributors. Status: design, not yet built.
+C5VRX by Twotoz and the C5VRX contributors. Status: built (PR #224): `main/flightlog.c`, `main/flightlog_format.h`,
+`tools/flight_log.py`, web flasher Terminal page "Flight log"; host tests
+`test/test_flightlog.c`, `web/flight-log.test.mjs`.
 
 "Some boots are great, some terrible" happened in the field, without a
 laptop. A log has to answer four questions afterwards, and nothing goes in
@@ -21,7 +23,7 @@ A `flightlog` data partition of 1.5 MiB (the 8 MiB flash uses ~3.1 MiB):
 | --- | ---: | --- |
 | header | 4 KiB | magic, layout, format version |
 | record ring | 1 MiB - 4 KiB | sessions, per-second summaries, events |
-| snapshot ring | 512 KiB | 64 IQ snapshots of 8 KiB |
+| snapshot ring | 512 KiB | 64 IQ snapshots (64-byte head + 8128 IQ bytes) |
 
 Records are buffered in RAM and written as one 4 KiB block (about every two
 minutes); a sector is erased only when the ring wraps into it, as often as
@@ -110,7 +112,8 @@ uptime (ms) and type, then:
 
 ## IQ snapshots (64 x 8 KiB ring)
 
-8190 bytes of contiguous IQ (the console `I` format, Ihigh_Qlow, 40 MS/s)
+8128 bytes of contiguous IQ (the console `I` format, Ihigh_Qlow, 40 MS/s; 62
+bytes shorter than `I` so a slot is exactly two sectors)
 with a header: session, uptime, trigger, gain, frequency, filter key,
 profile, kp/LP, DC offsets of the row, sampling-phase position.
 
@@ -132,7 +135,14 @@ bit-exact U85Q chain afterwards, and a bad one becomes a CI regression case.
 
 ## Reading it
 
-Console `Y`: log status; `YY`: dump as text records over USB; `YYY`: erase.
-`tools/flight_log.py`: decode a dump, plot SNR / gain / DC / temperature
-over time with the events and snapshot marks, and write the snapshots as
-`.bin` + `.json` for the research tools.
+- Web flasher, Terminal page, "Flight log": read it over USB (the receiver
+  keeps running), a table per session, a chart (picture SNR, gain, DC,
+  temperature, dropouts), download `.c5log` (the partition image) and CSV,
+  erase.
+- Console `Y` status, `W` dump (`FLOG_BEGIN` / `FLOG_D <offset> <hex>` /
+  `FLOG_END`), `X` twice within 3 s erases.
+- `tools/flight_log.py dump COM10 f.c5log` and `decode f.c5log dir`: CSV per
+  session, JSON with boot, calibration, carrier and events, and the snapshots
+  as `.bin` + `.json` for `research/sensitivity_model.py`.
+- The partition table changed: flash the full image once (the web flasher's
+  "Full firmware"); an app-only update leaves the log off and says so.

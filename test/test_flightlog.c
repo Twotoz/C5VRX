@@ -1,0 +1,107 @@
+/* C5VRX-5 by Twotoz and the C5VRX contributors: host test of the flight log
+ * format (main/flightlog_format.h): CRC, headers, ring resume, record walk,
+ * the per-second summary and snapshot heads.
+ *
+ *   cc -O2 -std=c11 -I../main test_flightlog.c -o t && ./t
+ */
+#include <stdio.h>
+#include "flightlog_format.h"
+
+static unsigned s_fail, s_run;
+static void check(const char *name, int ok)
+{
+    ++s_run;
+    printf("%-4s %s\n", ok ? "ok" : "FAIL", name);
+    s_fail += !ok;
+}
+
+static unsigned s_count, s_types;
+static bool visit(void *ctx, uint8_t type, const uint8_t *payload, uint8_t len)
+{
+    (void)ctx; (void)payload; (void)len;
+    ++s_count;
+    s_types |= 1u << type;
+    return true;
+}
+
+int main(void)
+{
+    check("CRC-32 of \"123456789\" is the standard check value",
+          flog_crc32(0, (const uint8_t *)"123456789", 9) == 0xcbf43926u);
+    check("CRC-32 chains", flog_crc32(flog_crc32(0, (const uint8_t *)"1234", 4), (const uint8_t *)"56789", 5) ==
+          0xcbf43926u);
+    check("layout: 1.5 MiB, 64 snapshots of 8128 bytes", FLOG_PARTITION_BYTES == 0x180000u && FLOG_SNAP_BYTES == 8128u);
+
+    uint8_t h[32];
+    flog_header(h);
+    check("header round trip", flog_header_ok(h));
+    h[4] ^= 1;
+    check("header of another format rejected", !flog_header_ok(h));
+
+    /* Ring resume: blocks 0..9 written with seq 300..309, then the ring
+     * wrapped into 0..2 with 310..312; sessions up to 9. */
+    flog_resume_t r;
+    flog_resume_init(&r);
+    for (unsigned k = 0; k < FLOG_RECORD_BLOCKS; ++k) {
+        flog_head_t head = {0};
+        if (k < 10u) head = (flog_head_t){true, k < 3u ? 9u : 8u, k < 3u ? 310u + k : 300u + k, 0};
+        flog_resume_add(&r, k, FLOG_RECORD_BLOCKS, head);
+    }
+    check("resume after the newest block across the wrap", r.next_block == 3u && r.next_seq == 313u &&
+          r.next_session == 10u);
+    flog_resume_init(&r);
+    check("empty log starts at block 0, session 1", r.next_block == 0u && r.next_seq == 1u && r.next_session == 1u);
+    flog_resume_add(&r, FLOG_RECORD_BLOCKS - 1u, FLOG_RECORD_BLOCKS, (flog_head_t){true, 4u, 77u, 0});
+    check("newest in the last block wraps to block 0", r.next_block == 0u && r.next_seq == 78u);
+
+    /* A block: head, three records, then erased flash; closed with its CRC. */
+    static uint8_t b[FLOG_SECTOR];
+    memset(b, 0xff, sizeof(b));
+    flog_block_head(b, 5u, 42u, 1234u);
+    const flog_head_t ph = flog_parse_head(b);
+    check("block head round trip", ph.valid && ph.session == 5u && ph.seq == 42u && ph.t0_ms == 1234u);
+    flog_second_t s = {.t_s = 77, .vq_snr_x10 = -45, .vq_lines_x100 = 160, .cn_x10 = -990, .video_pct = 88,
+                       .dropout = 3, .gain_min = 70, .gain_mean = 75, .gain_max = 83, .clip_q = 9, .gain_writes = 255,
+                       .overloads = 2, .dc_i = -20, .dc_q = 13, .off_i = -96, .off_q = 96, .servo_writes = 4,
+                       .afc_offset_khz = -1250, .afc_residual_khz = 310, .afc_corrections = 1, .demod = 0x2d,
+                       .sphase = 4, .temp_c = -12, .flags = 0x0a05};
+    unsigned at = FLOG_BLOCK_HEAD;
+    b[at++] = FLOG_T_SECOND; b[at++] = FLOG_SECOND_LEN;
+    flog_pack_second(&s, b + at); at += FLOG_SECOND_LEN;
+    b[at++] = FLOG_T_EVENT; b[at++] = 5; memset(b + at, 1, 5); at += 5;
+    b[at++] = 99; b[at++] = 3; memset(b + at, 2, 3); at += 3;           /* a type from a newer firmware */
+    s_count = 0; s_types = 0;
+    const unsigned used = flog_walk(b, visit, NULL);
+    check("walk: every record, unknown types skipped by length", s_count == 3u && used == at - FLOG_BLOCK_HEAD &&
+          (s_types & (1u << FLOG_T_SECOND)) && (s_types & (1u << FLOG_T_EVENT)));
+    check("an open block (no CRC yet) is not closed", !flog_block_closed(b));
+    flog_put32(b + FLOG_BLOCK_CRC_AT, flog_crc32(0, b, FLOG_BLOCK_CRC_AT));
+    check("closed with its CRC", flog_block_closed(b));
+    b[FLOG_BLOCK_HEAD + 5] ^= 1;
+    check("a changed byte breaks the CRC", !flog_block_closed(b));
+    b[FLOG_BLOCK_HEAD + 5] ^= 1;
+
+    flog_second_t u;
+    check("summary round trip, every field", flog_unpack_second(b + FLOG_BLOCK_HEAD + 2, FLOG_SECOND_LEN, &u) &&
+          !memcmp(&u, &s, sizeof(s)));
+    check("a short summary is refused", !flog_unpack_second(b + FLOG_BLOCK_HEAD + 2, FLOG_SECOND_LEN - 1u, &u));
+
+    /* A record that would cross the CRC word ends the walk. */
+    memset(b + FLOG_BLOCK_HEAD, 0xff, FLOG_BLOCK_ROOM);
+    b[FLOG_BLOCK_CRC_AT - 3] = FLOG_T_EVENT; b[FLOG_BLOCK_CRC_AT - 2] = 8;
+    s_count = 0;
+    (void)flog_walk(b, visit, NULL);
+    check("record over the end is not read", s_count == 0u);
+
+    static uint8_t iq[FLOG_SNAP_BYTES];
+    for (unsigned k = 0; k < sizeof(iq); ++k) iq[k] = (uint8_t)(k * 7u);
+    const flog_snap_t sn = {.trigger = FLOG_SNAP_DROPOUT, .gain = 83, .freq_mhz = 5865, .session = 5, .seq = 9, .t_ms = 1};
+    uint8_t sh[FLOG_SNAP_HEAD];
+    flog_snap_head(sh, &sn, iq);
+    check("snapshot head and IQ verify", flog_snap_ok(sh, iq));
+    iq[4000] ^= 0x10;
+    check("a changed IQ byte is caught", !flog_snap_ok(sh, iq));
+
+    printf("%u/%u flight log checks passed\n", s_run - s_fail, s_run);
+    return s_fail != 0;
+}

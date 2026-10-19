@@ -178,6 +178,12 @@ enum { FILTER_NORMAL, FILTER_NARROW, FILTER_WIDE };
 bool filter_setting(int filter_class, rf_filter_t *out);
 /* The DC table of filter f is complete on the current channel (startup). */
 bool calibration_dc_ready(rf_filter_t f);
+/* Flight log (flightlog.c): the active row's DC residual (mcells) and offset
+ * (codes), servo writes so far, sampling-phase state code, temperature. */
+void calibration_flog_live(int dc[2], int off[2], uint32_t *servo_writes, uint8_t *sphase, int8_t *temp_c);
+uint16_t calibration_generation_id(void);
+/* control.c: AFC offset applied, porch residual (kHz), corrections so far. */
+void control_flog_afc(int16_t *offset_khz, int16_t *residual_khz, uint32_t *corrections);
 /* Observer DC sums per gain row (receiver.c) for the live DC servo: a row's
  * sums once they hold min_samples (then it restarts); reset a row whose codes
  * changed, or every row. */
@@ -263,3 +269,7 @@ bool blob_store(const char *key, const void *data, size_t size);
 void console_start(void);
 const char *firmware_id(void);   /* "<version>+<commit 12>", the fw= field of log lines */
 void firmware_print(void);       /* FIRMWARE line: version, full commit, ELF SHA-256, build time */
+
+/* ---- flightlog.c ---- */
+#include "flightlog.h"
+#include "flightlog_format.h"

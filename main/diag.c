@@ -54,12 +54,14 @@ static volatile bool s_stream;
 static struct {
     int64_t start_us;
     unsigned windows, measured, video, gain_sum, stuck;
+    uint8_t gain_min, gain_max;
     long coh, p50, origin, clip, env;
     uint32_t faults;
     bool owned;           /* menu / calibration / scan owned TX or gain */
     bool afc_step;
 } s_acc;
 static bool s_in_dropout;
+static uint8_t s_last_category;
 static uint32_t s_segment_start_seq;
 static uint32_t s_seen_faults;
 
@@ -128,6 +130,7 @@ static void close_second(int64_t now)
     s_hist[s_seq % DIAG_HISTORY] = r;
     ++s_seq;
     taskEXIT_CRITICAL(&s_lock);
+    flightlog_second(&r, s_acc.gain_min, s_acc.gain_max, s_in_dropout ? (uint8_t)(s_last_category + 1u) : 0u);
 
     if (!s_in_dropout && diag_video_lost(&r)) {
         diag_record_t look[DIAG_LOOKBACK];
@@ -140,6 +143,9 @@ static void close_second(int64_t now)
         s_in_dropout = true;
         diag_event_t e = {.t_s = r.t_s, .category = diag_classify(look, n), .last_ok = look[last_ok], .drop = r,
                           .open = true};
+        s_last_category = (uint8_t)e.category;
+        flightlog_event(FLOG_E_DROPOUT, &s_last_category, 1);
+        flightlog_snapshot_request(FLOG_SNAP_DROPOUT);
         taskENTER_CRITICAL(&s_lock);
         s_events[s_event_seq % DIAG_EVENTS] = e;
         ++s_event_seq;
@@ -151,7 +157,11 @@ static void close_second(int64_t now)
         diag_event_t *e = &s_events[(s_event_seq - 1u) % DIAG_EVENTS];
         e->duration_s = r.t_s - e->t_s;
         e->open = false;
+        const uint32_t duration = e->duration_s;
         taskEXIT_CRITICAL(&s_lock);
+        uint8_t d[4];
+        flog_put32(d, duration);
+        flightlog_event(FLOG_E_RECOVERED, d, sizeof(d));
     }
 }
 
@@ -195,6 +205,8 @@ void diag_window(bool measured, bool video_valid, bool afc_step)
     s_acc.afc_step |= afc_step;
     s_acc.video += measured && video_valid;
     s_acc.gain_sum += s_current_gain;
+    if (s_acc.windows == 1u || s_current_gain < s_acc.gain_min) s_acc.gain_min = s_current_gain;
+    if (s_acc.windows == 1u || s_current_gain > s_acc.gain_max) s_acc.gain_max = s_current_gain;
     s_acc.coh += s_obs_coherence;
     if (!s_obs_stuck) s_acc.env += s_obs_env_ratio_x100;
     s_acc.stuck += s_obs_stuck;
@@ -273,6 +285,7 @@ static void print_trace(void)
         r = s_trace.event[k];
         taskEXIT_CRITICAL(&s_lock);
         print_record("FIELD_TRACE", &r);
+        flightlog_trace_add(&r, k, count);
     }
     printf("FIELD_TRACE end id=%lu\n", (unsigned long)sequence);
     taskENTER_CRITICAL(&s_lock);

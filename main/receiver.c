@@ -37,6 +37,7 @@ void receiver_set_gain_mode(uint8_t mode, bool save)
     if (mode != GAIN_MODE_AUTO && mode != GAIN_MODE_MAX && (mode < 20u || mode > ARC_VENDOR_GAIN_MAX)) return;
     s_gain_mode = mode;
     if (save) settings_save_gain_mode(mode);
+    if (save) flightlog_event(FLOG_E_GAIN_MODE, &mode, 1);
     char buf[16];
     printf("GAIN mode=%s %s\n", receiver_gain_mode_name(mode, buf, sizeof(buf)), save ? "saved=1" : "boot_restore=saved");
 }

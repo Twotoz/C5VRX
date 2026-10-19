@@ -222,3 +222,19 @@ summary { cursor: pointer; color: #b0b7c1; min-height: 32px; }
   .log-hint { padding: 0 12px 12px; }
   .hardware-purchase { padding: 12px 14px; gap: 14px; }
 }
+
+/* Flight log (terminal view) */
+.flight-log { margin: 1rem 0; }
+.flight-log h2 { font-size: 1rem; margin: 0 0 .4rem; }
+.flight-log-table-wrap { overflow-x: auto; }
+.flight-log-table { width: 100%; border-collapse: collapse; font-size: .85rem; margin: .5rem 0; }
+.flight-log-table th, .flight-log-table td { text-align: left; padding: .3rem .5rem; border-bottom: 1px solid var(--border, #8884); white-space: nowrap; }
+.flight-log-table tbody tr { cursor: pointer; }
+.flight-log-table tbody tr.selected, .flight-log-table tbody tr:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.flight-log-chart { width: 100%; height: auto; max-height: 300px; display: block; }
+.flight-log .lg::before { content: ''; display: inline-block; width: .8em; height: .3em; margin-right: .3em; vertical-align: middle; }
+.flight-log .lg.snr::before { background: #2f8fdf; }
+.flight-log .lg.gain::before { background: #3aa76d; }
+.flight-log .lg.dc::before { background: #e08a1e; }
+.flight-log .lg.temp::before { background: #9a6ad6; }
+.flight-log .lg.drop::before { background: rgba(220, 60, 60, .5); }

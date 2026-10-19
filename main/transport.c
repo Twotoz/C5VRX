@@ -339,6 +339,12 @@ static bool switch_live(int level, bool lp)
     kp_switch_mark(&s_switch_guard, finished);  /* failures interrupted video too */
     if (kp_changed) s_kp_restart_us = (uint32_t)(finished - began);
     if (lp_changed) s_prog_restart_us = (uint32_t)(finished - began);
+    {
+        uint8_t e[6] = {(uint8_t)(level < 0 ? 0xffu : (unsigned)level), lp, ok};
+        const uint32_t us = (uint32_t)(finished - began);
+        e[3] = (uint8_t)us; e[4] = (uint8_t)(us >> 8); e[5] = (uint8_t)(us >> 16);
+        flightlog_event(FLOG_E_KP, e, sizeof(e));
+    }
     return ok;
 }
 

@@ -39,6 +39,8 @@
 #include "dco_slots.h"
 #include "dc_health.h"
 #include "dc_servo.h"
+#include "flightlog.h"
+#include "flightlog_format.h"
 #include "rf.h"
 #include "soc/pcr_struct.h"
 
@@ -1092,6 +1094,10 @@ static void dc_health_latch(unsigned reason)
     printf("DC_HEALTH finding=%s freq=%u filter_key=%04x profile=%s gain=%u: DC CAL NEEDED, repaired at the next "
            "boot\n", dc_health_reason_name(reason), freq, key, dc_key_profile(key), s_current_gain);
     if (dc_flags_add(&s_dc_flags, freq, key, (uint8_t)reason)) dc_flags_save();
+    uint8_t e[5] = {(uint8_t)reason};
+    flog_put16(e + 1, freq);
+    flog_put16(e + 3, key);
+    flightlog_event(FLOG_E_DC_CAL_NEEDED, e, sizeof(e));
 }
 
 /* The trim's averaged DC (drift_service): qualified only on a consistent
@@ -1362,7 +1368,11 @@ static void dco_service(void)
  * which left 1-3.8 cells after 60 s on five of six boots (2026-10-19). The
  * correction is the row's offset on its stored codes (dco_offset: rows
  * without one take the nearest), re-held after every gain write. */
-#define DC_TRIM_MAX_OFFSET 48   /* codes around the stored ones (the search spans +-96) */
+/* Codes around the stored ones, as far as the calibration search itself
+ * spans: calibrations of one board scatter by tens of codes (2026-10-19: G83
+ * Q stored as 224, 262, 251, 239 by four calibrations), and with +-48 the
+ * servo sat at +44..48 on the 224 table, one step from losing the DC. */
+#define DC_TRIM_MAX_OFFSET 96
 static int s_drift_avg[2];
 static float s_temp_c = -100.0f;
 static bool s_dc_fault;
@@ -1491,6 +1501,8 @@ static void drift_service(void)
                 s_dc_fault = true;
                 (void)receiver_pause("DC_LIVE_RESTORE_FAILED");
                 printf("DC_SERVO fault=restore_failed gain=%u; gain owner paused\n", g);
+                const uint8_t code = 1;
+                flightlog_event(FLOG_E_FAULT, &code, 1);
                 return;
             }
             continue;
@@ -1564,6 +1576,7 @@ static void deviation_startup(int64_t deadline)
     profile_commit(dev);
 }
 
+static void calib_record(bool manual, int64_t t0);   /* flight log, below */
 #define STARTUP_BUDGET_US 120000000LL
 /* A full calibration (first boot, a new calibration generation, CALIBRATE)
  * measures the filter and three DC tables: 2 minutes covered the filter and
@@ -1573,6 +1586,10 @@ static void deviation_startup(int64_t deadline)
 static void startup_phase(bool manual)
 {
     s_startup = true;
+    {
+        const uint8_t m = manual;
+        flightlog_event(FLOG_E_CAL_START, &m, 1);
+    }
     const bool full = manual || s_filter_cal.version != FILTER_VERSION || !s_filter_cal.normal.valid;
     const int64_t t0 = esp_timer_get_time();
     const int64_t deadline = t0 + (full ? STARTUP_FULL_BUDGET_US : STARTUP_BUDGET_US);
@@ -1628,6 +1645,8 @@ static void startup_phase(bool manual)
     }
     status_screen_end();
     s_startup = false;
+    calib_record(manual, t0);
+    flightlog_event(FLOG_E_CAL_END, NULL, 0);
     profile_live_begin();   /* passive from here on: never switches */
     printf("STARTUP done ms=%lld filter=%s dco_rows=%u dco_missing=%u sphase=%s profile=%s reason=%s\n",
            (esp_timer_get_time() - t0) / 1000, s_filter_result, dco_valid_rows(), dco_rows(0), s_sphase_state,
@@ -1742,6 +1761,53 @@ static void calibration_generation(void)
     const uint16_t now = CAL_GENERATION;
     if (!ok || !blob_store("cal_gen", &now, sizeof(now)))
         printf("CALIBRATION error: generation not stored, discarded again next boot\n");
+}
+
+uint16_t calibration_generation_id(void) { return CAL_GENERATION; }
+
+static uint8_t sphase_code(void)
+{
+    static const char *const names[] = {"unverified", "settled", "drifted", "unsettled", "noise_limited", "probe_failed"};
+    for (unsigned k = 0; k < sizeof(names) / sizeof(names[0]); ++k)
+        if (!strcmp(s_sphase_state, names[k])) return (uint8_t)k;
+    return 0xffu;
+}
+
+void calibration_flog_live(int dc[2], int off[2], uint32_t *servo_writes, uint8_t *sphase, int8_t *temp_c)
+{
+    dc[0] = s_drift_avg[0]; dc[1] = s_drift_avg[1];
+    off[0] = dco_offset(s_current_gain, 0); off[1] = dco_offset(s_current_gain, 1);
+    *servo_writes = s_servo_writes;
+    *sphase = sphase_code();
+    *temp_c = (int8_t)(s_temp_c <= -99.f ? -128 : s_temp_c > 127.f ? 127 : (int)s_temp_c);   /* -128: not read yet */
+}
+
+/* Flight log: what this startup phase calibrated and the state it left. */
+static void calib_record(bool manual, int64_t t0)
+{
+    uint8_t p[80] = {0};
+    p[0] = manual;
+    p[1] = (uint8_t)(!strcmp(s_filter_result, "loaded") ? 1 : !strcmp(s_filter_result, "stored") ? 2 : 3);
+    flog_put32(p + 2, (uint32_t)((esp_timer_get_time() - t0) / 1000));
+    static const int classes[3] = {FILTER_NORMAL, FILTER_NARROW, FILTER_WIDE};
+    for (unsigned c = 0; c < 3u; ++c) {
+        rf_filter_t f;
+        uint8_t *e = p + 6 + c * 8;
+        if (!filter_setting(classes[c], &f)) continue;
+        const filter_entry_t *x = c == 0 ? &s_filter_cal.normal : c == 1 ? &s_filter_cal.narrow : &s_filter_cal.wide;
+        e[0] = 1; e[1] = f.bw20; e[2] = (uint8_t)(int8_t)f.code; e[3] = (uint8_t)f.skirt;
+        flog_put16(e + 4, x->width_khz); flog_put16(e + 6, x->nbw_khz);
+    }
+    for (unsigned k = 0; k < DCO_READY_MAX; ++k) {
+        uint8_t *e = p + 30 + k * 5;
+        flog_put16(e, s_dco_ready[k].freq); flog_put16(e + 2, s_dco_ready[k].key); e[4] = s_dco_ready[k].ready;
+    }
+    p[45] = (uint8_t)dco_valid_rows(); p[46] = (uint8_t)dco_rows(0); p[47] = (uint8_t)dco_template_rows();
+    p[48] = (uint8_t)s_dc_flags.count;
+    p[49] = sphase_code();
+    flog_put16(p + 50, (uint16_t)(int16_t)s_drift_avg[0]); flog_put16(p + 52, (uint16_t)(int16_t)s_drift_avg[1]);
+    p[54] = (uint8_t)(int8_t)(s_temp_c < -100.f ? -128 : (int)s_temp_c);
+    flightlog_record(FLOG_T_CALIB, p, 56);
 }
 
 void calibration_start(void)

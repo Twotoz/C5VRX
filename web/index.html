@@ -326,6 +326,26 @@
             </details>
           </div>
 
+          <div class="flight-log" id="flightLogPanel">
+            <h2>Flight log</h2>
+            <p class="hint">The receiver records every session by itself: picture quality, gain, DC, temperature, events and raw IQ at the worst moments (about 7 hours, oldest overwritten first). Read it after a flight; the receiver keeps running while it is read.</p>
+            <div class="command-buttons">
+              <button type="button" class="action primary" id="btnReadFlightLog" disabled>Read flight log</button>
+              <button type="button" class="action" id="btnDownloadFlightLog" disabled>Download .c5log</button>
+              <button type="button" class="action" id="btnDownloadFlightCsv" disabled>Download CSV</button>
+              <button type="button" class="action" id="btnEraseFlightLog" disabled>Erase log</button>
+            </div>
+            <p id="flightLogStatus" class="hint" role="status"></p>
+            <div class="flight-log-table-wrap">
+              <table id="flightLogSessions" class="flight-log-table" hidden>
+                <thead><tr><th>Session</th><th>Length</th><th>Picture</th><th>SNR median / worst</th><th>Dropouts</th><th>Worst DC</th><th>Max temp</th><th>Deviation</th><th>Reset</th><th>Firmware</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <canvas id="flightLogChart" class="flight-log-chart" width="960" height="260" hidden aria-label="Flight log chart of the selected session"></canvas>
+            <p id="flightLogLegend" class="hint" hidden><span class="lg snr">picture SNR (dB)</span> <span class="lg gain">gain index / 4</span> <span class="lg dc">DC (cells x 5)</span> <span class="lg temp">temperature (°C / 4)</span> <span class="lg drop">dropout</span></p>
+          </div>
+
           <div class="terminal-log">
             <div class="terminal-toolbar">
               <label class="check"><input id="autoScroll" type="checkbox" checked>Auto-scroll</label>
