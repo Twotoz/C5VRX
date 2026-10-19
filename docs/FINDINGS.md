@@ -1005,3 +1005,25 @@ snapshot into a range limit (required C/N, 20.7 MHz chip channel).
   snapshots with 3-4 cells of DC find no line at all.
 - **Live LUT re-centring is no fine DC actuator:** a kp/LUT restart costs
   5.5-7.5 ms of video (`kp_restart_us`) behind a 5 s guard.
+
+## Blackbox reads, flicker noise and bursts (2026-10-19, PR #225)
+
+- **First flight-log reads** (five sessions): `VIDEO_Q` read unknown in every
+  second (20-window threshold = the AFC's maximum rate; now 5), and dropout
+  traces filled ~75 % of the log with an unstable picture (now one per
+  30 s). Without a VTX Direct Gain held G83 for 741 of 794 s, with bursts of
+  255+ writes and overloads a second in ~50 s that coincided with 2-3 cells
+  of DC; `T GAIN_SAT` now splits saturated windows by rail side, and a burst
+  stores an IQ snapshot in the log. Six minutes, VTX off: 1034 one-sided,
+  550 two-sided saturated windows, 0-1 overloads (the burst gate held).
+- **Flicker (1/f) noise is before the gain.** Low-frequency excess (4-30 kHz
+  against 1-3 MHz), VTX off, fixed gains: G83 7.1 dB (noise 1.9 cells), G78
+  6.5 dB (1.1), G66 6.0 dB (0.5). A noise added after the gain stages would
+  rise to +11..+18 dB at the lower gains; it stays at 6-7 dB, so it scales
+  with the gain and no RF/baseband gain split can reduce it. Not a firmware
+  fix; ~0.5-1 dB at the edge in the model.
+- **Packet-like bursts.** One snapshot at fixed G72 held two strong ~55 us
+  bursts ~70 us apart (DC +3.5/+4.5 cells, 16-38 % on the rails); TX is
+  locked (`lock_rx_only`), so they are external. 51 snapshots on A1, A4 and
+  A8 at G83 held none: rare. The blackbox overload snapshots will show their
+  rate, length and channel.
