@@ -26,6 +26,7 @@
 #define FLOG_QUEUE       1024u
 #define FLOG_FLUSH_US    5000000LL
 #define FLOG_SNAP_GAP_US 10000000LL
+#define FLOG_TRACE_GAP_US 30000000LL
 
 static const esp_partition_t *s_part;
 static bool s_ready;
@@ -355,8 +356,20 @@ void flightlog_trace_add(const diag_record_t *r, unsigned k, unsigned count)
 {
     static uint8_t p[6 + 16 * 8];
     static uint32_t first_ms;
+    static int64_t last_trace_us;
+    static bool taking;
     if (!s_ready) return;
-    if (!k) first_ms = r->t_ms;
+    /* At most one trace per FLOG_TRACE_GAP_US: with an unstable picture the
+     * diagnostic trace fires on every sync onset and took ~75 % of the log
+     * (board blackbox 2026-10-19: 177 trace records in 129 s). The per-second
+     * records and the dropout events stay complete. */
+    if (!k) {
+        const int64_t now = esp_timer_get_time();
+        taking = !last_trace_us || now - last_trace_us >= FLOG_TRACE_GAP_US;
+        if (taking) last_trace_us = now;
+        first_ms = r->t_ms;
+    }
+    if (!taking) return;
     const unsigned slot = k % 16u;
     if (!slot) { flog_put32(p, first_ms); p[4] = (uint8_t)(k / 16u); p[5] = 0; }
     uint8_t *e = p + 6 + slot * 8;
