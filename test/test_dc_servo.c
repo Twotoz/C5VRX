@@ -52,11 +52,11 @@ static int run(double off_i, double off_q, double slope_i, double slope_q, doubl
         measure(ti, tq, sigma, DC_SERVO_MIN_SAMPLES, &si, &sq);
         if (!dc_servo_mean(si, sq, DC_SERVO_MIN_SAMPLES, dc)) return 99999;
         int step[2];
-        dc_servo_decide(s, dc, step);
+        dc_servo_decide(s, 83u, dc, step);
         if (step[0] || step[1]) {
             code[0] += step[0];
             code[1] += step[1];
-            dc_servo_applied(s, dc, step);
+            dc_servo_applied(s, 83u, dc, step);
         }
     }
     if (code_out) { code_out[0] = code[0]; code_out[1] = code[1]; }
@@ -115,10 +115,10 @@ int main(void)
     /* Steps never exceed the DAC trial limit. */
     dc_servo_init(&s);
     int big[2] = {9000, -9000}, step[2];
-    dc_servo_decide(&s, big, step);
+    dc_servo_decide(&s, 83u, big, step);
     check("step clamped to DC_SERVO_STEP_MAX", abs(step[0]) == DC_SERVO_STEP_MAX && abs(step[1]) == DC_SERVO_STEP_MAX);
     int small[2] = {200, -240};
-    dc_servo_decide(&s, small, step);
+    dc_servo_decide(&s, 83u, small, step);
     check("inside the deadband: no step", step[0] == 0 && step[1] == 0);
 
     /* A DC jump that is not the step's effect (a channel round): forgotten
@@ -127,19 +127,52 @@ int main(void)
     (void)run(2.0, 2.0, 400, 400, 1.9, 0., 12, &s, NULL);   /* slopes measured, ~+400 */
     const int learned_i = s.slope[0], learned_q = s.slope[1];
     int d0[2] = {1500, 1500}, st0[2], st1[2];
-    dc_servo_decide(&s, d0, st0);
-    dc_servo_applied(&s, d0, st0);
+    dc_servo_decide(&s, 83u, d0, st0);
+    dc_servo_applied(&s, 83u, d0, st0);
     int jump[2] = {1500 + 600, 1500 + 700};            /* new channel: unrelated jump against the step */
-    dc_servo_decide(&s, jump, st1);
+    dc_servo_decide(&s, 83u, jump, st1);
     check("unrelated DC jump: a measured slope keeps its sign", s.known[0] && s.known[1] && s.slope[0] > 0 &&
           s.slope[1] > 0 && s.sign_rejects >= 1u && learned_i > 0 && learned_q > 0);
     dc_servo_init(&s);
-    dc_servo_decide(&s, d0, st0);
-    dc_servo_applied(&s, d0, st0);
-    dc_servo_forget_step(&s);
-    dc_servo_decide(&s, jump, st1);
+    dc_servo_decide(&s, 83u, d0, st0);
+    dc_servo_applied(&s, 83u, d0, st0);
+    dc_servo_forget_step(&s, 83u);
+    dc_servo_decide(&s, 83u, jump, st1);
     check("forgotten step: no slope evidence taken", s.slope[0] == DC_SERVO_SLOPE_DEFAULT &&
           s.slope[1] == DC_SERVO_SLOPE_DEFAULT && s.forgotten == 1u);
+    /* Two rows with different offsets (board: G83 0.3 cells, G82 3.9 after
+     * a channel round), Direct Gain alternating faster than one mean: each
+     * row's sum only grows during its own visits, and both converge. */
+    {
+        dc_servo_t t;
+        dc_servo_init(&t);
+        const double off[2][2] = {{.3, -.2}, {1.1, -3.9}};
+        int code[2][2] = {{0, 0}, {0, 0}};
+        int64_t acc[2][2] = {{0, 0}, {0, 0}};
+        uint32_t n[2] = {0, 0};
+        for (unsigned visit = 0; visit < 400; ++visit) {
+            const unsigned r = visit % 3u ? 0u : 1u;          /* 2:1 between G83 and G82 */
+            int64_t si, sq;
+            measure(off[r][0] + code[r][0] * .4, off[r][1] + code[r][1] * .4, 1.9, 8000u, &si, &sq);
+            acc[r][0] += si; acc[r][1] += sq; n[r] += 8000u;   /* a short visit: 8000 samples */
+            int dc[2], step[2];
+            if (!dc_servo_mean(acc[r][0], acc[r][1], n[r], dc)) continue;
+            acc[r][0] = acc[r][1] = 0; n[r] = 0;
+            dc_servo_decide(&t, r ? 82u : 83u, dc, step);
+            if (step[0] || step[1]) {
+                code[r][0] += step[0]; code[r][1] += step[1];
+                dc_servo_applied(&t, r ? 82u : 83u, dc, step);
+            }
+        }
+        double worst = 0;
+        for (unsigned r = 0; r < 2; ++r)
+            for (unsigned a = 0; a < 2; ++a) {
+                const double e = fabs(off[r][a] + code[r][a] * .4);
+                worst = e > worst ? e : worst;
+            }
+        printf("     rows G83/G82 alternating: worst |DC| %.2f cells\n", worst);
+        check("alternating rows with different offsets: both below 0.35 cells", worst <= .35);
+    }
     printf("%u/%u dc servo checks passed\n", s_run - s_fail, s_run);
     return s_fail != 0;
 }

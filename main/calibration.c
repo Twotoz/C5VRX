@@ -731,6 +731,7 @@ static void dco_select(void)
     s_dco_serving = want.key;
     s_dco_serving_valid = true;
     memset(s_drift_offset, 0, sizeof(s_drift_offset));   /* trims belong to the table they were made on */
+    receiver_dc_reset_all();
     memset(s_drift_set, 0, sizeof(s_drift_set));
     const int own = dco_slot_of(&s_dco_index, freq, want.key);
     if (own >= 0 && dco_load_slot((unsigned)own, &s_dco) && dco_matches(&s_dco, &want)) {
@@ -1371,9 +1372,8 @@ static bool s_servo_ready;
  * row without own codes, too few samples or another context, PHY busy,
  * write refused. */
 static uint32_t s_servo_skip[5], s_servo_writes, s_servo_estimates;
-/* What the last step was made in: a later mean from another channel, table,
- * filter or row, or after any other gain write, is no evidence of its effect. */
-static struct { uint32_t control, reloads; uint16_t freq, key; uint8_t gain; int64_t us; } s_servo_ctx;
+/* The channel, offset, table and filter the rows' last steps were made in. */
+static struct { uint32_t control, reloads; uint16_t freq, key; } s_servo_ctx;
 
 static void drift_temperature(void)
 {
@@ -1404,78 +1404,103 @@ static void dc_trim_invalidate(void)
     ++s_gain_epoch; /* A physical DC change invalidates amplitude/CN evidence too. */
 }
 
-static void drift_service(void)
+/* A row's codes changed (its own offset, or the offset an untrimmed row
+ * takes from its nearest trimmed one): its sums no longer describe them. */
+static void servo_rows_changed(unsigned g)
 {
-    drift_temperature();
-    if (!s_servo_ready) { dc_servo_init(&s_servo); s_servo_ready = true; }
-    int64_t si, sq;
-    uint32_t samples, epoch;
-    uint8_t g;
-    const bool have = receiver_dc_take(DC_SERVO_MIN_SAMPLES, &si, &sq, &samples, &epoch, &g);
-    if (s_dc_fault || s_startup || !quiet_owner() || s_gain.state != DG_HOLD || rf_lane() != RF_LANE_ULTRAFINE) {
-        ++s_servo_skip[0];
-        dc_servo_forget_step(&s_servo);
-        return;
-    }
-    int dc[2];
-    if (!have || epoch != s_gain_epoch || g != s_current_gain || !dc_servo_mean(si, sq, samples, dc)) {
-        ++s_servo_skip[2];
-        return;
-    }
-    ++s_servo_estimates;
-    s_drift_avg[0] = dc[0]; s_drift_avg[1] = dc[1];
-    dc_health_drift(true, dc);
-    if (g > ARC_VENDOR_GAIN_MAX || g < s_dco.lo || g > s_dco.hi || s_dco.e[g].valid != DCO_ROW_OK ||
-        s_dco_banned[g] || s_dco.freq != rf_frequency_mhz() || !phy_dco_held()) {
-        ++s_servo_skip[1];
-        dc_servo_forget_step(&s_servo);
-        return;
-    }
-    if (s_servo_ctx.control != s_control_epoch || s_servo_ctx.reloads != s_dco_reloads ||
-        s_servo_ctx.freq != rf_frequency_mhz() || s_servo_ctx.key != live_filter_key() || s_servo_ctx.gain != g ||
-        s_last_gain_write_us > s_servo_ctx.us)
-        dc_servo_forget_step(&s_servo);
-    int step[2];
-    dc_servo_decide(&s_servo, dc, step);
-    const int base[2] = {dco_offset(g, 0), dco_offset(g, 1)};
-    for (int a = 0; a < 2; ++a) {
-        if (base[a] + step[a] > DC_TRIM_MAX_OFFSET) step[a] = DC_TRIM_MAX_OFFSET - base[a];
-        if (base[a] + step[a] < -DC_TRIM_MAX_OFFSET) step[a] = -DC_TRIM_MAX_OFFSET - base[a];
-    }
-    if (!step[0] && !step[1]) return;
+    receiver_dc_reset_row((uint8_t)g);
+    for (unsigned r = s_dco.lo; r <= s_dco.hi && r <= ARC_VENDOR_GAIN_MAX; ++r)
+        if (!s_drift_set[r]) receiver_dc_reset_row((uint8_t)r);
+}
+
+/* Write a step to the active row's DAC pair (one axis per write, checked
+ * against the gain and the held pair). Returns the codes applied. */
+static bool servo_write_active(uint8_t g, const int step[2], int applied[2], bool *fault)
+{
+    applied[0] = applied[1] = 0;
     dc_trim_context_t context;
     int pair[2];
-    if (!dc_trim_snapshot(&context) || !phy_try_actuator(context.phy)) { ++s_servo_skip[3]; return; }
-    if (!phy_dco_read_pair(pair)) { phy_end_actuator(); ++s_servo_skip[3]; return; }
-    /* One axis per write (phy_dco_try_pair checks the gain and the pair). */
+    if (!dc_trim_snapshot(&context) || context.gain != g || !phy_try_actuator(context.phy)) return false;
+    if (!phy_dco_read_pair(pair)) { phy_end_actuator(); return false; }
     int cur[2] = {pair[0], pair[1]};
-    bool fault = false;
-    for (int a = 0; a < 2 && !fault; ++a) {
+    for (int a = 0; a < 2 && !*fault; ++a) {
         if (!step[a]) continue;
         int target[2] = {cur[0], cur[1]};
         target[a] += step[a];
         if (target[a] < 0 || target[a] > 511) continue;
         const esp_err_t err = phy_dco_try_pair(context.packed_gain, cur, target);
         if (err == ESP_OK) { cur[0] = target[0]; cur[1] = target[1]; }
-        else { fault = err == ESP_ERR_INVALID_RESPONSE; ++s_servo_skip[4]; break; }
+        else { *fault = err == ESP_ERR_INVALID_RESPONSE; ++s_servo_skip[4]; break; }
     }
-    const int applied[2] = {cur[0] - pair[0], cur[1] - pair[1]};
-    if (applied[0] || applied[1]) {
-        dc_trim_invalidate();               /* the accumulator restarts on the new pair */
+    applied[0] = cur[0] - pair[0];
+    applied[1] = cur[1] - pair[1];
+    if (applied[0] || applied[1]) dc_trim_invalidate();
+    phy_end_actuator();
+    return applied[0] || applied[1];
+}
+
+static void drift_service(void)
+{
+    drift_temperature();
+    if (!s_servo_ready) { dc_servo_init(&s_servo); s_servo_ready = true; }
+    if (s_dc_fault || s_startup || !quiet_owner() || rf_lane() != RF_LANE_ULTRAFINE) {
+        ++s_servo_skip[0];
+        return;
+    }
+    /* Another channel, offset or table since the last tick: no row's last
+     * step is evidence for its next mean (dco_select restarts the sums). */
+    if (s_servo_ctx.control != s_control_epoch || s_servo_ctx.reloads != s_dco_reloads ||
+        s_servo_ctx.freq != rf_frequency_mhz() || s_servo_ctx.key != live_filter_key()) {
+        dc_servo_forget_all(&s_servo);
+        s_servo_ctx.control = s_control_epoch; s_servo_ctx.reloads = s_dco_reloads;
+        s_servo_ctx.freq = rf_frequency_mhz(); s_servo_ctx.key = live_filter_key();
+    }
+    if (s_dco.freq != rf_frequency_mhz()) { ++s_servo_skip[1]; return; }
+    for (unsigned r = s_dco.lo; r <= s_dco.hi && r <= ARC_VENDOR_GAIN_MAX; ++r) {
+        const uint8_t g = (uint8_t)r;
+        int64_t si, sq;
+        uint32_t samples;
+        int dc[2];
+        if (!receiver_dc_take_row(g, DC_SERVO_MIN_SAMPLES, &si, &sq, &samples) ||
+            !dc_servo_mean(si, sq, samples, dc)) continue;
+        ++s_servo_estimates;
+        if (g == s_current_gain) {
+            s_drift_avg[0] = dc[0]; s_drift_avg[1] = dc[1];
+            dc_health_drift(true, dc);
+        }
+        if (s_dco.e[g].valid != DCO_ROW_OK || s_dco_banned[g]) {
+            ++s_servo_skip[1];
+            dc_servo_forget_step(&s_servo, g);
+            continue;
+        }
+        int step[2];
+        dc_servo_decide(&s_servo, g, dc, step);
+        const int base[2] = {dco_offset(g, 0), dco_offset(g, 1)};
+        for (int a = 0; a < 2; ++a) {
+            if (base[a] + step[a] > DC_TRIM_MAX_OFFSET) step[a] = DC_TRIM_MAX_OFFSET - base[a];
+            if (base[a] + step[a] < -DC_TRIM_MAX_OFFSET) step[a] = -DC_TRIM_MAX_OFFSET - base[a];
+        }
+        if (!step[0] && !step[1]) continue;
+        int applied[2] = {step[0], step[1]};
+        bool fault = false;
+        /* The active, held row is written now; any other row takes its new
+         * codes at its next gain write (dco_post_gain). */
+        if (g == s_current_gain && phy_dco_held() && !servo_write_active(g, step, applied, &fault)) {
+            if (!fault) ++s_servo_skip[3];
+            if (fault) {
+                s_dc_fault = true;
+                (void)receiver_pause("DC_LIVE_RESTORE_FAILED");
+                printf("DC_SERVO fault=restore_failed gain=%u; gain owner paused\n", g);
+                return;
+            }
+            continue;
+        }
         s_drift_offset[g][0] = base[0] + applied[0];
         s_drift_offset[g][1] = base[1] + applied[1];
         s_drift_set[g] = true;
-        dc_servo_applied(&s_servo, dc, applied);
-        s_servo_ctx.control = s_control_epoch; s_servo_ctx.reloads = s_dco_reloads;
-        s_servo_ctx.freq = rf_frequency_mhz(); s_servo_ctx.key = live_filter_key(); s_servo_ctx.gain = g;
-        s_servo_ctx.us = s_last_gain_write_us;      /* set by dc_trim_invalidate above */
+        servo_rows_changed(g);
+        dc_servo_applied(&s_servo, g, dc, applied);
         ++s_servo_writes;
-    }
-    phy_end_actuator();
-    if (fault) {
-        s_dc_fault = true;
-        (void)receiver_pause("DC_LIVE_RESTORE_FAILED");
-        printf("DC_SERVO fault=restore_failed gain=%u; gain owner paused\n", g);
     }
 }
 

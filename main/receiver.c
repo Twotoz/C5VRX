@@ -209,39 +209,57 @@ int receiver_obs_cn_x10(void)
     return cn_estimate_env_x10(o.ratio, calibration_filter_class_mhz());
 }
 
-/* DC of every settled observer probe of one gain row and context, for the
- * live DC servo (dc_servo.h): the AGC already sums I and Q per probe. The
- * observer is the only writer; receiver_dc_take() copies and restarts it. */
-static struct { int64_t si, sq; uint32_t samples, gain_epoch, control, phy; uint8_t gain; } s_dc_acc;
+/* DC of every settled observer probe, one sum per gain row, for the live
+ * DC servo (dc_servo.h): the AGC already sums I and Q per probe. Per row,
+ * because Direct Gain moves between rows faster than one row collects a
+ * mean; short visits add up. A channel, PHY or table change restarts all
+ * rows; the servo restarts a row whose codes it changed. The observer is
+ * the only writer. */
+typedef struct { int64_t si, sq; uint32_t samples; } dc_row_acc_t;
+static dc_row_acc_t s_dc_rows[ARC_VENDOR_GAIN_MAX + 1u];
+static uint32_t s_dc_rows_control, s_dc_rows_phy, s_dc_rows_table;
 static portMUX_TYPE s_dc_acc_lock = portMUX_INITIALIZER_UNLOCKED;
-static void dc_accumulate(const dg_observation_t *o, size_t bytes, uint32_t gain_epoch, uint32_t control, uint32_t phy)
+static void dc_accumulate(const dg_observation_t *o, size_t bytes, uint8_t gain, uint32_t control, uint32_t phy,
+                          uint32_t table)
 {
+    if (gain > ARC_VENDOR_GAIN_MAX) return;
     taskENTER_CRITICAL(&s_dc_acc_lock);
-    if (s_dc_acc.gain_epoch != gain_epoch || s_dc_acc.control != control || s_dc_acc.phy != phy ||
-        s_dc_acc.gain != s_current_gain || !s_dc_acc.samples) {
-        s_dc_acc.si = s_dc_acc.sq = 0;
-        s_dc_acc.samples = 0;
-        s_dc_acc.gain_epoch = gain_epoch; s_dc_acc.control = control; s_dc_acc.phy = phy;
-        s_dc_acc.gain = s_current_gain;
+    if (s_dc_rows_control != control || s_dc_rows_phy != phy || s_dc_rows_table != table) {
+        memset(s_dc_rows, 0, sizeof(s_dc_rows));
+        s_dc_rows_control = control; s_dc_rows_phy = phy; s_dc_rows_table = table;
     }
-    s_dc_acc.si += o->sum_i;
-    s_dc_acc.sq += o->sum_q;
-    s_dc_acc.samples += (uint32_t)bytes;
+    s_dc_rows[gain].si += o->sum_i;
+    s_dc_rows[gain].sq += o->sum_q;
+    s_dc_rows[gain].samples += (uint32_t)bytes;
     taskEXIT_CRITICAL(&s_dc_acc_lock);
 }
 
-bool receiver_dc_take(uint32_t min_samples, int64_t *si, int64_t *sq, uint32_t *samples, uint32_t *gain_epoch,
-                      uint8_t *gain)
+bool receiver_dc_take_row(uint8_t gain, uint32_t min_samples, int64_t *si, int64_t *sq, uint32_t *samples)
 {
+    if (gain > ARC_VENDOR_GAIN_MAX) return false;
     taskENTER_CRITICAL(&s_dc_acc_lock);
-    const bool enough = s_dc_acc.samples >= min_samples;
+    const bool enough = s_dc_rows[gain].samples >= min_samples;
     if (enough) {
-        *si = s_dc_acc.si; *sq = s_dc_acc.sq; *samples = s_dc_acc.samples;
-        *gain_epoch = s_dc_acc.gain_epoch; *gain = s_dc_acc.gain;
-        s_dc_acc.samples = 0;            /* the next probe starts a fresh mean */
+        *si = s_dc_rows[gain].si; *sq = s_dc_rows[gain].sq; *samples = s_dc_rows[gain].samples;
+        s_dc_rows[gain] = (dc_row_acc_t){0};       /* the next probe starts a fresh mean */
     }
     taskEXIT_CRITICAL(&s_dc_acc_lock);
     return enough;
+}
+
+void receiver_dc_reset_row(uint8_t gain)
+{
+    if (gain > ARC_VENDOR_GAIN_MAX) return;
+    taskENTER_CRITICAL(&s_dc_acc_lock);
+    s_dc_rows[gain] = (dc_row_acc_t){0};
+    taskEXIT_CRITICAL(&s_dc_acc_lock);
+}
+
+void receiver_dc_reset_all(void)
+{
+    taskENTER_CRITICAL(&s_dc_acc_lock);
+    memset(s_dc_rows, 0, sizeof(s_dc_rows));
+    taskEXIT_CRITICAL(&s_dc_acc_lock);
 }
 
 static void tick_cb(void *arg)
@@ -348,7 +366,7 @@ static void observer_task(void *arg)
         if (phy != phy_generation() || phy_busy() || gain_epoch != s_gain_epoch || control != s_control_epoch ||
             table != rf_table_generation() || !dg_map_context_equal(&context, &after_context)) continue;
         if (cn_gain_settled((uint64_t)t0, (uint64_t)s_last_gain_write_us, s_gain.state == DG_SETTLE))
-            dc_accumulate(&o, sizeof(sample), gain_epoch, control, phy);
+            dc_accumulate(&o, sizeof(sample), s_current_gain, control, phy, table);
         if (measure_cn) {
             ++s_cn_sequence;
             __sync_synchronize();
