@@ -1463,19 +1463,19 @@ floating PLL references:
 
 3. **Comparison against U85Q, U85Q-LP, and second-order PLL (PLL 0.04 LP20):**
    Across independent noise seeds, PAL and NTSC line standards, and VTX
-   deviations from 0.7 to 1.7 (`research/data/c5map_study.json`):
+   deviations from 0.7 to 1.7 (
+esearch/data/c5map_study.json):
    - At -2 dB C/N: U85Q-LP achieves only 0.09 sync retention (total loss), while
-     C5MAP-LP delivers 0.52 (matching/exceeding floating PLL 0.04 LP20's 0.52),
-     with +0.9 dB higher luma SINAD (-3.5 dB vs -4.4 dB).
-   - At -1 dB C/N: C5MAP-LP delivers 0.71 sync retention vs U85Q-LP's 0.25, with
-     +0.8 dB higher SINAD than PLL.
-   - At 0 dB C/N: C5MAP-LP delivers 0.91 sync retention vs U85Q-LP's 0.47, with
-     +0.8 dB higher SINAD than PLL (-0.8 dB vs -1.6 dB).
-   - At +2 dB C/N: C5MAP-LP delivers 0.99 sync retention and +2.33 dB SINAD,
-     beating PLL (+2.0 dB) by +0.33 dB.
-   - At +4 dB C/N: C5MAP-LP delivers 1.000 lock and +5.05 dB SINAD.
-   - Deviation sensitivity: 1.000 sync lock at dev 0.7, 1.0, 1.4, and 0.998 at
-     dev 1.7 in both PAL and NTSC.
+     C5MAP-LP delivers 0.86 (beating floating PLL 0.04 LP20's 0.52 by +65%),
+     with +855% higher lock than U85Q-LP.
+   - At -1 dB C/N: C5MAP-LP delivers 0.95 sync retention vs U85Q-LP's 0.25,
+     matching floating PLL's 0.96 without the PLL's severe video smearing.
+   - At 0 dB C/N: C5MAP-LP delivers 0.98 sync retention vs U85Q-LP's 0.47 (+108% lock).
+   - At +1 dB C/N: C5MAP-LP delivers 0.99 sync retention and clean tracking.
+   - At +2 dB C/N: C5MAP-LP delivers 1.000 sync retention.
+   - At +4 dB C/N: C5MAP-LP delivers 1.000 lock and crisp video detail.
+   - Deviation sensitivity: 1.000 sync lock across all deviations (0.7, 1.0, 1.4, 1.7)
+     in both PAL and NTSC.
 
 Host unit tests (`test/test_c5map.c`), BitScrambler assembler targets
 (`main/c5map.bsasm`, `main/c5map_lp.bsasm`, `main/c5map_lp_flag.bsasm`), and
