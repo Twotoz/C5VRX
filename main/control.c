@@ -312,7 +312,7 @@ static void command(int c, unsigned *menu_idle)
     /* Bench: the real gain step of every table row pair (receiver.c). */
     case 'Q': receiver_pair_sweep_toggle(); break;
     case 'U': transport_sync_flywheel_toggle(); break;
-    case 'D': {
+    case 'd': case 'C': {
         manual_auto_off();
         bool next_map = !transport_is_c5map();
         bool ok = transport_set_demod_c5map(next_map);
