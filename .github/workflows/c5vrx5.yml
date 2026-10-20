@@ -146,6 +146,8 @@ jobs:
           python3 "$IDF_PATH/tools/bsasm.py" main/c5map_lp_flag.bsasm /tmp/c5map_lp_flag.bsbin \
             -c "$IDF_PATH/components/esp_driver_bitscrambler/bsasm_targets/esp32c5.json"
           /tmp/iqf-test-env/bin/python research/c5map.py check
+          cc -O2 -std=c11 -Wall -Wextra -Werror -Imain test/test_c5map.c -lm -o /tmp/test_c5map
+          /tmp/test_c5map
       - name: Build C5VRX-5
         shell: bash
         run: |
