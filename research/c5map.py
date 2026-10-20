@@ -141,8 +141,9 @@ def build_c5map_lut(kp=0.85):
                     err_eff = err
                 d_theta = gain * err_eff + (1.0 - gain) * v_sync_prior
 
-                # Exit sync into active video on confirmed positive excursion
-                if d_theta > 0.04 * math.pi and w > 0.75:
+                # Exit sync into active video on confirmed positive excursion (> +1.2 MHz)
+                # Prevents vertical serration noise chatter from triggering false falling edges
+                if d_theta > 0.12 * math.pi and w > 0.75:
                     next_regime = 1
                 else:
                     next_regime = 0
