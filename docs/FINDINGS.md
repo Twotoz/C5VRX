@@ -1466,16 +1466,20 @@ floating PLL references:
    deviations from 0.7 to 1.7 (
 esearch/data/c5map_study.json):
    - At -2 dB C/N: U85Q-LP achieves only 0.09 sync retention (total loss), while
-     C5MAP-LP delivers 0.86 (beating floating PLL 0.04 LP20's 0.52 by +65%),
-     with +855% higher lock than U85Q-LP.
-   - At -1 dB C/N: C5MAP-LP delivers 0.95 sync retention vs U85Q-LP's 0.25,
-     matching floating PLL's 0.96 without the PLL's severe video smearing.
-   - At 0 dB C/N: C5MAP-LP delivers 0.98 sync retention vs U85Q-LP's 0.47 (+108% lock).
-   - At +1 dB C/N: C5MAP-LP delivers 0.99 sync retention and clean tracking.
-   - At +2 dB C/N: C5MAP-LP delivers 1.000 sync retention.
-   - At +4 dB C/N: C5MAP-LP delivers 1.000 lock and crisp video detail.
-   - Deviation sensitivity: 1.000 sync lock across all deviations (0.7, 1.0, 1.4, 1.7)
-     in both PAL and NTSC.
+     C5MAP-LP delivers 0.56 (beating floating PLL 0.04 LP20's 0.52),
+     with +0.8 dB higher luma SINAD (-3.6 dB vs -4.4 dB) and +522% higher lock than U85Q-LP.
+     In raw non-LP, C5MAP delivers 0.614 lock vs U85Q's 0.063 (+875% higher lock).
+   - At -1 dB C/N: C5MAP-LP delivers 0.68 sync retention vs U85Q-LP's 0.25, with
+     +0.8 dB higher SINAD than PLL (-2.3 dB vs -3.1 dB).
+     In raw non-LP, C5MAP delivers 0.688 lock vs U85Q's 0.304 (+126% higher lock).
+   - At 0 dB C/N: C5MAP-LP delivers 0.91 sync retention vs U85Q-LP's 0.47, with
+     +0.7 dB higher SINAD than PLL (-0.9 dB vs -1.6 dB).
+     In raw non-LP, C5MAP delivers 0.854 lock vs U85Q's 0.661.
+   - At +1 dB C/N: C5MAP-LP delivers 0.97 sync retention and +0.6 dB SINAD (+0.4 dB over PLL).
+   - At +2 dB C/N: C5MAP-LP delivers 0.99 sync retention and +2.3 dB SINAD (+0.3 dB over PLL).
+   - At +4 dB C/N: C5MAP-LP delivers 1.000 lock and +5.0 dB SINAD (identical full-fidelity sharpness).
+   - Deviation sensitivity: 1.000 sync lock at dev 0.7, 1.0, 1.4, and 0.998 at
+     dev 1.7 in both PAL and NTSC.
 
 Host unit tests (`test/test_c5map.c`), BitScrambler assembler targets
 (`main/c5map.bsasm`, `main/c5map_lp.bsasm`, `main/c5map_lp_flag.bsasm`), and
