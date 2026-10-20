@@ -3,6 +3,7 @@
 
 Compares C5MAP and C5MAP-LP against U85Q, U85Q-LP, and floating second-order PLL (PLL 0.04 LP20)
 across C/N ratios (-3 to +4 dB), VTX deviations (0.7 to 1.7), and both PAL and NTSC.
+Supports both ideal and physical ADC modes (with folded ADC distortion and shared gain).
 Saves structured benchmark evidence to research/data/c5map_study.json.
 """
 import argparse
@@ -20,21 +21,22 @@ import u85q_lp
 import pll_compare
 import c5map
 
-CNRS = (-2, -1, 0, 1, 2, 4)
+CNRS = (-3, -2, -1, 0, 1, 2, 4)
 SEEDS = ((11, 'PAL'), (12, 'NTSC'), (13, 'PAL'), (14, 'NTSC'))
 DEVIATIONS = (0.7, 1.0, 1.4, 1.7)
 
-def run_study(output_path=HERE / 'data' / 'c5map_study.json'):
-    print("=== Running C5MAP vs U85Q vs PLL Comprehensive Study ===")
+def run_study(output_path=HERE / 'data' / 'c5map_study.json', physical=False):
+    print(f"=== Running C5MAP vs U85Q vs PLL Study (physical_adc={physical}) ===")
     u_lut = sim.u85q_lut()
-    map_lut = c5map.build_c5map_lut(0.85)
+    map_lut_l0 = c5map.build_c5map_lut(0.85)
+    map_lut_l7 = c5map.build_c5map_lut(0.50)
     
     results = []
     
     for cnr in CNRS:
         row = {'cnr': cnr, 'cases': []}
         for seed, std in SEEDS:
-            c = sim.make_case(seed, cnr, std, 1.0, filter_hz=12e6, fields=1, physical_adc=False)
+            c = sim.make_case(seed, cnr, std, 1.0, filter_hz=12e6, fields=1, physical_adc=physical, adc_gain=2.0 if physical else None)
             
             # 1. U85Q
             u_pic, u_sn = pll_compare.score(c, sim.DAC_VOLTS[sim.u85q_codes(c['raw'], u_lut)],
@@ -50,12 +52,12 @@ def run_study(output_path=HERE / 'data' / 'c5map_study.json'):
             lp_c = np.repeat(sg.lfilter([.5], [1, -.5], p_c[::2]), 2)[:len(p_c)]
             pll_pic, pll_sn = pll_compare.score(c, lp_r, lp_c)
             
-            # 4. C5MAP
-            map_pic, map_sn = pll_compare.score(c, sim.DAC_VOLTS[sim.u85q_codes(c['raw'], map_lut)],
-                                                sim.DAC_VOLTS[sim.u85q_codes(c['clean'], map_lut)])
-            # 5. C5MAP-LP
-            maplp_pic, maplp_sn = pll_compare.score(c, sim.DAC_VOLTS[u85q_lp.lp_codes(c['raw'], map_lut)],
-                                                    sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut)])
+            # 4. C5MAP-LP Level 0 (kp 0.85)
+            maplp_pic, maplp_sn = pll_compare.score(c, sim.DAC_VOLTS[u85q_lp.lp_codes(c['raw'], map_lut_l0)],
+                                                    sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut_l0)])
+            # 5. C5MAP-LP Level 7 (kp 0.50, Rescue)
+            rescue_pic, rescue_sn = pll_compare.score(c, sim.DAC_VOLTS[u85q_lp.lp_codes(c['raw'], map_lut_l7)],
+                                                      sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut_l7)])
             
             case_res = {
                 'seed': seed,
@@ -63,8 +65,8 @@ def run_study(output_path=HERE / 'data' / 'c5map_study.json'):
                 'u85q': {'pic': u_pic, 'sinad': u_sn},
                 'u85q_lp': {'pic': ulp_pic, 'sinad': ulp_sn},
                 'pll_004_lp20': {'pic': pll_pic, 'sinad': pll_sn},
-                'c5map': {'pic': map_pic, 'sinad': map_sn},
-                'c5map_lp': {'pic': maplp_pic, 'sinad': maplp_sn}
+                'c5map_lp_l0': {'pic': maplp_pic, 'sinad': maplp_sn},
+                'c5map_lp_l7': {'pic': rescue_pic, 'sinad': rescue_sn}
             }
             row['cases'].append(case_res)
         results.append(row)
@@ -76,14 +78,17 @@ def run_study(output_path=HERE / 'data' / 'c5map_study.json'):
         m_ulp_s = np.mean([cs['u85q_lp']['sinad'] for cs in row['cases']])
         m_pll_p = np.mean([cs['pll_004_lp20']['pic'] for cs in row['cases']])
         m_pll_s = np.mean([cs['pll_004_lp20']['sinad'] for cs in row['cases']])
-        m_maplp_p = np.mean([cs['c5map_lp']['pic'] for cs in row['cases']])
-        m_maplp_s = np.mean([cs['c5map_lp']['sinad'] for cs in row['cases']])
+        m_maplp_p = np.mean([cs['c5map_lp_l0']['pic'] for cs in row['cases']])
+        m_maplp_s = np.mean([cs['c5map_lp_l0']['sinad'] for cs in row['cases']])
+        m_res_p = np.mean([cs['c5map_lp_l7']['pic'] for cs in row['cases']])
+        m_res_s = np.mean([cs['c5map_lp_l7']['sinad'] for cs in row['cases']])
         
         print(f"CNR {cnr:+2d} dB: "
               f"U85Q={m_u_p:.2f}/{m_u_s:+.1f}dB | "
               f"U85Q-LP={m_ulp_p:.2f}/{m_ulp_s:+.1f}dB | "
               f"PLL={m_pll_p:.2f}/{m_pll_s:+.1f}dB | "
-              f"C5MAP-LP={m_maplp_p:.2f}/{m_maplp_s:+.1f}dB")
+              f"C5MAP-L0={m_maplp_p:.2f}/{m_maplp_s:+.1f}dB | "
+              f"C5MAP-L7={m_res_p:.2f}/{m_res_s:+.1f}dB")
               
     # Deviation test
     dev_results = []
@@ -91,9 +96,9 @@ def run_study(output_path=HERE / 'data' / 'c5map_study.json'):
     for dev in DEVIATIONS:
         dev_row = {'deviation': dev, 'cases': []}
         for seed, std in ((11, 'PAL'), (12, 'NTSC')):
-            c = sim.make_case(seed, 4.0, std, dev, filter_hz=12e6, fields=1, physical_adc=False)
-            maplp_pic, maplp_sn = pll_compare.score(c, sim.DAC_VOLTS[u85q_lp.lp_codes(c['raw'], map_lut)],
-                                                    sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut)])
+            c = sim.make_case(seed, 4.0, std, dev, filter_hz=12e6, fields=1, physical_adc=physical, adc_gain=2.0 if physical else None)
+            maplp_pic, maplp_sn = pll_compare.score(c, sim.DAC_VOLTS[u85q_lp.lp_codes(c['raw'], map_lut_l0)],
+                                                    sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut_l0)])
             dev_row['cases'].append({'standard': std, 'pic': maplp_pic, 'sinad': maplp_sn})
         m_p = np.mean([cs['pic'] for cs in dev_row['cases']])
         m_s = np.mean([cs['sinad'] for cs in dev_row['cases']])
@@ -101,13 +106,18 @@ def run_study(output_path=HERE / 'data' / 'c5map_study.json'):
         dev_results.append(dev_row)
         
     data = {
+        'physical_adc': physical,
         'cnr_sweep': results,
         'deviation_sweep': dev_results,
-        'summary': 'C5MAP substantially outperforms U85Q, U85Q-LP, and second-order PLL across low C/N range and all deviations.'
+        'summary': 'C5MAP evaluated across full ladder span (L0 kp 0.85 to L7 kp 0.50 Rescue) with physical ADC option.'
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(data, indent=2))
     print(f"\nWrote study results to {output_path}")
 
 if __name__ == '__main__':
-    run_study()
+    parser = argparse.ArgumentParser(description="C5MAP Study")
+    parser.add_argument('--physical', action='store_true', help="Use physical ADC folding and shared gain")
+    parser.add_argument('--output', type=Path, default=HERE / 'data' / 'c5map_study.json', help="Output json path")
+    args = parser.parse_args()
+    run_study(output_path=args.output, physical=args.physical)

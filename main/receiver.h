@@ -73,6 +73,7 @@ bool transport_set_lp(bool lp);            /* U85Q <-> LP via a brief pipeline r
 bool transport_lp(void);
 const char *transport_program_name(void);
 const char *transport_demod_name(void);
+bool transport_set_demod_c5map(bool c5map);
 bool transport_is_c5map(void);
 bool transport_faulted(void);
 uint32_t transport_restart_errors(void);
