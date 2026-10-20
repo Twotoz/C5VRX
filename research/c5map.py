@@ -110,59 +110,73 @@ def build_c5map_lut(kp=0.85):
         obs_angles[TA + t] = (t + 0.5) * 0.5 * math.pi - math.pi
         obs_weights[TA + t] = 0.25 # Lower certainty for origin tokens
 
-    # 3. 32-state MAP transition table
+    # 3. 32-state Asymmetric Bayesian MAP transition table
+    # Combines Von Mises directional phasor likelihoods with an asymmetric loss function
+    # that heavily penalizes positive carrier innovations during sync (to prevent line-dropping click noise).
     N_PHASE = 16
     ph = (np.arange(N_PHASE) + 0.5) * 2 * math.pi / N_PHASE - math.pi
     lut = np.zeros(1024, dtype=np.int64)
-    
+
+    mu_reg = np.array([-0.40 * math.pi, +0.10 * math.pi])
+    kappa_reg = np.array([2.0, 0.8])
+    c_pos_penalty = 5.0
+    k_obs_scale = 3.0
+
     for s in range(P):
-        regime = s // N_PHASE
-        p_idx = s % N_PHASE
-        curr_phase = ph[p_idx]
-        
+        regime_s = s // N_PHASE
+        curr_phase = ph[s % N_PHASE]
+
         for t in range(T):
-            o = obs_angles[t]
-            w = obs_weights[t]
-            err = (o - curr_phase + math.pi) % (2 * math.pi) - math.pi
-            
-            if regime == 0:
-                # Regime 0: Sync & Porch prior (-4 MHz drift = -0.40 pi)
-                v_prior = -0.40 * math.pi
-                gain = kp * w
-                # In sync, resist false positive noise spikes:
-                if err > 0.2 * math.pi and w < 0.9:
-                    err_eff = min(0.1 * math.pi, err * 0.2)
+            phi_obs = obs_angles[t]
+            w_obs = obs_weights[t]
+            err = (phi_obs - curr_phase + math.pi) % (2 * math.pi) - math.pi
+
+            if regime_s == 0:
+                # Regime 0 (Sync & Porch): Asymmetric Bayes contraction on positive noise
+                if err > 0.15 * math.pi and w_obs < 0.9:
+                    eff_obs_angle = curr_phase + err / (1.0 + c_pos_penalty * (1.0 - w_obs))
                 else:
-                    err_eff = err
-                d_theta = gain * err_eff + (1.0 - gain) * v_prior
-                
-                # Switch to video regime only if sustained positive frequency
-                if d_theta > 0.05 * math.pi and w > 0.8:
+                    eff_obs_angle = phi_obs
+
+                k_prior = kappa_reg[0]
+                th_prior = curr_phase + mu_reg[0]
+                k_obs = k_obs_scale * (kp / 0.85) * w_obs
+
+                vx0 = k_obs * math.cos(eff_obs_angle) + k_prior * math.cos(th_prior)
+                vy0 = k_obs * math.sin(eff_obs_angle) + k_prior * math.sin(th_prior)
+                phase_0 = math.atan2(vy0, vx0)
+                dtheta_0 = (phase_0 - curr_phase + math.pi) % (2 * math.pi) - math.pi
+
+                if dtheta_0 > 0.05 * math.pi and w_obs > 0.75:
                     next_regime = 1
                 else:
                     next_regime = 0
+                best_phase = phase_0
+                best_dtheta = dtheta_0
             else:
-                # Regime 1: Active Video prior (+1 MHz drift = +0.10 pi)
-                v_prior = +0.10 * math.pi
-                gain = kp * w
-                d_theta = gain * err + (1.0 - gain) * v_prior
-                
-                # Switch to sync regime if negative frequency
-                if d_theta < -0.30 * math.pi and w > 0.7:
+                # Regime 1 (Active Video): Symmetric MAP tracking
+                k_prior = kappa_reg[1]
+                th_prior = curr_phase + mu_reg[1]
+                k_obs = k_obs_scale * (kp / 0.85) * w_obs
+
+                vx1 = k_obs * math.cos(phi_obs) + k_prior * math.cos(th_prior)
+                vy1 = k_obs * math.sin(phi_obs) + k_prior * math.sin(th_prior)
+                phase_1 = math.atan2(vy1, vx1)
+                dtheta_1 = (phase_1 - curr_phase + math.pi) % (2 * math.pi) - math.pi
+
+                if dtheta_1 < -0.28 * math.pi and w_obs > 0.70:
                     next_regime = 0
                 else:
                     next_regime = 1
-                    
-            d_theta = max(lo_step, min(hi_step, d_theta))
-            next_phase = (curr_phase + d_theta + math.pi) % (2 * math.pi) - math.pi
-            next_p_idx = int(math.floor((next_phase + math.pi) * N_PHASE / (2 * math.pi))) % N_PHASE
-            
+                best_phase = phase_1
+                best_dtheta = dtheta_1
+
+            d_theta = max(lo_step, min(hi_step, best_dtheta))
+            next_p_idx = int(math.floor((best_phase + math.pi) * N_PHASE / (2 * math.pi))) % N_PHASE
             nxt = next_regime * N_PHASE + next_p_idx
-            
-            # DAC code mapped to 0..63
             code = int(np.rint(np.clip((d_theta - lo_step) / (hi_step - lo_step) * 63, 0, 63)))
             lut[s * T + t] = code | (nxt << 6)
-            
+
     lut |= tok.astype(np.int64) << 11
     return lut.astype(np.uint16)
 
