@@ -120,7 +120,7 @@ def build_c5map_lut(kp=0.85):
     lut = np.zeros(1024, dtype=np.int64)
 
     v_sync_prior = -0.40 * math.pi   # -4.0 MHz (sync tip anchor: harmonized across smalle 0.7, normale 1.0, and brede 1.4-1.7)
-    v_video_prior = +0.10 * math.pi  # +1.0 MHz (video baseline drift)
+    v_video_prior = +0.18 * math.pi  # +1.8 MHz (video baseline drift: optimizes active video SINAD to match U85Q)
 
     for s in range(P):
         regime_s = s // N_PHASE
