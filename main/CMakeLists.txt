@@ -14,6 +14,9 @@ idf_component_register(
 target_bitscrambler_add_src("u85q.bsasm")
 target_bitscrambler_add_src("u85q_lp.bsasm")
 target_bitscrambler_add_src("u85q_lp_flag.bsasm")
+target_bitscrambler_add_src("c5map.bsasm")
+target_bitscrambler_add_src("c5map_lp.bsasm")
+target_bitscrambler_add_src("c5map_lp_flag.bsasm")
 
 # The sync observer/output and the AFC decoder (which shares the CPU with the
 # sync alarms) must not inherit the application's debug-oriented -Og.
