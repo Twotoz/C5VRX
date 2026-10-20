@@ -312,6 +312,14 @@ static void command(int c, unsigned *menu_idle)
     /* Bench: the real gain step of every table row pair (receiver.c). */
     case 'Q': receiver_pair_sweep_toggle(); break;
     case 'U': transport_sync_flywheel_toggle(); break;
+    case 'm': {
+        manual_auto_off();
+        bool next_map = !transport_is_c5map();
+        bool ok = transport_set_demod_c5map(next_map);
+        printf("DEMOD switched to %s: %s\n", transport_demod_name(),
+               ok ? "applied via pipeline restart" : "refused");
+        break;
+    }
     case 'H': transport_live_lut_test(); break;   /* bench: live LUT writes */
     /* DAC self-test: open the menu on DAC TEST, then step like a hold. */
     case 'Z':
