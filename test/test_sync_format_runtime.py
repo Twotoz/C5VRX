@@ -17,11 +17,16 @@ PREFIX = r'''
 #include <string.h>
 #include <stddef.h>
 #include "kp_tables.h"
+#include "c5map_tables.h"
 #include "sync_flag.h"
 #include "transport_recovery.h"
 static const uint8_t s_u85q[300]={1,0,3,8,0,2,1,[12]=1};
 static const uint8_t s_u85q_lp[300]={1,0,3,8,0,2,1,[12]=2};
 static const uint8_t s_u85q_lp_flag[300]={1,0,3,8,0,2,1,[12]=3};
+static const uint8_t s_c5map[300]={1,0,3,8,0,2,1,[12]=4};
+static const uint8_t s_c5map_lp[300]={1,0,3,8,0,2,1,[12]=5};
+static const uint8_t s_c5map_lp_flag[300]={1,0,3,8,0,2,1,[12]=6};
+static bool s_demod_c5map;
 static bool s_started,s_transport_fault,s_lut_known,s_have_verified;
 static bool s_prog_lp,s_flag_format,s_verified_lp,s_verified_flag;
 static unsigned s_output,s_verified_output,s_output_clipped;
@@ -64,10 +69,11 @@ STAGES = r'''
     assert(r->program==tracker_format_program(r->lp,r->flag));
     assert(!memcmp(s_program_work.prefix,r->program,sizeof(s_program_work.prefix)));
     if(stage==TR_LUT_VERIFY){
+        const uint16_t *base = s_demod_c5map ? c5map_tables[r->level] : kp_tables[r->level];
         for(unsigned i=0;i<1024;++i){
             bool clipped;
-            uint16_t expected=r->flag?sync_flag_entry(kp_tables[r->level][i],r->output,&clipped):
-                output_entry(kp_tables[r->level][i],r->output,&clipped);
+            uint16_t expected=r->flag?sync_flag_entry(base[i],r->output,&clipped):
+                output_entry(base[i],r->output,&clipped);
             assert(s_lut_work[i]==expected);++checks;
         }
     }
@@ -88,8 +94,9 @@ static void reset(unsigned level,unsigned output,bool lp){
  s_prog_lp=s_verified_lp=lp;s_flag_format=s_verified_flag=false;
  s_output=s_verified_output=output;s_verified_level=(int)level;s_kp_target=(uint8_t)level;
  s_output_clipped=0;
+ const uint16_t *base = s_demod_c5map ? c5map_tables[level] : kp_tables[level];
  for(unsigned i=0;i<1024;++i){bool clipped;
-  s_lut_live[i]=output_entry(kp_tables[level][i],output,&clipped);s_output_clipped+=clipped;
+  s_lut_live[i]=output_entry(base[i],output,&clipped);s_output_clipped+=clipped;
  }
  s_flag_pin=NULL;owner_storage.active=false;physical_clamp=false;
  cancel_ok=acquire_ok=true;fail_forward=fail_rollback=-1;
@@ -103,59 +110,65 @@ static void verify(bool flag,unsigned level,unsigned output,bool lp){
  assert(s_verified_lp==lp&&s_verified_output==output&&physical_clamp==flag);
  assert(flag?(s_flag_pin&&s_flag_pin->active):!s_flag_pin);
  unsigned clipped_count=0;
+ const uint16_t *base = s_demod_c5map ? c5map_tables[level] : kp_tables[level];
  for(unsigned i=0;i<1024;++i){bool clipped;
-  uint16_t expected=flag?sync_flag_entry(kp_tables[level][i],output,&clipped):
-    output_entry(kp_tables[level][i],output,&clipped);
+  uint16_t expected=flag?sync_flag_entry(base[i],output,&clipped):
+    output_entry(base[i],output,&clipped);
   assert(s_lut_live[i]==expected);clipped_count+=clipped;++checks;
  }
  assert(s_output_clipped==clipped_count);
 }
 int main(void){
- /* Exhaustive supported formats: comparison uses canonical code even at5x. */
- for(unsigned lp=0;lp<2;++lp)for(unsigned level=0;level<KP_LEVELS;++level)
- for(unsigned output=0;output<OUTPUT_LEVELS;++output){
-  reset(level,output,lp);assert(transport_flag_format(true));verify(true,level,output,lp);
-  assert(!settings_writes&&acquires==1);
-  snapshot();unsigned calls=stages;assert(transport_flag_format(true)&&stages==calls);
-  assert(resume_live(s_lut_live));verify(true,level,output,lp); /* no double scaling */
-  snapshot();assert(transport_flag_format(false));verify(false,level,output,lp);
-  assert(!settings_writes);
+ for(int demod=0;demod<2;++demod){
+  s_demod_c5map=(demod!=0);
+  /* Exhaustive supported formats: comparison uses canonical code even at5x. */
+  for(unsigned lp=0;lp<2;++lp)for(unsigned level=0;level<KP_LEVELS;++level)
+  for(unsigned output=0;output<OUTPUT_LEVELS;++output){
+   reset(level,output,lp);assert(transport_flag_format(true));verify(true,level,output,lp);
+   assert(!settings_writes&&acquires==1);
+   snapshot();unsigned calls=stages;assert(transport_flag_format(true)&&stages==calls);
+   assert(resume_live(s_lut_live));verify(true,level,output,lp); /* no double scaling */
+   snapshot();assert(transport_flag_format(false));verify(false,level,output,lp);
+   assert(!settings_writes);
+  }
+  /* While flagged, ordinary output/kp/LP updates must rebuild encoded LUTs. */
+  reset(0,0,false);assert(transport_flag_format(true));
+  for(unsigned output=0;output<OUTPUT_LEVELS;++output)
+  for(unsigned level=0;level<KP_LEVELS;++level){
+   snapshot();s_output=output;s_prog_lp=((level+output)&1u)!=0;
+   const uint16_t *tbl = s_demod_c5map ? c5map_tables[level] : kp_tables[level];
+   assert(resume_live(tbl));verify(true,level,output,s_prog_lp);
+  }
+  snapshot();assert(transport_flag_format(false));verify(false,s_verified_level,s_output,s_prog_lp);
+  /* Failure after any forward stage may not publish a partially encoded LUT.
+   * Real rollback prefix restores selected configuration and pin SDK fixture. */
+  for(int stage=0;stage<TR_STAGES;++stage)for(unsigned exit=0;exit<2;++exit){
+   reset(2,8,true);if(exit){assert(transport_flag_format(true));snapshot();}
+   fail_forward=stage;
+   assert(!transport_flag_format(!exit));verify(exit,2,8,true);
+   assert(s_restart_errors==1&&s_rollbacks==1&&!s_rollback_fail&&!settings_writes);
+   assert(!memcmp(before,s_lut_live,sizeof(before)));++checks;
+  }
+  /* A failed attempted configuration change while flagged restores all three
+   * user-facing selections and the original encoded shadow. */
+  reset(2,4,false);assert(transport_flag_format(true));snapshot();
+  fail_forward=TR_TX_START;s_output=8;s_prog_lp=true;
+  const uint16_t *tbl6 = s_demod_c5map ? c5map_tables[6] : kp_tables[6];
+  assert(!resume_live(tbl6));verify(true,2,4,false);
+  assert(s_output==4&&!s_prog_lp&&!settings_writes);++checks;
+  /* Failed verified recovery latches unknown and keeps pin ownership retained. */
+  for(unsigned exit=0;exit<2;++exit){
+   reset(3,9,false);if(exit){assert(transport_flag_format(true));snapshot();}
+   fail_forward=TR_TX_START;fail_rollback=TR_TX_START;
+   assert(!transport_flag_format(!exit));
+   assert(s_transport_fault&&!s_lut_known&&s_rollback_fail==1&&s_flag_pin);
+   assert(restart_finishes==(exit?2u:1u)&&!restart_finish_ok);
+   assert(!memcmp(before,s_lut_live,sizeof(before))&&!settings_writes);
+   unsigned previous=stages;assert(!transport_flag_format(exit)&&stages==previous);++checks;
+  }
+  reset(0,0,false);cancel_ok=false;assert(!transport_flag_format(true)&&!acquires&&!stages);++checks;
+  reset(0,0,false);acquire_ok=false;assert(!transport_flag_format(true)&&!stages&&!s_flag_pin);++checks;
  }
- /* While flagged, ordinary output/kp/LP updates must rebuild encoded LUTs. */
- reset(0,0,false);assert(transport_flag_format(true));
- for(unsigned output=0;output<OUTPUT_LEVELS;++output)
- for(unsigned level=0;level<KP_LEVELS;++level){
-  snapshot();s_output=output;s_prog_lp=((level+output)&1u)!=0;
-  assert(resume_live(kp_tables[level]));verify(true,level,output,s_prog_lp);
- }
- snapshot();assert(transport_flag_format(false));verify(false,s_verified_level,s_output,s_prog_lp);
- /* Failure after any forward stage may not publish a partially encoded LUT.
-  * Real rollback prefix restores selected configuration and pin SDK fixture. */
- for(int stage=0;stage<TR_STAGES;++stage)for(unsigned exit=0;exit<2;++exit){
-  reset(2,8,true);if(exit){assert(transport_flag_format(true));snapshot();}
-  fail_forward=stage;
-  assert(!transport_flag_format(!exit));verify(exit,2,8,true);
-  assert(s_restart_errors==1&&s_rollbacks==1&&!s_rollback_fail&&!settings_writes);
-  assert(!memcmp(before,s_lut_live,sizeof(before)));++checks;
- }
- /* A failed attempted configuration change while flagged restores all three
-  * user-facing selections and the original encoded shadow. */
- reset(2,4,false);assert(transport_flag_format(true));snapshot();
- fail_forward=TR_TX_START;s_output=8;s_prog_lp=true;
- assert(!resume_live(kp_tables[6]));verify(true,2,4,false);
- assert(s_output==4&&!s_prog_lp&&!settings_writes);++checks;
- /* Failed verified recovery latches unknown and keeps pin ownership retained. */
- for(unsigned exit=0;exit<2;++exit){
-  reset(3,9,false);if(exit){assert(transport_flag_format(true));snapshot();}
-  fail_forward=TR_TX_START;fail_rollback=TR_TX_START;
-  assert(!transport_flag_format(!exit));
-  assert(s_transport_fault&&!s_lut_known&&s_rollback_fail==1&&s_flag_pin);
-  assert(restart_finishes==(exit?2u:1u)&&!restart_finish_ok);
-  assert(!memcmp(before,s_lut_live,sizeof(before))&&!settings_writes);
-  unsigned previous=stages;assert(!transport_flag_format(exit)&&stages==previous);++checks;
- }
- reset(0,0,false);cancel_ok=false;assert(!transport_flag_format(true)&&!acquires&&!stages);++checks;
- reset(0,0,false);acquire_ok=false;assert(!transport_flag_format(true)&&!stages&&!s_flag_pin);++checks;
  printf("PASS: %u actual format/publication/recovery checks; no physical claim\n",checks);
 }
 '''

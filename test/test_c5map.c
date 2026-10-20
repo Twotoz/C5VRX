@@ -61,11 +61,11 @@ int main(void)
     }
     check("c5map: level 7 (kp 0.50) calmer than level 0 (kp 0.85)", code_max_l7 <= code_max_l0);
 
-    /* 4. Output level scaling test (output_level.h) */
-    unsigned clipped = 0;
+    /* 4. Output level scaling test (output_level.h): level 0 is 1.0x */
+    bool clipped = false;
     int output_ok = 1;
     for (int k = 0; k < 1024; ++k) {
-        uint16_t v = output_entry(c5map_tables[0][k], OUTPUT_1_0X, &clipped);
+        uint16_t v = output_entry(c5map_tables[0][k], 0, &clipped);
         if ((v & 63u) != (c5map_tables[0][k] & 63u)) output_ok = 0;
     }
     check("c5map: 1.0x output scaling is identity", output_ok);
@@ -73,7 +73,7 @@ int main(void)
     /* 5. Sync flag encoding test (sync_flag.h) */
     int flag_ok = 1;
     for (int k = 0; k < 1024; ++k) {
-        uint16_t v = sync_flag_entry(c5map_tables[0][k], OUTPUT_1_0X, &clipped);
+        uint16_t v = sync_flag_entry(c5map_tables[0][k], 0, &clipped);
         /* Check that upper token and state bits are preserved */
         if ((v & ~63u) != (c5map_tables[0][k] & ~63u)) flag_ok = 0;
     }
@@ -88,6 +88,6 @@ int main(void)
     }
     check("c5map: both Regime 0 (Sync/Porch) and Regime 1 (Video) reachable", regime0_reached && regime1_reached);
 
-    printf("Result: %u run, %u failed\n", s_run, s_fail);
-    return s_fail ? 1 : 0;
+    printf("%u/%u passed\n", s_run - s_fail, s_run);
+    return s_fail ? EXIT_FAILURE : EXIT_SUCCESS;
 }
