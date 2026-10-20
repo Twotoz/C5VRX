@@ -33,7 +33,7 @@ import sim  # noqa: E402
 
 RANGE_MHZ = (-6.0, 9.0)
 DT = 50e-9
-KP_LADDER = (0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50)
+KP_LADDER = (0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.40)
 
 def _nibble(word, positions):
     v = 0
@@ -119,7 +119,7 @@ def build_c5map_lut(kp=0.85):
     ph = (np.arange(N_PHASE) + 0.5) * 2 * math.pi / N_PHASE - math.pi
     lut = np.zeros(1024, dtype=np.int64)
 
-    v_sync_prior = -0.40 * math.pi   # -4.0 MHz (sync tip nominal frequency)
+    v_sync_prior = -0.45 * math.pi   # -4.5 MHz (sync tip anchor, harmonized across 0.7 to 1.7 dev)
     v_video_prior = +0.10 * math.pi  # +1.0 MHz (video baseline drift)
 
     for s in range(P):
@@ -135,15 +135,16 @@ def build_c5map_lut(kp=0.85):
                 # Regime 0 (Sync): Probabilistic sync protection
                 # Suppress positive noise clicks and +/- pi cycle-slip wraps in sync:
                 gain = kp * w
-                if (err > 0.15 * math.pi or err < -0.65 * math.pi) and w < 0.92:
+                if (err > 0.15 * math.pi or err < -0.85 * math.pi) and w < 0.92:
                     err_eff = min(0.06 * math.pi, max(-0.50 * math.pi, err * 0.10))
                 else:
                     err_eff = err
                 d_theta = gain * err_eff + (1.0 - gain) * v_sync_prior
 
-                # Exit sync into active video on confirmed positive excursion (> +1.2 MHz)
-                # Prevents vertical serration noise chatter from triggering false falling edges
-                if d_theta > 0.12 * math.pi and w > 0.75:
+                # Exit sync into active video on confirmed positive excursion
+                # Adaptive exit threshold ensures smooth exit even under low kp (Rescue mode)
+                exit_th = 0.10 * math.pi if kp <= 0.45 else 0.12 * math.pi
+                if d_theta > exit_th and w > 0.75:
                     next_regime = 1
                 else:
                     next_regime = 0
@@ -153,7 +154,8 @@ def build_c5map_lut(kp=0.85):
                 d_theta = gain * err + (1.0 - gain) * v_video_prior
 
                 # Enter sync if carrier plunges into sync pulse
-                if d_theta < -0.26 * math.pi and w > 0.50:
+                enter_th = -0.24 * math.pi if kp <= 0.45 else -0.25 * math.pi
+                if d_theta < enter_th and w > 0.50:
                     next_regime = 0
                 else:
                     next_regime = 1

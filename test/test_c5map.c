@@ -59,7 +59,7 @@ int main(void)
         if (c0 > code_max_l0) code_max_l0 = c0;
         if (c7 > code_max_l7) code_max_l7 = c7;
     }
-    check("c5map: level 7 (kp 0.50) calmer than level 0 (kp 0.85)", code_max_l7 <= code_max_l0);
+    check("c5map: level 7 (rescue kp 0.40) calmer than level 0 (kp 0.85)", code_max_l7 <= code_max_l0);
 
     /* 4. Output level scaling test (output_level.h): level 0 is 1.0x */
     bool clipped = false;
