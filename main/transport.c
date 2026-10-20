@@ -395,13 +395,6 @@ const char *transport_program_name(void)
 }
 const char *transport_demod_name(void) { return s_demod_c5map ? "C5MAP" : "U85Q"; }
 bool transport_is_c5map(void) { return s_demod_c5map; }
-bool transport_set_demod_c5map(bool c5map)
-{
-    if (c5map == s_demod_c5map) return true;
-    s_demod_c5map = c5map;
-    if (!s_started || s_menu_active) return true;
-    return switch_live(s_verified_level >= 0 ? s_verified_level : 0, s_prog_lp);
-}
 bool transport_faulted(void) { return s_transport_fault; }
 uint32_t transport_restart_errors(void) { return s_restart_errors; }
 unsigned transport_output(void) { return s_output; }
