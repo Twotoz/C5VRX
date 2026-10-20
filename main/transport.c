@@ -27,6 +27,7 @@
 #include "sync_flag.h"
 #include "hal/parlio_ll.h"
 #include "kp_tables.h"
+#include "c5map_tables.h"
 #include "snapshot.h"
 #include "control_window.h"
 #include "phase8_gain_lut.h"
@@ -46,22 +47,27 @@
  * tracker on the PAIR4411 shared word, origin cells as coarse quadrant
  * tokens, linear -6..+9 MHz output window. docs/FINDINGS.md. */
 BITSCRAMBLER_PROGRAM(s_u85q, "u85q");
-/* Calmer loop gains (the MATCHED profiles' kp 0.6 / 0.5) are LUTs of this
- * same program: u85q_kp060/kp050.bsasm have identical instructions and
- * their LUTs are kp_tables.h levels 5 and 7 bit-exactly, so they are not
- * separate programs here and the kp/LP ladder runs on every profile. */
-/* U85Q-LP: U85Q plus a post-detection IIR low-pass (pole 1/2) in counter A,
- * same LUT and two bundles (research/u85q_lp.py, README sections 12/16).
- * transport_set_lp() uses the normal pipeline start sequence; a live
- * instruction rewrite left the board video black while USB kept running. */
 BITSCRAMBLER_PROGRAM(s_u85q_lp, "u85q_lp");
 BITSCRAMBLER_PROGRAM(s_u85q_lp_flag, "u85q_lp_flag");
+/* C5MAP (Maximum A Posteriori trajectory demodulator): 2-regime video dynamics,
+ * uncertainty weighting, and Sample B trajectory validation. */
+BITSCRAMBLER_PROGRAM(s_c5map, "c5map");
+BITSCRAMBLER_PROGRAM(s_c5map_lp, "c5map_lp");
+BITSCRAMBLER_PROGRAM(s_c5map_lp_flag, "c5map_lp_flag");
 static bool s_started;   /* live TX running (cleared while menu/status/recovery owns TX) */
-static bool s_prog_lp;   /* U85Q-LP instructions loaded */
-static const void *tracker_program(bool lp) { return lp ? s_u85q_lp : s_u85q; }
+static bool s_prog_lp;   /* LP instructions loaded */
+static bool s_demod_c5map = true; /* C5MAP active by default */
+static const void *tracker_program(bool lp)
+{
+    if (s_demod_c5map) return lp ? s_c5map_lp : s_c5map;
+    return lp ? s_u85q_lp : s_u85q;
+}
 static bool s_flag_format,s_verified_flag;
 static const void *tracker_format_program(bool lp,bool flag)
-{ return flag && lp?s_u85q_lp_flag:tracker_program(lp); }
+{
+    if (s_demod_c5map) return flag && lp ? s_c5map_lp_flag : tracker_program(lp);
+    return flag && lp ? s_u85q_lp_flag : tracker_program(lp);
+}
 
 /* 6-bit resistor DAC, LSB first (XIAO D4..D9; 8.2k/3.9k/2k/1k/470R/240R
  * plus 200R). Do not change the tested pin order. */
@@ -330,7 +336,7 @@ static bool switch_live(int level, bool lp)
 {
     if (!s_lut_known || !s_started || s_menu_active) return false;
     if (level >= KP_LEVELS || level < -1) return false;
-    const uint16_t *lut = level < 0 ? s_lut_live : kp_tables[level];
+    const uint16_t *lut = level < 0 ? s_lut_live : (s_demod_c5map ? c5map_tables[level] : kp_tables[level]);
     bool kp_changed = level >= 0 && level != s_verified_level;
     bool lp_changed = lp != s_prog_lp;
     if (!kp_changed && !lp_changed) return true;
@@ -382,7 +388,20 @@ bool transport_set_lp(bool lp)
 
 bool transport_lp(void) { return s_prog_lp; }
 
-const char *transport_program_name(void) { return s_prog_lp ? "U85Q-LP" : "U85Q"; }
+const char *transport_program_name(void)
+{
+    if (s_demod_c5map) return s_prog_lp ? "C5MAP-LP" : "C5MAP";
+    return s_prog_lp ? "U85Q-LP" : "U85Q";
+}
+const char *transport_demod_name(void) { return s_demod_c5map ? "C5MAP" : "U85Q"; }
+bool transport_is_c5map(void) { return s_demod_c5map; }
+bool transport_set_demod_c5map(bool c5map)
+{
+    if (c5map == s_demod_c5map) return true;
+    s_demod_c5map = c5map;
+    if (!s_started || s_menu_active) return true;
+    return switch_live(s_verified_level >= 0 ? s_verified_level : 0, s_prog_lp);
+}
 bool transport_faulted(void) { return s_transport_fault; }
 uint32_t transport_restart_errors(void) { return s_restart_errors; }
 unsigned transport_output(void) { return s_output; }
@@ -400,7 +419,7 @@ bool transport_set_output(unsigned level)
     if (s_menu_active || !s_started) { s_output = level; return true; }
     if (!kp_switch_ready(&s_switch_guard, esp_timer_get_time())) return false;
     s_output = level;
-    bool ok = resume_live(s_lut_known ? kp_tables[s_verified_level] : NULL);
+    bool ok = resume_live(s_lut_known ? (s_demod_c5map ? c5map_tables[s_verified_level] : kp_tables[s_verified_level]) : NULL);
     kp_switch_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
 }
@@ -756,9 +775,9 @@ static bool resume_live(const uint16_t *restore_lut)
     const uint8_t *program_inst;
     if (!program_words(r.program, &program_inst)) return false;
     memcpy(s_program_work.prefix, r.program, sizeof(s_program_work.prefix));
-    if (!restore_lut) restore_lut = kp_tables[s_kp_target];
+    if (!restore_lut) restore_lut = s_demod_c5map ? c5map_tables[s_kp_target] : kp_tables[s_kp_target];
     if(restore_lut==s_lut_live && s_flag_format!=s_verified_flag)
-        restore_lut=kp_tables[s_verified_level];
+        restore_lut = s_demod_c5map ? c5map_tables[s_verified_level] : kp_tables[s_verified_level];
     if (restore_lut == s_lut_live) {
         memcpy(s_lut_work, s_lut_live, sizeof(s_lut_work));
         r.level = s_verified_level;
@@ -772,7 +791,7 @@ static bool resume_live(const uint16_t *restore_lut)
                                   output_entry(restore_lut[i], s_output, &clipped);
             r.clipped += clipped;
         }
-        for (int k = 0; k < KP_LEVELS; ++k) if (restore_lut == kp_tables[k]) r.level = k;
+        for (int k = 0; k < KP_LEVELS; ++k) if (restore_lut == (s_demod_c5map ? c5map_tables[k] : kp_tables[k])) r.level = k;
     }
     tr_result_t result = tr_restart(&r, quiesce, restart_stage, s_have_verified);
     if (result != TR_APPLIED) ++s_restart_errors;
@@ -817,7 +836,7 @@ static bool transport_flag_format(bool flag)
     if(!transport_sync_live_cancel())return false;
     if(flag && !flag_pin_acquire())return false;
     s_flag_format=flag;
-    bool ok=resume_live(kp_tables[s_verified_level]);
+    bool ok = resume_live(s_demod_c5map ? c5map_tables[s_verified_level] : kp_tables[s_verified_level]);
     if(!s_transport_fault && !s_verified_flag) {
         if(!flag_pin_restored()){s_transport_fault=true;s_lut_known=false;return false;}
         s_flag_pin->active=false;s_flag_pin=NULL;
@@ -1383,8 +1402,9 @@ void transport_live_lut_test(void)
     uint32_t mism[3] = {0, 0, 0}, us[3] = {0, 0, 0}, differ = 0;
     for (unsigned i = 0; i < KP_LUT_ENTRIES; ++i) {
         bool clipped;
-        want[i] = s_flag_format ? sync_flag_entry(kp_tables[other][i], s_output, &clipped)
-                                : output_entry(kp_tables[other][i], s_output, &clipped);
+        const uint16_t (*active_tables)[1024] = s_demod_c5map ? c5map_tables : kp_tables;
+        want[i] = s_flag_format ? sync_flag_entry(active_tables[other][i], s_output, &clipped)
+                                : output_entry(active_tables[other][i], s_output, &clipped);
         differ += want[i] != s_lut_live[i];
     }
     const uint16_t *pass[3] = {s_lut_live, want, s_lut_live};
