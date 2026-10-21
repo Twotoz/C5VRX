@@ -150,7 +150,7 @@ int main(void) {
      * mode left in NVS by an earlier firmware. */
     boot(); assert(!gain_restores);
     const unsigned char old_fixed = 42; seed(2, &old_fixed, 1); boot(); assert(!gain_restores && gain_mode == 0);
-    /* Flywheel: absent key keeps the firmware default (ON), saved ON/OFF restored. */
+    /* Flywheel: absent key keeps the firmware default (OFF), saved ON/OFF restored. */
     slots[3].n = 0; boot(); assert(!flywheel_restores && flywheel_boot == 0);
     writes = commits = 0; settings_save_flywheel(true); assert(writes == 1 && commits == 1);
     boot(); assert(flywheel_restores == 1 && flywheel_boot == 1 && gain_mode == 0 && output == 1);

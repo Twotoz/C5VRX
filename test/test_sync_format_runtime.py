@@ -26,7 +26,7 @@ static const uint8_t s_u85q_lp_flag[300]={1,0,3,8,0,2,1,[12]=3};
 static const uint8_t s_c5map[300]={1,0,3,8,0,2,1,[12]=4};
 static const uint8_t s_c5map_lp[300]={1,0,3,8,0,2,1,[12]=5};
 static const uint8_t s_c5map_lp_flag[300]={1,0,3,8,0,2,1,[12]=6};
-static bool s_demod_c5map;
+static bool s_demod_c5map,s_verified_demod_c5map;
 static bool s_started,s_transport_fault,s_lut_known,s_have_verified;
 static bool s_prog_lp,s_flag_format,s_verified_lp,s_verified_flag;
 static unsigned s_output,s_verified_output,s_output_clipped;

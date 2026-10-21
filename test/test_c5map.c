@@ -24,8 +24,17 @@ int main(void)
 {
     printf("=== C5MAP Demodulator Unit Test ===\n");
 
-    /* 1. Verify token bits constancy across all ladder levels */
-    int tokens_consistent = 1;
+    static const uint8_t expected_levels[] = {85, 80, 75, 70, 65, 60, 55, 45};
+    check("c5map: ladder metadata matches generated levels",
+          C5MAP_LEVELS == (int)(sizeof(expected_levels) / sizeof(expected_levels[0])));
+    int levels_ok = C5MAP_LEVELS == (int)(sizeof(expected_levels) / sizeof(expected_levels[0]));
+    for (int lv = 0; levels_ok && lv < C5MAP_LEVELS; ++lv)
+        levels_ok = c5map_level_x100[lv] == expected_levels[lv];
+    check("c5map: ladder runs from kp 0.85 to rescue kp 0.45", levels_ok);
+
+    /* Token classification is independent of the transition/output ladder. */
+    int tokens_consistent = 1, b_signs_ignored = 1;
+    bool token_seen[32] = {false};
     for (int lv = 1; lv < C5MAP_LEVELS; ++lv) {
         for (int k = 0; k < 1024; ++k) {
             if ((c5map_tables[lv][k] >> 11) != (c5map_tables[0][k] >> 11)) {
@@ -35,31 +44,30 @@ int main(void)
         }
     }
     check("c5map: all ladder levels share identical token bits", tokens_consistent);
+    for (int k = 0; k < 1024; ++k) token_seen[c5map_tables[0][k] >> 11] = true;
+    int token_set_ok = 1;
+    for (int token = 0; token < 32; ++token)
+        token_set_ok &= token_seen[token] == (token < 28);
+    check("c5map: final model emits exactly phase tokens 0..27", token_set_ok);
+    for (int a = 0; a < 256; ++a) {
+        uint16_t token = c5map_tables[0][a] >> 11;
+        for (int signs = 1; signs < 4; ++signs)
+            b_signs_ignored &= (c5map_tables[0][a + signs * 256] >> 11) == token;
+    }
+    check("c5map: dormant Sample-B sign bits do not change a token", b_signs_ignored);
 
-    /* 2. Verify code ranges and state indices for all entries */
-    int codes_valid = 1;
-    int states_valid = 1;
+    /* Calmer ladder levels must narrow the FM step/code excursion. */
+    int excursion_ok = 1, previous_max = 64;
     for (int lv = 0; lv < C5MAP_LEVELS; ++lv) {
+        int code_max = 0;
         for (int k = 0; k < 1024; ++k) {
-            uint16_t entry = c5map_tables[lv][k];
-            uint8_t code = entry & 63u;
-            uint8_t state = (entry >> 6) & 31u;
-            if (code > 63u) codes_valid = 0;
-            if (state > 31u) states_valid = 0;
+            int code = c5map_tables[lv][k] & 63u;
+            if (code > code_max) code_max = code;
         }
+        excursion_ok &= code_max < previous_max;
+        previous_max = code_max;
     }
-    check("c5map: DAC codes in valid range [0..63]", codes_valid);
-    check("c5map: next state indices in valid range [0..31]", states_valid);
-
-    /* 3. Verify ladder progression: higher levels (calmer kp) have narrower code excursion */
-    int code_max_l0 = 0, code_max_l7 = 0;
-    for (int k = 0; k < 1024; ++k) {
-        int c0 = c5map_tables[0][k] & 63u;
-        int c7 = c5map_tables[C5MAP_LEVELS - 1][k] & 63u;
-        if (c0 > code_max_l0) code_max_l0 = c0;
-        if (c7 > code_max_l7) code_max_l7 = c7;
-    }
-    check("c5map: level 7 (kp 0.50) calmer than level 0 (kp 0.85)", code_max_l7 <= code_max_l0);
+    check("c5map: each calmer level narrows the code excursion", excursion_ok);
 
     /* 4. Output level scaling test (output_level.h): level 0 is 1.0x */
     bool clipped = false;
@@ -79,14 +87,21 @@ int main(void)
     }
     check("c5map: sync flag entry preserves token and state bits", flag_ok);
 
-    /* 6. Verify 2-regime states reachability */
-    int regime0_reached = 0, regime1_reached = 0;
-    for (int k = 0; k < 1024; ++k) {
-        uint8_t st = (c5map_tables[0][k] >> 6) & 31u;
-        if (st < 16) regime0_reached = 1;
-        else regime1_reached = 1;
+    /* Follow every emitted token from state 0. This proves both regimes and
+     * all 32 recurrent states are reachable in the actual final model. */
+    bool state_seen[32] = {true};
+    unsigned queue[32] = {0}, head = 0, tail = 1;
+    while (head < tail) {
+        unsigned state = queue[head++];
+        for (unsigned token = 0; token < 28; ++token) {
+            unsigned next = (c5map_tables[0][state * 32 + token] >> 6) & 31u;
+            if (!state_seen[next]) {
+                state_seen[next] = true;
+                queue[tail++] = next;
+            }
+        }
     }
-    check("c5map: both Regime 0 (Sync/Porch) and Regime 1 (Video) reachable", regime0_reached && regime1_reached);
+    check("c5map: all 32 states in both regimes are reachable", tail == 32);
 
     printf("%u/%u passed\n", s_run - s_fail, s_run);
     return s_fail ? EXIT_FAILURE : EXIT_SUCCESS;

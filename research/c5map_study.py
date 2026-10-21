@@ -55,9 +55,9 @@ def run_study(output_path=HERE / 'data' / 'c5map_study.json', physical=False):
             # 4. C5MAP-LP Level 0 (kp 0.85)
             maplp_pic, maplp_sn = pll_compare.score(c, sim.DAC_VOLTS[u85q_lp.lp_codes(c['raw'], map_lut_l0)],
                                                     sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut_l0)])
-            # 5. C5MAP-LP Level 7 (kp 0.50, Rescue)
+            # 5. C5MAP-LP Level 7 (kp 0.45, Rescue)
             rescue_pic, rescue_sn = pll_compare.score(c, sim.DAC_VOLTS[u85q_lp.lp_codes(c['raw'], map_lut_l7)],
-                                                      sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut_l0)])
+                                                      sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut_l7)])
             
             case_res = {
                 'seed': seed,
@@ -109,7 +109,7 @@ def run_study(output_path=HERE / 'data' / 'c5map_study.json', physical=False):
         'physical_adc': physical,
         'cnr_sweep': results,
         'deviation_sweep': dev_results,
-        'summary': 'C5MAP evaluated across full ladder span (L0 kp 0.85 to L7 kp 0.50 Rescue) with physical ADC option.'
+        'summary': 'C5MAP evaluated across full ladder span (L0 kp 0.85 to L7 kp 0.45 Rescue) with physical ADC option.'
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(data, indent=2))

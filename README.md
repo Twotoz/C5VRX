@@ -69,7 +69,7 @@ it is not a demonstrated video or range improvement.
   reception has no uncorrected DC.
 - **Automatic receive-chain care**: per-gain DC correction, verified live
   DC trials, passive sampling-phase monitoring and AFC carrier centring.
-- **Sync flywheel**: saved ON/OFF, default ON (a saved OFF is kept).
+- **Sync flywheel**: saved ON/OFF, default OFF for the full 6-bit DAC (a saved ON is kept).
   Camera/monitor acceptance remains experimental; compare OFF on the ground.
 - **Simple menu**: band, channel, scan, video standard, calibrate, output
   level, gain, flywheel, exit.
@@ -150,7 +150,7 @@ Menu items: **BAND** (next band), **CHANNEL** (next channel), **SCAN**
 (AUTO / NTSC / PAL for the menu picture; AUTO follows the camera),
 **CALIBRATE** (on the ground: measure again), **OUTPUT** (0.5-5.0x DAC
 level, saved), **GAIN** (AUTO / MAX / fixed G78..G24, saved), **FLYWHEEL**
-(ON/OFF, saved, default ON), **DAC TEST** (bench only: test pattern; hold
+(ON/OFF, saved, default OFF for the full 6-bit DAC), **DAC TEST** (bench only: test pattern; hold
 for the multimeter steps, see the [DAC guide](docs/hardware/dac-build-and-test.md)),
 **EXIT**.
 The menu closes by itself after 30 s without a press (5 min on DAC TEST). It releases the
