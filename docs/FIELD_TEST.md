@@ -232,13 +232,14 @@ requested OFF, then verify the ordinary DAC path uses all six pins. Save ON,
 reboot and confirm ON is restored; save OFF again before the demodulator A/B.
 
 With a fixed VTX, channel, output, gain, profile and flywheel state, use console
-`m` to compare U85Q and C5MAP. A successful switch may briefly interrupt video
+`m` to compare U85Q and fixed C5MAP-LP. A successful switch may briefly interrupt video
 and must report the selected program. An immediate second switch inside the
 shared cooldown must be refused while `T` still reports the program actually
 on air. Repeat after the cooldown and through menu entry/exit.
 
-For C5MAP, record L0 and manual L7 (`k`/`j`) at strong signal and at each
-attenuation step. Capture picture quality, horizontal/vertical lock and the
+For C5MAP-LP, confirm `P` reports fixed LP, then record L0 and manual L7
+(`k`/`j`) at strong signal and at each attenuation step. Capture picture
+quality, horizontal/vertical lock and the
 exact attenuation where each loses usable video. L7 is expected to trade noise
 and SINAD for simulated linelock; host scores do not establish that a real
 monitor remains usable. Test PAL and NTSC before changing any default.

@@ -195,4 +195,46 @@ def main():
             '-I',str(ROOT/'main'),str(unit),'-o',str(binary)],check=True)
         subprocess.run([str(binary)],check=True)
 
+        selectors=segment('bool transport_set_lp(bool lp)', 'bool transport_faulted(void)')
+        selector_unit=path/'selectors.c';selector_binary=path/'selectors'
+        selector_unit.write_text(r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stdio.h>
+static bool s_prog_lp,s_demod_c5map,s_verified_demod_c5map;
+static bool s_started,s_menu_active,switch_ok;
+static int s_verified_level,switch_calls,switch_level;
+static bool switch_lp;
+static bool switch_live(int level,bool lp){
+ ++switch_calls;switch_level=level;switch_lp=lp;
+ if(!switch_ok)return false;
+ s_prog_lp=lp;s_verified_demod_c5map=s_demod_c5map;s_verified_level=level;
+ return true;
+}
+'''+selectors+r'''
+int main(void){
+ s_started=switch_ok=true;s_verified_level=3;
+ assert(transport_set_demod_c5map(true));
+ assert(switch_calls==1&&switch_level==3&&switch_lp);
+ assert(s_demod_c5map&&s_verified_demod_c5map&&s_prog_lp);
+ assert(!transport_set_lp(false)&&switch_calls==1);
+ assert(transport_set_demod_c5map(false));
+ assert(switch_calls==2&&switch_lp&&!s_demod_c5map&&!s_verified_demod_c5map&&s_prog_lp);
+
+ s_prog_lp=s_demod_c5map=s_verified_demod_c5map=false;
+ switch_ok=false;switch_calls=0;
+ assert(!transport_set_demod_c5map(true));
+ assert(switch_calls==1&&switch_lp&&!s_demod_c5map&&!s_verified_demod_c5map&&!s_prog_lp);
+
+ s_started=false;switch_calls=0;
+ assert(transport_set_demod_c5map(true));
+ assert(!switch_calls&&s_demod_c5map&&!s_verified_demod_c5map&&s_prog_lp);
+ assert(!transport_set_lp(false));
+ puts("PASS: C5MAP selection is transactional and keeps fixed LP");
+}
+''')
+        subprocess.run([os.environ.get('CC','cc'),'-O2','-std=c11','-Wall','-Wextra','-Werror',
+            str(selector_unit),'-o',str(selector_binary)],check=True)
+        subprocess.run([str(selector_binary)],check=True)
+
 if __name__=='__main__':main()

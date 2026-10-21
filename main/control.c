@@ -356,6 +356,10 @@ static void command(int c, unsigned *menu_idle)
         break;
     case 'P': {
         manual_auto_off();
+        if (transport_is_c5map()) {
+            printf("PROGRAM C5MAP-LP fixed (use k/j for normal/rescue level)\n");
+            break;
+        }
         const bool lp = !transport_lp();
         const bool menu = s_menu_active;
         uint32_t wait_before = transport_switch_wait_ms();

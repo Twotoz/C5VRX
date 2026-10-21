@@ -338,6 +338,9 @@ static bool switch_live(int level, bool lp)
 {
     if (!s_lut_known || !s_started || s_menu_active) return false;
     if (level >= KP_LEVELS || level < -1) return false;
+    /* The validated C5MAP operating model includes the fixed post-detection
+     * IIR. Keep it stable and use only the level ladder for normal/rescue. */
+    if (s_demod_c5map) lp = true;
     bool demod_changed = s_demod_c5map != s_verified_demod_c5map;
     bool kp_changed = level >= 0 && level != s_verified_level;
     bool lp_changed = lp != s_prog_lp;
@@ -387,6 +390,7 @@ uint32_t transport_switch_wait_ms(void)
 
 bool transport_set_lp(bool lp)
 {
+    if (s_demod_c5map && !lp) return false;
     if (lp == s_prog_lp) return true;
     /* Menu selection does not touch live RAM; applied at menu exit. */
     if (s_menu_active) { s_prog_lp = lp; return true; }
@@ -404,13 +408,17 @@ const char *transport_demod_name(void) { return s_demod_c5map ? "C5MAP" : "U85Q"
 bool transport_is_c5map(void) { return s_demod_c5map; }
 bool transport_set_demod_c5map(bool c5map)
 {
-    if (c5map == s_demod_c5map && c5map == s_verified_demod_c5map) return true;
+    bool lp = c5map ? true : s_prog_lp;
+    if (c5map == s_demod_c5map && c5map == s_verified_demod_c5map && lp == s_prog_lp) return true;
     s_demod_c5map = c5map;
     /* Before initial start, or while the menu owns TX, keep this as the
      * requested format. resume_live() publishes the verified format only
      * after the complete program/LUT restart succeeds. */
-    if (!s_started || s_menu_active) return true;
-    if (switch_live(s_verified_level >= 0 ? s_verified_level : 0, s_prog_lp)) return true;
+    if (!s_started || s_menu_active) {
+        s_prog_lp = lp;
+        return true;
+    }
+    if (switch_live(s_verified_level >= 0 ? s_verified_level : 0, lp)) return true;
     /* A cooldown refusal happens before switch_live() reaches its rollback.
      * Keep the user-visible selection equal to the format still on-air. */
     s_demod_c5map = s_verified_demod_c5map;

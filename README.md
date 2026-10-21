@@ -20,7 +20,7 @@
 Analog 5.8 GHz FPV receiver on one Seeed Studio XIAO ESP32-C5 with a passive
 6-bit resistor DAC: live FM video in, composite PAL/NTSC out for goggles.
 
-C5VRX-5 boots with the board-validated U85Q demodulator. Experimental C5MAP
+C5VRX-5 boots with the board-validated U85Q demodulator. Experimental C5MAP-LP
 can be selected at runtime with console `m`. Its receive-chain evidence is recorded in
 [docs/FINDINGS.md](docs/FINDINGS.md); the U85Q study it is built on, with
 scoring corrections and failed experiments, is preserved in
@@ -34,9 +34,11 @@ it is not a demonstrated video or range improvement.
 - **U85Q demodulator** in the TX BitScrambler: an untrained 32-phase tracker
   that keeps the picture locked across VTX deviations, off-centre carriers
   and multipath instead of dropping out. Board-validated on real video.
-- **Experimental C5MAP demodulator**: a generated two-regime, 32-state MAP
-  tracker with eight manual levels. Host simulation shows a strong linelock
-  rescue at L7; receiver and goggle validation is still pending.
+- **Experimental C5MAP-LP demodulator**: a generated two-regime, 32-state MAP
+  tracker with a fixed post-detection LP and eight manual levels. Host
+  simulation shows a strong linelock rescue at L7; receiver and goggle
+  validation is still pending. LP stays on in this mode; `k`/`j` select the
+  normal/rescue tradeoff without LP policy switches.
 - **Fixed ultrafine IQ** (ADC bits 9,6,5,4) at 40 MS/s, no CPU in the sample
   path.
 - **Direct Gain V6**: V5 gain control plus carrier memory across brief fades
