@@ -37,23 +37,23 @@ KP_LADDER = (0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50)
 
 # Tunable model parameters: universal Bayesian prior & transition thresholds
 DEFAULT_PARAMS = {
-    'kp_nominal': 0.8864,
+    'kp_nominal': 0.8868,
     'kp_rescue': 0.4273,
     'v_sync_prior': -0.3600 * math.pi,    # -4.2 MHz (sync tip anchor)
-    'v_video_prior': 0.1928 * math.pi,   # +1.8 MHz (video baseline drift)
-    'r_uncertainty': 0.7442,              # origin uncertainty threshold
-    'w_uncertainty': 0.4042,              # weight for origin tokens
-    'err_pos_bound': 0.2197 * math.pi,    # positive noise suppression bound
+    'v_video_prior': 0.1923 * math.pi,   # +1.8 MHz (video baseline drift)
+    'r_uncertainty': 0.7655,              # origin uncertainty threshold
+    'w_uncertainty': 0.4941,              # weight for origin tokens
+    'err_pos_bound': 0.2013 * math.pi,    # positive noise suppression bound
     'err_neg_bound': -0.9023 * math.pi,   # negative noise suppression bound
-    'err_scale': 0.0928,                  # noise suppression scale factor
+    'err_scale': 0.1617,                  # noise suppression scale factor
     'w_suppress_thresh': 0.9236,          # confidence threshold for suppression
     'exit_sync_th': 0.2174 * math.pi,     # exit sync into video threshold
     'enter_sync_th': -0.1624 * math.pi,   # enter sync from video threshold
     'exit_sync_decay': 0.9593,            # rescue exit decay factor
     'enter_sync_decay': 1.0080,           # rescue enter decay factor
     'sync_weight_thresh': 0.7128,         # token weight threshold for sync exit
-    'video_weight_thresh': 0.6048,        # token weight threshold for sync enter
-    'video_gain_boost': 1.0000,           # video definition boost on confident samples
+    'video_weight_thresh': 0.5386,        # token weight threshold for sync enter
+    'video_gain_boost': 0.9887,           # video definition boost on confident samples
     'code_quant_offset': -0.2928,           # DAC quantization rounding offset
 }
 
