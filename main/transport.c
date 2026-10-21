@@ -49,8 +49,9 @@
 BITSCRAMBLER_PROGRAM(s_u85q, "u85q");
 BITSCRAMBLER_PROGRAM(s_u85q_lp, "u85q_lp");
 BITSCRAMBLER_PROGRAM(s_u85q_lp_flag, "u85q_lp_flag");
-/* C5MAP (Maximum A Posteriori trajectory demodulator): 2-regime video dynamics,
- * uncertainty weighting, and Sample B trajectory validation. */
+/* C5MAP (Maximum A Posteriori trajectory demodulator): two regimes, 32
+ * recurrent states and 28 Sample-A phase tokens. Sample-B is dormant in the
+ * final generated model; see docs/FINDINGS.md. */
 BITSCRAMBLER_PROGRAM(s_c5map, "c5map");
 BITSCRAMBLER_PROGRAM(s_c5map_lp, "c5map_lp");
 BITSCRAMBLER_PROGRAM(s_c5map_lp_flag, "c5map_lp_flag");

@@ -341,6 +341,10 @@ static void command(int c, unsigned *menu_idle)
         printf("LP policy %s (saved)\n", s_lp_by_cn ? "RESCUE by C/N benefit (default)" : "GAIN (G70 on, G65 off; earlier rule)");
         break;
     case 'K':
+        if (transport_is_c5map()) {
+            printf("KP ladder refused=C5MAP_manual_only (use k/j)\n");
+            break;
+        }
         s_kp_auto = (uint8_t)((s_kp_auto + 1u) % 3u);
         save_auto_mode();
         kp_ladder_reset(&s_kp);
