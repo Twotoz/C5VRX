@@ -216,8 +216,9 @@ def main():
     print(f"\nStarting Video Quality Evolutionary Optimizer ({args.duration}s target, {args.workers} workers)...")
 
     with Pool(processes=args.workers, initializer=init_worker, initargs=(screen_cases, full_cases, baseline_params)) as pool:
+        start_time = time.time()
         try:
-            while time.time() - start_time < args.duration:
+            while generation == 0 or time.time() - start_time < args.duration:
                 gen_start = time.time()
                 results = pool.map(evaluate_video_candidate, population)
                 gen_duration = time.time() - gen_start

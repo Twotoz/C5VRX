@@ -202,7 +202,6 @@ def main():
     for _ in range(args.pop_size - 1):
         population.append(mutate_candidate(initial_seed, temp=0.20))
 
-    start_time = time.time()
     generation = 0
     total_evals = 0
     best_score = -9999.0
@@ -210,10 +209,11 @@ def main():
     best_metrics = (0.0, 0.0, 0.0, 0.0)
 
     print(f"\nStarting Deep Negative C/N Evolutionary Optimizer ({args.duration}s target, {args.workers} workers)...")
-    
+
     with Pool(processes=args.workers, initializer=init_worker, initargs=(screen_cases, full_cases, baseline_params)) as pool:
+        start_time = time.time()
         try:
-            while time.time() - start_time < args.duration:
+            while generation == 0 or time.time() - start_time < args.duration:
                 gen_start = time.time()
                 results = pool.map(evaluate_deep_candidate, population)
                 gen_duration = time.time() - gen_start
