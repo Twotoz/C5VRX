@@ -873,9 +873,11 @@ GAIN (console `G`): AUTO (KEEL-1), MAX or fixed G78..G24, never stored: every bo
 FLYWHEEL (console `U`) is saved and defaults OFF without a valid setting so
 ordinary output uses the full 6-bit DAC (operator decision 2026-10-21); a
 saved ON is respected. Do not claim monitor lock.
-C5MAP-LP boots at manual L0 with fixed LP (operator decision 2026-10-21);
-console `m` toggles the board-validated U85Q comparison. The U85Q kp/LP AUTO
-policy remains disabled in C5MAP mode because its thresholds do not apply.
+U85Q boots as the clean baseline; console `m` selects C5MAP-LP as manual
+range-edge rescue at L0 with fixed LP (operator decision 2026-10-21 after the
+first C5MAP field run found softer/streakier video without a clear range gain).
+The U85Q kp/LP AUTO policy remains disabled in C5MAP mode because its thresholds
+do not apply.
 Menu entry must hold flywheel restarts and verify observer/output release
 before allocating internal DMA descriptors in 384-byte chunks. Interlaced
 NTSC/PAL needs about 18/22 KiB; progressive fallback about 9/11 KiB.

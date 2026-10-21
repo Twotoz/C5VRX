@@ -102,7 +102,7 @@ static void help(void)
            "  H bench: LUT writes while running (readback; another kp level for ~1 ms),\n"
            "  N bench: noise floor with the video output on vs off (VTX off; video stops ~0.3 s x4),\n"
            "  O LP policy: RESCUE by C/N benefit (default) <-> GAIN (G70/G65, earlier rule) (saved),\n"
-           "  m demodulator toggle C5MAP-LP <-> U85Q (fixed LP/manual k/j in C5MAP; default C5MAP-LP L0),\n"
+           "  m demodulator toggle U85Q <-> C5MAP-LP rescue (fixed LP/manual k/j in C5MAP; default U85Q),\n"
            "  Z DAC self-test (bench: test pattern, then one flat level per pin for a multimeter),\n"
            "  ` reboot to USB download (flashing)\n");
 }

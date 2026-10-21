@@ -56,8 +56,8 @@ BITSCRAMBLER_PROGRAM(s_c5map, "c5map");
 BITSCRAMBLER_PROGRAM(s_c5map_lp, "c5map_lp");
 BITSCRAMBLER_PROGRAM(s_c5map_lp_flag, "c5map_lp_flag");
 static bool s_started;   /* live TX running (cleared while menu/status/recovery owns TX) */
-static bool s_prog_lp = true;   /* C5MAP boots with its fixed LP */
-static bool s_demod_c5map = true; /* C5MAP-LP by default; m provides the U85Q A/B */
+static bool s_prog_lp;          /* U85Q boots clean; its AUTO policy may select LP at the edge */
+static bool s_demod_c5map;      /* U85Q by default; m selects fixed-LP C5MAP rescue */
 static bool s_verified_demod_c5map = false; /* Demodulator verified live in BitScrambler */
 static const void *tracker_program(bool lp)
 {

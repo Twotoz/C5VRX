@@ -20,8 +20,8 @@
 Analog 5.8 GHz FPV receiver on one Seeed Studio XIAO ESP32-C5 with a passive
 6-bit resistor DAC: live FM video in, composite PAL/NTSC out for goggles.
 
-C5VRX-5 boots with experimental C5MAP-LP at nominal L0; console `m` toggles
-the board-validated U85Q path for a direct A/B. Its receive-chain evidence is recorded in
+C5VRX-5 boots with the board-validated U85Q path; console `m` selects
+experimental C5MAP-LP at nominal L0 as a manual range-edge rescue. Its receive-chain evidence is recorded in
 [docs/FINDINGS.md](docs/FINDINGS.md); the U85Q study it is built on, with
 scoring corrections and failed experiments, is preserved in
 [docs/pr190-key-findings.md](docs/pr190-key-findings.md) and
@@ -31,14 +31,16 @@ it is not a demonstrated video or range improvement.
 
 ## What it does
 
-- **U85Q comparison demodulator** in the TX BitScrambler: an untrained 32-phase tracker
+- **Default U85Q demodulator** in the TX BitScrambler: an untrained 32-phase tracker
   that keeps the picture locked across VTX deviations, off-centre carriers
   and multipath instead of dropping out. Board-validated on real video.
-- **Default experimental C5MAP-LP demodulator**: a generated two-regime, 32-state MAP
+- **Experimental C5MAP-LP rescue demodulator**: a generated two-regime, 32-state MAP
   tracker with a fixed post-detection LP and eight manual levels. Host
   simulation shows a strong linelock rescue at L7; receiver and goggle
   validation is still pending. LP stays on in this mode; `k`/`j` select the
-  normal/rescue tradeoff without LP policy switches.
+  normal/rescue tradeoff without LP policy switches. Initial board feedback found
+  the ordinary picture softer and streakier without a clear range gain, so it is
+  not the boot default.
 - **Fixed ultrafine IQ** (ADC bits 9,6,5,4) at 40 MS/s, no CPU in the sample
   path.
 - **Direct Gain V6**: V5 gain control plus carrier memory across brief fades
