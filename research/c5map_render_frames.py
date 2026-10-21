@@ -211,6 +211,8 @@ def main():
 
         out_path = out_dir / filename
         render_comparison_figure(img_u, u_lock, u_sinad, img_c5, c5_lock, c5_sinad, title, out_path)
+        docs_path = WORKSPACE / "docs" / "images" / filename
+        render_comparison_figure(img_u, u_lock, u_sinad, img_c5, c5_lock, c5_sinad, title, docs_path)
 
     print("\nAll 4 comparison figures generated successfully in artifact directory!")
 

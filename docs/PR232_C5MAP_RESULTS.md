@@ -29,7 +29,28 @@ All measurements are evaluated across 4 independent noise seeds, both PAL (312 l
 
 ---
 
-## 2. Multi-Seed Physical ADC Comparative Benchmark
+
+---
+
+## 2. Visual Side-by-Side Video Frames (U85Q vs C5MAP)
+
+Directly rendered through the physical folded ESP32-C5 ADC pipeline with an authentic PAL FPV scene (FPV race gate, terrain gradient, fine obstacles, and Betaflight OSD overlay):
+
+### Clean Line-of-Sight (+10 dB C/N)
+![Clean Line-of-Sight (+10 dB C/N)](images/compare_10db_clean.png)
+
+### Standard Range Flight (0 dB C/N)
+![Standard Range Flight (0 dB C/N)](images/compare_0db_flight.png)
+
+### Behind Concrete Wall / Trees (−3 dB C/N)
+![Behind Concrete Wall / Trees (-3 dB C/N)](images/compare_m3db_wall.png)
+
+### Extreme Bando / Deep Rescue (−7 dB C/N)
+![Extreme Bando / Deep Rescue (-7 dB C/N)](images/compare_m7db_bando.png)
+
+---
+
+## 3. Multi-Seed Physical ADC Comparative Benchmark
 
 Measurements averaged over 4 independent seeds (Seeds 11 PAL, 12 NTSC, 13 PAL, 14 NTSC) with physical folded ADC non-linearities and 12 MHz IF channel filtering:
 
@@ -51,7 +72,7 @@ Measurements averaged over 4 independent seeds (Seeds 11 PAL, 12 NTSC, 13 PAL, 1
 
 ---
 
-## 3. Demodulator Model Architecture
+## 4. Demodulator Model Architecture
 
 C5MAP operates as a 32-state Asymmetric Bayesian Maximum A Posteriori phase tracker within the ESP32-C5 BitScrambler hardware.
 
@@ -87,7 +108,7 @@ Level 7       | -1 to -7 dB      | Blackout Prevention  | 0.92 - 97| Bounded (>C
 
 ---
 
-## 4. VTX Deviation Sensitivity (+4.0 dB C/N)
+## 5. VTX Deviation Sensitivity (+4.0 dB C/N)
 
 Tested across non-standard and wide VTX deviations:
 
@@ -100,7 +121,7 @@ Tested across non-standard and wide VTX deviations:
 
 ---
 
-## 5. Multipath & Bando Echo Tolerance
+## 6. Multipath & Bando Echo Tolerance
 
 Tested with 400 ns delayed reflection ($\tau = 8$ samples at 20 MS/s) simulating concrete walls and metal structures:
 
@@ -113,7 +134,7 @@ Tested with 400 ns delayed reflection ($\tau = 8$ samples at 20 MS/s) simulating
 
 ---
 
-## 6. Hardware Verification & Implementation Details
+## 7. Hardware Verification & Implementation Details
 
 All components are strictly constrained to ESP32-C5 BitScrambler hardware capabilities:
 - **Table Size:** Exactly 1024 words $\times$ 16 bits (`main/c5map_tables.h`).
