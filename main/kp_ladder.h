@@ -150,10 +150,10 @@ static inline void kp_ladder_reset(kp_ladder_t *l)
 enum { KP_CLASS_LOW, KP_CLASS_NORMAL, KP_CLASS_MID, KP_CLASS_WIDE, KP_CLASSES };
 static const int16_t kp_cn_points_x10[6] = {0, 20, 40, 80, 120, 200};
 static const uint8_t kp_curve_x100[KP_CLASSES][6] = {
-    {70, 55, 50, 50, 50, 75},   /* deviation <= 0.80 */
-    {75, 60, 55, 55, 65, 75},   /* <= 1.05 */
-    {80, 70, 65, 65, 70, 80},   /* <= 1.15 (interpolated, no own run) */
-    {85, 85, 80, 80, 80, 80},   /* wider or unknown */
+    {50, 55, 50, 50, 50, 75},   /* deviation <= 0.80 (0 dB: Level 7 Rescue) */
+    {50, 60, 55, 55, 65, 75},   /* <= 1.05 */
+    {50, 70, 65, 65, 70, 80},   /* <= 1.15 (interpolated, no own run) */
+    {50, 85, 80, 80, 80, 80},   /* wider or unknown */
 };
 
 /* U85Q-LP (u85q_lp.bsasm: same LUT, IIR pole 1/2 after the tracker) beats
@@ -163,10 +163,10 @@ static const uint8_t kp_curve_x100[KP_CLASSES][6] = {
  * below which LP is used, and for wide VTXs the floor below which U85Q
  * kp 0.85 keeps lock better (README section 16). */
 static const uint8_t kp_lp_curve_x100[KP_CLASSES][6] = {
-    {75, 55, 50, 50, 50, 50},
-    {80, 70, 65, 75, 75, 75},
-    {85, 75, 70, 80, 80, 80},
-    {85, 85, 85, 85, 85, 85},
+    {50, 55, 50, 50, 50, 50},
+    {50, 70, 65, 75, 75, 75},
+    {50, 75, 70, 80, 80, 80},
+    {50, 85, 85, 85, 85, 85},
 };
 /* The same choice on the narrow 10 MHz class of the MATCHED profiles
  * (research/best_combo.py, FILTER_MHZ=10, data/best_combo_10mhz.json). Only
@@ -177,11 +177,11 @@ static const uint8_t kp_lp_curve_x100[KP_CLASSES][6] = {
  * (crossover ~6.9 / ~6.5 dB). Simulation, not measured range. */
 static const uint8_t kp_curve_narrow_x100[2][6] = {
     {50, 50, 50, 50, 50, 80},   /* deviation <= 0.80 */
-    {80, 55, 50, 50, 60, 85},   /* <= 1.05 */
+    {50, 55, 50, 50, 60, 85},   /* <= 1.05 */
 };
 static const uint8_t kp_lp_curve_narrow_x100[2][6] = {
-    {60, 50, 50, 50, 50, 50},
-    {80, 70, 70, 70, 70, 70},
+    {50, 50, 50, 50, 50, 50},
+    {50, 70, 70, 70, 70, 70},
 };
 /* The narrow rows come from a 10 MHz filter model. The board's narrow
  * sweep entry measured 11.9 MHz (docs/FINDINGS.md): there the 12 MHz rows
@@ -206,8 +206,8 @@ static inline bool kp_ladder_narrow_rows(bool matched_profile, unsigned narrow_w
  * Range limit unchanged (2.75 / 2.86 / 3.96 dB): the existing LP rule
  * already reaches the best in that data; the gain is a sharper picture
  * between 8.5 dB and close in. Simulation, not measured range. */
-static const uint8_t kp_curve_wide16_x100[6] = {85, 85, 85, 85, 85, 85};
-static const uint8_t kp_lp_curve_wide16_x100[6] = {85, 85, 85, 85, 85, 85};
+static const uint8_t kp_curve_wide16_x100[6] = {50, 85, 85, 85, 85, 85};
+static const uint8_t kp_lp_curve_wide16_x100[6] = {50, 85, 85, 85, 85, 85};
 #define KP_LP_ON_WIDE16_X10 95
 
 static const int16_t kp_lp_on_x10[KP_CLASSES] = {65, 65, 70, 85};
@@ -319,7 +319,7 @@ static inline uint8_t kp_ladder_update_evidence(kp_ladder_t *l, int cn_x10, bool
     }
     /* Deeper than the wide row ever goes (deviation lost on a channel
      * change, or measured wide): back to that row's deepest level at once. */
-    const uint8_t safe = kp_ladder_class(dev_x100) == KP_CLASS_WIDE ? kp_ladder_level_for(80) : KP_LADDER_LEVELS - 1;
+    const uint8_t safe = (kp_ladder_class(dev_x100) == KP_CLASS_WIDE && cn > 0) ? kp_ladder_level_for(80) : KP_LADDER_LEVELS - 1;
     if (l->level > safe) {
         l->level = safe;
         l->pending_dir = 0;
