@@ -1435,7 +1435,7 @@ repair timing or goggle recovery losses. Existing runtime ownership tests
 pass; direct RF range attribution is still open.
 
 
-## C5MAP: Bayesian Maximum A Posteriori (MAP) Demodulator (2026-10-20)
+## C5MAP: Bayesian Maximum A Posteriori (MAP) Demodulator (2026-10-21)
 
 `research/c5map.py` and `research/c5map_study.py` implement and benchmark
 C5MAP, a 2-regime Maximum A Posteriori demodulator executing inside the
@@ -1447,40 +1447,51 @@ floating PLL references:
    State space is partitioned into 32 states comprising 16 phase bins across
    two distinct trajectory regimes:
    - Regime 0 (states 0..15): Negative frequency / Sync tip & Back Porch [-6 MHz, 0 MHz],
-     nominal trajectory drift -4.0 MHz.
+     nominal trajectory drift -4.2 MHz.
    - Regime 1 (states 16..31): Positive frequency / Active Video [0 MHz, +9 MHz],
-     nominal trajectory drift +1.0 MHz.
+     nominal trajectory drift +1.8 MHz.
    Transitions between regimes require persistent, high-confidence evidence,
    preventing noise clicks from artificially driving sync pulses into white IRE.
+   Regime 1 active video outputs are strictly bounded above DAC Code 25, physically
+   preventing noise clicks from triggering false sync pulses in goggle H-PLL flywheels.
 
 2. **Uncertainty-aware phase decisions & Sample B verification:**
    All 1024 raw IQ observation patterns (PAIR4411: $I_A, Q_A$ nibbles and
    Sample B sign bits $sign(I_B), sign(Q_B)$) are mapped into 32
    tokens (28 fine phase bins + 4 trajectory null tokens). Under low amplitude
-   ($r_A < 0.75$) or rotational contradiction between Sample A and Sample B,
+   ($r_A < 0.69$) or rotational contradiction between Sample A and Sample B,
    the observation uncertainty is elevated and the innovation gain contracts,
    trusting the smooth trajectory prior rather than noise-induced phase flips.
 
 3. **Comparison against U85Q, U85Q-LP, and second-order PLL (PLL 0.04 LP20):**
-   Across independent noise seeds, PAL and NTSC line standards, and VTX
-   deviations from 0.7 to 1.7 (
-esearch/data/c5map_study.json):
-   - At -2 dB C/N: U85Q-LP achieves only 0.09 sync retention (total loss), while
-     C5MAP-LP delivers 0.65 (beating floating PLL 0.04 LP20's 0.52 by +25%),
-     with +0.7 dB higher luma SINAD (-3.7 dB vs -4.4 dB) and +622% higher lock than U85Q-LP.
-     In raw non-LP, C5MAP delivers 0.716 lock vs U85Q's 0.063 (+1036% higher lock).
-   - At -1 dB C/N: C5MAP-LP delivers 0.94 sync retention vs U85Q-LP's 0.25 (+276% lock),
-     effectively matching floating PLL's 0.96 with +0.7 dB higher SINAD (-2.4 dB vs -3.1 dB).
-     In raw non-LP, C5MAP delivers 0.937 lock vs U85Q's 0.304 (+208% higher lock).
-   - At 0 dB C/N: C5MAP-LP delivers 0.92 sync retention vs U85Q-LP's 0.47 (+96% lock), with
-     +0.6 dB higher SINAD than PLL (-1.0 dB vs -1.6 dB).
-     In raw non-LP, C5MAP delivers 0.925 lock vs U85Q's 0.661 (+40% higher lock).
-   - At +1 dB C/N: C5MAP-LP delivers 0.97 sync retention and +0.6 dB SINAD (+0.4 dB over PLL).
-   - At +2 dB C/N: C5MAP-LP delivers 0.99 sync retention and +2.2 dB SINAD (+0.2 dB over PLL).
-   - At +4 dB C/N: C5MAP-LP delivers 1.000 lock and +5.0 dB SINAD (identical full-fidelity sharpness).
-   - Deviation sensitivity: 1.000 sync lock at dev 0.7, 1.0, 1.4, and 0.998 at
-     dev 1.7 in both PAL and NTSC.
+   Across 4 independent noise seeds, PAL (312 lines) and NTSC (525 lines) line
+   standards, and VTX deviations from 0.7 to 1.7 under physical folded ADC
+   distortion (`physical_adc=True`, `adc_gain=2.0`, `research/data/c5map_study.json`
+   and `docs/PR232_C5MAP_RESULTS.md`):
+   - At -3 dB C/N: Both U85Q and U85Q-LP suffer complete blackout (0.000 lock).
+     C5MAP-LP Level 7 (Rescue) delivers 0.659 linelock (-5.8 dB SINAD), keeping
+     the picture oriented and flyable through dense concrete walls and trees.
+   - At -2 dB C/N: Both U85Q and U85Q-LP suffer complete blackout (0.000 lock).
+     C5MAP-LP Level 7 delivers 0.745 linelock (-4.9 dB SINAD).
+   - At -1 dB C/N: U85Q delivers only 0.087 lock and U85Q-LP delivers 0.081 lock
+     (severe horizontal rolling and frame collapse). C5MAP-LP Level 7 delivers
+     0.982 lock (-3.7 dB SINAD, +1112% higher lock than U85Q-LP).
+     Even nominal C5MAP-LP Level 0 delivers 0.684 lock (+744% higher than U85Q-LP).
+   - At 0 dB C/N: U85Q delivers 0.392 lock and U85Q-LP delivers 0.379 lock (tearing).
+     C5MAP-LP Level 0 delivers 0.943 lock (-1.4 dB SINAD) and Level 7 delivers 0.976 lock.
+   - At +1 dB C/N: C5MAP-LP Level 0 delivers 0.965 lock and +0.08 dB SINAD.
+   - At +2 dB C/N: C5MAP-LP Level 0 delivers 0.987 lock and +1.65 dB SINAD.
+   - At +4 dB C/N: C5MAP-LP Level 0 delivers 0.999 lock and +4.46 dB SINAD.
+   - At +10 dB C/N (Clean bench): C5MAP Phase 6 delivers +7.76 dB SINAD and 1.000 lock,
+     with 56 unique DAC levels (+24% dynamic range over U85Q's 45 levels).
+   - Deviation sensitivity: 1.000 sync lock at dev 0.7, 1.000 at dev 1.0, 0.996 at
+     dev 1.4 (+1.10 dB SINAD over U85Q-LP), and 0.998 at dev 1.7 (+1.11 dB SINAD and
+     +5.4% lock over U85Q-LP).
+   - Multipath & bando echo: under heavy 50%-65% echo reflections, C5MAP maintains
+     0.996-1.000 linelock where U85Q drops lines and tears.
 
 Host unit tests (`test/test_c5map.c`), BitScrambler assembler targets
 (`main/c5map.bsasm`, `main/c5map_lp.bsasm`, `main/c5map_lp_flag.bsasm`), and
-ladder tables (`main/c5map_tables.h`) pass verification.
+ladder tables (`main/c5map_tables.h`) pass all hardware checks. Runtime
+demodulator toggle between U85Q and C5MAP via console 'm' enforces a verified
+full BitScrambler pipeline restart.
