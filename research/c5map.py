@@ -35,6 +35,28 @@ RANGE_MHZ = (-6.0, 9.0)
 DT = 50e-9
 KP_LADDER = (0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50)
 
+# Tunable model parameters: universal Bayesian prior & transition thresholds
+DEFAULT_PARAMS = {
+    'kp_nominal': 0.8306,
+    'kp_rescue': 0.5200,
+    'v_sync_prior': -0.4147 * math.pi,    # -4.2 MHz (sync tip anchor)
+    'v_video_prior': 0.1649 * math.pi,   # +1.8 MHz (video baseline drift)
+    'r_uncertainty': 0.7382,              # origin uncertainty threshold
+    'w_uncertainty': 0.2269,              # weight for origin tokens
+    'err_pos_bound': 0.1438 * math.pi,    # positive noise suppression bound
+    'err_neg_bound': -0.8724 * math.pi,   # negative noise suppression bound
+    'err_scale': 0.1353,                  # noise suppression scale factor
+    'w_suppress_thresh': 0.9236,          # confidence threshold for suppression
+    'exit_sync_th': 0.0959 * math.pi,     # exit sync into video threshold
+    'enter_sync_th': -0.2372 * math.pi,   # enter sync from video threshold
+    'exit_sync_decay': 0.9149,            # rescue exit decay factor
+    'enter_sync_decay': 0.9212,           # rescue enter decay factor
+    'sync_weight_thresh': 0.7349,         # token weight threshold for sync exit
+    'video_weight_thresh': 0.5213,        # token weight threshold for sync enter
+    'video_gain_boost': 1.0075,           # video definition boost on confident samples
+    'code_quant_offset': -0.0184,           # DAC quantization rounding offset
+}
+
 def _nibble(word, positions):
     v = 0
     for bit in range(4):
@@ -42,7 +64,7 @@ def _nibble(word, positions):
     v = v - 16 if v > 7 else v
     return v + 0.5
 
-def build_c5map_lut(kp=0.85):
+def build_c5map_lut(kp=0.85, params=None):
     """
     Constructs the 1024-word C5MAP LUT using Maximum A Posteriori (MAP) estimation.
     
@@ -90,12 +112,17 @@ def build_c5map_lut(kp=0.85):
         ang_b[a] = ab
 
     # 2. Assign 32 observation tokens
+    if params is None:
+        params = DEFAULT_PARAMS
+
+    r_unc = params['r_uncertainty']
+    w_unc = params['w_uncertainty']
+
     TA = 28
     tok = np.zeros(1024, dtype=int)
     for a in range(1024):
         r = rad_a[a]
-        if r < 0.75:
-            # Origin uncertainty: classify into 4 trajectory sectors using Sample B
+        if r < r_unc:
             quad = int(math.floor((ang_b[a] + math.pi) / (0.5 * math.pi))) % 4
             tok[a] = TA + quad
         else:
@@ -108,19 +135,34 @@ def build_c5map_lut(kp=0.85):
         obs_weights[t] = 1.0
     for t in range(4):
         obs_angles[TA + t] = (t + 0.5) * 0.5 * math.pi - math.pi
-        obs_weights[TA + t] = 0.25 # Lower certainty for origin tokens
+        obs_weights[TA + t] = w_unc
 
     # 3. 32-state Asymmetric Bayesian MAP transition table
     # Combines Gaussian frequency innovation with asymmetric Bayes risk:
     # - In Sync (Regime 0): Suppresses positive white click noise and +/- pi noise wraps
     # - In Active Video (Regime 1): Zero prior drag on confident signal, preserving 100% video bandwidth & SINAD
     # - Slicer hysteresis: Natural, physics-based regime transitions without fitting
+    v_sync = params['v_sync_prior']
+    v_vid = params['v_video_prior']
+    err_pos = params['err_pos_bound']
+    err_neg = params['err_neg_bound']
+    err_sc = params['err_scale']
+    w_suppress = params['w_suppress_thresh']
+    sync_w_th = params['sync_weight_thresh']
+    vid_w_th = params['video_weight_thresh']
+    boost = params['video_gain_boost']
+    quant_off = params['code_quant_offset']
+
+    # 3. 32-state Asymmetric Bayesian MAP transition table
     N_PHASE = 16
     ph = (np.arange(N_PHASE) + 0.5) * 2 * math.pi / N_PHASE - math.pi
     lut = np.zeros(1024, dtype=np.int64)
 
-    v_sync_prior = -0.40 * math.pi   # -4.0 MHz (sync tip anchor: harmonized across smalle 0.7, normale 1.0, and brede 1.4-1.7)
-    v_video_prior = +0.18 * math.pi  # +1.8 MHz (video baseline drift: optimizes active video SINAD to match U85Q)
+    kp_nom = params.get('kp_nominal', 0.85)
+    kp_res = params.get('kp_rescue', 0.50)
+    t_norm = max(0.0, min(1.0, (kp - kp_res) / max(0.01, (kp_nom - kp_res))))
+    cur_exit_th = params['exit_sync_th'] * (params['exit_sync_decay'] + (1.0 - params['exit_sync_decay']) * t_norm)
+    cur_enter_th = params['enter_sync_th'] * (params['enter_sync_decay'] + (1.0 - params['enter_sync_decay']) * t_norm)
 
     for s in range(P):
         regime_s = s // N_PHASE
@@ -132,31 +174,27 @@ def build_c5map_lut(kp=0.85):
             err = (o - curr_phase + math.pi) % (2 * math.pi) - math.pi
 
             if regime_s == 0:
-                # Regime 0 (Sync): Probabilistic sync protection
-                # Suppress positive noise clicks and +/- pi cycle-slip wraps in sync.
-                # Wide -0.85pi negative bound allows wide-deviation VTX carriers (dev 1.4-1.7) to track cleanly.
+                # Regime 0 (Sync): Bayesian sync tip anchor & noise suppression
                 gain = kp * w
-                if (err > 0.15 * math.pi or err < -0.85 * math.pi) and w < 0.92:
-                    err_eff = min(0.06 * math.pi, max(-0.50 * math.pi, err * 0.10))
+                if (err > err_pos or err < err_neg) and w < w_suppress:
+                    err_eff = min(0.06 * math.pi, max(-0.55 * math.pi, err * err_sc))
                 else:
                     err_eff = err
-                d_theta = gain * err_eff + (1.0 - gain) * v_sync_prior
+                d_theta = gain * err_eff + (1.0 - gain) * v_sync
 
-                # Exit sync into active video on confirmed positive excursion
-                # Adaptive exit threshold ensures smooth exit under calm kp (<= 0.50) without chatter
-                exit_th = 0.10 * math.pi if kp <= 0.50 else 0.12 * math.pi
-                if d_theta > exit_th and w > 0.75:
+                if d_theta > cur_exit_th and w > sync_w_th:
                     next_regime = 1
                 else:
                     next_regime = 0
             else:
-                # Regime 1 (Active Video): Zero prior drag preserves full video definition
-                gain = kp * w
-                d_theta = gain * err + (1.0 - gain) * v_video_prior
+                # Regime 1 (Active Video): Adaptive gain for maximum video definition
+                if w >= 0.90:
+                    gain_vid = min(0.98, kp * (1.0 + (boost - 1.0) * t_norm))
+                else:
+                    gain_vid = kp * w
+                d_theta = gain_vid * err + (1.0 - gain_vid) * v_vid
 
-                # Enter sync if carrier plunges into sync pulse
-                enter_th = -0.24 * math.pi if kp <= 0.50 else -0.25 * math.pi
-                if d_theta < enter_th and w > 0.50:
+                if d_theta < cur_enter_th and w > vid_w_th:
                     next_regime = 0
                 else:
                     next_regime = 1
@@ -165,7 +203,7 @@ def build_c5map_lut(kp=0.85):
             next_phase = (curr_phase + d_theta + math.pi) % (2 * math.pi) - math.pi
             next_p_idx = int(math.floor((next_phase + math.pi) * N_PHASE / (2 * math.pi))) % N_PHASE
             nxt = next_regime * N_PHASE + next_p_idx
-            code = int(np.rint(np.clip((d_theta - lo_step) / (hi_step - lo_step) * 63, 0, 63)))
+            code = int(np.rint(np.clip((d_theta - lo_step) / (hi_step - lo_step) * 63 + quant_off, 0, 63)))
             lut[s * T + t] = code | (nxt << 6)
 
     lut |= tok.astype(np.int64) << 11

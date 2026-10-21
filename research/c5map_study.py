@@ -57,7 +57,7 @@ def run_study(output_path=HERE / 'data' / 'c5map_study.json', physical=False):
                                                     sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut_l0)])
             # 5. C5MAP-LP Level 7 (kp 0.50, Rescue)
             rescue_pic, rescue_sn = pll_compare.score(c, sim.DAC_VOLTS[u85q_lp.lp_codes(c['raw'], map_lut_l7)],
-                                                      sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut_l7)])
+                                                      sim.DAC_VOLTS[u85q_lp.lp_codes(c['clean'], map_lut_l0)])
             
             case_res = {
                 'seed': seed,
