@@ -41,11 +41,11 @@ DEFAULT_PARAMS = {
     'kp_rescue': 0.4273,
     'v_sync_prior': -0.3600 * math.pi,    # -4.2 MHz (sync tip anchor)
     'v_video_prior': 0.1923 * math.pi,   # +1.8 MHz (video baseline drift)
-    'r_uncertainty': 0.7655,              # origin uncertainty threshold
-    'w_uncertainty': 0.4941,              # weight for origin tokens
-    'err_pos_bound': 0.2013 * math.pi,    # positive noise suppression bound
+    'r_uncertainty': 0.6897,              # origin uncertainty threshold
+    'w_uncertainty': 0.5220,              # weight for origin tokens
+    'err_pos_bound': 0.1764 * math.pi,    # positive noise suppression bound
     'err_neg_bound': -0.9023 * math.pi,   # negative noise suppression bound
-    'err_scale': 0.1617,                  # noise suppression scale factor
+    'err_scale': 0.1329,                  # noise suppression scale factor
     'w_suppress_thresh': 0.9236,          # confidence threshold for suppression
     'exit_sync_th': 0.2174 * math.pi,     # exit sync into video threshold
     'enter_sync_th': -0.1624 * math.pi,   # enter sync from video threshold
@@ -54,7 +54,7 @@ DEFAULT_PARAMS = {
     'sync_weight_thresh': 0.7128,         # token weight threshold for sync exit
     'video_weight_thresh': 0.5386,        # token weight threshold for sync enter
     'video_gain_boost': 0.9887,           # video definition boost on confident samples
-    'code_quant_offset': -0.2928,           # DAC quantization rounding offset
+    'code_quant_offset': -0.3039,           # DAC quantization rounding offset
 }
 
 def _nibble(word, positions):
