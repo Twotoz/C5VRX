@@ -1468,15 +1468,18 @@ floating PLL references:
    standards, and VTX deviations from 0.7 to 1.7 under physical folded ADC
    distortion (`physical_adc=True`, `adc_gain=2.0`, `research/data/c5map_study.json`
    and `docs/PR232_C5MAP_RESULTS.md`):
+   - At -4 dB C/N: Both U85Q and U85Q-LP suffer complete blackout (0.000 lock).
+     C5MAP-LP Level 7 (Rescue) delivers 0.920 linelock (-8.2 dB SINAD), keeping
+     linelock >= 92% across the entire negative range.
    - At -3 dB C/N: Both U85Q and U85Q-LP suffer complete blackout (0.000 lock).
-     C5MAP-LP Level 7 (Rescue) delivers 0.659 linelock (-5.8 dB SINAD), keeping
+     C5MAP-LP Level 7 (Rescue) delivers 0.960 linelock (-7.6 dB SINAD), keeping
      the picture oriented and flyable through dense concrete walls and trees.
    - At -2 dB C/N: Both U85Q and U85Q-LP suffer complete blackout (0.000 lock).
-     C5MAP-LP Level 7 delivers 0.745 linelock (-4.9 dB SINAD).
+     C5MAP-LP Level 7 delivers 0.960 linelock (-6.8 dB SINAD).
    - At -1 dB C/N: U85Q delivers only 0.087 lock and U85Q-LP delivers 0.081 lock
      (severe horizontal rolling and frame collapse). C5MAP-LP Level 7 delivers
-     0.982 lock (-3.7 dB SINAD, +1112% higher lock than U85Q-LP).
-     Even nominal C5MAP-LP Level 0 delivers 0.684 lock (+744% higher than U85Q-LP).
+     0.970 lock (-5.9 dB SINAD, +1097% higher lock than U85Q-LP).
+     Even nominal C5MAP-LP Level 0 delivers 0.660 lock (+714% higher than U85Q-LP).
    - At 0 dB C/N: U85Q delivers 0.392 lock and U85Q-LP delivers 0.379 lock (tearing).
      C5MAP-LP Level 0 delivers 0.943 lock (-1.4 dB SINAD) and Level 7 delivers 0.976 lock.
    - At +1 dB C/N: C5MAP-LP Level 0 delivers 0.965 lock and +0.08 dB SINAD.

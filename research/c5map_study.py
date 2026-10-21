@@ -21,15 +21,15 @@ import u85q_lp
 import pll_compare
 import c5map
 
-CNRS = (-3, -2, -1, 0, 1, 2, 4)
+CNRS = (-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 4)
 SEEDS = ((11, 'PAL'), (12, 'NTSC'), (13, 'PAL'), (14, 'NTSC'))
 DEVIATIONS = (0.7, 1.0, 1.4, 1.7)
 
 def run_study(output_path=HERE / 'data' / 'c5map_study.json', physical=False):
     print(f"=== Running C5MAP vs U85Q vs PLL Study (physical_adc={physical}) ===")
     u_lut = sim.u85q_lut()
-    map_lut_l0 = c5map.build_c5map_lut(0.85)
-    map_lut_l7 = c5map.build_c5map_lut(0.50)
+    map_lut_l0 = c5map.build_c5map_lut(c5map.KP_LADDER[0])
+    map_lut_l7 = c5map.build_c5map_lut(c5map.KP_LADDER[-1])
     
     results = []
     
