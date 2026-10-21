@@ -319,7 +319,7 @@ static inline uint8_t kp_ladder_update_evidence(kp_ladder_t *l, int cn_x10, bool
     }
     /* Deeper than the wide row ever goes (deviation lost on a channel
      * change, or measured wide): back to that row's deepest level at once. */
-    const uint8_t safe = (kp_ladder_class(dev_x100) == KP_CLASS_WIDE && cn > 0) ? kp_ladder_level_for(80) : KP_LADDER_LEVELS - 1;
+    const uint8_t safe = (kp_ladder_class(dev_x100) == KP_CLASS_WIDE && cn_x10 > 0) ? kp_ladder_level_for(80) : KP_LADDER_LEVELS - 1;
     if (l->level > safe) {
         l->level = safe;
         l->pending_dir = 0;
