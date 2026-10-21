@@ -33,13 +33,13 @@ import sim  # noqa: E402
 
 RANGE_MHZ = (-6.0, 9.0)
 DT = 50e-9
-KP_LADDER = (0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50)
+KP_LADDER = (0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.45)
 
 # Tunable model parameters: universal Bayesian prior & transition thresholds
 DEFAULT_PARAMS = {
     'kp_nominal': 0.8868,
-    'kp_rescue': 0.4273,
-    'v_sync_prior': -0.3600 * math.pi,    # -4.2 MHz (sync tip anchor)
+    'kp_rescue': 0.4500,
+    'v_sync_prior': -0.3800 * math.pi,    # -4.4 MHz (sync tip anchor)
     'v_video_prior': 0.1923 * math.pi,   # +1.8 MHz (video baseline drift)
     'r_uncertainty': 0.6897,              # origin uncertainty threshold
     'w_uncertainty': 0.5220,              # weight for origin tokens
