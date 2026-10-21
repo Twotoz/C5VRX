@@ -57,6 +57,7 @@ BITSCRAMBLER_PROGRAM(s_c5map_lp_flag, "c5map_lp_flag");
 static bool s_started;   /* live TX running (cleared while menu/status/recovery owns TX) */
 static bool s_prog_lp;   /* LP instructions loaded */
 static bool s_demod_c5map = false; /* Production golden U85Q by default (m toggles C5MAP) */
+static bool s_verified_demod_c5map = false; /* Demodulator verified live in BitScrambler */
 static const void *tracker_program(bool lp)
 {
     if (s_demod_c5map) return lp ? s_c5map_lp : s_c5map;
@@ -336,19 +337,24 @@ static bool switch_live(int level, bool lp)
 {
     if (!s_lut_known || !s_started || s_menu_active) return false;
     if (level >= KP_LEVELS || level < -1) return false;
-    const uint16_t *lut = level < 0 ? s_lut_live : (s_demod_c5map ? c5map_tables[level] : kp_tables[level]);
+    bool demod_changed = s_demod_c5map != s_verified_demod_c5map;
     bool kp_changed = level >= 0 && level != s_verified_level;
     bool lp_changed = lp != s_prog_lp;
-    if (!kp_changed && !lp_changed) return true;
+    if (!kp_changed && !lp_changed && !demod_changed) return true;
+    const uint16_t *lut = (level < 0 && !demod_changed) ? s_lut_live :
+        (s_demod_c5map ? c5map_tables[level >= 0 ? level : (s_verified_level >= 0 ? s_verified_level : 0)] :
+                         kp_tables[level >= 0 ? level : (s_verified_level >= 0 ? s_verified_level : 0)]);
     int64_t began = esp_timer_get_time();
     /* Into LP is the rescue: short gap; everything else keeps the 5 s. */
     if (!(lp_changed && lp ? kp_switch_ready_rescue(&s_switch_guard, began) : kp_switch_ready(&s_switch_guard, began)))
         return false;
-    bool previous = s_prog_lp;
+    bool previous_lp = s_prog_lp;
+    bool previous_demod = s_verified_demod_c5map;
     s_prog_lp = lp;
     bool ok = resume_live(lut);
     if (!ok) {
-        s_prog_lp = previous;
+        s_prog_lp = previous_lp;
+        s_demod_c5map = previous_demod;
         if (kp_changed) ++s_kp_restart_fail;
         if (lp_changed) ++s_prog_restart_fail;
     } else {
@@ -397,9 +403,12 @@ const char *transport_demod_name(void) { return s_demod_c5map ? "C5MAP" : "U85Q"
 bool transport_is_c5map(void) { return s_demod_c5map; }
 bool transport_set_demod_c5map(bool c5map)
 {
-    if (c5map == s_demod_c5map) return true;
+    if (c5map == s_demod_c5map && c5map == s_verified_demod_c5map) return true;
     s_demod_c5map = c5map;
-    if (!s_started || s_menu_active) return true;
+    if (!s_started || s_menu_active) {
+        s_verified_demod_c5map = c5map;
+        return true;
+    }
     return switch_live(s_verified_level >= 0 ? s_verified_level : 0, s_prog_lp);
 }
 bool transport_faulted(void) { return s_transport_fault; }
@@ -540,6 +549,7 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
     if (stage == TR_BS_ENABLE && rollback) {
         s_prog_lp = s_verified_lp;
         s_output = s_verified_output;
+        s_demod_c5map = s_verified_demod_c5map;
         r->lp = s_verified_lp;
         r->level = s_verified_level;
         r->output = s_verified_output;
@@ -776,9 +786,9 @@ static bool resume_live(const uint16_t *restore_lut)
     if (!program_words(r.program, &program_inst)) return false;
     memcpy(s_program_work.prefix, r.program, sizeof(s_program_work.prefix));
     if (!restore_lut) restore_lut = s_demod_c5map ? c5map_tables[s_kp_target] : kp_tables[s_kp_target];
-    if(restore_lut==s_lut_live && s_flag_format!=s_verified_flag)
+    if(restore_lut==s_lut_live && (s_flag_format!=s_verified_flag || s_demod_c5map!=s_verified_demod_c5map))
         restore_lut = s_demod_c5map ? c5map_tables[s_verified_level] : kp_tables[s_verified_level];
-    if (restore_lut == s_lut_live) {
+    if (restore_lut == s_lut_live && s_demod_c5map == s_verified_demod_c5map) {
         memcpy(s_lut_work, s_lut_live, sizeof(s_lut_work));
         r.level = s_verified_level;
         r.clipped = s_output_clipped;
@@ -819,6 +829,7 @@ static bool resume_live(const uint16_t *restore_lut)
     s_verified_level = r.level;
     s_verified_output = r.output;
     s_output_clipped = r.clipped;
+    s_verified_demod_c5map = s_demod_c5map;
     s_have_verified = true;
     s_lut_known = true;
     s_kp_target = (uint8_t)r.level;
