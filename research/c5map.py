@@ -38,20 +38,20 @@ KP_LADDER = (0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50)
 # Tunable model parameters: universal Bayesian prior & transition thresholds
 DEFAULT_PARAMS = {
     'kp_nominal': 0.8306,
-    'kp_rescue': 0.5200,
-    'v_sync_prior': -0.4147 * math.pi,    # -4.2 MHz (sync tip anchor)
+    'kp_rescue': 0.4273,
+    'v_sync_prior': -0.3600 * math.pi,    # -4.2 MHz (sync tip anchor)
     'v_video_prior': 0.1649 * math.pi,   # +1.8 MHz (video baseline drift)
-    'r_uncertainty': 0.7382,              # origin uncertainty threshold
-    'w_uncertainty': 0.2269,              # weight for origin tokens
+    'r_uncertainty': 0.7442,              # origin uncertainty threshold
+    'w_uncertainty': 0.4042,              # weight for origin tokens
     'err_pos_bound': 0.1438 * math.pi,    # positive noise suppression bound
-    'err_neg_bound': -0.8724 * math.pi,   # negative noise suppression bound
-    'err_scale': 0.1353,                  # noise suppression scale factor
+    'err_neg_bound': -0.9023 * math.pi,   # negative noise suppression bound
+    'err_scale': 0.1913,                  # noise suppression scale factor
     'w_suppress_thresh': 0.9236,          # confidence threshold for suppression
-    'exit_sync_th': 0.0959 * math.pi,     # exit sync into video threshold
-    'enter_sync_th': -0.2372 * math.pi,   # enter sync from video threshold
-    'exit_sync_decay': 0.9149,            # rescue exit decay factor
-    'enter_sync_decay': 0.9212,           # rescue enter decay factor
-    'sync_weight_thresh': 0.7349,         # token weight threshold for sync exit
+    'exit_sync_th': 0.2174 * math.pi,     # exit sync into video threshold
+    'enter_sync_th': -0.1624 * math.pi,   # enter sync from video threshold
+    'exit_sync_decay': 0.9593,            # rescue exit decay factor
+    'enter_sync_decay': 1.0080,           # rescue enter decay factor
+    'sync_weight_thresh': 0.7128,         # token weight threshold for sync exit
     'video_weight_thresh': 0.5213,        # token weight threshold for sync enter
     'video_gain_boost': 1.0075,           # video definition boost on confident samples
     'code_quant_offset': -0.0184,           # DAC quantization rounding offset
