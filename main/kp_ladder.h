@@ -150,10 +150,10 @@ static inline void kp_ladder_reset(kp_ladder_t *l)
 enum { KP_CLASS_LOW, KP_CLASS_NORMAL, KP_CLASS_MID, KP_CLASS_WIDE, KP_CLASSES };
 static const int16_t kp_cn_points_x10[6] = {0, 20, 40, 80, 120, 200};
 static const uint8_t kp_curve_x100[KP_CLASSES][6] = {
-    {70, 55, 50, 50, 50, 75},   /* deviation <= 0.80 */
-    {75, 60, 55, 55, 65, 75},   /* <= 1.05 */
-    {80, 70, 65, 65, 70, 80},   /* <= 1.15 (interpolated, no own run) */
-    {85, 85, 80, 80, 80, 80},   /* wider or unknown */
+    {50, 55, 50, 50, 50, 75},   /* deviation <= 0.80 (0 dB: Level 7 Rescue) */
+    {50, 60, 55, 55, 65, 75},   /* <= 1.05 */
+    {50, 70, 65, 65, 70, 80},   /* <= 1.15 (interpolated, no own run) */
+    {50, 85, 80, 80, 80, 80},   /* wider or unknown */
 };
 
 /* U85Q-LP (u85q_lp.bsasm: same LUT, IIR pole 1/2 after the tracker) beats
@@ -177,7 +177,7 @@ static const uint8_t kp_lp_curve_x100[KP_CLASSES][6] = {
  * (crossover ~6.9 / ~6.5 dB). Simulation, not measured range. */
 static const uint8_t kp_curve_narrow_x100[2][6] = {
     {50, 50, 50, 50, 50, 80},   /* deviation <= 0.80 */
-    {80, 55, 50, 50, 60, 85},   /* <= 1.05 */
+    {50, 55, 50, 50, 60, 85},   /* <= 1.05 */
 };
 static const uint8_t kp_lp_curve_narrow_x100[2][6] = {
     {60, 50, 50, 50, 50, 50},
@@ -206,7 +206,7 @@ static inline bool kp_ladder_narrow_rows(bool matched_profile, unsigned narrow_w
  * Range limit unchanged (2.75 / 2.86 / 3.96 dB): the existing LP rule
  * already reaches the best in that data; the gain is a sharper picture
  * between 8.5 dB and close in. Simulation, not measured range. */
-static const uint8_t kp_curve_wide16_x100[6] = {85, 85, 85, 85, 85, 85};
+static const uint8_t kp_curve_wide16_x100[6] = {50, 85, 85, 85, 85, 85};
 static const uint8_t kp_lp_curve_wide16_x100[6] = {85, 85, 85, 85, 85, 85};
 #define KP_LP_ON_WIDE16_X10 95
 
@@ -319,7 +319,7 @@ static inline uint8_t kp_ladder_update_evidence(kp_ladder_t *l, int cn_x10, bool
     }
     /* Deeper than the wide row ever goes (deviation lost on a channel
      * change, or measured wide): back to that row's deepest level at once. */
-    const uint8_t safe = kp_ladder_class(dev_x100) == KP_CLASS_WIDE ? kp_ladder_level_for(80) : KP_LADDER_LEVELS - 1;
+    const uint8_t safe = (kp_ladder_class(dev_x100) == KP_CLASS_WIDE && cn_x10 > 0) ? kp_ladder_level_for(80) : KP_LADDER_LEVELS - 1;
     if (l->level > safe) {
         l->level = safe;
         l->pending_dir = 0;
@@ -384,6 +384,15 @@ static inline uint8_t kp_ladder_update_evidence(kp_ladder_t *l, int cn_x10, bool
     if (dir != l->pending_dir) {
         l->pending_dir = dir;
         l->pending_since = now_us;
+        return l->level;
+    }
+    if (target == KP_LADDER_LEVELS - 1) {
+        /* Level 7 Rescue at floor: enter rescue fast (anti-blackout rescue) */
+        if (dir != 0 && (now_us - l->pending_since >= KP_HOLD_UP_US)) {
+            l->level = target;
+            l->last_step_us = now_us;
+            ++l->steps;
+        }
         return l->level;
     }
     const int64_t hold = dir < 0 ? KP_HOLD_UP_US : KP_HOLD_US, gap = dir < 0 ? KP_STEP_GAP_UP_US : KP_STEP_GAP_US;

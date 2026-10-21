@@ -60,18 +60,18 @@ int main(void)
     check("deviation 1.0, 20 dB C/N: kp 0.75", kp_level_x100[kp_ladder_target(200, 100)] == 75);
     check("deviation 1.0, 4..8 dB C/N: kp 0.55", kp_level_x100[kp_ladder_target(40, 100)] == 55 &&
                                               kp_level_x100[kp_ladder_target(80, 100)] == 55);
-    check("deviation 1.0 near the floor: back to kp 0.75 (lock)", kp_level_x100[kp_ladder_target(0, 100)] == 75);
+    check("deviation 1.0 near the floor: Level 7 rescue", kp_level_x100[kp_ladder_target(0, 100)] == 50);
     check("deviation 0.69, 8 dB C/N: kp 0.50", kp_level_x100[kp_ladder_target(80, 69)] == 50);
-    check("wide VTX, any C/N: never below kp 0.80", kp_level_x100[kp_ladder_target(40, 140)] == 80 &&
-                                                 kp_level_x100[kp_ladder_target(0, 140)] == 85);
+    check("wide VTX: kp 0.80 on good carrier, Level 7 rescue at floor", kp_level_x100[kp_ladder_target(40, 140)] == 80 &&
+                                                                       kp_level_x100[kp_ladder_target(0, 140)] == 50);
     check("unknown deviation = wide row", kp_ladder_target(40, -1) == kp_ladder_target(40, 140));
-    int deepest = 0;
+    int deepest_carrier = 0;
     for (int dev = 0; dev <= 300; dev += 5)
-        for (int cn = -50; cn <= 300; cn += 5) {
+        for (int cn = 20; cn <= 300; cn += 5) {
             int lv = kp_ladder_target(cn, dev);
-            if (kp_ladder_class(dev) == KP_CLASS_WIDE && lv > deepest) deepest = lv;
+            if (kp_ladder_class(dev) == KP_CLASS_WIDE && lv > deepest_carrier) deepest_carrier = lv;
         }
-    check("wide row never goes deeper than kp 0.80", kp_level_x100[deepest] >= 80);
+    check("wide row on carrier never goes deeper than kp 0.80", kp_level_x100[deepest_carrier] >= 80);
     /* Strong carrier, normal VTX: one step to kp 0.80 then 0.75. */
     kp_ladder_reset(&l);
     uint8_t lv = run(&l, 200, 15, 100, 20, &t, NULL);
@@ -101,19 +101,18 @@ int main(void)
     }
     snprintf(name, sizeof(name), "C/N 10 dB +-3 dB noise for 60 s: level %u..%u around %u", lo, hi, mid);
     check(name, hi - lo <= 2);
-    /* Collapse: deep (kp 0.50 at 6 dB, deviation 0.69), then the estimate
-     * goes noise-like. The ladder must climb back to the floor point (0.70),
-     * not freeze at 0.50. */
+    /* Collapse: carrier drops from 20 dB to noise-like. The ladder must step
+     * to the floor point (Level 7 rescue, kp 0.50). */
     kp_ladder_reset(&l);
-    (void)run(&l, 60, 0, 69, 20, &t, NULL);
+    (void)run(&l, 200, 0, 69, 20, &t, NULL);
     int64_t t0 = t, back = -1;
     for (int k = 0; k < 100; ++k, t += TICK_US) {     /* 5 s */
         uint8_t v = kp_ladder_update(&l, CN_UNKNOWN_X10, true, 69, t);
-        if (back < 0 && kp_level_x100[v] == 70) back = t - t0;
+        if (back < 0 && kp_level_x100[v] == 50) back = t - t0;
     }
-    snprintf(name, sizeof(name), "collapse to noise-like: back to kp 0.%02u after %.2f s", kp_level_x100[l.level],
+    snprintf(name, sizeof(name), "collapse to noise-like: Level 7 rescue kp 0.%02u after %.2f s", kp_level_x100[l.level],
              back / 1e6);
-    check(name, kp_level_x100[l.level] == 70 && back >= 0 && back <= 1500000);
+    check(name, kp_level_x100[l.level] == 50 && back >= 0 && back <= 1500000);
     /* Unusable windows (retune, gain write, menu) hold the level. */
     kp_ladder_reset(&l);
     (void)run(&l, 60, 0, 100, 20, &t, NULL);

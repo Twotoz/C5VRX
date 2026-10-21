@@ -333,14 +333,13 @@ static void command(int c, unsigned *menu_idle)
         printf("LP policy %s (saved)\n", s_lp_by_cn ? "RESCUE by C/N benefit (default)" : "GAIN (G70 on, G65 off; earlier rule)");
         break;
     case 'K':
-        s_kp_auto = (uint8_t)((s_kp_auto + 1u) % 3u);
+        s_kp_auto = (uint8_t)((s_kp_auto + 1u) % 2u);
         save_auto_mode();
         kp_ladder_reset(&s_kp);
         s_auto_candidate.candidate = false;
         (void)transport_kp_set(profile_base_level(profile_active()));
         s_mode_reset_pending = !transport_apply_auto(profile_base_level(profile_active()), false);
-        printf("KP ladder %s\n", s_kp_auto == 2 ? "AUTO kp + LP (program changes briefly restart video; bench test)" :
-               s_kp_auto == 1 ? "AUTO kp (brief restarts; bench test)" : "OFF");
+        printf("KP ladder %s\n", s_kp_auto == 1 ? "AUTO kp (U85Q pure with Level 7 rescue)" : "OFF");
         break;
     case 'P': {
         manual_auto_off();
@@ -627,7 +626,7 @@ static void control_task(void *arg)
             s_kp.lp_by_cn = s_lp_by_cn != 0;
             const bool program_usable = program_ok && ctx == afc_context();
             uint8_t level = kp_ladder_update_evidence(&s_kp, cn_x10, ladder_ok, program_usable,
-                                                      profile_live_deviation_x100(), now, s_kp_auto == 2);
+                                                      profile_live_deviation_x100(), now, false);
             bool usable = (s_kp.lp != transport_lp() ? program_usable : ladder_ok) && ctx == afc_context();
             /* Only a restart worth its picture gap (kp_switch_worth): a
              * single kp level waits; the ladder keeps its own level. */
@@ -681,7 +680,7 @@ void control_start(void)
         s_afc_sign_saved = true;
     }
     if (!blob_load("lp_cn", &s_lp_by_cn, 1) || s_lp_by_cn > 1) s_lp_by_cn = 1;
-    if (!blob_load("kp_auto", &s_kp_auto, 1) || s_kp_auto > 2) s_kp_auto = 2;
+    if (!blob_load("kp_auto", &s_kp_auto, 1) || s_kp_auto > 1) s_kp_auto = 1;
     else s_saved_kp_auto = s_kp_auto; /* an explicitly saved OFF wins */
     s_commands = xQueueCreate(16, sizeof(int));
     ESP_ERROR_CHECK(s_commands ? ESP_OK : ESP_ERR_NO_MEM);

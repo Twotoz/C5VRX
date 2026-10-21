@@ -111,6 +111,6 @@ static inline bool kp_switch_confirm_toward(kp_switch_guard_t *g, int level, boo
         return false;
     }
     g->level = level;
-    const bool rescue = side == 2 && lp;
+    const bool rescue = (side == 2 && lp) || (level >= 7 && side > 0);
     return now - g->candidate_since_us >= (rescue ? KP_SWITCH_RESCUE_CONFIRM_US : KP_SWITCH_CONFIRM_US);
 }
