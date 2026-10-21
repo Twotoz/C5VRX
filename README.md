@@ -20,7 +20,8 @@
 Analog 5.8 GHz FPV receiver on one Seeed Studio XIAO ESP32-C5 with a passive
 6-bit resistor DAC: live FM video in, composite PAL/NTSC out for goggles.
 
-C5VRX-5 uses one live demodulator. Its receive-chain evidence is recorded in
+C5VRX-5 boots with the board-validated U85Q demodulator. Experimental C5MAP
+can be selected at runtime with console `m`. Its receive-chain evidence is recorded in
 [docs/FINDINGS.md](docs/FINDINGS.md); the U85Q study it is built on, with
 scoring corrections and failed experiments, is preserved in
 [docs/pr190-key-findings.md](docs/pr190-key-findings.md) and
@@ -33,6 +34,9 @@ it is not a demonstrated video or range improvement.
 - **U85Q demodulator** in the TX BitScrambler: an untrained 32-phase tracker
   that keeps the picture locked across VTX deviations, off-centre carriers
   and multipath instead of dropping out. Board-validated on real video.
+- **Experimental C5MAP demodulator**: a generated two-regime, 32-state MAP
+  tracker with eight manual levels. Host simulation shows a strong linelock
+  rescue at L7; receiver and goggle validation is still pending.
 - **Fixed ultrafine IQ** (ADC bits 9,6,5,4) at 40 MS/s, no CPU in the sample
   path.
 - **Direct Gain V6**: V5 gain control plus carrier memory across brief fades
@@ -220,7 +224,8 @@ gain through same-context tracking resets, holds brief fades for 10 ms and
 then climbs gradually. This is host-tested behavior; extra range is unmeasured.
 
 `U` and menu **FLYWHEEL** toggle the saved sync flywheel. Without a valid
-saved setting it is ON; a saved ON or OFF restores at boot. Check ON/OFF, menu
+saved setting it is OFF so ordinary output keeps all six DAC bits; a saved ON
+or OFF restores at boot. Check ON/OFF, menu
 return and the actual camera/monitor picture on the ground. Pulse counters
 do not prove monitor lock. Switch it OFF for a baseline RF comparison.
 

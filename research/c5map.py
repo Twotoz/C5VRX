@@ -380,18 +380,36 @@ def check():
     # Check LUT integrity across all ladder levels
     luts = [build_c5map_lut(kp) for kp in KP_LADDER]
     tok0 = luts[0] >> 11
+    if set(map(int, tok0)) != set(range(28)):
+        print('Final observation mapping must emit exactly tokens 0..27')
+        ok = False
+    for a in range(256):
+        if len({int(tok0[a + signs * 256]) for signs in range(4)}) != 1:
+            print(f'Sample-B signs unexpectedly change token for Sample-A address {a}')
+            ok = False
+            break
+    reachable = {0}
+    pending = [0]
+    while pending:
+        state = pending.pop()
+        for token in range(28):
+            nxt = int((luts[0][state * 32 + token] >> 6) & 31)
+            if nxt not in reachable:
+                reachable.add(nxt)
+                pending.append(nxt)
+    if reachable != set(range(32)):
+        print(f'Only {len(reachable)} of 32 recurrent states are reachable')
+        ok = False
+    previous_max = 64
     for i, lut in enumerate(luts):
         if not np.array_equal(lut >> 11, tok0):
             print(f'Level {i} token bits mismatch')
             ok = False
         codes = lut & 63
-        states = (lut >> 6) & 31
-        if codes.min() < 0 or codes.max() > 63:
-            print(f'Level {i} codes out of range [0, 63]')
+        if int(codes.max()) >= previous_max:
+            print(f'Level {i} does not narrow the DAC-code excursion')
             ok = False
-        if states.min() < 0 or states.max() > 31:
-            print(f'Level {i} states out of range [0, 31]')
-            ok = False
+        previous_max = int(codes.max())
             
     if ok:
         print('C5MAP check passed: all tables, programs, and token bits valid.')
