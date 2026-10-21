@@ -1470,8 +1470,9 @@ mean simulated picture-lock fractions are:
 L7 trades substantial picture quality for lock: its simulated SINAD is
 -8.25 dB at -4 dB C/N, -5.70 dB at -1 dB, -4.53 dB at 0 dB and +1.52 dB at
 +4 dB. L0 reaches +4.46 dB at +4 dB C/N. The current runtime does not select
-the C5MAP ladder automatically; console `m` enters fixed C5MAP-LP and `k`/`j`
-select a level manually. `P` cannot remove LP in C5MAP mode. This avoids LP
+the C5MAP ladder automatically; boot starts fixed C5MAP-LP L0, console `m`
+toggles the U85Q comparison, and `k`/`j` select a C5MAP level manually. `P`
+cannot remove LP in C5MAP mode. This avoids LP
 policy restarts and keeps the high-lock rescue behavior explicit until a
 C5MAP-specific policy and physical threshold evidence exist.
 

@@ -699,6 +699,9 @@ void control_start(void)
     if (!blob_load("lp_cn", &s_lp_by_cn, 1) || s_lp_by_cn > 1) s_lp_by_cn = 1;
     if (!blob_load("kp_auto", &s_kp_auto, 1) || s_kp_auto > 2) s_kp_auto = 2;
     else s_saved_kp_auto = s_kp_auto; /* an explicitly saved OFF wins */
+    /* The production U85Q policy has no calibrated thresholds for C5MAP.
+     * Its default boot therefore starts at manual L0 with fixed LP. */
+    if (transport_is_c5map()) s_kp_auto = 0;
     s_commands = xQueueCreate(16, sizeof(int));
     ESP_ERROR_CHECK(s_commands ? ESP_OK : ESP_ERR_NO_MEM);
     /* The static zero-initialized ladder skipped its first reset because

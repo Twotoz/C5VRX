@@ -56,8 +56,8 @@ BITSCRAMBLER_PROGRAM(s_c5map, "c5map");
 BITSCRAMBLER_PROGRAM(s_c5map_lp, "c5map_lp");
 BITSCRAMBLER_PROGRAM(s_c5map_lp_flag, "c5map_lp_flag");
 static bool s_started;   /* live TX running (cleared while menu/status/recovery owns TX) */
-static bool s_prog_lp;   /* LP instructions loaded */
-static bool s_demod_c5map = false; /* Production golden U85Q by default (m toggles C5MAP) */
+static bool s_prog_lp = true;   /* C5MAP boots with its fixed LP */
+static bool s_demod_c5map = true; /* C5MAP-LP by default; m provides the U85Q A/B */
 static bool s_verified_demod_c5map = false; /* Demodulator verified live in BitScrambler */
 static const void *tracker_program(bool lp)
 {
@@ -723,19 +723,21 @@ esp_err_t transport_start(void)
     return resume_live(NULL) ? ESP_OK : ESP_FAIL;
 }
 
-/* Start level of a profile (kp_tables.h), LP off. Never under live video:
+/* Start level of a profile (kp_tables.h). C5MAP ignores the U85Q profile
+ * start level and boots at nominal L0 with its fixed LP. Never under live video:
  * only before the pipeline starts or while the menu / a status screen owns
  * TX; the LUT is then loaded and verified by the normal start sequence. A
  * live profile switch uses transport_apply_auto() (guarded restart). */
 bool transport_set_base_level(int level)
 {
+    if (s_demod_c5map) level = 0;
     if (level < 0 || level >= KP_LEVELS) return false;
     if (s_started && !s_menu_active) {
         printf("BASE level change refused: live video\n");
         return false;
     }
     s_kp_target = (uint8_t)level;
-    s_prog_lp = false;
+    s_prog_lp = s_demod_c5map;
     return true;
 }
 

@@ -232,7 +232,7 @@ requested OFF, then verify the ordinary DAC path uses all six pins. Save ON,
 reboot and confirm ON is restored; save OFF again before the demodulator A/B.
 
 With a fixed VTX, channel, output, gain, profile and flywheel state, use console
-`m` to compare U85Q and fixed C5MAP-LP. A successful switch may briefly interrupt video
+`m` to compare default C5MAP-LP L0 and U85Q. A successful switch may briefly interrupt video
 and must report the selected program. An immediate second switch inside the
 shared cooldown must be refused while `T` still reports the program actually
 on air. Repeat after the cooldown and through menu entry/exit.
