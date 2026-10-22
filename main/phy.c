@@ -222,7 +222,7 @@ extern void phy_rx_filter_mode(uint32_t mode);
 #define DFILT_ADC_HOST  0u
 #define DFILT_ADC_I2C   4u
 #endif
-static int s_dfilt_mode = PHY_DFILT_MODE_AUTO;
+static int s_dfilt_mode = PHY_DFILT_MODE_DEFAULT;
 
 int phy_dfilt_mode(void) { return s_dfilt_mode; }
 

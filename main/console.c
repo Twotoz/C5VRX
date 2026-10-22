@@ -101,8 +101,8 @@ static void help(void)
            "  F calibrate (startup steps again; video stops), L bench IQ lane comparison (video stops ~3 s),\n"
            "  H bench: LUT writes while running (readback; another kp level for ~1 ms),\n"
            "  N bench: noise floor with the video output on vs off (VTX off; video stops ~0.3 s x4),\n"
-           "  / bench: digital filter noise sweep (modes 0..15 + ADC rates with noise power/bandwidth; video stops ~1 s),\n"
-           "  [/] step digital filter mode 0..15 (saved for session; \\ = reset to AUTO),\n"
+           "  / bench: digital filter noise sweep (valid modes 0, 4, 8, 12 + ADC rates; video stops ~0.1 s),\n"
+           "  [/] step digital filter mode {0, 4, 8, 12} (saved for session; \\ = reset to default mode 0),\n"
            "  O LP policy: RESCUE by C/N benefit (default) <-> GAIN (G70/G65, earlier rule) (saved),\n"
            "  Z DAC self-test (bench: test pattern, then one flat level per pin for a multimeter),\n"
            "  ` reboot to USB download (flashing)\n");

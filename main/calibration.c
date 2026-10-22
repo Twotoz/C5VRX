@@ -1957,12 +1957,23 @@ static void self_noise_test(void)
 static volatile bool s_dfilt_noise_requested;
 void dfilt_noise_request(void) { s_dfilt_noise_requested = true; }
 
+/* Valid hardware filter modes: register 0x600A0430[21:18] has bits [19:18] = 00.
+ * Modes with bits [1:0] != 0 gate the ADC pipeline (0 m2). Valid modes are {0, 4, 8, 12}. */
+static const int s_valid_dfilt_modes[] = {0, 4, 8, 12};
+#define N_VALID_DFILT_MODES ((int)(sizeof(s_valid_dfilt_modes) / sizeof(s_valid_dfilt_modes[0])))
+
 void dfilt_mode_step(int step)
 {
     int cur = phy_dfilt_mode();
     if (cur < 0) cur = phy_dfilt_hw_mode();
-    if (cur < 0) cur = 0;
-    int next = (cur + step + 16) % 16;
+    int idx = 0;
+    for (int i = 0; i < N_VALID_DFILT_MODES; ++i) {
+        if (s_valid_dfilt_modes[i] == cur) { idx = i; break; }
+        if (s_valid_dfilt_modes[i] < cur) idx = i;
+    }
+    int next_idx = (idx + step) % N_VALID_DFILT_MODES;
+    if (next_idx < 0) next_idx += N_VALID_DFILT_MODES;
+    int next = s_valid_dfilt_modes[next_idx];
     if (phy_dfilt_set_mode(next)) {
         printf("DFILT mode=%d (reg 0x600A0430[21:18]=%d)\n", next, phy_dfilt_hw_mode());
     } else {
@@ -1972,12 +1983,13 @@ void dfilt_mode_step(int step)
 
 void dfilt_mode_reset(void)
 {
-    phy_dfilt_set_mode(PHY_DFILT_MODE_AUTO);
-    printf("DFILT mode reset to AUTO (reg 0x600A0430[21:18]=%d)\n", phy_dfilt_hw_mode());
+    phy_dfilt_set_mode(PHY_DFILT_MODE_DEFAULT);
+    printf("DFILT mode reset to default Mode %d (reg 0x600A0430[21:18]=%d)\n",
+           PHY_DFILT_MODE_DEFAULT, phy_dfilt_hw_mode());
 }
 
 /* Bench (console /): measure receiver noise floor, kurtosis and PSD bandwidth
- * across digital filter modes phy_rx_filter_mode(0..15) and ADC rates.
+ * across valid digital filter modes {0, 4, 8, 12} and ADC rates.
  * VTX should be off for pure noise floor measurement. */
 static void dfilt_noise_sweep(void)
 {
@@ -2019,9 +2031,10 @@ static void dfilt_noise_sweep(void)
     unsigned min_nbw = nbw_base;
     int min_nbw_mode = orig_hw_mode;
 
-    for (unsigned m = 0; m < 16u; ++m) {
-        if (!phy_dfilt_set_mode((int)m)) {
-            printf("DFILT_SWEEP mode=%2u set_failed\n", m);
+    for (int i = 0; i < N_VALID_DFILT_MODES; ++i) {
+        int m = s_valid_dfilt_modes[i];
+        if (!phy_dfilt_set_mode(m)) {
+            printf("DFILT_SWEEP mode=%2d set_failed\n", m);
             continue;
         }
         vTaskDelay(pdMS_TO_TICKS(20));
@@ -2031,15 +2044,15 @@ static void dfilt_noise_sweep(void)
         const bool ok_m = selfnoise_measure(&m2, &kurt);
         const bool ok_n = noise_measure(&width, &nbw, &env, &clip);
         if (!ok_m || !ok_n) {
-            printf("DFILT_SWEEP mode=%2u probe_failed\n", m);
+            printf("DFILT_SWEEP mode=%2d probe_failed\n", m);
             continue;
         }
         const double diff_db = 10.0 * log10(m2 / m_base);
-        printf("DFILT_SWEEP mode=%2u m2=%.3f kurt=%.2f width_khz=%5u nbw_khz=%5u diff_db=%+6.2f env_x100=%u clip_pm=%d\n",
+        printf("DFILT_SWEEP mode=%2d m2=%.3f kurt=%.2f width_khz=%5u nbw_khz=%5u diff_db=%+6.2f env_x100=%u clip_pm=%d\n",
                m, m2, kurt, width, nbw, diff_db, env, clip);
-        if (m2 < min_m2) { min_m2 = m2; min_mode = (int)m; }
-        if (m2 > max_m2) { max_m2 = m2; max_mode = (int)m; }
-        if (nbw > 0 && (min_nbw == 0 || nbw < min_nbw)) { min_nbw = nbw; min_nbw_mode = (int)m; }
+        if (m2 < min_m2) { min_m2 = m2; min_mode = m; }
+        if (m2 > max_m2) { max_m2 = m2; max_mode = m; }
+        if (nbw > 0 && (min_nbw == 0 || nbw < min_nbw)) { min_nbw = nbw; min_nbw_mode = m; }
     }
 
     /* Test alternate ADC rate */
@@ -2069,7 +2082,7 @@ static void dfilt_noise_sweep(void)
         phy_dfilt_set_mode(orig_user_mode);
     } else {
         phy_dfilt_set_mode(orig_hw_mode);
-        phy_dfilt_set_mode(PHY_DFILT_MODE_AUTO);
+        phy_dfilt_set_mode(PHY_DFILT_MODE_DEFAULT);
     }
     vTaskDelay(pdMS_TO_TICKS(20));
     const bool restored = (phy_dfilt_hw_mode() == orig_hw_mode) && (phy_dfilt_adc_rate() == orig_rate);
