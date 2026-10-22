@@ -51,7 +51,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *const s_names[PROFILES] = {"DEFAULT 12MHZ KP0.85", "MATCHED 10MHZ KP0.6", "MATCHED 10MHZ KP0.5",
+static const char *const s_names[PROFILES] = {"DEFAULT 4MHZ KP0.85", "MATCHED 4MHZ KP0.6", "MATCHED 4MHZ KP0.5",
                                               "WIDE 16MHZ KP0.85"};
 static uint16_t s_dev_table[FPV_CHANNELS];    /* last deviation x100 per channel, provisional */
 static volatile int s_profile = PROFILE_DEFAULT;
