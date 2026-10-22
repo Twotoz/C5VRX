@@ -169,6 +169,7 @@ static void restore_lock(void)
     phy_wifi_fbw_sel(s_filter.bw20 ? 0u : 1u);
     phy_force_rx_gain(true, s_gain);
     apply_filter();
+    if (phy_dfilt_mode() >= 0) phy_dfilt_reapply();
     if (s_post_gain_hook) s_post_gain_hook(s_gain);
 }
 

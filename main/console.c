@@ -101,6 +101,8 @@ static void help(void)
            "  F calibrate (startup steps again; video stops), L bench IQ lane comparison (video stops ~3 s),\n"
            "  H bench: LUT writes while running (readback; another kp level for ~1 ms),\n"
            "  N bench: noise floor with the video output on vs off (VTX off; video stops ~0.3 s x4),\n"
+           "  / bench: digital filter noise sweep (modes 0..15 + ADC rates with noise power/bandwidth; video stops ~1 s),\n"
+           "  [/] step digital filter mode 0..15 (saved for session; \\ = reset to AUTO),\n"
            "  O LP policy: RESCUE by C/N benefit (default) <-> GAIN (G70/G65, earlier rule) (saved),\n"
            "  Z DAC self-test (bench: test pattern, then one flat level per pin for a multimeter),\n"
            "  ` reboot to USB download (flashing)\n");
@@ -148,6 +150,10 @@ static void console_task(void *arg)
             case 'R': diag_toggle_stream(); break;
             case 'L': lane_compare_request(); break;
             case 'N': self_noise_request(); break;
+            case '/': dfilt_noise_request(); break;
+            case ']': dfilt_mode_step(1); break;
+            case '[': dfilt_mode_step(-1); break;
+            case '\\': dfilt_mode_reset(); break;
             case 'Y': case 'W': case 'X': flightlog_console((char)c); break;
             case 'h': case '?': help(); break;
             case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'K': case 'k': case 'j': case 'P': case 'g': case 'A': case 'U': case 'G': case 'Q': case 'Z': case 'H': case 'O': {

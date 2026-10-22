@@ -207,6 +207,92 @@ int phy_filter_calibrated_code(void)
 #endif
 }
 
+/* ---- Digital RX Filter (DFILT) -------------------------------------------
+ * Register 0x600A0430[21:18] holds the digital receive filter mode (0..15).
+ * On 5 GHz phy_rfpll_set_adc_rate sets mode 0 (mode 4 for BW20) and ADC rate 0
+ * (0x600A0448[1:0]), switching to rate 1 and mode 8 above 5830 MHz. */
+#ifdef C5VRX_PHY_PINNED
+extern void phy_adc_rate_set(uint32_t rate);
+extern void phy_rx_filter_mode(uint32_t mode);
+#define DFILT_REG       0x600A0430u
+#define DFILT_SHIFT     18u
+#define DFILT_MASK      (UINT32_C(0xF) << DFILT_SHIFT)
+#define DFILT_ADC_REG   0x600A0448u
+#define DFILT_ADC_BLOCK 0x66u
+#define DFILT_ADC_HOST  0u
+#define DFILT_ADC_I2C   4u
+#endif
+static int s_dfilt_mode = PHY_DFILT_MODE_AUTO;
+
+int phy_dfilt_mode(void) { return s_dfilt_mode; }
+
+int phy_dfilt_hw_mode(void)
+{
+#ifdef C5VRX_PHY_PINNED
+    return (int)((*(volatile uint32_t *)DFILT_REG & DFILT_MASK) >> DFILT_SHIFT);
+#else
+    return -1;
+#endif
+}
+
+int phy_dfilt_adc_rate(void)
+{
+#ifdef C5VRX_PHY_PINNED
+    return (int)(*(volatile uint32_t *)DFILT_ADC_REG & 1u);
+#else
+    return -1;
+#endif
+}
+
+bool phy_dfilt_set_mode(int mode)
+{
+#ifdef C5VRX_PHY_PINNED
+    if (mode != PHY_DFILT_MODE_AUTO && (mode < 0 || mode > 15)) return false;
+    lock_take();
+    phy_observation_changed();
+    if (mode == PHY_DFILT_MODE_AUTO) {
+        s_dfilt_mode = PHY_DFILT_MODE_AUTO;
+        lock_give();
+        return true;
+    }
+    phy_rx_filter_mode((uint32_t)mode);
+    bool ok = phy_dfilt_hw_mode() == mode;
+    if (ok) s_dfilt_mode = mode;
+    lock_give();
+    return ok;
+#else
+    (void)mode;
+    return false;
+#endif
+}
+
+bool phy_dfilt_set_adc_rate(int rate)
+{
+#ifdef C5VRX_PHY_PINNED
+    if (rate != 0 && rate != 1) return false;
+    lock_take();
+    phy_observation_changed();
+    phy_adc_rate_set((uint32_t)rate);
+    bool ok = phy_dfilt_adc_rate() == rate;
+    lock_give();
+    return ok;
+#else
+    (void)rate;
+    return false;
+#endif
+}
+
+void phy_dfilt_reapply(void)
+{
+#ifdef C5VRX_PHY_PINNED
+    if (s_dfilt_mode >= 0 && s_dfilt_mode <= 15) {
+        lock_take();
+        phy_rx_filter_mode((uint32_t)s_dfilt_mode);
+        lock_give();
+    }
+#endif
+}
+
 /* ---- RX DC DACs ----------------------------------------------------------
  * Recovered from the pinned libphy: phy_pbus_set_dco() writes PBUS
  * (block,bank) (2,1),(3,1),(2,2),(3,2); phy_pbus_force_test() owns them in

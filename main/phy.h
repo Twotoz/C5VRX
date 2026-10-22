@@ -41,6 +41,18 @@ int phy_filter_calibrated_code(void);
  * unsupported; hw[8]/want[8] receive the bytes when not NULL. */
 int phy_filter_hw_mismatch(uint8_t hw[8], uint8_t want[8]);
 
+/* Digital RX filter mode (0x600A0430[21:18], modes 0..15).
+ * On 5 GHz the vendor PHY selects mode 0 (mode 4 for BW20) and ADC rate 0,
+ * switching to rate 1 / mode 8 above 5830 MHz.
+ * Mode -1 = AUTO / vendor-selected; 0..15 = manual/forced mode. */
+#define PHY_DFILT_MODE_AUTO (-1)
+int phy_dfilt_mode(void);
+int phy_dfilt_hw_mode(void);
+int phy_dfilt_adc_rate(void);
+bool phy_dfilt_set_mode(int mode);
+bool phy_dfilt_set_adc_rate(int rate);
+void phy_dfilt_reapply(void);
+
 /* RX DC DACs (PBUS blocks 2/3 bank 2). A hold forces one pair in PBUS
  * debug mode with every owned live word re-asserted; any gain write or PHY
  * restore releases it first (rf.c) and the post-gain hook re-holds. */

@@ -1954,6 +1954,133 @@ static void self_noise_test(void)
                (on_db - off_db) / pairs);
 }
 
+static volatile bool s_dfilt_noise_requested;
+void dfilt_noise_request(void) { s_dfilt_noise_requested = true; }
+
+void dfilt_mode_step(int step)
+{
+    int cur = phy_dfilt_mode();
+    if (cur < 0) cur = phy_dfilt_hw_mode();
+    if (cur < 0) cur = 0;
+    int next = (cur + step + 16) % 16;
+    if (phy_dfilt_set_mode(next)) {
+        printf("DFILT mode=%d (reg 0x600A0430[21:18]=%d)\n", next, phy_dfilt_hw_mode());
+    } else {
+        printf("DFILT mode=%d refused\n", next);
+    }
+}
+
+void dfilt_mode_reset(void)
+{
+    phy_dfilt_set_mode(PHY_DFILT_MODE_AUTO);
+    printf("DFILT mode reset to AUTO (reg 0x600A0430[21:18]=%d)\n", phy_dfilt_hw_mode());
+}
+
+/* Bench (console /): measure receiver noise floor, kurtosis and PSD bandwidth
+ * across digital filter modes phy_rx_filter_mode(0..15) and ADC rates.
+ * VTX should be off for pure noise floor measurement. */
+static void dfilt_noise_sweep(void)
+{
+    if (!quiet_owner() || !receiver_pause("DFILT_SWEEP")) {
+        printf("DFILT_SWEEP refused=busy\n");
+        return;
+    }
+    const uint8_t restore_gain = s_current_gain;
+    const int orig_hw_mode = phy_dfilt_hw_mode();
+    const int orig_rate = phy_dfilt_adc_rate();
+    const int orig_user_mode = phy_dfilt_mode();
+    if (orig_hw_mode < 0 || orig_rate < 0) {
+        receiver_resume();
+        printf("DFILT_SWEEP refused=unsupported_phy\n");
+        return;
+    }
+    receiver_set_gain(rf_gain_table()->max_index);
+    vTaskDelay(pdMS_TO_TICKS(40));
+
+    printf("DFILT_SWEEP start freq=%u MHz baseline_mode=%d adc_rate=%d gain=%u (measuring noise floor vs digital filter mode)\n",
+           rf_frequency_mhz(), orig_hw_mode, orig_rate, rf_gain_table()->max_index);
+
+    double m_base = 0.0, k_base = 0.0;
+    unsigned w_base = 0, nbw_base = 0, env_base = 0;
+    int clip_base = 0;
+    const bool base_self = selfnoise_measure(&m_base, &k_base);
+    const bool base_noise = noise_measure(&w_base, &nbw_base, &env_base, &clip_base);
+    if (!base_self || !base_noise) {
+        receiver_set_gain(restore_gain);
+        receiver_resume();
+        printf("DFILT_SWEEP probe_failed on baseline\n");
+        return;
+    }
+    printf("DFILT_SWEEP baseline mode=%2d rate=%d m2=%.3f kurt=%.2f width_khz=%5u nbw_khz=%5u env_x100=%u clip_pm=%d\n",
+           orig_hw_mode, orig_rate, m_base, k_base, w_base, nbw_base, env_base, clip_base);
+
+    int min_mode = orig_hw_mode, max_mode = orig_hw_mode;
+    double min_m2 = m_base, max_m2 = m_base;
+    unsigned min_nbw = nbw_base;
+    int min_nbw_mode = orig_hw_mode;
+
+    for (unsigned m = 0; m < 16u; ++m) {
+        if (!phy_dfilt_set_mode((int)m)) {
+            printf("DFILT_SWEEP mode=%2u set_failed\n", m);
+            continue;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+        double m2 = 0.0, kurt = 0.0;
+        unsigned width = 0, nbw = 0, env = 0;
+        int clip = 0;
+        const bool ok_m = selfnoise_measure(&m2, &kurt);
+        const bool ok_n = noise_measure(&width, &nbw, &env, &clip);
+        if (!ok_m || !ok_n) {
+            printf("DFILT_SWEEP mode=%2u probe_failed\n", m);
+            continue;
+        }
+        const double diff_db = 10.0 * log10(m2 / m_base);
+        printf("DFILT_SWEEP mode=%2u m2=%.3f kurt=%.2f width_khz=%5u nbw_khz=%5u diff_db=%+6.2f env_x100=%u clip_pm=%d\n",
+               m, m2, kurt, width, nbw, diff_db, env, clip);
+        if (m2 < min_m2) { min_m2 = m2; min_mode = (int)m; }
+        if (m2 > max_m2) { max_m2 = m2; max_mode = (int)m; }
+        if (nbw > 0 && (min_nbw == 0 || nbw < min_nbw)) { min_nbw = nbw; min_nbw_mode = (int)m; }
+    }
+
+    /* Test alternate ADC rate */
+    const int alt_rate = orig_rate ^ 1;
+    if (phy_dfilt_set_adc_rate(alt_rate)) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+        double m2_alt = 0.0, kurt_alt = 0.0;
+        unsigned width_alt = 0, nbw_alt = 0, env_alt = 0;
+        int clip_alt = 0;
+        if (selfnoise_measure(&m2_alt, &kurt_alt) && noise_measure(&width_alt, &nbw_alt, &env_alt, &clip_alt)) {
+            printf("DFILT_SWEEP adc_alt rate=%d mode=%2d m2=%.3f kurt=%.2f width_khz=%5u nbw_khz=%5u diff_db=%+6.2f\n",
+                   alt_rate, phy_dfilt_hw_mode(), m2_alt, kurt_alt, width_alt, nbw_alt, 10.0 * log10(m2_alt / m_base));
+        }
+        const int paired_mode = alt_rate ? 8 : 0;
+        if (phy_dfilt_set_mode(paired_mode)) {
+            vTaskDelay(pdMS_TO_TICKS(20));
+            if (selfnoise_measure(&m2_alt, &kurt_alt) && noise_measure(&width_alt, &nbw_alt, &env_alt, &clip_alt)) {
+                printf("DFILT_SWEEP adc_alt_paired rate=%d mode=%2d m2=%.3f kurt=%.2f width_khz=%5u nbw_khz=%5u diff_db=%+6.2f\n",
+                       alt_rate, paired_mode, m2_alt, kurt_alt, width_alt, nbw_alt, 10.0 * log10(m2_alt / m_base));
+            }
+        }
+        phy_dfilt_set_adc_rate(orig_rate);
+    }
+
+    /* Restore original mode and rate */
+    if (orig_user_mode >= 0) {
+        phy_dfilt_set_mode(orig_user_mode);
+    } else {
+        phy_dfilt_set_mode(orig_hw_mode);
+        phy_dfilt_set_mode(PHY_DFILT_MODE_AUTO);
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+    const bool restored = (phy_dfilt_hw_mode() == orig_hw_mode) && (phy_dfilt_adc_rate() == orig_rate);
+
+    receiver_set_gain(restore_gain);
+    receiver_resume();
+
+    printf("DFILT_SWEEP done restore_verified=%u min_noise_mode=%d (diff=%+.2f dB) max_noise_mode=%d (diff=%+.2f dB) min_nbw_mode=%d (nbw=%u kHz)\n",
+           restored, min_mode, 10.0 * log10(min_m2 / m_base), max_mode, 10.0 * log10(max_m2 / m_base), min_nbw_mode, min_nbw);
+}
+
 typedef struct { unsigned windows; long p_median, q_phase, origin_pm, clip_pm, env_x100; } lane_stats_t;
 
 static void lane_measure(lane_stats_t *st)
@@ -2046,6 +2173,7 @@ static void calibration_task(void *arg)
         if (s_manual_requested && !s_menu_active) { s_manual_requested = false; startup_phase(true); continue; }
         if (s_lane_requested && !s_menu_active) { s_lane_requested = false; lane_compare(); continue; }
         if (s_selfnoise_requested && !s_menu_active) { s_selfnoise_requested = false; self_noise_test(); continue; }
+        if (s_dfilt_noise_requested && !s_menu_active) { s_dfilt_noise_requested = false; dfilt_noise_sweep(); continue; }
         dco_service();
         dc_health_service();
         drift_service();
@@ -2156,6 +2284,8 @@ void calibration_print(void)
     printf("FILTER_HW mismatch=%d hw=%02x%02x%02x%02x%02x%02x%02x%02x want=%02x%02x%02x%02x%02x%02x%02x%02x\n", bad,
            hw[0], hw[1], hw[2], hw[3], hw[4], hw[5], hw[6], hw[7],
            want[0], want[1], want[2], want[3], want[4], want[5], want[6], want[7]);
+    printf("DFILT user_mode=%d hw_mode=%d adc_rate=%d (0x600A0430[21:18])\n",
+           phy_dfilt_mode(), phy_dfilt_hw_mode(), phy_dfilt_adc_rate());
     printf("DCO held=%u gains_valid=%u floor_rows=%u missing_rows=%u floor=%u searches=%lu carrier_searches=%lu hook_holds=%lu aborts=%lu "
            "drift_avg_mcells=%d/%d nudges=%lu temp_c=%.1f\n", phy_dco_held(), valid, dco_rows(DCO_ROW_FLOOR), dco_rows(0),
            s_dco_floor,
