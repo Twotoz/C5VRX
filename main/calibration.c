@@ -292,14 +292,15 @@ bool calibration_sphase_settled(void)
 /* 3: wide class; 4: codes 52/62/63 (one new sweep after the update);
  * 5: settings measured in the analog branch they fly in (rf_set_filter sets
  * the bandwidth mode up before measuring; every earlier sweep mixed the two
- * branches, board 2026-10-19: chosen 12.5 MHz flew at 19.7 MHz) */
-#define FILTER_VERSION     5u
-/* Two classes from one sweep (research: 12 MHz helps every tested VTX
- * deviation and keeps strong-signal sharpness; 10 MHz adds up to ~1.7 dB
- * for deviation <= ~1.1 but hurts wide VTXs, so it is used only when the
- * deviation was measured). */
-#define FILTER_MIN_KHZ     12000u
-#define FILTER_NARROW_KHZ  10000u
+ * branches, board 2026-10-19: chosen 12.5 MHz flew at 19.7 MHz);
+ * 6: default to 8 MHz filter class (PR #242);
+ * 7: default to 4 MHz filter class for SNR experimentation */
+#define FILTER_VERSION     7u
+/* Two classes from one sweep (experimental 4 MHz default and narrow class to
+ * test whether narrower pre-detection noise bandwidth improves SNR; 16 MHz
+ * wide class for wide VTXs with deviation >= 1.6). */
+#define FILTER_MIN_KHZ      4000u
+#define FILTER_NARROW_KHZ   4000u
 /* Wide VTXs (deviation >= 1.6): the 12 MHz class clips their spectrum
  * (research/data/wide.txt). */
 #define FILTER_WIDE_KHZ    16000u
@@ -524,16 +525,17 @@ bool filter_calibrate(bool automatic)
 const char *calibration_filter_result(void) { return s_filter_result; }
 
 /* Width class of the active analog filter, for model tables keyed on it
- * (cn_estimate.h): 10 narrow, 12 normal, 16 wide, 20 the chip's own ~20 MHz. */
+ * (cn_estimate.h): 4 narrow, 12 normal, 16 wide, 20 the chip's own ~20 MHz. */
 int calibration_filter_class_mhz(void)
 {
     rf_filter_t f, now = rf_filter();
     /* The sweep can select the same setting for normal and narrow (board:
      * both 13.125 MHz). Prefer normal, and do not call a measured >11 MHz
-     * narrow entry 10 MHz; the kp ladder uses the same width boundary. */
-    if (filter_setting(FILTER_NORMAL, &f) && rf_filter_equal(f, now)) return 12;
+     * narrow entry 4 MHz; the kp ladder uses the same width boundary. */
+    if (filter_setting(FILTER_NORMAL, &f) && rf_filter_equal(f, now))
+        return s_filter_cal.normal.width_khz > 11000u ? 12 : 4;
     if (filter_setting(FILTER_NARROW, &f) && rf_filter_equal(f, now))
-        return s_filter_cal.narrow.width_khz > 11000u ? 12 : 10;
+        return s_filter_cal.narrow.width_khz > 11000u ? 12 : 4;
     if (filter_setting(FILTER_WIDE, &f) && rf_filter_equal(f, now)) return 16;
     return 20;
 }
@@ -2203,7 +2205,7 @@ static void calibration_task(void *arg)
  * the filter calibration, every DC table and the repair flags, and runs the
  * full first-boot calibration. Raise CAL_GENERATION whenever a firmware
  * changes what a stored calibration means. */
-#define CAL_GENERATION 1u
+#define CAL_GENERATION 3u
 static void calibration_generation(void)
 {
     uint16_t stored = 0;
