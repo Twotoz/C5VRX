@@ -32,7 +32,7 @@ void phy_rx_filter_mode(uint32_t mode)
     s_mock_reg_430 = (s_mock_reg_430 & ~DFILT_MASK) | ((mode & 0xFu) << DFILT_SHIFT);
 }
 
-static int s_user_mode = -1;
+static int s_user_mode = 0;
 
 static int mock_dfilt_hw_mode(void)
 {
@@ -64,12 +64,21 @@ static bool mock_dfilt_set_adc_rate(int rate)
     return mock_dfilt_adc_rate() == rate;
 }
 
+static const int s_test_valid_modes[] = {0, 4, 8, 12};
+#define N_TEST_VALID_MODES ((int)(sizeof(s_test_valid_modes) / sizeof(s_test_valid_modes[0])))
+
 static void mock_dfilt_mode_step(int step)
 {
     int cur = s_user_mode;
     if (cur < 0) cur = mock_dfilt_hw_mode();
-    if (cur < 0) cur = 0;
-    int next = (cur + step + 16) % 16;
+    int idx = 0;
+    for (int i = 0; i < N_TEST_VALID_MODES; ++i) {
+        if (s_test_valid_modes[i] == cur) { idx = i; break; }
+        if (s_test_valid_modes[i] < cur) idx = i;
+    }
+    int next_idx = (idx + step) % N_TEST_VALID_MODES;
+    if (next_idx < 0) next_idx += N_TEST_VALID_MODES;
+    int next = s_test_valid_modes[next_idx];
     (void)mock_dfilt_set_mode(next);
 }
 
@@ -80,7 +89,7 @@ int main(void)
     const uint32_t initial_preserved = s_mock_reg_430 & preserved_mask;
 
     assert(mock_dfilt_hw_mode() == (int)((0x12345678u & DFILT_MASK) >> DFILT_SHIFT));
-    assert(s_user_mode == -1);
+    assert(s_user_mode == 0);
 
     /* Test setting modes 0..15 */
     for (int m = 0; m < 16; ++m) {
@@ -103,17 +112,30 @@ int main(void)
     assert(s_user_mode == -1);
     assert(mock_dfilt_hw_mode() == 15); /* HW register retained until overwritten */
 
-    /* Mode stepping with wrap-around */
+    /* Mode stepping with valid modes {0, 4, 8, 12} wrap-around */
     mock_dfilt_mode_step(1);
     assert(s_user_mode == 0);
     assert(mock_dfilt_hw_mode() == 0);
 
     mock_dfilt_mode_step(-1);
-    assert(s_user_mode == 15);
-    assert(mock_dfilt_hw_mode() == 15);
+    assert(s_user_mode == 12);
+    assert(mock_dfilt_hw_mode() == 12);
+
+    mock_dfilt_mode_step(-1);
+    assert(s_user_mode == 8);
+    assert(mock_dfilt_hw_mode() == 8);
+
+    mock_dfilt_mode_step(-1);
+    assert(s_user_mode == 4);
+    assert(mock_dfilt_hw_mode() == 4);
+
+    mock_dfilt_mode_step(-1);
+    assert(s_user_mode == 0);
+    assert(mock_dfilt_hw_mode() == 0);
 
     mock_dfilt_mode_step(1);
-    assert(s_user_mode == 0);
+    assert(s_user_mode == 4);
+    assert(mock_dfilt_hw_mode() == 4);
 
     /* Test ADC rate setting */
     assert(mock_dfilt_set_adc_rate(1));
@@ -127,6 +149,6 @@ int main(void)
     assert(!mock_dfilt_set_adc_rate(2));
     assert(!mock_dfilt_set_adc_rate(-1));
 
-    puts("PASS: digital RX filter mode 0..15 bitfield isolation, boundary checks, step wrap and ADC rate");
+    puts("PASS: digital RX filter valid modes {0, 4, 8, 12} stepping, bitfield isolation and ADC rate");
     return 0;
 }
