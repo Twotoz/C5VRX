@@ -33,7 +33,8 @@ static inline uint32_t output_telem_delta(uint32_t now, uint32_t before, bool co
 
 /* Returns true once when a continuously observed native-H outage reaches
  * 100 ms. Unknown/stale coverage ends the run instead of counting as unlock. */
-static inline bool output_telem_add(output_telem_acc_t *a, const output_telem_sample_t *s, uint32_t now_ms)
+static inline bool output_telem_add(output_telem_acc_t *a, const output_telem_sample_t *s, uint32_t now_ms,
+                                    bool observation_available)
 {
     ++a->samples;
     if (s->active) {
@@ -49,7 +50,9 @@ static inline bool output_telem_add(output_telem_acc_t *a, const output_telem_sa
     }
     a->counters_active = s->active;
 
-    const bool fresh = s->active && s->observer_fresh;
+    /* Cached status is not current evidence when the owner could not service
+     * the observer (busy PHY or fault). Keep cumulative-counter continuity. */
+    const bool fresh = observation_available && s->active && s->observer_fresh;
     const bool h_locked = fresh && s->camera_present && s->h_trusted;
     if (fresh) {
         ++a->fresh_samples;

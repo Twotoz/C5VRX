@@ -1500,3 +1500,10 @@ measurement. Host format/rollup/browser/Python tests validate semantics and
 compatibility. Board CPU margin, real RF correlation, monitor lock and a
 reference SINAD path remain required follow-up work before C5MAP can optimize
 on these observations.
+
+PR #241 review follow-up: a busy PHY skips observer servicing, so cached
+freshness cannot qualify that tick. Busy/fault ticks now explicitly mark the
+observation unavailable, break unlock continuity and clear the summary's
+current observer-validity flags while retaining cumulative-counter deltas.
+Host regressions cover cached locked/unlocked states and resumption without
+recounting counters. This does not change the output guard or ISR behavior.

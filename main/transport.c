@@ -881,6 +881,7 @@ typedef struct {
 } sync_live_owner_t;
 static sync_live_owner_t *s_live_owner;
 static output_telem_acc_t s_output_telem;
+static bool s_output_observation_available;
 
 void transport_flog_identity(uint8_t *demod, uint8_t *output_level, bool *flag_format)
 {
@@ -894,8 +895,9 @@ void transport_flog_identity(uint8_t *demod, uint8_t *output_level, bool *flag_f
 
 /* Existing ISR/RMT counters only: one bounded task-side rollup sample per
  * 2-ms owner tick. Missing coverage terminates an unlock run as UNKNOWN. */
-static void transport_output_telem_sample(void)
+static void transport_output_telem_sample(bool observation_available)
 {
+    s_output_observation_available = observation_available;
     slo_status_t status;
     sync_live_output_status(&status);
     const output_telem_sample_t sample = {
@@ -906,7 +908,8 @@ static void transport_output_telem_sample(void)
         .h_trusted = status.h_trusted, .v_trusted = status.v_trusted,
     };
     const uint32_t gaps_before = s_output_telem.observer_gaps;
-    const bool unlock = output_telem_add(&s_output_telem, &sample, (uint32_t)(esp_timer_get_time() / 1000));
+    const bool unlock = output_telem_add(&s_output_telem, &sample, (uint32_t)(esp_timer_get_time() / 1000),
+                                         observation_available);
     const uint32_t new_gaps = s_output_telem.observer_gaps - gaps_before;
     uint8_t demod, level;
     transport_flog_identity(&demod, &level, NULL);
@@ -928,6 +931,9 @@ void transport_flog_output(transport_flog_output_t *out)
     if (!out) return;
     slo_status_t status;
     sync_live_output_status(&status);
+    if (!s_output_observation_available) {
+        status.observer_fresh = status.h_trusted = status.v_trusted = status.camera_present = false;
+    }
     output_telem_roll_t roll;
     output_telem_roll(&s_output_telem, (uint32_t)(esp_timer_get_time() / 1000), &roll);
     bool flag_format;
@@ -1082,8 +1088,8 @@ void transport_sync_live_tick(void)
         } else if(!s_flywheel_boot) printf("SYNC_FLYWHEEL requested=0 boot=saved_off\n");
     }
     sync_live_owner_t *s=s_live_owner;
-    if(!s || s->fault){transport_output_telem_sample();return;}
-    if(!phy_try_actuator(phy_generation())){transport_output_telem_sample();return;}
+    if(!s || s->fault){transport_output_telem_sample(false);return;}
+    if(!phy_try_actuator(phy_generation())){transport_output_telem_sample(false);return;}
     bool eligible=s->requested && !s_sync_live_hold && !calibration_in_startup() && !receiver_paused() &&
         !s_menu_active && !s_scan_active && s_started && s_have_verified && s_lut_known && !s_transport_fault;
     bool active=sync_output_live_active();
@@ -1139,7 +1145,7 @@ void transport_sync_live_tick(void)
     }
     sync_live_output_phase(0u);
     phy_end_actuator();
-    transport_output_telem_sample();
+    transport_output_telem_sample(true);
 }
 
 void transport_sync_live_print(void)
