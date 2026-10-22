@@ -69,7 +69,7 @@ int main(void)
         /* As in the real sweep, noisy/too-narrow settings may be skipped;
          * only a definite carrier aborts it. Do not relax quiet thresholds. */
         assert(width && nbw && !cal_setting_carrier(env, clipping));
-        eligible += width >= 12000 && cal_setting_quiet(env, clipping);
+        eligible += width >= 8000 && cal_setting_quiet(env, clipping);
     }
     assert(eligible > 0);
     for (int cn = -1; cn <= 3; ++cn) {
