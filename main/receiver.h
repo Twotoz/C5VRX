@@ -73,6 +73,12 @@ bool transport_set_lp(bool lp);            /* U85Q <-> LP via a brief pipeline r
 bool transport_lp(void);
 const char *transport_program_name(void);
 const char *transport_demod_name(void);
+#define DEMOD_U85Q 0
+#define DEMOD_P5T  1
+#define DEMOD_P64  2
+#define DEMOD_MODES 3
+bool transport_set_demod_mode(int mode);
+int transport_demod_mode(void);
 bool transport_set_demod_p5t(bool p5t);
 bool transport_is_p5t(void);
 bool transport_faulted(void);

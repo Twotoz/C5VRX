@@ -381,8 +381,8 @@ static void command(int c, unsigned *menu_idle)
         break;
     }
     case 'm': {
-        const bool p5t = !transport_is_p5t();
-        bool ok = transport_set_demod_p5t(p5t);
+        int next_mode = (transport_demod_mode() + 1) % DEMOD_MODES;
+        bool ok = transport_set_demod_mode(next_mode);
         printf("DEMOD manual %s: %s\n", transport_demod_name(),
                ok ? "switched via pipeline restart" : "refused (cooldown or error)");
         break;

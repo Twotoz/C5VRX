@@ -28,6 +28,7 @@
 #include "hal/parlio_ll.h"
 #include "kp_tables.h"
 #include "p5t_tables.h"
+#include "p64_tables.h"
 #include "snapshot.h"
 #include "output_telemetry.h"
 #include "control_window.h"
@@ -58,9 +59,11 @@ BITSCRAMBLER_PROGRAM(s_u85q, "u85q");
  * instruction rewrite left the board video black while USB kept running. */
 BITSCRAMBLER_PROGRAM(s_u85q_lp, "u85q_lp");
 BITSCRAMBLER_PROGRAM(s_u85q_lp_flag, "u85q_lp_flag");
+BITSCRAMBLER_PROGRAM(s_u85q_64, "u85q_64");
 static bool s_started;   /* live TX running (cleared while menu/status/recovery owns TX) */
 static bool s_prog_lp;   /* U85Q-LP instructions loaded */
-static const void *tracker_program(bool lp) { return lp ? s_u85q_lp : s_u85q; }
+static int s_demod_mode = DEMOD_P64, s_verified_demod_mode = DEMOD_P64;
+static const void *tracker_program(bool lp) { return s_demod_mode == DEMOD_P64 ? s_u85q_64 : (lp ? s_u85q_lp : s_u85q); }
 static bool s_flag_format,s_verified_flag;
 static const void *tracker_format_program(bool lp,bool flag)
 { return flag && lp?s_u85q_lp_flag:tracker_program(lp); }
@@ -82,7 +85,7 @@ static bool s_stream_generation_overflow;
 static unsigned s_output, s_verified_output, s_output_clipped;
 static int s_verified_level;
 static bool s_verified_lp, s_have_verified;
-static bool s_demod_p5t = true, s_verified_p5t = true;
+static bool s_demod_p5t = false;
 static uint32_t s_restart_errors, s_rollbacks, s_rollback_fail;
 #define LIVE_TX_NODES ((RAW_RING_BYTES + 4091u) / 4092u)
 DMA_ATTR __attribute__((aligned(64))) static dma_descriptor_t s_live_tx_nodes[LIVE_TX_NODES];
@@ -333,7 +336,9 @@ static bool switch_live(int level, bool lp)
 {
     if (!s_lut_known || !s_started || s_menu_active) return false;
     if (level >= KP_LEVELS || level < -1) return false;
-    const uint16_t *lut = level < 0 ? s_lut_live : (s_demod_p5t ? p5t_table : kp_tables[level]);
+    const uint16_t *lut = level < 0 ? s_lut_live :
+        (s_demod_mode == DEMOD_P64 ? p64_table :
+        (s_demod_mode == DEMOD_P5T ? p5t_table : kp_tables[level]));
     bool kp_changed = level >= 0 && level != s_verified_level;
     bool lp_changed = lp != s_prog_lp;
     if (!kp_changed && !lp_changed) return true;
@@ -386,29 +391,41 @@ bool transport_set_lp(bool lp)
 bool transport_lp(void) { return s_prog_lp; }
 
 const char *transport_program_name(void) { return s_prog_lp ? "U85Q-LP" : "U85Q"; }
-const char *transport_demod_name(void) { return s_demod_p5t ? "P5-TRACK" : "U85Q"; }
-bool transport_is_p5t(void) { return s_demod_p5t; }
-
-bool transport_set_demod_p5t(bool p5t)
+const char *transport_demod_name(void)
 {
-    if (s_transport_fault) return false;
-    if (p5t == s_demod_p5t) return true;
+    switch (s_demod_mode) {
+    case DEMOD_P64: return "P64";
+    case DEMOD_P5T: return "P5-TRACK";
+    default: return "U85Q";
+    }
+}
+int transport_demod_mode(void) { return s_demod_mode; }
+
+bool transport_set_demod_mode(int mode)
+{
+    if (s_transport_fault || mode < 0 || mode >= DEMOD_MODES) return false;
+    if (mode == s_demod_mode) return true;
     if (s_menu_active || !s_started) {
-        s_demod_p5t = p5t;
+        s_demod_mode = mode;
         return true;
     }
     int64_t began = esp_timer_get_time();
     if (!kp_switch_ready(&s_switch_guard, began)) return false;
-    bool prev = s_demod_p5t;
-    s_demod_p5t = p5t;
-    const uint16_t *target = p5t ? p5t_table : kp_tables[s_kp_target];
+    int prev = s_demod_mode;
+    s_demod_mode = mode;
+    const uint16_t *target = (mode == DEMOD_P64) ? p64_table :
+                             (mode == DEMOD_P5T) ? p5t_table : kp_tables[s_kp_target];
     bool ok = resume_live(target);
     int64_t finished = esp_timer_get_time();
     kp_switch_mark(&s_switch_guard, finished);
-    if (!ok) {
-        s_demod_p5t = prev;
-    }
+    if (!ok) s_demod_mode = prev;
     return ok;
+}
+
+bool transport_is_p5t(void) { return s_demod_mode == DEMOD_P5T; }
+bool transport_set_demod_p5t(bool p5t)
+{
+    return transport_set_demod_mode(p5t ? DEMOD_P5T : DEMOD_U85Q);
 }
 bool transport_faulted(void) { return s_transport_fault; }
 uint32_t transport_restart_errors(void) { return s_restart_errors; }
@@ -427,7 +444,9 @@ bool transport_set_output(unsigned level)
     if (s_menu_active || !s_started) { s_output = level; return true; }
     if (!kp_switch_ready(&s_switch_guard, esp_timer_get_time())) return false;
     s_output = level;
-    bool ok = resume_live(s_lut_known ? (s_demod_p5t ? p5t_table : kp_tables[s_verified_level]) : NULL);
+    const uint16_t *target = (s_demod_mode == DEMOD_P64) ? p64_table :
+                             (s_demod_mode == DEMOD_P5T) ? p5t_table : kp_tables[s_verified_level];
+    bool ok = resume_live(s_lut_known ? target : NULL);
     kp_switch_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
 }
@@ -548,7 +567,7 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
     if (stage == TR_BS_ENABLE && rollback) {
         s_prog_lp = s_verified_lp;
         s_output = s_verified_output;
-        s_demod_p5t = s_verified_p5t;
+        s_demod_mode = s_verified_demod_mode;
         r->lp = s_verified_lp;
         r->level = s_verified_level;
         r->output = s_verified_output;
@@ -784,9 +803,11 @@ static bool resume_live(const uint16_t *restore_lut)
     const uint8_t *program_inst;
     if (!program_words(r.program, &program_inst)) return false;
     memcpy(s_program_work.prefix, r.program, sizeof(s_program_work.prefix));
-    if (!restore_lut) restore_lut = s_demod_p5t ? p5t_table : kp_tables[s_kp_target];
+    if (!restore_lut) restore_lut = (s_demod_mode == DEMOD_P64) ? p64_table :
+                                   (s_demod_mode == DEMOD_P5T) ? p5t_table : kp_tables[s_kp_target];
     if(restore_lut==s_lut_live && s_flag_format!=s_verified_flag)
-        restore_lut = s_demod_p5t ? p5t_table : kp_tables[s_verified_level];
+        restore_lut = (s_demod_mode == DEMOD_P64) ? p64_table :
+                      (s_demod_mode == DEMOD_P5T) ? p5t_table : kp_tables[s_verified_level];
     if (restore_lut == s_lut_live) {
         memcpy(s_lut_work, s_lut_live, sizeof(s_lut_work));
         r.level = s_verified_level;
@@ -816,7 +837,7 @@ static bool resume_live(const uint16_t *restore_lut)
     if (result == TR_ROLLED_BACK) {
         ++s_rollbacks;
         s_kp_target = (uint8_t)s_verified_level;
-        s_demod_p5t = s_verified_p5t;
+        s_demod_mode = s_verified_demod_mode;
         transport_sync_restart_finish(true);
         printf("TRANSPORT rollback=verified program=%s demod=%s kp_level=%d output=%s\n",
                transport_program_name(), transport_demod_name(), s_verified_level, transport_output_name());
@@ -826,7 +847,7 @@ static bool resume_live(const uint16_t *restore_lut)
     const bool output_changed = s_have_verified && s_verified_output != r.output;
     s_verified_lp = r.lp;
     s_verified_flag=r.flag;
-    s_verified_p5t = s_demod_p5t;
+    s_verified_demod_mode = s_demod_mode;
     s_verified_level = r.level;
     s_verified_output = r.output;
     s_output_clipped = r.clipped;
@@ -847,7 +868,8 @@ static bool transport_flag_format(bool flag)
     if(!transport_sync_live_cancel())return false;
     if(flag && !flag_pin_acquire())return false;
     s_flag_format=flag;
-    bool ok=resume_live(s_demod_p5t ? p5t_table : kp_tables[s_verified_level]);
+    bool ok=resume_live((s_demod_mode == DEMOD_P64) ? p64_table :
+                        (s_demod_mode == DEMOD_P5T) ? p5t_table : kp_tables[s_verified_level]);
     if(!s_transport_fault && !s_verified_flag) {
         if(!flag_pin_restored()){s_transport_fault=true;s_lut_known=false;return false;}
         s_flag_pin->active=false;s_flag_pin=NULL;
