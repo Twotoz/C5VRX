@@ -200,7 +200,7 @@ The C5VRX name and logos have separate terms; see [assets/BRANDING.md](assets/BR
 | --- | --- | --- |
 | Seeed Studio XIAO ESP32-C5 | <img src="web/assets/xiao-esp32c5.png" alt="Seeed Studio XIAO ESP32-C5 board" width="96" height="72"> | [View on Amazon](https://link.amazon/B012HPjJm) |
 | Perfboard | <img src="web/assets/perfboard.png" alt="Green perfboard" width="42" height="61"> | [View on Amazon](https://link.amazon/B0i2qqMeq) |
-| Resistor kit | <img src="web/assets/resistor-kit.png" alt="Resistor assortment in a storage case" width="72" height="72"> | [View on Amazon](https://link.amazon/B03aEQSIv) |
+| Resistor kit | <img src="web/assets/resistor-kit.png" alt="Resistor assortment in a storage case" width="72" height="72"> | [View on Amazon](https://link.amazon/B06XSBkln) |
 
 Affiliate links. As an Amazon Associate, I earn from qualifying purchases.
 All affiliate earnings go back into C5VRX development.
