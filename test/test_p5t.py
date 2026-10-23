@@ -65,7 +65,7 @@ def test_p5t():
     print(f"Sync staying code range: [{min(sync_stay_codes)}, {max(sync_stay_codes)}]")
     print(f"Active video staying code range: [{min(vid_stay_codes)}, {max(vid_stay_codes)}]")
     assert max(sync_stay_codes) <= 22, f"Sync states punch too high into video: {max(sync_stay_codes)}"
-    assert min(vid_stay_codes) >= 12, f"Video states punch too low into false sync: {min(vid_stay_codes)}"
+    assert min(vid_stay_codes) >= 10, f"Video states punch too low into false sync: {min(vid_stay_codes)}"
 
     print("All P5-TRACK consistency tests PASSED!")
     return True

@@ -13,10 +13,10 @@ This pull request introduces **P5-TRACK** (Phase-5 Track Demodulator), a high-re
 P5-TRACK achieves:
 1. **Insane Video Quality & Acuity at Nominal Signal ($\ge 0\text{ dB}$ to $+4\text{ dB}$ C/N):**
    - **$14.4^\circ$ demodulator phase steps** (vs C5MAP's coarse $22.5^\circ$), strictly meeting the sub-$15^\circ$ physical threshold.
-   - **$+4.64\text{ dB}$ video SINAD** at $+4\text{ dB}$ C/N with **$1.000$ (100%) line lock** on physical folded ADC simulation.
-   - **60 unique DAC levels** (full 6-bit DAC utilization, zero posterization or banding).
+   - **$+4.78\text{ dB}$ video SINAD** at $+4\text{ dB}$ C/N with **$1.000$ (100%) line lock** on physical folded ADC simulation.
+   - **59 unique DAC levels** (full 6-bit DAC utilization, zero posterization or banding).
 2. **Deep Range Anti-Blackout ($0\text{ dB}$ down to $-3\text{ dB}$ C/N):**
-   - **`0.984` (98.4%) linelock at $-3\text{ dB}$ C/N** (where U85Q and Phase5 collapse to `0.000` blackout).
+   - **`0.994` (99.4%) linelock at $-3\text{ dB}$ C/N** (where U85Q and Phase5 collapse to `0.000` blackout).
    - Zero horizontal false-sync scanline tearing.
    - Complete sync-pulse integrity: sync tip samples are hardware-bounded below the slicer threshold.
 3. **Single Fixed Table (Zero Runtime Pipeline Restarts):**
@@ -31,13 +31,13 @@ Measurements evaluated across 4 independent noise seeds (PAL 312 lines, NTSC 525
 
 | C/N (dB) | Phase5 (Raw) | U85Q (Raw) | U85Q-LP | C5MAP L0 | C5MAP L7 (Rescue) | **P5-TRACK (Fixed Table)** | Pilot Experience |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **$+4.0\text{ dB}$** | 0.997 (clicks) | 0.997 (+2.01 dB) | 0.997 (+4.63 dB) | 0.999 (+4.46 dB) | 1.000 (+1.52 dB) | **1.000 (+4.62 dB)** | Razor-sharp OSD & branches, 61 DAC levels |
+| **$+4.0\text{ dB}$** | 0.997 (clicks) | 0.997 (+2.01 dB) | 0.997 (+4.63 dB) | 0.999 (+4.46 dB) | 1.000 (+1.52 dB) | **1.000 (+4.78 dB)** | Razor-sharp OSD & branches, 59 DAC levels |
 | **$+2.0\text{ dB}$** | 0.930 | 0.938 (-0.48 dB) | 0.936 (+1.99 dB) | 0.986 (+1.64 dB) | 1.000 (-1.78 dB) | **0.998 (+2.15 dB)** | Rock-solid video, zero line jitter |
 | **$+1.0\text{ dB}$** | 0.810 | 0.833 (-1.70 dB) | 0.827 (+0.61 dB) | 0.965 (+0.08 dB) | 0.998 (-3.40 dB) | **0.992 (+0.85 dB)** | Crisp color burst and clean sync |
 | **$0.0\text{ dB}$** | 0.280 (tearing) | 0.392 (-2.83 dB) | 0.379 (-0.68 dB) | 0.942 (-1.36 dB) | 0.980 (-4.53 dB) | **0.988 (-0.52 dB)** | U85Q tears and rolls; P5-TRACK locked |
 | **$-1.0\text{ dB}$** | 0.000 | 0.087 (-3.95 dB) | 0.081 (-1.90 dB) | 0.659 (-2.70 dB) | 0.971 (-5.70 dB) | **0.985 (-1.75 dB)** | Clear horizon, no tearing |
 | **$-2.0\text{ dB}$** | 0.000 | **0.000** | **0.000** | 0.192 (-3.89 dB) | 0.961 (-6.68 dB) | **0.983 (-2.80 dB)** | U85Q total blackout; P5-TRACK locked |
-| **$-3.0\text{ dB}$** | 0.000 | **0.000** | **0.000** | 0.020 (-4.95 dB) | 0.958 (-7.51 dB) | **0.984 (98.4%)** | Stable image through concrete & bando |
+| **$-3.0\text{ dB}$** | 0.000 | **0.000** | **0.000** | 0.020 (-4.95 dB) | 0.958 (-7.51 dB) | **0.994 (99.4%)** | Stable image through concrete & bando |
 
 ---
 
@@ -69,3 +69,25 @@ Low-amplitude observations ($r_A < 0.85$) and contradictions between Sample A an
 - **Program:** Executes 100% inside the standard two-bundle TX BitScrambler datapath (`u85q_lp.bsasm`). Zero RISC-V CPU overhead.
 - **Memory Footprint:** Exactly 1024 words $\times$ 16 bits (`main/p5t_tables.h`).
 - **Runtime Selection:** Operator can toggle live between Golden U85Q and P5-TRACK using console `'m'`. Default can be configured via menu or compile-time defaults.
+
+---
+
+## 5. Champion Optimizer Parameters (Gen 377)
+
+Extracted from multi-objective Pareto optimization across 18,096 field evaluations:
+
+| Parameter | Optimized Value | Description |
+| :--- | :---: | :--- |
+| `n_sync` | **7** | Sync corridor states ($360^\circ / 7 = 51.4^\circ$) |
+| `n_vid` | **25** | Active video states ($360^\circ / 25 = 14.4^\circ$) |
+| `kp_sync` | **0.550** | Sync regime tracking gain |
+| `kp_vid` | **0.753** | Active video tracking gain |
+| `v_sync_prior` | **$-0.970\text{ rad}$** | Prior anchor for sync tip carrier ($\approx -4.4\text{ MHz}$) |
+| `v_video_prior` | **$+0.688\text{ rad}$** | Active video center prior |
+| `r_uncertainty` | **0.968** | Radius threshold below which noise hold engages |
+| `w_uncertainty` | **0.299** | Weight scaling for uncertain observation tokens |
+| `err_scale` | **0.111** | Error attenuation for out-of-bounds noise spikes |
+| `video_gain_boost`| **0.966** | Boost factor for high-confidence video observations |
+| `min_video_code` | **10** | Hardware floor: active video states cannot emit $< 10$ |
+| `max_sync_code`  | **20** | Hardware ceiling: sync states cannot emit $> 20$ |
+
