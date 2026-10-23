@@ -27,6 +27,7 @@
 #include "sync_flag.h"
 #include "hal/parlio_ll.h"
 #include "kp_tables.h"
+#include "p5t_tables.h"
 #include "snapshot.h"
 #include "output_telemetry.h"
 #include "control_window.h"
@@ -81,6 +82,7 @@ static bool s_stream_generation_overflow;
 static unsigned s_output, s_verified_output, s_output_clipped;
 static int s_verified_level;
 static bool s_verified_lp, s_have_verified;
+static bool s_demod_p5t = true, s_verified_p5t = true;
 static uint32_t s_restart_errors, s_rollbacks, s_rollback_fail;
 #define LIVE_TX_NODES ((RAW_RING_BYTES + 4091u) / 4092u)
 DMA_ATTR __attribute__((aligned(64))) static dma_descriptor_t s_live_tx_nodes[LIVE_TX_NODES];
@@ -331,7 +333,7 @@ static bool switch_live(int level, bool lp)
 {
     if (!s_lut_known || !s_started || s_menu_active) return false;
     if (level >= KP_LEVELS || level < -1) return false;
-    const uint16_t *lut = level < 0 ? s_lut_live : kp_tables[level];
+    const uint16_t *lut = level < 0 ? s_lut_live : (s_demod_p5t ? p5t_table : kp_tables[level]);
     bool kp_changed = level >= 0 && level != s_verified_level;
     bool lp_changed = lp != s_prog_lp;
     if (!kp_changed && !lp_changed) return true;
@@ -384,6 +386,30 @@ bool transport_set_lp(bool lp)
 bool transport_lp(void) { return s_prog_lp; }
 
 const char *transport_program_name(void) { return s_prog_lp ? "U85Q-LP" : "U85Q"; }
+const char *transport_demod_name(void) { return s_demod_p5t ? "P5-TRACK" : "U85Q"; }
+bool transport_is_p5t(void) { return s_demod_p5t; }
+
+bool transport_set_demod_p5t(bool p5t)
+{
+    if (s_transport_fault) return false;
+    if (p5t == s_demod_p5t) return true;
+    if (s_menu_active || !s_started) {
+        s_demod_p5t = p5t;
+        return true;
+    }
+    int64_t began = esp_timer_get_time();
+    if (!kp_switch_ready(&s_switch_guard, began)) return false;
+    bool prev = s_demod_p5t;
+    s_demod_p5t = p5t;
+    const uint16_t *target = p5t ? p5t_table : kp_tables[s_kp_target];
+    bool ok = resume_live(target);
+    int64_t finished = esp_timer_get_time();
+    kp_switch_mark(&s_switch_guard, finished);
+    if (!ok) {
+        s_demod_p5t = prev;
+    }
+    return ok;
+}
 bool transport_faulted(void) { return s_transport_fault; }
 uint32_t transport_restart_errors(void) { return s_restart_errors; }
 unsigned transport_output(void) { return s_output; }
@@ -401,7 +427,7 @@ bool transport_set_output(unsigned level)
     if (s_menu_active || !s_started) { s_output = level; return true; }
     if (!kp_switch_ready(&s_switch_guard, esp_timer_get_time())) return false;
     s_output = level;
-    bool ok = resume_live(s_lut_known ? kp_tables[s_verified_level] : NULL);
+    bool ok = resume_live(s_lut_known ? (s_demod_p5t ? p5t_table : kp_tables[s_verified_level]) : NULL);
     kp_switch_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
 }
@@ -522,6 +548,7 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
     if (stage == TR_BS_ENABLE && rollback) {
         s_prog_lp = s_verified_lp;
         s_output = s_verified_output;
+        s_demod_p5t = s_verified_p5t;
         r->lp = s_verified_lp;
         r->level = s_verified_level;
         r->output = s_verified_output;
@@ -757,9 +784,9 @@ static bool resume_live(const uint16_t *restore_lut)
     const uint8_t *program_inst;
     if (!program_words(r.program, &program_inst)) return false;
     memcpy(s_program_work.prefix, r.program, sizeof(s_program_work.prefix));
-    if (!restore_lut) restore_lut = kp_tables[s_kp_target];
+    if (!restore_lut) restore_lut = s_demod_p5t ? p5t_table : kp_tables[s_kp_target];
     if(restore_lut==s_lut_live && s_flag_format!=s_verified_flag)
-        restore_lut=kp_tables[s_verified_level];
+        restore_lut = s_demod_p5t ? p5t_table : kp_tables[s_verified_level];
     if (restore_lut == s_lut_live) {
         memcpy(s_lut_work, s_lut_live, sizeof(s_lut_work));
         r.level = s_verified_level;
@@ -789,15 +816,17 @@ static bool resume_live(const uint16_t *restore_lut)
     if (result == TR_ROLLED_BACK) {
         ++s_rollbacks;
         s_kp_target = (uint8_t)s_verified_level;
+        s_demod_p5t = s_verified_p5t;
         transport_sync_restart_finish(true);
-        printf("TRANSPORT rollback=verified program=%s kp_level=%d output=%s\n",
-               transport_program_name(), s_verified_level, transport_output_name());
+        printf("TRANSPORT rollback=verified program=%s demod=%s kp_level=%d output=%s\n",
+               transport_program_name(), transport_demod_name(), s_verified_level, transport_output_name());
         return false;
     }
     memcpy(s_lut_live, s_lut_work, sizeof(s_lut_live));
     const bool output_changed = s_have_verified && s_verified_output != r.output;
     s_verified_lp = r.lp;
     s_verified_flag=r.flag;
+    s_verified_p5t = s_demod_p5t;
     s_verified_level = r.level;
     s_verified_output = r.output;
     s_output_clipped = r.clipped;
@@ -818,7 +847,7 @@ static bool transport_flag_format(bool flag)
     if(!transport_sync_live_cancel())return false;
     if(flag && !flag_pin_acquire())return false;
     s_flag_format=flag;
-    bool ok=resume_live(kp_tables[s_verified_level]);
+    bool ok=resume_live(s_demod_p5t ? p5t_table : kp_tables[s_verified_level]);
     if(!s_transport_fault && !s_verified_flag) {
         if(!flag_pin_restored()){s_transport_fault=true;s_lut_known=false;return false;}
         s_flag_pin->active=false;s_flag_pin=NULL;
@@ -1228,10 +1257,10 @@ void transport_print(void)
            (unsigned long)s_restart_errors, (unsigned long)s_rollbacks, (unsigned long)s_rollback_fail,
            s_transport_fault, s_started);
     printf("TRANSPORT rx_descriptors=%d tx_empty=%lu rx_overflow=%lu dma_faults=%lu bs_overload=%lu "
-           "kp_level=%d kp_target=%d kp_writes=%lu kp_verify_fail=%lu program=%s flag_format=%u prog_switches=%lu "
+           "demod=%s kp_level=%d kp_target=%d kp_writes=%lu kp_verify_fail=%lu program=%s flag_format=%u prog_switches=%lu "
            "switch_wait_ms=%lu kp_switches=%lu kp_restart_fail=%lu kp_restart_us=%lu prog_verify_fail=%lu prog_restart_fail=%lu prog_restart_us=%lu\n",
            s_rx_node_count, (unsigned long)s_tx_empty, (unsigned long)s_rx_overflow,
-           (unsigned long)s_dma_faults, (unsigned long)s_bs_overload, transport_kp_level(),
+           (unsigned long)s_dma_faults, (unsigned long)s_bs_overload, transport_demod_name(), transport_kp_level(),
            transport_kp_target(), (unsigned long)s_kp_writes, (unsigned long)s_kp_verify_fail,
            transport_program_name(),(unsigned)s_verified_flag, (unsigned long)s_prog_switches,
            (unsigned long)transport_switch_wait_ms(), (unsigned long)s_kp_switches, (unsigned long)s_kp_restart_fail, (unsigned long)s_kp_restart_us,

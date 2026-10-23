@@ -380,6 +380,13 @@ static void command(int c, unsigned *menu_idle)
         if (s_menu_active) menu_render();
         break;
     }
+    case 'm': {
+        const bool p5t = !transport_is_p5t();
+        bool ok = transport_set_demod_p5t(p5t);
+        printf("DEMOD manual %s: %s\n", transport_demod_name(),
+               ok ? "switched via pipeline restart" : "refused (cooldown or error)");
+        break;
+    }
     default: break;
     }
 }
