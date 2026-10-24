@@ -101,7 +101,7 @@
       }
     }
   ],
-  "total_valid_captures": 1570,
+  "total_valid_captures": 2720,
   "runs": [
     {
       "name": "audit_5745_clock_extra_short",
@@ -378,6 +378,104 @@
       }
     },
     {
+      "name": "audit_5805_combo_big1",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-comb",
+        "freq": "5805",
+        "gain": "74",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "7",
+        "windows_per_stage": "16",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "COMBO_SENSE0_NO11P",
+          "status": "INCOMPLETE"
+        },
+        {
+          "profile": "COMBO_RX11B0_NO11P",
+          "status": "INCOMPLETE"
+        },
+        {
+          "profile": "STOCK_SHAM_NO11P",
+          "status": "PASS",
+          "stock_m2": 1.0186751920113872,
+          "test_m2": 0.973660023605651,
+          "delta_db": -0.19628390660437808,
+          "stock_drift_db": -0.11292643017166668,
+          "test_repeat_db": 0.00029122630532431114,
+          "median_delta_db": 0.01408439846970521,
+          "stock_nbw_mhz": 15.502057753661784,
+          "test_nbw_mhz": 15.346239406021347,
+          "max_signed_rails": 0.013431013431013432,
+          "max_kurtosis": 6.3494383028645025,
+          "min_kurtosis": 1.915923992523359,
+          "quality_flags": [
+            "signed_rails_above_0.2pct",
+            "non_gaussian_or_distorted_noise"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 382,
+      "rejected_captures": [
+        {
+          "metadata": {
+            "id": "160",
+            "step": "1",
+            "stage": "TEST",
+            "rep": "8",
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "gain": "74",
+            "freq": "5805",
+            "offset": "0",
+            "m2": "0.955908",
+            "kurt": "1.9842",
+            "rails": "0.000000",
+            "fnv1a": "1aea59ca",
+            "t_us": "207322945",
+            "windows_per_stage": "16"
+          },
+          "reason": "missing or reordered snapshot bytes"
+        },
+        {
+          "metadata": {
+            "id": "164",
+            "step": "1",
+            "stage": "TEST",
+            "rep": "3",
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "gain": "74",
+            "freq": "5805",
+            "offset": "0",
+            "m2": "0.953077",
+            "kurt": "1.9620",
+            "rails": "0.000000",
+            "fnv1a": "30bc215b",
+            "t_us": "252508948",
+            "windows_per_stage": "16"
+          },
+          "reason": "missing or reordered snapshot bytes"
+        }
+      ],
+      "raw_log_sha256": "fe395a6bc3a56dd912fbc719290c5deff02f06678c90ef08a49eb85091006ecc",
+      "manifest_sha256": "b1545a8c6eafafd33c6317d4333015588f1987360a8f2cc9f7c092ee7534371e",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:35:11.835853+00:00",
+        "ended_utc": "2026-10-24T13:36:24.991503+00:00"
+      }
+    },
+    {
       "name": "audit_5805_dac",
       "context": {
         "fw": "5.0.0-dev+aae44c8-audi",
@@ -423,6 +521,156 @@
         "port": "COM10",
         "started_utc": "2026-10-24T12:28:12.082973+00:00",
         "ended_utc": "2026-10-24T12:28:25.488412+00:00"
+      }
+    },
+    {
+      "name": "audit_5805_gaincurve",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-comb",
+        "freq": "5805",
+        "gain": "74",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "6",
+        "windows_per_stage": "4",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "GAIN_ROW_72",
+          "status": "PASS",
+          "stock_m2": 0.6806809839868447,
+          "test_m2": 0.6854606363145741,
+          "delta_db": 0.030389017801931276,
+          "stock_drift_db": 0.03750604450474989,
+          "test_repeat_db": -0.028741198700757798,
+          "median_delta_db": -0.03663797725088463,
+          "stock_nbw_mhz": 15.93464016720316,
+          "test_nbw_mhz": 16.099609422124946,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.1437052148085667,
+          "min_kurtosis": 1.771561992779958,
+          "quality_flags": [
+            "non_gaussian_or_distorted_noise"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "GAIN_ROW_74",
+          "status": "PASS",
+          "stock_m2": 0.9734802084870766,
+          "test_m2": 0.973730468080285,
+          "delta_db": 0.0011163287288843795,
+          "stock_drift_db": -0.010933670881103502,
+          "test_repeat_db": -0.027373245706041632,
+          "median_delta_db": -0.010627022874848322,
+          "stock_nbw_mhz": 15.20506520545143,
+          "test_nbw_mhz": 15.366555456962397,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0762920339712143,
+          "min_kurtosis": 1.9340841118534873,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "GAIN_ROW_76",
+          "status": "PASS",
+          "stock_m2": 1.4431388629854747,
+          "test_m2": 1.4471278024139744,
+          "delta_db": 0.011987651541638337,
+          "stock_drift_db": 0.015945261393470106,
+          "test_repeat_db": 0.05095908222293597,
+          "median_delta_db": 0.026651399387885702,
+          "stock_nbw_mhz": 14.620394595743415,
+          "test_nbw_mhz": 14.867629642221123,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.056806165045188,
+          "min_kurtosis": 1.9400925602470511,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "GAIN_ROW_78",
+          "status": "PASS",
+          "stock_m2": 2.1793854368396492,
+          "test_m2": 2.1607036410882565,
+          "delta_db": -0.03738840734109585,
+          "stock_drift_db": -0.010020127440450123,
+          "test_repeat_db": 0.08460012225342027,
+          "median_delta_db": -0.07948353857292907,
+          "stock_nbw_mhz": 13.998796708005697,
+          "test_nbw_mhz": 13.843880950745987,
+          "max_signed_rails": 0.0001221001221001221,
+          "max_kurtosis": 2.030358750617541,
+          "min_kurtosis": 1.936936370506204,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "GAIN_ROW_80",
+          "status": "PASS",
+          "stock_m2": 3.361072963208952,
+          "test_m2": 3.3621438466905498,
+          "delta_db": 0.0013835007970221158,
+          "stock_drift_db": 0.029884571059475427,
+          "test_repeat_db": -0.01806981342952739,
+          "median_delta_db": -0.03228266288346778,
+          "stock_nbw_mhz": 13.686935841300564,
+          "test_nbw_mhz": 13.587043984516935,
+          "max_signed_rails": 0.0015873015873015873,
+          "max_kurtosis": 2.044985259328821,
+          "min_kurtosis": 1.9353428103008994,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "GAIN_ROW_83",
+          "status": "PASS",
+          "stock_m2": 6.331932194365802,
+          "test_m2": 6.373543914113969,
+          "delta_db": 0.028447269082214087,
+          "stock_drift_db": -0.06081873731407032,
+          "test_repeat_db": -0.06877347366022432,
+          "median_delta_db": 0.044556368910378896,
+          "stock_nbw_mhz": 13.758386263032088,
+          "test_nbw_mhz": 13.425383897302563,
+          "max_signed_rails": 0.046764346764346765,
+          "max_kurtosis": 2.0218681942150485,
+          "min_kurtosis": 1.8855380934610357,
+          "quality_flags": [
+            "signed_rails_above_0.2pct"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 192,
+      "rejected_captures": [],
+      "raw_log_sha256": "446d11ac4f2cc311f44aa1c3c8a6c242f71a2d8ee2c0d864796e8f8b6016f87d",
+      "manifest_sha256": "abce91ab6e6a70afab2300ca6a2e1d3dadbcca29e823813f4e936d6d5f4e86d7",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:36:53.487304+00:00",
+        "ended_utc": "2026-10-24T13:37:34.024524+00:00"
       }
     },
     {
@@ -1384,6 +1632,101 @@
       }
     },
     {
+      "name": "audit_5865_combo_big1",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-comb",
+        "freq": "5865",
+        "gain": "74",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "7",
+        "windows_per_stage": "16",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "COMBO_SENSE0_NO11P",
+          "status": "PASS",
+          "stock_m2": 1.0695911935752824,
+          "test_m2": 1.066019372026698,
+          "delta_db": -0.014527216340660945,
+          "stock_drift_db": -0.5034959316953406,
+          "test_repeat_db": 0.1074615213674864,
+          "median_delta_db": -0.014154208736236629,
+          "stock_nbw_mhz": 15.357795232019622,
+          "test_nbw_mhz": 15.24661264172854,
+          "max_signed_rails": 0.0115995115995116,
+          "max_kurtosis": 8.253320072527805,
+          "min_kurtosis": 1.9106722384082135,
+          "quality_flags": [
+            "signed_rails_above_0.2pct",
+            "non_gaussian_or_distorted_noise",
+            "stock_drift_above_0.15db"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "COMBO_RX11B0_NO11P",
+          "status": "PASS",
+          "stock_m2": 1.0080125088332506,
+          "test_m2": 1.0063495974628072,
+          "delta_db": -0.007170442631716775,
+          "stock_drift_db": 0.0023500636387326843,
+          "test_repeat_db": 0.06305760008808042,
+          "median_delta_db": -0.06304173603324406,
+          "stock_nbw_mhz": 15.193416895613005,
+          "test_nbw_mhz": 15.371421195221737,
+          "max_signed_rails": 0.00231990231990232,
+          "max_kurtosis": 6.483124811086123,
+          "min_kurtosis": 1.9123061195276485,
+          "quality_flags": [
+            "signed_rails_above_0.2pct",
+            "non_gaussian_or_distorted_noise"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "STOCK_SHAM_NO11P",
+          "status": "PASS",
+          "stock_m2": 1.040127720603911,
+          "test_m2": 1.0240987771259062,
+          "delta_db": -0.06744823429560645,
+          "stock_drift_db": -0.14466173467294174,
+          "test_repeat_db": 0.001421332618762271,
+          "median_delta_db": 0.00013977880864747403,
+          "stock_nbw_mhz": 15.222908980282833,
+          "test_nbw_mhz": 15.240698022887608,
+          "max_signed_rails": 0.0019536019536019536,
+          "max_kurtosis": 3.3896232589466107,
+          "min_kurtosis": 1.8736577561833179,
+          "quality_flags": [
+            "non_gaussian_or_distorted_noise"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 384,
+      "rejected_captures": [],
+      "raw_log_sha256": "ed72d74317f6cf53a2e68248ef9cf536af66ca4a7404696366ef451580a4f322",
+      "manifest_sha256": "0a146e33c5ce960d256b4f4ade7d77bd525f8ad9eb98e2d8a5e23e301adfa5be",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:32:19.390065+00:00",
+        "ended_utc": "2026-10-24T13:33:32.435868+00:00"
+      }
+    },
+    {
       "name": "audit_5865_dac",
       "context": {
         "fw": "5.0.0-dev+aae44c8-audi",
@@ -1426,6 +1769,154 @@
         "port": "COM10",
         "started_utc": "2026-10-24T12:25:33.158054+00:00",
         "ended_utc": "2026-10-24T12:25:46.339769+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_gaincurve",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-comb",
+        "freq": "5865",
+        "gain": "74",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "6",
+        "windows_per_stage": "4",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "GAIN_ROW_72",
+          "status": "PASS",
+          "stock_m2": 0.6975276290660906,
+          "test_m2": 0.6989872044588161,
+          "delta_db": 0.00907811008624948,
+          "stock_drift_db": -0.0680005388682348,
+          "test_repeat_db": 0.10576040917037863,
+          "median_delta_db": 0.00569602617857167,
+          "stock_nbw_mhz": 16.38278260811193,
+          "test_nbw_mhz": 15.969847643603295,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.1397575889937497,
+          "min_kurtosis": 1.8463295329031606,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "GAIN_ROW_74",
+          "status": "PASS",
+          "stock_m2": 1.0045447139517651,
+          "test_m2": 1.0178994483504558,
+          "delta_db": 0.05735606317003265,
+          "stock_drift_db": -0.026573910814595612,
+          "test_repeat_db": -0.013317017645296348,
+          "median_delta_db": 0.043062784697801906,
+          "stock_nbw_mhz": 15.3077234376664,
+          "test_nbw_mhz": 15.172876216755679,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.066898507651332,
+          "min_kurtosis": 1.8911331956275055,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "GAIN_ROW_76",
+          "status": "PASS",
+          "stock_m2": 1.5017445250618326,
+          "test_m2": 1.503682032422875,
+          "delta_db": 0.005599530422864613,
+          "stock_drift_db": -0.018823926063167577,
+          "test_repeat_db": 0.031129250659994268,
+          "median_delta_db": 0.015391331960934264,
+          "stock_nbw_mhz": 14.481385484666223,
+          "test_nbw_mhz": 14.51108344653273,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.025554949640668,
+          "min_kurtosis": 1.8934221866016612,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "GAIN_ROW_78",
+          "status": "PASS",
+          "stock_m2": 2.221158270233362,
+          "test_m2": 2.2215792743242373,
+          "delta_db": 0.0008230950050028205,
+          "stock_drift_db": -0.04707493322203999,
+          "test_repeat_db": -0.039931738684270836,
+          "median_delta_db": 0.030086397394113958,
+          "stock_nbw_mhz": 13.556834151966846,
+          "test_nbw_mhz": 14.093968228485577,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0378907694456467,
+          "min_kurtosis": 1.9324892616142348,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "GAIN_ROW_80",
+          "status": "PASS",
+          "stock_m2": 3.3774401733627926,
+          "test_m2": 3.383984732453139,
+          "delta_db": 0.008407301202456457,
+          "stock_drift_db": 0.029406967053751506,
+          "test_repeat_db": -0.0013532043187932698,
+          "median_delta_db": 0.03915244950321907,
+          "stock_nbw_mhz": 13.585154205570609,
+          "test_nbw_mhz": 13.600195893568321,
+          "max_signed_rails": 0.0017094017094017094,
+          "max_kurtosis": 2.0363111391185544,
+          "min_kurtosis": 1.9193934351858728,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "GAIN_ROW_83",
+          "status": "PASS",
+          "stock_m2": 6.429048525667115,
+          "test_m2": 6.395303852639017,
+          "delta_db": -0.022855203413359775,
+          "stock_drift_db": -0.03653205846171534,
+          "test_repeat_db": -0.1038772407777281,
+          "median_delta_db": -0.019334390375839765,
+          "stock_nbw_mhz": 13.894011224066892,
+          "test_nbw_mhz": 13.605858566317561,
+          "max_signed_rails": 0.06471306471306472,
+          "max_kurtosis": 1.9941248019705977,
+          "min_kurtosis": 1.8564754696991093,
+          "quality_flags": [
+            "signed_rails_above_0.2pct"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 192,
+      "rejected_captures": [],
+      "raw_log_sha256": "b3952f0dff9d5f5983dec20e148e168ede6962f3a13849ac87f4a341c6f53f4c",
+      "manifest_sha256": "aab9136acce59edb94c0219f1912f0638b8d48143e275e81f92d66bbe82f7ee8",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:34:06.298103+00:00",
+        "ended_utc": "2026-10-24T13:34:46.669582+00:00"
       }
     },
     {

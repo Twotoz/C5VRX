@@ -6,7 +6,7 @@ This extends [the first NF/11p bench](NF_PHY_BENCH_2026-10-24.md) and [the stati
 
 ## Method and quality
 
-Each entry uses STOCK → TEST → TEST → STOCK, four separately contiguous 8,190-byte IQ40 captures per stage, same gain/lane/frequency/offset, exact saved-mask rollback. H/V test individual RX/TX/correction/filter/packet profiles; E repeats output ON→OFF→OFF→ON three times at one fixed gain.
+Each entry uses STOCK → TEST → TEST → STOCK, four separately contiguous 8,190-byte IQ40 captures per stage (16 per stage for the large joint probes), same gain/lane/frequency/offset, exact saved-mask rollback. H/V test individual RX/TX/correction/filter/packet profiles; E repeats output ON→OFF→OFF→ON three times at one fixed gain.
 
 The first audit at 5865 MHz selected G82 under the earlier four-window 0.2% rail screen. Later DC variation/interference caused substantial signed-rail flags. Its complete derived data remain in the archive; the apparent −0.600 dB PKDADC result had −1.057 dB stock drift and does not establish a gain. One FFT profile lost a USB capture and is marked incomplete despite successful hardware rollback.
 
@@ -70,9 +70,43 @@ Read-only gain-tuple records confirm RF stage8/code487 at G73/G74; the highest R
 
 Effective production policy is partial calibration with NVS data storage. A local full-calibration build disables only the PHY calibration-and-storage option and selects full RF calibration; IDF `phy_init.c` then uses its full-calibration branch without loading/storing a replacement PHY NVS record. No NVS erase is used. This is a boot experiment, never an in-place MMIO toggle. Its results must be listed separately from within-boot ABBA deltas and the partial-calibration build must be restored afterwards. The complete [fixed-gain before/full/after measurements](PHY_CALIBRATION_BENCH_2026-10-24.md) are now archived separately; partial policy was restored.
 
+## Joint probes excluding additional 11p changes
+
+Two predeclared combinations apply ADC selector0, packet ADC/CCA controls and channel-B arg1, plus either RX-sense0 or RX11b0. Each uses 16 captures per stage, forward/reverse profile order and an unchanged stock sham. Historical NO11P names mean that the probe makes no 11p writes; they must not be read as evidence that an incoming baseline has 11p disabled. No small single-control deltas are added together.
+
+| Run | Profile | Noise delta dB | Stock drift dB | Quality/status |
+|---|---|---:|---:|---|
+| audit_5805_combo_big1 | COMBO_SENSE0_NO11P | | | INCOMPLETE |
+| audit_5805_combo_big1 | COMBO_RX11B0_NO11P | | | INCOMPLETE |
+| audit_5805_combo_big1 | STOCK_SHAM_NO11P | -0.196 | -0.113 | FLAGGED |
+| audit_5865_combo_big1 | COMBO_SENSE0_NO11P | -0.015 | -0.503 | FLAGGED |
+| audit_5865_combo_big1 | COMBO_RX11B0_NO11P | -0.007 | +0.002 | FLAGGED |
+| audit_5865_combo_big1 | STOCK_SHAM_NO11P | -0.067 | -0.145 | FLAGGED |
+
+5865 MHz shows no established combined improvement: approximately -0.015/-0.007 dB versus a -0.067 dB sham. At 5805 MHz two damaged USB captures invalidate both candidate comparisons; the sham alone is not an intervention benefit. All integrity-valid samples and quality flags remain included. Exact hardware rollback succeeded.
+
+## Fixed physical-gain sweep
+
+| Frequency MHz | Gain | Mean complex variance cells² | Maximum signed-rail occupancy |
+|---|---:|---:|---:|
+| 5805 | 72 | 0.6831 | 0.000% |
+| 5805 | 74 | 0.9736 | 0.000% |
+| 5805 | 76 | 1.4451 | 0.000% |
+| 5805 | 78 | 2.1700 | 0.012% |
+| 5805 | 80 | 3.3616 | 0.159% |
+| 5805 | 83 | 6.3527 | 4.676% |
+| 5865 | 72 | 0.6983 | 0.000% |
+| 5865 | 74 | 1.0112 | 0.000% |
+| 5865 | 76 | 1.5027 | 0.000% |
+| 5865 | 78 | 2.2214 | 0.000% |
+| 5865 | 80 | 3.3807 | 0.171% |
+| 5865 | 83 | 6.4122 | 6.471% |
+
+Each gain has 32 captures across forward/reverse order. G83 has approximately 2.8 dB more output noise than G80, consistent with the extra gain also applied to a wanted signal. This is not an input-referred noise or SNR comparison. Higher signed-rail occupancy does warrant a same-G83 DC-centering experiment. Rails/jump proxies do not directly count folding errors in the sign-preserving ultrafine lane. Production max remains unchanged: a lower maximum requires desired-signal/weak-carrier evidence.
+
 ## Archived evidence
 
-- 1570 valid IQ captures in this audit archive; all rejected transports are separately recorded.
+- 2720 valid IQ captures in this audit archive; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
 - [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.

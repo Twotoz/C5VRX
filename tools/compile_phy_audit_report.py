@@ -46,7 +46,7 @@ def main():
         'or RF sensitivity/range improvement is established by these noise-only probes.','',
         '## Method and quality','',
         'Each entry uses STOCK → TEST → TEST → STOCK, four separately contiguous '
-        '8,190-byte IQ40 captures per stage, same gain/lane/frequency/offset, exact '
+        '8,190-byte IQ40 captures per stage (16 per stage for the large joint probes), same gain/lane/frequency/offset, exact '
         'saved-mask rollback. H/V test individual RX/TX/correction/filter/packet '
         'profiles; E repeats output ON→OFF→OFF→ON three times at one fixed gain.','',
         'The first audit at 5865 MHz selected G82 under the earlier four-window '
@@ -145,6 +145,47 @@ def main():
         'partial-calibration build must be restored afterwards. '
         'The complete [fixed-gain before/full/after measurements](PHY_CALIBRATION_BENCH_2026-10-24.md) '
         'are now archived separately; partial policy was restored.','',
+        '## Joint probes excluding additional 11p changes','',
+        'Two predeclared combinations apply ADC selector0, packet ADC/CCA controls '
+        'and channel-B arg1, plus either RX-sense0 or RX11b0. Each uses '
+        '16 captures per stage, forward/reverse profile order and an unchanged '
+        'stock sham. Historical NO11P names mean that the probe makes no 11p '
+        'writes; they must not be read as evidence that an incoming baseline '
+        'has 11p disabled. No small single-control deltas are added together.','',
+        '| Run | Profile | Noise delta dB | Stock drift dB | Quality/status |',
+        '|---|---|---:|---:|---|'])
+    for r in runs:
+        if '_combo_' not in r['name']:continue
+        for s in r['summary']:
+            if s['status']=='PASS':
+                lines.append(f"| {r['name']} | {s['profile']} | {s['delta_db']:+.3f} | {s['stock_drift_db']:+.3f} | {s['quality']} |")
+            else:lines.append(f"| {r['name']} | {s['profile']} | | | {s['status']} |")
+    lines.extend(['',
+        '5865 MHz shows no established combined improvement: approximately '
+        '-0.015/-0.007 dB versus a -0.067 dB sham. At 5805 MHz two damaged '
+        'USB captures invalidate both candidate comparisons; the sham alone '
+        'is not an intervention benefit. All integrity-valid samples and '
+        'quality flags remain included. Exact hardware rollback succeeded.','',
+        '## Fixed physical-gain sweep','',
+        '| Frequency MHz | Gain | Mean complex variance cells² | Maximum signed-rail occupancy |',
+        '|---|---:|---:|---:|'])
+    for r in runs:
+        if not r['name'].endswith('_gaincurve'):continue
+        rr=[c for c in captures if c['run']==r['name']]
+        for g in sorted(set(int(c['gain']) for c in rr)):
+            rows=[c for c in rr if int(c['gain'])==g]
+            m2=sum(float(c['m2_host']) for c in rows)/len(rows)
+            rails=max(float(c['signed_rails']) for c in rows)
+            lines.append(f"| {r['context']['freq']} | {g} | {m2:.4f} | {100*rails:.3f}% |")
+    lines.extend(['',
+        'Each gain has 32 captures across forward/reverse order. G83 has '
+        'approximately 2.8 dB more output noise than G80, consistent with '
+        'the extra gain also applied to a wanted signal. This is not an '
+        'input-referred noise or SNR comparison. Higher signed-rail occupancy '
+        'does warrant a same-G83 DC-centering experiment. Rails/jump proxies '
+        'do not directly count folding errors in the sign-preserving '
+        'ultrafine lane. Production max remains unchanged: a lower maximum '
+        'requires desired-signal/weak-carrier evidence.','',
         '## Archived evidence','',
         f"- {len(captures)} valid IQ captures in this audit archive; all rejected transports are separately recorded.",
         '- [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).',
