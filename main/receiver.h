@@ -244,6 +244,7 @@ void phyclock_long_request(void); /* k: same clock fields, 1200 ms dwell */
 void phygaincurve_request(void); /* %: fixed vendor gain rows and reverse */
 void phycombo_request(void); /* +: joint probes preserving incoming 11p and sham */
 void phydco_request(void); /* &: temporary DC-centering ABBA at G78/80/83 */
+bool phylab_hold_current_gain(void); /* paused bench only: matching loaded DC row */
 void self_noise_request(void);   /* bench: noise floor with the video output on vs off (console N) */
 
 /* ---- menu.c ---- */

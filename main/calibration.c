@@ -1986,6 +1986,16 @@ void phyclock_long_request(void) { s_phylab_suite=5;s_phylab_dwell=1200;s_phylab
 void phygaincurve_request(void) { s_phylab_suite=6;s_phylab_dwell=300;s_phylab_requested = true; }
 void phycombo_request(void) { s_phylab_suite=7;s_phylab_dwell=1200;s_phylab_requested = true; }
 void phydco_request(void) { s_phylab_suite=8;s_phylab_dwell=1200;s_phylab_requested = true; }
+bool phylab_hold_current_gain(void)
+{
+    /* A paused receiver suppresses its post-gain hook. Reuse only an
+     * already-loaded matching row; never select or save a table here. */
+    const dco_want_t want=dco_want_now();
+    if(!receiver_paused()||!dco_matches(&s_dco,&want))return false;
+    const int row=dco_hold_row(s_current_gain);
+    if(row<0)return false;
+    return phy_dco_hold(dco_trimmed((unsigned)row,0),dco_trimmed((unsigned)row,1))==ESP_OK;
+}
 static uint32_t s_lab_epoch;
 static uint16_t s_lab_freq;
 static int s_lab_offset;
@@ -2003,10 +2013,23 @@ static void phylab_test(void)
         printf("PHYLAB refused=busy_or_recent_video\n");return;
     }
     if(!receiver_pause("PHYLAB"))return;
+    phy_begin();
     const uint8_t gain=s_current_gain;
+    const bool held=phy_dco_held();int pair[2];
+    if(held&&!phy_dco_read_pair(pair)){
+        phy_end();receiver_resume();printf("PHYLAB refused=unstable_entry_dc\n");return;
+    }
     s_lab_epoch=s_control_epoch;s_lab_freq=rf_frequency_mhz();s_lab_offset=rf_offset_khz();
     phy_noise_lab_run(phylab_context,s_phylab_dwell,s_phylab_suite);
-    receiver_set_gain(gain);receiver_resume();
+    receiver_set_gain(gain);
+    bool restored=phy_dco_held()==false;
+    if(held){
+        int actual[2];
+        restored=phy_dco_hold(pair[0],pair[1])==ESP_OK&&phy_dco_read_pair(actual)&&actual[0]==pair[0]&&actual[1]==pair[1];
+    }
+    if(!restored){printf("PHYLAB_FATAL outer_dc_restore_failed reboot_required\n");fflush(stdout);esp_restart();}
+    phy_end();receiver_resume();
+    printf("PHYLAB_OUTER_RESTORE verified=1 gain=%u held=%u\n",gain,held);
 }
 
 void nfauto_request(void) { s_nfauto_requested = true; }

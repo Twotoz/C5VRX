@@ -26,6 +26,8 @@ def main():
             valid_captures=len(rows),rejected_captures=manifest.get('rejected_captures',[]),
             raw_log_sha256=hashlib.sha256((p/'console.raw.log').read_bytes()).hexdigest(),
             manifest_sha256=hashlib.sha256((p/'iq/manifest.json').read_bytes()).hexdigest(),
+            dc_selected=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_DCO_SELECTED ')],
+            retransmissions=manifest.get('retransmissions',[]),
             acquisition=json.loads((p/'acquisition.json').read_text())))
     prov=[json.loads(p.read_text()) for p in sorted(RAW.glob('provenance*.json'))]
     aggregate=dict(source='C5VRX by Twotoz and contributors',source_url='https://github.com/Twotoz/C5VRX',
@@ -182,10 +184,44 @@ def main():
         'approximately 2.8 dB more output noise than G80, consistent with '
         'the extra gain also applied to a wanted signal. This is not an '
         'input-referred noise or SNR comparison. Higher signed-rail occupancy '
-        'does warrant a same-G83 DC-centering experiment. Rails/jump proxies '
+        'does warrant a same-G83 DC-centering experiment. This historical '
+        'sweep changed gain while the receiver was paused: its normal '
+        'post-gain DC hook intentionally returns early, leaving the held '
+        'DC calibration released. Thus these rail figures describe vendor '
+        'DC at forced gain, not the corrected live receiver. Other historical '
+        'within-run probes also used this paused forced-gain baseline. '
+        'The new DC bench explicitly applies a matching loaded calibration '
+        'row and restores the original outer gain/DC hold before resume. '
+        'Rails/jump proxies '
         'do not directly count folding errors in the sign-preserving '
         'ultrafine lane. Production max remains unchanged: a lower maximum '
         'requires desired-signal/weak-carrier evidence.','',
+        '## Same-gain calibrated DC comparison','',
+        'The new bench applies a matching, already-loaded production DC row '
+        'before each fixed-gain comparison. Its bounded local search uses '
+        'separate probe samples, restores entry codes, then acquires 16 '
+        'fresh IQ windows per ABBA stage. No gain/filter/IQ-correction changes '
+        'occur inside a comparison. Entry codes and the held mode are restored.','',
+        '| Run | Gain | Noise delta dB | Mean signed rails STOCK / TEST | Quality |',
+        '|---|---:|---:|---:|---|'])
+    for r in runs:
+        if not r.get('dc_selected'):continue
+        for s in r['summary']:
+            rr=[c for c in captures if c['run']==r['name'] and c['profile']==s['profile']]
+            if s['status']!='PASS':
+                lines.append(f"| {r['name']} | {s['profile']} | | | {s['status']} |");continue
+            rails=[]
+            for stage in ('STOCK','TEST'):
+                vals=[float(c['signed_rails']) for c in rr if c['stage']==stage]
+                rails.append(100*sum(vals)/len(vals))
+            lines.append(f"| {r['name']} | {rr[0]['gain']} | {s['delta_db']:+.3f} | {rails[0]:.4f}% / {rails[1]:.4f}% | {s['quality']} |")
+    lines.extend(['',
+        'Lower signed-rail occupancy is a headroom observation, not a direct '
+        'count of folding errors, a noise-figure improvement or a range '
+        'measurement. Equal target/entry codes make a sham comparison. '
+        'Stock/test means retain every valid capture, including outliers. '
+        'A lower raw mean is not itself more sensitivity. Hardware-code '
+        'readback and full raw-capture hashes are retained in the archive.','',
         '## Archived evidence','',
         f"- {len(captures)} valid IQ captures in this audit archive; all rejected transports are separately recorded.",
         '- [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).',

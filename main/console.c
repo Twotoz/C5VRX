@@ -10,6 +10,7 @@
 #include "hal/usb_serial_jtag_ll.h"
 #include "rf.h"
 #include "snapshot.h"
+#include "phy_noise_lab.h"
 
 extern volatile const char *s_boot_stage;
 
@@ -127,6 +128,7 @@ static void usb_reader_task(void *arg)
             uint8_t c;
             if (usb_serial_jtag_ll_read_rxfifo(&c, 1) == 0) break;
             if (c == '`') rf_reboot_to_download();   /* never returns */
+            if (phy_noise_lab_ack_byte(c)) continue;
             (void)xQueueSend(s_keys, &c, 0);
         }
         /* Heartbeat: shows the board is alive whatever the console does. */

@@ -47,6 +47,30 @@ class Transport(unittest.TestCase):
             self.assertEqual(manifest['captures'], [])
             self.assertEqual(len(manifest['rejected_captures']), 1)
 
+    def test_ack_requires_intact_capture(self):
+        lines=self.records();lines[2]+=' tx_token=12345678 tx_attempt=0'
+        receipt=lab.Receipt();acks=[a for line in lines if (a:=receipt.feed(line))]
+        self.assertEqual(acks,[b'\x0612345678'+lab.fnv(bytes(range(256))*31+bytes(range(254))).encode()+b'\n'])
+        receipt=lab.Receipt();del lines[4]
+        self.assertFalse(any(receipt.feed(line) for line in lines))
+
+    def test_identical_retry_is_not_a_second_capture(self):
+        lines=self.records();lines[2]+=' tx_token=12345678 tx_attempt=0'
+        retry=lines[2:-1].copy();retry[0]=retry[0].replace('tx_attempt=0','tx_attempt=1')
+        with tempfile.TemporaryDirectory() as d:
+            manifest=lab.decode('\n'.join(lines+retry),Path(d))
+            self.assertEqual(len(manifest['captures']),1)
+            self.assertEqual(len(manifest['retransmissions']),1)
+
+    def test_damaged_attempt_then_clean_retry(self):
+        lines=self.records();lines[2]+=' tx_token=12345678 tx_attempt=0'
+        retry=lines[2:-1].copy();retry[0]=retry[0].replace('tx_attempt=0','tx_attempt=1')
+        del lines[4]
+        with tempfile.TemporaryDirectory() as d:
+            manifest=lab.decode('\n'.join(lines+retry),Path(d),tolerate_corrupt=True)
+            self.assertEqual(len(manifest['captures']),1)
+            self.assertEqual(len(manifest['rejected_captures']),1)
+
 
 STUBS = r'''
 #include <assert.h>
@@ -68,10 +92,12 @@ static uint32_t regs[0x3000];
 unsigned char phy_param[1024];
 static uint8_t analog_regs[256];
 static int inject, stages;
+static int host_ack_drop;
 static bool mutated;
 static jmp_buf jump;
 uint8_t s_current_gain=80;
-static void vTaskDelay(unsigned ticks){(void)ticks;}
+static void host_ack(void);
+static void vTaskDelay(unsigned ticks){if(ticks==10)host_ack();}
 static int64_t esp_timer_get_time(void){return 1000;}
 static void esp_restart(void){longjmp(jump,1);}
 static void phy_begin(void){}
@@ -97,6 +123,7 @@ static void receiver_set_gain(uint8_t g){s_current_gain=g;}
 static int dc_pair[2]={240,250},dc_fail,dc_writes;
 static bool dc_held=true;
 static bool phy_dco_held(void){return dc_held;}
+static bool phylab_hold_current_gain(void){return dc_held;}
 static bool phy_dco_read_pair(int out[2]){out[0]=dc_pair[0];out[1]=dc_pair[1];return true;}
 static int phy_dco_try_pair(uint32_t gain,const int expected[2],const int target[2]){
     (void)gain;assert(expected[0]==dc_pair[0]&&expected[1]==dc_pair[1]);
@@ -128,15 +155,27 @@ static bool context_ok(void){return inject!=3;}
 '''
 
 HARNESS = r'''
+static void host_ack(void){
+    if(!ack_waiting)return;
+    if(host_ack_drop<0)return;
+    if(host_ack_drop>0){--host_ack_drop;return;}
+    char message[20];snprintf(message,sizeof(message),"%c%08x%08x\n",6,ack_token,ack_hash);
+    for(unsigned k=0;message[k];++k)assert(phy_noise_lab_ack_byte((uint8_t)message[k]));
+}
 static void reset(void){
     memset(regs,0x55,sizeof(regs));
     for(unsigned i=0;i<256;++i)analog_regs[i]=(uint8_t)(i+17);
     phy_param[0x26]=7;phy_param[0x27]=9;
     inject=0;stages=0;mutated=false;lab_gain=80;
+    host_ack_drop=0;
     dc_pair[0]=240;dc_pair[1]=250;dc_held=true;dc_fail=0;dc_writes=0;sample_dco_check=false;
 }
 int main(void){
     uint8_t *raw=malloc(8190);uint32_t original[4];uint8_t saved[8];
+    ack_waiting=true;ack_received=false;ack_token=1;ack_hash=2;
+    const char wrong[]="\0060000000300000002\n";
+    for(unsigned k=0;wrong[k];++k)assert(phy_noise_lab_ack_byte((uint8_t)wrong[k]));
+    assert(!ack_received);host_ack();assert(ack_received);ack_waiting=false;
     reset();
     for(unsigned i=0;i<4;++i)original[i]=MM(profiles[0].p[i].addr);
     for(unsigned i=0;i<8;++i)saved[i]=analog_regs[6+i];
@@ -147,6 +186,11 @@ int main(void){
     reset();inject=1;
     assert(!run_profile(16,&profiles[0],raw,context_ok,999999));
     assert(stages==4&&phy_param[0x26]==7&&phy_param[0x27]==9);
+    reset();host_ack_drop=60;
+    assert(run_profile(16,&profiles[0],raw,context_ok,999999));assert(stages==16);
+    reset();host_ack_drop=-1;
+    assert(!run_profile(16,&profiles[0],raw,context_ok,999999));assert(stages==1);
+    assert(phy_param[0x26]==7&&phy_param[0x27]==9);
     reset();inject=3;
     assert(!run_profile(17,&profiles[1],raw,context_ok,999999));assert(stages==0);
     reset();inject=4;
@@ -216,6 +260,62 @@ def c_test():
         subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-I'+str(ROOT/'main'), str(c), '-lm', '-o', str(exe)], check=True)
         with (Path(d)/'output.log').open('w') as log:
             subprocess.run([str(exe)], stdout=log, check=True)
+        # Also compile the actual outer owner, whose gain writes deliberately
+        # release DC hold while paused. Verify restoration before resume.
+        cal=(ROOT/'main/calibration.c').read_text()
+        start=cal.index('static void phylab_test(void)')
+        owner=cal[start:cal.index('\nvoid nfauto_request',start)]
+        owner_stubs=r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <setjmp.h>
+#define ESP_OK 0
+static uint8_t s_current_gain=83;
+static uint32_t s_control_epoch=7,s_lab_epoch;
+static uint16_t s_lab_freq;
+static int s_lab_offset;
+static unsigned s_phylab_dwell=300,s_phylab_suite;
+static bool s_afc_locked,paused,held=true,bad_read,bad_hold;
+static int64_t s_last_video_us;
+static int depth,pair[2]={240,250},resumed,ran;
+static jmp_buf jump;
+static bool calibration_in_startup(void){return false;}
+static bool receiver_active(void){return true;}
+static bool quiet_owner(void){return true;}
+static int64_t esp_timer_get_time(void){return 10000000;}
+static bool receiver_pause(const char *tag){(void)tag;paused=true;return true;}
+static void receiver_resume(void){assert(!depth);paused=false;++resumed;}
+static void phy_begin(void){++depth;}
+static void phy_end(void){--depth;}
+static bool phy_dco_held(void){return held;}
+static bool phy_dco_read_pair(int out[2]){out[0]=pair[0];out[1]=pair[1];return !bad_read;}
+static int phy_dco_hold(int i,int q){if(bad_hold)return -1;held=true;pair[0]=i;pair[1]=q;return 0;}
+static uint16_t rf_frequency_mhz(void){return 5865;}
+static int rf_offset_khz(void){return 0;}
+static bool phylab_context(void){return paused;}
+static void receiver_set_gain(uint8_t gain){s_current_gain=gain;held=false;}
+static void esp_restart(void){assert(paused&&depth);longjmp(jump,1);}
+static void phy_noise_lab_run(bool (*context)(void),unsigned dwell,unsigned suite){
+    (void)dwell;(void)suite;assert(depth&&context());++ran;
+    s_current_gain=72;pair[0]=111;pair[1]=222;held=true;
+}
+'''
+        owner_main=r'''
+int main(void){
+    phylab_test();assert(!paused&&resumed==1&&ran==1&&s_current_gain==83&&held&&pair[0]==240&&pair[1]==250);
+    held=false;phylab_test();assert(!paused&&resumed==2&&ran==2&&!held&&s_current_gain==83);
+    held=true;bad_read=true;phylab_test();assert(!paused&&resumed==3&&ran==2);
+    bad_read=false;bad_hold=true;
+    if(setjmp(jump)==0){phylab_test();assert(!"outer restore must reboot");}
+    assert(paused&&resumed==3&&ran==3);
+    fprintf(stderr,"PHY lab outer owner: PASS (held/unheld restore, entry refusal, fatal restore before resume)\n");return 0;
+}
+'''
+        c.write_text(owner_stubs+owner+owner_main)
+        subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror',str(c),'-o',str(exe)],check=True)
+        subprocess.run([str(exe)],check=True)
 
 
 if __name__ == '__main__':

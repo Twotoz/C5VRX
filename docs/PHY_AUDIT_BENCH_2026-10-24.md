@@ -102,11 +102,26 @@ Two predeclared combinations apply ADC selector0, packet ADC/CCA controls and ch
 | 5865 | 80 | 3.3807 | 0.171% |
 | 5865 | 83 | 6.4122 | 6.471% |
 
-Each gain has 32 captures across forward/reverse order. G83 has approximately 2.8 dB more output noise than G80, consistent with the extra gain also applied to a wanted signal. This is not an input-referred noise or SNR comparison. Higher signed-rail occupancy does warrant a same-G83 DC-centering experiment. Rails/jump proxies do not directly count folding errors in the sign-preserving ultrafine lane. Production max remains unchanged: a lower maximum requires desired-signal/weak-carrier evidence.
+Each gain has 32 captures across forward/reverse order. G83 has approximately 2.8 dB more output noise than G80, consistent with the extra gain also applied to a wanted signal. This is not an input-referred noise or SNR comparison. Higher signed-rail occupancy does warrant a same-G83 DC-centering experiment. This historical sweep changed gain while the receiver was paused: its normal post-gain DC hook intentionally returns early, leaving the held DC calibration released. Thus these rail figures describe vendor DC at forced gain, not the corrected live receiver. Other historical within-run probes also used this paused forced-gain baseline. The new DC bench explicitly applies a matching loaded calibration row and restores the original outer gain/DC hold before resume. Rails/jump proxies do not directly count folding errors in the sign-preserving ultrafine lane. Production max remains unchanged: a lower maximum requires desired-signal/weak-carrier evidence.
+
+## Same-gain calibrated DC comparison
+
+The new bench applies a matching, already-loaded production DC row before each fixed-gain comparison. Its bounded local search uses separate probe samples, restores entry codes, then acquires 16 fresh IQ windows per ABBA stage. No gain/filter/IQ-correction changes occur inside a comparison. Entry codes and the held mode are restored.
+
+| Run | Gain | Noise delta dB | Mean signed rails STOCK / TEST | Quality |
+|---|---:|---:|---:|---|
+| audit_5865_dco2 | 78 | +0.003 | 0.0000% / 0.0000% | NO_FLAGS |
+| audit_5865_dco2 | 80 | +0.011 | 0.0000% / 0.0004% | NO_FLAGS |
+| audit_5865_dco2 | 83 | +0.009 | 0.1107% / 0.0424% | FLAGGED |
+| audit_5865_dco3 | 78 | -0.020 | 0.0000% / 0.0000% | NO_FLAGS |
+| audit_5865_dco3 | 80 | -0.007 | 0.0015% / 0.0000% | NO_FLAGS |
+| audit_5865_dco3 | DCO_CENTER_G83 | | | INCOMPLETE |
+
+Lower signed-rail occupancy is a headroom observation, not a direct count of folding errors, a noise-figure improvement or a range measurement. Equal target/entry codes make a sham comparison. Stock/test means retain every valid capture, including outliers. A lower raw mean is not itself more sensitivity. Hardware-code readback and full raw-capture hashes are retained in the archive.
 
 ## Archived evidence
 
-- 2720 valid IQ captures in this audit archive; all rejected transports are separately recorded.
+- 3103 valid IQ captures in this audit archive; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
 - [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.

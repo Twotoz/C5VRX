@@ -193,7 +193,8 @@ Board results: [2026-10-24 noise-only bench report](NF_PHY_BENCH_2026-10-24.md).
 ## Same-gain DC headroom experiment (pending board execution)
 
 Console `&` runs temporary DC-centering comparisons at G78, G80 and G83.
-Each row requires an existing stable DC hold, reads its actual DAC pair,
+Each row applies the already-loaded matching production DC calibration row
+(refuses without one), requires its stable hold, reads its actual DAC pair,
 checks the physical RF/BB/fine tuple, and uses the existing bounded verified
 `phy_dco_try_pair` actuator. A local coordinate search uses steps 4/2/1,
 at most four rounds per step and a 32-code displacement limit per axis.
@@ -211,6 +212,52 @@ lower observed variance misleading, so compare means, rails, distribution
 and PSD together. Desired weak-carrier evidence remains necessary.
 
 USB IQ lines now pause 5 ms rather than 2 ms to reduce transport loss.
+The second DC run still lost a capture, so export now requires a framed
+host ACK containing the capture token and FNV hash. A failed transfer is
+retried at most three times using the **same raw bytes, capture timestamp
+and token**; it never substitutes a later noise window. Only a full,
+checksum-valid host receipt is acknowledged. Identical retries are archived
+and deduplicated; conflicting duplicates fail. No ACK within the bound aborts
+the comparison and restores hardware. The direct USB reader consumes ACK
+frames before ordinary console dispatch. Download/reset control remains
+available. The host also waits for the outer gain/DC restoration marker
+before reporting completion on the new protocol.
+
 Checksums and rejection rules remain mandatory. Joint-profile names now end
 in EXTRA: their incoming 11p state is preserved, including the newly merged
 production 11p baseline. Historical raw NO11P names remain unchanged.
+
+The outer lab owner now preserves entry gain, DC pair and held/released
+mode under the PHY lease and verifies their restoration before resume.
+The previous paused forced-gain probes deliberately bypassed the normal
+post-gain hook, so their vendor-DC rail figures must not be reported as live
+production DC performance. The first new DC run refused this missing hold
+without changing DC; the subsequent implementation explicitly applies only
+an already-loaded matching calibration row before comparison.
+
+## Windows recovery without a physical USB reconnect
+
+On this board COM10 stopped producing or accepting bytes; esptool USB reset
+also timed out. Windows denied PnP restart without elevation and OpenOCD
+could not enumerate the installed WinUSB interface. Its interface GUID
+registration was absent. Direct access to the dynamically discovered device
+object through that same installed driver still worked. The recovery probe
+validated both C5 TAP IDs (`00017c25`), DTMCS `70a1`, and checked DMI/SBA
+transfers. An SRST and an HP-system reset alone did not recover serial.
+Stopping the dump writer and arming a stage0 RTC-watchdog system reset did:
+the console returned with PR251 firmware `f53bcdf4ee0a`. The lab firmware
+was then flashed normally through the acknowledged download-console path.
+
+The repeatable helper selects an explicit USB serial and needs no driver
+replacement, registry edit, privilege elevation or flash/NVS erase:
+
+```powershell
+python tools/c5_usb_recover_windows.py --serial 38:44:be:1f:46:4c --inspect
+python tools/c5_usb_recover_windows.py --serial 38:44:be:1f:46:4c --reset-system
+```
+
+The reset action interrupts reception. Do not run it during a measurement
+or concurrently with another debugger. Normal flashing should continue to
+use `tools/enter_download.py` rather than blind esptool resets. The helper
+uses Espressif's USB-JTAG protocol and the pinned IDF RTC-watchdog fields;
+it does not make a software reset equivalent to removing all external power.

@@ -15,6 +15,26 @@
 #include <inttypes.h>
 
 #ifdef C5VRX_PHY_PINNED
+static volatile bool ack_waiting,ack_received;
+static volatile uint32_t ack_token,ack_hash;
+static uint32_t capture_token;
+bool phy_noise_lab_ack_byte(uint8_t byte)
+{
+    static unsigned pos;
+    static uint32_t token,hash;
+    if(byte==6){pos=1;token=hash=0;return true;}
+    if(!pos)return false;
+    if(pos==17){
+        if(byte=='\n'&&ack_waiting&&token==ack_token&&hash==ack_hash)ack_received=true;
+        pos=0;return true;
+    }
+    unsigned digit;
+    if(byte>='0'&&byte<='9')digit=byte-'0';
+    else if(byte>='a'&&byte<='f')digit=byte-'a'+10;
+    else {pos=0;return true;}
+    if(pos<=8)token=(token<<4)|digit;else hash=(hash<<4)|digit;
+    ++pos;return true;
+}
 #ifndef MM
 #define MM(a) (*(volatile uint32_t *)(uintptr_t)(a))
 #endif
@@ -213,8 +233,11 @@ static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)
             printf("PHYLAB_ABORT reason=repeated_noise_capture id=%u step=%u rep=%u\n",id,step,rep);return false;
         }
         hashes[rep]=hash;
-        printf("PHYLAB_IQ_BEGIN id=%u step=%u stage=%s rep=%u bytes=%u rate_hz=%u gain=%u freq=%u offset=%d m2=%.6f kurt=%.4f rails=%.6f fnv1a=%08" PRIx32 " t_us=%" PRId64 "\n",
-               id,step,stage,rep,C5V4_LEVEL_SAMPLE_BYTES,IQ_RATE_HZ,s_current_gain,rf_frequency_mhz(),rf_offset_khz(),m2,kurt,rail,hash,esp_timer_get_time());
+        const int64_t timestamp=esp_timer_get_time();const uint32_t token=++capture_token;
+        ack_waiting=false;ack_token=token;ack_hash=hash;ack_received=false;ack_waiting=true;
+        for(unsigned attempt=0;attempt<3&&!ack_received;++attempt){
+        printf("PHYLAB_IQ_BEGIN id=%u step=%u stage=%s rep=%u bytes=%u rate_hz=%u gain=%u freq=%u offset=%d m2=%.6f kurt=%.4f rails=%.6f fnv1a=%08" PRIx32 " t_us=%" PRId64 " tx_token=%08" PRIx32 " tx_attempt=%u\n",
+               id,step,stage,rep,C5V4_LEVEL_SAMPLE_BYTES,IQ_RATE_HZ,s_current_gain,rf_frequency_mhz(),rf_offset_khz(),m2,kurt,rail,hash,timestamp,token,attempt);
         static const char hex[]="0123456789abcdef"; char line[513];
         for(unsigned off=0;off<C5V4_LEVEL_SAMPLE_BYTES;off+=256) {
             unsigned n=C5V4_LEVEL_SAMPLE_BYTES-off; if(n>256)n=256;
@@ -222,6 +245,12 @@ static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)
             line[2*n]=0; printf("PHYLAB_IQ_DATA offset=%u %s\n",off,line);vTaskDelay(pdMS_TO_TICKS(5));
         }
         printf("PHYLAB_IQ_END fnv1a=%08" PRIx32 "\n",hash);
+        fflush(stdout);
+        for(unsigned spin=0;spin<60&&!ack_received&&context_ok()&&esp_timer_get_time()<deadline;++spin)vTaskDelay(pdMS_TO_TICKS(10));
+        if(!context_ok()||esp_timer_get_time()>deadline)break;
+        }
+        ack_waiting=false;
+        if(!ack_received){printf("PHYLAB_ABORT reason=transport_ack_timeout token=%08" PRIx32 "\n",token);return false;}
     }
     return context_ok();
 }
@@ -380,6 +409,9 @@ static bool dco_score(unsigned id,uint8_t *raw,bool (*context_ok)(void),int64_t 
 static bool run_dco(unsigned id,uint8_t gain,uint8_t *raw,bool (*context_ok)(void),int64_t deadline)
 {
     receiver_set_gain(gain);vTaskDelay(pdMS_TO_TICKS(100));
+    if(!phylab_hold_current_gain()){
+        printf("PHYLAB_DCO_REFUSED id=%u reason=no_matching_calibrated_row\n",id);return false;
+    }
     arc_gain_tuple_t tuple;
     lab_packed_valid=arc_gain_tuple_decode(rf_gain_table(),s_current_gain,&tuple);
     if(!lab_packed_valid||s_current_gain!=gain)return false;
@@ -426,6 +458,8 @@ static bool run_dco(unsigned id,uint8_t gain,uint8_t *raw,bool (*context_ok)(voi
     printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":"INCOMPLETE");
     return ok;
 }
+#else
+bool phy_noise_lab_ack_byte(uint8_t byte){(void)byte;return false;}
 #endif
 
 void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite)
@@ -469,7 +503,7 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
                s_current_gain,tuple.rf_stage,tuple.rf_code,tuple.bb_code,tuple.fine_code,tuple.packed_state,
                arc_gain_highest_rf_stage_start(rf_gain_table()),rf_gain_table()->max_index);
     } else ok=false;
-    printf("PHYLAB_BEGIN fw=%s freq=%u gain=%u lane=2 dfilt=%d dwell_ms=%u suite=%u windows_per_stage=%u format=Ihigh_Qlow persistent=0\n",firmware_id(),rf_frequency_mhz(),s_current_gain,phy_dfilt_hw_mode(),lab_dwell_ms,suite,lab_windows);
+    printf("PHYLAB_BEGIN fw=%s freq=%u gain=%u lane=2 dfilt=%d dwell_ms=%u suite=%u windows_per_stage=%u format=Ihigh_Qlow persistent=0 outer_restore=required\n",firmware_id(),rf_frequency_mhz(),s_current_gain,phy_dfilt_hw_mode(),lab_dwell_ms,suite,lab_windows);
     for(unsigned id=0;id<16&&ok&&suite==0;++id){
         unsigned n=id^(id>>1);
         profile_t p={"NF_AUTO",3,{{0x600A7018,0x10800000,((n&1)?0x800000:0)|((n&2)?0x10000000:0)},

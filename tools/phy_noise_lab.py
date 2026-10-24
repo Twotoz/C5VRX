@@ -27,11 +27,34 @@ def fnv(raw):
     return f'{h:08x}'
 
 
+class Receipt:
+    """ACK only a complete snapshot with both matching transport hashes."""
+    def __init__(self):
+        self.meta=None;self.raw=bytearray();self.valid=False
+
+    def feed(self,line):
+        line=line[line.find('PHYLAB_'):] if 'PHYLAB_' in line else line
+        if line.startswith('PHYLAB_IQ_BEGIN '):
+            self.meta=fields(line);self.raw=bytearray();self.valid=True
+        elif line.startswith('PHYLAB_IQ_DATA ') and self.meta is not None:
+            match=re.fullmatch(r'PHYLAB_IQ_DATA offset=(\d+) ([0-9a-f]+)',line)
+            if not match or int(match[1])!=len(self.raw):self.valid=False
+            elif self.valid:self.raw.extend(bytes.fromhex(match[2]))
+        elif line.startswith('PHYLAB_IQ_END ') and self.meta is not None:
+            meta=self.meta;self.meta=None
+            checksum=fields(line).get('fnv1a')
+            if (self.valid and len(self.raw)==8190 and meta.get('bytes')=='8190'
+                and meta.get('rate_hz')=='40000000' and checksum==meta.get('fnv1a')==fnv(self.raw)
+                and re.fullmatch('[0-9a-f]{8}',meta.get('tx_token',''))):
+                return b'\x06'+(meta['tx_token']+checksum+'\n').encode('ascii')
+        return None
+
+
 def decode(text, output, tolerate_corrupt=False):
     output.mkdir(parents=True, exist_ok=True)
     rows, names, results = [], {}, {}
     meta, raw, corrupt = None, bytearray(), None
-    rejected = [];stage_windows=4
+    rejected = [];stage_windows=4;retransmissions=[];accepted={}
     for line in text.splitlines():
         at = line.find('PHYLAB_')
         if at < 0:
@@ -68,10 +91,18 @@ def decode(text, output, tolerate_corrupt=False):
                 meta,raw,corrupt=None,bytearray(),None;continue
             name = f"p{int(meta['id']):02d}_s{meta['step']}_r{meta['rep']}.iq"
             if (output / name).exists():
-                raise ValueError('duplicate capture: use separate directories per run')
+                previous=accepted[name]
+                if (meta.get('tx_token') and meta.get('tx_token')==previous.get('tx_token')
+                    and int(meta.get('tx_attempt','0'))>int(previous.get('tx_attempt','0'))
+                    and all(meta.get(k)==previous.get(k) for k in ('id','step','rep','stage','t_us','gain','freq','offset','fnv1a'))
+                    and (output/name).read_bytes()==raw):
+                    retransmissions.append(dict(metadata=meta,reason='verified identical retry'))
+                    previous['tx_attempt']=meta['tx_attempt'];meta=None;continue
+                raise ValueError('conflicting duplicate capture: use separate directories per run')
             (output / name).write_bytes(raw)
             meta.update(file=name, sha256=hashlib.sha256(raw).hexdigest())
             rows.append(meta)
+            accepted[name]=meta
             meta = None
     if meta is not None:
         if not tolerate_corrupt: raise ValueError('unfinished capture')
@@ -80,7 +111,7 @@ def decode(text, output, tolerate_corrupt=False):
         row['profile'] = names[row['id']]
         row['profile_result'] = results.get(row['id'], {}).get('status', 'INCOMPLETE')
         row['restored'] = results.get(row['id'], {}).get('restored', 'unknown')
-    manifest = dict(captures=rows, results=results, rejected_captures=rejected,
+    manifest = dict(captures=rows, results=results, rejected_captures=rejected,retransmissions=retransmissions,
                     scope='noise only; no input-referred C/N, sensitivity or video claim')
     (output / 'manifest.json').write_text(json.dumps(manifest, indent=2))
     return manifest
@@ -108,7 +139,9 @@ def acquire(port, output, key='B', expected_frequency=None):
             s.write(key.encode())
             end = time.monotonic() + 300
             buf = b''
+            receipt=Receipt()
             done = False
+            outer_required=False;ended=False
             while time.monotonic() < end:
                 data = s.read(32768)
                 log.write(data)
@@ -116,9 +149,15 @@ def acquire(port, output, key='B', expected_frequency=None):
                 buf += data
                 while b'\n' in buf:
                     line, buf = buf.split(b'\n', 1)
+                    ack=receipt.feed(line.decode(errors='replace').rstrip('\r'))
+                    if ack:s.write(ack)
+                    if b'PHYLAB_BEGIN ' in line:outer_required=b'outer_restore=required' in line
                     if any(tag in line for tag in (b'PHYLAB_BEGIN', b'PHYLAB_PROFILE', b'PHYLAB_RESULT', b'PHYLAB_SKIP', b'PHYLAB_END', b'PHYLAB refused', b'PHYLAB_FATAL')):
                         print(line.decode(errors='replace'), flush=True)
-                    if b'PHYLAB_END ' in line or b'PHYLAB refused=' in line or b'PHYLAB_FATAL' in line:
+                    if b'PHYLAB_END ' in line:
+                        ended=True;done=not outer_required
+                    if b'PHYLAB_OUTER_RESTORE verified=1 ' in line and ended:done=True
+                    if b'PHYLAB refused=' in line or b'PHYLAB_FATAL' in line:
                         done = True
                 if done:
                     break
