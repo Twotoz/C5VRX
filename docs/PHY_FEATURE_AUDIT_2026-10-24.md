@@ -33,7 +33,8 @@ the exact write rather than assigning guessed DSP semantics.
 H uses 300 ms dwell, V 1200 ms. Both reuse the same gain screening, whole-suite
 PHY lease, per-capture readback, contiguous IQ capture, saved-mask rollback,
 abort rules and nonpersistent execution as B/C. No production default changes.
-USB hex output is paced at two RTOS ticks per line to reduce transport loss;
+USB hex output initially paused two RTOS ticks per line. The current lab
+uses 5 ms and bounded identity/hash ACK retries after rare transport losses;
 all captures still require byte count, ordering and checksum verification.
 
 | Candidate | Recovered write | Experiment / limit |
@@ -120,3 +121,31 @@ The initial −0.14 dB on 5865 MHz does not persist clearly over controls;
 no production selector override was added. The full-RF-calibration boot
 comparison is separately archived in
 [PHY_CALIBRATION_BENCH_2026-10-24.md](PHY_CALIBRATION_BENCH_2026-10-24.md).
+
+## Additional bias and nominal noise-helper audit
+
+The exact pinned `noise_check_loop` symbol is a single `ret` instruction;
+its suggestive name supplies no hidden running noise-suppression loop.
+`phy_bias_reg_set` has no input-dependent branches or selectable high/low
+mode: it writes analog I2C block0x6a/host1, reg0[3:0]=15,
+reg1[7:4]=7, reg0[7:4]=9 and reg1[3:0]=15. Its final bytes are 0x9f/0x7f.
+The pinned `phy_rf_init` calls it during RF initialization. Neither the
+numbers nor the symbol name establish current direction, LNA noise figure,
+or a valid overdrive range. New stage telemetry reads both bytes without
+changing them; stock values must be witnessed before proposing a bias test.
+
+The board witnesses at 5865 and 5805 MHz read **0xcf/0x7f**, not the initializer's
+0x9f/0x7f. The same pinned `phy_freq_start_cal_5g_code` writes precisely
+reg0[7:4] during its calibration iteration, with restarts and loop-SNR
+checks. Thus this field also belongs to the frequency-calibration process;
+resetting it to the initializer is not justified as an LNA noise tweak.
+The full selected-function disassembly is archived locally as
+`bias-extra-evidence.txt` (SHA-256 recorded in the measurement summary).
+
+`phy_agc_max_gain_set` changes several native-AGC fields, including an
+unmasked shifted argument at 0x600a08bc. It is not a bounded knob for the
+current forced-gain receiver. `phy_wifi_agc_sat_gain` writes full words at
+0x600a7064/0x600a7114. No safe extra receive-gain tuple or continuous-FM
+noise benefit follows from either function name, so neither is called with
+guessed arguments. The existing hardware-verified gain table already uses
+the highest documented-by-vendor-table RF stage at G54 and above.

@@ -64,6 +64,18 @@
       }
     },
     {
+      "label": "f9dfbf9-bias1",
+      "baseline": "11p upstream f53bcdf",
+      "app_sha256": "81471e6018f07203b3033cb5f9acd97092c0af9fd611e671562d049dc06cd5d3",
+      "source_sha256": {
+        "main/calibration.c": "ec5f37793b268900cd37ac86efea5939a71f5b037a62146c4458b80b5e7e4a3a",
+        "main/console.c": "b2ace424b8858de26b0ad35f557dccec184114bf853ed90eb802a3b9a5dd33c1",
+        "main/receiver.h": "bb53ba1c44e132ed39c1e9f42011214aba5c89b419f772c5dfb502b8cda9e36f",
+        "main/phy_noise_lab.c": "71ed6fc458b9a1699b5fcff193e94cca928bdadf307c4160016bcb707f90b115",
+        "main/phy_noise_lab.h": "0e842c0ee4832a29b488f8f39115bb0e0f525b808faa815267e141bdaf302b19"
+      }
+    },
+    {
       "label": "82fa299-clock1",
       "app_sha256": "2c3eb526826c1b48a19e2149c34d956f00d9ab2bf2c8bec278ef4dc5d62593cc",
       "source_sha256": {
@@ -137,7 +149,7 @@
       }
     }
   ],
-  "total_valid_captures": 3487,
+  "total_valid_captures": 4319,
   "runs": [
     {
       "name": "audit_5745_clock_extra_short",
@@ -204,6 +216,7 @@
       "manifest_sha256": "c47a406d6542636600e886c79e0ff783b0b39906bf0ceb0d55a6231644d96c7b",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:17:43.981446+00:00",
@@ -273,10 +286,210 @@
       "manifest_sha256": "d6c5d49ad235505c542d82969872ef2ca454e323df13a37f8e3bb73638889b5f",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T12:49:00.544898+00:00",
         "ended_utc": "2026-10-24T12:49:11.035548+00:00"
+      }
+    },
+    {
+      "name": "audit_5805_bias_adc1",
+      "context": {
+        "fw": "5.0.0-dev+f9dfbf9-bias",
+        "freq": "5805",
+        "gain": "74",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "3",
+        "windows_per_stage": "4",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "ADC_SELECTOR0",
+          "status": "PASS",
+          "stock_m2": 0.9797244379890899,
+          "test_m2": 0.9706805870496347,
+          "delta_db": -0.04027596994257087,
+          "stock_drift_db": 0.004086242505409836,
+          "test_repeat_db": 0.05774516276883703,
+          "median_delta_db": -0.04870080423889609,
+          "stock_nbw_mhz": 14.981132733576734,
+          "test_nbw_mhz": 15.04585212777132,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.05150243710629,
+          "min_kurtosis": 1.9800623592885378,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "ADC_SELECTOR1",
+          "status": "PASS",
+          "stock_m2": 0.9713199839436104,
+          "test_m2": 0.9686613581439588,
+          "delta_db": -0.01190348805961566,
+          "stock_drift_db": -0.01657002173817204,
+          "test_repeat_db": 0.08589816178754056,
+          "median_delta_db": -0.051587981150643954,
+          "stock_nbw_mhz": 15.232860771364647,
+          "test_nbw_mhz": 15.322289321404394,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0672930916724797,
+          "min_kurtosis": 1.9494701371155991,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 32,
+      "rejected_captures": [],
+      "raw_log_sha256": "1595d623c1460f7c4e9b42a55c81287b3d06a8ab7a0bbef59db9d64f37d3b6c2",
+      "manifest_sha256": "dcc81a0f3c114aca3bb84c974712ffadea2e29d0d02e798a24fe51fdcb88b742",
+      "dc_selected": [],
+      "retransmissions": [],
+      "bias_readbacks": [
+        {
+          "id": "80",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "80",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "80",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "80",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "80",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "80",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "80",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "80",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "81",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "81",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "81",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "81",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "81",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "81",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "81",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "81",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        }
+      ],
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T17:26:35.409301+00:00",
+        "ended_utc": "2026-10-24T17:26:49.981043+00:00"
       }
     },
     {
@@ -344,6 +557,7 @@
       "manifest_sha256": "c3cb9102b2a6eedb556e02a9a9e5e5a003f584b7b55ed5b53109d5dd28b3f75e",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:17:10.629821+00:00",
@@ -415,10 +629,101 @@
       "manifest_sha256": "46b7cbc361326b7e731396a04d759a745f9e4729315b48a5bc3f2d1cafc36d0b",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:16:53.822327+00:00",
         "ended_utc": "2026-10-24T13:17:05.581314+00:00"
+      }
+    },
+    {
+      "name": "audit_5805_combo_ack1",
+      "context": {
+        "fw": "5.0.0-dev+bef2146-ack1",
+        "freq": "5805",
+        "gain": "73",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "7",
+        "windows_per_stage": "16",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "COMBO_SENSE0_EXTRA",
+          "status": "PASS",
+          "stock_m2": 0.8243826648016208,
+          "test_m2": 0.822518706830749,
+          "delta_db": -0.009830667711410564,
+          "stock_drift_db": -0.025499729894496108,
+          "test_repeat_db": -0.0012295952660414634,
+          "median_delta_db": -0.0074317103778979935,
+          "stock_nbw_mhz": 15.474755056655916,
+          "test_nbw_mhz": 15.642024245920624,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.1296672292664116,
+          "min_kurtosis": 1.894060394341633,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "COMBO_RX11B0_EXTRA",
+          "status": "PASS",
+          "stock_m2": 0.8245392791266188,
+          "test_m2": 0.8246584439166856,
+          "delta_db": 0.0006276095355959448,
+          "stock_drift_db": 0.012304210299596552,
+          "test_repeat_db": 0.023446796918467207,
+          "median_delta_db": -0.012746883440899578,
+          "stock_nbw_mhz": 15.729593469389604,
+          "test_nbw_mhz": 15.60376799981201,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.1037267399151642,
+          "min_kurtosis": 1.8914295110992811,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "STOCK_SHAM_EXTRA",
+          "status": "PASS",
+          "stock_m2": 0.8213265271180794,
+          "test_m2": 0.8214272243112674,
+          "delta_db": 0.000532425938597698,
+          "stock_drift_db": -0.024127651131731216,
+          "test_repeat_db": -0.0013351780769716205,
+          "median_delta_db": 0.017264236944536864,
+          "stock_nbw_mhz": 15.646106313680033,
+          "test_nbw_mhz": 15.539330756486384,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0687834402854635,
+          "min_kurtosis": 1.912039333582772,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 384,
+      "rejected_captures": [],
+      "raw_log_sha256": "f9d6f4a389e5ae2948cf509b275e37dd53585af96575e4a1b1a22389fd7f62ab",
+      "manifest_sha256": "45050097a98e467261951b9a82eeeff2dc76282138c46f38444b9e42927ca0f5",
+      "dc_selected": [],
+      "retransmissions": [],
+      "bias_readbacks": [],
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T17:17:46.589481+00:00",
+        "ended_utc": "2026-10-24T17:19:46.386593+00:00"
       }
     },
     {
@@ -515,6 +820,7 @@
       "manifest_sha256": "b1545a8c6eafafd33c6317d4333015588f1987360a8f2cc9f7c092ee7534371e",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:35:11.835853+00:00",
@@ -565,6 +871,7 @@
       "manifest_sha256": "c23b9c23b829a912476e0d913f57b656a13ce6f5cf16819c274aea1eae8677a2",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T12:28:12.082973+00:00",
@@ -687,6 +994,7 @@
         }
       ],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T17:16:20.795311+00:00",
@@ -839,6 +1147,7 @@
       "manifest_sha256": "abce91ab6e6a70afab2300ca6a2e1d3dadbcca29e823813f4e936d6d5f4e86d7",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:36:53.487304+00:00",
@@ -1254,6 +1563,7 @@
       "manifest_sha256": "95f2418876684f9b1c58a28a9b32e46b185c50271a5e175545843b5fcf464079",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T12:26:05.198693+00:00",
@@ -1361,6 +1671,7 @@
       "manifest_sha256": "ed2e4c9431596a97246bdac900f1c6dcd1a20809a36ee9ff84be7f09947039e2",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:05:42.723812+00:00",
@@ -1470,6 +1781,7 @@
       "manifest_sha256": "103f484e9455ccbd86f1ac50c240903b8b8b60a42e567d3557e244c3fef1cdf7",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:05:19.710618+00:00",
@@ -1537,6 +1849,7 @@
       "manifest_sha256": "79d008dce57f4a8fe76fa7c4ded4fe1c08856962a5b3601a390e6b623f6f6ebe",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T12:48:37.381545+00:00",
@@ -1604,6 +1917,7 @@
       "manifest_sha256": "e5e41aaa0d480669476f8446d6bd25d10e5239bb2e463f13d8f49d0a6ac9264f",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T12:54:47.485787+00:00",
@@ -1671,10 +1985,210 @@
       "manifest_sha256": "75d52b9a359e6af8995756422ce54d290bfd148acf39c89d80a26a620fd6abf3",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T12:55:01.845838+00:00",
         "ended_utc": "2026-10-24T12:55:11.875052+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_bias_adc1",
+      "context": {
+        "fw": "5.0.0-dev+f9dfbf9-bias",
+        "freq": "5865",
+        "gain": "74",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "3",
+        "windows_per_stage": "4",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "ADC_SELECTOR0",
+          "status": "PASS",
+          "stock_m2": 0.9833005254479613,
+          "test_m2": 0.9801156242685547,
+          "delta_db": -0.014089587895136974,
+          "stock_drift_db": 0.03650430368070153,
+          "test_repeat_db": 0.00228701706427672,
+          "median_delta_db": 0.03150385921211482,
+          "stock_nbw_mhz": 15.187780757699837,
+          "test_nbw_mhz": 15.412372532084829,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 1.9998791036193528,
+          "min_kurtosis": 1.9175835629354898,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "ADC_SELECTOR1",
+          "status": "PASS",
+          "stock_m2": 0.9605943025906396,
+          "test_m2": 0.9731177107047071,
+          "delta_db": 0.0562537031776009,
+          "stock_drift_db": 0.10839176720897405,
+          "test_repeat_db": 0.04259832266945208,
+          "median_delta_db": 0.08664258137035866,
+          "stock_nbw_mhz": 15.19361687967561,
+          "test_nbw_mhz": 15.431935467900834,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 1.9817938066554845,
+          "min_kurtosis": 1.9173386318502101,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 32,
+      "rejected_captures": [],
+      "raw_log_sha256": "c67e9c8362042c2d35a8f150999f0d25f83cf96c62b0b13984720a03acd2fb6d",
+      "manifest_sha256": "c43d62a687147029bf84bc99137dca9cafade8f825a338f5b06f19b2db43b468",
+      "dc_selected": [],
+      "retransmissions": [],
+      "bias_readbacks": [
+        {
+          "id": "80",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "80",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "80",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "80",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "80",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "80",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "80",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "80",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "81",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "81",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "81",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "81",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "81",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "81",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "81",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "81",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        }
+      ],
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T17:23:26.027922+00:00",
+        "ended_utc": "2026-10-24T17:24:02.638775+00:00"
       }
     },
     {
@@ -1742,6 +2256,7 @@
       "manifest_sha256": "78aa8e34e6888f4e1d03a16abac5591873a5fed02ef3b3051cf2691ce349d384",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:20:15.249853+00:00",
@@ -1813,10 +2328,101 @@
       "manifest_sha256": "c733e4cd1c3aab81db4ce39a6c0dcdae7dc89354411240374e2d95e2e3d368e2",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:19:59.331684+00:00",
         "ended_utc": "2026-10-24T13:20:10.699258+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_combo_ack1",
+      "context": {
+        "fw": "5.0.0-dev+bef2146-ack1",
+        "freq": "5865",
+        "gain": "76",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "7",
+        "windows_per_stage": "16",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "COMBO_SENSE0_EXTRA",
+          "status": "PASS",
+          "stock_m2": 1.435617065914685,
+          "test_m2": 1.4360491406868467,
+          "delta_db": 0.001306890684607359,
+          "stock_drift_db": 0.04692315853532,
+          "test_repeat_db": -0.00399522700486998,
+          "median_delta_db": -0.0004909090502829142,
+          "stock_nbw_mhz": 14.624719767205644,
+          "test_nbw_mhz": 14.686253655814172,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.103284580248243,
+          "min_kurtosis": 1.9034323571446525,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "COMBO_RX11B0_EXTRA",
+          "status": "PASS",
+          "stock_m2": 1.440255531823183,
+          "test_m2": 1.4281559823003276,
+          "delta_db": -0.03663908565580496,
+          "stock_drift_db": 0.010937386234419076,
+          "test_repeat_db": 0.00043938139901018435,
+          "median_delta_db": -0.05860122942099515,
+          "stock_nbw_mhz": 14.695611864112053,
+          "test_nbw_mhz": 14.77102686962254,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.068578663127325,
+          "min_kurtosis": 1.9118844370405472,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "STOCK_SHAM_EXTRA",
+          "status": "PASS",
+          "stock_m2": 1.4424993328473183,
+          "test_m2": 1.450246680169986,
+          "delta_db": 0.023262590086112422,
+          "stock_drift_db": -0.023759155018990286,
+          "test_repeat_db": 0.016900855161451064,
+          "median_delta_db": 0.0288687649600972,
+          "stock_nbw_mhz": 14.845150436537772,
+          "test_nbw_mhz": 14.502888217112936,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0804622482064987,
+          "min_kurtosis": 1.938502404382693,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 384,
+      "rejected_captures": [],
+      "raw_log_sha256": "46554884a014aeab9b282edd5b58204c8ef38975a70d1b7a4721374be7b63a75",
+      "manifest_sha256": "474ba9f642ab7732ef8396a51c6fc88cf7d59a9996c7ca590ae83f1ce665f8a1",
+      "dc_selected": [],
+      "retransmissions": [],
+      "bias_readbacks": [],
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T17:20:42.352994+00:00",
+        "ended_utc": "2026-10-24T17:22:41.325214+00:00"
       }
     },
     {
@@ -1910,6 +2516,7 @@
       "manifest_sha256": "0a146e33c5ce960d256b4f4ade7d77bd525f8ad9eb98e2d8a5e23e301adfa5be",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:32:19.390065+00:00",
@@ -1957,6 +2564,7 @@
       "manifest_sha256": "6d0724945db84726c62175c1bf27776c66dd9625db5b9667d327767bd026729c",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T12:25:33.158054+00:00",
@@ -2078,6 +2686,7 @@
         }
       ],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T17:06:38.232003+00:00",
@@ -2202,6 +2811,7 @@
         }
       ],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T17:08:57.544197+00:00",
@@ -2345,6 +2955,7 @@
         }
       ],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T17:14:15.294455+00:00",
@@ -2495,6 +3106,7 @@
       "manifest_sha256": "aab9136acce59edb94c0219f1912f0638b8d48143e275e81f92d66bbe82f7ee8",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:34:06.298103+00:00",
@@ -2904,6 +3516,7 @@
       "manifest_sha256": "51347c9d0c63555778e3e5fe01e150b000e478bc1be339013c7275c0fc3fbeca",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T12:24:06.972286+00:00",
@@ -3015,6 +3628,7 @@
       "manifest_sha256": "1328dd33d8f8902b7dc9355b16911ad3e0277bce8acdfd186aa602c3f75c5e6d",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:04:34.554469+00:00",
@@ -3134,6 +3748,7 @@
       "manifest_sha256": "b054acad89c800472c9c0d90a13ccaf54d879b898fd43b6fab4a94bcb34e6101",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T13:04:11.800840+00:00",
@@ -3590,11 +4205,2121 @@
       "manifest_sha256": "9132d91833f14c8d19d1b00e9decdd421ca739ead0273d045250cc1e51fbed4f",
       "dc_selected": [],
       "retransmissions": [],
+      "bias_readbacks": [],
       "acquisition": {
         "port": "COM10",
         "started_utc": "2026-10-24T12:15:40.368225+00:00",
         "ended_utc": "2026-10-24T12:16:38.424093+00:00"
       }
     }
-  ]
+  ],
+  "live_gain_witnesses": [
+    {
+      "name": "live_5805_g83",
+      "manifest": {
+        "started_utc": "2026-10-24T17:26:54.177871+00:00",
+        "captures": [
+          {
+            "file": "g83_r00.iq",
+            "sha256": "70fd0addc3b9a5452b3661004543c1f9a68a8d148436e4b03f8a2cd0fae841a6",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "9a83ae75",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r01.iq",
+            "sha256": "40eadaf6f9d99c45aa494ca9d24a974c4af8c6ac81a9b712d4a7ecee957a4e75",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "f46d16ea",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r02.iq",
+            "sha256": "80e8e3e6087c73758aac6ababaaa9231d6391cad8685db30c091131cf42598e4",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "db4656b2",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r03.iq",
+            "sha256": "8df97815badd695b97c36072b69f1b8a34e67312cb249acf45ffd2482dc1971b",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "ede5a552",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r04.iq",
+            "sha256": "ab16dce8a11604eca11a2dcdc9fdae0cb08776ce1cb3321c361c48990ca54cc2",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "c88e4efb",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r05.iq",
+            "sha256": "6b88d8e2783ec7b86bdf534700b0ae38f4a36a1842b378f8d17a39c15d1df8ab",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "39c61755",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r06.iq",
+            "sha256": "1c9e14c7a1f2404d8c0d9e418acdba53eaa2738fc8357b5e4ffeb575b3df7397",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "083a08dd",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r07.iq",
+            "sha256": "abc05baa928e6cb7ddb5807405671ebe19783c74fb04a3c401374e2960889c3c",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "68de84d3",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r08.iq",
+            "sha256": "2d05d437af80e9db5387e39186535c263e356c7e1b2db18fbd7cda1541365a42",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "e40bb3f2",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r09.iq",
+            "sha256": "a4ce4022b371f404d2acf323213d581f01c6d01a4da2bdef936eaad904e55466",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "f8e7d219",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r10.iq",
+            "sha256": "cf42113216ce49c01fd25c908936585d60074f4fafea586ed371814bccaf6af9",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "8147d4fb",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r11.iq",
+            "sha256": "01e739166ff019a9e605d4e0176a6172de87ed41d9c7e444240ff0a04ed72de6",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "b3e9fa76",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r12.iq",
+            "sha256": "9bbba71cc166b920cad61956344b203a499225632237261ee36001ea9dcd6ec1",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "3e70de6e",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r13.iq",
+            "sha256": "f0745d4f332181582ca60df6d05972e0bbc6e9045d4d4470840a8eea747e5bbb",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "bef15e5f",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r14.iq",
+            "sha256": "a1fe1ea8e185df1d7574711330156f579d61c4bca5905cb813e29f3713470954",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "0d29fffc",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r15.iq",
+            "sha256": "829691f55704c196882dfe4faa93db46a62f811f2b56987d954b81f48a407165",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "60fbe8b5",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r16.iq",
+            "sha256": "713a199c86c6f1026ce459dafd9bf46aca68df30fbc7b940bdc0ff233b41d4de",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "e7e5ac7b",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r17.iq",
+            "sha256": "7cb8895971e06611885c5f5900625e36b4104841919e59077f94b60fe7441b46",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "cde86512",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r18.iq",
+            "sha256": "79d40c0b66d24fa62bf3785d018a15a2fb3cb2eea9e8bdd91ab47eaa7d795cdc",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "c75ebda0",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r19.iq",
+            "sha256": "ccd6883b8d3f91fe9b2e6741d3e0f01f74b5e6e1a34862d3607165bb7746a224",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "93131396",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r20.iq",
+            "sha256": "de91076a6096097825335227b829e384787b3e5a2f382df77ad54f3236b90097",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "e5fd0c28",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r21.iq",
+            "sha256": "d552ed6aa7b1613c48ebd4dbc16a4d9cb7a9a1960e6099200e81441c71728fa5",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "fd7402e9",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r22.iq",
+            "sha256": "6c72a505da0029df9155e22e40082c40dad618df4584eb08ffaa4c17a9a83e4d",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "b2f763d6",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r23.iq",
+            "sha256": "3dd8ae22c1ac416ef125d8ee65b4c1662275cc57f59b8f6acee40edc59ec2462",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "211c2790",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r24.iq",
+            "sha256": "ab2ad04d444e4eea5601b9105dde7251ca54143b5bebfaf40dcf91db39ea0846",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "1d7dbab0",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r25.iq",
+            "sha256": "d90d52807a8a8545e05eda38301104f4ac21b17831475c44ad46c3488c07b373",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "1b03445e",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r26.iq",
+            "sha256": "045812557bb78e989ca081b93683af8ec1d1b8818d2980e2b865648c1949b310",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "1219fbf5",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r27.iq",
+            "sha256": "7bf01c3f2184e7fedfec7071ca173d30df30217cddd53b5577a3d5a2b3031f1d",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "c4d50f20",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r28.iq",
+            "sha256": "ec947cfd37cf974d80f0c4e729ebadc3bd7e380c65d9d5eb86f6d70a71a1ed25",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "f1c974aa",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r29.iq",
+            "sha256": "c3ee3a7ec12e0c7f7fb0f85195cba13945e50462aec31f4987494739c9c991da",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "77592fcd",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r30.iq",
+            "sha256": "f55c16eaf1c851647bb77d82030e3fb2f09992a67f1d9cc865c94d783052f158",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "7b60ca6b",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r31.iq",
+            "sha256": "9da472261f3d9f43e9bae90e7fa3e7d3ee101ee80e4628d53e853e846c5703b8",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5805",
+              "fnv1a": "83d63040",
+              "fw": "5"
+            }
+          }
+        ],
+        "rejected": [
+          {
+            "gain": 83,
+            "rep": 18,
+            "attempt": 0,
+            "reason": "IQSNAP_REFUSED stale_or_settling"
+          },
+          {
+            "gain": 83,
+            "rep": 21,
+            "attempt": 0,
+            "reason": "IQSNAP_REFUSED stale_or_settling"
+          }
+        ],
+        "gain83_status": "FIRMWARE id=5.0.0-dev+f9dfbf9-bias version=5.0.0-dev commit=f9dfbf9-bias1 elf_sha256=36a7af3dd built=\"Oct 24 2026 11:41:15\" idf=v6.0.2\r\nC5VRX5 version=5.0.0-dev demod=U80P64-R1 lane=ultrafine gain_owner=keel1 uptime_s=210 heap_internal=17192 heap_largest=14848 heap_dma=15412 heap_dma_largest=14848 heap_lp=1780 fw=5.0.0-dev+f9dfbf9-bias\r\nAFC_EVIDENCE latest_valid=0 context_current=1 qualified_gain_current=0 sticky_lock=0 target_khz=-1000 last_qualified_raw_porch_khz=0 last_qualified_residual_khz=0 qualified_age_ms=-1 sample_age_ms=26 n=0 timestamped=0 stable=0 median_residual_khz=0 mad_khz=0 oldest_age_ms=-1 newest_age_ms=-1 cn_x10=-990 window=no_confirmed_sync held=window reference=porch_not_rf_truth\r\nCONTROL channel=A4 freq=5805 offset_khz=0 cfo_khz=0 afc_locked=0 afc_corrections=0 afc_weak_skips=0 afc_sign=+1(confirmed) standard=AUTO detected=none signal=16 menu=0 deviation_x100=0 mode=DEFAULT 12MHZ demod=U80P64-R1 busy=0\r\nVIDEO_Q known=0 snr_x10=0 lines_x100=0 lines=0 windows=2 periods=185 (end-to-end: sync/porch spread of the demodulated video, last second)\r\nRX_LEVEL carrier_dbm=-95.6 input_dbm=-95.6 noise_dbm=-95.6 noise_learned=1 cn_db=-99.0 above_noise=0 exact=1 gains=83-83 probes=1850 clipped_pm=1 (at the chip pin; calibrated against the Wi-Fi PHY RSSI: +-1 dB at G54-G83, a few dB below G54; free space for 25 mW, 2 dBi each side, 10 m at 5.8 GHz is ~-50 dBm)\r\nGAIN_SAT one_sided=52 two_sided=4 to_dc_servo=51 (saturated observer windows: one rail per axis = DC-pushed, both = large signal; one-sided ones go to the DC servo, not the gain)\r\nGAIN_WRITES attack=0 release=9 refused=0 rebinds=10 overloads=0 overloads_after_write=0 heat_events=0 sentinel_forwarded=1 sentinel_dropped=467 (why the gain moved; rebinds keep the core's memory on the same receiver; sentinel = 64-sample fast path, gross saturation only)\r\nCN_AUTO estimate_x10=-990 control_x10=-990 power_x10=-118 m2m4_x10=-170 confidence=0 source=1 flags=0x80 noise_cells2=6.334 rows_with_noise=1 learned=345 absent_rejects=5 estimates=5640 nbw_khz=13175 (self-calibrating C/N, cn_auto.h)\r\nGAIN_TABLE measured_rows=12 g83_g72_db=10.64 (top rows from the receiver-noise map; the rest the model, joined)\r\nGAIN_TABLE_HW checked=84 match=84 first_bad=-1 (reconstructed RF/BB/fine tuples against the PHY's AGC memory at boot; checked=0: not checked)\r\nGAIN_REFUSED generation=0 busy=0 control=0 inactive=0 actuator_lock=0 rf_set_gain=0 (writes the core wanted but the PHY did not take, by reason)\r\nDC_FEED rejected_folded=28 (observer windows reaching both rails of an axis: a folding carrier, kept out of the DC servo)\r\nCN_OBSERVER windows=9323 period_us=20000 max_age_us=40000\r\nGAIN owner=manual mode=MAX gain=83 state=1 p50=5 p95=19 coherence=28 env_x100=114 stuck=0 cn_x10=-990 origin_pm=480 clip_pm=0 anchor=0 anchor_valid=0 anchor_returns=0 climbs=0 writes=9 holds=264947 overloads=0 bursts=2 fade_holds=0 damp=0 map_learned=0 learn_refused=0 map_imports=0 preset_imports=0 obs_windows=361837 obs_us_max=1954\r\nPROFILE active=DEFAULT 12MHZ reason=channel_changed measured_this_session_x100=-1 pending=none stored_x100=0 (provisional) measuring=live windows=0 batches=0 rejected_batches=0 observed=0 gated=0 gated_cn=0\r\nPROFILE_GATES no_pairs=0 observed_unlocked=0 amplitude=0 clip=0 gain_not_held=0 cn_missing=0 cn_below=0 last_cn_x10=-990 cn_checked=0 last_span_khz=0 last_freq_mhz=0 min_cn_x10=80\r\nPROFILE monitor period_s=30 collecting=1 next_in_s=0 decisions=0 timeouts=0 last_x100=-1 last_age_s=-1 agree=0 mismatch=0 min_cn_db=8 mode=live_switch pending=none switches=0 switch_fail=0\r\nFILTER loaded active bw=BW40 code=-1 skirt=32 | normal width_khz=13125 nbw_khz=13175 | narrow valid=1 width_khz=11875 nbw_khz=11969 | wide valid=1 width_khz=17500 nbw_khz=17729 | calibrated_nbw_khz=12355\r\nPHY11P want=1 hw_enabled=1 (-1=unsupported; analog profile checked below)\r\nDFILT want=0 hw_mode=0 (-1=unsupported)\r\nFILTER_HW mismatch=0 hw=3c3c333533353335 want=3c3c333533353335\r\nDCO held=1 gains_valid=30 floor_rows=0 missing_rows=0 floor=0 searches=0 carrier_searches=0 hook_holds=13 aborts=0 drift_avg_mcells=215/-93 nudges=375 temp_c=47.9\r\nDCO_BANKS bank1=281/234 bank2=259/221 gain=83 row_codes=245/225 row_valid=1 banned=0\r\nDC_SERVO dc_mcells=215/-93 slope_mcells_per_code=347/250 offset=14/-4 own_row=1 steps=375 writes=375 estimates=631 learned=9 relearned=0 sign_rejects=0 turns=0 forgotten=4 urgent_wakes=3 skip=0/0/0/0/0 fault=0 table_reloads=5 reload_why=3 volatile=1\r\nDC_HEALTH flags=0 writes=0 watch=table:0/0 filter:0/0 drift:0/0 (latched/bad)\r\nDCO tables freq=5805 template_rows=29 seeded_from=0 seeds=0 stored_channels=4/6: 5865 5865 5865 5805\r\nDCO_REPAIR bad_dropped=0 repairs=0 repair_fails=0 borrowed_holds=0 (unconverged rows dropped, searched from a converged neighbour; a missing row holds the nearest converged one's codes)\r\nDCO_BAN unbans=0 (a railing hold is released for 2-32 s, then held again)\r\nDCO_ADOPT rows=0 (template rows taken as own codes after the servo held them on receiver noise)\r\nDCO_CONTEXT table_freq=5805 table_bw20=0 table_code=-1 table_skirt=32 active_freq=5805 active_bw20=0 active_code=-1 active_skirt=32 filter_same=1\r\nSPHASE state=settled excess_mc2=43 limit=300 white_pm=481 dc_mcell=-29/549 scans=0 best=-1 worst=-1 contrast=0 rx_div=6 carrier_qualified=0 live_limit=150 carrier_checks=0 carrier_scans=0 moved=0 false_alarms=0 strikes=0\r\nDEMOD selected=U80P64-R1 verified=U80P64-R1 p64_model=U80P64-R1 p64_table_sha256=8027b82680c202738038435ce68eefb0145f58a112da773aefadefca0792482c\r\nTRANSPORT_STAGES_US quiesce=70 bs_enable=18 program_load=559 instruction_verify=148 lut_verify=987 bs_reset=13 bs_start=6 rx_enable=33 tx_enable=22 rx_start=55 tx_start=699 (last restart)\r\nVIDEO_OUTPUT source=LIVE standard=NTSC\r\nOUTPUT level=1.0x boot_restore=saved default=1.0x clipped_lut_entries=0 recovery_errors=0 rollbacks=0 rollback_fail=0 fault_latched=0 live=1\r\nTRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 lut_writes=2048 lut_verify_fail=0 program=U80P64-R1 flag_format=1 switch_wait_ms=0 prog_verify_fail=0\r\nCONTROL_COPY calls=3678 not_ready=0 source_invalid=0 pointer_invalid=0 lapped=0 timed_out=0 max_us=47 max_advance=1\r\nSYNC_LIVE requested=1 active=1 fault=0 starts=3 stops=2 failures=0 boot_default=ON\r\nSYNC_LIVE_DIAG callbacks=2866 symbols=5736 epochs=2867 endings=2866 low=0 h=0 broad=0 h_periods=0 pal32=0 ntsc32=0 broad5=0 broad6=0 prefix_n=3 marker_ticks=475 barrier=1868 elapsed=1479 phase_checked=1 phase_valid=1 phase_lo=129167265 phase_hi=129167302 native_valid=0 native_standard=0 fields=0 qualified_epochs=0 rearms=2866 invalidated=0 inverted=1 ambiguous=0\r\nSYNC_LIVE_MODEL valid=0 tracking=0 standard=0 line_ticks_x32=0 last_h=0 field=0 now=129231382 phase_span_ticks=0 inverted=0 boot_default=ON\r\nSYNC_FLYWHEEL requested=1 active=1 repaired=0 suppressed=0 batches=0 late_ticks=424 missed=40 miss_kind=2 queue_low=0 fault=0 irq_delay_ticks=597 callback_ticks=106 budget_yields=0 miss_phase=0 miss_other=36 miss_observer=4 miss_snapshot=0 miss_update=0 miss_restart=0 miss_reserved=0 guard_yield=0 yielded=0 h_jumps=0 v_jumps=0 trims=0 pll_updates=0 pll_rejected=0 pll_ppb=0 acquired=0 camera_present=0 camera_lines=0 camera_yields=0 h_trusted=0 v_trusted=0 std_switches=0 monitor_lock_proven=0\r\nSYNC_FLYWHEEL_WITNESS observer_fresh=0 sample_age_ticks=4294967295 observer_yields=4 source_yields=51 observer_gaps=0 stale_native=0\r\nSYNC_FLYWHEEL_LOAD active=1 interval_ms=2031 isr_calls=105306 max_isr_us=9 isr_permille=114 wait_permille=0 suppressed_wait_permille=0 hold_permille=0 measured_not_estimated=1\r\nSTATUS channel=A4 freq=5805 afc_locked=0 standard=AUTO detected=none signal=17 menu=0 mode=DEFAULT 12MHZ demod=U80P64-R1 output=1.0x live=1 busy=0 fw=5.0.0-dev+f9dfbf9-bias\r\n",
+        "final_status": "FIRMWARE id=5.0.0-dev+f9dfbf9-bias version=5.0.0-dev commit=f9dfbf9-bias1 elf_sha256=36a7af3dd built=\"Oct 24 2026 11:41:15\" idf=v6.0.2\r\nC5VRX5 version=5.0.0-dev demod=U80P64-R1 lane=ultrafine gain_owner=keel1 uptime_s=263 heap_internal=17192 heap_largest=14848 heap_dma=15412 heap_dma_largest=14848 heap_lp=1780 fw=5.0.0-dev+f9dfbf9-bias\r\nAFC_EVIDENCE latest_valid=0 context_current=1 qualified_gain_current=0 sticky_lock=0 target_khz=-1000 last_qualified_raw_porch_khz=0 last_qualified_residual_khz=0 qualified_age_ms=-1 sample_age_ms=28 n=0 timestamped=0 stable=0 median_residual_khz=0 mad_khz=0 oldest_age_ms=-1 newest_age_ms=-1 cn_x10=-990 window=no_confirmed_sync held=window reference=porch_not_rf_truth\r\nCONTROL channel=A4 freq=5805 offset_khz=0 cfo_khz=0 afc_locked=0 afc_corrections=0 afc_weak_skips=0 afc_sign=+1(confirmed) standard=AUTO detected=none signal=17 menu=0 deviation_x100=0 mode=DEFAULT 12MHZ demod=U80P64-R1 busy=0\r\nVIDEO_Q known=0 snr_x10=0 lines_x100=0 lines=0 windows=2 periods=237 (end-to-end: sync/porch spread of the demodulated video, last second)\r\nRX_LEVEL carrier_dbm=-95.6 input_dbm=-95.6 noise_dbm=-95.6 noise_learned=1 cn_db=-99.0 above_noise=0 exact=1 gains=68-83 probes=1633 clipped_pm=0 (at the chip pin; calibrated against the Wi-Fi PHY RSSI: +-1 dB at G54-G83, a few dB below G54; free space for 25 mW, 2 dBi each side, 10 m at 5.8 GHz is ~-50 dBm)\r\nGAIN_SAT one_sided=52 two_sided=22 to_dc_servo=51 (saturated observer windows: one rail per axis = DC-pushed, both = large signal; one-sided ones go to the DC servo, not the gain)\r\nGAIN_WRITES attack=0 release=14 refused=0 rebinds=10 overloads=0 overloads_after_write=0 heat_events=0 sentinel_forwarded=16 sentinel_dropped=492 (why the gain moved; rebinds keep the core's memory on the same receiver; sentinel = 64-sample fast path, gross saturation only)\r\nCN_AUTO estimate_x10=-990 control_x10=-990 power_x10=-124 m2m4_x10=-170 confidence=0 source=1 flags=0x80 noise_cells2=6.320 rows_with_noise=1 learned=443 absent_rejects=5 estimates=7216 nbw_khz=13175 (self-calibrating C/N, cn_auto.h)\r\nGAIN_TABLE measured_rows=12 g83_g72_db=10.64 (top rows from the receiver-noise map; the rest the model, joined)\r\nGAIN_TABLE_HW checked=84 match=84 first_bad=-1 (reconstructed RF/BB/fine tuples against the PHY's AGC memory at boot; checked=0: not checked)\r\nGAIN_REFUSED generation=0 busy=0 control=0 inactive=0 actuator_lock=0 rf_set_gain=0 (writes the core wanted but the PHY did not take, by reason)\r\nDC_FEED rejected_folded=65 (observer windows reaching both rails of an axis: a folding carrier, kept out of the DC servo)\r\nCN_OBSERVER windows=11974 period_us=20000 max_age_us=40000\r\nGAIN owner=keel1 mode=AUTO gain=83 state=1 p50=5 p95=19 coherence=28 env_x100=132 stuck=0 cn_x10=-990 origin_pm=484 clip_pm=0 anchor=0 anchor_valid=0 anchor_returns=0 climbs=0 writes=14 holds=266665 overloads=0 bursts=2 fade_holds=0 damp=0 map_learned=0 learn_refused=6 map_imports=0 preset_imports=0 obs_windows=462939 obs_us_max=1961\r\nPROFILE active=DEFAULT 12MHZ reason=channel_changed measured_this_session_x100=-1 pending=none stored_x100=0 (provisional) measuring=live windows=0 batches=0 rejected_batches=0 observed=0 gated=0 gated_cn=0\r\nPROFILE_GATES no_pairs=0 observed_unlocked=0 amplitude=0 clip=0 gain_not_held=0 cn_missing=0 cn_below=0 last_cn_x10=-990 cn_checked=0 last_span_khz=0 last_freq_mhz=0 min_cn_x10=80\r\nPROFILE monitor period_s=30 collecting=1 next_in_s=0 decisions=0 timeouts=0 last_x100=-1 last_age_s=-1 agree=0 mismatch=0 min_cn_db=8 mode=live_switch pending=none switches=0 switch_fail=0\r\nFILTER loaded active bw=BW40 code=-1 skirt=32 | normal width_khz=13125 nbw_khz=13175 | narrow valid=1 width_khz=11875 nbw_khz=11969 | wide valid=1 width_khz=17500 nbw_khz=17729 | calibrated_nbw_khz=12355\r\nPHY11P want=1 hw_enabled=1 (-1=unsupported; analog profile checked below)\r\nDFILT want=0 hw_mode=0 (-1=unsupported)\r\nFILTER_HW mismatch=0 hw=3c3c333533353335 want=3c3c333533353335\r\nDCO held=1 gains_valid=30 floor_rows=0 missing_rows=0 floor=0 searches=0 carrier_searches=0 hook_holds=18 aborts=0 drift_avg_mcells=-141/-207 nudges=484 temp_c=47.9\r\nDCO_BANKS bank1=281/234 bank2=259/219 gain=83 row_codes=245/225 row_valid=1 banned=0\r\nDC_SERVO dc_mcells=-141/-207 slope_mcells_per_code=347/250 offset=14/-6 own_row=1 steps=484 writes=484 estimates=836 learned=9 relearned=0 sign_rejects=0 turns=0 forgotten=4 urgent_wakes=3 skip=0/0/0/0/0 fault=0 table_reloads=5 reload_why=3 volatile=1\r\nDC_HEALTH flags=0 writes=0 watch=table:0/0 filter:0/0 drift:0/0 (latched/bad)\r\nDCO tables freq=5805 template_rows=29 seeded_from=0 seeds=0 stored_channels=4/6: 5865 5865 5865 5805\r\nDCO_REPAIR bad_dropped=0 repairs=0 repair_fails=0 borrowed_holds=0 (unconverged rows dropped, searched from a converged neighbour; a missing row holds the nearest converged one's codes)\r\nDCO_BAN unbans=0 (a railing hold is released for 2-32 s, then held again)\r\nDCO_ADOPT rows=0 (template rows taken as own codes after the servo held them on receiver noise)\r\nDCO_CONTEXT table_freq=5805 table_bw20=0 table_code=-1 table_skirt=32 active_freq=5805 active_bw20=0 active_code=-1 active_skirt=32 filter_same=1\r\nSPHASE state=settled excess_mc2=64 limit=300 white_pm=501 dc_mcell=-250/-330 scans=0 best=-1 worst=-1 contrast=0 rx_div=6 carrier_qualified=0 live_limit=150 carrier_checks=0 carrier_scans=0 moved=0 false_alarms=0 strikes=0\r\nDEMOD selected=U80P64-R1 verified=U80P64-R1 p64_model=U80P64-R1 p64_table_sha256=8027b82680c202738038435ce68eefb0145f58a112da773aefadefca0792482c\r\nTRANSPORT_STAGES_US quiesce=70 bs_enable=18 program_load=559 instruction_verify=148 lut_verify=987 bs_reset=13 bs_start=6 rx_enable=33 tx_enable=22 rx_start=55 tx_start=699 (last restart)\r\nVIDEO_OUTPUT source=LIVE standard=NTSC\r\nOUTPUT level=1.0x boot_restore=saved default=1.0x clipped_lut_entries=0 recovery_errors=0 rollbacks=0 rollback_fail=0 fault_latched=0 live=1\r\nTRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 lut_writes=2048 lut_verify_fail=0 program=U80P64-R1 flag_format=1 switch_wait_ms=0 prog_verify_fail=0\r\nCONTROL_COPY calls=4715 not_ready=0 source_invalid=0 pointer_invalid=0 lapped=0 timed_out=0 max_us=48 max_advance=1\r\nSYNC_LIVE requested=1 active=1 fault=0 starts=3 stops=2 failures=0 boot_default=ON\r\nSYNC_LIVE_DIAG callbacks=25870 symbols=51780 epochs=25899 endings=25870 low=0 h=0 broad=0 h_periods=0 pal32=0 ntsc32=0 broad5=0 broad6=0 prefix_n=3 marker_ticks=337 barrier=2092 elapsed=1513 phase_checked=1 phase_valid=1 phase_lo=1188007851 phase_hi=1188007902 native_valid=0 native_standard=0 fields=0 qualified_epochs=0 rearms=25898 invalidated=0 inverted=1 ambiguous=0\r\nSYNC_LIVE_MODEL valid=0 tracking=0 standard=0 line_ticks_x32=0 last_h=0 field=0 now=1188077659 phase_span_ticks=0 inverted=0 boot_default=ON\r\nSYNC_FLYWHEEL requested=1 active=1 repaired=0 suppressed=0 batches=0 late_ticks=424 missed=343 miss_kind=2 queue_low=0 fault=0 irq_delay_ticks=597 callback_ticks=112 budget_yields=0 miss_phase=0 miss_other=316 miss_observer=27 miss_snapshot=0 miss_update=0 miss_restart=0 miss_reserved=0 guard_yield=0 yielded=0 h_jumps=0 v_jumps=0 trims=0 pll_updates=0 pll_rejected=0 pll_ppb=0 acquired=0 camera_present=0 camera_lines=0 camera_yields=0 h_trusted=0 v_trusted=0 std_switches=0 monitor_lock_proven=0\r\nSYNC_FLYWHEEL_WITNESS observer_fresh=0 sample_age_ticks=4294967295 observer_yields=26 source_yields=426 observer_gaps=0 stale_native=0\r\nSYNC_FLYWHEEL_LOAD active=1 interval_ms=2061 isr_calls=966798 max_isr_us=9 isr_permille=114 wait_permille=0 suppressed_wait_permille=0 hold_permille=0 measured_not_estimated=1\r\nSTATUS channel=A4 freq=5805 afc_locked=0 standard=AUTO detected=none signal=17 menu=0 mode=DEFAULT 12MHZ demod=U80P64-R1 output=1.0x live=1 busy=0 fw=5.0.0-dev+f9dfbf9-bias\r\n",
+        "cleanup_status": "FIRMWARE id=5.0.0-dev+f9dfbf9-bias version=5.0.0-dev commit=f9dfbf9-bias1 elf_sha256=36a7af3dd built=\"Oct 24 2026 11:41:15\" idf=v6.0.2\r\nC5VRX5 version=5.0.0-dev demod=U80P64-R1 lane=ultrafine gain_owner=keel1 uptime_s=265 heap_internal=17192 heap_largest=14848 heap_dma=15412 heap_dma_largest=14848 heap_lp=1780 fw=5.0.0-dev+f9dfbf9-bias\r\nAFC_EVIDENCE latest_valid=0 context_current=1 qualified_gain_current=0 sticky_lock=0 target_khz=-1000 last_qualified_raw_porch_khz=0 last_qualified_residual_khz=0 qualified_age_ms=-1 sample_age_ms=2 n=0 timestamped=0 stable=0 median_residual_khz=0 mad_khz=0 oldest_age_ms=-1 newest_age_ms=-1 cn_x10=-990 window=nonstationary held=window reference=porch_not_rf_truth\r\nCONTROL channel=A4 freq=5805 offset_khz=0 cfo_khz=0 afc_locked=0 afc_corrections=0 afc_weak_skips=0 afc_sign=+1(confirmed) standard=AUTO detected=none signal=16 menu=0 deviation_x100=0 mode=DEFAULT 12MHZ demod=U80P64-R1 busy=0\r\nVIDEO_Q known=0 snr_x10=0 lines_x100=0 lines=0 windows=3 periods=239 (end-to-end: sync/porch spread of the demodulated video, last second)\r\nRX_LEVEL carrier_dbm=-95.6 input_dbm=-95.6 noise_dbm=-95.6 noise_learned=1 cn_db=-99.0 above_noise=0 exact=1 gains=83-83 probes=1840 clipped_pm=0 (at the chip pin; calibrated against the Wi-Fi PHY RSSI: +-1 dB at G54-G83, a few dB below G54; free space for 25 mW, 2 dBi each side, 10 m at 5.8 GHz is ~-50 dBm)\r\nGAIN_SAT one_sided=52 two_sided=22 to_dc_servo=51 (saturated observer windows: one rail per axis = DC-pushed, both = large signal; one-sided ones go to the DC servo, not the gain)\r\nGAIN_WRITES attack=0 release=14 refused=0 rebinds=10 overloads=0 overloads_after_write=0 heat_events=0 sentinel_forwarded=16 sentinel_dropped=492 (why the gain moved; rebinds keep the core's memory on the same receiver; sentinel = 64-sample fast path, gross saturation only)\r\nCN_AUTO estimate_x10=-990 control_x10=-990 power_x10=-130 m2m4_x10=-58 confidence=0 source=1 flags=0x80 noise_cells2=6.317 rows_with_noise=1 learned=447 absent_rejects=5 estimates=7273 nbw_khz=13175 (self-calibrating C/N, cn_auto.h)\r\nGAIN_TABLE measured_rows=12 g83_g72_db=10.64 (top rows from the receiver-noise map; the rest the model, joined)\r\nGAIN_TABLE_HW checked=84 match=84 first_bad=-1 (reconstructed RF/BB/fine tuples against the PHY's AGC memory at boot; checked=0: not checked)\r\nGAIN_REFUSED generation=0 busy=0 control=0 inactive=0 actuator_lock=0 rf_set_gain=0 (writes the core wanted but the PHY did not take, by reason)\r\nDC_FEED rejected_folded=66 (observer windows reaching both rails of an axis: a folding carrier, kept out of the DC servo)\r\nCN_OBSERVER windows=12075 period_us=20000 max_age_us=40000\r\nGAIN owner=keel1 mode=AUTO gain=83 state=1 p50=5 p95=23 coherence=31 env_x100=84 stuck=0 cn_x10=-990 origin_pm=437 clip_pm=0 anchor=0 anchor_valid=0 anchor_returns=0 climbs=0 writes=14 holds=270328 overloads=0 bursts=2 fade_holds=0 damp=0 map_learned=0 learn_refused=6 map_imports=0 preset_imports=0 obs_windows=466602 obs_us_max=1961\r\nPROFILE active=DEFAULT 12MHZ reason=channel_changed measured_this_session_x100=-1 pending=none stored_x100=0 (provisional) measuring=live windows=0 batches=0 rejected_batches=0 observed=0 gated=0 gated_cn=0\r\nPROFILE_GATES no_pairs=0 observed_unlocked=0 amplitude=0 clip=0 gain_not_held=0 cn_missing=0 cn_below=0 last_cn_x10=-990 cn_checked=0 last_span_khz=0 last_freq_mhz=0 min_cn_x10=80\r\nPROFILE monitor period_s=30 collecting=1 next_in_s=0 decisions=0 timeouts=0 last_x100=-1 last_age_s=-1 agree=0 mismatch=0 min_cn_db=8 mode=live_switch pending=none switches=0 switch_fail=0\r\nFILTER loaded active bw=BW40 code=-1 skirt=32 | normal width_khz=13125 nbw_khz=13175 | narrow valid=1 width_khz=11875 nbw_khz=11969 | wide valid=1 width_khz=17500 nbw_khz=17729 | calibrated_nbw_khz=12355\r\nPHY11P want=1 hw_enabled=1 (-1=unsupported; analog profile checked below)\r\nDFILT want=0 hw_mode=0 (-1=unsupported)\r\nFILTER_HW mismatch=0 hw=3c3c333533353335 want=3c3c333533353335\r\nDCO held=1 gains_valid=30 floor_rows=0 missing_rows=0 floor=0 searches=0 carrier_searches=0 hook_holds=18 aborts=0 drift_avg_mcells=130/-148 nudges=488 temp_c=47.9\r\nDCO_BANKS bank1=281/234 bank2=263/222 gain=83 row_codes=245/225 row_valid=1 banned=0\r\nDC_SERVO dc_mcells=130/-148 slope_mcells_per_code=347/250 offset=18/-3 own_row=1 steps=488 writes=488 estimates=843 learned=9 relearned=0 sign_rejects=0 turns=0 forgotten=4 urgent_wakes=3 skip=0/0/0/0/0 fault=0 table_reloads=5 reload_why=3 volatile=1\r\nDC_HEALTH flags=0 writes=0 watch=table:0/0 filter:0/0 drift:0/0 (latched/bad)\r\nDCO tables freq=5805 template_rows=29 seeded_from=0 seeds=0 stored_channels=4/6: 5865 5865 5865 5805\r\nDCO_REPAIR bad_dropped=0 repairs=0 repair_fails=0 borrowed_holds=0 (unconverged rows dropped, searched from a converged neighbour; a missing row holds the nearest converged one's codes)\r\nDCO_BAN unbans=0 (a railing hold is released for 2-32 s, then held again)\r\nDCO_ADOPT rows=0 (template rows taken as own codes after the servo held them on receiver noise)\r\nDCO_CONTEXT table_freq=5805 table_bw20=0 table_code=-1 table_skirt=32 active_freq=5805 active_bw20=0 active_code=-1 active_skirt=32 filter_same=1\r\nSPHASE state=settled excess_mc2=51 limit=300 white_pm=477 dc_mcell=281/37 scans=0 best=-1 worst=-1 contrast=0 rx_div=6 carrier_qualified=0 live_limit=150 carrier_checks=0 carrier_scans=0 moved=0 false_alarms=0 strikes=0\r\nDEMOD selected=U80P64-R1 verified=U80P64-R1 p64_model=U80P64-R1 p64_table_sha256=8027b82680c202738038435ce68eefb0145f58a112da773aefadefca0792482c\r\nTRANSPORT_STAGES_US quiesce=70 bs_enable=18 program_load=559 instruction_verify=148 lut_verify=987 bs_reset=13 bs_start=6 rx_enable=33 tx_enable=22 rx_start=55 tx_start=699 (last restart)\r\nVIDEO_OUTPUT source=LIVE standard=NTSC\r\nOUTPUT level=1.0x boot_restore=saved default=1.0x clipped_lut_entries=0 recovery_errors=0 rollbacks=0 rollback_fail=0 fault_latched=0 live=1\r\nTRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 lut_writes=2048 lut_verify_fail=0 program=U80P64-R1 flag_format=1 switch_wait_ms=0 prog_verify_fail=0\r\nCONTROL_COPY calls=4755 not_ready=0 source_invalid=0 pointer_invalid=0 lapped=0 timed_out=0 max_us=48 max_advance=1\r\nSYNC_LIVE requested=1 active=1 fault=0 starts=3 stops=2 failures=0 boot_default=ON\r\nSYNC_LIVE_DIAG callbacks=26776 symbols=53592 epochs=26806 endings=26776 low=0 h=0 broad=0 h_periods=0 pal32=0 ntsc32=0 broad5=0 broad6=0 prefix_n=3 marker_ticks=335 barrier=2090 elapsed=1654 phase_checked=1 phase_valid=1 phase_lo=1228847044 phase_hi=1228847082 native_valid=0 native_standard=0 fields=0 qualified_epochs=0 rearms=26805 invalidated=0 inverted=1 ambiguous=0\r\nSYNC_LIVE_MODEL valid=0 tracking=0 standard=0 line_ticks_x32=0 last_h=0 field=0 now=1228914938 phase_span_ticks=0 inverted=0 boot_default=ON\r\nSYNC_FLYWHEEL requested=1 active=1 repaired=0 suppressed=0 batches=0 late_ticks=424 missed=364 miss_kind=2 queue_low=0 fault=0 irq_delay_ticks=597 callback_ticks=112 budget_yields=0 miss_phase=0 miss_other=334 miss_observer=30 miss_snapshot=0 miss_update=0 miss_restart=0 miss_reserved=0 guard_yield=0 yielded=0 h_jumps=0 v_jumps=0 trims=0 pll_updates=0 pll_rejected=0 pll_ppb=0 acquired=0 camera_present=0 camera_lines=0 camera_yields=0 h_trusted=0 v_trusted=0 std_switches=0 monitor_lock_proven=0\r\nSYNC_FLYWHEEL_WITNESS observer_fresh=0 sample_age_ticks=4294967295 observer_yields=27 source_yields=447 observer_gaps=0 stale_native=0\r\nSYNC_FLYWHEEL_LOAD active=1 interval_ms=1013 isr_calls=1000099 max_isr_us=9 isr_permille=112 wait_permille=0 suppressed_wait_permille=0 hold_permille=0 measured_not_estimated=1\r\nSTATUS channel=A4 freq=5805 afc_locked=0 standard=AUTO detected=none signal=17 menu=0 mode=DEFAULT 12MHZ demod=U80P64-R1 output=1.0x live=1 busy=0 fw=5.0.0-dev+f9dfbf9-bias\r\n",
+        "ended_utc": "2026-10-24T17:27:52.201425+00:00",
+        "raw_log_sha256": "a84fdf09f56eee208580a5e745f172e93a953b69f8f54644b95f56e6e66521c4"
+      },
+      "capture_statistics": [
+        {
+          "file": "g83_r00.iq",
+          "sha256": "70fd0addc3b9a5452b3661004543c1f9a68a8d148436e4b03f8a2cd0fae841a6",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "9a83ae75",
+            "fw": "5"
+          },
+          "m2": 6.525721024329083,
+          "dc_i_cellcentre": 0.19499389499389497,
+          "dc_q_cellcentre": -0.6978021978021978,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r01.iq",
+          "sha256": "40eadaf6f9d99c45aa494ca9d24a974c4af8c6ac81a9b712d4a7ecee957a4e75",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "f46d16ea",
+            "fw": "5"
+          },
+          "m2": 6.659027910090181,
+          "dc_i_cellcentre": 0.029548229548229554,
+          "dc_q_cellcentre": 0.5467643467643468,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r02.iq",
+          "sha256": "80e8e3e6087c73758aac6ababaaa9231d6391cad8685db30c091131cf42598e4",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "db4656b2",
+            "fw": "5"
+          },
+          "m2": 6.467943455269463,
+          "dc_i_cellcentre": -0.8757020757020757,
+          "dc_q_cellcentre": 0.2847374847374847,
+          "signed_rails": 0.0008547008547008547
+        },
+        {
+          "file": "g83_r03.iq",
+          "sha256": "8df97815badd695b97c36072b69f1b8a34e67312cb249acf45ffd2482dc1971b",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "ede5a552",
+            "fw": "5"
+          },
+          "m2": 6.647151772389868,
+          "dc_i_cellcentre": 0.8550671550671551,
+          "dc_q_cellcentre": 0.0722832722832723,
+          "signed_rails": 0.0003663003663003663
+        },
+        {
+          "file": "g83_r04.iq",
+          "sha256": "ab16dce8a11604eca11a2dcdc9fdae0cb08776ce1cb3321c361c48990ca54cc2",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "c88e4efb",
+            "fw": "5"
+          },
+          "m2": 6.292132801400201,
+          "dc_i_cellcentre": -0.2046398046398047,
+          "dc_q_cellcentre": 0.47802197802197804,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r05.iq",
+          "sha256": "6b88d8e2783ec7b86bdf534700b0ae38f4a36a1842b378f8d17a39c15d1df8ab",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "39c61755",
+            "fw": "5"
+          },
+          "m2": 6.286670095607824,
+          "dc_i_cellcentre": 0.3683760683760684,
+          "dc_q_cellcentre": -0.7915750915750916,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r06.iq",
+          "sha256": "1c9e14c7a1f2404d8c0d9e418acdba53eaa2738fc8357b5e4ffeb575b3df7397",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "083a08dd",
+            "fw": "5"
+          },
+          "m2": 6.209745900551762,
+          "dc_i_cellcentre": -0.34896214896214894,
+          "dc_q_cellcentre": -0.05164835164835169,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r07.iq",
+          "sha256": "abc05baa928e6cb7ddb5807405671ebe19783c74fb04a3c401374e2960889c3c",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "68de84d3",
+            "fw": "5"
+          },
+          "m2": 6.11899540969138,
+          "dc_i_cellcentre": 0.24432234432234434,
+          "dc_q_cellcentre": 0.5383394383394383,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r08.iq",
+          "sha256": "2d05d437af80e9db5387e39186535c263e356c7e1b2db18fbd7cda1541365a42",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "e40bb3f2",
+            "fw": "5"
+          },
+          "m2": 6.5078256040527105,
+          "dc_i_cellcentre": -0.46605616605616607,
+          "dc_q_cellcentre": 0.22832722832722835,
+          "signed_rails": 0.0003663003663003663
+        },
+        {
+          "file": "g83_r09.iq",
+          "sha256": "a4ce4022b371f404d2acf323213d581f01c6d01a4da2bdef936eaad904e55466",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "f8e7d219",
+            "fw": "5"
+          },
+          "m2": 6.439245811846544,
+          "dc_i_cellcentre": -0.23528693528693534,
+          "dc_q_cellcentre": 0.022588522588522564,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r10.iq",
+          "sha256": "cf42113216ce49c01fd25c908936585d60074f4fafea586ed371814bccaf6af9",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "8147d4fb",
+            "fw": "5"
+          },
+          "m2": 6.463171845113237,
+          "dc_i_cellcentre": -0.7203907203907205,
+          "dc_q_cellcentre": 0.19621489621489624,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r11.iq",
+          "sha256": "01e739166ff019a9e605d4e0176a6172de87ed41d9c7e444240ff0a04ed72de6",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "b3e9fa76",
+            "fw": "5"
+          },
+          "m2": 6.371302833647156,
+          "dc_i_cellcentre": 0.39194139194139194,
+          "dc_q_cellcentre": 0.1352869352869353,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r12.iq",
+          "sha256": "9bbba71cc166b920cad61956344b203a499225632237261ee36001ea9dcd6ec1",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "3e70de6e",
+            "fw": "5"
+          },
+          "m2": 6.4955423764947575,
+          "dc_i_cellcentre": 0.058119658119658135,
+          "dc_q_cellcentre": 0.3286935286935287,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r13.iq",
+          "sha256": "f0745d4f332181582ca60df6d05972e0bbc6e9045d4d4470840a8eea747e5bbb",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "bef15e5f",
+            "fw": "5"
+          },
+          "m2": 6.595717699747004,
+          "dc_i_cellcentre": -0.6321123321123321,
+          "dc_q_cellcentre": -0.5273504273504273,
+          "signed_rails": 0.0003663003663003663
+        },
+        {
+          "file": "g83_r14.iq",
+          "sha256": "a1fe1ea8e185df1d7574711330156f579d61c4bca5905cb813e29f3713470954",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "0d29fffc",
+            "fw": "5"
+          },
+          "m2": 6.212162856814872,
+          "dc_i_cellcentre": -1.3703296703296703,
+          "dc_q_cellcentre": 0.39536019536019534,
+          "signed_rails": 0.0006105006105006105
+        },
+        {
+          "file": "g83_r15.iq",
+          "sha256": "829691f55704c196882dfe4faa93db46a62f811f2b56987d954b81f48a407165",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "60fbe8b5",
+            "fw": "5"
+          },
+          "m2": 6.45467926728,
+          "dc_i_cellcentre": 1.2140415140415142,
+          "dc_q_cellcentre": 0.20964590964590962,
+          "signed_rails": 0.0006105006105006105
+        },
+        {
+          "file": "g83_r16.iq",
+          "sha256": "713a199c86c6f1026ce459dafd9bf46aca68df30fbc7b940bdc0ff233b41d4de",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "e7e5ac7b",
+            "fw": "5"
+          },
+          "m2": 6.285880246466327,
+          "dc_i_cellcentre": 0.3007326007326007,
+          "dc_q_cellcentre": -0.6724053724053725,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r17.iq",
+          "sha256": "7cb8895971e06611885c5f5900625e36b4104841919e59077f94b60fe7441b46",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "cde86512",
+            "fw": "5"
+          },
+          "m2": 6.399162458759528,
+          "dc_i_cellcentre": 0.42185592185592186,
+          "dc_q_cellcentre": -0.3054945054945055,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r18.iq",
+          "sha256": "79d40c0b66d24fa62bf3785d018a15a2fb3cb2eea9e8bdd91ab47eaa7d795cdc",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "c75ebda0",
+            "fw": "5"
+          },
+          "m2": 6.233733833660573,
+          "dc_i_cellcentre": 1.0671550671550671,
+          "dc_q_cellcentre": -0.37435897435897436,
+          "signed_rails": 0.0007326007326007326
+        },
+        {
+          "file": "g83_r19.iq",
+          "sha256": "ccd6883b8d3f91fe9b2e6741d3e0f01f74b5e6e1a34862d3607165bb7746a224",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "93131396",
+            "fw": "5"
+          },
+          "m2": 6.346051097186628,
+          "dc_i_cellcentre": 0.4073260073260073,
+          "dc_q_cellcentre": -0.6576312576312577,
+          "signed_rails": 0.0004884004884004884
+        },
+        {
+          "file": "g83_r20.iq",
+          "sha256": "de91076a6096097825335227b829e384787b3e5a2f382df77ad54f3236b90097",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "e5fd0c28",
+            "fw": "5"
+          },
+          "m2": 6.393288950907999,
+          "dc_i_cellcentre": 0.9102564102564102,
+          "dc_q_cellcentre": 0.14236874236874236,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r21.iq",
+          "sha256": "d552ed6aa7b1613c48ebd4dbc16a4d9cb7a9a1960e6099200e81441c71728fa5",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "fd7402e9",
+            "fw": "5"
+          },
+          "m2": 6.414278468783963,
+          "dc_i_cellcentre": -0.009890109890109855,
+          "dc_q_cellcentre": 0.43772893772893773,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r22.iq",
+          "sha256": "6c72a505da0029df9155e22e40082c40dad618df4584eb08ffaa4c17a9a83e4d",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "b2f763d6",
+            "fw": "5"
+          },
+          "m2": 6.35507732262311,
+          "dc_i_cellcentre": -0.07057387057387055,
+          "dc_q_cellcentre": 0.25006105006105006,
+          "signed_rails": 0.0006105006105006105
+        },
+        {
+          "file": "g83_r23.iq",
+          "sha256": "3dd8ae22c1ac416ef125d8ee65b4c1662275cc57f59b8f6acee40edc59ec2462",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "211c2790",
+            "fw": "5"
+          },
+          "m2": 6.194434768867003,
+          "dc_i_cellcentre": -0.0146520146520146,
+          "dc_q_cellcentre": -0.41001221001221,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r24.iq",
+          "sha256": "ab2ad04d444e4eea5601b9105dde7251ca54143b5bebfaf40dcf91db39ea0846",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "1d7dbab0",
+            "fw": "5"
+          },
+          "m2": 6.26511560749656,
+          "dc_i_cellcentre": 1.095848595848596,
+          "dc_q_cellcentre": -0.4173382173382173,
+          "signed_rails": 0.0007326007326007326
+        },
+        {
+          "file": "g83_r25.iq",
+          "sha256": "d90d52807a8a8545e05eda38301104f4ac21b17831475c44ad46c3488c07b373",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "1b03445e",
+            "fw": "5"
+          },
+          "m2": 6.3225693950602375,
+          "dc_i_cellcentre": 0.958119658119658,
+          "dc_q_cellcentre": -0.5277167277167276,
+          "signed_rails": 0.0006105006105006105
+        },
+        {
+          "file": "g83_r26.iq",
+          "sha256": "045812557bb78e989ca081b93683af8ec1d1b8818d2980e2b865648c1949b310",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "1219fbf5",
+            "fw": "5"
+          },
+          "m2": 6.357372536566676,
+          "dc_i_cellcentre": -0.5844932844932844,
+          "dc_q_cellcentre": -0.004273504273504258,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r27.iq",
+          "sha256": "7bf01c3f2184e7fedfec7071ca173d30df30217cddd53b5577a3d5a2b3031f1d",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "c4d50f20",
+            "fw": "5"
+          },
+          "m2": 6.256461451992588,
+          "dc_i_cellcentre": -0.1562881562881563,
+          "dc_q_cellcentre": 0.008058608058608085,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r28.iq",
+          "sha256": "ec947cfd37cf974d80f0c4e729ebadc3bd7e380c65d9d5eb86f6d70a71a1ed25",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "f1c974aa",
+            "fw": "5"
+          },
+          "m2": 6.409028402068695,
+          "dc_i_cellcentre": -0.6993894993894993,
+          "dc_q_cellcentre": -0.2766788766788767,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r29.iq",
+          "sha256": "c3ee3a7ec12e0c7f7fb0f85195cba13945e50462aec31f4987494739c9c991da",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "77592fcd",
+            "fw": "5"
+          },
+          "m2": 6.355362342175529,
+          "dc_i_cellcentre": 1.1688644688644687,
+          "dc_q_cellcentre": -0.29047619047619044,
+          "signed_rails": 0.0004884004884004884
+        },
+        {
+          "file": "g83_r30.iq",
+          "sha256": "f55c16eaf1c851647bb77d82030e3fb2f09992a67f1d9cc865c94d783052f158",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "7b60ca6b",
+            "fw": "5"
+          },
+          "m2": 6.241734686423332,
+          "dc_i_cellcentre": -0.5852258852258851,
+          "dc_q_cellcentre": -0.005006105006104988,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r31.iq",
+          "sha256": "9da472261f3d9f43e9bae90e7fa3e7d3ee101ee80e4628d53e853e846c5703b8",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5805",
+            "fnv1a": "83d63040",
+            "fw": "5"
+          },
+          "m2": 6.480239161191543,
+          "dc_i_cellcentre": -0.49792429792429793,
+          "dc_q_cellcentre": -0.3008547008547009,
+          "signed_rails": 0.0002442002442002442
+        }
+      ],
+      "manifest_sha256": "e2679da1c50fdde23ea79102a2ea4e40f5afa9598673158cac7500754af8a598"
+    },
+    {
+      "name": "live_5865_g83",
+      "manifest": {
+        "started_utc": "2026-10-24T17:24:11.483689+00:00",
+        "captures": [
+          {
+            "file": "g83_r00.iq",
+            "sha256": "1efdffd7b875dac12e6c695c3e9d5215553048475a61c0b12aaa690327bc9673",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "7d983c97",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r01.iq",
+            "sha256": "99c0a2e6cbfd37375fc9a76516012c4d15b2a3e25ae6188dcae1db3071f53684",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "b083e241",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r02.iq",
+            "sha256": "3141e9b9556c5f3212c4e665899313223c935c5bb85576bff7f0d692f8bd4825",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "faec1536",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r03.iq",
+            "sha256": "93438972bf874dd076d050c92084c594ab42e2c744a17edcfcde121350331977",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "289f0d9e",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r04.iq",
+            "sha256": "6da42163b909c01830073b1d6da792544f8d55b9e346dac42e5e8a4fd4ab502b",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "c3745371",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r05.iq",
+            "sha256": "5036017f0f6895e0f304766cf4ad4a8cef937a7c14608cf9cf5e8dbff7b4a18f",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "b01ac01f",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r06.iq",
+            "sha256": "42df6b0b49df09dc4f7dbfbce2e2f8d7097b0dcea58e6a61564fab3a4d0505d6",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "f05e6e56",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r07.iq",
+            "sha256": "bec14d29430b95bc83402f9861d21bd3e1f8538a3ef94fadbaa2ff75d3b413dc",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "d9227b59",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r08.iq",
+            "sha256": "36054c00d93d4ef64a2d278ecd78b57bb113fa1173b59776eeffd93651809ba8",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "49446b41",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r09.iq",
+            "sha256": "dc8ae527da8f46fc127499195dd7ae3436054663f95414af1bba9bd7a286bbfe",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "0d23a5cc",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r10.iq",
+            "sha256": "64bb1c14043b01f547fefd424e07cc0f6d63f7d78901c76e811d3c20c9aa1741",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "49af4613",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r11.iq",
+            "sha256": "884613ab56f0008754eaa60c75b78adc18f672cb0d9cae2da33bb86ff0b0ba7a",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "61cca5ea",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r12.iq",
+            "sha256": "354a68f6a77a4cc025f20ad5f01acabb2a0a9f5092b39a415614aac5874ca98e",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "640d30dc",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r13.iq",
+            "sha256": "e95f73423a6877d1d6cfb1226134847134734049065366c83843eb92503e0e5b",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "edde44fb",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r14.iq",
+            "sha256": "4ec320f3c903bf48a4d46afe5497e10bc11b770c94e7be51fe66caacb6c67e66",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "b16a1673",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r15.iq",
+            "sha256": "336eb0d19c17a9785b930997bb5d7cef7210c71297ac88e94e0353b25e681134",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "a597206d",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r16.iq",
+            "sha256": "83dff82bdb63ce68d74dfc33ae53cce163f2f90cad6c47e4da776433444af716",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "60b2fe57",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r17.iq",
+            "sha256": "679e7c6fa41261aa3d18c8aec5ee120dc6f1b07b8ebefbf2f868505990635141",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "e4212631",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r18.iq",
+            "sha256": "43c4cfe654bda1d953378fa43e20ff6fc398623b28ba935d5015b8f844463adf",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "c1bb8706",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r19.iq",
+            "sha256": "62257149c8c2eb21d3e012b950ec93d3ea5ec5b32e40d0a7d071f15a89fe8bb7",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "8cce364e",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r20.iq",
+            "sha256": "f607ba6e5c60c8259d5583005828587ee982458edf30206feec481c00a2be9b9",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "5d3f198e",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r21.iq",
+            "sha256": "58fe2588c92af16b6f9506e0d20c72283f78ef998aee47169fa23508e33e4388",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "f766cd4a",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r22.iq",
+            "sha256": "e35ad4fd69e8f6973869592a7a6ea314aa19050124592a10fe3100c22c7806ce",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "ce470985",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r23.iq",
+            "sha256": "a5049f06cb3a4c22e50d63127579dae38d6f1f3102d5af294fa65468c2f8cb93",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "d2080ccb",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r24.iq",
+            "sha256": "83fab15f01074774c2487f1dad698bdb950eb435343a8d22b97e309d83a5cc1b",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "97efab7f",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r25.iq",
+            "sha256": "f4174b48ae3b7ed6f57d0fc473a8b56aa0f6cd6c5827a394657535e3fbe9faf3",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "f6e51e51",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r26.iq",
+            "sha256": "0388456b8cb6741da60c5373e03f971faa063cc0f389f0b2e96ed1eca9624c40",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "57636d0c",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r27.iq",
+            "sha256": "8f930ab3d14beca0de39253e21477e9673643ae9d06591b9fa7cfcdcb12b5c94",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "3efb83ce",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r28.iq",
+            "sha256": "b16ae0d1ce76f65f258107665596596616e7fb54f469544bb28ba4f7213b569f",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "5f4d3eac",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r29.iq",
+            "sha256": "02871999fb342fdbe65f7b26fc1170495c0deed6a2da3383c34988dec5a10ad2",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "94b04ba5",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r30.iq",
+            "sha256": "4a336ab01f332947de9d22b75118121ed50dca87c7ff7b5ab608fe70d75c6865",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "cd2fa84c",
+              "fw": "5"
+            }
+          },
+          {
+            "file": "g83_r31.iq",
+            "sha256": "05a7654ca7065e2e157e6774c2dc3c54812a07323cf0917c6bcbeb34387f9047",
+            "metadata": {
+              "bytes": "8190",
+              "rate_hz": "40000000",
+              "format": "Ihigh_Qlow",
+              "gain": "83",
+              "lane": "2",
+              "freq_mhz": "5865",
+              "fnv1a": "9ce31bf8",
+              "fw": "5"
+            }
+          }
+        ],
+        "rejected": [
+          {
+            "gain": 83,
+            "rep": 30,
+            "attempt": 0,
+            "reason": "IQSNAP_REFUSED stale_or_settling"
+          }
+        ],
+        "gain83_status": "FIRMWARE id=5.0.0-dev+f9dfbf9-bias version=5.0.0-dev commit=f9dfbf9-bias1 elf_sha256=36a7af3dd built=\"Oct 24 2026 11:41:15\" idf=v6.0.2\r\nC5VRX5 version=5.0.0-dev demod=U80P64-R1 lane=ultrafine gain_owner=keel1 uptime_s=47 heap_internal=17292 heap_largest=15360 heap_dma=15512 heap_dma_largest=15360 heap_lp=1780 fw=5.0.0-dev+f9dfbf9-bias\r\nAFC_EVIDENCE latest_valid=0 context_current=1 qualified_gain_current=0 sticky_lock=0 target_khz=-1000 last_qualified_raw_porch_khz=0 last_qualified_residual_khz=0 qualified_age_ms=-1 sample_age_ms=5 n=0 timestamped=0 stable=0 median_residual_khz=0 mad_khz=0 oldest_age_ms=-1 newest_age_ms=-1 cn_x10=-990 window=nonstationary held=window reference=porch_not_rf_truth\r\nCONTROL channel=A1 freq=5865 offset_khz=0 cfo_khz=0 afc_locked=0 afc_corrections=0 afc_weak_skips=0 afc_sign=+1(confirmed) standard=AUTO detected=none signal=17 menu=0 deviation_x100=69 mode=DEFAULT 12MHZ demod=U80P64-R1 busy=0\r\nVIDEO_Q known=0 snr_x10=0 lines_x100=0 lines=0 windows=0 periods=35 (end-to-end: sync/porch spread of the demodulated video, last second)\r\nRX_LEVEL carrier_dbm=-95.8 input_dbm=-95.8 noise_dbm=-95.8 noise_learned=1 cn_db=-99.0 above_noise=0 exact=1 gains=83-83 probes=1892 clipped_pm=0 (at the chip pin; calibrated against the Wi-Fi PHY RSSI: +-1 dB at G54-G83, a few dB below G54; free space for 25 mW, 2 dBi each side, 10 m at 5.8 GHz is ~-50 dBm)\r\nGAIN_SAT one_sided=50 two_sided=0 to_dc_servo=50 (saturated observer windows: one rail per axis = DC-pushed, both = large signal; one-sided ones go to the DC servo, not the gain)\r\nGAIN_WRITES attack=0 release=3 refused=0 rebinds=6 overloads=0 overloads_after_write=0 heat_events=0 sentinel_forwarded=0 sentinel_dropped=370 (why the gain moved; rebinds keep the core's memory on the same receiver; sentinel = 64-sample fast path, gross saturation only)\r\nCN_AUTO estimate_x10=-990 control_x10=-990 power_x10=-87 m2m4_x10=-170 confidence=0 source=1 flags=0x80 noise_cells2=6.092 rows_with_noise=30 learned=69 absent_rejects=5 estimates=1211 nbw_khz=13175 (self-calibrating C/N, cn_auto.h)\r\nGAIN_TABLE measured_rows=12 g83_g72_db=10.64 (top rows from the receiver-noise map; the rest the model, joined)\r\nGAIN_TABLE_HW checked=84 match=84 first_bad=-1 (reconstructed RF/BB/fine tuples against the PHY's AGC memory at boot; checked=0: not checked)\r\nGAIN_REFUSED generation=0 busy=0 control=0 inactive=0 actuator_lock=0 rf_set_gain=0 (writes the core wanted but the PHY did not take, by reason)\r\nDC_FEED rejected_folded=1 (observer windows reaching both rails of an axis: a folding carrier, kept out of the DC servo)\r\nCN_OBSERVER windows=1729 period_us=20000 max_age_us=40000\r\nGAIN owner=manual mode=MAX gain=83 state=1 p50=5 p95=19 coherence=28 env_x100=96 stuck=0 cn_x10=-990 origin_pm=488 clip_pm=0 anchor=0 anchor_valid=0 anchor_returns=0 climbs=0 writes=3 holds=75812 overloads=0 bursts=0 fade_holds=0 damp=0 map_learned=0 learn_refused=0 map_imports=0 preset_imports=0 obs_windows=77771 obs_us_max=1805\r\nPROFILE active=DEFAULT 12MHZ reason=no_video_at_startup measured_this_session_x100=-1 pending=none stored_x100=69 (provisional) measuring=live windows=0 batches=0 rejected_batches=0 observed=0 gated=0 gated_cn=0\r\nPROFILE_GATES no_pairs=0 observed_unlocked=0 amplitude=0 clip=0 gain_not_held=0 cn_missing=0 cn_below=0 last_cn_x10=-990 cn_checked=0 last_span_khz=0 last_freq_mhz=0 min_cn_x10=80\r\nPROFILE monitor period_s=30 collecting=1 next_in_s=0 decisions=0 timeouts=0 last_x100=-1 last_age_s=-1 agree=0 mismatch=0 min_cn_db=8 mode=live_switch pending=none switches=0 switch_fail=0\r\nFILTER loaded active bw=BW40 code=-1 skirt=32 | normal width_khz=13125 nbw_khz=13175 | narrow valid=1 width_khz=11875 nbw_khz=11969 | wide valid=1 width_khz=17500 nbw_khz=17729 | calibrated_nbw_khz=12355\r\nPHY11P want=1 hw_enabled=1 (-1=unsupported; analog profile checked below)\r\nDFILT want=0 hw_mode=0 (-1=unsupported)\r\nFILTER_HW mismatch=0 hw=3c3c333533353335 want=3c3c333533353335\r\nDCO held=1 gains_valid=30 floor_rows=0 missing_rows=0 floor=0 searches=0 carrier_searches=0 hook_holds=5 aborts=0 drift_avg_mcells=-925/418 nudges=28 temp_c=46.9\r\nDCO_BANKS bank1=278/229 bank2=245/228 gain=83 row_codes=232/230 row_valid=1 banned=0\r\nDC_SERVO dc_mcells=-925/418 slope_mcells_per_code=216/203 offset=13/-2 own_row=1 steps=28 writes=28 estimates=43 learned=3 relearned=0 sign_rejects=0 turns=0 forgotten=1 urgent_wakes=1 skip=0/0/0/0/0 fault=0 table_reloads=4 reload_why=2 volatile=1\r\nDC_HEALTH flags=0 writes=0 watch=table:0/0 filter:0/0 drift:0/0 (latched/bad)\r\nDCO tables freq=5865 template_rows=0 seeded_from=0 seeds=0 stored_channels=4/6: 5865 5865 5865 5805\r\nDCO_REPAIR bad_dropped=0 repairs=0 repair_fails=0 borrowed_holds=0 (unconverged rows dropped, searched from a converged neighbour; a missing row holds the nearest converged one's codes)\r\nDCO_BAN unbans=0 (a railing hold is released for 2-32 s, then held again)\r\nDCO_ADOPT rows=0 (template rows taken as own codes after the servo held them on receiver noise)\r\nDCO_CONTEXT table_freq=5865 table_bw20=0 table_code=-1 table_skirt=32 active_freq=5865 active_bw20=0 active_code=-1 active_skirt=32 filter_same=1\r\nSPHASE state=settled excess_mc2=45 limit=300 white_pm=484 dc_mcell=-156/280 scans=0 best=-1 worst=-1 contrast=0 rx_div=6 carrier_qualified=0 live_limit=150 carrier_checks=0 carrier_scans=0 moved=0 false_alarms=0 strikes=0\r\nDEMOD selected=U80P64-R1 verified=U80P64-R1 p64_model=U80P64-R1 p64_table_sha256=8027b82680c202738038435ce68eefb0145f58a112da773aefadefca0792482c\r\nTRANSPORT_STAGES_US quiesce=70 bs_enable=18 program_load=559 instruction_verify=148 lut_verify=987 bs_reset=13 bs_start=6 rx_enable=33 tx_enable=22 rx_start=55 tx_start=699 (last restart)\r\nVIDEO_OUTPUT source=LIVE standard=NTSC\r\nOUTPUT level=1.0x boot_restore=saved default=1.0x clipped_lut_entries=0 recovery_errors=0 rollbacks=0 rollback_fail=0 fault_latched=0 live=1\r\nTRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 lut_writes=2048 lut_verify_fail=0 program=U80P64-R1 flag_format=1 switch_wait_ms=0 prog_verify_fail=0\r\nCONTROL_COPY calls=706 not_ready=0 source_invalid=0 pointer_invalid=0 lapped=0 timed_out=0 max_us=47 max_advance=1\r\nSYNC_LIVE requested=1 active=1 fault=0 starts=2 stops=1 failures=0 boot_default=ON\r\nSYNC_LIVE_DIAG callbacks=4857 symbols=9722 epochs=4867 endings=4857 low=0 h=0 broad=0 h_periods=0 pal32=0 ntsc32=0 broad5=0 broad6=0 prefix_n=0 marker_ticks=0 barrier=1906 elapsed=0 phase_checked=1 phase_valid=1 phase_lo=222105679 phase_hi=222105717 native_valid=0 native_standard=0 fields=0 qualified_epochs=0 rearms=4866 invalidated=0 inverted=1 ambiguous=0\r\nSYNC_LIVE_MODEL valid=0 tracking=0 standard=0 line_ticks_x32=0 last_h=0 field=0 now=222153668 phase_span_ticks=0 inverted=0 boot_default=ON\r\nSYNC_FLYWHEEL requested=1 active=1 repaired=0 suppressed=0 batches=0 late_ticks=251 missed=69 miss_kind=2 queue_low=0 fault=0 irq_delay_ticks=427 callback_ticks=112 budget_yields=0 miss_phase=0 miss_other=59 miss_observer=10 miss_snapshot=0 miss_update=0 miss_restart=0 miss_reserved=0 guard_yield=0 yielded=0 h_jumps=0 v_jumps=0 trims=0 pll_updates=0 pll_rejected=0 pll_ppb=0 acquired=0 camera_present=0 camera_lines=0 camera_yields=0 h_trusted=0 v_trusted=0 std_switches=0 monitor_lock_proven=0\r\nSYNC_FLYWHEEL_WITNESS observer_fresh=0 sample_age_ticks=4294967295 observer_yields=7 source_yields=136 observer_gaps=0 stale_native=0\r\nSYNC_FLYWHEEL_LOAD active=1 interval_ms=2000 isr_calls=180869 max_isr_us=9 isr_permille=114 wait_permille=0 suppressed_wait_permille=0 hold_permille=0 measured_not_estimated=1\r\nSTATUS channel=A1 freq=5865 afc_locked=0 standard=AUTO detected=none signal=17 menu=0 mode=DEFAULT 12MHZ demod=U80P64-R1 output=1.0x live=1 busy=0 fw=5.0.0-dev+f9dfbf9-bias\r\n",
+        "final_status": "FIRMWARE id=5.0.0-dev+f9dfbf9-bias version=5.0.0-dev commit=f9dfbf9-bias1 elf_sha256=36a7af3dd built=\"Oct 24 2026 11:41:15\" idf=v6.0.2\r\nC5VRX5 version=5.0.0-dev demod=U80P64-R1 lane=ultrafine gain_owner=keel1 uptime_s=97 heap_internal=17292 heap_largest=15360 heap_dma=15512 heap_dma_largest=15360 heap_lp=1780 fw=5.0.0-dev+f9dfbf9-bias\r\nAFC_EVIDENCE latest_valid=0 context_current=1 qualified_gain_current=0 sticky_lock=0 target_khz=-1000 last_qualified_raw_porch_khz=0 last_qualified_residual_khz=0 qualified_age_ms=-1 sample_age_ms=20 n=0 timestamped=0 stable=0 median_residual_khz=0 mad_khz=0 oldest_age_ms=-1 newest_age_ms=-1 cn_x10=-990 window=nonstationary held=window reference=porch_not_rf_truth\r\nCONTROL channel=A1 freq=5865 offset_khz=0 cfo_khz=0 afc_locked=0 afc_corrections=0 afc_weak_skips=0 afc_sign=+1(confirmed) standard=AUTO detected=none signal=16 menu=0 deviation_x100=69 mode=DEFAULT 12MHZ demod=U80P64-R1 busy=0\r\nVIDEO_Q known=1 snr_x10=0 lines_x100=0 lines=0 windows=5 periods=84 (end-to-end: sync/porch spread of the demodulated video, last second)\r\nRX_LEVEL carrier_dbm=-95.8 input_dbm=-95.8 noise_dbm=-95.8 noise_learned=1 cn_db=-99.0 above_noise=0 exact=1 gains=74-83 probes=1608 clipped_pm=0 (at the chip pin; calibrated against the Wi-Fi PHY RSSI: +-1 dB at G54-G83, a few dB below G54; free space for 25 mW, 2 dBi each side, 10 m at 5.8 GHz is ~-50 dBm)\r\nGAIN_SAT one_sided=50 two_sided=0 to_dc_servo=50 (saturated observer windows: one rail per axis = DC-pushed, both = large signal; one-sided ones go to the DC servo, not the gain)\r\nGAIN_WRITES attack=0 release=9 refused=0 rebinds=6 overloads=0 overloads_after_write=0 heat_events=0 sentinel_forwarded=0 sentinel_dropped=370 (why the gain moved; rebinds keep the core's memory on the same receiver; sentinel = 64-sample fast path, gross saturation only)\r\nCN_AUTO estimate_x10=-990 control_x10=-990 power_x10=-104 m2m4_x10=-69 confidence=0 source=1 flags=0x80 noise_cells2=6.062 rows_with_noise=30 learned=161 absent_rejects=5 estimates=2686 nbw_khz=13175 (self-calibrating C/N, cn_auto.h)\r\nGAIN_TABLE measured_rows=12 g83_g72_db=10.64 (top rows from the receiver-noise map; the rest the model, joined)\r\nGAIN_TABLE_HW checked=84 match=84 first_bad=-1 (reconstructed RF/BB/fine tuples against the PHY's AGC memory at boot; checked=0: not checked)\r\nGAIN_REFUSED generation=0 busy=0 control=0 inactive=0 actuator_lock=0 rf_set_gain=0 (writes the core wanted but the PHY did not take, by reason)\r\nDC_FEED rejected_folded=6 (observer windows reaching both rails of an axis: a folding carrier, kept out of the DC servo)\r\nCN_OBSERVER windows=4214 period_us=20000 max_age_us=40000\r\nGAIN owner=keel1 mode=AUTO gain=83 state=1 p50=7 p95=27 coherence=44 env_x100=99 stuck=0 cn_x10=-990 origin_pm=343 clip_pm=0 anchor=0 anchor_valid=0 anchor_returns=0 climbs=0 writes=9 holds=77536 overloads=0 bursts=0 fade_holds=0 damp=0 map_learned=0 learn_refused=7 map_imports=0 preset_imports=0 obs_windows=172499 obs_us_max=1954\r\nPROFILE active=DEFAULT 12MHZ reason=no_video_at_startup measured_this_session_x100=-1 pending=none stored_x100=69 (provisional) measuring=live windows=0 batches=0 rejected_batches=0 observed=0 gated=0 gated_cn=0\r\nPROFILE_GATES no_pairs=0 observed_unlocked=0 amplitude=0 clip=0 gain_not_held=0 cn_missing=0 cn_below=0 last_cn_x10=-990 cn_checked=0 last_span_khz=0 last_freq_mhz=0 min_cn_x10=80\r\nPROFILE monitor period_s=30 collecting=1 next_in_s=0 decisions=0 timeouts=0 last_x100=-1 last_age_s=-1 agree=0 mismatch=0 min_cn_db=8 mode=live_switch pending=none switches=0 switch_fail=0\r\nFILTER loaded active bw=BW40 code=-1 skirt=32 | normal width_khz=13125 nbw_khz=13175 | narrow valid=1 width_khz=11875 nbw_khz=11969 | wide valid=1 width_khz=17500 nbw_khz=17729 | calibrated_nbw_khz=12355\r\nPHY11P want=1 hw_enabled=1 (-1=unsupported; analog profile checked below)\r\nDFILT want=0 hw_mode=0 (-1=unsupported)\r\nFILTER_HW mismatch=0 hw=3c3c333533353335 want=3c3c333533353335\r\nDCO held=1 gains_valid=30 floor_rows=0 missing_rows=0 floor=0 searches=0 carrier_searches=0 hook_holds=11 aborts=0 drift_avg_mcells=-11/200 nudges=141 temp_c=47.9\r\nDCO_BANKS bank1=278/229 bank2=245/227 gain=83 row_codes=232/230 row_valid=1 banned=0\r\nDC_SERVO dc_mcells=-11/200 slope_mcells_per_code=253/203 offset=13/-3 own_row=1 steps=141 writes=141 estimates=235 learned=5 relearned=0 sign_rejects=0 turns=0 forgotten=1 urgent_wakes=1 skip=0/0/0/0/0 fault=0 table_reloads=4 reload_why=2 volatile=1\r\nDC_HEALTH flags=0 writes=0 watch=table:0/0 filter:0/0 drift:0/0 (latched/bad)\r\nDCO tables freq=5865 template_rows=0 seeded_from=0 seeds=0 stored_channels=4/6: 5865 5865 5865 5805\r\nDCO_REPAIR bad_dropped=0 repairs=0 repair_fails=0 borrowed_holds=0 (unconverged rows dropped, searched from a converged neighbour; a missing row holds the nearest converged one's codes)\r\nDCO_BAN unbans=0 (a railing hold is released for 2-32 s, then held again)\r\nDCO_ADOPT rows=0 (template rows taken as own codes after the servo held them on receiver noise)\r\nDCO_CONTEXT table_freq=5865 table_bw20=0 table_code=-1 table_skirt=32 active_freq=5865 active_bw20=0 active_code=-1 active_skirt=32 filter_same=1\r\nSPHASE state=settled excess_mc2=45 limit=300 white_pm=488 dc_mcell=-77/375 scans=0 best=-1 worst=-1 contrast=0 rx_div=6 carrier_qualified=0 live_limit=150 carrier_checks=0 carrier_scans=0 moved=0 false_alarms=0 strikes=0\r\nDEMOD selected=U80P64-R1 verified=U80P64-R1 p64_model=U80P64-R1 p64_table_sha256=8027b82680c202738038435ce68eefb0145f58a112da773aefadefca0792482c\r\nTRANSPORT_STAGES_US quiesce=70 bs_enable=18 program_load=559 instruction_verify=148 lut_verify=987 bs_reset=13 bs_start=6 rx_enable=33 tx_enable=22 rx_start=55 tx_start=699 (last restart)\r\nVIDEO_OUTPUT source=LIVE standard=NTSC\r\nOUTPUT level=1.0x boot_restore=saved default=1.0x clipped_lut_entries=0 recovery_errors=0 rollbacks=0 rollback_fail=0 fault_latched=0 live=1\r\nTRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 lut_writes=2048 lut_verify_fail=0 program=U80P64-R1 flag_format=1 switch_wait_ms=0 prog_verify_fail=0\r\nCONTROL_COPY calls=1676 not_ready=0 source_invalid=0 pointer_invalid=0 lapped=0 timed_out=0 max_us=47 max_advance=1\r\nSYNC_LIVE requested=1 active=1 fault=0 starts=2 stops=1 failures=0 boot_default=ON\r\nSYNC_LIVE_DIAG callbacks=26337 symbols=52705 epochs=26388 endings=26337 low=0 h=0 broad=0 h_periods=0 pal32=0 ntsc32=0 broad5=0 broad6=0 prefix_n=3 marker_ticks=343 barrier=2152 elapsed=1529 phase_checked=1 phase_valid=1 phase_lo=1212105726 phase_hi=1212105777 native_valid=0 native_standard=0 fields=0 qualified_epochs=0 rearms=26387 invalidated=0 inverted=1 ambiguous=0\r\nSYNC_LIVE_MODEL valid=0 tracking=0 standard=0 line_ticks_x32=0 last_h=0 field=0 now=1212181427 phase_span_ticks=0 inverted=0 boot_default=ON\r\nSYNC_FLYWHEEL requested=1 active=1 repaired=0 suppressed=0 batches=0 late_ticks=401 missed=351 miss_kind=2 queue_low=0 fault=0 irq_delay_ticks=576 callback_ticks=112 budget_yields=0 miss_phase=0 miss_other=313 miss_observer=38 miss_snapshot=0 miss_update=0 miss_restart=0 miss_reserved=0 guard_yield=0 yielded=0 h_jumps=0 v_jumps=0 trims=0 pll_updates=0 pll_rejected=0 pll_ppb=0 acquired=0 camera_present=0 camera_lines=0 camera_yields=0 h_trusted=0 v_trusted=0 std_switches=0 monitor_lock_proven=0\r\nSYNC_FLYWHEEL_WITNESS observer_fresh=0 sample_age_ticks=4294967295 observer_yields=35 source_yields=535 observer_gaps=0 stale_native=0\r\nSYNC_FLYWHEEL_LOAD active=1 interval_ms=2080 isr_calls=986513 max_isr_us=9 isr_permille=113 wait_permille=0 suppressed_wait_permille=0 hold_permille=0 measured_not_estimated=1\r\n",
+        "cleanup_status": "FIRMWARE id=5.0.0-dev+f9dfbf9-bias version=5.0.0-dev commit=f9dfbf9-bias1 elf_sha256=36a7af3dd built=\"Oct 24 2026 11:41:15\" idf=v6.0.2\r\nC5VRX5 version=5.0.0-dev demod=U80P64-R1 lane=ultrafine gain_owner=keel1 uptime_s=99 heap_internal=17292 heap_largest=15360 heap_dma=15512 heap_dma_largest=15360 heap_lp=1780 fw=5.0.0-dev+f9dfbf9-bias\r\nAFC_EVIDENCE latest_valid=0 context_current=1 qualified_gain_current=0 sticky_lock=0 target_khz=-1000 last_qualified_raw_porch_khz=0 last_qualified_residual_khz=0 qualified_age_ms=-1 sample_age_ms=17 n=0 timestamped=0 stable=0 median_residual_khz=0 mad_khz=0 oldest_age_ms=-1 newest_age_ms=-1 cn_x10=-990 window=nonstationary held=window reference=porch_not_rf_truth\r\nCONTROL channel=A1 freq=5865 offset_khz=0 cfo_khz=0 afc_locked=0 afc_corrections=0 afc_weak_skips=0 afc_sign=+1(confirmed) standard=AUTO detected=none signal=17 menu=0 deviation_x100=69 mode=DEFAULT 12MHZ demod=U80P64-R1 busy=0\r\nVIDEO_Q known=0 snr_x10=0 lines_x100=0 lines=0 windows=4 periods=86 (end-to-end: sync/porch spread of the demodulated video, last second)\r\nRX_LEVEL carrier_dbm=-95.8 input_dbm=-95.8 noise_dbm=-95.8 noise_learned=1 cn_db=-99.0 above_noise=0 exact=1 gains=83-83 probes=1948 clipped_pm=0 (at the chip pin; calibrated against the Wi-Fi PHY RSSI: +-1 dB at G54-G83, a few dB below G54; free space for 25 mW, 2 dBi each side, 10 m at 5.8 GHz is ~-50 dBm)\r\nGAIN_SAT one_sided=50 two_sided=0 to_dc_servo=50 (saturated observer windows: one rail per axis = DC-pushed, both = large signal; one-sided ones go to the DC servo, not the gain)\r\nGAIN_WRITES attack=0 release=9 refused=0 rebinds=6 overloads=0 overloads_after_write=0 heat_events=0 sentinel_forwarded=0 sentinel_dropped=370 (why the gain moved; rebinds keep the core's memory on the same receiver; sentinel = 64-sample fast path, gross saturation only)\r\nCN_AUTO estimate_x10=-990 control_x10=-990 power_x10=-162 m2m4_x10=-170 confidence=0 source=1 flags=0x80 noise_cells2=6.057 rows_with_noise=30 learned=164 absent_rejects=5 estimates=2744 nbw_khz=13175 (self-calibrating C/N, cn_auto.h)\r\nGAIN_TABLE measured_rows=12 g83_g72_db=10.64 (top rows from the receiver-noise map; the rest the model, joined)\r\nGAIN_TABLE_HW checked=84 match=84 first_bad=-1 (reconstructed RF/BB/fine tuples against the PHY's AGC memory at boot; checked=0: not checked)\r\nGAIN_REFUSED generation=0 busy=0 control=0 inactive=0 actuator_lock=0 rf_set_gain=0 (writes the core wanted but the PHY did not take, by reason)\r\nDC_FEED rejected_folded=7 (observer windows reaching both rails of an axis: a folding carrier, kept out of the DC servo)\r\nCN_OBSERVER windows=4315 period_us=20000 max_age_us=40000\r\nGAIN owner=keel1 mode=AUTO gain=83 state=1 p50=7 p95=21 coherence=36 env_x100=103 stuck=0 cn_x10=-990 origin_pm=343 clip_pm=0 anchor=0 anchor_valid=0 anchor_returns=0 climbs=0 writes=9 holds=81262 overloads=0 bursts=0 fade_holds=0 damp=0 map_learned=0 learn_refused=7 map_imports=0 preset_imports=0 obs_windows=176225 obs_us_max=1954\r\nPROFILE active=DEFAULT 12MHZ reason=no_video_at_startup measured_this_session_x100=-1 pending=none stored_x100=69 (provisional) measuring=live windows=0 batches=0 rejected_batches=0 observed=0 gated=0 gated_cn=0\r\nPROFILE_GATES no_pairs=0 observed_unlocked=0 amplitude=0 clip=0 gain_not_held=0 cn_missing=0 cn_below=0 last_cn_x10=-990 cn_checked=0 last_span_khz=0 last_freq_mhz=0 min_cn_x10=80\r\nPROFILE monitor period_s=30 collecting=1 next_in_s=0 decisions=0 timeouts=0 last_x100=-1 last_age_s=-1 agree=0 mismatch=0 min_cn_db=8 mode=live_switch pending=none switches=0 switch_fail=0\r\nFILTER loaded active bw=BW40 code=-1 skirt=32 | normal width_khz=13125 nbw_khz=13175 | narrow valid=1 width_khz=11875 nbw_khz=11969 | wide valid=1 width_khz=17500 nbw_khz=17729 | calibrated_nbw_khz=12355\r\nPHY11P want=1 hw_enabled=1 (-1=unsupported; analog profile checked below)\r\nDFILT want=0 hw_mode=0 (-1=unsupported)\r\nFILTER_HW mismatch=0 hw=3c3c333533353335 want=3c3c333533353335\r\nDCO held=1 gains_valid=30 floor_rows=0 missing_rows=0 floor=0 searches=0 carrier_searches=0 hook_holds=11 aborts=0 drift_avg_mcells=204/-291 nudges=147 temp_c=47.9\r\nDCO_BANKS bank1=278/229 bank2=250/227 gain=83 row_codes=232/230 row_valid=1 banned=0\r\nDC_SERVO dc_mcells=204/-291 slope_mcells_per_code=253/203 offset=18/-3 own_row=1 steps=147 writes=147 estimates=243 learned=5 relearned=0 sign_rejects=0 turns=0 forgotten=1 urgent_wakes=1 skip=0/0/0/0/0 fault=0 table_reloads=4 reload_why=2 volatile=1\r\nDC_HEALTH flags=0 writes=0 watch=table:0/0 filter:0/0 drift:0/0 (latched/bad)\r\nDCO tables freq=5865 template_rows=0 seeded_from=0 seeds=0 stored_channels=4/6: 5865 5865 5865 5805\r\nDCO_REPAIR bad_dropped=0 repairs=0 repair_fails=0 borrowed_holds=0 (unconverged rows dropped, searched from a converged neighbour; a missing row holds the nearest converged one's codes)\r\nDCO_BAN unbans=0 (a railing hold is released for 2-32 s, then held again)\r\nDCO_ADOPT rows=0 (template rows taken as own codes after the servo held them on receiver noise)\r\nDCO_CONTEXT table_freq=5865 table_bw20=0 table_code=-1 table_skirt=32 active_freq=5865 active_bw20=0 active_code=-1 active_skirt=32 filter_same=1\r\nSPHASE state=settled excess_mc2=44 limit=300 white_pm=501 dc_mcell=116/-250 scans=0 best=-1 worst=-1 contrast=0 rx_div=6 carrier_qualified=0 live_limit=150 carrier_checks=0 carrier_scans=0 moved=0 false_alarms=0 strikes=0\r\nDEMOD selected=U80P64-R1 verified=U80P64-R1 p64_model=U80P64-R1 p64_table_sha256=8027b82680c202738038435ce68eefb0145f58a112da773aefadefca0792482c\r\nTRANSPORT_STAGES_US quiesce=70 bs_enable=18 program_load=559 instruction_verify=148 lut_verify=987 bs_reset=13 bs_start=6 rx_enable=33 tx_enable=22 rx_start=55 tx_start=699 (last restart)\r\nVIDEO_OUTPUT source=LIVE standard=NTSC\r\nOUTPUT level=1.0x boot_restore=saved default=1.0x clipped_lut_entries=0 recovery_errors=0 rollbacks=0 rollback_fail=0 fault_latched=0 live=1\r\nTRANSPORT rx_descriptors=9 tx_empty=0 rx_overflow=0 dma_faults=0 bs_overload=0 lut_writes=2048 lut_verify_fail=0 program=U80P64-R1 flag_format=1 switch_wait_ms=0 prog_verify_fail=0\r\nCONTROL_COPY calls=1716 not_ready=0 source_invalid=0 pointer_invalid=0 lapped=0 timed_out=0 max_us=47 max_advance=1\r\nSYNC_LIVE requested=1 active=1 fault=0 starts=2 stops=1 failures=0 boot_default=ON\r\nSYNC_LIVE_DIAG callbacks=27212 symbols=54457 epochs=27264 endings=27212 low=0 h=0 broad=0 h_periods=0 pal32=0 ntsc32=0 broad5=0 broad6=0 prefix_n=3 marker_ticks=389 barrier=2161 elapsed=1725 phase_checked=1 phase_valid=1 phase_lo=1252605837 phase_hi=1252605887 native_valid=0 native_standard=0 fields=0 qualified_epochs=0 rearms=27263 invalidated=0 inverted=1 ambiguous=0\r\nSYNC_LIVE_MODEL valid=0 tracking=0 standard=0 line_ticks_x32=0 last_h=0 field=0 now=1252669685 phase_span_ticks=0 inverted=0 boot_default=ON\r\nSYNC_FLYWHEEL requested=1 active=1 repaired=0 suppressed=0 batches=0 late_ticks=401 missed=364 miss_kind=2 queue_low=0 fault=0 irq_delay_ticks=576 callback_ticks=112 budget_yields=0 miss_phase=0 miss_other=323 miss_observer=41 miss_snapshot=0 miss_update=0 miss_restart=0 miss_reserved=0 guard_yield=0 yielded=0 h_jumps=0 v_jumps=0 trims=0 pll_updates=0 pll_rejected=0 pll_ppb=0 acquired=0 camera_present=0 camera_lines=0 camera_yields=0 h_trusted=0 v_trusted=0 std_switches=0 monitor_lock_proven=0\r\nSYNC_FLYWHEEL_WITNESS observer_fresh=0 sample_age_ticks=4294967295 observer_yields=36 source_yields=564 observer_gaps=0 stale_native=0\r\nSYNC_FLYWHEEL_LOAD active=1 interval_ms=983 isr_calls=1019400 max_isr_us=9 isr_permille=114 wait_permille=0 suppressed_wait_permille=0 hold_permille=0 measured_not_estimated=1\r\nHB t_s=100 stage=ready gain=83 menu=0 startup=0 busy=0\r\n",
+        "ended_utc": "2026-10-24T17:25:06.059509+00:00",
+        "raw_log_sha256": "9edf764d27b906505fb53b70d5f743d2060bc193b1c87e760f1788b842062679"
+      },
+      "capture_statistics": [
+        {
+          "file": "g83_r00.iq",
+          "sha256": "1efdffd7b875dac12e6c695c3e9d5215553048475a61c0b12aaa690327bc9673",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "7d983c97",
+            "fw": "5"
+          },
+          "m2": 6.0660280040133525,
+          "dc_i_cellcentre": -0.3284493284493285,
+          "dc_q_cellcentre": -0.1884004884004884,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r01.iq",
+          "sha256": "99c0a2e6cbfd37375fc9a76516012c4d15b2a3e25ae6188dcae1db3071f53684",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "b083e241",
+            "fw": "5"
+          },
+          "m2": 6.12425756715134,
+          "dc_i_cellcentre": -0.6036630036630037,
+          "dc_q_cellcentre": -0.4015873015873016,
+          "signed_rails": 0.0003663003663003663
+        },
+        {
+          "file": "g83_r02.iq",
+          "sha256": "3141e9b9556c5f3212c4e665899313223c935c5bb85576bff7f0d692f8bd4825",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "faec1536",
+            "fw": "5"
+          },
+          "m2": 6.025107258770262,
+          "dc_i_cellcentre": -0.13516483516483513,
+          "dc_q_cellcentre": -0.10231990231990229,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r03.iq",
+          "sha256": "93438972bf874dd076d050c92084c594ab42e2c744a17edcfcde121350331977",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "289f0d9e",
+            "fw": "5"
+          },
+          "m2": 6.111151975144649,
+          "dc_i_cellcentre": 0.6804639804639805,
+          "dc_q_cellcentre": -0.32600732600732596,
+          "signed_rails": 0.0003663003663003663
+        },
+        {
+          "file": "g83_r04.iq",
+          "sha256": "6da42163b909c01830073b1d6da792544f8d55b9e346dac42e5e8a4fd4ab502b",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "c3745371",
+            "fw": "5"
+          },
+          "m2": 6.249889543369397,
+          "dc_i_cellcentre": -0.1266178266178266,
+          "dc_q_cellcentre": 0.2423687423687424,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r05.iq",
+          "sha256": "5036017f0f6895e0f304766cf4ad4a8cef937a7c14608cf9cf5e8dbff7b4a18f",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "b01ac01f",
+            "fw": "5"
+          },
+          "m2": 5.9004665596240695,
+          "dc_i_cellcentre": -0.09963369963369961,
+          "dc_q_cellcentre": 0.25555555555555554,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r06.iq",
+          "sha256": "42df6b0b49df09dc4f7dbfbce2e2f8d7097b0dcea58e6a61564fab3a4d0505d6",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "f05e6e56",
+            "fw": "5"
+          },
+          "m2": 6.135242776488197,
+          "dc_i_cellcentre": -0.2339438339438339,
+          "dc_q_cellcentre": 0.5831501831501832,
+          "signed_rails": 0.0003663003663003663
+        },
+        {
+          "file": "g83_r07.iq",
+          "sha256": "bec14d29430b95bc83402f9861d21bd3e1f8538a3ef94fadbaa2ff75d3b413dc",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "d9227b59",
+            "fw": "5"
+          },
+          "m2": 6.158145211185504,
+          "dc_i_cellcentre": -0.16178266178266176,
+          "dc_q_cellcentre": 0.22844932844932847,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r08.iq",
+          "sha256": "36054c00d93d4ef64a2d278ecd78b57bb113fa1173b59776eeffd93651809ba8",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "49446b41",
+            "fw": "5"
+          },
+          "m2": 6.317028569043221,
+          "dc_i_cellcentre": -0.4245421245421246,
+          "dc_q_cellcentre": 1.4894993894993895,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r09.iq",
+          "sha256": "dc8ae527da8f46fc127499195dd7ae3436054663f95414af1bba9bd7a286bbfe",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "0d23a5cc",
+            "fw": "5"
+          },
+          "m2": 5.970471166331972,
+          "dc_i_cellcentre": 0.8623931623931624,
+          "dc_q_cellcentre": -0.34798534798534797,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r10.iq",
+          "sha256": "64bb1c14043b01f547fefd424e07cc0f6d63f7d78901c76e811d3c20c9aa1741",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "49af4613",
+            "fw": "5"
+          },
+          "m2": 6.284347241416839,
+          "dc_i_cellcentre": 0.11294261294261293,
+          "dc_q_cellcentre": -1.0465201465201466,
+          "signed_rails": 0.0004884004884004884
+        },
+        {
+          "file": "g83_r11.iq",
+          "sha256": "884613ab56f0008754eaa60c75b78adc18f672cb0d9cae2da33bb86ff0b0ba7a",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "61cca5ea",
+            "fw": "5"
+          },
+          "m2": 6.54665254837416,
+          "dc_i_cellcentre": -0.12393162393162394,
+          "dc_q_cellcentre": 0.29279609279609276,
+          "signed_rails": 0.0006105006105006105
+        },
+        {
+          "file": "g83_r12.iq",
+          "sha256": "354a68f6a77a4cc025f20ad5f01acabb2a0a9f5092b39a415614aac5874ca98e",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "640d30dc",
+            "fw": "5"
+          },
+          "m2": 5.943984235815737,
+          "dc_i_cellcentre": -0.1788766788766789,
+          "dc_q_cellcentre": -0.3013431013431014,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r13.iq",
+          "sha256": "e95f73423a6877d1d6cfb1226134847134734049065366c83843eb92503e0e5b",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "edde44fb",
+            "fw": "5"
+          },
+          "m2": 6.233880622159011,
+          "dc_i_cellcentre": 0.9454212454212454,
+          "dc_q_cellcentre": 0.8877899877899877,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r14.iq",
+          "sha256": "4ec320f3c903bf48a4d46afe5497e10bc11b770c94e7be51fe66caacb6c67e66",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "b16a1673",
+            "fw": "5"
+          },
+          "m2": 6.1759962937618615,
+          "dc_i_cellcentre": 0.4126984126984127,
+          "dc_q_cellcentre": -0.33272283272283276,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r15.iq",
+          "sha256": "336eb0d19c17a9785b930997bb5d7cef7210c71297ac88e94e0353b25e681134",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "a597206d",
+            "fw": "5"
+          },
+          "m2": 6.019375798533308,
+          "dc_i_cellcentre": -0.05177045177045181,
+          "dc_q_cellcentre": 0.3564102564102564,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r16.iq",
+          "sha256": "83dff82bdb63ce68d74dfc33ae53cce163f2f90cad6c47e4da776433444af716",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "60b2fe57",
+            "fw": "5"
+          },
+          "m2": 6.090792294125627,
+          "dc_i_cellcentre": -1.1128205128205129,
+          "dc_q_cellcentre": -0.7581196581196581,
+          "signed_rails": 0.0003663003663003663
+        },
+        {
+          "file": "g83_r17.iq",
+          "sha256": "679e7c6fa41261aa3d18c8aec5ee120dc6f1b07b8ebefbf2f868505990635141",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "e4212631",
+            "fw": "5"
+          },
+          "m2": 6.160221554324119,
+          "dc_i_cellcentre": -0.2102564102564103,
+          "dc_q_cellcentre": -0.29829059829059834,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r18.iq",
+          "sha256": "43c4cfe654bda1d953378fa43e20ff6fc398623b28ba935d5015b8f844463adf",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "c1bb8706",
+            "fw": "5"
+          },
+          "m2": 5.867438774764782,
+          "dc_i_cellcentre": 0.5719169719169719,
+          "dc_q_cellcentre": -0.3037851037851038,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r19.iq",
+          "sha256": "62257149c8c2eb21d3e012b950ec93d3ea5ec5b32e40d0a7d071f15a89fe8bb7",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "8cce364e",
+            "fw": "5"
+          },
+          "m2": 6.34387743175289,
+          "dc_i_cellcentre": -0.5796092796092795,
+          "dc_q_cellcentre": 0.14627594627594626,
+          "signed_rails": 0.0004884004884004884
+        },
+        {
+          "file": "g83_r20.iq",
+          "sha256": "f607ba6e5c60c8259d5583005828587ee982458edf30206feec481c00a2be9b9",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "5d3f198e",
+            "fw": "5"
+          },
+          "m2": 6.203505764348256,
+          "dc_i_cellcentre": -0.01599511599511605,
+          "dc_q_cellcentre": -1.0163614163614163,
+          "signed_rails": 0.0003663003663003663
+        },
+        {
+          "file": "g83_r21.iq",
+          "sha256": "58fe2588c92af16b6f9506e0d20c72283f78ef998aee47169fa23508e33e4388",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "f766cd4a",
+            "fw": "5"
+          },
+          "m2": 6.26160289581535,
+          "dc_i_cellcentre": 0.22564102564102562,
+          "dc_q_cellcentre": 0.6566544566544567,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r22.iq",
+          "sha256": "e35ad4fd69e8f6973869592a7a6ea314aa19050124592a10fe3100c22c7806ce",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "ce470985",
+            "fw": "5"
+          },
+          "m2": 6.169956989151128,
+          "dc_i_cellcentre": 0.28046398046398047,
+          "dc_q_cellcentre": -0.6504273504273503,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r23.iq",
+          "sha256": "a5049f06cb3a4c22e50d63127579dae38d6f1f3102d5af294fa65468c2f8cb93",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "d2080ccb",
+            "fw": "5"
+          },
+          "m2": 6.120109025420381,
+          "dc_i_cellcentre": -0.9282051282051282,
+          "dc_q_cellcentre": 0.6167277167277168,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r24.iq",
+          "sha256": "83fab15f01074774c2487f1dad698bdb950eb435343a8d22b97e309d83a5cc1b",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "97efab7f",
+            "fw": "5"
+          },
+          "m2": 6.081100183224725,
+          "dc_i_cellcentre": -0.2711843711843712,
+          "dc_q_cellcentre": 0.15567765567765568,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r25.iq",
+          "sha256": "f4174b48ae3b7ed6f57d0fc473a8b56aa0f6cd6c5827a394657535e3fbe9faf3",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "f6e51e51",
+            "fw": "5"
+          },
+          "m2": 6.196382094367443,
+          "dc_i_cellcentre": -0.27301587301587305,
+          "dc_q_cellcentre": -0.3891330891330891,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r26.iq",
+          "sha256": "0388456b8cb6741da60c5373e03f971faa063cc0f389f0b2e96ed1eca9624c40",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "57636d0c",
+            "fw": "5"
+          },
+          "m2": 6.06931366015615,
+          "dc_i_cellcentre": 0.7518925518925519,
+          "dc_q_cellcentre": -0.4522588522588522,
+          "signed_rails": 0.0003663003663003663
+        },
+        {
+          "file": "g83_r27.iq",
+          "sha256": "8f930ab3d14beca0de39253e21477e9673643ae9d06591b9fa7cfcdcb12b5c94",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "3efb83ce",
+            "fw": "5"
+          },
+          "m2": 6.09233956655202,
+          "dc_i_cellcentre": -0.19096459096459095,
+          "dc_q_cellcentre": 0.8542124542124543,
+          "signed_rails": 0.0002442002442002442
+        },
+        {
+          "file": "g83_r28.iq",
+          "sha256": "b16ae0d1ce76f65f258107665596596616e7fb54f469544bb28ba4f7213b569f",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "5f4d3eac",
+            "fw": "5"
+          },
+          "m2": 6.165492656847968,
+          "dc_i_cellcentre": -0.3775335775335775,
+          "dc_q_cellcentre": -0.3391941391941392,
+          "signed_rails": 0.0003663003663003663
+        },
+        {
+          "file": "g83_r29.iq",
+          "sha256": "02871999fb342fdbe65f7b26fc1170495c0deed6a2da3383c34988dec5a10ad2",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "94b04ba5",
+            "fw": "5"
+          },
+          "m2": 6.086877621090076,
+          "dc_i_cellcentre": -0.1322344322344322,
+          "dc_q_cellcentre": 0.8367521367521368,
+          "signed_rails": 0.0001221001221001221
+        },
+        {
+          "file": "g83_r30.iq",
+          "sha256": "4a336ab01f332947de9d22b75118121ed50dca87c7ff7b5ab608fe70d75c6865",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "cd2fa84c",
+            "fw": "5"
+          },
+          "m2": 6.156267195021774,
+          "dc_i_cellcentre": -0.8993894993894993,
+          "dc_q_cellcentre": 0.17826617826617824,
+          "signed_rails": 0.0
+        },
+        {
+          "file": "g83_r31.iq",
+          "sha256": "05a7654ca7065e2e157e6774c2dc3c54812a07323cf0917c6bcbeb34387f9047",
+          "metadata": {
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "format": "Ihigh_Qlow",
+            "gain": "83",
+            "lane": "2",
+            "freq_mhz": "5865",
+            "fnv1a": "9ce31bf8",
+            "fw": "5"
+          },
+          "m2": 6.115945411256766,
+          "dc_i_cellcentre": 1.2915750915750914,
+          "dc_q_cellcentre": 0.019536019536019522,
+          "signed_rails": 0.0006105006105006105
+        }
+      ],
+      "manifest_sha256": "4c8b3ea5171a686670f18389836b6d46565e58c5ad56d625d1d68e8c6f6aa4c4"
+    }
+  ],
+  "total_live_witness_captures": 64,
+  "additional_static_evidence": {
+    "file": "bias-extra-evidence.txt",
+    "sha256": "5cf7a6e2638bcd8d5b4bb7611671328367f3370bbce233a852428b0f06b8b873"
+  }
 }

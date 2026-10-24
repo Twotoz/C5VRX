@@ -13,7 +13,7 @@ RAW=ROOT/'research/data/nf_phy_2026-10-24'
 
 
 def main():
-    runs=[];captures=[]
+    runs=[];captures=[];live=[]
     for p in sorted(RAW.glob('audit_*')):
         if not p.is_dir() or not (p/'summary.json').exists():continue
         manifest=json.loads((p/'iq/manifest.json').read_text())
@@ -28,12 +28,31 @@ def main():
             manifest_sha256=hashlib.sha256((p/'iq/manifest.json').read_bytes()).hexdigest(),
             dc_selected=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_DCO_SELECTED ')],
             retransmissions=manifest.get('retransmissions',[]),
+            bias_readbacks=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_BIAS ')],
             acquisition=json.loads((p/'acquisition.json').read_text())))
+    for p in sorted(RAW.glob('live_*')):
+        if not (p/'manifest.json').exists():continue
+        manifest=json.loads((p/'manifest.json').read_text());stats=[]
+        for capture in manifest['captures']:
+            raw=(p/capture['file']).read_bytes()
+            if hashlib.sha256(raw).hexdigest()!=capture['sha256']:raise ValueError('live witness hash mismatch')
+            i=[(b>>4)-16 if b>>4>=8 else b>>4 for b in raw]
+            q=[(b&15)-16 if b&15>=8 else b&15 for b in raw]
+            mi=sum(i)/len(i);mq=sum(q)/len(q)
+            m2=sum((x-mi)**2+(y-mq)**2 for x,y in zip(i,q))/len(i)
+            rails=sum(x in (7,-8) or y in (7,-8) for x,y in zip(i,q))/len(i)
+            stats.append(dict(file=capture['file'],sha256=capture['sha256'],metadata=capture['metadata'],
+                m2=m2,dc_i_cellcentre=mi+.5,dc_q_cellcentre=mq+.5,signed_rails=rails))
+        live.append(dict(name=p.name,manifest=manifest,capture_statistics=stats,
+            manifest_sha256=hashlib.sha256((p/'manifest.json').read_bytes()).hexdigest()))
     prov=[json.loads(p.read_text()) for p in sorted(RAW.glob('provenance*.json'))]
     aggregate=dict(source='C5VRX by Twotoz and contributors',source_url='https://github.com/Twotoz/C5VRX',
         website_and_discord='https://twotoz.github.io/C5VRX/',
         scope='VTX off, noise only, no calibrated carrier or video; no sensitivity/range claim',
-        provenance=prov,total_valid_captures=len(captures),runs=runs)
+        provenance=prov,total_valid_captures=len(captures),runs=runs,live_gain_witnesses=live,
+        total_live_witness_captures=sum(len(r['capture_statistics']) for r in live))
+    evidence=RAW/'bias-extra-evidence.txt'
+    if evidence.exists():aggregate['additional_static_evidence']=dict(file=evidence.name,sha256=hashlib.sha256(evidence.read_bytes()).hexdigest())
     (ROOT/'research/data/phy_audit_2026-10-24_summary.json').write_text(json.dumps(aggregate,indent=2)+'\n',encoding='utf-8',newline='\n')
     buf=io.StringIO(newline='');keys=list(dict.fromkeys(k for r in captures for k in r))
     writer=csv.DictWriter(buf,fieldnames=keys);writer.writeheader();writer.writerows(captures)
@@ -163,11 +182,17 @@ def main():
                 lines.append(f"| {r['name']} | {s['profile']} | {s['delta_db']:+.3f} | {s['stock_drift_db']:+.3f} | {s['quality']} |")
             else:lines.append(f"| {r['name']} | {s['profile']} | | | {s['status']} |")
     lines.extend(['',
-        '5865 MHz shows no established combined improvement: approximately '
+        'The initial pre-merge 5865 MHz run showed no established combined improvement: approximately '
         '-0.015/-0.007 dB versus a -0.067 dB sham. At 5805 MHz two damaged '
         'USB captures invalidate both candidate comparisons; the sham alone '
         'is not an intervention benefit. All integrity-valid samples and '
         'quality flags remain included. Exact hardware rollback succeeded.','',
+        'Complete ACK-enabled repeats on the integrated 11p baseline give '
+        'sense/RX11b combinations -0.010/+0.001 dB at 5805 MHz '
+        '(sham +0.001) and +0.001/-0.037 dB at 5865 MHz '
+        '(sham +0.023), with no quality flags. The small RX11b-combination '
+        'reduction changes sign across frequencies; no reproducible 0.4 dB '
+        'joint benefit or input-referred improvement is established.','',
         '## Fixed physical-gain sweep','',
         '| Frequency MHz | Gain | Mean complex variance cells² | Maximum signed-rail occupancy |',
         '|---|---:|---:|---:|'])
@@ -233,8 +258,45 @@ def main():
         'with matching capture identity; the 5805 MHz run needed no retry. '
         'The committed Windows helper was also exercised with a full-system '
         'reset and the console answered afterwards.','',
+        '## Read-only bias witness','',
+        'Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to '
+        '0x9f/0x7f. The measured operating bytes are listed below. '
+        'phy_freq_start_cal_5g_code subsequently writes reg0[7:4] while '
+        'iterating frequency calibration, so a different operating high '
+        'nibble is not evidence of a forgotten LNA optimization. No bias '
+        'bytes were overridden. See the static feature audit for exact '
+        'call/write evidence.','',
+        '| Run | Observed reg0 / reg1 bytes |',
+        '|---|---|'])
+    for r in runs:
+        if not r.get('bias_readbacks'):continue
+        values={reg:sorted(set(b['value'] for b in r['bias_readbacks'] if b['reg']==reg)) for reg in ('0','1')}
+        lines.append(f"| {r['name']} | {','.join(values['0'])} / {','.join(values['1'])} |")
+    lines.extend(['',
+        '## Live fixed-MAX witnesses','',
+        'These separate captures leave the normal DC servo running. Console '
+        'G selects transient MAX (G83); uppercase I provides independent '
+        'contiguous snapshots, separated by a one-second collection interval. '
+        'The tool restores AUTO. These are operating-state witnesses, '
+        'not an ABBA intervention, weak-carrier test or noise-figure measurement.','',
+        '| Run | Captures | Mean variance cells² | Mean / max signed rails | Mean cell-centre I/Q |',
+        '|---|---:|---:|---:|---:|'])
+    for r in live:
+        stats=r['capture_statistics'];n=len(stats)
+        if not n:continue
+        mean=lambda k:sum(s[k] for s in stats)/n
+        lines.append(f"| {r['name']} | {n} | {mean('m2'):.4f} | {100*mean('signed_rails'):.4f}% / {100*max(s['signed_rails'] for s in stats):.4f}% | {mean('dc_i_cellcentre'):+.3f}/{mean('dc_q_cellcentre'):+.3f} |")
+    lines.extend(['',
+        'With its ordinary DC servo running, G83 averaged only '
+        '0.0244%/0.0275% signed-rail occupancy on 5865/5805 MHz, '
+        'with worst snapshots 0.0611%/0.0855%. Mean centring was within '
+        '0.07 cell per axis. This differs substantially from the old '
+        'unheld vendor-DC sweep. Together with the expected higher output '
+        'noise at higher gain, these observations do not justify lowering '
+        'the no-carrier maximum to G80. They also do not prove that G83 '
+        'is optimal for every wanted-signal amplitude or interference case.','',
         '## Archived evidence','',
-        f"- {len(captures)} valid IQ captures in this audit archive; all rejected transports are separately recorded.",
+        f"- {len(captures)} valid audit IQ captures plus {sum(len(r['capture_statistics']) for r in live)} live fixed-MAX witnesses; all rejected transports are separately recorded.",
         '- [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).',
         '- [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).',
         '- [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.',

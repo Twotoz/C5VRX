@@ -165,6 +165,11 @@ static void state(unsigned id, const char *stage)
     for (uint8_t r=6;r<=13;++r)
         printf("PHYLAB_I2C id=%u stage=%s block=67 host=1 reg=%u value=%02x\n",id,stage,r,phy_i2c_readReg(0x67,1,r));
     printf("PHYLAB_ADC id=%u stage=%s block=66 host=0 reg=4 value=%02x selector_bits=%u\n",id,stage,phy_i2c_readReg(0x66,0,4),(unsigned)(MM(0x600A0448)&3));
+    /* Read-only witness of all fields written by phy_bias_reg_set().
+     * The helper uses fixed 0x9f/0x7f bytes; code numbers do not establish
+     * bias-current direction, LNA noise figure or a safe overdrive range. */
+    for(uint8_t reg=0;reg<2;++reg)
+        printf("PHYLAB_BIAS id=%u stage=%s block=6a host=1 reg=%u value=%02x\n",id,stage,reg,phy_i2c_readReg(0x6a,1,reg));
 }
 static bool capture(uint8_t *raw)
 {

@@ -56,9 +56,11 @@ These are three separately restored ON/OFF comparisons per run. The output resum
 | Run | Frequency / gain | Selector 0 vs incoming stock | Selector 1 vs incoming stock |
 |---|---|---:|---:|
 | audit_5805_adc | 5805 / G74 | -0.070 dB / FLAGGED | +0.038 dB / NO_FLAGS |
+| audit_5805_bias_adc1 | 5805 / G74 | -0.040 dB / NO_FLAGS | -0.012 dB / NO_FLAGS |
 | audit_5865_adc | 5865 / G73 | -0.142 dB / NO_FLAGS | +0.055 dB / NO_FLAGS |
 | audit_5865_adc_repeat1 | 5865 / G75 | -0.079 dB / NO_FLAGS | -0.060 dB / NO_FLAGS |
 | audit_5865_adc_repeat2 | 5865 / G76 | -0.040 dB / NO_FLAGS | -0.082 dB / NO_FLAGS |
+| audit_5865_bias_adc1 | 5865 / G74 | -0.014 dB / NO_FLAGS | +0.056 dB / NO_FLAGS |
 
 The pinned `phy_adc_rate_set` writes analog block66/host0/reg4[2] = !selector plus digital `600A0448[1:0]` = duplicated selector. S applies only the documented-by-disassembly selector values 0/1 and restores both original owned fields, preserving unrelated bits. Digital filter mode, gain, calibration flags and tuning stay fixed. Every capture checks both digital fields and the analog bit.
 
@@ -76,14 +78,22 @@ Two predeclared combinations apply ADC selector0, packet ADC/CCA controls and ch
 
 | Run | Profile | Noise delta dB | Stock drift dB | Quality/status |
 |---|---|---:|---:|---|
+| audit_5805_combo_ack1 | COMBO_SENSE0_EXTRA | -0.010 | -0.025 | NO_FLAGS |
+| audit_5805_combo_ack1 | COMBO_RX11B0_EXTRA | +0.001 | +0.012 | NO_FLAGS |
+| audit_5805_combo_ack1 | STOCK_SHAM_EXTRA | +0.001 | -0.024 | NO_FLAGS |
 | audit_5805_combo_big1 | COMBO_SENSE0_NO11P | | | INCOMPLETE |
 | audit_5805_combo_big1 | COMBO_RX11B0_NO11P | | | INCOMPLETE |
 | audit_5805_combo_big1 | STOCK_SHAM_NO11P | -0.196 | -0.113 | FLAGGED |
+| audit_5865_combo_ack1 | COMBO_SENSE0_EXTRA | +0.001 | +0.047 | NO_FLAGS |
+| audit_5865_combo_ack1 | COMBO_RX11B0_EXTRA | -0.037 | +0.011 | NO_FLAGS |
+| audit_5865_combo_ack1 | STOCK_SHAM_EXTRA | +0.023 | -0.024 | NO_FLAGS |
 | audit_5865_combo_big1 | COMBO_SENSE0_NO11P | -0.015 | -0.503 | FLAGGED |
 | audit_5865_combo_big1 | COMBO_RX11B0_NO11P | -0.007 | +0.002 | FLAGGED |
 | audit_5865_combo_big1 | STOCK_SHAM_NO11P | -0.067 | -0.145 | FLAGGED |
 
-5865 MHz shows no established combined improvement: approximately -0.015/-0.007 dB versus a -0.067 dB sham. At 5805 MHz two damaged USB captures invalidate both candidate comparisons; the sham alone is not an intervention benefit. All integrity-valid samples and quality flags remain included. Exact hardware rollback succeeded.
+The initial pre-merge 5865 MHz run showed no established combined improvement: approximately -0.015/-0.007 dB versus a -0.067 dB sham. At 5805 MHz two damaged USB captures invalidate both candidate comparisons; the sham alone is not an intervention benefit. All integrity-valid samples and quality flags remain included. Exact hardware rollback succeeded.
+
+Complete ACK-enabled repeats on the integrated 11p baseline give sense/RX11b combinations -0.010/+0.001 dB at 5805 MHz (sham +0.001) and +0.001/-0.037 dB at 5865 MHz (sham +0.023), with no quality flags. The small RX11b-combination reduction changes sign across frequencies; no reproducible 0.4 dB joint benefit or input-referred improvement is established.
 
 ## Fixed physical-gain sweep
 
@@ -127,9 +137,29 @@ Lower signed-rail occupancy is a headroom observation, not a direct count of fol
 
 At 5805 MHz G83 mean signed rails fell from 0.3072% to 0.0527%, with -0.005 dB variance change. At 5865 MHz the first complete comparison gave 0.1107% to 0.0424% (+0.009 dB), but the later complete repeat gave 0.0240% to 0.0233% (-0.005 dB). Thus there is evidence for correcting an off-centre starting pair, not a repeatable extra noise reduction to add to 11p. The incomplete G83 repeat is retained. The first ACK-enabled run recovered one corrupted transport attempt and retained all 192 intended snapshots with matching capture identity; the 5805 MHz run needed no retry. The committed Windows helper was also exercised with a full-system reset and the console answered afterwards.
 
+## Read-only bias witness
+
+Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to 0x9f/0x7f. The measured operating bytes are listed below. phy_freq_start_cal_5g_code subsequently writes reg0[7:4] while iterating frequency calibration, so a different operating high nibble is not evidence of a forgotten LNA optimization. No bias bytes were overridden. See the static feature audit for exact call/write evidence.
+
+| Run | Observed reg0 / reg1 bytes |
+|---|---|
+| audit_5805_bias_adc1 | cf / 7f |
+| audit_5865_bias_adc1 | cf / 7f |
+
+## Live fixed-MAX witnesses
+
+These separate captures leave the normal DC servo running. Console G selects transient MAX (G83); uppercase I provides independent contiguous snapshots, separated by a one-second collection interval. The tool restores AUTO. These are operating-state witnesses, not an ABBA intervention, weak-carrier test or noise-figure measurement.
+
+| Run | Captures | Mean variance cells² | Mean / max signed rails | Mean cell-centre I/Q |
+|---|---:|---:|---:|---:|
+| live_5805_g83 | 32 | 6.3768 | 0.0275% / 0.0855% | +0.069/-0.064 |
+| live_5865_g83 | 32 | 6.1389 | 0.0244% / 0.0611% | -0.041/+0.017 |
+
+With its ordinary DC servo running, G83 averaged only 0.0244%/0.0275% signed-rail occupancy on 5865/5805 MHz, with worst snapshots 0.0611%/0.0855%. Mean centring was within 0.07 cell per axis. This differs substantially from the old unheld vendor-DC sweep. Together with the expected higher output noise at higher gain, these observations do not justify lowering the no-carrier maximum to G80. They also do not prove that G83 is optimal for every wanted-signal amplitude or interference case.
+
 ## Archived evidence
 
-- 3487 valid IQ captures in this audit archive; all rejected transports are separately recorded.
+- 4319 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
 - [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.

@@ -20,7 +20,11 @@ MODES=['AUTO','MAX','G78','G72','G66','G60','G54','G48','G42','G36','G30','G24']
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('port');p.add_argument('output',type=Path);p.add_argument('--frequency',type=int,required=True)
-    p.add_argument('--count',type=int,default=16);a=p.parse_args()
+    p.add_argument('--count',type=int,default=16)
+    p.add_argument('--gains',type=int,nargs='+',choices=[24,30,36,42,48,54,60,66,72,78,83],default=[78,72])
+    p.add_argument('--interval',type=float,default=0,help='seconds between live snapshots')
+    a=p.parse_args()
+    if a.count<1 or a.interval<0:p.error('count must be positive and interval nonnegative')
     a.output.mkdir(parents=True,exist_ok=False)
     s=serial.Serial();s.port=a.port;s.baudrate=115200;s.timeout=.05;s.write_timeout=2;s.dtr=False;s.rts=False
     manifest={'started_utc':dt.datetime.now(dt.timezone.utc).isoformat(),'captures':[],'rejected':[]}
@@ -44,8 +48,8 @@ def main():
         return text
     try:
         s.open()
-        for row in (78,72):
-            st=gain(f'G{row}');manifest[f'gain{row}_status']=st
+        for row in a.gains:
+            st=gain('MAX' if row==83 else f'G{row}');manifest[f'gain{row}_status']=st
             if f'freq={a.frequency} ' not in st:raise RuntimeError('wrong frequency')
             for rep in range(a.count):
                 for attempt in range(6):
@@ -60,7 +64,9 @@ def main():
                         collect(.1);continue
                     name=f'g{row}_r{rep:02d}.iq';(a.output/name).write_bytes(raw)
                     manifest['captures'].append(dict(file=name,sha256=hashlib.sha256(raw).hexdigest(),metadata=meta))
-                    print(f'gain={row} capture={rep+1}/{a.count}',flush=True);break
+                    print(f'gain={row} capture={rep+1}/{a.count}',flush=True)
+                    if a.interval:collect(a.interval)
+                    break
                 else:raise RuntimeError('six failed captures')
         manifest['final_status']=gain('AUTO')
     finally:
