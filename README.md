@@ -87,6 +87,9 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
   problems: a test pattern for the goggles and a multimeter check that names
   a swapped, open or wrong resistor. See
   [Building and testing the resistor DAC](docs/hardware/dac-build-and-test.md).
+- **Fat Shark carrier board:** A ready-to-fabricate DIY KiCad PCB with Fat Shark
+  bay connector, 3.5 mm AV jack, and through-hole resistor layout is
+  available in [hardware/C5VRX_JACK_DIY](hardware/C5VRX_JACK_DIY).
 
 ## Flashing
 
@@ -151,6 +154,7 @@ saves the displayed output; only the latest 120,000 characters are retained.
 ## Documentation and development
 
 - [DAC build and self-test guide](docs/hardware/dac-build-and-test.md)
+- [C5VRX_JACK_DIY Fat Shark carrier PCB](hardware/C5VRX_JACK_DIY)
 - [Receiver findings and hardware evidence](docs/FINDINGS.md)
 - [Field-test protocol](docs/FIELD_TEST.md)
 - [Current receiver changes and validation](docs/PR212.md)
