@@ -5,6 +5,17 @@
   "scope": "VTX off, noise only, no calibrated carrier or video; no sensitivity/range claim",
   "provenance": [
     {
+      "label": "421c690-adc1",
+      "app_sha256": "0bb0d5b831c546652b7354bfcfdec0c8a8f5cbe6945f189d423c5c0830f6c0db",
+      "source_sha256": {
+        "main/calibration.c": "cbbf9b2325092bf88feee9c6b9806014ecb7550c37d4f44ac2b89491b928d2d7",
+        "main/console.c": "5f436e824a92f6b9bd43db266b76dcd1a1affaaab743619483c936100d7998de",
+        "main/receiver.h": "af631c815eb1fed728a8d848576b95b592947f3f4722a057ac33c1874be35d66",
+        "main/phy_noise_lab.c": "9f51250863ebb3905eef0b5d64189ebe81371fc2f5b1871cbbd30edcc2598952",
+        "main/phy_noise_lab.h": "4bc70a40e31198eb739c39aa3491ec54a85074ac8d6047ca8c222d440f6c6170"
+      }
+    },
+    {
       "label": "0aa1507-audit1",
       "parent_commit": "0aa1507",
       "app_sha256": "c50676031b68af5e506f048c5ff96b898a269eea55979e5b662367852309dc8b",
@@ -27,10 +38,105 @@
         "main/phy_noise_lab.c": "5e2ad36e12bddccedd706dfbc6ab134c0522ab36a9ad35baaaee354cce4b6867",
         "main/phy_noise_lab.h": "4bc70a40e31198eb739c39aa3491ec54a85074ac8d6047ca8c222d440f6c6170"
       }
+    },
+    {
+      "label": "aae44c8-fullcal",
+      "app_sha256": "6d34df742573183586d4b7794364fceb4e2cb01854713647bdbcef4283378a2d",
+      "phy_calibration_storage": false,
+      "phy_calibration_mode": 2,
+      "sdkconfig_sha256": "a5a1bdabe9f0cd78beeeb4d28bf40109f34f33d2257df277f086e557abc9ae6b",
+      "source_sha256": {
+        "main/calibration.c": "5ca7d44362cd9e6f066287accc545883656eb6a389f25145592607224f2f8446",
+        "main/console.c": "aa2217b9825e810295109124bc893e8d39bc68ee714611337989f4be0f13abf2",
+        "main/receiver.h": "407d1a9c095a413d253cc6080fafadb7e8b11b455cb6321a95c63b0b933f869d",
+        "main/phy_noise_lab.c": "5e2ad36e12bddccedd706dfbc6ab134c0522ab36a9ad35baaaee354cce4b6867",
+        "main/phy_noise_lab.h": "4bc70a40e31198eb739c39aa3491ec54a85074ac8d6047ca8c222d440f6c6170"
+      }
+    },
+    {
+      "base_pr_head": "eed163246ba9671c0da8f8c8037635957cb1ac36",
+      "application_sha256": "f2385c38d734c442dbb8ef2aa2f8888bbba8b664c3811cbea9c8b54374a3c08e",
+      "phy_sha256": "dbf33c418c8d408d4005c849d12a1432deea82e2e5e57de3c8ddf914d104fffb",
+      "firmware_label": "eed163246ba9-lab3",
+      "source_sha256": {
+        "main/CMakeLists.txt": "5b935ef630bf2adb573d2a25c9af039739a95d0d56b402b721b69e6ccf44e78c",
+        "main/calibration.c": "fbd5f21565c73037a4e64647312a364aeac4696069cd60d0a63fafa0735d2e5c",
+        "main/console.c": "57e35775fe09c32a27c6a361a114f34bfa14a70e3485f68db451889ee0242d6b",
+        "main/receiver.h": "3fa515c400bd4f191119b124409a6abfe4bd25f77a3c2489f51568f2c727a7e0",
+        "main/phy_noise_lab.c": "e973c760ea7ffbf8d690e988dabbd0de68dc5df32436e1b967556e8cfb4d93dd",
+        "main/phy_noise_lab.h": "be37457c1e0ae14ee179a60a55fa7016ac237bc9c1cef5af65ecb899a25d7561"
+      }
     }
   ],
-  "total_valid_captures": 1007,
+  "total_valid_captures": 1135,
   "runs": [
+    {
+      "name": "audit_5805_adc",
+      "context": {
+        "fw": "5.0.0-dev+421c690-adc1",
+        "freq": "5805",
+        "gain": "74",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "3",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "ADC_SELECTOR0",
+          "status": "PASS",
+          "stock_m2": 0.981182270957912,
+          "test_m2": 0.9654252427466713,
+          "delta_db": -0.07031042285090687,
+          "stock_drift_db": 0.16670490071333588,
+          "test_repeat_db": 0.02867466028568376,
+          "median_delta_db": -0.028507467614625,
+          "stock_nbw_mhz": 15.731228883085427,
+          "test_nbw_mhz": 15.47781331661401,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0527432507376258,
+          "min_kurtosis": 1.944000604081766,
+          "quality_flags": [
+            "stock_drift_above_0.15db"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "ADC_SELECTOR1",
+          "status": "PASS",
+          "stock_m2": 0.9715668583892028,
+          "test_m2": 0.9800309704201646,
+          "delta_db": 0.03767108307768942,
+          "stock_drift_db": -0.014970328705568813,
+          "test_repeat_db": 0.04370875990540085,
+          "median_delta_db": 0.03578472105252996,
+          "stock_nbw_mhz": 15.412058195077833,
+          "test_nbw_mhz": 15.288250527922344,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.044869693592212,
+          "min_kurtosis": 1.9412749658330202,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 32,
+      "rejected_captures": [],
+      "raw_log_sha256": "16e188e45f08db34747e9f1d5738be68595eb366b46b3c6ea431988731e8e0c8",
+      "manifest_sha256": "d6c5d49ad235505c542d82969872ef2ca454e323df13a37f8e3bb73638889b5f",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T12:49:00.544898+00:00",
+        "ended_utc": "2026-10-24T12:49:11.035548+00:00"
+      }
+    },
     {
       "name": "audit_5805_dac",
       "context": {
@@ -490,6 +596,201 @@
         "port": "COM10",
         "started_utc": "2026-10-24T12:26:05.198693+00:00",
         "ended_utc": "2026-10-24T12:27:04.479171+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_adc",
+      "context": {
+        "fw": "5.0.0-dev+421c690-adc1",
+        "freq": "5865",
+        "gain": "73",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "3",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "ADC_SELECTOR0",
+          "status": "PASS",
+          "stock_m2": 0.8724925867783011,
+          "test_m2": 0.8444827759067686,
+          "delta_db": -0.14170949504290953,
+          "stock_drift_db": -0.04301018668349615,
+          "test_repeat_db": -0.03063044201937894,
+          "median_delta_db": -0.15449860824831196,
+          "stock_nbw_mhz": 15.399725470747766,
+          "test_nbw_mhz": 15.043405139795087,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 1.9875674624407056,
+          "min_kurtosis": 1.8777540756357047,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "ADC_SELECTOR1",
+          "status": "PASS",
+          "stock_m2": 0.8649366819925428,
+          "test_m2": 0.875895387850516,
+          "delta_db": 0.054679235688432956,
+          "stock_drift_db": -0.00863181515600453,
+          "test_repeat_db": -0.0036870200730390467,
+          "median_delta_db": 0.07301098240333448,
+          "stock_nbw_mhz": 15.565517762020262,
+          "test_nbw_mhz": 15.487171111060832,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.012351103012109,
+          "min_kurtosis": 1.8531033360252431,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 32,
+      "rejected_captures": [],
+      "raw_log_sha256": "901b7069a1bd08b1d9304cf1e1d120e532b90673be279a73ae27731b7f37db7b",
+      "manifest_sha256": "79d008dce57f4a8fe76fa7c4ded4fe1c08856962a5b3601a390e6b623f6f6ebe",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T12:48:37.381545+00:00",
+        "ended_utc": "2026-10-24T12:48:47.894877+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_adc_repeat1",
+      "context": {
+        "fw": "5.0.0-dev+421c690-adc1",
+        "freq": "5865",
+        "gain": "75",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "3",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "ADC_SELECTOR0",
+          "status": "PASS",
+          "stock_m2": 1.2438753427077602,
+          "test_m2": 1.2213220860336245,
+          "delta_db": -0.0794664807710971,
+          "stock_drift_db": 0.11617469114604205,
+          "test_repeat_db": 0.07106409848693795,
+          "median_delta_db": -0.14126859180791482,
+          "stock_nbw_mhz": 14.944003307080672,
+          "test_nbw_mhz": 15.31105974454575,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.1063337801897557,
+          "min_kurtosis": 1.887500217278171,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "ADC_SELECTOR1",
+          "status": "PASS",
+          "stock_m2": 1.2567336782400886,
+          "test_m2": 1.2393913573538113,
+          "delta_db": -0.060347902018524247,
+          "stock_drift_db": -0.017646123989133476,
+          "test_repeat_db": 0.007953513982545792,
+          "median_delta_db": -0.07447045213946425,
+          "stock_nbw_mhz": 14.971300529823777,
+          "test_nbw_mhz": 15.061909671489335,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.009720202634474,
+          "min_kurtosis": 1.8754782214262327,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 32,
+      "rejected_captures": [],
+      "raw_log_sha256": "d6b867828acac478aaac80038d02bfd3988bd58c58d47f4091afddc967d2e027",
+      "manifest_sha256": "e5e41aaa0d480669476f8446d6bd25d10e5239bb2e463f13d8f49d0a6ac9264f",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T12:54:47.485787+00:00",
+        "ended_utc": "2026-10-24T12:54:57.831047+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_adc_repeat2",
+      "context": {
+        "fw": "5.0.0-dev+421c690-adc1",
+        "freq": "5865",
+        "gain": "76",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "3",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "ADC_SELECTOR0",
+          "status": "PASS",
+          "stock_m2": 1.5093048008157899,
+          "test_m2": 1.495371290966529,
+          "delta_db": -0.04027914911807218,
+          "stock_drift_db": 0.0375564060091022,
+          "test_repeat_db": 0.013534045062294407,
+          "median_delta_db": -0.03397216376508219,
+          "stock_nbw_mhz": 14.818178977631332,
+          "test_nbw_mhz": 14.40772139315073,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0382169674732094,
+          "min_kurtosis": 1.909569790656491,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "ADC_SELECTOR1",
+          "status": "PASS",
+          "stock_m2": 1.5414492363897125,
+          "test_m2": 1.5127404116369316,
+          "delta_db": -0.0816481806357427,
+          "stock_drift_db": 0.11273546517050145,
+          "test_repeat_db": 0.03665200502523114,
+          "median_delta_db": -0.05911877158589826,
+          "stock_nbw_mhz": 14.350074799360167,
+          "test_nbw_mhz": 14.700095744229989,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.012647244934058,
+          "min_kurtosis": 1.8975242765428226,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 32,
+      "rejected_captures": [],
+      "raw_log_sha256": "34128b86ee7042d316a3a1bf61704b670c76cd21bf82a3a4d72a033ff61d3697",
+      "manifest_sha256": "75d52b9a359e6af8995756422ce54d290bfd148acf39c89d80a26a620fd6abf3",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T12:55:01.845838+00:00",
+        "ended_utc": "2026-10-24T12:55:11.875052+00:00"
       }
     },
     {

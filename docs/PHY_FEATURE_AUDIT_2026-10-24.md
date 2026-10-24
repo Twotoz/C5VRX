@@ -100,3 +100,23 @@ flagged data as well as the more conservative repeats. The machine-readable
 contains all defined code symbols, name-based triage, mention in application
 source and presence in the measured ELF. These fields are search aids, not
 evidence of execution or of a correctly decoded ABI.
+
+## Coupled ADC selector and gain-table follow-up
+
+The complete pinned `phy_adc_rate_set(selector)` has only two hardware
+effects: analog I2C block66/host0/reg4[2]=!selector and
+`600A0448[1:0]`=selector duplicated. Console S compares selectors0/1 with
+the incoming stock state, restoring only these saved bits. Every capture
+checks both domains. Neither a filter helper nor PLL/calibration is called.
+The test records both hardware views and the unchanged dfilt setting.
+
+The new read-only gain-tuple record uses the existing hardware-matched
+reconstruction. The measured rows G73/G74 use stage8/RF code487, with the
+highest RF stage already beginning at G54 and max index83. A hypothetical
+low-LNA/high-BB allocation error is not present in those listening states.
+
+The ADC repeat deltas and no-op controls are in the extended board report.
+The initial −0.14 dB on 5865 MHz does not persist clearly over controls;
+no production selector override was added. The full-RF-calibration boot
+comparison is separately archived in
+[PHY_CALIBRATION_BENCH_2026-10-24.md](PHY_CALIBRATION_BENCH_2026-10-24.md).

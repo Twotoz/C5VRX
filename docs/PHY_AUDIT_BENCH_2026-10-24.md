@@ -51,13 +51,28 @@ FFT_FORCE_OFF is a **no-op control** in the measured baseline: `600A7800=0f07a2d
 
 These are three separately restored ON/OFF comparisons per run. The output resumes with the same program/LUT/output level through the existing verified restart. No physical loaded-CVBS or picture-quality measurement was possible. A quiet powered-off output is not an operating receiver configuration or a gain to stack onto 11p.
 
+## Coupled ADC selector
+
+| Run | Frequency / gain | Selector 0 vs incoming stock | Selector 1 vs incoming stock |
+|---|---|---:|---:|
+| audit_5805_adc | 5805 / G74 | -0.070 dB / FLAGGED | +0.038 dB / NO_FLAGS |
+| audit_5865_adc | 5865 / G73 | -0.142 dB / NO_FLAGS | +0.055 dB / NO_FLAGS |
+| audit_5865_adc_repeat1 | 5865 / G75 | -0.079 dB / NO_FLAGS | -0.060 dB / NO_FLAGS |
+| audit_5865_adc_repeat2 | 5865 / G76 | -0.040 dB / NO_FLAGS | -0.082 dB / NO_FLAGS |
+
+The pinned `phy_adc_rate_set` writes analog block66/host0/reg4[2] = !selector plus digital `600A0448[1:0]` = duplicated selector. S applies only the documented-by-disassembly selector values 0/1 and restores both original owned fields, preserving unrelated bits. Digital filter mode, gain, calibration flags and tuning stay fixed. Every capture checks both digital fields and the analog bit.
+
+At 5865 MHz the incoming vendor selector is 1; at 5805 MHz it is 0. Thus selector0 at 5805 and selector1 at 5865 are no-op controls. At 5865 the selector0 deltas −0.142/−0.079/−0.040 dB do not convincingly separate from no-op selector1 deltas +0.055/−0.060/−0.082 dB. The initial apparent reduction did not hold up as a robust independent benefit. Keep the vendor selection; no fixed selector0 production change is justified. Capture sample rate metadata refers to PARLIO RX40, not a separately measured RF ADC clock or proof of desired FM transfer.
+
+Read-only gain-tuple records confirm RF stage8/code487 at G73/G74; the highest RF stage starts at G54 and the current table max is G83. The listening receiver is not accidentally using a lower RF stage and compensating solely with BB gain. Those labels come from the pinned generator and hardware-matched AGC table; they do not calibrate LNA noise figure or authorize unlisted RF bias codes.
+
 ## Calibration-policy comparisons
 
-Effective production policy is partial calibration with NVS data storage. A local full-calibration build disables only the PHY calibration-and-storage option and selects full RF calibration; IDF `phy_init.c` then uses its full-calibration branch without loading/storing a replacement PHY NVS record. No NVS erase is used. This is a boot experiment, never an in-place MMIO toggle. Its results must be listed separately from within-boot ABBA deltas and the partial-calibration build must be restored afterwards.
+Effective production policy is partial calibration with NVS data storage. A local full-calibration build disables only the PHY calibration-and-storage option and selects full RF calibration; IDF `phy_init.c` then uses its full-calibration branch without loading/storing a replacement PHY NVS record. No NVS erase is used. This is a boot experiment, never an in-place MMIO toggle. Its results must be listed separately from within-boot ABBA deltas and the partial-calibration build must be restored afterwards. The complete [fixed-gain before/full/after measurements](PHY_CALIBRATION_BENCH_2026-10-24.md) are now archived separately; partial policy was restored.
 
 ## Archived evidence
 
-- 1007 valid IQ captures in this audit archive; all rejected transports are separately recorded.
+- 1135 valid IQ captures in this audit archive; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
 - [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.

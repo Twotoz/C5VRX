@@ -86,10 +86,14 @@ static const char *firmware_id(void){return "HOST_TEST_ONLY";}
 static unsigned rf_frequency_mhz(void){return 5865;}
 static int rf_offset_khz(void){return 0;}
 typedef struct{uint8_t max_index;} arc_gain_table_t;
+typedef struct{uint8_t rf_stage,bb_code,fine_code;uint16_t rf_code;uint32_t packed_state;} arc_gain_tuple_t;
+static bool arc_gain_tuple_decode(const arc_gain_table_t *t,uint8_t g,arc_gain_tuple_t *out){(void)t;(void)g;memset(out,0,sizeof(*out));return true;}
+static unsigned arc_gain_highest_rf_stage_start(const arc_gain_table_t *t){(void)t;return 54;}
 static const arc_gain_table_t *rf_gain_table(void){static arc_gain_table_t t={80};return &t;}
 static void receiver_set_gain(uint8_t g){s_current_gain=g;}
 uint8_t phy_i2c_readReg(uint8_t b,uint8_t h,uint8_t r){(void)b;(void)h;return analog_regs[r];}
 void phy_i2c_writeReg(uint8_t b,uint8_t h,uint8_t r,uint8_t v){(void)b;(void)h;if(inject==2&&v!=60)return;analog_regs[r]=v;}
+void phy_adc_rate_set(uint32_t mode){MM(0x600A0448)=(MM(0x600A0448)&~3u)|(mode?3:0);analog_regs[4]=(analog_regs[4]&~4u)|(mode?0:4);}
 void phy_11p_set(uint8_t en,uint8_t mode){
     phy_param[0x26]=en;phy_param[0x27]=mode;
     MM(0x600A7CE4)=(MM(0x600A7CE4)&~0x1cu)|0x10;
@@ -145,6 +149,11 @@ int main(void){
     }
     reset();tx_live=true;tx_fault=false;
     assert(run_output(64,raw,context_ok,999999));assert(tx_live&&stages==16);
+    for(unsigned mode=0;mode<2;++mode){
+        reset();uint32_t digital=MM(0x600A0448);uint8_t analog=analog_regs[4];
+        assert(run_adc(80+mode,mode,raw,context_ok,999999));
+        assert(MM(0x600A0448)==digital&&analog_regs[4]==analog&&sample_adc_expected==-1);
+    }
     free(raw);fprintf(stderr,"PHY lab lifecycle: PASS (rollback, unrelated bits, apply fault, context refusal, fatal restore)\n");
     return 0;
 }

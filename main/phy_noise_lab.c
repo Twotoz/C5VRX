@@ -21,6 +21,7 @@
 static uint8_t lab_gain;
 static bool entry_rejected;
 static unsigned lab_dwell_ms=300;
+static int sample_adc_expected=-1;
 typedef struct { uint32_t addr, mask, value; } patch_t;
 typedef struct { const char *name; unsigned n; patch_t p[4]; bool analog; } profile_t;
 static const profile_t *sample_profile;
@@ -30,6 +31,7 @@ extern unsigned char phy_param[];
 extern uint8_t phy_i2c_readReg(uint8_t, uint8_t, uint8_t);
 extern void phy_i2c_writeReg(uint8_t, uint8_t, uint8_t, uint8_t);
 extern void phy_11p_set(uint8_t, uint8_t);
+extern void phy_adc_rate_set(uint32_t);
 static const profile_t profiles[] = {
     {"11P",4,{{0x600A7CE4,0x1c,0x10},{0x600A7030,0x20,0},
                  {0x600A7048,0x7f00,0x4000},{0x600A71C4,0xfe0000,0x440000}},true},
@@ -88,6 +90,7 @@ static void state(unsigned id, const char *stage)
     printf("PHYLAB_PARAM id=%u stage=%s flags=%02x/%02x iq_scale_sel=%u\n",id,stage,phy_param[0x26],phy_param[0x27],phy_param[650]);
     for (uint8_t r=6;r<=13;++r)
         printf("PHYLAB_I2C id=%u stage=%s block=67 host=1 reg=%u value=%02x\n",id,stage,r,phy_i2c_readReg(0x67,1,r));
+    printf("PHYLAB_ADC id=%u stage=%s block=66 host=0 reg=4 value=%02x selector_bits=%u\n",id,stage,phy_i2c_readReg(0x66,0,4),(unsigned)(MM(0x600A0448)&3));
 }
 static bool capture(uint8_t *raw)
 {
@@ -127,7 +130,8 @@ static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)
     if(!verify(sample_profile,sample_expected))return false;
     for(unsigned rep=0;rep<4;++rep) {
         if(esp_timer_get_time()>deadline||!context_ok()||s_current_gain!=lab_gain||
-           !verify(sample_profile,sample_expected)||!capture(raw)) return false;
+           !verify(sample_profile,sample_expected)||
+           (sample_adc_expected>=0 && (phy_i2c_readReg(0x66,0,4)&4)!=(unsigned)sample_adc_expected)||!capture(raw)) return false;
         double m2,kurt,rail; power(raw,&m2,&kurt,&rail);
         if(!isfinite(m2)||m2<=0.05||!isfinite(kurt)) return false;
         uint32_t hash=2166136261u;
@@ -205,6 +209,36 @@ static bool run_output(unsigned id,uint8_t *raw,bool (*context_ok)(void),int64_t
     printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":"INCOMPLETE");
     return ok;
 }
+static bool run_adc(unsigned id,unsigned selector,uint8_t *raw,bool (*context_ok)(void),int64_t deadline)
+{
+    profile_t p={selector?"ADC_SELECTOR1":"ADC_SELECTOR0",1,{{0x600A0448,3,selector?3:0}},false};
+    const uint32_t saved=MM(0x600A0448)&3;
+    const uint8_t saved_analog=phy_i2c_readReg(0x66,0,4)&4;
+    sample_profile=&p;sample_expected[0]=saved;sample_adc_expected=saved_analog;
+    printf("PHYLAB_PROFILE id=%u name=%s sequence=STOCK_TEST_TEST_STOCK\n",id,p.name);
+    bool ok=measure(id,0,raw,context_ok,deadline);
+    if(ok){
+        /* Exact pinned ABI: analog 66/0/reg4[2]=!selector, digital
+         * 0448[1:0]=selector duplicated. No dfilt/PLL/calibration call. */
+        phy_adc_rate_set(selector);
+        sample_expected[0]=selector?3:0;sample_adc_expected=selector?0:4;
+        ok=verify(&p,sample_expected)&&((phy_i2c_readReg(0x66,0,4)&4)==(unsigned)sample_adc_expected);
+        printf("PHYLAB_APPLY id=%u verified=%u\n",id,ok);
+        if(ok)ok=measure(id,1,raw,context_ok,deadline);
+        if(ok)ok=measure(id,2,raw,context_ok,deadline);
+    }
+    /* Restore only owned bits, retaining all other current analog fields. */
+    phy_i2c_writeReg(0x66,0,4,(phy_i2c_readReg(0x66,0,4)&~4u)|saved_analog);
+    masked(0x600A0448,3,saved);
+    sample_expected[0]=saved;sample_adc_expected=saved_analog;
+    bool restored=verify(&p,sample_expected)&&((phy_i2c_readReg(0x66,0,4)&4)==saved_analog);
+    printf("PHYLAB_RESTORE id=%u verified=%u\n",id,restored);
+    if(!restored){printf("PHYLAB_FATAL adc_restore_failed reboot_required\n");fflush(stdout);esp_restart();}
+    if(ok)ok=measure(id,3,raw,context_ok,deadline);
+    sample_adc_expected=-1;
+    printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":"INCOMPLETE");
+    return ok;
+}
 #endif
 
 void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite)
@@ -212,7 +246,7 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
 #ifndef C5VRX_PHY_PINNED
     (void)context_ok;(void)dwell_ms;(void)suite;printf("PHYLAB refused=unverified_phy\n");
 #else
-    if((dwell_ms!=300&&dwell_ms!=1200)||suite>2){printf("PHYLAB refused=arguments\n");return;}
+    if((dwell_ms!=300&&dwell_ms!=1200)||suite>3){printf("PHYLAB refused=arguments\n");return;}
     lab_dwell_ms=dwell_ms;
     uint8_t *raw=malloc(C5V4_LEVEL_SAMPLE_BYTES);
     if(!raw){printf("PHYLAB refused=memory\n");return;}
@@ -239,6 +273,11 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
     ok=ok&&gain_ok;
     lab_gain=s_current_gain;
     unsigned rejected=0;
+    arc_gain_tuple_t tuple;
+    if(arc_gain_tuple_decode(rf_gain_table(),s_current_gain,&tuple))
+        printf("PHYLAB_GAIN_TUPLE gain=%u rf_stage=%u rf_code=%u bb_code=%u fine_code=%u packed=%08" PRIx32 " highest_rf_start=%u max_index=%u\n",
+               s_current_gain,tuple.rf_stage,tuple.rf_code,tuple.bb_code,tuple.fine_code,tuple.packed_state,
+               arc_gain_highest_rf_stage_start(rf_gain_table()),rf_gain_table()->max_index);
     printf("PHYLAB_BEGIN fw=%s freq=%u gain=%u lane=2 dfilt=%d dwell_ms=%u suite=%u format=Ihigh_Qlow persistent=0\n",firmware_id(),rf_frequency_mhz(),s_current_gain,phy_dfilt_hw_mode(),lab_dwell_ms,suite);
     for(unsigned id=0;id<16&&ok&&suite==0;++id){
         unsigned n=id^(id>>1);
@@ -261,6 +300,7 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
         if(!ok&&entry_rejected&&context_ok()&&esp_timer_get_time()<deadline){++rejected;ok=true;}
     }
     for(unsigned i=0;i<3&&ok&&suite==2;++i)ok=run_output(64+i,raw,context_ok,deadline);
+    for(unsigned i=0;i<2&&ok&&suite==3;++i)ok=run_adc(80+i,i,raw,context_ok,deadline);
     printf("PHYLAB_END status=%s rejected=%u restored=1 input_referred_improvement=unknown\n",ok?(rejected?"COMPLETE_WITH_REJECTIONS":"PASS"):"INCOMPLETE",rejected);
     phy_end();free(raw);
 #endif

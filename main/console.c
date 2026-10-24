@@ -103,6 +103,7 @@ static void help(void)
            "  C BENCH ONLY: same PHY lab with 1200 ms dwell instead of 300 ms,\n"
            "  H/V BENCH ONLY: isolated RX/TX correction, coefficient, CCA, FFT and dfilt audit (300/1200 ms),\n"
            "  E BENCH ONLY: video output ON/OFF noise ABBA at screened fixed gain, VTX OFF,\n"
+           "  S BENCH ONLY: coupled vendor ADC selectors 0/1, exact analog/digital restore, VTX OFF,\n"
            "  Z DAC self-test (bench: test pattern, then one flat level per pin for a multimeter),\n"
            "  ` reboot to USB download (flashing)\n");
 }
@@ -155,6 +156,7 @@ static void console_task(void *arg)
             case 'H': phyaudit_request(); break;
             case 'V': phyaudit_long_request(); break;
             case 'E': physelfnoise_request(); break;
+            case 'S': phyadc_request(); break;
             case 'Y': case 'W': case 'X': flightlog_console((char)c); break;
             case 'h': case '?': help(); break;
             case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'g': case 'A': case 'U': case 'G': case 'Q': case 'Z': {
