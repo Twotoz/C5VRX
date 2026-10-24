@@ -53,6 +53,9 @@ def noop_reason(run,profile):
             return 'selected DC pair equals entry pair'
     for cap in run['lo_cap_targets']:
         if profile==f"LO_CAP_CODE_{cap['target']}" and cap['target']==cap['saved']:return 'LO-cap target equals entry code'
+    for target in run.get('ulp_targets',[]):
+        if profile=='ULP_CODE_SHAM' or (profile=='ULP_REFERENCE' and target['target']==target['reference']==target['saved']):
+            return 'ULP target equals entry code'
     return None
 
 
@@ -88,6 +91,7 @@ def main():
             lo_cap_readbacks=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_LOCAP ')],
             baseline_registers=baseline,
             ulp_readbacks=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith(('PHYLAB_ULP ','PHYLAB_ULP_CACHE '))],
+            ulp_targets=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_ULP_TARGET ')],
             adc_baseline=next((dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_ADC ') and 'stage=STOCK ' in line),None),
             policy_baseline_registers={addr:baseline.get(addr) for addr in ('600a790c','600a70f4','600a7ce4','600a8060','600a807c')} if meta.get('suite') in ('9','11','12') else {},
             context_note=json.loads((p/'context-note.json').read_text()) if (p/'context-note.json').exists() else None,
@@ -116,6 +120,8 @@ def main():
     aggregate['attempts_without_derived_measurement']=attempts
     evidence=RAW/'bias-extra-evidence.txt'
     if evidence.exists():aggregate['additional_static_evidence']=dict(file=evidence.name,sha256=hashlib.sha256(evidence.read_bytes()).hexdigest())
+    evidence=RAW/'aux-ulp-evidence.txt'
+    if evidence.exists():aggregate['auxiliary_static_evidence']=dict(file=evidence.name,sha256=hashlib.sha256(evidence.read_bytes()).hexdigest())
     buf=io.StringIO(newline='');keys=list(dict.fromkeys(k for r in captures for k in r))
     writer=csv.DictWriter(buf,fieldnames=keys);writer.writeheader();writer.writerows(captures)
     (ROOT/'research/data/phy_audit_2026-10-24_captures.csv.gz').write_bytes(gzip.compress(buf.getvalue().encode(),mtime=0))
@@ -386,6 +392,41 @@ def main():
         'qualified G76 with the original criteria. The preparation manifest '
         'and log hashes are retained in its context note. Taken together, '
         'the order controls do not establish the earlier0.04 dB clue.','',
+        '## Auxiliary vendor fields','',
+        'Suite13 changes only the recovered HEMU mask at0x600a7890 '
+        'or PWDET mask at0x600a0808, bracketed by explicit shams. '
+        'ULP registers/cache are observed without writes. A matching '
+        'baseline field is classified as a no-op independently of its delta.','',
+        '| Run | Profile | Noise delta dB | Stock drift dB | Quality/status | Baseline already matches |',
+        '|---|---|---:|---:|---|---|'])
+    for r in runs:
+        if r['context'].get('suite')!='13':continue
+        for s in r['summary']:
+            reason=noop_reason(r,s['profile']) or ''
+            if s['status']=='PASS':lines.append(f"| {r['name']} | {s['profile']} | {s['delta_db']:+.3f} | {s['stock_drift_db']:+.3f} | {s['quality']} | {reason} |")
+            else:lines.append(f"| {r['name']} | {s['profile']} | | | {s['status']} | {reason} |")
+    lines.extend(['',
+        'Both fields already match the vendor target on both channels '
+        '(0x600a7890=0x01654321;0x600a0808=0x00684501). These are '
+        'no-op controls, including the apparent -0.050 dB HEMU result '
+        'at5805 MHz. It is measurement variation, not a new improvement.','',
+        '## Bounded ULP reference comparison','',
+        'Suite14 compares the existing reg6 code with this chip\'s reg4 '
+        'reference only when external-code bit6 is already set and the '
+        'difference is at most one code. Only reg6 is written. Enable, '
+        'reference and cache bytes are verified before/after every capture. '
+        'Two same-code sham executions bracket the reference trial.','',
+        '| Run | Profile | Noise delta dB | Stock drift dB | Quality/status |',
+        '|---|---|---:|---:|---|'])
+    for r in runs:
+        if r['context'].get('suite')!='14':continue
+        for s in r['summary']:
+            if s['status']=='PASS':lines.append(f"| {r['name']} | {s['profile']} | {s['delta_db']:+.3f} | {s['stock_drift_db']:+.3f} | {s['quality']} |")
+            else:lines.append(f"| {r['name']} | {s['profile']} | | | {s['status']} |")
+    lines.extend(['',
+        'The code is not a calibrated voltage or gain measurement. '
+        'Any IQ variance change would need independent confirmation and '
+        'RF validation before interpreting sensitivity or changing defaults.','',
         '## Adjacent LO-capacitor codes','',
         'Only block0x63/host1/reg21[4:0] changes; upper bits, bias, '
         'crystal/VCO codes, ADC selection, 11p, fixed gain and held DC pair '

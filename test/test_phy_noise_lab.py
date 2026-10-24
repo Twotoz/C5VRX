@@ -198,6 +198,7 @@ uint8_t phy_i2c_readReg(uint8_t b,uint8_t h,uint8_t r){(void)b;(void)h;return an
 void phy_i2c_writeReg(uint8_t b,uint8_t h,uint8_t r,uint8_t v){
     (void)h;if(inject==2&&v!=60)return;
     if(b==0x63&&r==21&&((inject==6&&(v&31)==13)||(inject==7&&(v&31)==12)))return;
+    if(b==0x61&&r==6&&((inject==8&&v==88)||(inject==9&&v==87)))return;
     analog_regs[r]=v;
 }
 void phy_adc_rate_set(uint32_t mode){MM(0x600A0448)=(MM(0x600A0448)&~3u)|(mode?3:0);analog_regs[4]=(analog_regs[4]&~4u)|(mode?0:4);}
@@ -215,6 +216,7 @@ static bool copy_snapshot(uint8_t *raw){
     ++stages;
     if(inject==4 && stages==5)MM(0x600A7CE4)^=4;
     if(inject==5 && stages==5)analog_regs[21]^=0xe0;
+    if(inject==10 && stages==5)analog_regs[6]^=2;
     if(!mutated){MM(0x600A7CE4)^=0x80000000;mutated=true;}
     return true;
 }
@@ -237,6 +239,7 @@ static void reset(void){
     host_ack_drop=0;
     dc_pair[0]=240;dc_pair[1]=250;dc_held=true;dc_fail=0;dc_writes=0;sample_dco_check=false;
     sample_locap_expected=-1;
+    sample_ulp_check=false;phy_param[652]=phy_param[653]=0;
 }
 int main(void){
     uint8_t *raw=malloc(8190);uint32_t original[4];uint8_t saved[8];
@@ -340,7 +343,23 @@ int main(void){
     reset();analog_regs[21]=0xac;inject=7;
     if(setjmp(jump)==0){run_locap(208,13,raw,context_ok,999999);assert(!"LO restore failure must reboot");}
     assert(stages==12);
-    free(raw);fprintf(stderr,"PHY lab lifecycle: PASS (rollback, unrelated bits, apply fault, context refusal, fatal restore, bounded DC trials)\n");
+    for(unsigned fault=0;fault<=10;fault+=fault==0?8:1){
+        reset();analog_regs[4]=88;analog_regs[5]=0x47;analog_regs[6]=87;
+        phy_param[652]=0x12;phy_param[653]=0x34;inject=fault;
+        if(fault==9){
+            if(setjmp(jump)==0){run_ulp(273,true,raw,context_ok,999999);assert(!"ULP restore failure must reboot");}
+            assert(stages==12);continue;
+        }
+        assert(run_ulp(273,true,raw,context_ok,999999)==(fault==0));
+        assert(analog_regs[4]==88&&analog_regs[5]==0x47&&analog_regs[6]==87);
+        assert(phy_param[652]==0x12&&phy_param[653]==0x34&&!sample_ulp_check);
+        assert(stages==(fault==0?16:fault==8?4:5));
+    }
+    reset();analog_regs[4]=88;analog_regs[5]=0x47;analog_regs[6]=85;
+    assert(run_ulp(273,true,raw,context_ok,999999)&&stages==0&&analog_regs[6]==85);
+    analog_regs[6]=87;analog_regs[5]=7;
+    assert(run_ulp(273,true,raw,context_ok,999999)&&stages==0&&analog_regs[5]==7);
+    free(raw);fprintf(stderr,"PHY lab lifecycle: PASS (rollback, unrelated bits, apply fault, context refusal, fatal restore, bounded DC/ULP trials)\n");
     return 0;
 }
 '''

@@ -44,6 +44,8 @@ static unsigned lab_dwell_ms=300;
 static unsigned lab_windows=4;
 static int sample_adc_expected=-1;
 static int sample_locap_expected=-1;
+static bool sample_ulp_check;
+static uint8_t sample_ulp_expected[5];
 static uint32_t lab_packed_gain;
 static bool lab_packed_valid;
 static bool sample_dco_check;
@@ -250,6 +252,13 @@ static bool dco_expected_ok(void)
     int pair[2];
     return phy_dco_held()&&phy_dco_read_pair(pair)&&pair[0]==sample_dco[0]&&pair[1]==sample_dco[1];
 }
+static bool ulp_expected_ok(void)
+{
+    if(!sample_ulp_check)return true;
+    for(unsigned k=0;k<3;++k)
+        if(phy_i2c_readReg(0x61,0,4+k)!=sample_ulp_expected[k])return false;
+    return phy_param[652]==sample_ulp_expected[3]&&phy_param[653]==sample_ulp_expected[4];
+}
 static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)(void),int64_t deadline)
 {
     const char *stage=(step==0||step==3)?"STOCK":"TEST";
@@ -263,7 +272,7 @@ static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)
            !verify(sample_profile,sample_expected)||
            (sample_adc_expected>=0 && (phy_i2c_readReg(0x66,0,4)&4)!=(unsigned)sample_adc_expected)||
            (sample_locap_expected>=0 && (phy_i2c_readReg(0x63,1,21)&31)!=(unsigned)sample_locap_expected)||
-           !hardware_gain_ok()||!dco_expected_ok()||!capture(raw)||!hardware_gain_ok()||!dco_expected_ok()||
+           !hardware_gain_ok()||!dco_expected_ok()||!ulp_expected_ok()||!capture(raw)||!hardware_gain_ok()||!dco_expected_ok()||!ulp_expected_ok()||
            (sample_locap_expected>=0 && (phy_i2c_readReg(0x63,1,21)&31)!=(unsigned)sample_locap_expected)) return false;
         double m2,kurt,rail; power(raw,&m2,&kurt,&rail);
         if(!isfinite(m2)||m2<=0.05||!isfinite(kurt)) return false;
@@ -343,6 +352,41 @@ static bool run_profile(unsigned id,const profile_t *p,uint8_t *raw,bool (*conte
     if(ok)ok=measure(id,3,raw,context_ok,deadline);
     sample_adc_expected=-1;
     printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":(entry_rejected?"REJECTED_ENTRY":"INCOMPLETE"));
+    return ok;
+}
+/* phy_ulp_ext_code_set(0,code) is exactly one write to 61/0/reg6.
+ * Use only the chip's own reg4 reference, at most one code from entry,
+ * with the existing external-code enable held. No guessed voltage, no
+ * initialization branch, temperature tracking, cache or enable writes. */
+static bool run_ulp(unsigned id,bool reference,uint8_t *raw,bool (*context_ok)(void),int64_t deadline)
+{
+    uint8_t saved[5];
+    for(unsigned k=0;k<3;++k)saved[k]=phy_i2c_readReg(0x61,0,4+k);
+    saved[3]=phy_param[652];saved[4]=phy_param[653];
+    const unsigned delta=abs((int)saved[0]-(int)saved[2]);
+    if(!(saved[1]&64)||delta>1){
+        printf("PHYLAB_SKIP id=%u name=ULP_REFERENCE reason=reference_outside_one_code_or_disabled delta=%u\n",id,delta);
+        return true;
+    }
+    const profile_t p={reference?"ULP_REFERENCE":"ULP_CODE_SHAM",0,{{0}},false};
+    sample_profile=&p;sample_ulp_check=true;
+    for(unsigned k=0;k<5;++k)sample_ulp_expected[k]=saved[k];
+    const uint8_t target=reference?saved[0]:saved[2];
+    printf("PHYLAB_ULP_TARGET id=%u saved=%u reference=%u target=%u enable=%u cache652=%u cache653=%u\n",id,saved[2],saved[0],target,saved[1],saved[3],saved[4]);
+    printf("PHYLAB_PROFILE id=%u name=%s sequence=STOCK_TEST_TEST_STOCK\n",id,p.name);
+    bool ok=measure(id,0,raw,context_ok,deadline);
+    if(ok){
+        phy_i2c_writeReg(0x61,0,6,target);sample_ulp_expected[2]=target;
+        ok=ulp_expected_ok();printf("PHYLAB_APPLY id=%u verified=%u\n",id,ok);
+        if(ok)ok=measure(id,1,raw,context_ok,deadline);
+        if(ok)ok=measure(id,2,raw,context_ok,deadline);
+    }
+    phy_i2c_writeReg(0x61,0,6,saved[2]);sample_ulp_expected[2]=saved[2];
+    const bool restored=ulp_expected_ok();printf("PHYLAB_RESTORE id=%u verified=%u\n",id,restored);
+    if(!restored){printf("PHYLAB_FATAL ulp_restore_failed reboot_required\n");fflush(stdout);esp_restart();}
+    if(ok)ok=measure(id,3,raw,context_ok,deadline);
+    sample_ulp_check=false;
+    printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":"INCOMPLETE");
     return ok;
 }
 static bool run_output(unsigned id,uint8_t *raw,bool (*context_ok)(void),int64_t deadline)
@@ -543,10 +587,11 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
 #ifndef C5VRX_PHY_PINNED
     (void)context_ok;(void)dwell_ms;(void)suite;printf("PHYLAB refused=unverified_phy\n");
 #else
-    if((dwell_ms!=300&&dwell_ms!=1200)||suite>13){printf("PHYLAB refused=arguments\n");return;}
+    if((dwell_ms!=300&&dwell_ms!=1200)||suite>14){printf("PHYLAB refused=arguments\n");return;}
     lab_dwell_ms=dwell_ms;
     lab_windows=(suite==7||suite==8||suite>=10)?16:4;
     sample_dco_check=false;
+    sample_ulp_check=false;
     uint8_t *raw=malloc(C5V4_LEVEL_SAMPLE_BYTES);
     if(!raw){printf("PHYLAB refused=memory\n");return;}
     /* Caller has paused the receiver; whole-suite task lease excludes tune,
@@ -648,6 +693,8 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
         ok=run_profile(240+i,&policy_profiles[confirm_order[i]],raw,context_ok,deadline);
     for(unsigned i=0;i<sizeof(aux_profiles)/sizeof(aux_profiles[0])&&ok&&suite==13;++i)
         ok=run_profile(256+i,&aux_profiles[i],raw,context_ok,deadline);
+    for(unsigned i=0;i<3&&ok&&suite==14;++i)
+        ok=run_ulp(272+i,i==1,raw,context_ok,deadline);
     sample_dco_check=false;
     printf("PHYLAB_END status=%s rejected=%u restored=1 input_referred_improvement=unknown\n",ok?(rejected?"COMPLETE_WITH_REJECTIONS":"PASS"):"INCOMPLETE",rejected);
     phy_end();free(raw);

@@ -1,16 +1,16 @@
 {
   "scope": "Read-only verification of C5VRX/Twotoz PHY lab raw/derived evidence.\n\nChecks all archived IQ byte counts, SHA-256/FNV hashes, CSV identity and\nprofile completeness. Hardware PASS and intact host transport are separate:\ndamaged captures must keep their derived profile INCOMPLETE. This verifies\nartifact consistency; it does not independently validate closed PHY semantics\nor measure RF sensitivity. Source: https://github.com/Twotoz/C5VRX\nOfficial website and Discord invite: https://twotoz.github.io/C5VRX/\n",
   "status": "PASS",
-  "audit_runs": 42,
-  "audit_captures": 7359,
+  "audit_runs": 44,
+  "audit_captures": 7871,
   "live_captures": 64,
-  "no_measurement_attempts": 3,
-  "verified_utc": "2026-10-24T18:33:14.500564+00:00",
-  "verifier_sha256": "f2b5b98efdb012a8271683f9cd0aa3ad3fdd02d21f68dcf4064dcf581f419424",
+  "no_measurement_attempts": 4,
+  "verified_utc": "2026-10-24T18:45:11.107536+00:00",
+  "verifier_sha256": "890a06ac1248189b9d94276ac5f5505ae56db976ed6efe54586cb7c6813acd8e",
   "numpy_version": "2.5.2",
   "scipy_version": "1.18.1",
   "recomputed_spectra": true,
-  "aggregate_sha256": "941da1e2b56ada16a883794fa0e2a09463765f0f5822483ad9b53179bc2718d8",
+  "aggregate_sha256": "892268a560265d2363d138e5e705ab80a97e16667bbd77f3f37cb0fdba056d07",
   "runs": [
     {
       "run": "audit_5745_clock_extra_short",
@@ -25,6 +25,13 @@
       "rejected_attempts": 0,
       "incomplete_host_exports": [],
       "raw_log_sha256": "16e188e45f08db34747e9f1d5738be68595eb366b46b3c6ea431988731e8e0c8"
+    },
+    {
+      "run": "audit_5805_aux1",
+      "valid_captures": 256,
+      "rejected_attempts": 1,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "9d45611ea30fd432cca1bc10175cacdd6d81ae9f6975d5aa3f952bf9207a433a"
     },
     {
       "run": "audit_5805_bias_adc1",
@@ -178,6 +185,13 @@
       "rejected_attempts": 0,
       "incomplete_host_exports": [],
       "raw_log_sha256": "34128b86ee7042d316a3a1bf61704b670c76cd21bf82a3a4d72a033ff61d3697"
+    },
+    {
+      "run": "audit_5865_aux1",
+      "valid_captures": 256,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "fa321440ef78e09a6378120d53c323674c0e4d96c9a9967e0b8718283edd97e0"
     },
     {
       "run": "audit_5865_bias_adc1",

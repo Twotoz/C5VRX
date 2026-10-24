@@ -273,7 +273,26 @@ at0x600a0808, bracketed by two explicit sham executions. Each execution
 uses sixteen snapshots per ABBA stage, matching held calibrated DC and
 fixed gain, with the original masked state restored and verified. The
 PWDET helper name does not establish enable polarity. Neither probe starts
-a transmitter or calls a calibration routine. Hardware results are pending.
+a transmitter or calls a calibration routine. Both channels completed all256
+captures. Both tested fields already match the vendor targets, so these
+are no-op controls; even the5805-MHz HEMU delta of-0.050 dB is variation.
 ULP analog0x61/host0/registers4..6 and phy_param[652:653] are read-only
 telemetry; no ULP code is forced. Host tests cover exact auxiliary-field
 rollback and unchanged ULP cache; the pinned C5 build passes.
+
+The readbacks show reference0x58, active0x57, reg5=0x47 (bit6 set),
+and caches652/653 both zero. The exact `phy_ulp_ext_code_set(0,code)`
+branch writes only reg6. Its initialization branch copies reg4 to reg6,
+sets bit6 and updates both cache bytes. The tracking helper computes a
+temperature-derived adjustment, bounded to +/-15, updates cache653 and
+calls the code-only branch. The meaning/voltage scale of one code remains
+undocumented here. No supply or sensitivity benefit is assumed.
+
+Suite14 (`}`) compares the existing reg6 code with the chip's own reg4
+reference, only if bit6 is already set and the code difference is at most
+one. Explicit same-code comparisons bracket the reference trial. Reg4,
+reg5, reg6 and both caches are checked before/after every snapshot;
+only reg6 is written and restored. Initialization/tracking are not called,
+and cache/enable values remain untouched. Host tests cover refused inputs,
+apply failure, unexpected code movement and fatal restore failure. Hardware
+results are pending.

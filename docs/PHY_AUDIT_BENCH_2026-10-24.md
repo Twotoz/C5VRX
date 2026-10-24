@@ -219,6 +219,30 @@ At5805 MHz the order-controlled LLTF00 executions give +0.001/-0.014 dB, pooled 
 
 The5865-MHz confirmation gives LLTF00 -0.002 dB, versus sham +0.006 and unchanged LLTF10 -0.016 dB; all entries have no quality flags. Its first attempt produced no captures because no gain passed every qualification window. Exact outer restoration succeeded. The successful retry first let the ordinary DC servo settle for15s each at transient G78/G72, restored AUTO, and qualified G76 with the original criteria. The preparation manifest and log hashes are retained in its context note. Taken together, the order controls do not establish the earlier0.04 dB clue.
 
+## Auxiliary vendor fields
+
+Suite13 changes only the recovered HEMU mask at0x600a7890 or PWDET mask at0x600a0808, bracketed by explicit shams. ULP registers/cache are observed without writes. A matching baseline field is classified as a no-op independently of its delta.
+
+| Run | Profile | Noise delta dB | Stock drift dB | Quality/status | Baseline already matches |
+|---|---|---:|---:|---|---|
+| audit_5805_aux1 | AUX_SHAM | -0.012 | +0.005 | NO_FLAGS | tested MMIO fields already match baseline |
+| audit_5805_aux1 | HEMU_RU26_VENDOR | -0.050 | +0.011 | NO_FLAGS | tested MMIO fields already match baseline |
+| audit_5805_aux1 | PWDET_VENDOR_CLEAR | -0.000 | +0.027 | NO_FLAGS | tested MMIO fields already match baseline |
+| audit_5865_aux1 | AUX_SHAM | -0.014 | -0.001 | NO_FLAGS | tested MMIO fields already match baseline |
+| audit_5865_aux1 | HEMU_RU26_VENDOR | +0.017 | -0.004 | NO_FLAGS | tested MMIO fields already match baseline |
+| audit_5865_aux1 | PWDET_VENDOR_CLEAR | +0.008 | -0.006 | NO_FLAGS | tested MMIO fields already match baseline |
+
+Both fields already match the vendor target on both channels (0x600a7890=0x01654321;0x600a0808=0x00684501). These are no-op controls, including the apparent -0.050 dB HEMU result at5805 MHz. It is measurement variation, not a new improvement.
+
+## Bounded ULP reference comparison
+
+Suite14 compares the existing reg6 code with this chip's reg4 reference only when external-code bit6 is already set and the difference is at most one code. Only reg6 is written. Enable, reference and cache bytes are verified before/after every capture. Two same-code sham executions bracket the reference trial.
+
+| Run | Profile | Noise delta dB | Stock drift dB | Quality/status |
+|---|---|---:|---:|---|
+
+The code is not a calibrated voltage or gain measurement. Any IQ variance change would need independent confirmation and RF validation before interpreting sensitivity or changing defaults.
+
 ## Adjacent LO-capacitor codes
 
 Only block0x63/host1/reg21[4:0] changes; upper bits, bias, crystal/VCO codes, ADC selection, 11p, fixed gain and held DC pair are retained. The incoming code is a sham and adjacent codes stay inside the vendor helper interval10..31. Sixteen snapshots per ABBA stage are independently verified and the original owned field is restored before resume.
@@ -244,6 +268,7 @@ Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to 0x9f/0x7f. The 
 
 | Run | Observed reg0 / reg1 bytes |
 |---|---|
+| audit_5805_aux1 | cf / 7f |
 | audit_5805_bias_adc1 | cf / 7f |
 | audit_5805_lltf_big1 | cf / 7f |
 | audit_5805_lltf_big2 | cf / 7f |
@@ -251,6 +276,7 @@ Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to 0x9f/0x7f. The 
 | audit_5805_locap1 | cf / 7f |
 | audit_5805_locap2 | cf / 7f |
 | audit_5805_policy1 | cf / 7f |
+| audit_5865_aux1 | cf / 7f |
 | audit_5865_bias_adc1 | cf / 7f |
 | audit_5865_lltf_big1 | cf / 7f |
 | audit_5865_lltf_big2 | cf / 7f |
@@ -278,16 +304,16 @@ Controls are selected from explicit shams, unchanged gain-row profiles, identica
 |---|---:|---:|---:|---:|
 | 16 | 24 | -0.019 | 0.038 | 0.099 |
 | 32 | 7 | +0.006 | 0.006 | 0.044 |
-| 64 | 14 | +0.003 | 0.015 | 0.033 |
-| 128 | 6 | -0.002 | 0.011 | 0.026 |
+| 64 | 18 | +0.003 | 0.015 | 0.044 |
+| 128 | 8 | -0.008 | 0.013 | 0.026 |
 
-61 complete controls were classified; 10 have quality flags and are retained separately.
+67 complete controls were classified; 10 have quality flags and are retained separately.
 A small favourable point estimate must repeat against these controls; adding selected negative fluctuations does not establish an extra combined gain. The actual joint comparisons remain the relevant noise-only evidence.
 
 ## Archived evidence
 
-- 3 attempts without a derived measurement are separately retained with immutable log/manifest hashes and restoration markers. They are not negative or successful PHY measurements.
-- 7359 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
+- 4 attempts without a derived measurement are separately retained with immutable log/manifest hashes and restoration markers. They are not negative or successful PHY measurements.
+- 7871 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
 - [Full raw/PSD replay verification](../research/data/phy_audit_2026-10-24_verification.json). Its aggregate SHA-256 identifies the exact summary checked; compare it before treating a later archive as verified.

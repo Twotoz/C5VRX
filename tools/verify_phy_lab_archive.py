@@ -113,6 +113,10 @@ def main():
     parser.add_argument('--spectra',action='store_true',help='also recompute every Welch PSD and equivalent noise bandwidth')
     args=parser.parse_args()
     aggregate=json.loads(args.summary.read_text(encoding='utf-8'))
+    for field in ('additional_static_evidence','auxiliary_static_evidence'):
+        evidence=aggregate.get(field)
+        if evidence and hashlib.sha256((args.raw/evidence['file']).read_bytes()).hexdigest()!=evidence['sha256']:
+            raise ValueError(f'{field}: static evidence changed')
     results=[verify_run(args.raw/run['name'],run,args.spectra) for run in aggregate['runs']]
     total=sum(r['valid_captures'] for r in results)
     if total!=aggregate['total_valid_captures']:raise ValueError('aggregate total mismatch')
