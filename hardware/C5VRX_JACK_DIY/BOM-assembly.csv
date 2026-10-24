@@ -1,0 +1,12 @@
+S/N,Designator *,Quantity *,Manufacturer Part Number *,Procurement Type,Customer Note
+1,R1,1,MFR-25FTE52-8K2,--,8.2k 1/4W 1% metal film axial resistor (DIN0207, P10.16mm)
+2,R2,1,MFR-25FTE52-3K9,--,3.9k 1/4W 1% metal film axial resistor (DIN0207, P10.16mm)
+3,R3,1,MFR-25FTE52-2K,--,2.0k 1/4W 1% metal film axial resistor (DIN0207, P10.16mm)
+4,R4,1,MFR-25FTE52-1K,--,1.0k 1/4W 1% metal film axial resistor (DIN0207, P10.16mm)
+5,R5,1,MFR-25FTE52-470R,--,470R 1/4W 1% metal film axial resistor (DIN0207, P10.16mm)
+6,R6,1,MFR-25FTE52-240R,--,240R 1/4W 1% metal film axial resistor (DIN0207, P10.16mm)
+7,R7,1,MFR-25FTE52-200R,--,200R 1/4W 1% metal film axial resistor (DIN0207, P10.16mm)
+8,C1,1,K471K15C0GF53L2,DNP,470pF 50V C0G ceramic disc capacitor (P2.5mm); DNP (optional RF filter)
+9,J1,1,61300911021,--,9-pin 1x09 right-angle 2.54mm male header for Fat Shark goggle bay
+10,J2,1,PJ-320D,--,4-pole TRRS SMD 3.5mm phone jack facing left (PJ-320D)
+11,U1,2,PPTC071LFBN-RC,--,2x 1x07 2.54mm female header sockets for Seeed XIAO ESP32-C5 (XIAO module plugged in by customer)

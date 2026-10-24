@@ -1,0 +1,12 @@
+Designator,Val,Package,Mid X,Mid Y,Rotation,Layer
+C1,470pF,C_Disc_D3.0mm_W1.6mm_P2.50mm,132.50,-101.40,0.0,Top
+J1,FATSHARK BAY,FatShark_Header_1x09,140.95,-126.26,180.0,Top
+J2,PJ-320D,Jack_3.5mm_PJ320D_Horizontal,108.50,-123.30,0.0,Top
+R1,8.2k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,125.52,-114.30,0.0,Top
+R2,3.9k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,125.52,-117.70,0.0,Top
+R3,2k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,125.52,-121.10,0.0,Top
+R4,1k,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,125.52,-104.10,0.0,Top
+R5,470,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,125.52,-107.50,0.0,Top
+R6,240,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,125.52,-110.90,0.0,Top
+R7,200,R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,125.52,-124.50,0.0,Top
+U1,XIAO ESP32-C5,XIAO-ESP32-C5-DIP,111.50,-109.12,180.0,Top

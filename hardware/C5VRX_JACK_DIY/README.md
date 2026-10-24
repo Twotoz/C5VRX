@@ -37,22 +37,25 @@ A DIY-friendly KiCad carrier board for the **Seeed Studio XIAO ESP32-C5** runnin
 
 ---
 
-## Bill of Materials (BOM)
+## Bill of Materials (Assembly Template)
 
-| Reference | Value | Footprint | Description / Notes |
-|:---|:---|:---|:---|
-| **U1** | XIAO ESP32-C5 | `C5VRX:XIAO-ESP32-C5-DIP` | Plug-in mounting on 2× 7-pin 2.54mm female pin headers |
-| **R1** | 8.2 kΩ | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 1/4W axial through-hole (1% recommended) |
-| **R2** | 3.9 kΩ | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 1/4W axial through-hole (1% recommended) |
-| **R3** | 2.0 kΩ | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 1/4W axial through-hole (1% recommended) |
-| **R4** | 1.0 kΩ | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 1/4W axial through-hole (1% recommended) |
-| **R5** | 470 Ω | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 1/4W axial through-hole (1% recommended) |
-| **R6** | 240 Ω | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 1/4W axial through-hole (1% recommended) |
-| **R7** | 200 Ω | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 1/4W axial through-hole (1% recommended) |
-| **J1** | 9-pin Header | `C5VRX:FatShark_Header_1x09` | 9-pin 2.54mm right-angle male header to goggle bay |
-| **J2** | PJ-320D | `Connector_Audio:Jack_3.5mm_PJ320D_Horizontal` | 4-pole TRRS SMD 3.5mm jack (Tip & R1: Video, Sleeve: GND) |
-| **SJ1** | Solder Bridge | `Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm` | Open jumper; solder to power XIAO from goggle 5V |
-| **C1** | 470 pF | `Capacitor_THT:C_Disc_D3.0mm_W1.6mm_P2.50mm` | Optional / DNP; ceramic C0G/NP0 (2.50mm lead pitch) |
+Ready for automated Turnkey / Consigned PCB assembly quoting (PCBWay, JLCPCB, Elecrow):
+
+| S/N | Designator * | Quantity * | Manufacturer Part Number * | Procurement Type | Customer Note |
+|:---:|:---|:---:|:---|:---:|:---|
+| 1 | R1 | 1 | `MFR-25FTE52-8K2` | `--` | 8.2 kΩ 1/4W 1% metal film axial resistor (DIN0207, P10.16mm) |
+| 2 | R2 | 1 | `MFR-25FTE52-3K9` | `--` | 3.9 kΩ 1/4W 1% metal film axial resistor (DIN0207, P10.16mm) |
+| 3 | R3 | 1 | `MFR-25FTE52-2K` | `--` | 2.0 kΩ 1/4W 1% metal film axial resistor (DIN0207, P10.16mm) |
+| 4 | R4 | 1 | `MFR-25FTE52-1K` | `--` | 1.0 kΩ 1/4W 1% metal film axial resistor (DIN0207, P10.16mm) |
+| 5 | R5 | 1 | `MFR-25FTE52-470R` | `--` | 470 Ω 1/4W 1% metal film axial resistor (DIN0207, P10.16mm) |
+| 6 | R6 | 1 | `MFR-25FTE52-240R` | `--` | 240 Ω 1/4W 1% metal film axial resistor (DIN0207, P10.16mm) |
+| 7 | R7 | 1 | `MFR-25FTE52-200R` | `--` | 200 Ω 1/4W 1% metal film axial resistor (DIN0207, P10.16mm) |
+| 8 | C1 | 1 | `K471K15C0GF53L2` | `DNP` | 470 pF 50V ceramic disc capacitor (P2.5mm); DNP (optional filter) |
+| 9 | J1 | 1 | `61300911021` | `--` | 9-pin 1x09 right-angle 2.54mm male header for Fat Shark goggle bay |
+| 10 | J2 | 1 | `PJ-320D` | `--` | 4-pole TRRS SMD 3.5mm phone jack facing left (PJ-320D) |
+| 11 | U1 | 2 | `PPTC071LFBN-RC` | `--` | 2x 1x07 2.54mm female header sockets for Seeed XIAO ESP32-C5 |
+
+*Note: Solder bridge `SJ1` is copper-only (no part). The XIAO ESP32-C5 module plugs into `U1` sockets and is customer supplied.*
 
 ---
 
@@ -60,7 +63,9 @@ A DIY-friendly KiCad carrier board for the **Seeed Studio XIAO ESP32-C5** runnin
 
 - [`exports/C5VRX_JACK_DIY-gerbers.zip`](exports/C5VRX_JACK_DIY-gerbers.zip): Gerber X2 and Excellon drill package ready for PCB fab (JLCPCB, PCBWay, etc.).
 - [`exports/gerbers/`](exports/gerbers/): Uncompressed individual Gerber and Excellon drill files.
-- [`exports/C5VRX_JACK_DIY-all-pos.csv`](exports/C5VRX_JACK_DIY-all-pos.csv) & [`exports/C5VRX_JACK_DIY-all.pos`](exports/C5VRX_JACK_DIY-all.pos): Centroid / Pick-and-Place (PnP / CPL) position files (CSV & ASCII in mm).
+- [`BOM-assembly.csv`](BOM-assembly.csv) & [`exports/C5VRX_JACK_DIY-assembly-bom.csv`](exports/C5VRX_JACK_DIY-assembly-bom.csv): Direct turnkey assembly BOM following PCBWay/JLCPCB template.
+- [`exports/C5VRX_JACK_DIY-centroid.csv`](exports/C5VRX_JACK_DIY-centroid.csv): Assembly centroid / CPL position file (`Designator,Val,Package,Mid X,Mid Y,Rotation,Layer`).
+- [`exports/C5VRX_JACK_DIY-all-pos.csv`](exports/C5VRX_JACK_DIY-all-pos.csv) & [`exports/C5VRX_JACK_DIY-all.pos`](exports/C5VRX_JACK_DIY-all.pos): KiCad native centroid position files (CSV & ASCII in mm).
 - [`exports/C5VRX_JACK_DIY-schematic.pdf`](exports/C5VRX_JACK_DIY-schematic.pdf): Vector schematic PDF.
 - [`exports/C5VRX_JACK_DIY-fit-check-1to1.pdf`](exports/C5VRX_JACK_DIY-fit-check-1to1.pdf): 1:1 scale printable PDF for mechanical bay fit-checks.
 - [`exports/C5VRX_JACK_DIY.step`](exports/C5VRX_JACK_DIY.step) & [`exports/C5VRX_JACK_DIY.glb`](exports/C5VRX_JACK_DIY.glb): 3D CAD models.
