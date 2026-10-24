@@ -1,0 +1,17 @@
+### Footprint positions - created on 2026-10-24T15:47:02 ###
+### Printed by KiCad version 10.0.6
+## Unit = mm, Angle = deg.
+## Side : top
+# Ref     Val            Package                                                 PosX       PosY       Rot  Side
+C1        470pF          C_Disc_D3.0mm_W1.6mm_P2.50mm                        132.5000  -101.4000    0.0000  top
+J1        FATSHARK_BAY   FatShark_Header_1x09                                140.9500  -126.2600  180.0000  top
+J2        PJ-320D        Jack_3.5mm_PJ320D_Horizontal                        108.5000  -123.3000    0.0000  top
+R1        8.2k           R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal   125.5200  -114.3000    0.0000  top
+R2        3.9k           R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal   125.5200  -117.7000    0.0000  top
+R3        2k             R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal   125.5200  -121.1000    0.0000  top
+R4        1k             R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal   125.5200  -104.1000    0.0000  top
+R5        470            R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal   125.5200  -107.5000    0.0000  top
+R6        240            R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal   125.5200  -110.9000    0.0000  top
+R7        200            R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal   125.5200  -124.5000    0.0000  top
+U1        XIAO_ESP32-C5  XIAO-ESP32-C5-DIP                                   111.5000  -109.1200  180.0000  top
+## End

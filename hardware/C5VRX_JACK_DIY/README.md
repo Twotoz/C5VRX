@@ -60,6 +60,7 @@ A DIY-friendly KiCad carrier board for the **Seeed Studio XIAO ESP32-C5** runnin
 
 - [`exports/C5VRX_JACK_DIY-gerbers.zip`](exports/C5VRX_JACK_DIY-gerbers.zip): Gerber X2 and Excellon drill package ready for PCB fab (JLCPCB, PCBWay, etc.).
 - [`exports/gerbers/`](exports/gerbers/): Uncompressed individual Gerber and Excellon drill files.
+- [`exports/C5VRX_JACK_DIY-all-pos.csv`](exports/C5VRX_JACK_DIY-all-pos.csv) & [`exports/C5VRX_JACK_DIY-all.pos`](exports/C5VRX_JACK_DIY-all.pos): Centroid / Pick-and-Place (PnP / CPL) position files (CSV & ASCII in mm).
 - [`exports/C5VRX_JACK_DIY-schematic.pdf`](exports/C5VRX_JACK_DIY-schematic.pdf): Vector schematic PDF.
 - [`exports/C5VRX_JACK_DIY-fit-check-1to1.pdf`](exports/C5VRX_JACK_DIY-fit-check-1to1.pdf): 1:1 scale printable PDF for mechanical bay fit-checks.
 - [`exports/C5VRX_JACK_DIY.step`](exports/C5VRX_JACK_DIY.step) & [`exports/C5VRX_JACK_DIY.glb`](exports/C5VRX_JACK_DIY.glb): 3D CAD models.
