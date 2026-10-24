@@ -113,7 +113,11 @@ jobs:
           cc -O2 -std=c11 -Wall -Wextra -Werror -Imain -Iresearch/legacy_demod research/legacy_demod/test_dc_center_lut.c -lm -o /tmp/test_dc_center_lut
           /tmp/test_dc_center_lut
       - name: Diagnostic log semantics
+        shell: bash
         run: |
+          # CMake and the IDF Python environment are installed by the image,
+          # but only export.sh adds them to PATH for this GitHub Actions step.
+          . "$IDF_PATH/export.sh"
           python3 test/test_field_diag_compare.py
           python3 test/test_dac_check_tool.py
           python3 test/test_diag_snapshot_runtime.py
