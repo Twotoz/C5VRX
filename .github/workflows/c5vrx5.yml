@@ -114,6 +114,8 @@ jobs:
           /tmp/test_dc_center_lut
       - name: Diagnostic log semantics
         run: |
+          python3 test/test_phy_noise_lab.py
+          python3 test/test_phy_noise_lab.py --c
           python3 test/test_field_diag_compare.py
           python3 test/test_dac_check_tool.py
           python3 test/test_diag_snapshot_runtime.py

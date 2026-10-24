@@ -10,6 +10,7 @@
 #include "hal/usb_serial_jtag_ll.h"
 #include "rf.h"
 #include "snapshot.h"
+#include "phy_noise_lab.h"
 
 extern volatile const char *s_boot_stage;
 
@@ -98,6 +99,23 @@ static void help(void)
            "  v video standard AUTO/NTSC/PAL, e close menu (web menu direct controls),\n"
            "  F calibrate (startup steps again; video stops), L bench IQ lane comparison (video stops ~3 s),\n"
            "  N bench: noise floor with the video output on vs off (VTX off; video stops ~0.3 s x4),\n"
+           "  J BENCH ONLY: 16 undocumented NF_AUTO bit patterns twice, VTX OFF (experimental; do not fly),\n"
+           "  B BENCH ONLY: isolated NF/11p/channel/IQ/spur lab with raw IQ, VTX OFF,\n"
+           "  C BENCH ONLY: same PHY lab with 1200 ms dwell instead of 300 ms,\n"
+           "  H/V BENCH ONLY: isolated RX/TX correction, coefficient, CCA, FFT and dfilt audit (300/1200 ms),\n"
+           "  E BENCH ONLY: video output ON/OFF noise ABBA at screened fixed gain, VTX OFF,\n"
+           "  S BENCH ONLY: coupled vendor ADC selectors 0/1, exact analog/digital restore, VTX OFF,\n"
+           "  P/O BENCH ONLY: recovered RX11b/RX-sense argument states (300/1200 ms), VTX OFF,\n"
+           "  K/k BENCH ONLY: recovered TX-clock/WiFi gate fields (300/1200 ms), VTX OFF,\n"
+           "  %% BENCH ONLY: gain/noise/headroom rows 72..83 and reverse, VTX OFF,\n"
+           "  + BENCH ONLY: joint profiles plus sham, preserves incoming 11p, 16 captures/stage, VTX OFF,\n"
+           "  & BENCH ONLY: temporary DC centering at fixed G78/80/83, exact held-pair restore, VTX OFF,\n"
+           "  ( BENCH ONLY: isolated LLTF/RIFS/VHT/11b-LR fields and sham, calibrated hold, VTX OFF,\n"
+           "  ) BENCH ONLY: adjacent LO-cap codes inside vendor interval, exact restore, VTX OFF,\n"
+           "  [ BENCH ONLY: LLTF four-state follow-up plus sham, 16 captures/stage, VTX OFF,\n"
+           "  ] BENCH ONLY: order-controlled LLTF00/10 repeats with front/end shams, VTX OFF,\n"
+           "  { BENCH ONLY: HEMU/PWDET vendor MMIO masks and shams, ULP read-only, VTX OFF,\n"
+           "  } BENCH ONLY: own ULP reference within one code and shams, VTX OFF,\n"
            "  Z DAC self-test (bench: test pattern, then one flat level per pin for a multimeter),\n"
            "  ` reboot to USB download (flashing)\n");
 }
@@ -116,6 +134,7 @@ static void usb_reader_task(void *arg)
             uint8_t c;
             if (usb_serial_jtag_ll_read_rxfifo(&c, 1) == 0) break;
             if (c == '`') rf_reboot_to_download();   /* never returns */
+            if (phy_noise_lab_ack_byte(c)) continue;
             (void)xQueueSend(s_keys, &c, 0);
         }
         /* Heartbeat: shows the board is alive whatever the console does. */
@@ -144,6 +163,26 @@ static void console_task(void *arg)
             case 'R': diag_toggle_stream(); break;
             case 'L': lane_compare_request(); break;
             case 'N': self_noise_request(); break;
+            case 'J': nfauto_request(); break;
+            case 'B': phylab_request(); break;
+            case 'C': phylab_long_request(); break;
+            case 'H': phyaudit_request(); break;
+            case 'V': phyaudit_long_request(); break;
+            case 'E': physelfnoise_request(); break;
+            case 'S': phyadc_request(); break;
+            case 'P': phyrx_request(); break;
+            case 'O': phyrx_long_request(); break;
+            case 'K': phyclock_request(); break;
+            case 'k': phyclock_long_request(); break;
+            case '%': phygaincurve_request(); break;
+            case '+': phycombo_request(); break;
+            case '&': phydco_request(); break;
+            case '(': phypolicy_request(); break;
+            case ')': phylocap_request(); break;
+            case '[': phylltf_request(); break;
+            case ']': phylltf_confirm_request(); break;
+            case '{': phyaux_request(); break;
+            case '}': phyulp_request(); break;
             case 'Y': case 'W': case 'X': flightlog_console((char)c); break;
             case 'h': case '?': help(); break;
             case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'g': case 'A': case 'U': case 'G': case 'Q': case 'Z': {

@@ -230,6 +230,27 @@ bool calibration_sphase_settled(void);
 bool calibration_dc_ok(uint8_t gain);
 /* Explicit bench-only lane comparison (console L): video stops ~2 s. */
 void lane_compare_request(void);
+void nfauto_request(void); /* bench-only reversible four-bit PHY NF-auto lab (console J) */
+void phylab_request(void); /* console B: isolated noise-only PHY profiles */
+void phylab_long_request(void); /* console C: same suite, 1200 ms dwell */
+void phyaudit_request(void); /* H: separate RX/TX correction and PHY audit */
+void phyaudit_long_request(void); /* V: same audit, 1200 ms dwell */
+void physelfnoise_request(void); /* E: output on/off with screened fixed gain */
+void phyadc_request(void); /* S: isolated coupled ADC selectors 0/1 */
+void phyrx_request(void); /* P: recovered RX11b/RX-sense final states */
+void phyrx_long_request(void); /* O: same profiles with 1200 ms dwell */
+void phyclock_request(void); /* K: recovered TX clock/WiFi gate states */
+void phyclock_long_request(void); /* k: same clock fields, 1200 ms dwell */
+void phygaincurve_request(void); /* %: fixed vendor gain rows and reverse */
+void phycombo_request(void); /* +: joint probes preserving incoming 11p and sham */
+void phydco_request(void); /* &: temporary DC-centering ABBA at G78/80/83 */
+void phypolicy_request(void); /* (: isolated LLTF/RIFS/VHT/11b-LR and sham */
+void phylocap_request(void); /* ): bounded adjacent LO-cap codes and sham */
+void phylltf_request(void); /* [: four LLTF states and sham, 16 windows/stage */
+void phylltf_confirm_request(void); /* ]: front/end shams, 10/00/10/00 */
+void phyaux_request(void); /* {: exact HEMU/PWDET footprints and shams */
+void phyulp_request(void); /* }: own ULP reference, within one code, and shams */
+bool phylab_hold_current_gain(void); /* paused bench only: matching loaded DC row */
 void self_noise_request(void);   /* bench: noise floor with the video output on vs off (console N) */
 
 /* ---- menu.c ---- */

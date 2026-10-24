@@ -1,0 +1,358 @@
+{
+  "scope": "Read-only verification of C5VRX/Twotoz PHY lab raw/derived evidence.\n\nChecks all archived IQ byte counts, SHA-256/FNV hashes, CSV identity and\nprofile completeness. Hardware PASS and intact host transport are separate:\ndamaged captures must keep their derived profile INCOMPLETE. This verifies\nartifact consistency; it does not independently validate closed PHY semantics\nor measure RF sensitivity. Source: https://github.com/Twotoz/C5VRX\nOfficial website and Discord invite: https://twotoz.github.io/C5VRX/\n",
+  "status": "PASS",
+  "audit_runs": 44,
+  "audit_captures": 7871,
+  "live_captures": 64,
+  "no_measurement_attempts": 4,
+  "verified_utc": "2026-10-24T18:45:11.107536+00:00",
+  "verifier_sha256": "890a06ac1248189b9d94276ac5f5505ae56db976ed6efe54586cb7c6813acd8e",
+  "numpy_version": "2.5.2",
+  "scipy_version": "1.18.1",
+  "recomputed_spectra": true,
+  "aggregate_sha256": "892268a560265d2363d138e5e705ab80a97e16667bbd77f3f37cb0fdba056d07",
+  "runs": [
+    {
+      "run": "audit_5745_clock_extra_short",
+      "valid_captures": 36,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "8e1662777b45e05e1ea31b46863f69693726ed8c01f19dd8604c77c3a8aa6b24"
+    },
+    {
+      "run": "audit_5805_adc",
+      "valid_captures": 32,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "16e188e45f08db34747e9f1d5738be68595eb366b46b3c6ea431988731e8e0c8"
+    },
+    {
+      "run": "audit_5805_aux1",
+      "valid_captures": 256,
+      "rejected_attempts": 1,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "9d45611ea30fd432cca1bc10175cacdd6d81ae9f6975d5aa3f952bf9207a433a"
+    },
+    {
+      "run": "audit_5805_bias_adc1",
+      "valid_captures": 32,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "1595d623c1460f7c4e9b42a55c81287b3d06a8ab7a0bbef59db9d64f37d3b6c2"
+    },
+    {
+      "run": "audit_5805_clock_initial_long",
+      "valid_captures": 36,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "b67dbb5a32a6f12d7b6adfbaa155f41bfeaac0ca8b3286c10adea4e2223820c5"
+    },
+    {
+      "run": "audit_5805_clock_initial_short",
+      "valid_captures": 36,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "19eb022660fb98988075300861d718b6c852b7c45dc0c54ffc63854dcb8cdc02"
+    },
+    {
+      "run": "audit_5805_combo_ack1",
+      "valid_captures": 384,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "f9d6f4a389e5ae2948cf509b275e37dd53585af96575e4a1b1a22389fd7f62ab"
+    },
+    {
+      "run": "audit_5805_combo_big1",
+      "valid_captures": 382,
+      "rejected_attempts": 2,
+      "incomplete_host_exports": [
+        {
+          "id": "160",
+          "profile": "COMBO_SENSE0_NO11P",
+          "valid": 63,
+          "expected": 64
+        },
+        {
+          "id": "164",
+          "profile": "COMBO_RX11B0_NO11P",
+          "valid": 63,
+          "expected": 64
+        }
+      ],
+      "raw_log_sha256": "fe395a6bc3a56dd912fbc719290c5deff02f06678c90ef08a49eb85091006ecc"
+    },
+    {
+      "run": "audit_5805_dac",
+      "valid_captures": 48,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "c7113dffca58d306c87bd209359b37d68af7e023be2d823699eba3f204564f0e"
+    },
+    {
+      "run": "audit_5805_dco_ack1",
+      "valid_captures": 192,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "d7a054d008fb218f3a7922403068e690d943a98c8c8ce7542c787d68a3793daf"
+    },
+    {
+      "run": "audit_5805_gaincurve",
+      "valid_captures": 192,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "446d11ac4f2cc311f44aa1c3c8a6c242f71a2d8ee2c0d864796e8f8b6016f87d"
+    },
+    {
+      "run": "audit_5805_headroom",
+      "valid_captures": 304,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "87f6563af4863f0ae521471a38fe492ede3fed204dcea50895d870bf124179ca"
+    },
+    {
+      "run": "audit_5805_lltf_big1",
+      "valid_captures": 320,
+      "rejected_attempts": 2,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "b5a5505f682556ef362c6408b68ef472cbe568b384edab3c62ea483a3db96f95"
+    },
+    {
+      "run": "audit_5805_lltf_big2",
+      "valid_captures": 320,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "d5663fd4f04d1be9db93902b4658ad34192dafab76ba518f8a1ab48a6c4ace69"
+    },
+    {
+      "run": "audit_5805_lltf_confirm3",
+      "valid_captures": 384,
+      "rejected_attempts": 3,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "98bff179463e3a5d4240e596ad55516b3a4752351e7899b07a68ea525869ab2d"
+    },
+    {
+      "run": "audit_5805_locap1",
+      "valid_captures": 192,
+      "rejected_attempts": 1,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "684000570746604626aa7eb3103ae517115274f7dbc7554ff367960d18f8a256"
+    },
+    {
+      "run": "audit_5805_locap2",
+      "valid_captures": 192,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "35c71aa4da9683decb83156595dfcfa93de1e39181ddcc7b011dfa163159b004"
+    },
+    {
+      "run": "audit_5805_policy1",
+      "valid_captures": 176,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "872f40a46e93aca05238e5a772550c6b4812eb43bd191780ba909385ebc00eef"
+    },
+    {
+      "run": "audit_5805_rx_long",
+      "valid_captures": 64,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "615938d107f219e2bf9fdbd8eaf50bb197c206c005620fa2657d5a6d9d7e1250"
+    },
+    {
+      "run": "audit_5805_rx_short",
+      "valid_captures": 64,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "6ca1c2910cc3420d10f13ad8eb1384b8f2fc32e7f78cf7ce7d9e2ba4d297b043"
+    },
+    {
+      "run": "audit_5865_adc",
+      "valid_captures": 32,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "901b7069a1bd08b1d9304cf1e1d120e532b90673be279a73ae27731b7f37db7b"
+    },
+    {
+      "run": "audit_5865_adc_repeat1",
+      "valid_captures": 32,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "d6b867828acac478aaac80038d02bfd3988bd58c58d47f4091afddc967d2e027"
+    },
+    {
+      "run": "audit_5865_adc_repeat2",
+      "valid_captures": 32,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "34128b86ee7042d316a3a1bf61704b670c76cd21bf82a3a4d72a033ff61d3697"
+    },
+    {
+      "run": "audit_5865_aux1",
+      "valid_captures": 256,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "fa321440ef78e09a6378120d53c323674c0e4d96c9a9967e0b8718283edd97e0"
+    },
+    {
+      "run": "audit_5865_bias_adc1",
+      "valid_captures": 32,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "c67e9c8362042c2d35a8f150999f0d25f83cf96c62b0b13984720a03acd2fb6d"
+    },
+    {
+      "run": "audit_5865_clock_verified_long",
+      "valid_captures": 36,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "f6cebbfc3bcb5d6fcb2fde4d4596dfd380291e150421c30d2274a1f48188d6cc"
+    },
+    {
+      "run": "audit_5865_clock_verified_short",
+      "valid_captures": 36,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "6971f15cf7a48df882a306814725bacba532aa77fd2b07fac0f8b6a25970f1ef"
+    },
+    {
+      "run": "audit_5865_combo_ack1",
+      "valid_captures": 384,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "46554884a014aeab9b282edd5b58204c8ef38975a70d1b7a4721374be7b63a75"
+    },
+    {
+      "run": "audit_5865_combo_big1",
+      "valid_captures": 384,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "ed72d74317f6cf53a2e68248ef9cf536af66ca4a7404696366ef451580a4f322"
+    },
+    {
+      "run": "audit_5865_dac",
+      "valid_captures": 48,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "4b15b1ea84e651a30fb4fc49cb1727e06023154c5b131c1c44955b079d5cd94d"
+    },
+    {
+      "run": "audit_5865_dco2",
+      "valid_captures": 192,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "f1912364eb5b5e5a110808b6711a04dcdbda80349ec036b8b919f8c85d987867"
+    },
+    {
+      "run": "audit_5865_dco3",
+      "valid_captures": 191,
+      "rejected_attempts": 1,
+      "incomplete_host_exports": [
+        {
+          "id": "178",
+          "profile": "DCO_CENTER_G83",
+          "valid": 63,
+          "expected": 64
+        }
+      ],
+      "raw_log_sha256": "24875501e3083deb0ab9b661270de49105cbb7ab10ab8bc272149377dcb0476a"
+    },
+    {
+      "run": "audit_5865_dco_ack1",
+      "valid_captures": 192,
+      "rejected_attempts": 1,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "7e0719b73b6d3bf207e78f39dc2b24a65955169f4b6a253fcaeabcb90fb53a91"
+    },
+    {
+      "run": "audit_5865_gaincurve",
+      "valid_captures": 192,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "b3952f0dff9d5f5983dec20e148e168ede6962f3a13849ac87f4a341c6f53f4c"
+    },
+    {
+      "run": "audit_5865_headroom",
+      "valid_captures": 304,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "29e5352310862c2ca9b3bae3c0cb39eeb11a747adf5b80f133f917fc8c53dbd7"
+    },
+    {
+      "run": "audit_5865_lltf_big1",
+      "valid_captures": 320,
+      "rejected_attempts": 2,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "be5198a135bb0c3856b1f8d853cdf4991aadc47139ac680d65152341150da889"
+    },
+    {
+      "run": "audit_5865_lltf_big2",
+      "valid_captures": 320,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "047c2a6eba7e8abb61330558019ba29d780b6ecd7de4f2ef2745c6632ad0e8ac"
+    },
+    {
+      "run": "audit_5865_lltf_confirm4",
+      "valid_captures": 384,
+      "rejected_attempts": 3,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "ecf6c3bf6f148c052d6a10a9b4fce9d7ec258ad9aea26040316b453be51547a7"
+    },
+    {
+      "run": "audit_5865_locap1",
+      "valid_captures": 128,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "d75f878179e82ad0e8072833871bcea950fa828d697e0b70c893499a03165cbf"
+    },
+    {
+      "run": "audit_5865_locap2",
+      "valid_captures": 128,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "81c20fa9ead3a945262ae9dc70ec36e913a723c3c9a3839aa6d4b1f6241befb0"
+    },
+    {
+      "run": "audit_5865_policy1",
+      "valid_captures": 176,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "cbdcd2cc194de1fe6af19bebbe1bd9417d957bf755058847933a19ca6316a103"
+    },
+    {
+      "run": "audit_5865_rx_long",
+      "valid_captures": 64,
+      "rejected_attempts": 0,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "bbb1e6162b257f940d5debeeb0ce260b1877aade57b3476d2037a415cae4880e"
+    },
+    {
+      "run": "audit_5865_rx_short",
+      "valid_captures": 63,
+      "rejected_attempts": 1,
+      "incomplete_host_exports": [
+        {
+          "id": "99",
+          "profile": "RXSENSE_ARG1",
+          "valid": 15,
+          "expected": 16
+        }
+      ],
+      "raw_log_sha256": "55612f1cca97ab779e8238ff63de0c4aa181ddeb3616959e1f39c2f85e2eb123"
+    },
+    {
+      "run": "audit_5865_short",
+      "valid_captures": 303,
+      "rejected_attempts": 1,
+      "incomplete_host_exports": [
+        {
+          "id": "50",
+          "profile": "FFT_FORCE_SCALE0",
+          "valid": 15,
+          "expected": 16
+        }
+      ],
+      "raw_log_sha256": "140e9b5ddfb8d446aa49d613dbd81d1b2cb6d94f61c2f70479485e01d0b79842"
+    }
+  ]
+}

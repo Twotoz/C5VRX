@@ -1,0 +1,52 @@
+{
+  "source": "C5VRX by Twotoz and contributors",
+  "source_url": "https://github.com/Twotoz/C5VRX",
+  "website_and_discord": "https://twotoz.github.io/C5VRX/",
+  "scope": "Static pinned SDK/config/link-map audit; availability and symbol presence are not runtime or sensitivity proof",
+  "sdk": "ESP-IDF v6.0.2",
+  "files": [
+    {
+      "path": "components/esp_phy/src/phy_init.c",
+      "sha256": "8743914fc5303075f04a926f4fe64465c9fdb4d903800594d620e1536bde901d"
+    },
+    {
+      "path": "components/esp_phy/src/phy_common.c",
+      "sha256": "860ce3cca6dd6568fdea45060446d1ac23270d1c7b4504a9e762feb1c86c150d"
+    },
+    {
+      "path": "components/esp_phy/src/phy_override.c",
+      "sha256": "5d6dbd082a86db8e0cabec763e56e05efb1d6e763f46028594b37691fb9771f6"
+    },
+    {
+      "path": "components/esp_phy/Kconfig",
+      "sha256": "474e953e109360cc446dae08413644c4b26ae3a64d2f90444308c74decd5e785"
+    },
+    {
+      "path": "components/esp_phy/CMakeLists.txt",
+      "sha256": "bfc2adf7aa8b0976cff233c6c536492951ed2062988b7b0e9bfd4d28b545cb75"
+    },
+    {
+      "path": "components/soc/esp32c5/include/soc/soc_caps.h",
+      "sha256": "cf1b9ca798afc07a313ee39bdf8733ee39706ab2afea585578bdc5b09d0d8de6"
+    }
+  ],
+  "sdkconfig_header_sha256": "3b10bebc0d18c0ba03181f7804bc083cedfd582df9038732480ca0c6cbe86320",
+  "flags": {
+    "ESP_DEFAULT_CPU_FREQ_MHZ": "240",
+    "ESP_PHY_DEBUG": "1",
+    "ESP_PHY_DISABLE_PLL_TRACK": "1",
+    "ESP_PHY_ENABLE_CERT_TEST": "1",
+    "ESP_PHY_CALIBRATION_AND_DATA_STORAGE": "1",
+    "ESP_PHY_CALIBRATION_MODE": "0",
+    "ESP_COEX_ENABLED": "1",
+    "ESP_COEX_SW_COEXIST_ENABLE": null,
+    "PM_ENABLE": null,
+    "SOC_WIFI_PHY_NEEDS_USB_WORKAROUND": null,
+    "SOC_PHY_IMPROVE_RX_11B": null,
+    "ESP_PHY_ENABLE_USB": null,
+    "ESP_PHY_IMPROVE_RX_11B": null
+  },
+  "rftest_archive_load_lines": 4,
+  "rftest_archive_member_references": 0,
+  "phy_callback_object_references": 0
+}

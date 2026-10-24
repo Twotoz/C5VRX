@@ -1,0 +1,372 @@
+{
+  "source": "C5VRX by Twotoz and contributors",
+  "source_url": "https://github.com/Twotoz/C5VRX",
+  "website_and_discord": "https://twotoz.github.io/C5VRX/",
+  "scope": "Noise-only boot comparisons; physical gain/desired RF transfer not calibrated",
+  "provenance_fullcal": {
+    "label": "aae44c8-fullcal",
+    "app_sha256": "6d34df742573183586d4b7794364fceb4e2cb01854713647bdbcef4283378a2d",
+    "phy_calibration_storage": false,
+    "phy_calibration_mode": 2,
+    "sdkconfig_sha256": "a5a1bdabe9f0cd78beeeb4d28bf40109f34f33d2257df277f086e557abc9ae6b",
+    "source_sha256": {
+      "main/calibration.c": "5ca7d44362cd9e6f066287accc545883656eb6a389f25145592607224f2f8446",
+      "main/console.c": "aa2217b9825e810295109124bc893e8d39bc68ee714611337989f4be0f13abf2",
+      "main/receiver.h": "407d1a9c095a413d253cc6080fafadb7e8b11b455cb6321a95c63b0b933f869d",
+      "main/phy_noise_lab.c": "5e2ad36e12bddccedd706dfbc6ab134c0522ab36a9ad35baaaee354cce4b6867",
+      "main/phy_noise_lab.h": "4bc70a40e31198eb739c39aa3491ec54a85074ac8d6047ca8c222d440f6c6170"
+    }
+  },
+  "runs": [
+    {
+      "name": "cal_full_5805",
+      "results": [
+        {
+          "gain": 78,
+          "mean_m2": 2.1277481351405343,
+          "median_m2": 2.105988705365995,
+          "std_m2": 0.06720894029306118,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 14.054691402205247,
+          "quality_flags": []
+        },
+        {
+          "gain": 72,
+          "mean_m2": 0.6781994424988931,
+          "median_m2": 0.6746316646316646,
+          "std_m2": 0.01612784485264044,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 16.170254158959295,
+          "quality_flags": [
+            "some_captures_quant_limited",
+            "non_gaussian_or_distorted"
+          ]
+        }
+      ],
+      "rejected": [
+        {
+          "gain": 78,
+          "rep": 1,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 78,
+          "rep": 12,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 72,
+          "rep": 0,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 72,
+          "rep": 12,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        }
+      ],
+      "raw_log_sha256": "90697d1331b55c6318aeeabc46fe21b7c702d8136b811bd17337c9f938c4c8af",
+      "manifest_sha256": "df1dffc624163e2728408e6e331983f531769d65be9d02f9f057c588525b8f3f",
+      "started_utc": "2026-10-24T12:37:03.878021+00:00",
+      "ended_utc": "2026-10-24T12:37:36.795960+00:00"
+    },
+    {
+      "name": "cal_full_5865",
+      "results": [
+        {
+          "gain": 78,
+          "mean_m2": 2.1895433880323987,
+          "median_m2": 2.197751710370758,
+          "std_m2": 0.041865293268338134,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 13.96518237335067,
+          "quality_flags": []
+        },
+        {
+          "gain": 72,
+          "mean_m2": 0.7078472557662119,
+          "median_m2": 0.7084893576102367,
+          "std_m2": 0.013383076787737121,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 15.987022118835801,
+          "quality_flags": []
+        }
+      ],
+      "rejected": [
+        {
+          "gain": 78,
+          "rep": 9,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 78,
+          "rep": 13,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        }
+      ],
+      "raw_log_sha256": "6eb5d1a43e2b9d83a80c399a138dc48fed1f7c3bb9c381881f7cd6cf5c97462d",
+      "manifest_sha256": "2e4c8bd1b1add02220d8dc996f2dc363ea010d306ffbda201ffdca006db3a648",
+      "started_utc": "2026-10-24T12:36:28.421191+00:00",
+      "ended_utc": "2026-10-24T12:36:55.653234+00:00"
+    },
+    {
+      "name": "cal_partial_after_5805",
+      "results": [
+        {
+          "gain": 78,
+          "mean_m2": 2.184299785057569,
+          "median_m2": 2.185420678900532,
+          "std_m2": 0.061203780168611444,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 14.223217530102048,
+          "quality_flags": []
+        },
+        {
+          "gain": 72,
+          "mean_m2": 0.6811578639783767,
+          "median_m2": 0.6745491687799381,
+          "std_m2": 0.019456083666062888,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 16.370845304434397,
+          "quality_flags": [
+            "some_captures_quant_limited"
+          ]
+        }
+      ],
+      "rejected": [
+        {
+          "gain": 78,
+          "rep": 8,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 78,
+          "rep": 12,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 78,
+          "rep": 13,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        }
+      ],
+      "raw_log_sha256": "f37e2aaee007762fa6b296b8d4a5b5ae6efbfb6e17e9fb683059c4fb6d5eadec",
+      "manifest_sha256": "e6b324843f8c2a4f08783b948091994940d34c73c1824c568504d9e02a089902",
+      "started_utc": "2026-10-24T12:41:21.523766+00:00",
+      "ended_utc": "2026-10-24T12:41:52.813361+00:00"
+    },
+    {
+      "name": "cal_partial_after_5865",
+      "results": [
+        {
+          "gain": 78,
+          "mean_m2": 2.239925550978664,
+          "median_m2": 2.2537998556863026,
+          "std_m2": 0.04976310494189184,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 14.013408488531327,
+          "quality_flags": []
+        },
+        {
+          "gain": 72,
+          "mean_m2": 0.6915155612431254,
+          "median_m2": 0.6910752786760113,
+          "std_m2": 0.012866738723429368,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 16.27983037383393,
+          "quality_flags": []
+        }
+      ],
+      "rejected": [
+        {
+          "gain": 78,
+          "rep": 1,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 78,
+          "rep": 5,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 78,
+          "rep": 14,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 72,
+          "rep": 11,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        }
+      ],
+      "raw_log_sha256": "bab0797becd1671e80e68d080c781e094d6ebd09232bdacd0544d61a783effe1",
+      "manifest_sha256": "d9fd3c027a807fc9680ab91c331912b7d926b01912f66ba4a059dbee6b5671d1",
+      "started_utc": "2026-10-24T12:42:01.077755+00:00",
+      "ended_utc": "2026-10-24T12:42:34.448476+00:00"
+    },
+    {
+      "name": "cal_partial_before_5805",
+      "results": [
+        {
+          "gain": 78,
+          "mean_m2": 2.205417241573377,
+          "median_m2": 2.207579376260695,
+          "std_m2": 0.038791016899904274,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 14.239975374687406,
+          "quality_flags": []
+        },
+        {
+          "gain": 72,
+          "mean_m2": 0.6909157565064159,
+          "median_m2": 0.6890178543475247,
+          "std_m2": 0.017350310103495165,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 16.41784001073443,
+          "quality_flags": [
+            "some_captures_quant_limited"
+          ]
+        }
+      ],
+      "rejected": [
+        {
+          "gain": 78,
+          "rep": 8,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 78,
+          "rep": 13,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        }
+      ],
+      "raw_log_sha256": "946d01352e68d7b018992d76a87109c6a32df9466a457ddc82e3ba42633b1fd1",
+      "manifest_sha256": "201daa8eae7fae382d96e2d2535cde4df10b05a08829190aaec911f160bbdd46",
+      "started_utc": "2026-10-24T12:33:04.863796+00:00",
+      "ended_utc": "2026-10-24T12:33:32.704158+00:00"
+    },
+    {
+      "name": "cal_partial_before_5865",
+      "results": [
+        {
+          "gain": 78,
+          "mean_m2": 2.223574413986502,
+          "median_m2": 2.232384239691932,
+          "std_m2": 0.05246935711146931,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 14.057800774522708,
+          "quality_flags": []
+        },
+        {
+          "gain": 72,
+          "mean_m2": 0.6943038923327385,
+          "median_m2": 0.6934527424820467,
+          "std_m2": 0.015323179567045302,
+          "max_signed_rails": 0.0,
+          "nbw_mhz": 16.162933646879843,
+          "quality_flags": [
+            "some_captures_quant_limited"
+          ]
+        }
+      ],
+      "rejected": [
+        {
+          "gain": 78,
+          "rep": 0,
+          "attempt": 0,
+          "reason": "missing/reordered IQ bytes"
+        },
+        {
+          "gain": 78,
+          "rep": 0,
+          "attempt": 1,
+          "reason": "missing/reordered IQ bytes"
+        },
+        {
+          "gain": 78,
+          "rep": 3,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 72,
+          "rep": 10,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        },
+        {
+          "gain": 72,
+          "rep": 15,
+          "attempt": 0,
+          "reason": "IQSNAP_REFUSED stale_or_settling"
+        }
+      ],
+      "raw_log_sha256": "acb49cb0f5d485783c36efebe3d1160369f4ebd3efdb511997c7792c4089c96d",
+      "manifest_sha256": "d4f56a097e1d657cb975c1c6dd3a0ca5a7813f6dcf0ac4d2ba2b993d3064ad1e",
+      "started_utc": "2026-10-24T12:35:19.237302+00:00",
+      "ended_utc": "2026-10-24T12:35:49.546927+00:00"
+    }
+  ],
+  "comparisons": [
+    {
+      "frequency_mhz": 5805,
+      "gain": 78,
+      "partial_before_m2": 2.205417241573377,
+      "full_m2": 2.1277481351405343,
+      "partial_after_m2": 2.184299785057569,
+      "full_vs_bracket_stock_db": -0.13486311098779782,
+      "stock_drift_db": -0.04178522456048532,
+      "flags": []
+    },
+    {
+      "frequency_mhz": 5805,
+      "gain": 72,
+      "partial_before_m2": 0.6909157565064159,
+      "full_m2": 0.6781994424988931,
+      "partial_after_m2": 0.6811578639783767,
+      "full_vs_bracket_stock_db": -0.04989990557155371,
+      "stock_drift_db": -0.061773220686801994,
+      "flags": [
+        "some_captures_quant_limited",
+        "non_gaussian_or_distorted"
+      ]
+    },
+    {
+      "frequency_mhz": 5865,
+      "gain": 78,
+      "partial_before_m2": 2.223574413986502,
+      "full_m2": 2.1895433880323987,
+      "partial_after_m2": 2.239925550978664,
+      "full_vs_bracket_stock_db": -0.08291984436117035,
+      "stock_drift_db": 0.031819157119060845,
+      "flags": []
+    },
+    {
+      "frequency_mhz": 5865,
+      "gain": 72,
+      "partial_before_m2": 0.6943038923327385,
+      "full_m2": 0.7078472557662119,
+      "partial_after_m2": 0.6915155612431254,
+      "full_vs_bracket_stock_db": 0.09262894870035615,
+      "stock_drift_db": -0.017476424319678007,
+      "flags": [
+        "some_captures_quant_limited"
+      ]
+    }
+  ]
+}
