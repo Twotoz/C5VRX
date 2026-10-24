@@ -158,6 +158,9 @@ static esp_err_t prepare_tx(void)
         .output_clk_freq_hz = 40000000u,
         .data_width = 8u,
 #ifdef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
+        /* External FPGA sample strobe (issue #256), before the analog DAC.
+         * GPIO2 belongs to this option even while TX stops; the flywheel
+         * cannot borrow it. Optional/removable: see transport_clock.h. */
         .clk_out_gpio_num = 2,
 #else
         .clk_out_gpio_num = -1,

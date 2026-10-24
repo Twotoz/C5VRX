@@ -536,6 +536,9 @@ static bool sop_session_arm(sop_session_t *s)
 
 static bool sop_session_begin(uint32_t generation, bool (*live)(uint32_t), bool edge_clock, bool resident, bool flag_source)
 {
+    /* The optional FPGA tap owns GPIO2 for the whole build, not only while
+     * a clock is toggling. Do not let the witness steal it during TX/menu
+     * transitions. Purpose and eventual removal scope: transport_clock.h. */
     if(transport_sample_clock_enabled()) {
         printf("SYNC_OUTPUT_PROBE refusal=sample_clock_gpio2\n");
         return false; /* Reserve GPIO2 even when the TX clock is stopped. */

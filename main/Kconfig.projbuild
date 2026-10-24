@@ -11,5 +11,8 @@ config C5VRX_PARLIO_SAMPLE_CLOCK
         for normal builds. Data shifts on the falling edge; sample on rising.
         This is a 6-bit composite waveform, not decoded pixels or 8-bit video.
         Default off. Requires bench validation with the external receiver.
+        Added for the FPGA integration in issue #256, not required for analog
+        reception. If unused in future, this optional feature may be removed;
+        transport_clock.h documents its purpose and removal scope.
 
 endmenu
