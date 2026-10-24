@@ -1954,6 +1954,131 @@ static void self_noise_test(void)
                (on_db - off_db) / pairs);
 }
 
+
+/* Bench-only undocumented noise-floor-control sweep.
+ * Recovered from pinned ESP32-C5 libphy.a phy_noise_floor_auto_set().
+ * The four enable bits are NOT proven independent or upstream of MODEM_DIAG.
+ * Never persist or promote a pattern without a conducted RF/video A/B.
+ * Console J, VTX OFF, bench only; no register changes in normal operation. */
+#define NF_AUTO_R_A UINT32_C(0x600A7018)
+#define NF_AUTO_R_B UINT32_C(0x600A7C44)
+#define NF_AUTO_R_C UINT32_C(0x600A7C50)
+#define NF_AUTO_MASK_A ((UINT32_C(1) << 23) | (UINT32_C(1) << 28))
+#define NF_AUTO_MASK_B UINT32_C(1)
+#define NF_AUTO_MASK_C UINT32_C(1)
+#define NF_AUTO_MMIO(addr) (*(volatile uint32_t *)(uintptr_t)(addr))
+static volatile bool s_nfauto_requested;
+
+void nfauto_request(void) { s_nfauto_requested = true; }
+
+static unsigned nfauto_read_pattern(void)
+{
+    const uint32_t a = NF_AUTO_MMIO(NF_AUTO_R_A);
+    const uint32_t b = NF_AUTO_MMIO(NF_AUTO_R_B);
+    const uint32_t c = NF_AUTO_MMIO(NF_AUTO_R_C);
+    return ((a >> 23) & 1u) | (((a >> 28) & 1u) << 1) |
+           ((b & 1u) << 2) | ((c & 1u) << 3);
+}
+
+/* Only modify the four recovered bits; preserve all unrelated live fields.
+ * PHY lease serializes C5VRX's own channel/gain/filter transactions. */
+static bool nfauto_apply(unsigned pattern)
+{
+    phy_begin();
+    const uint32_t a = NF_AUTO_MMIO(NF_AUTO_R_A);
+    const uint32_t b = NF_AUTO_MMIO(NF_AUTO_R_B);
+    const uint32_t c = NF_AUTO_MMIO(NF_AUTO_R_C);
+    NF_AUTO_MMIO(NF_AUTO_R_A) = (a & ~NF_AUTO_MASK_A) |
+            ((pattern & 1u) ? (UINT32_C(1) << 23) : 0u) |
+            ((pattern & 2u) ? (UINT32_C(1) << 28) : 0u);
+    NF_AUTO_MMIO(NF_AUTO_R_B) = (b & ~NF_AUTO_MASK_B) | ((pattern & 4u) ? 1u : 0u);
+    NF_AUTO_MMIO(NF_AUTO_R_C) = (c & ~NF_AUTO_MASK_C) | ((pattern & 8u) ? 1u : 0u);
+    const bool ok = nfauto_read_pattern() == (pattern & 15u);
+    phy_end();
+    return ok;
+}
+
+static void nfauto_test(void)
+{
+    /* Do not knowingly run on video. Reset or tune with the VTX OFF first.
+     * This isn't a detector for unknown non-video RF interference. */
+    const int64_t now = esp_timer_get_time();
+    if (calibration_in_startup() || !receiver_active() || !quiet_owner() ||
+        s_afc_locked || (s_last_video_us > 0 && now - s_last_video_us < INT64_C(3000000))) {
+        printf("NF_AUTO refused=busy_or_recent_video (VTX OFF, settled after startup required)\n");
+        return;
+    }
+    if (!receiver_pause("NF_AUTO_LAB")) {
+        printf("NF_AUTO refused=receiver_pause\n");
+        return;
+    }
+    const uint8_t old_gain = s_current_gain;
+    const uint8_t max_gain = rf_gain_table()->max_index;
+    const uint32_t control_epoch = s_control_epoch;
+    const uint16_t freq = rf_frequency_mhz();
+    const int offset = rf_offset_khz();
+    const unsigned original = nfauto_read_pattern();
+    bool ok = true;
+    unsigned valid = 0;
+    double baseline_m2 = 0.0, baseline_kurt = 0.0;
+    receiver_set_gain(max_gain);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    ok = s_current_gain == max_gain && selfnoise_measure(&baseline_m2, &baseline_kurt) &&
+         baseline_m2 > 0.05 && isfinite(baseline_m2);
+    printf("NF_AUTO_BEGIN fw=%s freq=%u offset_khz=%d gain=%u pattern=%X "
+           "mapping=bit0:7018.23,bit1:7018.28,bit2:7C44.0,bit3:7C50.0 "
+           "baseline_m2=%.6f baseline_kurt=%.3f baseline_valid=%u note=NO_VTX_NO_VIDEO\n",
+           firmware_id(), freq, offset, max_gain, original, baseline_m2, baseline_kurt, ok);
+    /* Gray-code traversal and reverse traversal make drift/hysteresis visible.
+     * Stock and all-zero are just two of 16 test states. */
+    for (unsigned pass = 0; pass < 2u && ok; ++pass) {
+        for (unsigned i = 0; i < 16u && ok; ++i) {
+            const unsigned n = pass ? 15u - i : i;
+            const unsigned pattern = (n ^ (n >> 1)) & 15u;
+            if (s_control_epoch != control_epoch || rf_frequency_mhz() != freq ||
+                rf_offset_khz() != offset || s_current_gain != max_gain ||
+                s_menu_active || s_scan_active || receiver_paused() == false) {
+                printf("NF_AUTO_ABORT reason=context_changed pass=%u index=%u\n", pass, i);
+                ok = false;
+                break;
+            }
+            if (!nfauto_apply(pattern)) {
+                printf("NF_AUTO_ABORT reason=readback pass=%u index=%u want=%X actual=%X\n",
+                       pass, i, pattern, nfauto_read_pattern());
+                ok = false;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(300));
+            double m2 = 0.0, kurt = 0.0;
+            if (!selfnoise_measure(&m2, &kurt) || m2 <= 0.05 || !isfinite(m2) || !isfinite(kurt)) {
+                printf("NF_AUTO_ABORT reason=iq_invalid pass=%u pattern=%X m2=%.6f\n", pass, pattern, m2);
+                ok = false;
+                break;
+            }
+            printf("NF_AUTO_ROW pass=%u index=%u pattern=%X m2=%.6f kurt=%.3f "
+                   "noise_delta_db=%+.3f gain=%u freq=%u\n",
+                   pass, i, pattern, m2, kurt, 10.0 * log10(m2 / baseline_m2),
+                   s_current_gain, rf_frequency_mhz());
+            ++valid;
+        }
+    }
+    /* Restore exactly the four original bits even after an aborted sweep.
+     * No NVS write or permanent override is ever performed. */
+    const bool restored = nfauto_apply(original);
+    vTaskDelay(pdMS_TO_TICKS(300));
+    double end_m2 = 0.0, end_kurt = 0.0;
+    const bool end_valid = restored && selfnoise_measure(&end_m2, &end_kurt) && end_m2 > 0.05;
+    printf("NF_AUTO_END rows=%u expected=32 restored=%u actual_pattern=%X baseline_m2=%.6f "
+           "end_m2=%.6f end_drift_db=%+.3f status=%s "
+           "note=NOISE_ONLY_NOT_INPUT_REFERRED_SNR_OR_SENSITIVITY\n",
+           valid, restored, nfauto_read_pattern(), baseline_m2, end_m2,
+           end_valid ? 10.0 * log10(end_m2 / baseline_m2) : 0.0,
+           ok && restored && end_valid ? "PASS" : "INCOMPLETE");
+    receiver_set_gain(old_gain);
+    receiver_resume();
+    if (!restored) printf("NF_AUTO_WARNING restore_failed REBOOT_BEFORE_RECEIVING_VIDEO\n");
+}
+
 typedef struct { unsigned windows; long p_median, q_phase, origin_pm, clip_pm, env_x100; } lane_stats_t;
 
 static void lane_measure(lane_stats_t *st)
@@ -2046,6 +2171,7 @@ static void calibration_task(void *arg)
         if (s_manual_requested && !s_menu_active) { s_manual_requested = false; startup_phase(true); continue; }
         if (s_lane_requested && !s_menu_active) { s_lane_requested = false; lane_compare(); continue; }
         if (s_selfnoise_requested && !s_menu_active) { s_selfnoise_requested = false; self_noise_test(); continue; }
+        if (s_nfauto_requested && !s_menu_active) { s_nfauto_requested = false; nfauto_test(); continue; }
         dco_service();
         dc_health_service();
         drift_service();
