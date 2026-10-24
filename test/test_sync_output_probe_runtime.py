@@ -544,6 +544,7 @@ int main(void){bounded_drain();flag_mutation_authority();coast_field_grid();flag
 class Runtime(unittest.TestCase):
     def test_actual_probe(self):
         source = (ROOT / "main/sync_output_probe.c").read_text()
+        source = 'static bool transport_sample_clock_enabled(void){return false;}\n' + source
         source = re.sub(r'^#include[^\n]*\n', '', source, flags=re.MULTILINE)
         phase = (ROOT / 'main/sync_phase_bracket.h').read_text()
         phase = re.sub(r'^#(?:include|pragma)[^\n]*\n', '', phase, flags=re.MULTILINE)

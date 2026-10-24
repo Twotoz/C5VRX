@@ -125,6 +125,7 @@ jobs:
           python3 test/test_gain_map_context.py
           python3 test/test_afc_telemetry.py
           python3 test/test_sphase_runtime.py
+          python3 test/test_sample_clock_runtime.py
           python3 test/test_sync_startup_runtime.py
           python3 test/test_sync_output_probe_runtime.py
           python3 test/test_sync_flag_pin_runtime.py
@@ -166,6 +167,14 @@ jobs:
           idf.py -DC5VRX5_VERSION="${{ steps.version.outputs.version }}" \
             -DC5VRX5_COMMIT="${{ github.event.pull_request.head.sha || github.sha }}" build
           python3 tools/check_sync_output_iram.py build/c5vrx5.elf
+      - name: Build optional GPIO2 digital clock variant (compile check only)
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          printf 'CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK=y\n' > /tmp/c5vrx-clock.defaults
+          idf.py -B build-clock -D SDKCONFIG="$PWD/build-clock/sdkconfig" \
+            -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;/tmp/c5vrx-clock.defaults" build
+          grep -qx 'CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK=y' build-clock/sdkconfig
       - name: Package firmware for web flashing
         shell: bash
         run: |

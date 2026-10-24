@@ -1612,3 +1612,33 @@ observation unavailable, break unlock continuity and clear the summary's
 current observer-validity flags while retaining cumulative-counter deltas.
 Host regressions cover cached locked/unlocked states and resumption without
 recounting counters. This does not change the output guard or ISR behavior.
+
+
+## Optional PARLIO TX clock for digital capture (issue #256, 2026-10-25)
+
+Extends C5VRX by Twotoz and contributors' existing RX40/raw32K/TX
+BitScrambler/PARLIO TX40 path and archived custom-board output work
+(`legacy/c5vrx3/docs/custom-board.md`). Requested by @LAP87 for an FPGA
+composite-video input. The default-off menuconfig option
+`C5VRX_PARLIO_SAMPLE_CLOCK` routes the existing TX clock to GPIO2/MTMS.
+The six DAC pins, 6-bit transfer, two lookups and live `[D,D]`/20 MS/s unique
+cadence remain unchanged. The separate menu raster shares the TX unit.
+No CPU sample pacing, extra GPIO lanes or 8-bit demodulation is added.
+
+GPIO2 is reserved for the whole clock build, including stopped TX. Saved
+flywheel ON is ignored without rewriting NVS; runtime enable requests are
+refused. The live tick cannot allocate an observer or switch into comparator
+format, and the observer's session entry independently refuses before
+allocation/register writes. Normal builds retain default ON/saved OFF.
+The clock uses the existing falling-edge shift; rising-edge capture and
+external setup/hold must be checked physically. Stops, startup/menu ownership,
+DAC tests and restarts are not a continuously framed live-video bus.
+
+Host regressions exercise the production TX setup, flywheel setters and
+probe refusal in both configurations. CI compiles both firmware variants.
+These checks do not establish clock integrity, FPGA capture, colour lock,
+monitor compatibility, RF sensitivity or range. Bench acceptance requires a
+logic-analyser/scope check of data/clock phase and frequency, six-bit sample
+capture, boot with saved flywheel ON/OFF, console/menu refusal, menu/DAC-test
+entry/exit, retunes and restart recovery. GPIO2 strap loading must also be
+checked with the attached external receiver.

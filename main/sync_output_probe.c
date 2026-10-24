@@ -8,6 +8,7 @@
  * Only the isolated GPIO2 data bit may be driven for a private clock marker.
  * No raw IQ, LUT, DMA descriptors, PHY registers or DAC output data writes. */
 #include "sync_output_probe.h"
+#include "transport_clock.h"
 #include "sync_edge_clock.h"
 #include "sync_phase_bracket.h"
 #include "sync_native_track.h"
@@ -535,6 +536,10 @@ static bool sop_session_arm(sop_session_t *s)
 
 static bool sop_session_begin(uint32_t generation, bool (*live)(uint32_t), bool edge_clock, bool resident, bool flag_source)
 {
+    if(transport_sample_clock_enabled()) {
+        printf("SYNC_OUTPUT_PROBE refusal=sample_clock_gpio2\n");
+        return false; /* Reserve GPIO2 even when the TX clock is stopped. */
+    }
     if(s_busy || s_quarantined || s_clock_fault)return false;
     if(!s_session)s_session=calloc(1,sizeof(*s_session));
     if(!s_session)return false;
