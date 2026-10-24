@@ -213,3 +213,31 @@ formula is optimal for this chip. Code magnitude is not a calibrated
 capacitance or LNA-noise setting. A variance change could reflect altered
 LO conversion gain or distortion; no RF sensitivity claim is possible
 without a desired signal. The existing live tuning/defaults remain intact.
+
+## Configuration and automatic tracking boundary
+
+The current pinned SDK configuration disables power management and software
+coexistence; `CONFIG_ESP_COEX_ENABLED=y` still denotes coexistence component
+availability, not proof that software coexistence arbitration is active.
+The CPU default is240 MHz. Neither a component name nor an absent second
+radio proves a hidden sensitivity improvement from changing clocks.
+
+The SDK USB-PHY workaround and receive-11b power-supply workaround depend
+on target capability symbols that are not defined in this C5 configuration.
+Their menu descriptions cannot be applied to the C5 merely because they
+mention improved Wi-Fi reception. Certification-test support adds callback
+source and RF-test archives to the link inputs. Current map inspection
+finds no RF-test archive member included in executable code; enabling API
+availability is not evidence that a certification transmitter is running.
+
+Automatic PLL tracking is explicitly disabled. The pinned IDF
+`phy_common.c` timer would acquire the SDK PHY lock and call
+`phy_param_track_tot`, outside C5VRX's application PHY lease. The recovered
+temperature-triggered `phy_cal_param_track` can force TX/RX off, clear PBUS,
+recalibrate DC/IQ and regenerate the gain table before retuning. This is
+the same maintenance path already identified by the C5VRX-4 tracking lab;
+it is not an isolated PLL-noise bit. Simply enabling the timer during an
+ABBA suite would violate its fixed-state/calibration ownership guarantees.
+No periodic-tracking noise or range benefit is claimed, and the disabled
+production setting is retained. A coordinated boot/maintenance experiment
+would first need validated gain-table/DC/IQ provenance and epoch handling.

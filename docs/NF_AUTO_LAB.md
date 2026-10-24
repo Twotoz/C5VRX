@@ -288,3 +288,12 @@ crystal trim, bias bytes, 11p and ADC clocks are not called or overridden.
 The batch uses the same calibrated DC-hold requirement as suite9, 16
 captures per ABBA stage, 1200 ms dwell, hardware readback and exact owned
 field restoration. A lower IQ variance is not presumed to be an RF benefit.
+
+The follow-up firmware screens suites9/10/11 with the calibrated DC hold
+already applied at **each qualification gain**, matching their measurement
+state. Earlier runs screened vendor DC first and applied the hold only at
+the selected gain; they remain valid fixed-gain comparisons but can select
+a needlessly low gain. New headers include `screen_dc=calibrated`. The
+zero-rail/four-window/six-sigma criteria are unchanged. Gain stays fixed
+through every ABBA profile; this qualification change is not a claimed
+receiver sensitivity improvement.

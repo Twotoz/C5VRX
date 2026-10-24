@@ -541,11 +541,16 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
     phy_begin();
     const int64_t deadline=esp_timer_get_time()+INT64_C(240000000);
     bool ok=context_ok();
-    /* Choose the highest row with <0.2% signed rails; never adapt gain inside
-     * a comparison. Rail/folding proxies and per-state raw data remain visible. */
+    /* Qualify in the same DC state used by the comparison. New calibrated
+     * suites hold the matching loaded row before screening each gain.
+     * Require zero observed signed rails and the six-sigma margin; never
+     * adapt gain inside a comparison. */
     bool gain_ok=false;
     for(int g=rf_gain_table()->max_index;g>=2&&ok;--g){
         receiver_set_gain((uint8_t)g);vTaskDelay(pdMS_TO_TICKS(100));
+        if(suite>=9&&!phylab_hold_current_gain()){
+            printf("PHYLAB_GAIN_SKIP gain=%d reason=no_matching_calibrated_hold\n",g);continue;
+        }
         bool clean=true;
         for(unsigned rep=0;rep<4&&ok;++rep){
             if(!capture(raw)){ok=false;break;}
@@ -568,11 +573,11 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
                arc_gain_highest_rf_stage_start(rf_gain_table()),rf_gain_table()->max_index);
     } else ok=false;
     if(ok&&(suite==9||suite==10||suite==11)){
-        ok=phylab_hold_current_gain()&&phy_dco_read_pair(sample_dco);
+        ok=phy_dco_held()&&phy_dco_read_pair(sample_dco);
         sample_dco_check=ok;
         if(!ok)printf("PHYLAB_POLICY_REFUSED reason=no_matching_calibrated_hold\n");
     }
-    printf("PHYLAB_BEGIN fw=%s freq=%u gain=%u lane=2 dfilt=%d dwell_ms=%u suite=%u windows_per_stage=%u format=Ihigh_Qlow persistent=0 outer_restore=required\n",firmware_id(),rf_frequency_mhz(),s_current_gain,phy_dfilt_hw_mode(),lab_dwell_ms,suite,lab_windows);
+    printf("PHYLAB_BEGIN fw=%s freq=%u gain=%u lane=2 dfilt=%d dwell_ms=%u suite=%u windows_per_stage=%u screen_dc=%s format=Ihigh_Qlow persistent=0 outer_restore=required\n",firmware_id(),rf_frequency_mhz(),s_current_gain,phy_dfilt_hw_mode(),lab_dwell_ms,suite,lab_windows,suite>=9?"calibrated":"vendor");
     for(unsigned id=0;id<16&&ok&&suite==0;++id){
         unsigned n=id^(id>>1);
         profile_t p={"NF_AUTO",3,{{0x600A7018,0x10800000,((n&1)?0x800000:0)|((n&2)?0x10000000:0)},

@@ -143,6 +143,11 @@ These profiles use a matching calibrated DC hold at the screened fixed gain, 120
 
 | Run | Profile | Noise delta dB | Role | Quality/status |
 |---|---|---:|---|---|
+| audit_5805_lltf_big1 | LLTF_MASK_00 | -0.026 | changed bits | NO_FLAGS |
+| audit_5805_lltf_big1 | LLTF_MASK_10 | +0.026 | no-op control | NO_FLAGS |
+| audit_5805_lltf_big1 | LLTF_MASK_01 | +0.021 | changed bits | NO_FLAGS |
+| audit_5805_lltf_big1 | LLTF_MASK_11 | -0.021 | changed bits | NO_FLAGS |
+| audit_5805_lltf_big1 | POLICY_SHAM | +0.003 | no-op control | NO_FLAGS |
 | audit_5805_policy1 | LLTF_MASK_00 | -0.064 | changed bits | NO_FLAGS |
 | audit_5805_policy1 | LLTF_MASK_10 | +0.042 | no-op control | NO_FLAGS |
 | audit_5805_policy1 | LLTF_MASK_01 | +0.043 | changed bits | NO_FLAGS |
@@ -154,6 +159,11 @@ These profiles use a matching calibrated DC hold at the screened fixed gain, 120
 | audit_5805_policy1 | RX11BLR_ARG0 | -0.074 | no-op control | NO_FLAGS |
 | audit_5805_policy1 | RX11BLR_ARG1 | +0.097 | changed bits | NO_FLAGS |
 | audit_5805_policy1 | POLICY_SHAM | +0.000 | no-op control | NO_FLAGS |
+| audit_5865_lltf_big1 | LLTF_MASK_00 | +0.036 | changed bits | NO_FLAGS |
+| audit_5865_lltf_big1 | LLTF_MASK_10 | -0.012 | no-op control | NO_FLAGS |
+| audit_5865_lltf_big1 | LLTF_MASK_01 | +0.013 | changed bits | NO_FLAGS |
+| audit_5865_lltf_big1 | LLTF_MASK_11 | -0.054 | changed bits | NO_FLAGS |
+| audit_5865_lltf_big1 | POLICY_SHAM | +0.043 | no-op control | NO_FLAGS |
 | audit_5865_policy1 | LLTF_MASK_00 | -0.039 | changed bits | NO_FLAGS |
 | audit_5865_policy1 | LLTF_MASK_10 | +0.031 | no-op control | NO_FLAGS |
 | audit_5865_policy1 | LLTF_MASK_01 | -0.032 | changed bits | NO_FLAGS |
@@ -168,6 +178,20 @@ These profiles use a matching calibrated DC hold at the screened fixed gain, 120
 
 The first policy request saw 5865 MHz in early boot status, but saved-channel restore completed before the queued suite started at 5805 MHz. The immutable header and captures identify 5805; the folder was corrected to audit_5805_policy1 and a context note retained. The 5865 run was then deliberately retuned and repeated. Host acquisition now checks actual suite/capture frequency after the request as well, drains through outer restoration, and rejects a mismatch instead of silently accepting the early status.
 
+## Adjacent LO-capacitor codes
+
+Only block0x63/host1/reg21[4:0] changes; upper bits, bias, crystal/VCO codes, ADC selection, 11p, fixed gain and held DC pair are retained. The incoming code is a sham and adjacent codes stay inside the vendor helper interval10..31. Sixteen snapshots per ABBA stage are independently verified and the original owned field is restored before resume.
+
+| Run | Saved / target code | Noise delta dB | Stock drift dB | Quality/status |
+|---|---:|---:|---:|---|
+| audit_5805_locap1 | 12 / 12 | -0.014 | +0.015 | NO_FLAGS |
+| audit_5805_locap1 | 12 / 11 | +0.014 | -0.032 | NO_FLAGS |
+| audit_5805_locap1 | 12 / 13 | +0.007 | +0.040 | NO_FLAGS |
+| audit_5865_locap1 | 10 / 10 | +0.017 | -0.001 | NO_FLAGS |
+| audit_5865_locap1 | 10 / 11 | -0.013 | -0.013 | NO_FLAGS |
+
+The measured stock codes match the formula:10 at5865 MHz and12 at5805 MHz. Code9 at5865 is skipped as outside the vendor interval. Candidate deltas -0.013/+0.014/+0.007 dB are comparable to shams +0.017/-0.014 dB. There is no established additional noise improvement or reason to override the stock cap formula. No RF conversion-gain, PLL phase-noise or usable-video result is claimed.
+
 ## Read-only bias witness
 
 Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to 0x9f/0x7f. The measured operating bytes are listed below. phy_freq_start_cal_5g_code subsequently writes reg0[7:4] while iterating frequency calibration, so a different operating high nibble is not evidence of a forgotten LNA optimization. No bias bytes were overridden. See the static feature audit for exact call/write evidence.
@@ -175,8 +199,12 @@ Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to 0x9f/0x7f. The 
 | Run | Observed reg0 / reg1 bytes |
 |---|---|
 | audit_5805_bias_adc1 | cf / 7f |
+| audit_5805_lltf_big1 | cf / 7f |
+| audit_5805_locap1 | cf / 7f |
 | audit_5805_policy1 | cf / 7f |
 | audit_5865_bias_adc1 | cf / 7f |
+| audit_5865_lltf_big1 | cf / 7f |
+| audit_5865_locap1 | cf / 7f |
 | audit_5865_policy1 | cf / 7f |
 
 ## Live fixed-MAX witnesses
@@ -190,9 +218,23 @@ These separate captures leave the normal DC servo running. Console G selects tra
 
 With its ordinary DC servo running, G83 averaged only 0.0244%/0.0275% signed-rail occupancy on 5865/5805 MHz, with worst snapshots 0.0611%/0.0855%. Mean centring was within 0.07 cell per axis. This differs substantially from the old unheld vendor-DC sweep. Together with the expected higher output noise at higher gain, these observations do not justify lowering the no-carrier maximum to G80. They also do not prove that G83 is optimal for every wanted-signal amplitude or interference case.
 
+## Empirical unchanged-state variation
+
+Controls are selected from explicit shams, unchanged gain-row profiles, identical entry/target DC or LO-cap settings, and exact baseline register fingerprints for documented no-op MMIO/ADC profiles. They are not selected by whether their measured delta is near zero. Every complete control remains in the JSON; the table separates the pre-existing quality flags and groups the NO_FLAGS controls by actual capture count. These mixed-context descriptive quantiles are not calibrated confidence bounds for an individual intervention or an RF sensitivity threshold.
+
+| Captures/control | NO_FLAGS controls | Median signed delta dB | Median absolute delta dB | 95th percentile absolute delta dB |
+|---|---:|---:|---:|---:|
+| 16 | 24 | -0.019 | 0.038 | 0.099 |
+| 32 | 9 | +0.006 | 0.008 | 0.049 |
+| 64 | 8 | +0.007 | 0.013 | 0.037 |
+| 128 | 2 | +0.012 | 0.012 | 0.022 |
+
+51 complete controls were classified; 8 have quality flags and are retained separately.
+A small favourable point estimate must repeat against these controls; adding selected negative fluctuations does not establish an extra combined gain. The actual joint comparisons remain the relevant noise-only evidence.
+
 ## Archived evidence
 
-- 4671 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
+- 5631 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
 - [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.

@@ -7,9 +7,50 @@ import io
 import json
 from pathlib import Path
 import re
+import statistics
 
 ROOT=Path(__file__).resolve().parents[1]
 RAW=ROOT/'research/data/nf_phy_2026-10-24'
+POLICY_FOOTPRINTS={
+    **{f'LLTF_MASK_{a}{b}':[('600a790c',0x3000,(a<<13)|(b<<12))] for a,b in ((0,0),(1,0),(0,1),(1,1))},
+    **{f'RIFS_ARG{x}':[('600a70f4',1,x)] for x in (0,1)},
+    **{f'VHT_ARG{x}':[('600a7ce4',0x20,x<<5)] for x in (0,1)},
+    **{f'RX11BLR_ARG{x}':[('600a8060',0xc00,0xc00*x),('600a807c',0x800,0x800*x)] for x in (0,1)},
+    'POLICY_SHAM':[]}
+
+
+def stock_registers(text):
+    result={}
+    for line in text.splitlines():
+        if line.startswith('PHYLAB_REG ') and 'stage=STOCK ' in line:
+            f=dict(re.findall(r'(\w+)=([^\s]+)',line))
+            result.setdefault(f['addr'],f['value'])
+    return result
+
+
+def noop_reason(run,profile):
+    if profile.startswith(('STOCK_SHAM_','GAIN_ROW_')) or profile=='POLICY_SHAM':return 'explicit unchanged-state profile'
+    owned=POLICY_FOOTPRINTS.get(profile)
+    if owned is None:
+        owned={
+            'FFT_FORCE_OFF':[('600a7800',0x80000,0)],
+            'MAC_CCA_ENABLE':[('600a4c5c',0xf0000000,0)],
+            'TXCLK_ARG0':[('600a0890',0x30000,0)],
+            'TXCLK_ARG1':[('600a0890',0x30000,0x30000)],
+            'WIFI_ENABLE_ARG1':[('600a9c18',2,2)]}.get(profile)
+    baseline=run['baseline_registers']
+    if owned is not None and all(baseline.get(addr) is not None and int(baseline[addr],16)&mask==value for addr,mask,value in owned):
+        return 'tested MMIO fields already match baseline'
+    if profile in ('ADC_SELECTOR0','ADC_SELECTOR1') and run['adc_baseline']:
+        state=run['adc_baseline'];mode=int(profile[-1])
+        if int(state['selector_bits'])==(3 if mode else 0) and int(state['value'],16)&4==(0 if mode else 4):
+            return 'both ADC domains already match baseline'
+    for dc in run['dc_selected']:
+        if profile==f"DCO_CENTER_G{dc['gain']}" and dc['original_i']==dc['target_i'] and dc['original_q']==dc['target_q']:
+            return 'selected DC pair equals entry pair'
+    for cap in run['lo_cap_targets']:
+        if profile==f"LO_CAP_CODE_{cap['target']}" and cap['target']==cap['saved']:return 'LO-cap target equals entry code'
+    return None
 
 
 def main():
@@ -21,6 +62,7 @@ def main():
         begin=next(line for line in text.splitlines() if line.startswith('PHYLAB_BEGIN'))
         meta=dict(re.findall(r'(\w+)=([^\s]+)',begin))
         rows=list(csv.DictReader((p/'captures.csv').open()))
+        baseline=stock_registers(text)
         captures.extend(dict(run=p.name,**r) for r in rows)
         runs.append(dict(name=p.name,context=meta,summary=json.loads((p/'summary.json').read_text()),
             valid_captures=len(rows),rejected_captures=manifest.get('rejected_captures',[]),
@@ -29,7 +71,11 @@ def main():
             dc_selected=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_DCO_SELECTED ')],
             retransmissions=manifest.get('retransmissions',[]),
             bias_readbacks=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_BIAS ')],
-            policy_baseline_registers={addr:next((dict(re.findall(r'(\w+)=([^\s]+)',line)).get('value') for line in text.splitlines() if line.startswith('PHYLAB_REG ') and 'stage=STOCK ' in line and f'addr={addr} ' in line),None) for addr in ('600a790c','600a70f4','600a7ce4','600a8060','600a807c')} if meta.get('suite') in ('9','11') else {},
+            lo_cap_targets=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_LOCAP_TARGET ')],
+            lo_cap_readbacks=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_LOCAP ')],
+            baseline_registers=baseline,
+            adc_baseline=next((dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_ADC ') and 'stage=STOCK ' in line),None),
+            policy_baseline_registers={addr:baseline.get(addr) for addr in ('600a790c','600a70f4','600a7ce4','600a8060','600a807c')} if meta.get('suite') in ('9','11') else {},
             context_note=json.loads((p/'context-note.json').read_text()) if (p/'context-note.json').exists() else None,
             acquisition=json.loads((p/'acquisition.json').read_text())))
     for p in sorted(RAW.glob('live_*')):
@@ -55,7 +101,6 @@ def main():
         total_live_witness_captures=sum(len(r['capture_statistics']) for r in live))
     evidence=RAW/'bias-extra-evidence.txt'
     if evidence.exists():aggregate['additional_static_evidence']=dict(file=evidence.name,sha256=hashlib.sha256(evidence.read_bytes()).hexdigest())
-    (ROOT/'research/data/phy_audit_2026-10-24_summary.json').write_text(json.dumps(aggregate,indent=2)+'\n',encoding='utf-8',newline='\n')
     buf=io.StringIO(newline='');keys=list(dict.fromkeys(k for r in captures for k in r))
     writer=csv.DictWriter(buf,fieldnames=keys);writer.writeheader();writer.writerows(captures)
     (ROOT/'research/data/phy_audit_2026-10-24_captures.csv.gz').write_bytes(gzip.compress(buf.getvalue().encode(),mtime=0))
@@ -268,12 +313,7 @@ def main():
         'values is explicitly a no-op control.','',
         '| Run | Profile | Noise delta dB | Role | Quality/status |',
         '|---|---|---:|---|---|'])
-    footprints={
-        **{f'LLTF_MASK_{a}{b}': [('600a790c',0x3000,(a<<13)|(b<<12))] for a,b in ((0,0),(1,0),(0,1),(1,1))},
-        **{f'RIFS_ARG{x}':[('600a70f4',1,x)] for x in (0,1)},
-        **{f'VHT_ARG{x}':[('600a7ce4',0x20,x<<5)] for x in (0,1)},
-        **{f'RX11BLR_ARG{x}':[('600a8060',0xc00,0xc00*x),('600a807c',0x800,0x800*x)] for x in (0,1)},
-        'POLICY_SHAM':[]}
+    footprints=POLICY_FOOTPRINTS
     for r in runs:
         if r['context'].get('suite') not in ('9','11'):continue
         baseline=r['policy_baseline_registers']
@@ -292,6 +332,29 @@ def main():
         'Host acquisition now checks actual suite/capture frequency after '
         'the request as well, drains through outer restoration, and rejects '
         'a mismatch instead of silently accepting the early status.','',
+        '## Adjacent LO-capacitor codes','',
+        'Only block0x63/host1/reg21[4:0] changes; upper bits, bias, '
+        'crystal/VCO codes, ADC selection, 11p, fixed gain and held DC pair '
+        'are retained. The incoming code is a sham and adjacent codes stay '
+        'inside the vendor helper interval10..31. Sixteen snapshots per '
+        'ABBA stage are independently verified and the original owned field '
+        'is restored before resume.','',
+        '| Run | Saved / target code | Noise delta dB | Stock drift dB | Quality/status |',
+        '|---|---:|---:|---:|---|'])
+    for r in runs:
+        if not r.get('lo_cap_targets'):continue
+        for s in r['summary']:
+            target=next(t for t in r['lo_cap_targets'] if s['profile']==f"LO_CAP_CODE_{t['target']}")
+            label=f"{target['saved']} / {target['target']}"
+            if s['status']=='PASS':lines.append(f"| {r['name']} | {label} | {s['delta_db']:+.3f} | {s['stock_drift_db']:+.3f} | {s['quality']} |")
+            else:lines.append(f"| {r['name']} | {label} | | | {s['status']} |")
+    lines.extend(['',
+        'The measured stock codes match the formula:10 at5865 MHz and12 '
+        'at5805 MHz. Code9 at5865 is skipped as outside the vendor interval. '
+        'Candidate deltas -0.013/+0.014/+0.007 dB are comparable to '
+        'shams +0.017/-0.014 dB. There is no established additional noise '
+        'improvement or reason to override the stock cap formula. No RF '
+        'conversion-gain, PLL phase-noise or usable-video result is claimed.','',
         '## Read-only bias witness','',
         'Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to '
         '0x9f/0x7f. The measured operating bytes are listed below. '
@@ -329,6 +392,44 @@ def main():
         'noise at higher gain, these observations do not justify lowering '
         'the no-carrier maximum to G80. They also do not prove that G83 '
         'is optimal for every wanted-signal amplitude or interference case.','',
+        '## Empirical unchanged-state variation','',
+        'Controls are selected from explicit shams, unchanged gain-row '
+        'profiles, identical entry/target DC or LO-cap settings, and exact '
+        'baseline register fingerprints for documented no-op MMIO/ADC '
+        'profiles. They are not selected by whether their measured delta '
+        'is near zero. Every complete control remains in the JSON; the '
+        'table separates the pre-existing quality flags and groups the '
+        'NO_FLAGS controls by actual capture count. These mixed-context '
+        'descriptive quantiles are not calibrated confidence bounds for '
+        'an individual intervention or an RF sensitivity threshold.','',
+        '| Captures/control | NO_FLAGS controls | Median signed delta dB | Median absolute delta dB | 95th percentile absolute delta dB |',
+        '|---|---:|---:|---:|---:|'])
+    controls=[]
+    for run in runs:
+        for summary in run['summary']:
+            reason=noop_reason(run,summary['profile'])
+            if reason and summary['status']=='PASS':
+                count=sum(c['run']==run['name'] and c['profile']==summary['profile'] for c in captures)
+                controls.append(dict(run=run['name'],profile=summary['profile'],reason=reason,captures=count,
+                    delta_db=summary['delta_db'],quality=summary['quality'],quality_flags=summary['quality_flags']))
+    groups=[]
+    for count in sorted(set(c['captures'] for c in controls)):
+        values=[c['delta_db'] for c in controls if c['captures']==count and c['quality']=='NO_FLAGS']
+        if not values:continue
+        absolute=sorted(abs(v) for v in values)
+        q95=statistics.quantiles(absolute,n=100,method='inclusive')[94] if len(values)>1 else absolute[0]
+        group=dict(captures_per_control=count,no_flags_controls=len(values),median_delta_db=statistics.median(values),
+            median_absolute_delta_db=statistics.median(absolute),p95_absolute_delta_db=q95)
+        groups.append(group)
+        lines.append(f"| {count} | {len(values)} | {group['median_delta_db']:+.3f} | {group['median_absolute_delta_db']:.3f} | {q95:.3f} |")
+    aggregate['unchanged_state_controls']=dict(controls=controls,no_flags_groups=groups,
+        flagged_complete_controls=sum(c['quality']!='NO_FLAGS' for c in controls))
+    lines.extend(['',
+        f"{len(controls)} complete controls were classified; {aggregate['unchanged_state_controls']['flagged_complete_controls']} have quality flags and are retained separately.",
+        'A small favourable point estimate must repeat against these controls; '
+        'adding selected negative fluctuations does not establish an extra '
+        'combined gain. The actual joint comparisons remain the relevant '
+        'noise-only evidence.','',
         '## Archived evidence','',
         f"- {len(captures)} valid audit IQ captures plus {sum(len(r['capture_statistics']) for r in live)} live fixed-MAX witnesses; all rejected transports are separately recorded.",
         '- [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).',
@@ -338,6 +439,7 @@ def main():
         '- NBW normalization, kurtosis/rails/drift flags and transport checks are exactly as described in [NF_AUTO_LAB.md](NF_AUTO_LAB.md). No calibrated antenna noise temperature, input carrier power, video SINAD or usable attenuation was measured.',
         ''])
     (ROOT/'docs/PHY_AUDIT_BENCH_2026-10-24.md').write_text('\n'.join(lines),encoding='utf-8',newline='\n')
+    (ROOT/'research/data/phy_audit_2026-10-24_summary.json').write_text(json.dumps(aggregate,indent=2)+'\n',encoding='utf-8',newline='\n')
     print(f'Archived {len(runs)} audit runs / {len(captures)} valid captures')
 
 
