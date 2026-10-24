@@ -98,6 +98,7 @@ static void help(void)
            "  v video standard AUTO/NTSC/PAL, e close menu (web menu direct controls),\n"
            "  F calibrate (startup steps again; video stops), L bench IQ lane comparison (video stops ~3 s),\n"
            "  N bench: noise floor with the video output on vs off (VTX off; video stops ~0.3 s x4),\n"
+           "  J BENCH ONLY: 16 undocumented NF_AUTO bit patterns twice, VTX OFF (experimental; do not fly),\n"
            "  Z DAC self-test (bench: test pattern, then one flat level per pin for a multimeter),\n"
            "  ` reboot to USB download (flashing)\n");
 }
@@ -144,6 +145,7 @@ static void console_task(void *arg)
             case 'R': diag_toggle_stream(); break;
             case 'L': lane_compare_request(); break;
             case 'N': self_noise_request(); break;
+            case 'J': nfauto_request(); break;
             case 'Y': case 'W': case 'X': flightlog_console((char)c); break;
             case 'h': case '?': help(); break;
             case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'g': case 'A': case 'U': case 'G': case 'Q': case 'Z': {
