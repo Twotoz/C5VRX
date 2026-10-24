@@ -229,7 +229,7 @@ def analyse(output, plots=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest='command', required=True)
-    p = sub.add_parser('record'); p.add_argument('port'); p.add_argument('output', type=Path); p.add_argument('--key',choices=['B','C','H','V','E','S','P','O','K','k','%','+'],default='B');p.add_argument('--frequency',type=int)
+    p = sub.add_parser('record'); p.add_argument('port'); p.add_argument('output', type=Path); p.add_argument('--key',choices=['B','C','H','V','E','S','P','O','K','k','%','+','&'],default='B');p.add_argument('--frequency',type=int)
     p = sub.add_parser('analyse'); p.add_argument('output', type=Path); p.add_argument('--no-plots',action='store_true')
     p = sub.add_parser('decode'); p.add_argument('log', type=Path); p.add_argument('output', type=Path)
     a = ap.parse_args()

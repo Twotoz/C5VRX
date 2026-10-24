@@ -91,6 +91,20 @@ static bool arc_gain_tuple_decode(const arc_gain_table_t *t,uint8_t g,arc_gain_t
 static unsigned arc_gain_highest_rf_stage_start(const arc_gain_table_t *t){(void)t;return 54;}
 static const arc_gain_table_t *rf_gain_table(void){static arc_gain_table_t t={80};return &t;}
 static void receiver_set_gain(uint8_t g){s_current_gain=g;}
+#define PHY_DCO_TRY_MAX 8
+#define ESP_OK 0
+#define ESP_FAIL -1
+static int dc_pair[2]={240,250},dc_fail,dc_writes;
+static bool dc_held=true;
+static bool phy_dco_held(void){return dc_held;}
+static bool phy_dco_read_pair(int out[2]){out[0]=dc_pair[0];out[1]=dc_pair[1];return true;}
+static int phy_dco_try_pair(uint32_t gain,const int expected[2],const int target[2]){
+    (void)gain;assert(expected[0]==dc_pair[0]&&expected[1]==dc_pair[1]);
+    int di=abs(target[0]-expected[0]),dq=abs(target[1]-expected[1]);
+    assert((di==0)!=(dq==0));assert(di<=8&&dq<=8);
+    ++dc_writes;if(dc_fail&&dc_writes==dc_fail)return ESP_FAIL;
+    dc_pair[0]=target[0];dc_pair[1]=target[1];return ESP_OK;
+}
 uint8_t phy_i2c_readReg(uint8_t b,uint8_t h,uint8_t r){(void)b;(void)h;return analog_regs[r];}
 void phy_i2c_writeReg(uint8_t b,uint8_t h,uint8_t r,uint8_t v){(void)b;(void)h;if(inject==2&&v!=60)return;analog_regs[r]=v;}
 void phy_adc_rate_set(uint32_t mode){MM(0x600A0448)=(MM(0x600A0448)&~3u)|(mode?3:0);analog_regs[4]=(analog_regs[4]&~4u)|(mode?0:4);}
@@ -119,6 +133,7 @@ static void reset(void){
     for(unsigned i=0;i<256;++i)analog_regs[i]=(uint8_t)(i+17);
     phy_param[0x26]=7;phy_param[0x27]=9;
     inject=0;stages=0;mutated=false;lab_gain=80;
+    dc_pair[0]=240;dc_pair[1]=250;dc_held=true;dc_fail=0;dc_writes=0;sample_dco_check=false;
 }
 int main(void){
     uint8_t *raw=malloc(8190);uint32_t original[4];uint8_t saved[8];
@@ -174,7 +189,19 @@ int main(void){
         for(unsigned j=0;j<p->n;++j)assert(MM(p->p[j].addr)==before[j]);
         assert(analog_regs[4]==adc&&phy_param[0x26]==7&&phy_param[0x27]==9);
     }
-    free(raw);fprintf(stderr,"PHY lab lifecycle: PASS (rollback, unrelated bits, apply fault, context refusal, fatal restore)\n");
+    reset();lab_packed_valid=false;sample_dco_check=true;
+    const int target[2]={258,229},original_dc[2]={240,250};
+    assert(dco_move(target));assert(dc_pair[0]==258&&dc_pair[1]==229&&dc_writes==6);
+    assert(dco_move(original_dc));assert(dc_pair[0]==240&&dc_pair[1]==250);
+    dc_held=false;assert(!dco_move(target));dc_held=true;
+    sample_dco[0]=239;assert(!dco_expected_ok());
+    reset();lab_packed_valid=false;dc_fail=2;sample_dco_check=true;
+    assert(!dco_move(target));assert(dco_move(original_dc));assert(dc_pair[0]==240&&dc_pair[1]==250);
+    reset();lab_packed_valid=false;inject=3;
+    assert(!run_dco(176,78,raw,context_ok,999999));assert(dc_pair[0]==240&&dc_pair[1]==250&&dc_held);
+    reset();lab_packed_valid=false;
+    assert(run_dco(176,78,raw,context_ok,999999));assert(dc_pair[0]==240&&dc_pair[1]==250&&dc_held&&!sample_dco_check);
+    free(raw);fprintf(stderr,"PHY lab lifecycle: PASS (rollback, unrelated bits, apply fault, context refusal, fatal restore, bounded DC trials)\n");
     return 0;
 }
 '''

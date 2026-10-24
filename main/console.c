@@ -107,7 +107,8 @@ static void help(void)
            "  P/O BENCH ONLY: recovered RX11b/RX-sense argument states (300/1200 ms), VTX OFF,\n"
            "  K/k BENCH ONLY: recovered TX-clock/WiFi gate fields (300/1200 ms), VTX OFF,\n"
            "  %% BENCH ONLY: gain/noise/headroom rows 72..83 and reverse, VTX OFF,\n"
-           "  + BENCH ONLY: no-11p joint profiles plus sham, 16 captures/stage, forward/reverse, VTX OFF,\n"
+           "  + BENCH ONLY: joint profiles plus sham, preserves incoming 11p, 16 captures/stage, VTX OFF,\n"
+           "  & BENCH ONLY: temporary DC centering at fixed G78/80/83, exact held-pair restore, VTX OFF,\n"
            "  Z DAC self-test (bench: test pattern, then one flat level per pin for a multimeter),\n"
            "  ` reboot to USB download (flashing)\n");
 }
@@ -167,6 +168,7 @@ static void console_task(void *arg)
             case 'k': phyclock_long_request(); break;
             case '%': phygaincurve_request(); break;
             case '+': phycombo_request(); break;
+            case '&': phydco_request(); break;
             case 'Y': case 'W': case 'X': flightlog_console((char)c); break;
             case 'h': case '?': help(); break;
             case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'g': case 'A': case 'U': case 'G': case 'Q': case 'Z': {

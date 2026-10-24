@@ -189,3 +189,28 @@ evidence only; actual board measurements and limitations belong in the dated
 measurement report.
 
 Board results: [2026-10-24 noise-only bench report](NF_PHY_BENCH_2026-10-24.md).
+
+## Same-gain DC headroom experiment (pending board execution)
+
+Console `&` runs temporary DC-centering comparisons at G78, G80 and G83.
+Each row requires an existing stable DC hold, reads its actual DAC pair,
+checks the physical RF/BB/fine tuple, and uses the existing bounded verified
+`phy_dco_try_pair` actuator. A local coordinate search uses steps 4/2/1,
+at most four rounds per step and a 32-code displacement limit per axis.
+Its objective is squared cell-centre means plus 64 times signed-rail occupancy;
+this is a headroom diagnostic, not a sensitivity metric. Probe statistics
+are logged separately; search captures do not enter validation statistics.
+
+The selected pair is restored before a fresh STOCK–TEST–TEST–STOCK sequence
+with 16 raw captures per stage. All validation captures verify actual held
+codes and the same physical gain before and after acquisition. Original DAC
+codes and hold mode are restored on cancellation/error as well as success;
+unverifiable restoration reboots before receiver resume. Nothing is saved
+to NVS or promoted to a production gain policy. High-gain folding may make
+lower observed variance misleading, so compare means, rails, distribution
+and PSD together. Desired weak-carrier evidence remains necessary.
+
+USB IQ lines now pause 5 ms rather than 2 ms to reduce transport loss.
+Checksums and rejection rules remain mandatory. Joint-profile names now end
+in EXTRA: their incoming 11p state is preserved, including the newly merged
+production 11p baseline. Historical raw NO11P names remain unchanged.

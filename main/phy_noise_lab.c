@@ -25,6 +25,8 @@ static unsigned lab_windows=4;
 static int sample_adc_expected=-1;
 static uint32_t lab_packed_gain;
 static bool lab_packed_valid;
+static bool sample_dco_check;
+static int sample_dco[2];
 typedef struct { uint32_t addr, mask, value; } patch_t;
 typedef struct { const char *name; unsigned n; patch_t p[12]; bool analog; } profile_t;
 static const profile_t *sample_profile;
@@ -112,18 +114,18 @@ static const profile_t clock_profiles[] = {
  * so test two coherent combinations rather than silently overriding one.
  * ADC analog/digital coupling is saved/restored by run_profile below. */
 static const profile_t combo_profiles[] = {
-    {"COMBO_SENSE0_NO11P",9,{
+    {"COMBO_SENSE0_EXTRA",9,{
         {0x600A0448,3,0},{0x600A7018,0x40000000,0},{0x600A0C38,0x80000000,0},
         {0x600A4C5C,0xf0000000,0xa0000000},{0x600A7074,0x2000,0},
         {0x600A7010,0xff800000,0},{0x600A7014,0xff800000,0},
         {0x600A7044,0xff,0},{0x600A7108,0x200,0x200}},false},
-    {"COMBO_RX11B0_NO11P",11,{
+    {"COMBO_RX11B0_EXTRA",11,{
         {0x600A0448,3,0},{0x600A7018,0x40000000,0},{0x600A0C38,0x80000000,0},
         {0x600A4C5C,0xf0000000,0xa0000000},{0x600A7074,0x2000,0},
         {0x600A7044,0x003f3f00,0x003e1800},{0x600A7124,0xfc0f,0x6004},
         {0x600A8004,0xf000,0x6000},{0x600A7104,0x1ff,0x1c8},
         {0x600A71D8,0x3fe00,0x3cc00},{0x600A7014,0xff800000,0xff000000}},false},
-    {"STOCK_SHAM_NO11P",0,{{0}},false},
+    {"STOCK_SHAM_EXTRA",0,{{0}},false},
 };
 static const uint32_t watch[] = {
     0x600A7018,0x600A7C44,0x600A7C50,0x600A7CE4,0x600A7030,
@@ -184,18 +186,25 @@ static bool hardware_gain_ok(void)
     if(!ok)printf("PHYLAB_ABORT reason=hardware_gain rf=%u bb=%u fine=%u expected=%08" PRIx32 "\n",rf,bb,fine,lab_packed_gain);
     return ok;
 }
+static bool dco_expected_ok(void)
+{
+    if(!sample_dco_check)return true;
+    int pair[2];
+    return phy_dco_held()&&phy_dco_read_pair(pair)&&pair[0]==sample_dco[0]&&pair[1]==sample_dco[1];
+}
 static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)(void),int64_t deadline)
 {
     const char *stage=(step==0||step==3)?"STOCK":"TEST";
     vTaskDelay(pdMS_TO_TICKS(lab_dwell_ms));
     state(id,stage);
+    if(sample_dco_check)printf("PHYLAB_DCO_STATE id=%u step=%u i=%d q=%d held=%u\n",id,step,sample_dco[0],sample_dco[1],phy_dco_held());
     if(!verify(sample_profile,sample_expected))return false;
     uint32_t hashes[16]={0};
     for(unsigned rep=0;rep<lab_windows;++rep) {
         if(esp_timer_get_time()>deadline||!context_ok()||s_current_gain!=lab_gain||
            !verify(sample_profile,sample_expected)||
            (sample_adc_expected>=0 && (phy_i2c_readReg(0x66,0,4)&4)!=(unsigned)sample_adc_expected)||
-           !hardware_gain_ok()||!capture(raw)||!hardware_gain_ok()) return false;
+           !hardware_gain_ok()||!dco_expected_ok()||!capture(raw)||!hardware_gain_ok()||!dco_expected_ok()) return false;
         double m2,kurt,rail; power(raw,&m2,&kurt,&rail);
         if(!isfinite(m2)||m2<=0.05||!isfinite(kurt)) return false;
         uint32_t hash=2166136261u;
@@ -210,7 +219,7 @@ static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)
         for(unsigned off=0;off<C5V4_LEVEL_SAMPLE_BYTES;off+=256) {
             unsigned n=C5V4_LEVEL_SAMPLE_BYTES-off; if(n>256)n=256;
             for(unsigned k=0;k<n;++k) { line[2*k]=hex[raw[off+k]>>4];line[2*k+1]=hex[raw[off+k]&15]; }
-            line[2*n]=0; printf("PHYLAB_IQ_DATA offset=%u %s\n",off,line);vTaskDelay(pdMS_TO_TICKS(2));
+            line[2*n]=0; printf("PHYLAB_IQ_DATA offset=%u %s\n",off,line);vTaskDelay(pdMS_TO_TICKS(5));
         }
         printf("PHYLAB_IQ_END fnv1a=%08" PRIx32 "\n",hash);
     }
@@ -331,6 +340,92 @@ static bool run_gain_row(unsigned id,uint8_t gain,uint8_t *raw,bool (*context_ok
     printf("PHYLAB_GAIN_ROW id=%u gain=%u rf_stage=%u rf_code=%u bb=%u fine=%u packed=%08" PRIx32 "\n",id,gain,t.rf_stage,t.rf_code,t.bb_code,t.fine_code,t.packed_state);
     return run_profile(id,&p,raw,context_ok,deadline);
 }
+/* Only an already-held DAC pair is eligible: keep the entry debug/work mode.
+ * Move one axis at a time through the existing verified actuator; no NVS,
+ * new RF bias values, gain changes inside ABBA or unverified PBUS writes. */
+static bool dco_move(const int target[2])
+{
+    int cur[2];
+    if(!phy_dco_held()||!hardware_gain_ok()||!phy_dco_read_pair(cur))return false;
+    for(unsigned axis=0;axis<2;++axis){
+        while(cur[axis]!=target[axis]){
+            int next[2]={cur[0],cur[1]},delta=target[axis]-cur[axis];
+            if(delta>PHY_DCO_TRY_MAX)delta=PHY_DCO_TRY_MAX;
+            if(delta< -PHY_DCO_TRY_MAX)delta= -PHY_DCO_TRY_MAX;
+            next[axis]+=delta;
+            if(phy_dco_try_pair(lab_packed_gain,cur,next)!=ESP_OK)return false;
+            cur[0]=next[0];cur[1]=next[1];
+        }
+    }
+    sample_dco[0]=cur[0];sample_dco[1]=cur[1];
+    return dco_expected_ok();
+}
+static bool dco_score(unsigned id,uint8_t *raw,bool (*context_ok)(void),int64_t deadline,double *score)
+{
+    double sum=0;
+    for(unsigned k=0;k<4;++k){
+        if(!context_ok()||esp_timer_get_time()>deadline||!hardware_gain_ok()||!dco_expected_ok()||!capture(raw)||!dco_expected_ok()||!hardware_gain_ok())return false;
+        cna_sums_t sums={0};
+        for(unsigned n=0;n<C5V4_LEVEL_SAMPLE_BYTES;++n)cna_sums_add(&sums,raw[n]);
+        float i,q;cna_mean(&sums,&i,&q);
+        double m2,kurt,rail;power(raw,&m2,&kurt,&rail);
+        if(!isfinite(m2)||m2<0.05||!isfinite(kurt))return false;
+        /* Cell-centre means, not the host's integer nibble means. Rail
+         * penalty discourages a false wrapped centre; neither is RF SNR. */
+        sum+=i*i+q*q+64.0*rail;
+        printf("PHYLAB_DCO_PROBE id=%u i=%d q=%d rep=%u mean_i=%.5f mean_q=%.5f m2=%.6f kurt=%.4f rails=%.6f\n",id,sample_dco[0],sample_dco[1],k,i,q,m2,kurt,rail);
+    }
+    *score=sum/4;return true;
+}
+static bool run_dco(unsigned id,uint8_t gain,uint8_t *raw,bool (*context_ok)(void),int64_t deadline)
+{
+    receiver_set_gain(gain);vTaskDelay(pdMS_TO_TICKS(100));
+    arc_gain_tuple_t tuple;
+    lab_packed_valid=arc_gain_tuple_decode(rf_gain_table(),s_current_gain,&tuple);
+    if(!lab_packed_valid||s_current_gain!=gain)return false;
+    lab_gain=gain;lab_packed_gain=tuple.packed_state;
+    int original[2];
+    if(!phy_dco_held()||!hardware_gain_ok()||!phy_dco_read_pair(original)){
+        printf("PHYLAB_DCO_REFUSED id=%u reason=requires_stable_existing_hold\n",id);return false;
+    }
+    sample_dco[0]=original[0];sample_dco[1]=original[1];sample_dco_check=true;
+    int best[2]={original[0],original[1]};double best_score=0;
+    bool ok=dco_score(id,raw,context_ok,deadline,&best_score);
+    /* Bounded local coordinate search, maximum 32 codes from entry. Search
+     * samples are separate from all exported ABBA validation captures. */
+    for(int step=4;step>=1&&ok;step/=2)
+        for(unsigned round=0;round<4&&ok;++round){
+            bool improved=false;
+            for(unsigned axis=0;axis<2&&ok;++axis)
+                for(int sign=-1;sign<=1&&ok;sign+=2){
+                    int target[2]={best[0],best[1]};target[axis]+=sign*step;
+                    if(target[axis]<0||target[axis]>511||abs(target[axis]-original[axis])>32)continue;
+                    double score=0;
+                    ok=dco_move(target)&&dco_score(id,raw,context_ok,deadline,&score);
+                    if(ok&&score+0.01<best_score){best[0]=target[0];best[1]=target[1];best_score=score;improved=true;}
+                    if(ok)ok=dco_move(best);
+                }
+            if(!improved)break;
+        }
+    /* Always restore before validation, even when search/context failed. */
+    if(!dco_move(original)){
+        printf("PHYLAB_FATAL dco_restore_failed reboot_required\n");fflush(stdout);esp_restart();
+    }
+    char name[32];snprintf(name,sizeof(name),"DCO_CENTER_G%u",gain);
+    const profile_t p={name,0,{{0}},false};sample_profile=&p;
+    printf("PHYLAB_PROFILE id=%u name=%s sequence=STOCK_TEST_TEST_STOCK\n",id,name);
+    printf("PHYLAB_DCO_SELECTED id=%u original_i=%d original_q=%d target_i=%d target_q=%d objective=%.6f gain=%u packed=%08" PRIx32 "\n",id,original[0],original[1],best[0],best[1],best_score,gain,lab_packed_gain);
+    if(ok)ok=measure(id,0,raw,context_ok,deadline);
+    if(ok)ok=dco_move(best)&&measure(id,1,raw,context_ok,deadline)&&measure(id,2,raw,context_ok,deadline);
+    if(!dco_move(original)){
+        printf("PHYLAB_FATAL dco_restore_failed reboot_required\n");fflush(stdout);esp_restart();
+    }
+    printf("PHYLAB_RESTORE id=%u verified=1 held=1\n",id);
+    if(ok)ok=measure(id,3,raw,context_ok,deadline);
+    sample_dco_check=false;
+    printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":"INCOMPLETE");
+    return ok;
+}
 #endif
 
 void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite)
@@ -338,9 +433,9 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
 #ifndef C5VRX_PHY_PINNED
     (void)context_ok;(void)dwell_ms;(void)suite;printf("PHYLAB refused=unverified_phy\n");
 #else
-    if((dwell_ms!=300&&dwell_ms!=1200)||suite>7){printf("PHYLAB refused=arguments\n");return;}
+    if((dwell_ms!=300&&dwell_ms!=1200)||suite>8){printf("PHYLAB refused=arguments\n");return;}
     lab_dwell_ms=dwell_ms;
-    lab_windows=suite==7?16:4;
+    lab_windows=suite>=7?16:4;
     uint8_t *raw=malloc(C5V4_LEVEL_SAMPLE_BYTES);
     if(!raw){printf("PHYLAB refused=memory\n");return;}
     /* Caller has paused the receiver; whole-suite task lease excludes tune,
@@ -410,6 +505,8 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
         for(unsigned i=0;i<sizeof(gains)&&ok;++i){unsigned n=pass?sizeof(gains)-1-i:i;ok=run_gain_row(128+pass*6+i,gains[n],raw,context_ok,deadline);}
     for(unsigned pass=0;pass<2&&ok&&suite==7;++pass)
         for(unsigned i=0;i<3&&ok;++i){unsigned n=pass?2-i:i;ok=run_profile(160+pass*3+i,&combo_profiles[n],raw,context_ok,deadline);}
+    static const uint8_t dc_gains[]={78,80,83};
+    for(unsigned i=0;i<sizeof(dc_gains)&&ok&&suite==8;++i)ok=run_dco(176+i,dc_gains[i],raw,context_ok,deadline);
     printf("PHYLAB_END status=%s rejected=%u restored=1 input_referred_improvement=unknown\n",ok?(rejected?"COMPLETE_WITH_REJECTIONS":"PASS"):"INCOMPLETE",rejected);
     phy_end();free(raw);
 #endif
