@@ -231,6 +231,8 @@ bool calibration_dc_ok(uint8_t gain);
 /* Explicit bench-only lane comparison (console L): video stops ~2 s. */
 void lane_compare_request(void);
 void nfauto_request(void); /* bench-only reversible four-bit PHY NF-auto lab (console J) */
+void phylab_request(void); /* console B: isolated noise-only PHY profiles */
+void phylab_long_request(void); /* console C: same suite, 1200 ms dwell */
 void self_noise_request(void);   /* bench: noise floor with the video output on vs off (console N) */
 
 /* ---- menu.c ---- */

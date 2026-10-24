@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS
         "main.c" "rf.c" "phy.c" "arc_phy.c" "transport.c" "gain.c" "receiver.c"
-        "control.c" "calibration.c" "menu.c" "menu_raster.c" "analog_video_detect.c"
+        "control.c" "calibration.c" "phy_noise_lab.c" "menu.c" "menu_raster.c" "analog_video_detect.c"
         "settings.c" "console.c" "profile.c" "diag.c" "flightlog.c"
         # Sync flywheel (menu FLYWHEEL / console U, default ON): native
         # comparator observer, common edge clock, conditional DAC-OE output.

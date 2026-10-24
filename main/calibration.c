@@ -35,7 +35,9 @@
 #include "dc_trim.h"
 #include "esp_attr.h"
 #include "esp_timer.h"
+#include "esp_system.h"
 #include "phy.h"
+#include "phy_noise_lab.h"
 #include "profile_logic.h"
 #include "sphase_logic.h"
 #include "dco_slots.h"
@@ -1968,6 +1970,32 @@ static void self_noise_test(void)
 #define NF_AUTO_MASK_C UINT32_C(1)
 #define NF_AUTO_MMIO(addr) (*(volatile uint32_t *)(uintptr_t)(addr))
 static volatile bool s_nfauto_requested;
+static volatile bool s_phylab_requested;
+static unsigned s_phylab_dwell=300;
+void phylab_request(void) { s_phylab_dwell=300;s_phylab_requested = true; }
+void phylab_long_request(void) { s_phylab_dwell=1200;s_phylab_requested = true; }
+static uint32_t s_lab_epoch;
+static uint16_t s_lab_freq;
+static int s_lab_offset;
+static bool phylab_context(void)
+{
+    return receiver_paused() && !s_menu_active && !s_scan_active &&
+        s_control_epoch == s_lab_epoch && rf_frequency_mhz() == s_lab_freq &&
+        rf_offset_khz() == s_lab_offset && !s_afc_locked &&
+        (s_last_video_us <= 0 || esp_timer_get_time()-s_last_video_us >= INT64_C(3000000));
+}
+static void phylab_test(void)
+{
+    if(calibration_in_startup() || !receiver_active() || !quiet_owner() || s_afc_locked ||
+       (s_last_video_us > 0 && esp_timer_get_time()-s_last_video_us < INT64_C(3000000))) {
+        printf("PHYLAB refused=busy_or_recent_video\n");return;
+    }
+    if(!receiver_pause("PHYLAB"))return;
+    const uint8_t gain=s_current_gain;
+    s_lab_epoch=s_control_epoch;s_lab_freq=rf_frequency_mhz();s_lab_offset=rf_offset_khz();
+    phy_noise_lab_run(phylab_context,s_phylab_dwell);
+    receiver_set_gain(gain);receiver_resume();
+}
 
 void nfauto_request(void) { s_nfauto_requested = true; }
 
@@ -2000,6 +2028,9 @@ static bool nfauto_apply(unsigned pattern)
 
 static void nfauto_test(void)
 {
+#ifndef C5VRX_PHY_PINNED
+    printf("NF_AUTO refused=unverified_phy\n");return;
+#endif
     /* Do not knowingly run on video. Reset or tune with the VTX OFF first.
      * This isn't a detector for unknown non-video RF interference. */
     const int64_t now = esp_timer_get_time();
@@ -2017,6 +2048,7 @@ static void nfauto_test(void)
     const uint32_t control_epoch = s_control_epoch;
     const uint16_t freq = rf_frequency_mhz();
     const int offset = rf_offset_khz();
+    phy_begin();  /* hold the same task lease across changes AND measurements */
     const unsigned original = nfauto_read_pattern();
     bool ok = true;
     unsigned valid = 0;
@@ -2067,16 +2099,18 @@ static void nfauto_test(void)
     const bool restored = nfauto_apply(original);
     vTaskDelay(pdMS_TO_TICKS(300));
     double end_m2 = 0.0, end_kurt = 0.0;
-    const bool end_valid = restored && selfnoise_measure(&end_m2, &end_kurt) && end_m2 > 0.05;
+    const bool end_valid = restored && selfnoise_measure(&end_m2, &end_kurt) &&
+                          end_m2 > 0.05 && isfinite(end_m2) && isfinite(end_kurt);
     printf("NF_AUTO_END rows=%u expected=32 restored=%u actual_pattern=%X baseline_m2=%.6f "
            "end_m2=%.6f end_drift_db=%+.3f status=%s "
            "note=NOISE_ONLY_NOT_INPUT_REFERRED_SNR_OR_SENSITIVITY\n",
            valid, restored, nfauto_read_pattern(), baseline_m2, end_m2,
            end_valid ? 10.0 * log10(end_m2 / baseline_m2) : 0.0,
            ok && restored && end_valid ? "PASS" : "INCOMPLETE");
+    if (!restored) { printf("NF_AUTO_WARNING restore_failed REBOOT_BEFORE_RECEIVING_VIDEO\n"); fflush(stdout); esp_restart(); }
+    phy_end();
     receiver_set_gain(old_gain);
     receiver_resume();
-    if (!restored) printf("NF_AUTO_WARNING restore_failed REBOOT_BEFORE_RECEIVING_VIDEO\n");
 }
 
 typedef struct { unsigned windows; long p_median, q_phase, origin_pm, clip_pm, env_x100; } lane_stats_t;
@@ -2172,6 +2206,7 @@ static void calibration_task(void *arg)
         if (s_lane_requested && !s_menu_active) { s_lane_requested = false; lane_compare(); continue; }
         if (s_selfnoise_requested && !s_menu_active) { s_selfnoise_requested = false; self_noise_test(); continue; }
         if (s_nfauto_requested && !s_menu_active) { s_nfauto_requested = false; nfauto_test(); continue; }
+        if (s_phylab_requested && !s_menu_active) { s_phylab_requested = false; phylab_test(); continue; }
         dco_service();
         dc_health_service();
         drift_service();
