@@ -16,7 +16,10 @@ POLICY_FOOTPRINTS={
     **{f'RIFS_ARG{x}':[('600a70f4',1,x)] for x in (0,1)},
     **{f'VHT_ARG{x}':[('600a7ce4',0x20,x<<5)] for x in (0,1)},
     **{f'RX11BLR_ARG{x}':[('600a8060',0xc00,0xc00*x),('600a807c',0x800,0x800*x)] for x in (0,1)},
-    'POLICY_SHAM':[]}
+    'POLICY_SHAM':[],
+    'AUX_SHAM':[],
+    'HEMU_RU26_VENDOR':[('600a7890',0x03000000,0x01000000)],
+    'PWDET_VENDOR_CLEAR':[('600a0808',0x0e,0)]}
 
 
 def stock_registers(text):
@@ -84,6 +87,7 @@ def main():
             lo_cap_targets=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_LOCAP_TARGET ')],
             lo_cap_readbacks=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_LOCAP ')],
             baseline_registers=baseline,
+            ulp_readbacks=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith(('PHYLAB_ULP ','PHYLAB_ULP_CACHE '))],
             adc_baseline=next((dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_ADC ') and 'stage=STOCK ' in line),None),
             policy_baseline_registers={addr:baseline.get(addr) for addr in ('600a790c','600a70f4','600a7ce4','600a8060','600a807c')} if meta.get('suite') in ('9','11','12') else {},
             context_note=json.loads((p/'context-note.json').read_text()) if (p/'context-note.json').exists() else None,

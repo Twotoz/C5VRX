@@ -248,6 +248,7 @@ void phypolicy_request(void); /* (: isolated LLTF/RIFS/VHT/11b-LR and sham */
 void phylocap_request(void); /* ): bounded adjacent LO-cap codes and sham */
 void phylltf_request(void); /* [: four LLTF states and sham, 16 windows/stage */
 void phylltf_confirm_request(void); /* ]: front/end shams, 10/00/10/00 */
+void phyaux_request(void); /* {: exact HEMU/PWDET footprints and shams */
 bool phylab_hold_current_gain(void); /* paused bench only: matching loaded DC row */
 void self_noise_request(void);   /* bench: noise floor with the video output on vs off (console N) */
 

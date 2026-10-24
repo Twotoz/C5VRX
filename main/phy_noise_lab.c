@@ -165,6 +165,16 @@ static const profile_t policy_profiles[] = {
     {"RX11BLR_ARG1",2,{{0x600A8060,0xc00,0xc00},{0x600A807C,0x800,0x800}},false},
     {"POLICY_SHAM",0,{{0}},false},
 };
+/* Exact final MMIO footprints of phy_hemu_ru26_good_res() and
+ * phy_en_pwdet(). Names do not establish polarity or an RX noise effect.
+ * Neither helper starts a tone or changes PBUS/ADC clocks; apply masks
+ * directly, preserving every unrelated field and the incoming baseline. */
+static const profile_t aux_profiles[] = {
+    {"AUX_SHAM",0,{{0}},false},
+    {"HEMU_RU26_VENDOR",1,{{0x600A7890,0x03000000,0x01000000}},false},
+    {"PWDET_VENDOR_CLEAR",1,{{0x600A0808,0x0e,0}},false},
+    {"AUX_SHAM",0,{{0}},false},
+};
 static const uint32_t watch[] = {
     0x600A7018,0x600A7C44,0x600A7C50,0x600A7CE4,0x600A7030,
     0x600A7048,0x600A71C4,0x600A7904,0x600A7074,0x600A0438,
@@ -174,7 +184,7 @@ static const uint32_t watch[] = {
     0x600A782C,0x600A7830,0x600A0C38,0x600A4C5C,0x600A7800,
     0x600A7044,0x600A7124,0x600A8004,0x600A7104,0x600A71D8,
     0x600A7010,0x600A7014,0x600A7108,0x600A0890,0x600A9C18,
-    0x600A790C,0x600A70F4,0x600A8060,0x600A807C
+    0x600A790C,0x600A70F4,0x600A8060,0x600A807C,0x600A7890,0x600A0808
 };
 static void state(unsigned id, const char *stage)
 {
@@ -190,6 +200,9 @@ static void state(unsigned id, const char *stage)
     for(uint8_t reg=0;reg<2;++reg)
         printf("PHYLAB_BIAS id=%u stage=%s block=6a host=1 reg=%u value=%02x\n",id,stage,reg,phy_i2c_readReg(0x6a,1,reg));
     printf("PHYLAB_LOCAP id=%u stage=%s block=63 host=1 reg=21 value=%02x\n",id,stage,phy_i2c_readReg(0x63,1,21));
+    for(uint8_t reg=4;reg<=6;++reg)
+        printf("PHYLAB_ULP id=%u stage=%s block=61 host=0 reg=%u value=%02x\n",id,stage,reg,phy_i2c_readReg(0x61,0,reg));
+    printf("PHYLAB_ULP_CACHE id=%u stage=%s param652=%02x param653=%02x\n",id,stage,phy_param[652],phy_param[653]);
 }
 static bool capture(uint8_t *raw)
 {
@@ -530,7 +543,7 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
 #ifndef C5VRX_PHY_PINNED
     (void)context_ok;(void)dwell_ms;(void)suite;printf("PHYLAB refused=unverified_phy\n");
 #else
-    if((dwell_ms!=300&&dwell_ms!=1200)||suite>12){printf("PHYLAB refused=arguments\n");return;}
+    if((dwell_ms!=300&&dwell_ms!=1200)||suite>13){printf("PHYLAB refused=arguments\n");return;}
     lab_dwell_ms=dwell_ms;
     lab_windows=(suite==7||suite==8||suite>=10)?16:4;
     sample_dco_check=false;
@@ -633,6 +646,8 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
     static const unsigned confirm_order[]={10,1,0,1,0,10};
     for(unsigned i=0;i<sizeof(confirm_order)/sizeof(confirm_order[0])&&ok&&suite==12;++i)
         ok=run_profile(240+i,&policy_profiles[confirm_order[i]],raw,context_ok,deadline);
+    for(unsigned i=0;i<sizeof(aux_profiles)/sizeof(aux_profiles[0])&&ok&&suite==13;++i)
+        ok=run_profile(256+i,&aux_profiles[i],raw,context_ok,deadline);
     sample_dco_check=false;
     printf("PHYLAB_END status=%s rejected=%u restored=1 input_referred_improvement=unknown\n",ok?(rejected?"COMPLETE_WITH_REJECTIONS":"PASS"):"INCOMPLETE",rejected);
     phy_end();free(raw);

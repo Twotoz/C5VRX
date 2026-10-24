@@ -294,6 +294,13 @@ int main(void){
     }
     lab_packed_valid=true;lab_packed_gain=0;assert(hardware_gain_ok());
     lab_packed_gain=1;assert(!hardware_gain_ok());lab_packed_valid=false;
+    for(unsigned k=0;k<sizeof(aux_profiles)/sizeof(aux_profiles[0]);++k){
+        reset();const profile_t *p=&aux_profiles[k];uint32_t before[12];
+        for(unsigned j=0;j<p->n;++j)before[j]=MM(p->p[j].addr);
+        assert(run_profile(256+k,p,raw,context_ok,999999));
+        for(unsigned j=0;j<p->n;++j)assert(MM(p->p[j].addr)==before[j]);
+        assert(phy_param[652]==0&&phy_param[653]==0);
+    }
     for(unsigned k=0;k<sizeof(policy_profiles)/sizeof(policy_profiles[0]);++k){
         reset();const profile_t *p=&policy_profiles[k];uint32_t before[12];
         for(unsigned j=0;j<p->n;++j)before[j]=MM(p->p[j].addr);

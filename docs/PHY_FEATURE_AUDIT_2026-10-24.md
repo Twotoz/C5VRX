@@ -265,4 +265,15 @@ The 5805-MHz LLTF clue received an independent order-controlled
 confirmation: candidate00 measured -0.006 dB at5805 and -0.002 dB
 at5865, comparable to shams/unchanged10 controls. No additional benefit
 is established. This ledger distinguishes static findings, feasible future
-probes and actual board evidence; the auxiliary bit probes remain untested.
+probes and actual board evidence.
+
+The auxiliary suite (`{`, suite13) now tests the exact recovered HEMU mask
+0x03000000/value0x01000000 at0x600a7890 and PWDET mask0x0e/value0
+at0x600a0808, bracketed by two explicit sham executions. Each execution
+uses sixteen snapshots per ABBA stage, matching held calibrated DC and
+fixed gain, with the original masked state restored and verified. The
+PWDET helper name does not establish enable polarity. Neither probe starts
+a transmitter or calls a calibration routine. Hardware results are pending.
+ULP analog0x61/host0/registers4..6 and phy_param[652:653] are read-only
+telemetry; no ULP code is forced. Host tests cover exact auxiliary-field
+rollback and unchanged ULP cache; the pinned C5 build passes.
