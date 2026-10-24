@@ -1,8 +1,8 @@
 # ESP32-C5 undocumented NF-auto register lab (bench only)
 
 The C5VRX-5 firmware includes a manual **J** console experiment on branch
-`lab/nf-auto-16state` (based on `feat/p64-on-dfilt0`). **This is an untested
-firmware experiment. No actual reduction in input-referred noise figure,
+`lab/nf-auto-16state` (based on `feat/p64-on-dfilt0`). **This is a bench
+firmware experiment, with board measurements in the dated reports. No reduction in input-referred noise figure,
 C/N, video SINAD, or range is established.**
 
 ## Provenance and limits

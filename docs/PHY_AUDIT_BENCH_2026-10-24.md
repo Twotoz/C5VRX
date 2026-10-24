@@ -110,18 +110,26 @@ The new bench applies a matching, already-loaded production DC row before each f
 
 | Run | Gain | Noise delta dB | Mean signed rails STOCK / TEST | Quality |
 |---|---:|---:|---:|---|
+| audit_5805_dco_ack1 | 78 | +0.006 | 0.0000% / 0.0000% | NO_FLAGS |
+| audit_5805_dco_ack1 | 80 | -0.003 | 0.0000% / 0.0000% | NO_FLAGS |
+| audit_5805_dco_ack1 | 83 | -0.005 | 0.3072% / 0.0527% | FLAGGED |
 | audit_5865_dco2 | 78 | +0.003 | 0.0000% / 0.0000% | NO_FLAGS |
 | audit_5865_dco2 | 80 | +0.011 | 0.0000% / 0.0004% | NO_FLAGS |
 | audit_5865_dco2 | 83 | +0.009 | 0.1107% / 0.0424% | FLAGGED |
 | audit_5865_dco3 | 78 | -0.020 | 0.0000% / 0.0000% | NO_FLAGS |
 | audit_5865_dco3 | 80 | -0.007 | 0.0015% / 0.0000% | NO_FLAGS |
 | audit_5865_dco3 | DCO_CENTER_G83 | | | INCOMPLETE |
+| audit_5865_dco_ack1 | 78 | +0.028 | 0.0000% / 0.0000% | NO_FLAGS |
+| audit_5865_dco_ack1 | 80 | +0.020 | 0.0000% / 0.0000% | NO_FLAGS |
+| audit_5865_dco_ack1 | 83 | -0.005 | 0.0240% / 0.0233% | NO_FLAGS |
 
 Lower signed-rail occupancy is a headroom observation, not a direct count of folding errors, a noise-figure improvement or a range measurement. Equal target/entry codes make a sham comparison. Stock/test means retain every valid capture, including outliers. A lower raw mean is not itself more sensitivity. Hardware-code readback and full raw-capture hashes are retained in the archive.
 
+At 5805 MHz G83 mean signed rails fell from 0.3072% to 0.0527%, with -0.005 dB variance change. At 5865 MHz the first complete comparison gave 0.1107% to 0.0424% (+0.009 dB), but the later complete repeat gave 0.0240% to 0.0233% (-0.005 dB). Thus there is evidence for correcting an off-centre starting pair, not a repeatable extra noise reduction to add to 11p. The incomplete G83 repeat is retained. The first ACK-enabled run recovered one corrupted transport attempt and retained all 192 intended snapshots with matching capture identity; the 5805 MHz run needed no retry. The committed Windows helper was also exercised with a full-system reset and the console answered afterwards.
+
 ## Archived evidence
 
-- 3103 valid IQ captures in this audit archive; all rejected transports are separately recorded.
+- 3487 valid IQ captures in this audit archive; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
 - [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.

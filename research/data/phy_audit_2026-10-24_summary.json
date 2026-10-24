@@ -5,6 +5,18 @@
   "scope": "VTX off, noise only, no calibrated carrier or video; no sensitivity/range claim",
   "provenance": [
     {
+      "label": "bef2146-ack1",
+      "baseline": "11p upstream f53bcdf",
+      "app_sha256": "1ffdd75cab846074456adc1a737d669e14e5ab954be785e08e7321f1f8aca286",
+      "source_sha256": {
+        "main/calibration.c": "ec5f37793b268900cd37ac86efea5939a71f5b037a62146c4458b80b5e7e4a3a",
+        "main/console.c": "b2ace424b8858de26b0ad35f557dccec184114bf853ed90eb802a3b9a5dd33c1",
+        "main/receiver.h": "bb53ba1c44e132ed39c1e9f42011214aba5c89b419f772c5dfb502b8cda9e36f",
+        "main/phy_noise_lab.c": "9b0e87667dbf1aa1ed9a87bf8411a2be762d770d72e281999aa413c5d1fa4d41",
+        "main/phy_noise_lab.h": "0e842c0ee4832a29b488f8f39115bb0e0f525b808faa815267e141bdaf302b19"
+      }
+    },
+    {
       "label": "421c690-adc1",
       "app_sha256": "0bb0d5b831c546652b7354bfcfdec0c8a8f5cbe6945f189d423c5c0830f6c0db",
       "source_sha256": {
@@ -125,7 +137,7 @@
       }
     }
   ],
-  "total_valid_captures": 3103,
+  "total_valid_captures": 3487,
   "runs": [
     {
       "name": "audit_5745_clock_extra_short",
@@ -557,6 +569,128 @@
         "port": "COM10",
         "started_utc": "2026-10-24T12:28:12.082973+00:00",
         "ended_utc": "2026-10-24T12:28:25.488412+00:00"
+      }
+    },
+    {
+      "name": "audit_5805_dco_ack1",
+      "context": {
+        "fw": "5.0.0-dev+bef2146-ack1",
+        "freq": "5805",
+        "gain": "73",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "8",
+        "windows_per_stage": "16",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "DCO_CENTER_G78",
+          "status": "PASS",
+          "stock_m2": 2.1546622115589606,
+          "test_m2": 2.1575998912056606,
+          "delta_db": 0.005917164713650397,
+          "stock_drift_db": 0.005670948897796997,
+          "test_repeat_db": 0.00772800180223623,
+          "median_delta_db": -0.00855162125551792,
+          "stock_nbw_mhz": 13.886692349003647,
+          "test_nbw_mhz": 14.012020007581413,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0693639761893685,
+          "min_kurtosis": 1.9467302238639124,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "DCO_CENTER_G80",
+          "status": "PASS",
+          "stock_m2": 3.338865334019867,
+          "test_m2": 3.3365262249705934,
+          "delta_db": -0.003043603316060321,
+          "stock_drift_db": -0.021646296298275726,
+          "test_repeat_db": 0.012331553157769074,
+          "median_delta_db": -0.008126482551941035,
+          "stock_nbw_mhz": 13.62398381584281,
+          "test_nbw_mhz": 13.677801041452394,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.104259912867178,
+          "min_kurtosis": 1.937713866431175,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "DCO_CENTER_G83",
+          "status": "PASS",
+          "stock_m2": 6.42806567139786,
+          "test_m2": 6.42001415789305,
+          "delta_db": -0.005443192119459288,
+          "stock_drift_db": 0.0185641847224524,
+          "test_repeat_db": 0.011257062918688051,
+          "median_delta_db": -0.0010845354434306062,
+          "stock_nbw_mhz": 13.167802527947044,
+          "test_nbw_mhz": 13.183554941485466,
+          "max_signed_rails": 0.010622710622710623,
+          "max_kurtosis": 2.068444138020144,
+          "min_kurtosis": 1.9311256707009334,
+          "quality_flags": [
+            "signed_rails_above_0.2pct"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 192,
+      "rejected_captures": [],
+      "raw_log_sha256": "d7a054d008fb218f3a7922403068e690d943a98c8c8ce7542c787d68a3793daf",
+      "manifest_sha256": "9b2a91e9eb006d5dd5c0e8f07ea83b46ffa93b28974f49b29fe1231fc3391820",
+      "dc_selected": [
+        {
+          "id": "176",
+          "original_i": "241",
+          "original_q": "236",
+          "target_i": "245",
+          "target_q": "233",
+          "objective": "0.069495",
+          "gain": "78",
+          "packed": "001e77f5"
+        },
+        {
+          "id": "177",
+          "original_i": "240",
+          "original_q": "235",
+          "target_i": "245",
+          "target_q": "230",
+          "objective": "0.105714",
+          "gain": "80",
+          "packed": "001e77f3"
+        },
+        {
+          "id": "178",
+          "original_i": "232",
+          "original_q": "230",
+          "target_i": "240",
+          "target_q": "222",
+          "objective": "0.148126",
+          "gain": "83",
+          "packed": "001e77f0"
+        }
+      ],
+      "retransmissions": [],
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T17:16:20.795311+00:00",
+        "ended_utc": "2026-10-24T17:17:31.590824+00:00"
       }
     },
     {
@@ -2072,6 +2206,149 @@
         "port": "COM10",
         "started_utc": "2026-10-24T17:08:57.544197+00:00",
         "ended_utc": "2026-10-24T17:09:57.616177+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_dco_ack1",
+      "context": {
+        "fw": "5.0.0-dev+bef2146-ack1",
+        "freq": "5865",
+        "gain": "73",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "8",
+        "windows_per_stage": "16",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "DCO_CENTER_G78",
+          "status": "PASS",
+          "stock_m2": 2.096058005850817,
+          "test_m2": 2.109732056667725,
+          "delta_db": 0.028240048369575794,
+          "stock_drift_db": -0.00478673068024637,
+          "test_repeat_db": 0.008686080220680806,
+          "median_delta_db": 0.027493545916691536,
+          "stock_nbw_mhz": 13.861531903650485,
+          "test_nbw_mhz": 13.851156306867969,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.087691772786242,
+          "min_kurtosis": 1.9556466665043348,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "DCO_CENTER_G80",
+          "status": "PASS",
+          "stock_m2": 3.2641977321281352,
+          "test_m2": 3.279126292282199,
+          "delta_db": 0.019816846980757315,
+          "stock_drift_db": -0.027085700923817867,
+          "test_repeat_db": 0.002764765737286123,
+          "median_delta_db": 0.03598045701422322,
+          "stock_nbw_mhz": 13.452352461796922,
+          "test_nbw_mhz": 13.392073221045822,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0969725873356864,
+          "min_kurtosis": 1.9348157292973047,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "DCO_CENTER_G83",
+          "status": "PASS",
+          "stock_m2": 6.2855450078343855,
+          "test_m2": 6.278146510549211,
+          "delta_db": -0.005114940799112118,
+          "stock_drift_db": -0.030109820811530238,
+          "test_repeat_db": -0.04302986440248676,
+          "median_delta_db": 0.013472999485694985,
+          "stock_nbw_mhz": 13.279223091447383,
+          "test_nbw_mhz": 13.153830915666532,
+          "max_signed_rails": 0.001221001221001221,
+          "max_kurtosis": 2.0496965022828593,
+          "min_kurtosis": 1.9449778963938915,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 192,
+      "rejected_captures": [
+        {
+          "metadata": {
+            "id": "178",
+            "step": "0",
+            "stage": "STOCK",
+            "rep": "15",
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "gain": "83",
+            "freq": "5865",
+            "offset": "0",
+            "m2": "6.399044",
+            "kurt": "2.0497",
+            "rails": "0.000611",
+            "fnv1a": "3e031966",
+            "t_us": "72385690",
+            "tx_token": "00000090",
+            "tx_attempt": "0",
+            "windows_per_stage": "16"
+          },
+          "reason": "truncated preceding capture"
+        }
+      ],
+      "raw_log_sha256": "7e0719b73b6d3bf207e78f39dc2b24a65955169f4b6a253fcaeabcb90fb53a91",
+      "manifest_sha256": "75034ea4ab4e913308072e6bc0cd8bfc0640236b5719291d485858d578d81c7b",
+      "dc_selected": [
+        {
+          "id": "176",
+          "original_i": "249",
+          "original_q": "234",
+          "target_i": "249",
+          "target_q": "236",
+          "objective": "0.070197",
+          "gain": "78",
+          "packed": "001e77f5"
+        },
+        {
+          "id": "177",
+          "original_i": "248",
+          "original_q": "233",
+          "target_i": "246",
+          "target_q": "233",
+          "objective": "0.169193",
+          "gain": "80",
+          "packed": "001e77f3"
+        },
+        {
+          "id": "178",
+          "original_i": "240",
+          "original_q": "228",
+          "target_i": "244",
+          "target_q": "228",
+          "objective": "0.213888",
+          "gain": "83",
+          "packed": "001e77f0"
+        }
+      ],
+      "retransmissions": [],
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T17:14:15.294455+00:00",
+        "ended_utc": "2026-10-24T17:15:42.950905+00:00"
       }
     },
     {
