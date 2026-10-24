@@ -43,6 +43,7 @@ static bool entry_rejected;
 static unsigned lab_dwell_ms=300;
 static unsigned lab_windows=4;
 static int sample_adc_expected=-1;
+static int sample_locap_expected=-1;
 static uint32_t lab_packed_gain;
 static bool lab_packed_valid;
 static bool sample_dco_check;
@@ -188,6 +189,7 @@ static void state(unsigned id, const char *stage)
      * bias-current direction, LNA noise figure or a safe overdrive range. */
     for(uint8_t reg=0;reg<2;++reg)
         printf("PHYLAB_BIAS id=%u stage=%s block=6a host=1 reg=%u value=%02x\n",id,stage,reg,phy_i2c_readReg(0x6a,1,reg));
+    printf("PHYLAB_LOCAP id=%u stage=%s block=63 host=1 reg=21 value=%02x\n",id,stage,phy_i2c_readReg(0x63,1,21));
 }
 static bool capture(uint8_t *raw)
 {
@@ -247,7 +249,9 @@ static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)
         if(esp_timer_get_time()>deadline||!context_ok()||s_current_gain!=lab_gain||
            !verify(sample_profile,sample_expected)||
            (sample_adc_expected>=0 && (phy_i2c_readReg(0x66,0,4)&4)!=(unsigned)sample_adc_expected)||
-           !hardware_gain_ok()||!dco_expected_ok()||!capture(raw)||!hardware_gain_ok()||!dco_expected_ok()) return false;
+           (sample_locap_expected>=0 && (phy_i2c_readReg(0x63,1,21)&31)!=(unsigned)sample_locap_expected)||
+           !hardware_gain_ok()||!dco_expected_ok()||!capture(raw)||!hardware_gain_ok()||!dco_expected_ok()||
+           (sample_locap_expected>=0 && (phy_i2c_readReg(0x63,1,21)&31)!=(unsigned)sample_locap_expected)) return false;
         double m2,kurt,rail; power(raw,&m2,&kurt,&rail);
         if(!isfinite(m2)||m2<=0.05||!isfinite(kurt)) return false;
         uint32_t hash=2166136261u;
@@ -392,6 +396,42 @@ static bool run_gain_row(unsigned id,uint8_t gain,uint8_t *raw,bool (*context_ok
     printf("PHYLAB_GAIN_ROW id=%u gain=%u rf_stage=%u rf_code=%u bb=%u fine=%u packed=%08" PRIx32 "\n",id,gain,t.rf_stage,t.rf_code,t.bb_code,t.fine_code,t.packed_state);
     return run_profile(id,&p,raw,context_ok,deadline);
 }
+static bool run_locap(unsigned id,unsigned target,uint8_t *raw,bool (*context_ok)(void),int64_t deadline)
+{
+    /* Recovered phy_set_freq_i2c_new owns exactly this five-bit field.
+     * phy_get_dcap_degen clamps the vendor code to 10..31. Test only an
+     * adjacent in-range code; never call channel/VCO/PLL calibration here. */
+    const uint8_t saved=phy_i2c_readReg(0x63,1,21)&31;
+    if(saved<10||saved>31){
+        printf("PHYLAB_LOCAP_REFUSED reason=stock_outside_vendor_interval saved=%u\n",saved);return false;
+    }
+    if(target<10||target>31){
+        printf("PHYLAB_SKIP id=%u reason=locap_vendor_interval saved=%u target=%u\n",id,saved,target);return true;
+    }
+    char name[32];snprintf(name,sizeof(name),"LO_CAP_CODE_%u",target);
+    const profile_t p={name,0,{{0}},false};sample_profile=&p;
+    sample_locap_expected=saved;
+    printf("PHYLAB_PROFILE id=%u name=%s sequence=STOCK_TEST_TEST_STOCK\n",id,name);
+    printf("PHYLAB_LOCAP_TARGET id=%u saved=%u target=%u mask=1f persistent=0\n",id,saved,target);
+    bool ok=measure(id,0,raw,context_ok,deadline);
+    if(ok){
+        phy_i2c_writeReg(0x63,1,21,(phy_i2c_readReg(0x63,1,21)&0xe0u)|target);
+        sample_locap_expected=(int)target;
+        ok=(phy_i2c_readReg(0x63,1,21)&31)==target;
+        printf("PHYLAB_APPLY id=%u verified=%u\n",id,ok);
+        if(ok)ok=measure(id,1,raw,context_ok,deadline);
+        if(ok)ok=measure(id,2,raw,context_ok,deadline);
+    }
+    phy_i2c_writeReg(0x63,1,21,(phy_i2c_readReg(0x63,1,21)&0xe0u)|saved);
+    const bool restored=(phy_i2c_readReg(0x63,1,21)&31)==saved;
+    printf("PHYLAB_RESTORE id=%u verified=%u\n",id,restored);
+    if(!restored){printf("PHYLAB_FATAL locap_restore_failed reboot_required\n");fflush(stdout);esp_restart();}
+    sample_locap_expected=saved;
+    if(ok)ok=measure(id,3,raw,context_ok,deadline);
+    sample_locap_expected=-1;
+    printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":"INCOMPLETE");
+    return ok;
+}
 /* Only an already-held DAC pair is eligible: keep the entry debug/work mode.
  * Move one axis at a time through the existing verified actuator; no NVS,
  * new RF bias values, gain changes inside ABBA or unverified PBUS writes. */
@@ -490,9 +530,9 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
 #ifndef C5VRX_PHY_PINNED
     (void)context_ok;(void)dwell_ms;(void)suite;printf("PHYLAB refused=unverified_phy\n");
 #else
-    if((dwell_ms!=300&&dwell_ms!=1200)||suite>9){printf("PHYLAB refused=arguments\n");return;}
+    if((dwell_ms!=300&&dwell_ms!=1200)||suite>11){printf("PHYLAB refused=arguments\n");return;}
     lab_dwell_ms=dwell_ms;
-    lab_windows=(suite==7||suite==8)?16:4;
+    lab_windows=(suite==7||suite==8||suite==10||suite==11)?16:4;
     sample_dco_check=false;
     uint8_t *raw=malloc(C5V4_LEVEL_SAMPLE_BYTES);
     if(!raw){printf("PHYLAB refused=memory\n");return;}
@@ -527,7 +567,7 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
                s_current_gain,tuple.rf_stage,tuple.rf_code,tuple.bb_code,tuple.fine_code,tuple.packed_state,
                arc_gain_highest_rf_stage_start(rf_gain_table()),rf_gain_table()->max_index);
     } else ok=false;
-    if(ok&&suite==9){
+    if(ok&&(suite==9||suite==10||suite==11)){
         ok=phylab_hold_current_gain()&&phy_dco_read_pair(sample_dco);
         sample_dco_check=ok;
         if(!ok)printf("PHYLAB_POLICY_REFUSED reason=no_matching_calibrated_hold\n");
@@ -572,6 +612,16 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
     for(unsigned i=0;i<sizeof(dc_gains)&&ok&&suite==8;++i)ok=run_dco(176+i,dc_gains[i],raw,context_ok,deadline);
     for(unsigned i=0;i<sizeof(policy_profiles)/sizeof(policy_profiles[0])&&ok&&suite==9;++i)
         ok=run_profile(192+i,&policy_profiles[i],raw,context_ok,deadline);
+    if(ok&&suite==10){
+        const unsigned code=phy_i2c_readReg(0x63,1,21)&31;
+        ok=run_locap(208,code,raw,context_ok,deadline);
+        if(ok)ok=run_locap(209,code-1,raw,context_ok,deadline);
+        if(ok)ok=run_locap(210,code+1,raw,context_ok,deadline);
+    }
+    for(unsigned i=0;i<5&&ok&&suite==11;++i){
+        const unsigned n=i<4?i:10; /* all four LLTF states plus sham */
+        ok=run_profile(224+i,&policy_profiles[n],raw,context_ok,deadline);
+    }
     sample_dco_check=false;
     printf("PHYLAB_END status=%s rejected=%u restored=1 input_referred_improvement=unknown\n",ok?(rejected?"COMPLETE_WITH_REJECTIONS":"PASS"):"INCOMPLETE",rejected);
     phy_end();free(raw);

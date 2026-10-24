@@ -29,6 +29,8 @@ def main():
             dc_selected=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_DCO_SELECTED ')],
             retransmissions=manifest.get('retransmissions',[]),
             bias_readbacks=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_BIAS ')],
+            policy_baseline_registers={addr:next((dict(re.findall(r'(\w+)=([^\s]+)',line)).get('value') for line in text.splitlines() if line.startswith('PHYLAB_REG ') and 'stage=STOCK ' in line and f'addr={addr} ' in line),None) for addr in ('600a790c','600a70f4','600a7ce4','600a8060','600a807c')} if meta.get('suite') in ('9','11') else {},
+            context_note=json.loads((p/'context-note.json').read_text()) if (p/'context-note.json').exists() else None,
             acquisition=json.loads((p/'acquisition.json').read_text())))
     for p in sorted(RAW.glob('live_*')):
         if not (p/'manifest.json').exists():continue
@@ -258,6 +260,38 @@ def main():
         'with matching capture identity; the 5805 MHz run needed no retry. '
         'The committed Windows helper was also exercised with a full-system '
         'reset and the console answered afterwards.','',
+        '## Isolated LLTF/RIFS/VHT/11b-LR policy fields','',
+        'These profiles use a matching calibrated DC hold at the screened '
+        'fixed gain, 1200 ms dwell and the same verified transport and '
+        'rollback. The initial suite has four windows per stage; the LLTF '
+        'follow-up has 16. A profile matching the incoming masked register '
+        'values is explicitly a no-op control.','',
+        '| Run | Profile | Noise delta dB | Role | Quality/status |',
+        '|---|---|---:|---|---|'])
+    footprints={
+        **{f'LLTF_MASK_{a}{b}': [('600a790c',0x3000,(a<<13)|(b<<12))] for a,b in ((0,0),(1,0),(0,1),(1,1))},
+        **{f'RIFS_ARG{x}':[('600a70f4',1,x)] for x in (0,1)},
+        **{f'VHT_ARG{x}':[('600a7ce4',0x20,x<<5)] for x in (0,1)},
+        **{f'RX11BLR_ARG{x}':[('600a8060',0xc00,0xc00*x),('600a807c',0x800,0x800*x)] for x in (0,1)},
+        'POLICY_SHAM':[]}
+    for r in runs:
+        if r['context'].get('suite') not in ('9','11'):continue
+        baseline=r['policy_baseline_registers']
+        for s in r['summary']:
+            owned=footprints[s['profile']]
+            no_op=all(baseline.get(addr) is not None and int(baseline[addr],16)&mask==value for addr,mask,value in owned)
+            role='no-op control' if no_op else 'changed bits'
+            if s['status']=='PASS':lines.append(f"| {r['name']} | {s['profile']} | {s['delta_db']:+.3f} | {role} | {s['quality']} |")
+            else:lines.append(f"| {r['name']} | {s['profile']} | | {role} | {s['status']} |")
+    lines.extend(['',
+        'The first policy request saw 5865 MHz in early boot status, but '
+        'saved-channel restore completed before the queued suite started '
+        'at 5805 MHz. The immutable header and captures identify 5805; '
+        'the folder was corrected to audit_5805_policy1 and a context note '
+        'retained. The 5865 run was then deliberately retuned and repeated. '
+        'Host acquisition now checks actual suite/capture frequency after '
+        'the request as well, drains through outer restoration, and rejects '
+        'a mismatch instead of silently accepting the early status.','',
         '## Read-only bias witness','',
         'Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to '
         '0x9f/0x7f. The measured operating bytes are listed below. '

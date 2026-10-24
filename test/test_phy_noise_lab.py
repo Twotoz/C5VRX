@@ -8,6 +8,10 @@ import subprocess
 import tempfile
 import sys
 import unittest
+from unittest import mock
+from types import SimpleNamespace
+import itertools
+import json
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -72,6 +76,49 @@ class Transport(unittest.TestCase):
             self.assertEqual(len(manifest['rejected_captures']),1)
 
 
+class Acquisition(unittest.TestCase):
+    def fake_serial(self,status_frequency,suite_frequency,outer=True):
+        class Serial:
+            def __init__(self):self.writes=[];self.queue=[];self.closed=False
+            def open(self):pass
+            def close(self):self.closed=True
+            def write(self,data):
+                self.writes.append(data)
+                if data==b'T':self.queue.append(f'CONTROL channel=A1 freq={status_frequency}\n'.encode())
+                else:
+                    payload=(f'PHYLAB_BEGIN freq={suite_frequency} outer_restore=required\n'
+                             'PHYLAB_END status=PASS restored=1\n')
+                    if outer:payload+='PHYLAB_OUTER_RESTORE verified=1 gain=83 held=1\n'
+                    self.queue.append(payload.encode())
+            def read(self,n):
+                del n
+                return self.queue.pop(0) if self.queue else b''
+        return Serial()
+
+    def test_post_boot_retune_detected_after_outer_restore(self):
+        serial=self.fake_serial(5865,5805)
+        with tempfile.TemporaryDirectory() as d:
+            out=Path(d)/'run'
+            with mock.patch.dict(sys.modules,{'serial':SimpleNamespace(Serial=lambda:serial)}), \
+                 mock.patch.object(lab.time,'monotonic',side_effect=itertools.count()):
+                with self.assertRaisesRegex(RuntimeError,'frequency changed after request'):
+                    lab.acquire('TEST_ONLY',out,'B',5865)
+            self.assertEqual(serial.writes,[b'T',b'B']);self.assertTrue(serial.closed)
+            acquisition=json.loads((out/'acquisition.json').read_text())
+            self.assertEqual(acquisition['requested_frequency'],5865)
+            self.assertTrue(acquisition['context_errors'])
+            self.assertIn('PHYLAB_OUTER_RESTORE',(out/'console.raw.log').read_text())
+
+    def test_missing_outer_restore_does_not_complete(self):
+        serial=self.fake_serial(5865,5865,outer=False)
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.dict(sys.modules,{'serial':SimpleNamespace(Serial=lambda:serial)}), \
+             mock.patch.object(lab.time,'monotonic',side_effect=itertools.count()):
+            with self.assertRaisesRegex(TimeoutError,'restoration'):
+                lab.acquire('TEST_ONLY',Path(d)/'run','B',5865)
+        self.assertTrue(serial.closed)
+
+
 STUBS = r'''
 #include <assert.h>
 #include <stdbool.h>
@@ -133,7 +180,11 @@ static int phy_dco_try_pair(uint32_t gain,const int expected[2],const int target
     dc_pair[0]=target[0];dc_pair[1]=target[1];return ESP_OK;
 }
 uint8_t phy_i2c_readReg(uint8_t b,uint8_t h,uint8_t r){(void)b;(void)h;return analog_regs[r];}
-void phy_i2c_writeReg(uint8_t b,uint8_t h,uint8_t r,uint8_t v){(void)b;(void)h;if(inject==2&&v!=60)return;analog_regs[r]=v;}
+void phy_i2c_writeReg(uint8_t b,uint8_t h,uint8_t r,uint8_t v){
+    (void)h;if(inject==2&&v!=60)return;
+    if(b==0x63&&r==21&&((inject==6&&(v&31)==13)||(inject==7&&(v&31)==12)))return;
+    analog_regs[r]=v;
+}
 void phy_adc_rate_set(uint32_t mode){MM(0x600A0448)=(MM(0x600A0448)&~3u)|(mode?3:0);analog_regs[4]=(analog_regs[4]&~4u)|(mode?0:4);}
 uint16_t phy_pbus_rd(uint32_t block,uint32_t bank){(void)bank;return block==1?0xd0u:0u;}
 void phy_11p_set(uint8_t en,uint8_t mode){
@@ -148,6 +199,7 @@ static bool copy_snapshot(uint8_t *raw){
     for(unsigned i=0;i<8190;++i)raw[i]=(uint8_t)((((i+stages)%5)<<4)|(((i+stages)/5)%5));
     ++stages;
     if(inject==4 && stages==5)MM(0x600A7CE4)^=4;
+    if(inject==5 && stages==5)analog_regs[21]^=0xe0;
     if(!mutated){MM(0x600A7CE4)^=0x80000000;mutated=true;}
     return true;
 }
@@ -166,9 +218,10 @@ static void reset(void){
     memset(regs,0x55,sizeof(regs));
     for(unsigned i=0;i<256;++i)analog_regs[i]=(uint8_t)(i+17);
     phy_param[0x26]=7;phy_param[0x27]=9;
-    inject=0;stages=0;mutated=false;lab_gain=80;
+    inject=0;stages=0;mutated=false;lab_gain=80;s_current_gain=80;
     host_ack_drop=0;
     dc_pair[0]=240;dc_pair[1]=250;dc_held=true;dc_fail=0;dc_writes=0;sample_dco_check=false;
+    sample_locap_expected=-1;
 }
 int main(void){
     uint8_t *raw=malloc(8190);uint32_t original[4];uint8_t saved[8];
@@ -252,6 +305,19 @@ int main(void){
     assert(!run_dco(176,78,raw,context_ok,999999));assert(dc_pair[0]==240&&dc_pair[1]==250&&dc_held);
     reset();lab_packed_valid=false;
     assert(run_dco(176,78,raw,context_ok,999999));assert(dc_pair[0]==240&&dc_pair[1]==250&&dc_held&&!sample_dco_check);
+    reset();lab_packed_valid=false;analog_regs[21]=0xac;
+    assert(run_locap(208,13,raw,context_ok,999999));assert(analog_regs[21]==0xac&&stages==16&&sample_locap_expected==-1);
+    reset();analog_regs[21]=0xac;
+    assert(run_locap(208,9,raw,context_ok,999999));assert(stages==0&&analog_regs[21]==0xac);
+    reset();analog_regs[21]=7;
+    assert(!run_locap(208,13,raw,context_ok,999999));assert(stages==0&&analog_regs[21]==7);
+    reset();analog_regs[21]=0xac;inject=5;
+    assert(run_locap(208,13,raw,context_ok,999999));assert(analog_regs[21]==(0xac^0xe0));
+    reset();analog_regs[21]=0xac;inject=6;
+    assert(!run_locap(208,13,raw,context_ok,999999));assert(stages==4&&analog_regs[21]==0xac);
+    reset();analog_regs[21]=0xac;inject=7;
+    if(setjmp(jump)==0){run_locap(208,13,raw,context_ok,999999);assert(!"LO restore failure must reboot");}
+    assert(stages==12);
     free(raw);fprintf(stderr,"PHY lab lifecycle: PASS (rollback, unrelated bits, apply fault, context refusal, fatal restore, bounded DC trials)\n");
     return 0;
 }

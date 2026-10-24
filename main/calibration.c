@@ -1987,6 +1987,8 @@ void phygaincurve_request(void) { s_phylab_suite=6;s_phylab_dwell=300;s_phylab_r
 void phycombo_request(void) { s_phylab_suite=7;s_phylab_dwell=1200;s_phylab_requested = true; }
 void phydco_request(void) { s_phylab_suite=8;s_phylab_dwell=1200;s_phylab_requested = true; }
 void phypolicy_request(void) { s_phylab_suite=9;s_phylab_dwell=1200;s_phylab_requested = true; }
+void phylocap_request(void) { s_phylab_suite=10;s_phylab_dwell=1200;s_phylab_requested = true; }
+void phylltf_request(void) { s_phylab_suite=11;s_phylab_dwell=1200;s_phylab_requested = true; }
 bool phylab_hold_current_gain(void)
 {
     /* A paused receiver suppresses its post-gain hook. Reuse only an

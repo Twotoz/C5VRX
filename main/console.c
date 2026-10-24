@@ -111,6 +111,8 @@ static void help(void)
            "  + BENCH ONLY: joint profiles plus sham, preserves incoming 11p, 16 captures/stage, VTX OFF,\n"
            "  & BENCH ONLY: temporary DC centering at fixed G78/80/83, exact held-pair restore, VTX OFF,\n"
            "  ( BENCH ONLY: isolated LLTF/RIFS/VHT/11b-LR fields and sham, calibrated hold, VTX OFF,\n"
+           "  ) BENCH ONLY: adjacent LO-cap codes inside vendor interval, exact restore, VTX OFF,\n"
+           "  [ BENCH ONLY: LLTF four-state follow-up plus sham, 16 captures/stage, VTX OFF,\n"
            "  Z DAC self-test (bench: test pattern, then one flat level per pin for a multimeter),\n"
            "  ` reboot to USB download (flashing)\n");
 }
@@ -173,6 +175,8 @@ static void console_task(void *arg)
             case '+': phycombo_request(); break;
             case '&': phydco_request(); break;
             case '(': phypolicy_request(); break;
+            case ')': phylocap_request(); break;
+            case '[': phylltf_request(); break;
             case 'Y': case 'W': case 'X': flightlog_console((char)c); break;
             case 'h': case '?': help(); break;
             case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'g': case 'A': case 'U': case 'G': case 'Q': case 'Z': {

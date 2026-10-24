@@ -124,6 +124,7 @@ def acquire(port, output, key='B', expected_frequency=None):
     s.port, s.baudrate, s.timeout, s.write_timeout = port, 115200, .1, 2
     s.dtr = s.rts = False
     started = dt.datetime.now(dt.timezone.utc).isoformat()
+    context_errors=[]
     with (output / 'console.raw.log').open('wb') as log:
         try:
             s.open()
@@ -149,8 +150,14 @@ def acquire(port, output, key='B', expected_frequency=None):
                 buf += data
                 while b'\n' in buf:
                     line, buf = buf.split(b'\n', 1)
-                    ack=receipt.feed(line.decode(errors='replace').rstrip('\r'))
+                    decoded=line.decode(errors='replace').rstrip('\r')
+                    ack=receipt.feed(decoded)
                     if ack:s.write(ack)
+                    if expected_frequency is not None and (b'PHYLAB_BEGIN ' in line or b'PHYLAB_IQ_BEGIN ' in line):
+                        actual=fields(decoded).get('freq')
+                        if actual!=str(expected_frequency):
+                            error=f'frequency changed after request: expected {expected_frequency}, capture reports {actual}'
+                            if error not in context_errors:context_errors.append(error);print(error,flush=True)
                     if b'PHYLAB_BEGIN ' in line:outer_required=b'outer_restore=required' in line
                     if any(tag in line for tag in (b'PHYLAB_BEGIN', b'PHYLAB_PROFILE', b'PHYLAB_RESULT', b'PHYLAB_SKIP', b'PHYLAB_END', b'PHYLAB refused', b'PHYLAB_FATAL')):
                         print(line.decode(errors='replace'), flush=True)
@@ -166,8 +173,11 @@ def acquire(port, output, key='B', expected_frequency=None):
         finally:
             s.close()
             (output / 'acquisition.json').write_text(json.dumps(dict(port=port, started_utc=started,
-                ended_utc=dt.datetime.now(dt.timezone.utc).isoformat()), indent=2))
-    return decode((output / 'console.raw.log').read_text(errors='replace'), output / 'iq', tolerate_corrupt=True)
+                ended_utc=dt.datetime.now(dt.timezone.utc).isoformat(),requested_frequency=expected_frequency,
+                key=key,context_errors=context_errors), indent=2))
+    manifest=decode((output / 'console.raw.log').read_text(errors='replace'), output / 'iq', tolerate_corrupt=True)
+    if context_errors:raise RuntimeError('; '.join(context_errors)+'; raw data retained; suite restored before reporting mismatch')
+    return manifest
 
 
 def analyse(output, plots=True):
@@ -268,7 +278,7 @@ def analyse(output, plots=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest='command', required=True)
-    p = sub.add_parser('record'); p.add_argument('port'); p.add_argument('output', type=Path); p.add_argument('--key',choices=['B','C','H','V','E','S','P','O','K','k','%','+','&','('],default='B');p.add_argument('--frequency',type=int)
+    p = sub.add_parser('record'); p.add_argument('port'); p.add_argument('output', type=Path); p.add_argument('--key',choices=['B','C','H','V','E','S','P','O','K','k','%','+','&','(',')','['],default='B');p.add_argument('--frequency',type=int)
     p = sub.add_parser('analyse'); p.add_argument('output', type=Path); p.add_argument('--no-plots',action='store_true')
     p = sub.add_parser('decode'); p.add_argument('log', type=Path); p.add_argument('output', type=Path)
     a = ap.parse_args()

@@ -137,6 +137,37 @@ Lower signed-rail occupancy is a headroom observation, not a direct count of fol
 
 At 5805 MHz G83 mean signed rails fell from 0.3072% to 0.0527%, with -0.005 dB variance change. At 5865 MHz the first complete comparison gave 0.1107% to 0.0424% (+0.009 dB), but the later complete repeat gave 0.0240% to 0.0233% (-0.005 dB). Thus there is evidence for correcting an off-centre starting pair, not a repeatable extra noise reduction to add to 11p. The incomplete G83 repeat is retained. The first ACK-enabled run recovered one corrupted transport attempt and retained all 192 intended snapshots with matching capture identity; the 5805 MHz run needed no retry. The committed Windows helper was also exercised with a full-system reset and the console answered afterwards.
 
+## Isolated LLTF/RIFS/VHT/11b-LR policy fields
+
+These profiles use a matching calibrated DC hold at the screened fixed gain, 1200 ms dwell and the same verified transport and rollback. The initial suite has four windows per stage; the LLTF follow-up has 16. A profile matching the incoming masked register values is explicitly a no-op control.
+
+| Run | Profile | Noise delta dB | Role | Quality/status |
+|---|---|---:|---|---|
+| audit_5805_policy1 | LLTF_MASK_00 | -0.064 | changed bits | NO_FLAGS |
+| audit_5805_policy1 | LLTF_MASK_10 | +0.042 | no-op control | NO_FLAGS |
+| audit_5805_policy1 | LLTF_MASK_01 | +0.043 | changed bits | NO_FLAGS |
+| audit_5805_policy1 | LLTF_MASK_11 | +0.109 | changed bits | NO_FLAGS |
+| audit_5805_policy1 | RIFS_ARG0 | -0.063 | changed bits | FLAGGED |
+| audit_5805_policy1 | RIFS_ARG1 | -0.029 | no-op control | NO_FLAGS |
+| audit_5805_policy1 | VHT_ARG0 | -0.005 | changed bits | NO_FLAGS |
+| audit_5805_policy1 | VHT_ARG1 | +0.102 | no-op control | NO_FLAGS |
+| audit_5805_policy1 | RX11BLR_ARG0 | -0.074 | no-op control | NO_FLAGS |
+| audit_5805_policy1 | RX11BLR_ARG1 | +0.097 | changed bits | NO_FLAGS |
+| audit_5805_policy1 | POLICY_SHAM | +0.000 | no-op control | NO_FLAGS |
+| audit_5865_policy1 | LLTF_MASK_00 | -0.039 | changed bits | NO_FLAGS |
+| audit_5865_policy1 | LLTF_MASK_10 | +0.031 | no-op control | NO_FLAGS |
+| audit_5865_policy1 | LLTF_MASK_01 | -0.032 | changed bits | NO_FLAGS |
+| audit_5865_policy1 | LLTF_MASK_11 | -0.021 | changed bits | NO_FLAGS |
+| audit_5865_policy1 | RIFS_ARG0 | -0.002 | changed bits | NO_FLAGS |
+| audit_5865_policy1 | RIFS_ARG1 | -0.006 | no-op control | NO_FLAGS |
+| audit_5865_policy1 | VHT_ARG0 | -0.020 | changed bits | NO_FLAGS |
+| audit_5865_policy1 | VHT_ARG1 | -0.080 | no-op control | NO_FLAGS |
+| audit_5865_policy1 | RX11BLR_ARG0 | -0.023 | no-op control | NO_FLAGS |
+| audit_5865_policy1 | RX11BLR_ARG1 | -0.015 | changed bits | NO_FLAGS |
+| audit_5865_policy1 | POLICY_SHAM | -0.031 | no-op control | NO_FLAGS |
+
+The first policy request saw 5865 MHz in early boot status, but saved-channel restore completed before the queued suite started at 5805 MHz. The immutable header and captures identify 5805; the folder was corrected to audit_5805_policy1 and a context note retained. The 5865 run was then deliberately retuned and repeated. Host acquisition now checks actual suite/capture frequency after the request as well, drains through outer restoration, and rejects a mismatch instead of silently accepting the early status.
+
 ## Read-only bias witness
 
 Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to 0x9f/0x7f. The measured operating bytes are listed below. phy_freq_start_cal_5g_code subsequently writes reg0[7:4] while iterating frequency calibration, so a different operating high nibble is not evidence of a forgotten LNA optimization. No bias bytes were overridden. See the static feature audit for exact call/write evidence.
@@ -144,7 +175,9 @@ Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to 0x9f/0x7f. The 
 | Run | Observed reg0 / reg1 bytes |
 |---|---|
 | audit_5805_bias_adc1 | cf / 7f |
+| audit_5805_policy1 | cf / 7f |
 | audit_5865_bias_adc1 | cf / 7f |
+| audit_5865_policy1 | cf / 7f |
 
 ## Live fixed-MAX witnesses
 
@@ -159,7 +192,7 @@ With its ordinary DC servo running, G83 averaged only 0.0244%/0.0275% signed-rai
 
 ## Archived evidence
 
-- 4319 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
+- 4671 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
 - [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.

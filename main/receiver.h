@@ -245,6 +245,8 @@ void phygaincurve_request(void); /* %: fixed vendor gain rows and reverse */
 void phycombo_request(void); /* +: joint probes preserving incoming 11p and sham */
 void phydco_request(void); /* &: temporary DC-centering ABBA at G78/80/83 */
 void phypolicy_request(void); /* (: isolated LLTF/RIFS/VHT/11b-LR and sham */
+void phylocap_request(void); /* ): bounded adjacent LO-cap codes and sham */
+void phylltf_request(void); /* [: four LLTF states and sham, 16 windows/stage */
 bool phylab_hold_current_gain(void); /* paused bench only: matching loaded DC row */
 void self_noise_request(void);   /* bench: noise floor with the video output on vs off (console N) */
 

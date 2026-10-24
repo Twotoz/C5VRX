@@ -279,3 +279,12 @@ are restored before receiver resume. These packet-oriented controls may
 have no effect on continuous IQ; their names alone do not establish a
 noise filter or sensitivity benefit. The standard transport ACK, timeout,
 hardware tuple and context guards remain mandatory.
+
+Console `)` is a separate adjacent LO-capacitor-code experiment. It reads
+block0x63/host1/reg21[4:0], refuses stock outside the vendor helper's
+10..31 interval, and tests stock (sham), stock-1 and stock+1 where in range.
+Only that five-bit field is written; the frequency setter, VCO calibration,
+crystal trim, bias bytes, 11p and ADC clocks are not called or overridden.
+The batch uses the same calibrated DC-hold requirement as suite9, 16
+captures per ABBA stage, 1200 ms dwell, hardware readback and exact owned
+field restoration. A lower IQ variance is not presumed to be an RF benefit.

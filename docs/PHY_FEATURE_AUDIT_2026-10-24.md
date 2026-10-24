@@ -167,6 +167,8 @@ boolean writes, not claims about what the packet engine does to continuous
 MODEM_DIAG. Desired-signal phase/amplitude and video are unmeasured.
 
 Two nominal ADC-random helpers do not expose a reversible dither switch.
+This reconfirms the earlier C5VRX-4 `PREDEMOD_LAB.md` RX-path audit;
+it is not a newly discovered dither limitation.
 `phy_get_adc_rand` is a single `ret`, with no hardware access. The enabled
 branch of `phy_set_adc_rand` turns on RX/TX clocks, changes 0x600a0890 bit24,
 enters PBUS debug, forces DCO/RX power and runs DC calibration. Its disabled
@@ -186,3 +188,28 @@ PBUS mode and loopback gain, performs DC calibration, starts a TX tone and
 estimates internal IQ SNR. Cleanup depends on its arguments. It does not
 measure a fixed signal arriving at the antenna through the normal live
 receiver, and is not invoked here as a substitute for calibrated weak RF.
+
+## Adjacent LO-capacitor codes
+
+The earlier C5VRX-4 RX-path audit identified block0x63/host1/reg21[4:0]
+as the field set from `phy_get_dcap_degen(f)` by `phy_set_freq_i2c_new`.
+The pinned code computes 10 + trunc((5880-f)/36) on the 5GHz branch and
+clamps its result to 10..31. It predicts code10 at 5865 and code12 at 5805.
+The whole frequency setter also writes the bias field's high nibble to
+**12 above 4000 MHz**, directly explaining operating 0xcf versus the
+initializer's 0x9f; it also changes crystal/VCO fields. None of those other
+frequency-setter writes is included in the cap experiment.
+
+Console `)` tests the incoming cap code as a sham, then its adjacent -1/+1
+codes only within 10..31, preserving the byte's upper three bits. It uses
+16 fresh raw snapshots per ABBA stage at a fixed screened gain with a
+matching calibrated DC hold. Per-capture readback checks the cap field,
+held DC pair and actual RF/BB/fine tuple. The original code is restored
+and verified even on early abort; a failed restore reboots before resume.
+An out-of-interval incoming code refuses the experiment.
+
+This tests a bounded neighbouring setting rather than assuming the vendor
+formula is optimal for this chip. Code magnitude is not a calibrated
+capacitance or LNA-noise setting. A variance change could reflect altered
+LO conversion gain or distortion; no RF sensitivity claim is possible
+without a desired signal. The existing live tuning/defaults remain intact.
