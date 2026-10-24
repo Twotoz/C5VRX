@@ -235,6 +235,7 @@ void phylab_request(void); /* console B: isolated noise-only PHY profiles */
 void phylab_long_request(void); /* console C: same suite, 1200 ms dwell */
 void phyaudit_request(void); /* H: separate RX/TX correction and PHY audit */
 void phyaudit_long_request(void); /* V: same audit, 1200 ms dwell */
+void physelfnoise_request(void); /* E: output on/off with screened fixed gain */
 void self_noise_request(void);   /* bench: noise floor with the video output on vs off (console N) */
 
 /* ---- menu.c ---- */

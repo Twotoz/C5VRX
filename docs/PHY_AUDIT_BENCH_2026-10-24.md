@@ -1,0 +1,65 @@
+# Extended PHY audit: board measurements, 2026-10-24
+
+C5VRX by Twotoz and contributors. [Source](https://github.com/Twotoz/C5VRX); [official website and Discord invite](https://twotoz.github.io/C5VRX/).
+
+This extends [the first NF/11p bench](NF_PHY_BENCH_2026-10-24.md) and [the static feature inventory](PHY_FEATURE_AUDIT_2026-10-24.md). All tests used the same USB-connected C5 with the VTX off. No new default or RF sensitivity/range improvement is established by these noise-only probes.
+
+## Method and quality
+
+Each entry uses STOCK → TEST → TEST → STOCK, four separately contiguous 8,190-byte IQ40 captures per stage, same gain/lane/frequency/offset, exact saved-mask rollback. H/V test individual RX/TX/correction/filter/packet profiles; E repeats output ON→OFF→OFF→ON three times at one fixed gain.
+
+The first audit at 5865 MHz selected G82 under the earlier four-window 0.2% rail screen. Later DC variation/interference caused substantial signed-rail flags. Its complete derived data remain in the archive; the apparent −0.600 dB PKDADC result had −1.057 dB stock drift and does not establish a gain. One FFT profile lost a USB capture and is marked incomplete despite successful hardware rollback.
+
+The strengthened screen requires zero observed signed rails and `abs(mean)+6*sigma <= 6 cells` on each axis in all four qualification captures, with m2 > 0.67 cells². It reserves headroom to the ultrafine slice rails; it cannot guarantee freedom from later interference or folding. The lower selected gain increases the relative quantization contribution: compare within-run deltas, not absolute powers across different gains. The mean still retains all integrity-valid outliers.
+
+## Results with strengthened headroom
+
+| Profile | 5865 MHz delta / quality | 5805 MHz delta / quality |
+|---|---:|---:|
+| RX_0438_BIT29_OFF | +0.765 dB / NO_FLAGS | +1.697 dB / FLAGGED |
+| RX_0438_BIT30_OFF | +0.646 dB / NO_FLAGS | +0.612 dB / NO_FLAGS |
+| RX_0438_BIT31_OFF | +0.434 dB / NO_FLAGS | +0.331 dB / NO_FLAGS |
+| RX_0438_ALL_OFF | +0.742 dB / NO_FLAGS | +0.796 dB / NO_FLAGS |
+| TX_0C0C_BIT13_OFF | +0.056 dB / NO_FLAGS | -0.005 dB / NO_FLAGS |
+| TX_0C0C_BIT14_OFF | +0.088 dB / NO_FLAGS | -0.008 dB / NO_FLAGS |
+| TX_0C0C_ALL_OFF | -0.012 dB / NO_FLAGS | +0.101 dB / FLAGGED |
+| RX_COEFF_A_ZERO | -0.041 dB / NO_FLAGS | -0.003 dB / NO_FLAGS |
+| RX_COEFF_B_ZERO | +0.025 dB / NO_FLAGS | -0.018 dB / NO_FLAGS |
+| RX_COEFF_AB_ZERO | +0.007 dB / NO_FLAGS | -0.043 dB / NO_FLAGS |
+| PKDADC_BIT31_OFF | +0.005 dB / NO_FLAGS | -0.065 dB / NO_FLAGS |
+| BB_CCA_BIT30_OFF | -0.001 dB / NO_FLAGS | +0.111 dB / FLAGGED |
+| MAC_CCA_DISABLE | +0.011 dB / FLAGGED | -0.012 dB / NO_FLAGS |
+| MAC_CCA_ENABLE | +0.052 dB / NO_FLAGS | +0.012 dB / NO_FLAGS |
+| DFILT_MODE4 | +0.241 dB / NO_FLAGS | +0.310 dB / NO_FLAGS |
+| DFILT_MODE8 | +0.402 dB / NO_FLAGS | +0.038 dB / NO_FLAGS |
+| DFILT_MODE12 | +0.733 dB / NO_FLAGS | +0.403 dB / NO_FLAGS |
+| FFT_FORCE_OFF | -0.130 dB / NO_FLAGS | +0.056 dB / NO_FLAGS |
+| FFT_FORCE_SCALE0 | +0.056 dB / NO_FLAGS | -0.012 dB / NO_FLAGS |
+
+Positive means higher captured IQ noise than stock. The RX enable register has a clear variance effect; the TX enables and zeroed RX coefficient fields are much smaller. That does not tell whether wanted analog FM phase, image rejection or colour survives either state. No RX calibration is promoted or disabled in production.
+
+Packet/CCA fields have no reproducible noise benefit here. Digital modes 4/8/12 are comparisons against existing production mode0; lower noise in mode0 is already included in stock and is not an additional gain earned by this PR. Converter selector is preserved.
+
+FFT_FORCE_OFF is a **no-op control** in the measured baseline: `600A7800=0f07a2d8` has bit19 already clear and is unchanged during that profile. Its fluctuating delta is estimator/environment variation, not an extra filter benefit. MAC_CCA_ENABLE also matches the baseline zero masked value. Do not add no-op or sign-changing deltas to 11p.
+
+## Video-output self-noise
+
+| Run | Frequency / gain | OFF minus ON IQ noise | Quality |
+|---|---|---:|---|
+| audit_5805_dac | 5805 / G73 | +0.210 dB | FLAGGED |
+| audit_5865_dac | 5865 / G75 | -0.064 dB | NO_FLAGS |
+
+These are three separately restored ON/OFF comparisons per run. The output resumes with the same program/LUT/output level through the existing verified restart. No physical loaded-CVBS or picture-quality measurement was possible. A quiet powered-off output is not an operating receiver configuration or a gain to stack onto 11p.
+
+## Calibration-policy comparisons
+
+Effective production policy is partial calibration with NVS data storage. A local full-calibration build disables only the PHY calibration-and-storage option and selects full RF calibration; IDF `phy_init.c` then uses its full-calibration branch without loading/storing a replacement PHY NVS record. No NVS erase is used. This is a boot experiment, never an in-place MMIO toggle. Its results must be listed separately from within-boot ABBA deltas and the partial-calibration build must be restored afterwards.
+
+## Archived evidence
+
+- 1007 valid IQ captures in this audit archive; all rejected transports are separately recorded.
+- [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
+- [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
+- [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.
+- Raw IQ/logs, per-run PSD arrays/plots, firmware provenance and build logs remain local under `research/data/nf_phy_2026-10-24/`; raw-log and manifest hashes are in the summary.
+- NBW normalization, kurtosis/rails/drift flags and transport checks are exactly as described in [NF_AUTO_LAB.md](NF_AUTO_LAB.md). No calibrated antenna noise temperature, input carrier power, video SINAD or usable attenuation was measured.

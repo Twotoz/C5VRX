@@ -105,6 +105,20 @@ static void power(const uint8_t *raw, double *m2, double *kurt, double *rail)
     float mi,mq; double m4; cna_mean(&s,&mi,&mq); cna_moments(&s,mi,mq,m2,&m4);
     *kurt=m4/(*m2 * *m2); *rail=(double)rails/C5V4_LEVEL_SAMPLE_BYTES;
 }
+static double noise_headroom(const uint8_t *raw)
+{
+    cna_sums_t s={0};
+    for(unsigned k=0;k<C5V4_LEVEL_SAMPLE_BYTES;++k)cna_sums_add(&s,raw[k]);
+    double inv=1.0/s.n,mx=0.5*s.sx*inv,my=0.5*s.sy*inv;
+    double vx=0.25*s.sxx*inv-mx*mx,vy=0.25*s.syy*inv-my*my;
+    /* Six-sigma plus the measured mean must stay inside +/-6 cells,
+     * reserving 1.5 cells against the sign-preserving lane's fold rails.
+     * This is a conservative Gaussian screening margin, not a guarantee
+     * against later DC movement or external interference. */
+    double x=fabs(mx)+6.0*sqrt(fmax(0.0,vx));
+    double y=fabs(my)+6.0*sqrt(fmax(0.0,vy));
+    return 6.0-fmax(x,y);
+}
 static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)(void),int64_t deadline)
 {
     const char *stage=(step==0||step==3)?"STOCK":"TEST";
@@ -169,6 +183,28 @@ static bool run_profile(unsigned id,const profile_t *p,uint8_t *raw,bool (*conte
     printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":(entry_rejected?"REJECTED_ENTRY":"INCOMPLETE"));
     return ok;
 }
+static bool run_output(unsigned id,uint8_t *raw,bool (*context_ok)(void),int64_t deadline)
+{
+    const profile_t p={"DAC_OUTPUT_OFF",0,{{0}},false};
+    sample_profile=&p;
+    if(!transport_live()||transport_faulted())return false;
+    printf("PHYLAB_PROFILE id=%u name=DAC_OUTPUT_OFF sequence=ON_OFF_OFF_ON\n",id);
+    bool ok=measure(id,0,raw,context_ok,deadline);
+    if(ok){
+        transport_stop_tx();
+        ok=!transport_live()&&!transport_faulted();
+        printf("PHYLAB_APPLY id=%u verified=%u output_live=%u\n",id,ok,transport_live());
+        if(ok)ok=measure(id,1,raw,context_ok,deadline);
+        if(ok)ok=measure(id,2,raw,context_ok,deadline);
+    }
+    if(!transport_live())transport_resume_live();
+    bool restored=transport_live()&&!transport_faulted();
+    printf("PHYLAB_RESTORE id=%u verified=%u output_live=%u\n",id,restored,transport_live());
+    if(!restored){printf("PHYLAB_FATAL output_restore_failed reboot_required\n");fflush(stdout);esp_restart();}
+    if(ok)ok=measure(id,3,raw,context_ok,deadline);
+    printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":"INCOMPLETE");
+    return ok;
+}
 #endif
 
 void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite)
@@ -176,7 +212,7 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
 #ifndef C5VRX_PHY_PINNED
     (void)context_ok;(void)dwell_ms;(void)suite;printf("PHYLAB refused=unverified_phy\n");
 #else
-    if((dwell_ms!=300&&dwell_ms!=1200)||suite>1){printf("PHYLAB refused=arguments\n");return;}
+    if((dwell_ms!=300&&dwell_ms!=1200)||suite>2){printf("PHYLAB refused=arguments\n");return;}
     lab_dwell_ms=dwell_ms;
     uint8_t *raw=malloc(C5V4_LEVEL_SAMPLE_BYTES);
     if(!raw){printf("PHYLAB refused=memory\n");return;}
@@ -194,8 +230,9 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
         for(unsigned rep=0;rep<4&&ok;++rep){
             if(!capture(raw)){ok=false;break;}
             double m2,kurt,rail;power(raw,&m2,&kurt,&rail);
-            printf("PHYLAB_GAIN gain=%d rep=%u m2=%.6f kurt=%.4f rails=%.6f\n",g,rep,m2,kurt,rail);
-            clean=clean&&isfinite(m2)&&m2>0.67&&isfinite(kurt)&&kurt>1.75&&kurt<2.4&&rail<0.002;
+            double headroom=noise_headroom(raw);
+            printf("PHYLAB_GAIN gain=%d rep=%u m2=%.6f kurt=%.4f rails=%.6f headroom6=%.3f\n",g,rep,m2,kurt,rail,headroom);
+            clean=clean&&isfinite(m2)&&m2>0.67&&isfinite(kurt)&&kurt>1.75&&kurt<2.4&&rail==0.0&&headroom>=0.0;
         }
         if(clean&&ok){gain_ok=true;break;}
     }
@@ -223,6 +260,7 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
         ok=run_profile(32+i,&audit_profiles[i],raw,context_ok,deadline);
         if(!ok&&entry_rejected&&context_ok()&&esp_timer_get_time()<deadline){++rejected;ok=true;}
     }
+    for(unsigned i=0;i<3&&ok&&suite==2;++i)ok=run_output(64+i,raw,context_ok,deadline);
     printf("PHYLAB_END status=%s rejected=%u restored=1 input_referred_improvement=unknown\n",ok?(rejected?"COMPLETE_WITH_REJECTIONS":"PASS"):"INCOMPLETE",rejected);
     phy_end();free(raw);
 #endif

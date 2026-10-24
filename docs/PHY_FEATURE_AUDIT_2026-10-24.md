@@ -79,3 +79,24 @@ Primary vendor references consulted:
 
 New measured results and their quality flags are recorded separately from this
 static inventory. No additional dB or range gain is claimed by adding a probe.
+
+## Second measurement refinement
+
+The initial audit's signed-rail flags motivated a stronger gain screen:
+zero observed signed rails, `abs(mean)+6*sigma <= 6 cells` per axis,
+m2 above 0.67 cells² and four valid screening captures. This trades gain
+and relative quantization error for enough headroom to test correction/filter
+states without routinely folding the sign-preserving slice. It does not
+guarantee that later interference cannot corrupt a capture.
+
+Console E now repeats video output ON→OFF→OFF→ON three times at this fixed
+screened gain, verifying output stop/resume through the existing transport.
+A failed resume reboots before releasing the observer. This changes no saved
+output level or filter profile. H/V/B/C remain available separately.
+
+[Extended board results](PHY_AUDIT_BENCH_2026-10-24.md) retain the initial
+flagged data as well as the more conservative repeats. The machine-readable
+[503-symbol inventory](../research/data/esp_phy_inventory_2026-10-24.json)
+contains all defined code symbols, name-based triage, mention in application
+source and presence in the measured ELF. These fields are search aids, not
+evidence of execution or of a correctly decoded ABI.

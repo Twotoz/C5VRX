@@ -76,6 +76,11 @@ static int64_t esp_timer_get_time(void){return 1000;}
 static void esp_restart(void){longjmp(jump,1);}
 static void phy_begin(void){}
 static void phy_end(void){}
+static bool tx_live=true,tx_fault;
+static bool transport_live(void){return tx_live;}
+static bool transport_faulted(void){return tx_fault;}
+static void transport_stop_tx(void){tx_live=false;}
+static void transport_resume_live(void){tx_live=true;}
 static int phy_dfilt_hw_mode(void){return 0;}
 static const char *firmware_id(void){return "HOST_TEST_ONLY";}
 static unsigned rf_frequency_mhz(void){return 5865;}
@@ -138,6 +143,8 @@ int main(void){
         assert(phy_param[0x26]==7&&phy_param[0x27]==9);
         for(unsigned i=0;i<8;++i)assert(analog_regs[6+i]==i+23);
     }
+    reset();tx_live=true;tx_fault=false;
+    assert(run_output(64,raw,context_ok,999999));assert(tx_live&&stages==16);
     free(raw);fprintf(stderr,"PHY lab lifecycle: PASS (rollback, unrelated bits, apply fault, context refusal, fatal restore)\n");
     return 0;
 }

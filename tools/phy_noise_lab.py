@@ -6,6 +6,7 @@ contiguous snapshots separately: gaps between captures are never FFT input.
 Requires numpy/scipy/matplotlib for analysis, pyserial for acquisition.
 """
 import argparse
+from collections import Counter
 import csv
 import datetime as dt
 import hashlib
@@ -162,7 +163,8 @@ def analyse(output, plots=True):
     summary = []
     for profile, stages in spectra.items():
         rr = [r for r in rows if r['profile'] == profile]
-        if set(stages) != {'STOCK', 'TEST'} or len(rr) != 16 or any(r['profile_result'] != 'PASS' or r['restored'] != '1' for r in rr):
+        complete = all(n==16 for n in Counter(r['id'] for r in rr).values())
+        if set(stages) != {'STOCK', 'TEST'} or not complete or any(r['profile_result'] != 'PASS' or r['restored'] != '1' for r in rr):
             status = 'REJECTED_ENTRY' if any(r['profile_result']=='REJECTED_ENTRY' for r in rr) else 'INCOMPLETE'
             summary.append(dict(profile=profile, status=status)); continue
         means = {s: np.mean([r['m2_host'] for r in rr if r['stage'] == s]) for s in stages}
@@ -218,7 +220,7 @@ def analyse(output, plots=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest='command', required=True)
-    p = sub.add_parser('record'); p.add_argument('port'); p.add_argument('output', type=Path); p.add_argument('--key',choices=['B','C','H','V'],default='B')
+    p = sub.add_parser('record'); p.add_argument('port'); p.add_argument('output', type=Path); p.add_argument('--key',choices=['B','C','H','V','E'],default='B')
     p = sub.add_parser('analyse'); p.add_argument('output', type=Path); p.add_argument('--no-plots',action='store_true')
     p = sub.add_parser('decode'); p.add_argument('log', type=Path); p.add_argument('output', type=Path)
     a = ap.parse_args()
