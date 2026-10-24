@@ -131,6 +131,37 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
   a swapped, open or wrong resistor. See
   [Building and testing the resistor DAC](docs/hardware/dac-build-and-test.md).
 
+### Optional digital video tap (FPGA / external decoder)
+
+Build from source with `idf.py menuconfig` → **C5VRX digital video tap** →
+**Output PARLIO TX sample clock on GPIO2 (MTMS)**
+(`CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK=y`), then `idf.py build flash`.
+This is **off by default**; standard flasher builds keep the normal behaviour.
+
+- Connect the XIAO's rear **GPIO2 / MTMS pad** to the external clock input,
+  D4..D9 to data bits 0..5 in the table above, and a common GND. Tap the GPIO
+  signals before the DAC resistors; do not use the joined analog output node.
+  Use 3.3 V-compatible inputs and short wiring. GPIO2 is also a boot strap:
+  the external circuit must not drive it or alter its reset level.
+- TX shifts data on the **falling edge** of the exported **40 MHz** clock;
+  capture on the rising edge and verify setup/hold on the bench. Live P64
+  repeats each 6-bit CVBS code twice (`[D,D]`), giving **20 MS/s unique codes**.
+  The two unused PARLIO lanes add no video precision and are not pinned out.
+- This is the recovered composite waveform, including the original colour
+  burst, rather than decoded pixels. The FPGA must recover sync and decode
+  colour. There is no new burst generator or guaranteed downstream colour lock.
+- This build reserves GPIO2 for the clock and keeps **FLYWHEEL OFF**, including
+  when NVS saved ON. FLYWHEEL is hidden from the menu and console enable
+  requests are refused; its normal saved preference is preserved for a later standard build. The observer also
+  refuses GPIO2 without touching it. `T` reports the clock build.
+- The clock follows PARLIO TX: menu, startup and DAC-test rasters also appear
+  on the bus, and transport stops/restarts may interrupt it. There is no valid
+  strobe or packet framing. The external receiver must tolerate these changes.
+
+The option extends C5VRX's existing hardware transport in response to
+[issue #256](https://github.com/Twotoz/C5VRX/issues/256). Digital capture,
+clock/data timing and colour decoding still need physical bench validation.
+
 ### DIY Carrier PCB: Fat Shark Module + 3.5 mm AV Jack
 
 If you prefer a clean PCB over perfboard, the open-source **[C5VRX_JACK_DIY](hardware/C5VRX_JACK_DIY)** carrier board is designed to drop directly into standard Fat Shark goggle bays while also including a 3.5 mm TRRS AV jack for universal bench testing and standalone monitor hookup.
@@ -190,6 +221,13 @@ GAIN starts in AUTO on every boot. FLYWHEEL defaults ON and remembers a saved OF
 Use the web flasher's **Terminal** tab for receiver controls and logs,
 or a serial terminal at 115200 baud. Keys are case-sensitive and sent
 without Enter; `h` lists the commands supported by your firmware.
+
+For a native USB Serial/JTAG terminal, disable hardware flow control and
+start with **DTR=false and RTS=false**, as the supplied Python console tools
+do. Disable automatic reset/bootloader signalling on
+connect; DTR/RTS transitions can trigger the USB Serial/JTAG reset logic.
+There is no application-level DTR gate. If the board entered download mode,
+release BOOT, reset/replug it and reconnect without a reset sequence.
 
 | Key | Action |
 | --- | --- |

@@ -4,6 +4,8 @@
  * with interrupts off and cleared suc_eof (espressif/esp-idf#19091), so no
  * DMA boundary is a stream boundary; the CPU never paces samples. */
 #include "receiver.h"
+#include "sdkconfig.h"
+#include "transport_clock.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -52,6 +54,15 @@ static const void *tracker_program(void) { return s_p64; }
 /* 6-bit resistor DAC, LSB first (XIAO D4..D9; 8.2k/3.9k/2k/1k/470R/240R
  * plus 200R). Do not change the tested pin order. */
 static const int s_dac_gpio[8] = {23, 24, 11, 12, 8, 9, -1, -1};
+
+bool transport_sample_clock_enabled(void)
+{
+#ifdef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
+    return true;
+#else
+    return false;
+#endif
+}
 
 DMA_ATTR __attribute__((aligned(64))) uint8_t s_raw_ring[RAW_RING_BYTES];
 static parlio_rx_unit_handle_t s_rx;
@@ -146,7 +157,14 @@ static esp_err_t prepare_tx(void)
         .clk_in_gpio_num = -1,
         .output_clk_freq_hz = 40000000u,
         .data_width = 8u,
+#ifdef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
+        /* External FPGA sample strobe (issue #256), before the analog DAC.
+         * GPIO2 belongs to this option even while TX stops; the flywheel
+         * cannot borrow it. Optional/removable: see transport_clock.h. */
+        .clk_out_gpio_num = 2,
+#else
         .clk_out_gpio_num = -1,
+#endif
         .valid_gpio_num = -1,
         .trans_queue_depth = 1u,
         .max_transfer_size = sizeof(s_raw_ring),
@@ -909,8 +927,20 @@ bool transport_sync_live_release(void)
  * (operator, 2026-10-18, after the PR #218 witness fix held on the board).
  * A saved OFF is respected and never allocates the observer/output, so
  * its heap stays free for the menu. */
+#ifdef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
+static bool s_flywheel_boot=false;
+#else
 static bool s_flywheel_boot=true;
-void transport_sync_flywheel_set_boot(bool on) { s_flywheel_boot=on; }
+#endif
+void transport_sync_flywheel_set_boot(bool on)
+{
+#ifdef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
+    (void)on; /* Keep the NVS preference for a normal build. */
+    s_flywheel_boot=false;
+#else
+    s_flywheel_boot=on;
+#endif
+}
 bool transport_sync_flywheel_enabled(void)
 {
     return s_live_owner ? s_live_owner->output_requested : s_flywheel_boot;
@@ -918,6 +948,10 @@ bool transport_sync_flywheel_enabled(void)
 
 void transport_sync_flywheel_set(bool on, bool save)
 {
+#ifdef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
+    if(on){printf("SYNC_FLYWHEEL refused=sample_clock_gpio2\n");return;}
+    save=false; /* Do not overwrite the normal build's saved preference. */
+#endif
     if(on && !s_live_owner)s_live_owner=calloc(1,sizeof(*s_live_owner));
     if(on && !s_live_owner){printf("SYNC_FLYWHEEL refused=memory\n");return;}
     s_flywheel_boot=on;
@@ -947,6 +981,10 @@ static bool IRAM_ATTR transport_sync_native_source(void *arg,uint32_t *epoch)
 
 void transport_sync_live_tick(void)
 {
+#ifdef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
+    transport_output_telem_sample(false);
+    return; /* No observer allocation, flag format or GPIO2 handoff. */
+#endif
     /* Saved setting (default ON): allocate lazily on the first control tick
      * (after receiver startup, same as pressing U) so startup RAM is unchanged. */
     static bool boot_default_applied;
@@ -1024,9 +1062,15 @@ void transport_sync_live_tick(void)
 void transport_sync_live_print(void)
 {
     sync_live_owner_t *s=s_live_owner;
-    printf("SYNC_LIVE requested=%u active=%u fault=%u starts=%lu stops=%lu failures=%lu boot_default=ON\n",
+    printf("SYNC_LIVE requested=%u active=%u fault=%u starts=%lu stops=%lu failures=%lu boot_default=%s\n",
         s?(unsigned)s->requested:0u,(unsigned)sync_output_live_active(),s?(unsigned)s->fault:0u,
-        s?(unsigned long)s->starts:0ul,s?(unsigned long)s->stops:0ul,s?(unsigned long)s->failures:0ul);
+        s?(unsigned long)s->starts:0ul,s?(unsigned long)s->stops:0ul,s?(unsigned long)s->failures:0ul,
+#ifdef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
+        "OFF sample_clock_gpio=2 sample_clock_hz=40000000"
+#else
+        "ON"
+#endif
+    );
     sync_output_live_model_t model;
     bool have_model=false,have_diag=false;
     char diagnostic[768];

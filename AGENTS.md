@@ -943,3 +943,15 @@ fresh raw observer coverage; a coverage gap revokes authority until reacquired.
 Use completed sample timestamps and their grid/halfline for guard/PLL decisions,
 not task delivery time. Keep IRQ deadlines strict and hardware claims bounded.
 See `docs/FINDINGS.md`, "Flywheel witness freshness and delayed observations".
+
+
+### Optional digital sample clock (issue #256)
+
+`CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK` is default OFF. When enabled, GPIO2/MTMS
+belongs exclusively to PARLIO TX's 40 MHz clock, including while TX stops.
+Flywheel boot settings are ignored without changing NVS, runtime enable is
+refused, and probe entry must refuse before allocations or pin writes.
+Normal builds retain their saved/default flywheel behaviour. Keep six-bit
+D4..D9 mapping, live two-lookup `[D,D]`/20 MS/s unique cadence and the shared
+menu TX owner. See README digital tap wiring and docs/FINDINGS.md. Host and
+build checks are not physical timing/FPGA/colour validation.
