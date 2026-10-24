@@ -63,8 +63,9 @@ Ready for automated Turnkey / Consigned PCB assembly quoting (PCBWay, JLCPCB, El
 
 - [`exports/C5VRX_JACK_DIY-gerbers.zip`](exports/C5VRX_JACK_DIY-gerbers.zip): Gerber X2 and Excellon drill package ready for PCB fab (JLCPCB, PCBWay, etc.).
 - [`exports/gerbers/`](exports/gerbers/): Uncompressed individual Gerber and Excellon drill files.
-- [`BOM-assembly.csv`](BOM-assembly.csv) & [`exports/C5VRX_JACK_DIY-assembly-bom.csv`](exports/C5VRX_JACK_DIY-assembly-bom.csv): Direct turnkey assembly BOM following PCBWay/JLCPCB template.
-- [`exports/C5VRX_JACK_DIY-centroid.csv`](exports/C5VRX_JACK_DIY-centroid.csv): Assembly centroid / CPL position file (`Designator,Val,Package,Mid X,Mid Y,Rotation,Layer`).
+- [`BOM-assembly.csv`](BOM-assembly.csv) & [`exports/C5VRX_JACK_DIY-assembly-bom.xlsx`](exports/C5VRX_JACK_DIY-assembly-bom.xlsx): Direct turnkey assembly BOM following PCBWay/JLCPCB template (CSV & Excel formats).
+- [`exports/C5VRX_JACK_DIY-centroid.xlsx`](exports/C5VRX_JACK_DIY-centroid.xlsx) & [`exports/C5VRX_JACK_DIY-centroid.zip`](exports/C5VRX_JACK_DIY-centroid.zip): Assembly centroid / CPL position file ready for direct upload (Excel & ZIP formats).
+- [`exports/C5VRX_JACK_DIY-centroid.csv`](exports/C5VRX_JACK_DIY-centroid.csv): Assembly centroid CSV (`Designator,Val,Package,Mid X,Mid Y,Rotation,Layer`).
 - [`exports/C5VRX_JACK_DIY-all-pos.csv`](exports/C5VRX_JACK_DIY-all-pos.csv) & [`exports/C5VRX_JACK_DIY-all.pos`](exports/C5VRX_JACK_DIY-all.pos): KiCad native centroid position files (CSV & ASCII in mm).
 - [`exports/C5VRX_JACK_DIY-schematic.pdf`](exports/C5VRX_JACK_DIY-schematic.pdf): Vector schematic PDF.
 - [`exports/C5VRX_JACK_DIY-fit-check-1to1.pdf`](exports/C5VRX_JACK_DIY-fit-check-1to1.pdf): 1:1 scale printable PDF for mechanical bay fit-checks.
