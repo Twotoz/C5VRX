@@ -50,12 +50,12 @@ Ready for automated Turnkey / Consigned PCB assembly quoting (PCBWay, JLCPCB, El
 | 5 | R5 | 1 | `MFR-25FTE52-470R` | `--` | 470 Ω 1/4W 1% metal film axial resistor (DIN0207, P10.16mm) |
 | 6 | R6 | 1 | `MFR-25FTE52-240R` | `--` | 240 Ω 1/4W 1% metal film axial resistor (DIN0207, P10.16mm) |
 | 7 | R7 | 1 | `MFR-25FTE52-200R` | `--` | 200 Ω 1/4W 1% metal film axial resistor (DIN0207, P10.16mm) |
-| 8 | C1 | 1 | `K471K15C0GF53L2` | `DNP` | 470 pF 50V ceramic disc capacitor (P2.5mm); DNP (optional filter) |
-| 9 | J1 | 1 | `61300911021` | `--` | 9-pin 1x09 right-angle 2.54mm male header for Fat Shark goggle bay |
-| 10 | J2 | 1 | `PJ-320D` | `--` | 4-pole TRRS SMD 3.5mm phone jack facing left (PJ-320D) |
-| 11 | U1 | 2 | `PPTC071LFBN-RC` | `--` | 2x 1x07 2.54mm female header sockets for Seeed XIAO ESP32-C5 |
+| 8 | C1 | 1 | `K471K15C0GF53L2` | `DNP` | DO NOT POPULATE (leave unpopulated) |
+| 9 | J1 | 1 | `61300911021` | `DNP` | DO NOT POPULATE (leave unpopulated; user solders Fat Shark header) |
+| 10 | J2 | 1 | `PJ-320D` | `DNP` | DO NOT POPULATE (optional 3.5mm AV jack; populate if desired) |
+| 11 | U1 | 1 | `NONE` | `DNP` | DO NOT POPULATE (leave unpopulated; user solders XIAO directly) |
 
-*Note: Solder bridge `SJ1` is copper-only (no part). The XIAO ESP32-C5 module plugs into `U1` sockets and is customer supplied.*
+*Note: With U1, J1, and J2 marked as DNP, assembly is 100% single-sided (only R1–R7 resistors populated).*
 
 ---
 
