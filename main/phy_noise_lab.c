@@ -42,13 +42,44 @@ static const profile_t profiles[] = {
     {"IQ_CORR_OFF",2,{{0x600A0438,0xe0000000,0},{0x600A0C0C,0x6000,0}},false},
     {"SPUR_SLOT0_OFF",1,{{0x600A7C14,0x2000,0}},false},
 };
+/* Second audit, from the exact same pinned disassembly. RX coefficients
+ * are set by phy_rxiq_set_reg at 0438; TX coefficients by phy_txiq_set_reg
+ * at 0C0C. The old five-bit test deliberately combined both banks; do not
+ * attribute its whole effect to RX correction. Bit names describe writes,
+ * not established individual DC/IQ/scaling semantics. Coefficients ZERO
+ * means raw zero fields, never a claimed calibrated identity transform. */
+static const profile_t audit_profiles[] = {
+    {"RX_0438_BIT29_OFF",1,{{0x600A0438,0x20000000,0}},false},
+    {"RX_0438_BIT30_OFF",1,{{0x600A0438,0x40000000,0}},false},
+    {"RX_0438_BIT31_OFF",1,{{0x600A0438,0x80000000,0}},false},
+    {"RX_0438_ALL_OFF",1,{{0x600A0438,0xe0000000,0}},false},
+    {"TX_0C0C_BIT13_OFF",1,{{0x600A0C0C,0x2000,0}},false},
+    {"TX_0C0C_BIT14_OFF",1,{{0x600A0C0C,0x4000,0}},false},
+    {"TX_0C0C_ALL_OFF",1,{{0x600A0C0C,0x6000,0}},false},
+    {"RX_COEFF_A_ZERO",1,{{0x600A0438,0x1fc00000,0}},false},
+    {"RX_COEFF_B_ZERO",1,{{0x600A0438,0x003f0000,0}},false},
+    {"RX_COEFF_AB_ZERO",1,{{0x600A0438,0x1fff0000,0}},false},
+    {"PKDADC_BIT31_OFF",1,{{0x600A0C38,0x80000000,0}},false},
+    {"BB_CCA_BIT30_OFF",1,{{0x600A7018,0x40000000,0}},false},
+    /* phy_disable/enable_cca writes BOTH two-bit fields in this mask. */
+    {"MAC_CCA_DISABLE",1,{{0x600A4C5C,0xf0000000,0xa0000000}},false},
+    {"MAC_CCA_ENABLE",1,{{0x600A4C5C,0xf0000000,0}},false},
+    /* Previously working digital modes; preserve vendor ADC selector. */
+    {"DFILT_MODE4",1,{{0x600A0430,0x003c0000,0x00100000}},false},
+    {"DFILT_MODE8",1,{{0x600A0430,0x003c0000,0x00200000}},false},
+    {"DFILT_MODE12",1,{{0x600A0430,0x003c0000,0x00300000}},false},
+    /* phy_fft_scale_force(a,b): enable at bit19, scale at bits27:20.
+     * Only disable the force or force scale zero; no arbitrary FFT codes. */
+    {"FFT_FORCE_OFF",1,{{0x600A7800,0x00080000,0}},false},
+    {"FFT_FORCE_SCALE0",1,{{0x600A7800,0x0ff80000,0x00080000}},false},
+};
 static const uint32_t watch[] = {
     0x600A7018,0x600A7C44,0x600A7C50,0x600A7CE4,0x600A7030,
     0x600A7048,0x600A71C4,0x600A7904,0x600A7074,0x600A0438,
     0x600A0C0C,0x600A043C,0x600A0430,0x600A0448,0x600A7C14,
     0x600A7C18,0x600A7C1C,0x600A7C20,0x600A7810,0x600A7814,
     0x600A7818,0x600A781C,0x600A7820,0x600A7824,0x600A7828,
-    0x600A782C,0x600A7830
+    0x600A782C,0x600A7830,0x600A0C38,0x600A4C5C,0x600A7800
 };
 static void state(unsigned id, const char *stage)
 {
@@ -93,7 +124,7 @@ static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)
         for(unsigned off=0;off<C5V4_LEVEL_SAMPLE_BYTES;off+=256) {
             unsigned n=C5V4_LEVEL_SAMPLE_BYTES-off; if(n>256)n=256;
             for(unsigned k=0;k<n;++k) { line[2*k]=hex[raw[off+k]>>4];line[2*k+1]=hex[raw[off+k]&15]; }
-            line[2*n]=0; printf("PHYLAB_IQ_DATA offset=%u %s\n",off,line);vTaskDelay(1);
+            line[2*n]=0; printf("PHYLAB_IQ_DATA offset=%u %s\n",off,line);vTaskDelay(pdMS_TO_TICKS(2));
         }
         printf("PHYLAB_IQ_END fnv1a=%08" PRIx32 "\n",hash);
     }
@@ -140,12 +171,12 @@ static bool run_profile(unsigned id,const profile_t *p,uint8_t *raw,bool (*conte
 }
 #endif
 
-void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms)
+void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite)
 {
 #ifndef C5VRX_PHY_PINNED
-    (void)context_ok;(void)dwell_ms;printf("PHYLAB refused=unverified_phy\n");
+    (void)context_ok;(void)dwell_ms;(void)suite;printf("PHYLAB refused=unverified_phy\n");
 #else
-    if(dwell_ms!=300&&dwell_ms!=1200){printf("PHYLAB refused=dwell\n");return;}
+    if((dwell_ms!=300&&dwell_ms!=1200)||suite>1){printf("PHYLAB refused=arguments\n");return;}
     lab_dwell_ms=dwell_ms;
     uint8_t *raw=malloc(C5V4_LEVEL_SAMPLE_BYTES);
     if(!raw){printf("PHYLAB refused=memory\n");return;}
@@ -154,7 +185,7 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms)
     phy_begin();
     const int64_t deadline=esp_timer_get_time()+INT64_C(240000000);
     bool ok=context_ok();
-    /* Choose the highest row with <1% signed rails; never adapt gain inside
+    /* Choose the highest row with <0.2% signed rails; never adapt gain inside
      * a comparison. Rail/folding proxies and per-state raw data remain visible. */
     bool gain_ok=false;
     for(int g=rf_gain_table()->max_index;g>=2&&ok;--g){
@@ -171,8 +202,8 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms)
     ok=ok&&gain_ok;
     lab_gain=s_current_gain;
     unsigned rejected=0;
-    printf("PHYLAB_BEGIN fw=%s freq=%u gain=%u lane=2 dfilt=%d dwell_ms=%u format=Ihigh_Qlow persistent=0\n",firmware_id(),rf_frequency_mhz(),s_current_gain,phy_dfilt_hw_mode(),lab_dwell_ms);
-    for(unsigned id=0;id<16&&ok;++id){
+    printf("PHYLAB_BEGIN fw=%s freq=%u gain=%u lane=2 dfilt=%d dwell_ms=%u suite=%u format=Ihigh_Qlow persistent=0\n",firmware_id(),rf_frequency_mhz(),s_current_gain,phy_dfilt_hw_mode(),lab_dwell_ms,suite);
+    for(unsigned id=0;id<16&&ok&&suite==0;++id){
         unsigned n=id^(id>>1);
         profile_t p={"NF_AUTO",3,{{0x600A7018,0x10800000,((n&1)?0x800000:0)|((n&2)?0x10000000:0)},
                                   {0x600A7C44,1,(n>>2)&1},{0x600A7C50,1,(n>>3)&1}},false};
@@ -183,9 +214,13 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms)
          * still stop the whole suite; restore failure never returns. */
         if(!ok&&entry_rejected&&context_ok()&&esp_timer_get_time()<deadline){++rejected;ok=true;}
     }
-    for(unsigned i=0;i<sizeof(profiles)/sizeof(profiles[0])&&ok;++i){
+    for(unsigned i=0;i<sizeof(profiles)/sizeof(profiles[0])&&ok&&suite==0;++i){
         if(i==6 && !(MM(0x600A7C14)&0x2000)){state(16+i,"INSPECT");printf("PHYLAB_SKIP id=%u name=%s reason=slot0_inactive_other_slots_readonly\n",16+i,profiles[i].name);continue;}
         ok=run_profile(16+i,&profiles[i],raw,context_ok,deadline);
+        if(!ok&&entry_rejected&&context_ok()&&esp_timer_get_time()<deadline){++rejected;ok=true;}
+    }
+    for(unsigned i=0;i<sizeof(audit_profiles)/sizeof(audit_profiles[0])&&ok&&suite==1;++i){
+        ok=run_profile(32+i,&audit_profiles[i],raw,context_ok,deadline);
         if(!ok&&entry_rejected&&context_ok()&&esp_timer_get_time()<deadline){++rejected;ok=true;}
     }
     printf("PHYLAB_END status=%s rejected=%u restored=1 input_referred_improvement=unknown\n",ok?(rejected?"COMPLETE_WITH_REJECTIONS":"PASS"):"INCOMPLETE",rejected);

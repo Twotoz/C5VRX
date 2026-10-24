@@ -130,6 +130,14 @@ int main(void){
     reset();inject=2;
     if(setjmp(jump)==0){run_profile(16,&profiles[0],raw,context_ok,999999);assert(!"failed rollback must reboot");}
     assert(stages==12);
+    for(unsigned k=0;k<sizeof(audit_profiles)/sizeof(audit_profiles[0]);++k){
+        reset();const profile_t *p=&audit_profiles[k];
+        uint32_t before=MM(p->p[0].addr);
+        assert(run_profile(32+k,p,raw,context_ok,999999));
+        assert(MM(p->p[0].addr)==before);
+        assert(phy_param[0x26]==7&&phy_param[0x27]==9);
+        for(unsigned i=0;i<8;++i)assert(analog_regs[6+i]==i+23);
+    }
     free(raw);fprintf(stderr,"PHY lab lifecycle: PASS (rollback, unrelated bits, apply fault, context refusal, fatal restore)\n");
     return 0;
 }

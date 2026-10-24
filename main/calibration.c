@@ -1972,8 +1972,11 @@ static void self_noise_test(void)
 static volatile bool s_nfauto_requested;
 static volatile bool s_phylab_requested;
 static unsigned s_phylab_dwell=300;
-void phylab_request(void) { s_phylab_dwell=300;s_phylab_requested = true; }
-void phylab_long_request(void) { s_phylab_dwell=1200;s_phylab_requested = true; }
+static unsigned s_phylab_suite;
+void phylab_request(void) { s_phylab_suite=0;s_phylab_dwell=300;s_phylab_requested = true; }
+void phylab_long_request(void) { s_phylab_suite=0;s_phylab_dwell=1200;s_phylab_requested = true; }
+void phyaudit_request(void) { s_phylab_suite=1;s_phylab_dwell=300;s_phylab_requested = true; }
+void phyaudit_long_request(void) { s_phylab_suite=1;s_phylab_dwell=1200;s_phylab_requested = true; }
 static uint32_t s_lab_epoch;
 static uint16_t s_lab_freq;
 static int s_lab_offset;
@@ -1993,7 +1996,7 @@ static void phylab_test(void)
     if(!receiver_pause("PHYLAB"))return;
     const uint8_t gain=s_current_gain;
     s_lab_epoch=s_control_epoch;s_lab_freq=rf_frequency_mhz();s_lab_offset=rf_offset_khz();
-    phy_noise_lab_run(phylab_context,s_phylab_dwell);
+    phy_noise_lab_run(phylab_context,s_phylab_dwell,s_phylab_suite);
     receiver_set_gain(gain);receiver_resume();
 }
 

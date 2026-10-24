@@ -101,6 +101,7 @@ static void help(void)
            "  J BENCH ONLY: 16 undocumented NF_AUTO bit patterns twice, VTX OFF (experimental; do not fly),\n"
            "  B BENCH ONLY: isolated NF/11p/channel/IQ/spur lab with raw IQ, VTX OFF,\n"
            "  C BENCH ONLY: same PHY lab with 1200 ms dwell instead of 300 ms,\n"
+           "  H/V BENCH ONLY: isolated RX/TX correction, coefficient, CCA, FFT and dfilt audit (300/1200 ms),\n"
            "  Z DAC self-test (bench: test pattern, then one flat level per pin for a multimeter),\n"
            "  ` reboot to USB download (flashing)\n");
 }
@@ -150,6 +151,8 @@ static void console_task(void *arg)
             case 'J': nfauto_request(); break;
             case 'B': phylab_request(); break;
             case 'C': phylab_long_request(); break;
+            case 'H': phyaudit_request(); break;
+            case 'V': phyaudit_long_request(); break;
             case 'Y': case 'W': case 'X': flightlog_console((char)c); break;
             case 'h': case '?': help(); break;
             case 'o': case 'e': case 'v': case 'n': case 'x': case 'c': case 'b': case 's': case 'g': case 'A': case 'U': case 'G': case 'Q': case 'Z': {
