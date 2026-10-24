@@ -151,8 +151,8 @@ This is **off by default**; standard flasher builds keep the normal behaviour.
   burst, rather than decoded pixels. The FPGA must recover sync and decode
   colour. There is no new burst generator or guaranteed downstream colour lock.
 - This build reserves GPIO2 for the clock and keeps **FLYWHEEL OFF**, including
-  when NVS saved ON. Menu/console attempts to enable it are refused; its normal
-  saved preference is preserved for a later standard build. The observer also
+  when NVS saved ON. FLYWHEEL is hidden from the menu and console enable
+  requests are refused; its normal saved preference is preserved for a later standard build. The observer also
   refuses GPIO2 without touching it. `T` reports the clock build.
 - The clock follows PARLIO TX: menu, startup and DAC-test rasters also appear
   on the bus, and transport stops/restarts may interrupt it. There is no valid

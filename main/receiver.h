@@ -7,6 +7,7 @@
  * filter, menu and console. */
 #pragma once
 
+#include "sdkconfig.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -233,8 +234,11 @@ void lane_compare_request(void);
 void self_noise_request(void);   /* bench: noise floor with the video output on vs off (console N) */
 
 /* ---- menu.c ---- */
-enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_CALIBRATE, MENU_OUTPUT, MENU_GAIN, MENU_FLYWHEEL, MENU_DAC,
-       MENU_EXIT, MENU_ITEMS };
+enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_CALIBRATE, MENU_OUTPUT, MENU_GAIN,
+#ifndef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
+       MENU_FLYWHEEL,
+#endif
+       MENU_DAC, MENU_EXIT, MENU_ITEMS };
 extern volatile int s_menu_cursor;
 bool menu_open(void);
 /* The last menu_open() was deferred by a busy PHY (retry, don't allocate). */

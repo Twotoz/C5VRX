@@ -12,7 +12,6 @@
 #include "rf.h"
 #include "menu_entry.h"
 #include "dac_check.h"
-#include "transport_clock.h"
 
 void transport_start_chain(dma_descriptor_t *first);
 void transport_stop_chain(void);
@@ -53,11 +52,16 @@ static const uint8_t s_icons[MENU_ITEMS][8] = {
     {0x08, 0x08, 0x1c, 0x7f, 0x1c, 0x08, 0x08, 0x00},   /* calibrate */
     {0x00, 0x08, 0x18, 0x38, 0x78, 0x38, 0x18, 0x08},   /* output */
     {0x00, 0x02, 0x06, 0x0e, 0x1e, 0x3e, 0x7e, 0x00},   /* gain */
+#ifndef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
     {0x3c, 0x42, 0x81, 0x99, 0x99, 0x81, 0x42, 0x3c},   /* flywheel */
+#endif
     {0x00, 0x03, 0x03, 0x0f, 0x0f, 0x3f, 0x3f, 0x00},   /* dac test */
     {0x7c, 0x44, 0x04, 0x1f, 0x04, 0x44, 0x7c, 0x00},   /* exit */
 };
-static const char *const s_items[MENU_ITEMS] = {"BAND", "CHANNEL", "SCAN", "VIDEO", "CALIBRATE", "OUTPUT", "GAIN", "FLYWHEEL",
+static const char *const s_items[MENU_ITEMS] = {"BAND", "CHANNEL", "SCAN", "VIDEO", "CALIBRATE", "OUTPUT", "GAIN",
+#ifndef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
+                                                "FLYWHEEL",
+#endif
                                                 "DAC TEST", "EXIT"};
 
 static void rect(int x, int y, int w, int h, uint8_t code)
@@ -325,20 +329,15 @@ void menu_render(void)
              100, 47, UI_WHITE, 1);
         break;
     }
+#ifndef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
     case MENU_FLYWHEEL:
-        if (transport_sample_clock_enabled()) {
-            title("SYNC FLYWHEEL", NULL);
-            value_box(100, 22, 276, "FLYWHEEL", "DISABLED");
-            text("SAMPLE CLOCK IS ENABLED", 100, 36, UI_MUTED, 1);
-            text("CAMERA SYNC ONLY", 100, 47, UI_WHITE, 1);
-            break;
-        }
         title("SYNC FLYWHEEL", "HOLD: ON/OFF");
         value_box(100, 22, 276, "FLYWHEEL", transport_sync_flywheel_enabled() ? "ON" : "OFF");
         text("SAVED, APPLIES ON EXIT", 100, 36, UI_MUTED, 1);
         text(transport_sync_flywheel_enabled() ? "FILLS SYNC WHEN THE CAMERA DROPS" :
              "CAMERA SYNC ONLY", 100, 47, UI_WHITE, 1);
         break;
+#endif
     case MENU_DAC:
         title("DAC TEST", "HOLD: METER STEPS");
         render_dac_pattern();
