@@ -34,7 +34,7 @@ def main():
             acquisition=json.loads((folder/'acquisition.json').read_text())))
     aggregate['total_valid_captures']=len(captures)
     aggregate['total_iq_bytes']=sum(int(r['bytes']) for r in captures)
-    OUT.write_text(json.dumps(aggregate,indent=2)+'\n',encoding='utf-8')
+    OUT.write_text(json.dumps(aggregate,indent=2)+'\n',encoding='utf-8',newline='\n')
     buf=io.StringIO(newline='')
     fields=list(dict.fromkeys(k for row in captures for k in row))
     writer=csv.DictWriter(buf,fieldnames=fields);writer.writeheader();writer.writerows(captures)
@@ -116,7 +116,7 @@ def main():
         'input-referred C/N, usable attenuation and sync/chroma/detail on both '
         'standards. Smaller noise bandwidth can attenuate wanted WBFM sidebands.',
         ''])
-    (ROOT/'docs/NF_PHY_BENCH_2026-10-24.md').write_text('\n'.join(lines),encoding='utf-8')
+    (ROOT/'docs/NF_PHY_BENCH_2026-10-24.md').write_text('\n'.join(lines),encoding='utf-8',newline='\n')
     print(f'Archived {len(captures)} captures into derived CSV and {OUT.name}')
 
 

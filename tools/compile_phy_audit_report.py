@@ -32,7 +32,7 @@ def main():
         website_and_discord='https://twotoz.github.io/C5VRX/',
         scope='VTX off, noise only, no calibrated carrier or video; no sensitivity/range claim',
         provenance=prov,total_valid_captures=len(captures),runs=runs)
-    (ROOT/'research/data/phy_audit_2026-10-24_summary.json').write_text(json.dumps(aggregate,indent=2)+'\n',encoding='utf-8')
+    (ROOT/'research/data/phy_audit_2026-10-24_summary.json').write_text(json.dumps(aggregate,indent=2)+'\n',encoding='utf-8',newline='\n')
     buf=io.StringIO(newline='');keys=list(dict.fromkeys(k for r in captures for k in r))
     writer=csv.DictWriter(buf,fieldnames=keys);writer.writeheader();writer.writerows(captures)
     (ROOT/'research/data/phy_audit_2026-10-24_captures.csv.gz').write_bytes(gzip.compress(buf.getvalue().encode(),mtime=0))
@@ -153,7 +153,7 @@ def main():
         '- Raw IQ/logs, per-run PSD arrays/plots, firmware provenance and build logs remain local under `research/data/nf_phy_2026-10-24/`; raw-log and manifest hashes are in the summary.',
         '- NBW normalization, kurtosis/rails/drift flags and transport checks are exactly as described in [NF_AUTO_LAB.md](NF_AUTO_LAB.md). No calibrated antenna noise temperature, input carrier power, video SINAD or usable attenuation was measured.',
         ''])
-    (ROOT/'docs/PHY_AUDIT_BENCH_2026-10-24.md').write_text('\n'.join(lines),encoding='utf-8')
+    (ROOT/'docs/PHY_AUDIT_BENCH_2026-10-24.md').write_text('\n'.join(lines),encoding='utf-8',newline='\n')
     print(f'Archived {len(runs)} audit runs / {len(captures)} valid captures')
 
 

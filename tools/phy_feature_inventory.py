@@ -44,7 +44,7 @@ def main():
         phy_sha256='dbf33c418c8d408d4005c849d12a1432deea82e2e5e57de3c8ddf914d104fffb',
         symbol_input_sha256=hashlib.sha256(a.symbols.read_bytes()).hexdigest(),
         count=len(rows),triage_counts=dict(Counter(r['triage_by_name'] for r in rows)),symbols=rows)
-    a.output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
+    a.output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8',newline='\n')
     print(json.dumps(dict(count=result['count'],triage_counts=result['triage_counts']),indent=2))
 
 

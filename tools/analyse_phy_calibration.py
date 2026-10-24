@@ -64,7 +64,7 @@ def main():
     archive=dict(source='C5VRX by Twotoz and contributors',source_url='https://github.com/Twotoz/C5VRX',
         website_and_discord='https://twotoz.github.io/C5VRX/',scope='Noise-only boot comparisons; physical gain/desired RF transfer not calibrated',
         provenance_fullcal=json.loads((RAW/'provenance-fullcal.json').read_text()),runs=runs,comparisons=comparisons)
-    (ROOT/'research/data/phy_calibration_2026-10-24_summary.json').write_text(json.dumps(archive,indent=2)+'\n',encoding='utf-8')
+    (ROOT/'research/data/phy_calibration_2026-10-24_summary.json').write_text(json.dumps(archive,indent=2)+'\n',encoding='utf-8',newline='\n')
     buf=io.StringIO(newline='');writer=csv.DictWriter(buf,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
     (ROOT/'research/data/phy_calibration_2026-10-24_captures.csv.gz').write_bytes(gzip.compress(buf.getvalue().encode(),mtime=0))
     lines=['# RF calibration policy: fixed-gain witnesses, 2026-10-24','',
@@ -106,7 +106,7 @@ def main():
         '- Local full build used a copy of sdkconfig with `CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE` disabled, `CONFIG_ESP_PHY_RF_CAL_FULL=y`, `CONFIG_ESP_PHY_CALIBRATION_MODE=2`, and a separate `build-fullcal` output directory. Production sdkconfig.defaults was not edited.',
         '- The original partial-calibration build was restored and acquired again; see the after-control metadata for exact firmware identity.',
         ''])
-    (ROOT/'docs/PHY_CALIBRATION_BENCH_2026-10-24.md').write_text('\n'.join(lines),encoding='utf-8')
+    (ROOT/'docs/PHY_CALIBRATION_BENCH_2026-10-24.md').write_text('\n'.join(lines),encoding='utf-8',newline='\n')
     print(json.dumps(comparisons,indent=2))
 
 

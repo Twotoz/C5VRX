@@ -40,6 +40,28 @@
       }
     },
     {
+      "label": "82fa299-clock1",
+      "app_sha256": "2c3eb526826c1b48a19e2149c34d956f00d9ab2bf2c8bec278ef4dc5d62593cc",
+      "source_sha256": {
+        "main/calibration.c": "76ad167581cd9e9e507b73e799bae56f56dc345f5b39387c0dcaeb3877a1650a",
+        "main/console.c": "c623139adf938cb1fd99662420a64445062df38d5f83377b106b274f1806687d",
+        "main/receiver.h": "50827b9fb976cfc035c7ca465e2077098b79be469a8b753a0858c47793502398",
+        "main/phy_noise_lab.c": "d83adc3c57d1d2bcf9d7fa89f1ac2495abb1cb5844aa794521cf15e69752f82b",
+        "main/phy_noise_lab.h": "4bc70a40e31198eb739c39aa3491ec54a85074ac8d6047ca8c222d440f6c6170"
+      }
+    },
+    {
+      "label": "82fa299-combo1",
+      "app_sha256": "58ac572e79eb94c4899c0df96106e4537fa4b5c19630839e0b0038f507e86820",
+      "source_sha256": {
+        "main/calibration.c": "134580e3f39a39539dda4056be832dab0fff0a53b765f7be78cf698f6d2b83af",
+        "main/console.c": "736ff238a11ffca2f9fbbb3e40ebc068210ee04b8ef2cc127f6e3941dde0b242",
+        "main/receiver.h": "7e008740f42769995b488668e8c9e96f1c2fa52384dfe29f04596327bb4b0ed7",
+        "main/phy_noise_lab.c": "d9bc20deb00a4ade002e639ddc487c38d336d35e592b582d2bbfce575e29ad8e",
+        "main/phy_noise_lab.h": "4bc70a40e31198eb739c39aa3491ec54a85074ac8d6047ca8c222d440f6c6170"
+      }
+    },
+    {
       "label": "aae44c8-fullcal",
       "app_sha256": "6d34df742573183586d4b7794364fceb4e2cb01854713647bdbcef4283378a2d",
       "phy_calibration_storage": false,
@@ -50,6 +72,17 @@
         "main/console.c": "aa2217b9825e810295109124bc893e8d39bc68ee714611337989f4be0f13abf2",
         "main/receiver.h": "407d1a9c095a413d253cc6080fafadb7e8b11b455cb6321a95c63b0b933f869d",
         "main/phy_noise_lab.c": "5e2ad36e12bddccedd706dfbc6ab134c0522ab36a9ad35baaaee354cce4b6867",
+        "main/phy_noise_lab.h": "4bc70a40e31198eb739c39aa3491ec54a85074ac8d6047ca8c222d440f6c6170"
+      }
+    },
+    {
+      "label": "82fa299-rx1",
+      "app_sha256": "70529e8b74a52d0684a8ea9eefe502599e8a2472647187f79f1189eef8522f78",
+      "source_sha256": {
+        "main/calibration.c": "126fdcebf9dddeb68bbf2c9f5b3c73f8503d21919637506111ffcade3c520b3a",
+        "main/console.c": "e8c33bd1aa7c524d144d8c2749b90a4ed5219a5fdf6c93b2cba13de71c3fdbad",
+        "main/receiver.h": "047dec755363c93c9038162826a8d0b6ff7da3b625b7f53592695a6cd3d87c18",
+        "main/phy_noise_lab.c": "89484b18d25687450dbb20f24b11c59325e481aa1a3f058283d490356a95d103",
         "main/phy_noise_lab.h": "4bc70a40e31198eb739c39aa3491ec54a85074ac8d6047ca8c222d440f6c6170"
       }
     },
@@ -68,8 +101,77 @@
       }
     }
   ],
-  "total_valid_captures": 1135,
+  "total_valid_captures": 1570,
   "runs": [
+    {
+      "name": "audit_5745_clock_extra_short",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-cloc",
+        "freq": "5745",
+        "gain": "76",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "5",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "TXCLK_ARG0",
+          "status": "PASS",
+          "stock_m2": 1.1265402486876845,
+          "test_m2": 1.1171288394823193,
+          "delta_db": -0.03643449097651599,
+          "stock_drift_db": -0.141535440905106,
+          "test_repeat_db": -0.036787830954521275,
+          "median_delta_db": -0.03537436720641786,
+          "stock_nbw_mhz": 15.21853819739957,
+          "test_nbw_mhz": 15.315257738837863,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.023235429534699,
+          "min_kurtosis": 1.9252996336011223,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "TXCLK_ARG1",
+          "status": "PASS",
+          "stock_m2": 1.1108004881768618,
+          "test_m2": 1.101084598314452,
+          "delta_db": -0.03815374061337279,
+          "stock_drift_db": 0.0004805422740056486,
+          "test_repeat_db": 0.1131466950217622,
+          "median_delta_db": -0.003806289216477253,
+          "stock_nbw_mhz": 14.74796911630686,
+          "test_nbw_mhz": 15.016957355681233,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0305586769124404,
+          "min_kurtosis": 1.9620088137383314,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "WIFI_ENABLE_ARG0",
+          "status": "INCOMPLETE"
+        }
+      ],
+      "valid_captures": 36,
+      "rejected_captures": [],
+      "raw_log_sha256": "8e1662777b45e05e1ea31b46863f69693726ed8c01f19dd8604c77c3a8aa6b24",
+      "manifest_sha256": "c47a406d6542636600e886c79e0ff783b0b39906bf0ceb0d55a6231644d96c7b",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:17:43.981446+00:00",
+        "ended_utc": "2026-10-24T13:17:55.018372+00:00"
+      }
+    },
     {
       "name": "audit_5805_adc",
       "context": {
@@ -135,6 +237,144 @@
         "port": "COM10",
         "started_utc": "2026-10-24T12:49:00.544898+00:00",
         "ended_utc": "2026-10-24T12:49:11.035548+00:00"
+      }
+    },
+    {
+      "name": "audit_5805_clock_initial_long",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-cloc",
+        "freq": "5805",
+        "gain": "73",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "5",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "TXCLK_ARG0",
+          "status": "PASS",
+          "stock_m2": 0.8186791290042206,
+          "test_m2": 0.8126953601953602,
+          "delta_db": -0.03185938539690607,
+          "stock_drift_db": 0.10285953332554987,
+          "test_repeat_db": -0.0116089980147056,
+          "median_delta_db": -0.0033797047716993198,
+          "stock_nbw_mhz": 16.242424593015215,
+          "test_nbw_mhz": 16.085616227597505,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 1.9894562418295607,
+          "min_kurtosis": 1.8744623588810327,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "TXCLK_ARG1",
+          "status": "PASS",
+          "stock_m2": 0.815151568516953,
+          "test_m2": 0.8137752586241597,
+          "delta_db": -0.007338867825190236,
+          "stock_drift_db": 0.004584771217866578,
+          "test_repeat_db": 0.00746412027987902,
+          "median_delta_db": -0.03223707552769469,
+          "stock_nbw_mhz": 15.874935856269788,
+          "test_nbw_mhz": 16.007556579491357,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.019566378476311,
+          "min_kurtosis": 1.8968328453991181,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "WIFI_ENABLE_ARG0",
+          "status": "INCOMPLETE"
+        }
+      ],
+      "valid_captures": 36,
+      "rejected_captures": [],
+      "raw_log_sha256": "b67dbb5a32a6f12d7b6adfbaa155f41bfeaac0ca8b3286c10adea4e2223820c5",
+      "manifest_sha256": "c3cb9102b2a6eedb556e02a9a9e5e5a003f584b7b55ed5b53109d5dd28b3f75e",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:17:10.629821+00:00",
+        "ended_utc": "2026-10-24T13:17:31.128264+00:00"
+      }
+    },
+    {
+      "name": "audit_5805_clock_initial_short",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-cloc",
+        "freq": "5805",
+        "gain": "73",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "5",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "TXCLK_ARG0",
+          "status": "PASS",
+          "stock_m2": 0.8161395452329518,
+          "test_m2": 0.8096560343401003,
+          "delta_db": -0.034638646657434914,
+          "stock_drift_db": 0.013240633338378882,
+          "test_repeat_db": 0.08242149909215338,
+          "median_delta_db": -0.04741443077303804,
+          "stock_nbw_mhz": 15.801696227961562,
+          "test_nbw_mhz": 15.923463437746213,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.1135836035041975,
+          "min_kurtosis": 1.92436660393444,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "TXCLK_ARG1",
+          "status": "PASS",
+          "stock_m2": 0.8132828514925584,
+          "test_m2": 0.8096774950392166,
+          "delta_db": -0.01929546821047189,
+          "stock_drift_db": 0.039286649309558636,
+          "test_repeat_db": 0.042232585692278043,
+          "median_delta_db": 0.009932543341178565,
+          "stock_nbw_mhz": 16.332812928374484,
+          "test_nbw_mhz": 15.965196220826568,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0136374547765317,
+          "min_kurtosis": 1.9200244359519738,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "WIFI_ENABLE_ARG0",
+          "status": "INCOMPLETE"
+        }
+      ],
+      "valid_captures": 36,
+      "rejected_captures": [],
+      "raw_log_sha256": "19eb022660fb98988075300861d718b6c852b7c45dc0c54ffc63854dcb8cdc02",
+      "manifest_sha256": "46b7cbc361326b7e731396a04d759a745f9e4729315b48a5bc3f2d1cafc36d0b",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:16:53.822327+00:00",
+        "ended_utc": "2026-10-24T13:17:05.581314+00:00"
       }
     },
     {
@@ -599,6 +839,218 @@
       }
     },
     {
+      "name": "audit_5805_rx_long",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-rx1",
+        "freq": "5805",
+        "gain": "73",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "4",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "RX11B_OPT_ARG0",
+          "status": "PASS",
+          "stock_m2": 0.7998135457338754,
+          "test_m2": 0.8098584946799232,
+          "delta_db": 0.054203867845036835,
+          "stock_drift_db": -0.07311523400992279,
+          "test_repeat_db": 0.005055329698352578,
+          "median_delta_db": 0.08148895447963575,
+          "stock_nbw_mhz": 15.523121653435675,
+          "test_nbw_mhz": 15.757211846361523,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0926258016059043,
+          "min_kurtosis": 1.9510926518861538,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RX11B_OPT_ARG1",
+          "status": "PASS",
+          "stock_m2": 0.790265862207254,
+          "test_m2": 0.810439674116414,
+          "delta_db": 0.10947471492786287,
+          "stock_drift_db": 0.02500037216173655,
+          "test_repeat_db": 0.07964573470096041,
+          "median_delta_db": 0.1150630304348863,
+          "stock_nbw_mhz": 16.046615060776222,
+          "test_nbw_mhz": 15.742724560859026,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.101190447477878,
+          "min_kurtosis": 1.9468086414628434,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RXSENSE_ARG0",
+          "status": "PASS",
+          "stock_m2": 0.8094010813836822,
+          "test_m2": 0.8046792542351151,
+          "delta_db": -0.025409755384875995,
+          "stock_drift_db": -0.018781117911219385,
+          "test_repeat_db": 0.05888050738717901,
+          "median_delta_db": -0.014091981008575189,
+          "stock_nbw_mhz": 15.467751579686709,
+          "test_nbw_mhz": 15.585390907711602,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.1018977090854,
+          "min_kurtosis": 1.9579266572205518,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RXSENSE_ARG1",
+          "status": "PASS",
+          "stock_m2": 0.8113207722273656,
+          "test_m2": 0.8152936105408632,
+          "delta_db": 0.021214434178684016,
+          "stock_drift_db": 0.029905418633213977,
+          "test_repeat_db": -0.012670828989991528,
+          "median_delta_db": 0.04253781871574193,
+          "stock_nbw_mhz": 15.543842854185035,
+          "test_nbw_mhz": 15.752369459361832,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0158842997547928,
+          "min_kurtosis": 1.9483503026178164,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 64,
+      "rejected_captures": [],
+      "raw_log_sha256": "615938d107f219e2bf9fdbd8eaf50bb197c206c005620fa2657d5a6d9d7e1250",
+      "manifest_sha256": "ed2e4c9431596a97246bdac900f1c6dcd1a20809a36ee9ff84be7f09947039e2",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:05:42.723812+00:00",
+        "ended_utc": "2026-10-24T13:06:13.545534+00:00"
+      }
+    },
+    {
+      "name": "audit_5805_rx_short",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-rx1",
+        "freq": "5805",
+        "gain": "73",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "4",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "RX11B_OPT_ARG0",
+          "status": "PASS",
+          "stock_m2": 0.8040704196427639,
+          "test_m2": 0.8110546752121843,
+          "delta_db": 0.03756046600197159,
+          "stock_drift_db": -0.09002392104163698,
+          "test_repeat_db": -0.04180396463539745,
+          "median_delta_db": 0.03572158013166794,
+          "stock_nbw_mhz": 15.594051724468308,
+          "test_nbw_mhz": 15.713313589711797,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0987058607853757,
+          "min_kurtosis": 1.9319290686813515,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RX11B_OPT_ARG1",
+          "status": "PASS",
+          "stock_m2": 0.8128615408468888,
+          "test_m2": 0.8033796706278391,
+          "delta_db": -0.05095738344597896,
+          "stock_drift_db": -0.019671038600403284,
+          "test_repeat_db": -0.14430778428374585,
+          "median_delta_db": -0.014090181923520965,
+          "stock_nbw_mhz": 15.722721123410281,
+          "test_nbw_mhz": 15.737107502815405,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0591389159307205,
+          "min_kurtosis": 1.9772071860313918,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RXSENSE_ARG0",
+          "status": "PASS",
+          "stock_m2": 0.8071967436985752,
+          "test_m2": 0.8092478897103439,
+          "delta_db": 0.011021743079742267,
+          "stock_drift_db": -0.025153140465094672,
+          "test_repeat_db": 0.040972003834627714,
+          "median_delta_db": -0.0027807056650919247,
+          "stock_nbw_mhz": 15.864820739463864,
+          "test_nbw_mhz": 15.826436422767538,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.043239131097944,
+          "min_kurtosis": 1.9065744688217174,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RXSENSE_ARG1",
+          "status": "PASS",
+          "stock_m2": 0.8052358887890023,
+          "test_m2": 0.8950097948449597,
+          "delta_db": 0.4590466534855983,
+          "stock_drift_db": 0.021803344938647738,
+          "test_repeat_db": 0.6924454536909707,
+          "median_delta_db": 0.08307238716060676,
+          "stock_nbw_mhz": 15.52933138795174,
+          "test_nbw_mhz": 15.574026983980946,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.15044556095456,
+          "min_kurtosis": 1.970234273961282,
+          "quality_flags": [
+            "test_disagreement_above_0.15db"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 64,
+      "rejected_captures": [],
+      "raw_log_sha256": "6ca1c2910cc3420d10f13ad8eb1384b8f2fc32e7f78cf7ce7d9e2ba4d297b043",
+      "manifest_sha256": "103f484e9455ccbd86f1ac50c240903b8b8b60a42e567d3557e244c3fef1cdf7",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:05:19.710618+00:00",
+        "ended_utc": "2026-10-24T13:05:36.108573+00:00"
+      }
+    },
+    {
       "name": "audit_5865_adc",
       "context": {
         "fw": "5.0.0-dev+421c690-adc1",
@@ -791,6 +1243,144 @@
         "port": "COM10",
         "started_utc": "2026-10-24T12:55:01.845838+00:00",
         "ended_utc": "2026-10-24T12:55:11.875052+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_clock_verified_long",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-cloc",
+        "freq": "5865",
+        "gain": "74",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "5",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "TXCLK_ARG0",
+          "status": "PASS",
+          "stock_m2": 1.0057238420242083,
+          "test_m2": 1.0140100963681549,
+          "delta_db": 0.035635334532273945,
+          "stock_drift_db": 0.06217492823792188,
+          "test_repeat_db": 0.04828491803587387,
+          "median_delta_db": 0.014451870615538452,
+          "stock_nbw_mhz": 15.483587418434876,
+          "test_nbw_mhz": 15.594194476501432,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.060953655260177,
+          "min_kurtosis": 1.948516071042817,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "TXCLK_ARG1",
+          "status": "PASS",
+          "stock_m2": 1.0326042099943198,
+          "test_m2": 1.0105161805024443,
+          "delta_db": -0.09390619480895657,
+          "stock_drift_db": -0.07586729915981182,
+          "test_repeat_db": 0.011035941190396178,
+          "median_delta_db": -0.12862910984436218,
+          "stock_nbw_mhz": 15.38841411367374,
+          "test_nbw_mhz": 15.223386216879407,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0663534491417663,
+          "min_kurtosis": 1.9320224937296702,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "WIFI_ENABLE_ARG0",
+          "status": "INCOMPLETE"
+        }
+      ],
+      "valid_captures": 36,
+      "rejected_captures": [],
+      "raw_log_sha256": "f6cebbfc3bcb5d6fcb2fde4d4596dfd380291e150421c30d2274a1f48188d6cc",
+      "manifest_sha256": "78aa8e34e6888f4e1d03a16abac5591873a5fed02ef3b3051cf2691ce349d384",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:20:15.249853+00:00",
+        "ended_utc": "2026-10-24T13:20:35.810257+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_clock_verified_short",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-cloc",
+        "freq": "5865",
+        "gain": "74",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "5",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "TXCLK_ARG0",
+          "status": "PASS",
+          "stock_m2": 1.0108155904263962,
+          "test_m2": 1.0072423914777393,
+          "delta_db": -0.015379361958383964,
+          "stock_drift_db": -0.009294379155730724,
+          "test_repeat_db": -0.11351268133005143,
+          "median_delta_db": -0.019623406799906012,
+          "stock_nbw_mhz": 15.391359254081928,
+          "test_nbw_mhz": 15.123950808726885,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.065998117710391,
+          "min_kurtosis": 1.9581682866911594,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "TXCLK_ARG1",
+          "status": "PASS",
+          "stock_m2": 1.0098877431752888,
+          "test_m2": 1.0165493018377634,
+          "delta_db": 0.028553451453473107,
+          "stock_drift_db": 0.012483501656072106,
+          "test_repeat_db": -0.06496454866395186,
+          "median_delta_db": 0.06620499399097464,
+          "stock_nbw_mhz": 15.486780299174484,
+          "test_nbw_mhz": 15.154857889336855,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.1006448741269477,
+          "min_kurtosis": 1.9177045011590497,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "WIFI_ENABLE_ARG0",
+          "status": "INCOMPLETE"
+        }
+      ],
+      "valid_captures": 36,
+      "rejected_captures": [],
+      "raw_log_sha256": "6971f15cf7a48df882a306814725bacba532aa77fd2b07fac0f8b6a25970f1ef",
+      "manifest_sha256": "c733e4cd1c3aab81db4ce39a6c0dcdae7dc89354411240374e2d95e2e3d368e2",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:19:59.331684+00:00",
+        "ended_utc": "2026-10-24T13:20:10.699258+00:00"
       }
     },
     {
@@ -1243,6 +1833,232 @@
         "port": "COM10",
         "started_utc": "2026-10-24T12:24:06.972286+00:00",
         "ended_utc": "2026-10-24T12:25:05.899452+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_rx_long",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-rx1",
+        "freq": "5865",
+        "gain": "73",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "4",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "RX11B_OPT_ARG0",
+          "status": "PASS",
+          "stock_m2": 0.8806453751783422,
+          "test_m2": 0.8634735975257953,
+          "delta_db": -0.08551996023404425,
+          "stock_drift_db": 0.021874879525765296,
+          "test_repeat_db": 0.011015744728770972,
+          "median_delta_db": -0.08319777957593319,
+          "stock_nbw_mhz": 15.39673485506589,
+          "test_nbw_mhz": 15.77191524662357,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 1.9810313465579659,
+          "min_kurtosis": 1.8696518997977642,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RX11B_OPT_ARG1",
+          "status": "PASS",
+          "stock_m2": 0.8748372203363046,
+          "test_m2": 0.8651727552734878,
+          "delta_db": -0.048244171793433994,
+          "stock_drift_db": -0.01507083509831258,
+          "test_repeat_db": 0.011915854812416228,
+          "median_delta_db": -0.03767141580404107,
+          "stock_nbw_mhz": 15.25853781636315,
+          "test_nbw_mhz": 15.842067264060221,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.008608353694928,
+          "min_kurtosis": 1.8925175776743477,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RXSENSE_ARG0",
+          "status": "PASS",
+          "stock_m2": 0.8762403598301034,
+          "test_m2": 0.855908818491236,
+          "delta_db": -0.10195752037749409,
+          "stock_drift_db": -0.039905013870717515,
+          "test_repeat_db": -0.01078065718033367,
+          "median_delta_db": -0.07457750145162383,
+          "stock_nbw_mhz": 15.657538022063537,
+          "test_nbw_mhz": 15.207487981863334,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 1.9764730697252415,
+          "min_kurtosis": 1.8531741718684775,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RXSENSE_ARG1",
+          "status": "PASS",
+          "stock_m2": 1.3855933670860412,
+          "test_m2": 0.8613092908651516,
+          "delta_db": -2.0647666374935785,
+          "stock_drift_db": -3.496991764348278,
+          "test_repeat_db": 0.05455400545992888,
+          "median_delta_db": -0.03499123501892064,
+          "stock_nbw_mhz": 16.483088698603208,
+          "test_nbw_mhz": 15.560233530531644,
+          "max_signed_rails": 0.015262515262515262,
+          "max_kurtosis": 4.3083741266834155,
+          "min_kurtosis": 1.8719833320979071,
+          "quality_flags": [
+            "signed_rails_above_0.2pct",
+            "non_gaussian_or_distorted_noise",
+            "stock_drift_above_0.15db"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 64,
+      "rejected_captures": [],
+      "raw_log_sha256": "bbb1e6162b257f940d5debeeb0ce260b1877aade57b3476d2037a415cae4880e",
+      "manifest_sha256": "1328dd33d8f8902b7dc9355b16911ad3e0277bce8acdfd186aa602c3f75c5e6d",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:04:34.554469+00:00",
+        "ended_utc": "2026-10-24T13:05:05.199372+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_rx_short",
+      "context": {
+        "fw": "5.0.0-dev+82fa299-rx1",
+        "freq": "5865",
+        "gain": "72",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "300",
+        "suite": "4",
+        "format": "Ihigh_Qlow",
+        "persistent": "0"
+      },
+      "summary": [
+        {
+          "profile": "RX11B_OPT_ARG0",
+          "status": "PASS",
+          "stock_m2": 1.0964971707508337,
+          "test_m2": 0.7210792704107721,
+          "delta_db": -1.8202450478056935,
+          "stock_drift_db": 2.9704906938908726,
+          "test_repeat_db": 0.005818377107673282,
+          "median_delta_db": -0.05632959129360994,
+          "stock_nbw_mhz": 15.788778631228041,
+          "test_nbw_mhz": 16.00182111318144,
+          "max_signed_rails": 0.010744810744810745,
+          "max_kurtosis": 2.0064466189469976,
+          "min_kurtosis": 1.806763833238829,
+          "quality_flags": [
+            "signed_rails_above_0.2pct",
+            "stock_drift_above_0.15db"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RX11B_OPT_ARG1",
+          "status": "PASS",
+          "stock_m2": 0.7393492913273133,
+          "test_m2": 0.7261683520657879,
+          "delta_db": -0.078123434073189,
+          "stock_drift_db": -0.0030004028883584477,
+          "test_repeat_db": 0.04264035951600736,
+          "median_delta_db": -0.07689655172749826,
+          "stock_nbw_mhz": 16.39003340025736,
+          "test_nbw_mhz": 15.724502986312086,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0036113973651783,
+          "min_kurtosis": 1.7989241302707102,
+          "quality_flags": [
+            "non_gaussian_or_distorted_noise"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RXSENSE_ARG0",
+          "status": "PASS",
+          "stock_m2": 0.8562907112220299,
+          "test_m2": 0.7276631654195757,
+          "delta_db": -0.7069084162507538,
+          "stock_drift_db": 0.9720342983082586,
+          "test_repeat_db": 0.10737287791718848,
+          "median_delta_db": -0.0021928162853874743,
+          "stock_nbw_mhz": 16.677490756975644,
+          "test_nbw_mhz": 15.994607491264858,
+          "max_signed_rails": 0.0009768009768009768,
+          "max_kurtosis": 5.700149813497801,
+          "min_kurtosis": 1.8268116253033653,
+          "quality_flags": [
+            "non_gaussian_or_distorted_noise",
+            "stock_drift_above_0.15db"
+          ],
+          "quality": "FLAGGED",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "RXSENSE_ARG1",
+          "status": "INCOMPLETE"
+        }
+      ],
+      "valid_captures": 63,
+      "rejected_captures": [
+        {
+          "metadata": {
+            "id": "99",
+            "step": "1",
+            "stage": "TEST",
+            "rep": "1",
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "gain": "72",
+            "freq": "5865",
+            "offset": "0",
+            "m2": "0.716497",
+            "kurt": "1.8810",
+            "rails": "0.000000",
+            "fnv1a": "6debc767",
+            "t_us": "40274986"
+          },
+          "reason": "missing or reordered snapshot bytes"
+        }
+      ],
+      "raw_log_sha256": "55612f1cca97ab779e8238ff63de0c4aa181ddeb3616959e1f39c2f85e2eb123",
+      "manifest_sha256": "b054acad89c800472c9c0d90a13ccaf54d879b898fd43b6fab4a94bcb34e6101",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:04:11.800840+00:00",
+        "ended_utc": "2026-10-24T13:04:28.307521+00:00"
       }
     },
     {

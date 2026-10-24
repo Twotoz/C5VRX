@@ -94,6 +94,7 @@ static void receiver_set_gain(uint8_t g){s_current_gain=g;}
 uint8_t phy_i2c_readReg(uint8_t b,uint8_t h,uint8_t r){(void)b;(void)h;return analog_regs[r];}
 void phy_i2c_writeReg(uint8_t b,uint8_t h,uint8_t r,uint8_t v){(void)b;(void)h;if(inject==2&&v!=60)return;analog_regs[r]=v;}
 void phy_adc_rate_set(uint32_t mode){MM(0x600A0448)=(MM(0x600A0448)&~3u)|(mode?3:0);analog_regs[4]=(analog_regs[4]&~4u)|(mode?0:4);}
+uint16_t phy_pbus_rd(uint32_t block,uint32_t bank){(void)bank;return block==1?0xd0u:0u;}
 void phy_11p_set(uint8_t en,uint8_t mode){
     phy_param[0x26]=en;phy_param[0x27]=mode;
     MM(0x600A7CE4)=(MM(0x600A7CE4)&~0x1cu)|0x10;
@@ -103,7 +104,7 @@ void phy_11p_set(uint8_t en,uint8_t mode){
     if(inject!=1)for(int i=6;i<=13;++i)analog_regs[i]=60;
 }
 static bool copy_snapshot(uint8_t *raw){
-    for(unsigned i=0;i<8190;++i)raw[i]=(uint8_t)(((i%5)<<4)|((i/5)%5));
+    for(unsigned i=0;i<8190;++i)raw[i]=(uint8_t)((((i+stages)%5)<<4)|(((i+stages)/5)%5));
     ++stages;
     if(inject==4 && stages==5)MM(0x600A7CE4)^=4;
     if(!mutated){MM(0x600A7CE4)^=0x80000000;mutated=true;}
@@ -153,6 +154,25 @@ int main(void){
         reset();uint32_t digital=MM(0x600A0448);uint8_t analog=analog_regs[4];
         assert(run_adc(80+mode,mode,raw,context_ok,999999));
         assert(MM(0x600A0448)==digital&&analog_regs[4]==analog&&sample_adc_expected==-1);
+    }
+    for(unsigned k=0;k<sizeof(packet_profiles)/sizeof(packet_profiles[0]);++k){
+        reset();const profile_t *p=&packet_profiles[k];uint32_t before[8];
+        for(unsigned j=0;j<p->n;++j)before[j]=MM(p->p[j].addr);
+        assert(run_profile(96+k,p,raw,context_ok,999999));
+        for(unsigned j=0;j<p->n;++j)assert(MM(p->p[j].addr)==before[j]);
+    }
+    for(unsigned k=0;k<sizeof(clock_profiles)/sizeof(clock_profiles[0]);++k){
+        reset();const profile_t *p=&clock_profiles[k];uint32_t before=MM(p->p[0].addr);
+        assert(run_profile(112+k,p,raw,context_ok,999999));assert(MM(p->p[0].addr)==before);
+    }
+    lab_packed_valid=true;lab_packed_gain=0;assert(hardware_gain_ok());
+    lab_packed_gain=1;assert(!hardware_gain_ok());lab_packed_valid=false;
+    for(unsigned k=0;k<sizeof(combo_profiles)/sizeof(combo_profiles[0]);++k){
+        reset();const profile_t *p=&combo_profiles[k];uint32_t before[12];uint8_t adc=analog_regs[4];
+        for(unsigned j=0;j<p->n;++j)before[j]=MM(p->p[j].addr);
+        assert(run_profile(160+k,p,raw,context_ok,999999));
+        for(unsigned j=0;j<p->n;++j)assert(MM(p->p[j].addr)==before[j]);
+        assert(analog_regs[4]==adc&&phy_param[0x26]==7&&phy_param[0x27]==9);
     }
     free(raw);fprintf(stderr,"PHY lab lifecycle: PASS (rollback, unrelated bits, apply fault, context refusal, fatal restore)\n");
     return 0;

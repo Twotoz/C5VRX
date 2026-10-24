@@ -31,14 +31,16 @@ def decode(text, output, tolerate_corrupt=False):
     output.mkdir(parents=True, exist_ok=True)
     rows, names, results = [], {}, {}
     meta, raw, corrupt = None, bytearray(), None
-    rejected = []
+    rejected = [];stage_windows=4
     for line in text.splitlines():
         at = line.find('PHYLAB_')
         if at < 0:
             continue
         line = line[at:]
         f = fields(line)
-        if line.startswith('PHYLAB_PROFILE '):
+        if line.startswith('PHYLAB_BEGIN '):
+            stage_windows=int(f.get('windows_per_stage','4'))
+        elif line.startswith('PHYLAB_PROFILE '):
             names.setdefault(f['id'], f['name'])
         elif line.startswith('PHYLAB_PATTERN '):
             names[f['id']] = 'NF_' + f['pattern']
@@ -49,6 +51,7 @@ def decode(text, output, tolerate_corrupt=False):
                 if not tolerate_corrupt: raise ValueError('truncated preceding capture')
                 rejected.append(dict(metadata=meta, reason='truncated preceding capture'))
             meta, raw, corrupt = f, bytearray(), None
+            meta['windows_per_stage']=str(stage_windows)
             if f['bytes'] != '8190' or f['rate_hz'] != '40000000':
                 raise ValueError('unsupported snapshot geometry')
         elif line.startswith('PHYLAB_IQ_DATA '):
@@ -83,7 +86,7 @@ def decode(text, output, tolerate_corrupt=False):
     return manifest
 
 
-def acquire(port, output, key='B'):
+def acquire(port, output, key='B', expected_frequency=None):
     import serial
     output.mkdir(parents=True, exist_ok=False)
     s = serial.Serial()
@@ -95,8 +98,13 @@ def acquire(port, output, key='B'):
             s.open()
             s.write(b'T')
             end = time.monotonic() + 3
+            status_data=b''
             while time.monotonic() < end:
-                log.write(s.read(32768))
+                data=s.read(32768);log.write(data);status_data+=data
+            if expected_frequency is not None:
+                tuned=re.findall(rb'CONTROL channel=\S+ freq=(\d+)',status_data)
+                if not tuned or int(tuned[-1])!=expected_frequency:
+                    raise RuntimeError(f'frequency guard: wanted {expected_frequency}, status reports {tuned[-1:]}; no lab command sent')
             s.write(key.encode())
             end = time.monotonic() + 300
             buf = b''
@@ -163,7 +171,8 @@ def analyse(output, plots=True):
     summary = []
     for profile, stages in spectra.items():
         rr = [r for r in rows if r['profile'] == profile]
-        complete = all(n==16 for n in Counter(r['id'] for r in rr).values())
+        expected={r['id']:4*int(r.get('windows_per_stage','4')) for r in rr}
+        complete = all(n==expected[id] for id,n in Counter(r['id'] for r in rr).items())
         if set(stages) != {'STOCK', 'TEST'} or not complete or any(r['profile_result'] != 'PASS' or r['restored'] != '1' for r in rr):
             status = 'REJECTED_ENTRY' if any(r['profile_result']=='REJECTED_ENTRY' for r in rr) else 'INCOMPLETE'
             summary.append(dict(profile=profile, status=status)); continue
@@ -220,12 +229,12 @@ def analyse(output, plots=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest='command', required=True)
-    p = sub.add_parser('record'); p.add_argument('port'); p.add_argument('output', type=Path); p.add_argument('--key',choices=['B','C','H','V','E','S'],default='B')
+    p = sub.add_parser('record'); p.add_argument('port'); p.add_argument('output', type=Path); p.add_argument('--key',choices=['B','C','H','V','E','S','P','O','K','k','%','+'],default='B');p.add_argument('--frequency',type=int)
     p = sub.add_parser('analyse'); p.add_argument('output', type=Path); p.add_argument('--no-plots',action='store_true')
     p = sub.add_parser('decode'); p.add_argument('log', type=Path); p.add_argument('output', type=Path)
     a = ap.parse_args()
     if a.command == 'record':
-        acquire(a.port, a.output,a.key); analyse(a.output)
+        acquire(a.port, a.output,a.key,a.frequency); analyse(a.output)
     elif a.command == 'decode':
         decode(a.log.read_text(errors='replace'), a.output)
     else:

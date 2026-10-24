@@ -72,7 +72,7 @@ Effective production policy is partial calibration with NVS data storage. A loca
 
 ## Archived evidence
 
-- 1135 valid IQ captures in this audit archive; all rejected transports are separately recorded.
+- 1570 valid IQ captures in this audit archive; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
 - [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.

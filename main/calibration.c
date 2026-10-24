@@ -1979,6 +1979,12 @@ void phyaudit_request(void) { s_phylab_suite=1;s_phylab_dwell=300;s_phylab_reque
 void phyaudit_long_request(void) { s_phylab_suite=1;s_phylab_dwell=1200;s_phylab_requested = true; }
 void physelfnoise_request(void) { s_phylab_suite=2;s_phylab_dwell=300;s_phylab_requested = true; }
 void phyadc_request(void) { s_phylab_suite=3;s_phylab_dwell=300;s_phylab_requested = true; }
+void phyrx_request(void) { s_phylab_suite=4;s_phylab_dwell=300;s_phylab_requested = true; }
+void phyrx_long_request(void) { s_phylab_suite=4;s_phylab_dwell=1200;s_phylab_requested = true; }
+void phyclock_request(void) { s_phylab_suite=5;s_phylab_dwell=300;s_phylab_requested = true; }
+void phyclock_long_request(void) { s_phylab_suite=5;s_phylab_dwell=1200;s_phylab_requested = true; }
+void phygaincurve_request(void) { s_phylab_suite=6;s_phylab_dwell=300;s_phylab_requested = true; }
+void phycombo_request(void) { s_phylab_suite=7;s_phylab_dwell=1200;s_phylab_requested = true; }
 static uint32_t s_lab_epoch;
 static uint16_t s_lab_freq;
 static int s_lab_offset;

@@ -21,17 +21,21 @@
 static uint8_t lab_gain;
 static bool entry_rejected;
 static unsigned lab_dwell_ms=300;
+static unsigned lab_windows=4;
 static int sample_adc_expected=-1;
+static uint32_t lab_packed_gain;
+static bool lab_packed_valid;
 typedef struct { uint32_t addr, mask, value; } patch_t;
-typedef struct { const char *name; unsigned n; patch_t p[4]; bool analog; } profile_t;
+typedef struct { const char *name; unsigned n; patch_t p[12]; bool analog; } profile_t;
 static const profile_t *sample_profile;
-static uint32_t sample_expected[4];
+static uint32_t sample_expected[12];
 static bool verify(const profile_t *p,const uint32_t *values);
 extern unsigned char phy_param[];
 extern uint8_t phy_i2c_readReg(uint8_t, uint8_t, uint8_t);
 extern void phy_i2c_writeReg(uint8_t, uint8_t, uint8_t, uint8_t);
 extern void phy_11p_set(uint8_t, uint8_t);
 extern void phy_adc_rate_set(uint32_t);
+extern uint16_t phy_pbus_rd(uint32_t,uint32_t);
 static const profile_t profiles[] = {
     {"11P",4,{{0x600A7CE4,0x1c,0x10},{0x600A7030,0x20,0},
                  {0x600A7048,0x7f00,0x4000},{0x600A71C4,0xfe0000,0x440000}},true},
@@ -75,13 +79,61 @@ static const profile_t audit_profiles[] = {
     {"FFT_FORCE_OFF",1,{{0x600A7800,0x00080000,0}},false},
     {"FFT_FORCE_SCALE0",1,{{0x600A7800,0x0ff80000,0x00080000}},false},
 };
+/* Complete final MMIO fields of both branches in pinned phy_rx_11b_opt
+ * and phy_rx_sense_set. No analog writes, calibration flags or helper
+ * calls occur in either function. Retain every unrelated field. These
+ * are packet/RX-policy controls, not documented continuous-FM filters. */
+static const profile_t packet_profiles[] = {
+    {"RX11B_OPT_ARG0",6,{
+        {0x600A7044,0x003f3f00,0x003e1800},{0x600A7124,0x0000fc0f,0x00006004},
+        {0x600A8004,0x0000f000,0x00006000},{0x600A7104,0x000001ff,0x000001c8},
+        {0x600A71D8,0x0003fe00,0x0003cc00},{0x600A7014,0xff800000,0xff000000}},false},
+    {"RX11B_OPT_ARG1",6,{
+        {0x600A7044,0x003f3f00,0x003f2100},{0x600A7124,0x0000fc0f,0x00008403},
+        {0x600A8004,0x0000f000,0x00009000},{0x600A7104,0x000001ff,0x000001bc},
+        {0x600A71D8,0x0003fe00,0x0003cc00},{0x600A7014,0xff800000,0xff000000}},false},
+    {"RXSENSE_ARG0",4,{
+        {0x600A7010,0xff800000,0},{0x600A7014,0xff800000,0},
+        {0x600A7044,0x000000ff,0},{0x600A7108,0x00000200,0x00000200}},false},
+    {"RXSENSE_ARG1",4,{
+        {0x600A7010,0xff800000,0x00800000},{0x600A7014,0xff800000,0x00800000},
+        {0x600A7044,0x000000ff,1},{0x600A7108,0x00000200,0}},false},
+};
+static const profile_t clock_profiles[] = {
+    /* Complete masks from phy_set_txclk_en and phy_wifi_enable_set.
+     * Never touch RX clock gates, PLL, CPU/USB clocks or I2C master gates. */
+    {"TXCLK_ARG0",1,{{0x600A0890,0x00030000,0}},false},
+    {"TXCLK_ARG1",1,{{0x600A0890,0x00030000,0x00030000}},false},
+    {"WIFI_ENABLE_ARG0",1,{{0x600A9C18,2,0}},false},
+    {"WIFI_ENABLE_ARG1",1,{{0x600A9C18,2,2}},false},
+};
+/* Predeclared joint probes, expressly excluding 11p and calibrated IQ
+ * coefficient changes. The RX-sense and RX11b branches conflict at 7014,
+ * so test two coherent combinations rather than silently overriding one.
+ * ADC analog/digital coupling is saved/restored by run_profile below. */
+static const profile_t combo_profiles[] = {
+    {"COMBO_SENSE0_NO11P",9,{
+        {0x600A0448,3,0},{0x600A7018,0x40000000,0},{0x600A0C38,0x80000000,0},
+        {0x600A4C5C,0xf0000000,0xa0000000},{0x600A7074,0x2000,0},
+        {0x600A7010,0xff800000,0},{0x600A7014,0xff800000,0},
+        {0x600A7044,0xff,0},{0x600A7108,0x200,0x200}},false},
+    {"COMBO_RX11B0_NO11P",11,{
+        {0x600A0448,3,0},{0x600A7018,0x40000000,0},{0x600A0C38,0x80000000,0},
+        {0x600A4C5C,0xf0000000,0xa0000000},{0x600A7074,0x2000,0},
+        {0x600A7044,0x003f3f00,0x003e1800},{0x600A7124,0xfc0f,0x6004},
+        {0x600A8004,0xf000,0x6000},{0x600A7104,0x1ff,0x1c8},
+        {0x600A71D8,0x3fe00,0x3cc00},{0x600A7014,0xff800000,0xff000000}},false},
+    {"STOCK_SHAM_NO11P",0,{{0}},false},
+};
 static const uint32_t watch[] = {
     0x600A7018,0x600A7C44,0x600A7C50,0x600A7CE4,0x600A7030,
     0x600A7048,0x600A71C4,0x600A7904,0x600A7074,0x600A0438,
     0x600A0C0C,0x600A043C,0x600A0430,0x600A0448,0x600A7C14,
     0x600A7C18,0x600A7C1C,0x600A7C20,0x600A7810,0x600A7814,
     0x600A7818,0x600A781C,0x600A7820,0x600A7824,0x600A7828,
-    0x600A782C,0x600A7830,0x600A0C38,0x600A4C5C,0x600A7800
+    0x600A782C,0x600A7830,0x600A0C38,0x600A4C5C,0x600A7800,
+    0x600A7044,0x600A7124,0x600A8004,0x600A7104,0x600A71D8,
+    0x600A7010,0x600A7014,0x600A7108,0x600A0890,0x600A9C18
 };
 static void state(unsigned id, const char *stage)
 {
@@ -122,20 +174,36 @@ static double noise_headroom(const uint8_t *raw)
     double y=fabs(my)+6.0*sqrt(fmax(0.0,vy));
     return 6.0-fmax(x,y);
 }
+static bool hardware_gain_ok(void)
+{
+    if(!lab_packed_valid)return true; /* direct host lifecycle fixtures */
+    /* Same pinned PBUS readback/predicate used by phy_dco_try_pair(). */
+    uint16_t rf=phy_pbus_rd(8,1),bb=phy_pbus_rd(0,2),fine=phy_pbus_rd(1,2);
+    bool ok=rf==(lab_packed_gain>>12) && (bb&127u)==((lab_packed_gain>>4)&127u) &&
+        ((bb&~127u)==0u||(bb&~127u)==0x100u) && fine==(0xd0u|(lab_packed_gain&7u));
+    if(!ok)printf("PHYLAB_ABORT reason=hardware_gain rf=%u bb=%u fine=%u expected=%08" PRIx32 "\n",rf,bb,fine,lab_packed_gain);
+    return ok;
+}
 static bool measure(unsigned id, unsigned step, uint8_t *raw, bool (*context_ok)(void),int64_t deadline)
 {
     const char *stage=(step==0||step==3)?"STOCK":"TEST";
     vTaskDelay(pdMS_TO_TICKS(lab_dwell_ms));
     state(id,stage);
     if(!verify(sample_profile,sample_expected))return false;
-    for(unsigned rep=0;rep<4;++rep) {
+    uint32_t hashes[16]={0};
+    for(unsigned rep=0;rep<lab_windows;++rep) {
         if(esp_timer_get_time()>deadline||!context_ok()||s_current_gain!=lab_gain||
            !verify(sample_profile,sample_expected)||
-           (sample_adc_expected>=0 && (phy_i2c_readReg(0x66,0,4)&4)!=(unsigned)sample_adc_expected)||!capture(raw)) return false;
+           (sample_adc_expected>=0 && (phy_i2c_readReg(0x66,0,4)&4)!=(unsigned)sample_adc_expected)||
+           !hardware_gain_ok()||!capture(raw)||!hardware_gain_ok()) return false;
         double m2,kurt,rail; power(raw,&m2,&kurt,&rail);
         if(!isfinite(m2)||m2<=0.05||!isfinite(kurt)) return false;
         uint32_t hash=2166136261u;
         for(unsigned k=0;k<C5V4_LEVEL_SAMPLE_BYTES;++k) hash=(hash^raw[k])*16777619u;
+        for(unsigned j=0;j<rep;++j)if(hash==hashes[j]){
+            printf("PHYLAB_ABORT reason=repeated_noise_capture id=%u step=%u rep=%u\n",id,step,rep);return false;
+        }
+        hashes[rep]=hash;
         printf("PHYLAB_IQ_BEGIN id=%u step=%u stage=%s rep=%u bytes=%u rate_hz=%u gain=%u freq=%u offset=%d m2=%.6f kurt=%.4f rails=%.6f fnv1a=%08" PRIx32 " t_us=%" PRId64 "\n",
                id,step,stage,rep,C5V4_LEVEL_SAMPLE_BYTES,IQ_RATE_HZ,s_current_gain,rf_frequency_mhz(),rf_offset_khz(),m2,kurt,rail,hash,esp_timer_get_time());
         static const char hex[]="0123456789abcdef"; char line[513];
@@ -158,8 +226,12 @@ static void masked(uint32_t addr,uint32_t mask,uint32_t value)
 static bool run_profile(unsigned id,const profile_t *p,uint8_t *raw,bool (*context_ok)(void),int64_t deadline)
 {
     entry_rejected=false;
-    uint32_t saved[4],enabled[4];uint8_t analog[8]={0},flags[2]={0};
+    uint32_t saved[12],enabled[12];uint8_t analog[8]={0},flags[2]={0};
+    int adc_slot=-1;uint8_t saved_adc=0;
     for(unsigned i=0;i<p->n;++i){saved[i]=MM(p->p[i].addr)&p->p[i].mask;enabled[i]=p->p[i].value;}
+    for(unsigned i=0;i<p->n;++i)if(p->p[i].addr==0x600A0448&&p->p[i].mask==3)adc_slot=(int)i;
+    if(adc_slot>=0)saved_adc=phy_i2c_readReg(0x66,0,4)&4;
+    sample_adc_expected=adc_slot>=0?(int)saved_adc:-1;
     if(p->analog){flags[0]=phy_param[0x26];flags[1]=phy_param[0x27];for(uint8_t i=0;i<8;++i)analog[i]=phy_i2c_readReg(0x67,1,6+i);}
     sample_profile=p;for(unsigned i=0;i<p->n;++i)sample_expected[i]=saved[i];
     printf("PHYLAB_PROFILE id=%u name=%s sequence=STOCK_TEST_TEST_STOCK\n",id,p->name);
@@ -167,7 +239,12 @@ static bool run_profile(unsigned id,const profile_t *p,uint8_t *raw,bool (*conte
     if(ok) {
         if(p->analog)phy_11p_set(1,0);
         else for(unsigned i=0;i<p->n;++i)masked(p->p[i].addr,p->p[i].mask,p->p[i].value);
+        if(adc_slot>=0){
+            unsigned selector=p->p[adc_slot].value&1u;phy_adc_rate_set(selector);
+            sample_adc_expected=selector?0:4;
+        }
         ok=verify(p,enabled);
+        if(adc_slot>=0)ok=ok&&((phy_i2c_readReg(0x66,0,4)&4)==(unsigned)sample_adc_expected);
         if(p->analog){ok=ok&&phy_param[0x26]==1&&phy_param[0x27]==0;for(uint8_t i=0;i<8;++i)ok=ok&&phy_i2c_readReg(0x67,1,6+i)==60;}
         printf("PHYLAB_APPLY id=%u verified=%u\n",id,ok);
         if(!ok){entry_rejected=true;state(id,"REJECTED_ENTRY");}
@@ -176,14 +253,17 @@ static bool run_profile(unsigned id,const profile_t *p,uint8_t *raw,bool (*conte
         if(ok)ok=measure(id,2,raw,context_ok,deadline);
     }
     if(p->analog){phy_param[0x26]=flags[0];phy_param[0x27]=flags[1];for(uint8_t i=0;i<8;++i)phy_i2c_writeReg(0x67,1,6+i,analog[i]);}
+    if(adc_slot>=0){phy_i2c_writeReg(0x66,0,4,(phy_i2c_readReg(0x66,0,4)&~4u)|saved_adc);sample_adc_expected=saved_adc;}
     for(unsigned i=0;i<p->n;++i)masked(p->p[i].addr,p->p[i].mask,saved[i]);
     bool restored=verify(p,saved);
+    if(adc_slot>=0)restored=restored&&((phy_i2c_readReg(0x66,0,4)&4)==saved_adc);
     if(p->analog){restored=restored&&phy_param[0x26]==flags[0]&&phy_param[0x27]==flags[1];for(uint8_t i=0;i<8;++i)restored=restored&&phy_i2c_readReg(0x67,1,6+i)==analog[i];}
     printf("PHYLAB_RESTORE id=%u verified=%u\n",id,restored);
     if(!restored){printf("PHYLAB_FATAL restore_failed reboot_required\n");fflush(stdout);esp_restart();}
     if(!ok)state(id,"RESTORED_AFTER_ABORT");
     for(unsigned i=0;i<p->n;++i)sample_expected[i]=saved[i];
     if(ok)ok=measure(id,3,raw,context_ok,deadline);
+    sample_adc_expected=-1;
     printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":(entry_rejected?"REJECTED_ENTRY":"INCOMPLETE"));
     return ok;
 }
@@ -239,6 +319,18 @@ static bool run_adc(unsigned id,unsigned selector,uint8_t *raw,bool (*context_ok
     printf("PHYLAB_RESULT id=%u status=%s restored=1 carrier_delta_db=unknown cn=unknown video_sinad=unknown\n",id,ok?"PASS":"INCOMPLETE");
     return ok;
 }
+static bool run_gain_row(unsigned id,uint8_t gain,uint8_t *raw,bool (*context_ok)(void),int64_t deadline)
+{
+    receiver_set_gain(gain);vTaskDelay(pdMS_TO_TICKS(100));
+    arc_gain_tuple_t t;
+    lab_packed_valid=arc_gain_tuple_decode(rf_gain_table(),s_current_gain,&t);
+    if(!lab_packed_valid)return false;
+    lab_gain=s_current_gain;lab_packed_gain=t.packed_state;
+    char name[24];snprintf(name,sizeof(name),"GAIN_ROW_%u",gain);
+    const profile_t p={name,0,{{0}},false};
+    printf("PHYLAB_GAIN_ROW id=%u gain=%u rf_stage=%u rf_code=%u bb=%u fine=%u packed=%08" PRIx32 "\n",id,gain,t.rf_stage,t.rf_code,t.bb_code,t.fine_code,t.packed_state);
+    return run_profile(id,&p,raw,context_ok,deadline);
+}
 #endif
 
 void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite)
@@ -246,8 +338,9 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
 #ifndef C5VRX_PHY_PINNED
     (void)context_ok;(void)dwell_ms;(void)suite;printf("PHYLAB refused=unverified_phy\n");
 #else
-    if((dwell_ms!=300&&dwell_ms!=1200)||suite>3){printf("PHYLAB refused=arguments\n");return;}
+    if((dwell_ms!=300&&dwell_ms!=1200)||suite>7){printf("PHYLAB refused=arguments\n");return;}
     lab_dwell_ms=dwell_ms;
+    lab_windows=suite==7?16:4;
     uint8_t *raw=malloc(C5V4_LEVEL_SAMPLE_BYTES);
     if(!raw){printf("PHYLAB refused=memory\n");return;}
     /* Caller has paused the receiver; whole-suite task lease excludes tune,
@@ -274,11 +367,14 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
     lab_gain=s_current_gain;
     unsigned rejected=0;
     arc_gain_tuple_t tuple;
-    if(arc_gain_tuple_decode(rf_gain_table(),s_current_gain,&tuple))
+    lab_packed_valid=arc_gain_tuple_decode(rf_gain_table(),s_current_gain,&tuple);
+    if(lab_packed_valid){
+        lab_packed_gain=tuple.packed_state;
         printf("PHYLAB_GAIN_TUPLE gain=%u rf_stage=%u rf_code=%u bb_code=%u fine_code=%u packed=%08" PRIx32 " highest_rf_start=%u max_index=%u\n",
                s_current_gain,tuple.rf_stage,tuple.rf_code,tuple.bb_code,tuple.fine_code,tuple.packed_state,
                arc_gain_highest_rf_stage_start(rf_gain_table()),rf_gain_table()->max_index);
-    printf("PHYLAB_BEGIN fw=%s freq=%u gain=%u lane=2 dfilt=%d dwell_ms=%u suite=%u format=Ihigh_Qlow persistent=0\n",firmware_id(),rf_frequency_mhz(),s_current_gain,phy_dfilt_hw_mode(),lab_dwell_ms,suite);
+    } else ok=false;
+    printf("PHYLAB_BEGIN fw=%s freq=%u gain=%u lane=2 dfilt=%d dwell_ms=%u suite=%u windows_per_stage=%u format=Ihigh_Qlow persistent=0\n",firmware_id(),rf_frequency_mhz(),s_current_gain,phy_dfilt_hw_mode(),lab_dwell_ms,suite,lab_windows);
     for(unsigned id=0;id<16&&ok&&suite==0;++id){
         unsigned n=id^(id>>1);
         profile_t p={"NF_AUTO",3,{{0x600A7018,0x10800000,((n&1)?0x800000:0)|((n&2)?0x10000000:0)},
@@ -301,6 +397,19 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
     }
     for(unsigned i=0;i<3&&ok&&suite==2;++i)ok=run_output(64+i,raw,context_ok,deadline);
     for(unsigned i=0;i<2&&ok&&suite==3;++i)ok=run_adc(80+i,i,raw,context_ok,deadline);
+    for(unsigned i=0;i<sizeof(packet_profiles)/sizeof(packet_profiles[0])&&ok&&suite==4;++i){
+        ok=run_profile(96+i,&packet_profiles[i],raw,context_ok,deadline);
+        if(!ok&&entry_rejected&&context_ok()&&esp_timer_get_time()<deadline){++rejected;ok=true;}
+    }
+    for(unsigned i=0;i<sizeof(clock_profiles)/sizeof(clock_profiles[0])&&ok&&suite==5;++i){
+        ok=run_profile(112+i,&clock_profiles[i],raw,context_ok,deadline);
+        if(!ok&&entry_rejected&&context_ok()&&esp_timer_get_time()<deadline){++rejected;ok=true;}
+    }
+    static const uint8_t gains[]={72,74,76,78,80,83};
+    for(unsigned pass=0;pass<2&&ok&&suite==6;++pass)
+        for(unsigned i=0;i<sizeof(gains)&&ok;++i){unsigned n=pass?sizeof(gains)-1-i:i;ok=run_gain_row(128+pass*6+i,gains[n],raw,context_ok,deadline);}
+    for(unsigned pass=0;pass<2&&ok&&suite==7;++pass)
+        for(unsigned i=0;i<3&&ok;++i){unsigned n=pass?2-i:i;ok=run_profile(160+pass*3+i,&combo_profiles[n],raw,context_ok,deadline);}
     printf("PHYLAB_END status=%s rejected=%u restored=1 input_referred_improvement=unknown\n",ok?(rejected?"COMPLETE_WITH_REJECTIONS":"PASS"):"INCOMPLETE",rejected);
     phy_end();free(raw);
 #endif
