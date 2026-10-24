@@ -190,6 +190,13 @@ The first policy request saw 5865 MHz in early boot status, but saved-channel re
 
 LLTF00 at5805 MHz gives -0.064/-0.026/-0.040 dB across the initial and two larger runs, versus corresponding unchanged LLTF10 controls +0.042/+0.026/+0.023 dB. At5865 MHz LLTF00 gives -0.039/+0.036/+0.004 dB. The small 5805-specific clue therefore remains unconfirmed: LLTF00 occurs early in each batch, so a counterbalanced order with front/end shams is still needed. It is not promoted or counted as a new noise/sensitivity gain. Complete results, including opposite-sign repeats and quality flags, are retained.
 
+## Order-controlled LLTF confirmation
+
+Suite12 uses six separately restored ABBA executions: sham, unchanged LLTF10, LLTF00, unchanged LLTF10, LLTF00, sham. The candidate is not the first profile. Each execution has16 captures per stage, the same qualified gain and calibrated DC hold, and exact owned-bit restoration. Individual execution results remain visible so opposite drifts cannot cancel in the aggregate quality decision.
+
+| Run | Execution | Profile | Noise delta dB | Stock drift dB | Test repeat dB |
+|---|---:|---|---:|---:|---:|
+
 ## Adjacent LO-capacitor codes
 
 Only block0x63/host1/reg21[4:0] changes; upper bits, bias, crystal/VCO codes, ADC selection, 11p, fixed gain and held DC pair are retained. The incoming code is a sham and adjacent codes stay inside the vendor helper interval10..31. Sixteen snapshots per ABBA stage are independently verified and the original owned field is restored before resume.
@@ -246,11 +253,11 @@ Controls are selected from explicit shams, unchanged gain-row profiles, identica
 | Captures/control | NO_FLAGS controls | Median signed delta dB | Median absolute delta dB | 95th percentile absolute delta dB |
 |---|---:|---:|---:|---:|
 | 16 | 24 | -0.019 | 0.038 | 0.099 |
-| 32 | 9 | +0.006 | 0.008 | 0.049 |
+| 32 | 7 | +0.006 | 0.006 | 0.044 |
 | 64 | 14 | +0.003 | 0.015 | 0.033 |
 | 128 | 2 | +0.012 | 0.012 | 0.022 |
 
-57 complete controls were classified; 8 have quality flags and are retained separately.
+57 complete controls were classified; 10 have quality flags and are retained separately.
 A small favourable point estimate must repeat against these controls; adding selected negative fluctuations does not establish an extra combined gain. The actual joint comparisons remain the relevant noise-only evidence.
 
 ## Archived evidence

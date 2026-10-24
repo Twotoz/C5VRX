@@ -4,12 +4,12 @@
   "audit_runs": 40,
   "audit_captures": 6591,
   "live_captures": 64,
-  "verified_utc": "2026-10-24T18:19:10.445476+00:00",
-  "verifier_sha256": "e73fb6909c3a072a05422795c22bda265280ba36d90b42edb2b2bf3438969596",
+  "verified_utc": "2026-10-24T18:25:12.217908+00:00",
+  "verifier_sha256": "627b32c21a401cd3dbcc9a58bf53efb5d2b9f9f47fc7b6d8dec66b2c26afde22",
   "numpy_version": "2.5.2",
   "scipy_version": "1.18.1",
   "recomputed_spectra": true,
-  "aggregate_sha256": "69564ed9dbd002d9cd9a2263bd9a721e708be957b37134e527009c46957f453c",
+  "aggregate_sha256": "87a0db268cce79e569f6a610eb2e7510175a2146197824e6a07a03b70c05c0aa",
   "runs": [
     {
       "run": "audit_5745_clock_extra_short",

@@ -530,9 +530,9 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
 #ifndef C5VRX_PHY_PINNED
     (void)context_ok;(void)dwell_ms;(void)suite;printf("PHYLAB refused=unverified_phy\n");
 #else
-    if((dwell_ms!=300&&dwell_ms!=1200)||suite>11){printf("PHYLAB refused=arguments\n");return;}
+    if((dwell_ms!=300&&dwell_ms!=1200)||suite>12){printf("PHYLAB refused=arguments\n");return;}
     lab_dwell_ms=dwell_ms;
-    lab_windows=(suite==7||suite==8||suite==10||suite==11)?16:4;
+    lab_windows=(suite==7||suite==8||suite>=10)?16:4;
     sample_dco_check=false;
     uint8_t *raw=malloc(C5V4_LEVEL_SAMPLE_BYTES);
     if(!raw){printf("PHYLAB refused=memory\n");return;}
@@ -572,7 +572,7 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
                s_current_gain,tuple.rf_stage,tuple.rf_code,tuple.bb_code,tuple.fine_code,tuple.packed_state,
                arc_gain_highest_rf_stage_start(rf_gain_table()),rf_gain_table()->max_index);
     } else ok=false;
-    if(ok&&(suite==9||suite==10||suite==11)){
+    if(ok&&suite>=9){
         ok=phy_dco_held()&&phy_dco_read_pair(sample_dco);
         sample_dco_check=ok;
         if(!ok)printf("PHYLAB_POLICY_REFUSED reason=no_matching_calibrated_hold\n");
@@ -627,6 +627,12 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
         const unsigned n=i<4?i:10; /* all four LLTF states plus sham */
         ok=run_profile(224+i,&policy_profiles[n],raw,context_ok,deadline);
     }
+    /* Independent order control for the small 5805-MHz LLTF00 clue.
+     * Start/end shams and repeated unchanged LLTF10 bracket two LLTF00
+     * executions; the candidate is never the first profile. */
+    static const unsigned confirm_order[]={10,1,0,1,0,10};
+    for(unsigned i=0;i<sizeof(confirm_order)/sizeof(confirm_order[0])&&ok&&suite==12;++i)
+        ok=run_profile(240+i,&policy_profiles[confirm_order[i]],raw,context_ok,deadline);
     sample_dco_check=false;
     printf("PHYLAB_END status=%s rejected=%u restored=1 input_referred_improvement=unknown\n",ok?(rejected?"COMPLETE_WITH_REJECTIONS":"PASS"):"INCOMPLETE",rejected);
     phy_end();free(raw);

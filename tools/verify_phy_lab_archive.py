@@ -20,7 +20,7 @@ import numpy as np
 import datetime as dt
 import importlib.metadata
 
-from phy_noise_lab import fnv
+from phy_noise_lab import fnv,captures_complete,entry_checks
 
 
 def verify_run(path,expected,spectra=False):
@@ -69,9 +69,18 @@ def verify_run(path,expected,spectra=False):
     summary={s['profile']:s for s in json.loads((path/'summary.json').read_text())}
     for profile,result in summary.items():
         if result['status']!='PASS':continue
+        if not captures_complete([r for r in manifest['captures'] if r['profile']==profile]):
+            raise ValueError('accepted profile has an incomplete stage')
         stock=float(np.mean(moments[(profile,'STOCK')]));test=float(np.mean(moments[(profile,'TEST')]))
         delta=10*math.log10(test/stock)
         if not math.isclose(delta,result['delta_db'],rel_tol=1e-9,abs_tol=1e-10):raise ValueError('profile delta mismatch')
+        if 'entries' in result:
+            computed,entry_flags=entry_checks([r for r in csv_rows if r['profile']==profile])
+            if len(computed)!=len(result['entries']):raise ValueError('entry count mismatch')
+            for actual,saved in zip(computed,result['entries']):
+                if actual['id']!=saved['id'] or any(not math.isclose(actual[k],saved[k],rel_tol=1e-9,abs_tol=1e-10)
+                        for k in ('delta_db','stock_drift_db','test_repeat_db')):raise ValueError('entry statistic mismatch')
+            if not set(entry_flags)<=set(result['quality_flags']):raise ValueError('entry quality flags missing')
         if spectra:
             with np.load(path/f'psd_{profile}.npz',allow_pickle=False) as stored:
                 if not np.array_equal(frequency,stored['frequency_hz']):raise ValueError('PSD frequency mismatch')

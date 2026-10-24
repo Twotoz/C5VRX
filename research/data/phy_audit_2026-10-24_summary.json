@@ -136,6 +136,18 @@
       }
     },
     {
+      "label": "cea98e2-order3",
+      "baseline": "11p upstream f53bcdf",
+      "app_sha256": "0147fbe0e4013b1bfcb110afbe7f7de60ba21cee37ae03836ed8b0d16b6b66bf",
+      "source_sha256": {
+        "main/calibration.c": "86e20b38f3ce43841fa93601e96c5a9695cdb5a82579d75474ee0c48f1137845",
+        "main/console.c": "815ff726c762b43cf827e1454873781668f178759c3585750d871fb7c3947507",
+        "main/receiver.h": "df5db26f5737ea3ada3002880df9c022d7b55820945d93d776195a4da97c08e5",
+        "main/phy_noise_lab.c": "7b61156bf005bf8d42b6beae956453631e9c731d0bc52f4bbb086f6b6eaa4b46",
+        "main/phy_noise_lab.h": "0e842c0ee4832a29b488f8f39115bb0e0f525b808faa815267e141bdaf302b19"
+      }
+    },
+    {
       "label": "4b292bc-policy1",
       "baseline": "11p upstream f53bcdf",
       "app_sha256": "9bccd4e19009936c9a1af5f15dd570f0029ca56169efe5a54cccfa81f0fbe8c3",
@@ -969,6 +981,20 @@
           "min_kurtosis": 1.894060394341633,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "160",
+              "delta_db": 0.01869305349573211,
+              "stock_drift_db": -0.04969166817862962,
+              "test_repeat_db": -0.016440743847100613
+            },
+            {
+              "id": "165",
+              "delta_db": -0.03824522235573926,
+              "stock_drift_db": -0.0015582314644877666,
+              "test_repeat_db": 0.014022986915727466
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -989,6 +1015,20 @@
           "min_kurtosis": 1.8914295110992811,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "161",
+              "delta_db": 0.011188514751892264,
+              "stock_drift_db": 0.018140949131043596,
+              "test_repeat_db": 0.008701787238698765
+            },
+            {
+              "id": "164",
+              "delta_db": -0.00997236240383056,
+              "stock_drift_db": 0.006460146325388406,
+              "test_repeat_db": 0.03828258684216649
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -1009,6 +1049,20 @@
           "min_kurtosis": 1.912039333582772,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "162",
+              "delta_db": -0.014457974696691573,
+              "stock_drift_db": -0.0025039483772091075,
+              "test_repeat_db": -0.026301396653361057
+            },
+            {
+              "id": "163",
+              "delta_db": 0.015447118249202292,
+              "stock_drift_db": -0.04571664348379815,
+              "test_repeat_db": 0.02341955042450297
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -1121,9 +1175,24 @@
           "min_kurtosis": 1.915923992523359,
           "quality_flags": [
             "signed_rails_above_0.2pct",
-            "non_gaussian_or_distorted_noise"
+            "non_gaussian_or_distorted_noise",
+            "entry_stock_drift_above_0.15db"
           ],
           "quality": "FLAGGED",
+          "entries": [
+            {
+              "id": "162",
+              "delta_db": -0.3678093911504412,
+              "stock_drift_db": -0.2042022676451739,
+              "test_repeat_db": 0.0012720303318001047
+            },
+            {
+              "id": "163",
+              "delta_db": -0.017592658898850706,
+              "stock_drift_db": -0.013952037595215624,
+              "test_repeat_db": -0.0006901790743086063
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -1268,9 +1337,30 @@
           "min_kurtosis": 1.9189448321170461,
           "quality_flags": [
             "non_gaussian_or_distorted_noise",
-            "test_disagreement_above_0.15db"
+            "test_disagreement_above_0.15db",
+            "entry_test_disagreement_above_0.15db"
           ],
           "quality": "FLAGGED",
+          "entries": [
+            {
+              "id": "64",
+              "delta_db": -0.009470040018145814,
+              "stock_drift_db": -0.07732834421538186,
+              "test_repeat_db": -0.05297377650867231
+            },
+            {
+              "id": "65",
+              "delta_db": -0.04157859480479954,
+              "stock_drift_db": -0.07098356676032383,
+              "test_repeat_db": 0.06422674813150367
+            },
+            {
+              "id": "66",
+              "delta_db": 0.6483072241012383,
+              "stock_drift_db": -0.008116641837751907,
+              "test_repeat_db": -1.1598360803840153
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -1537,6 +1627,20 @@
             "non_gaussian_or_distorted_noise"
           ],
           "quality": "FLAGGED",
+          "entries": [
+            {
+              "id": "128",
+              "delta_db": 0.0930115762156495,
+              "stock_drift_db": 0.05416977708892271,
+              "test_repeat_db": -0.061617247052553024
+            },
+            {
+              "id": "139",
+              "delta_db": -0.033444947060109274,
+              "stock_drift_db": 0.020765737630405852,
+              "test_repeat_db": 0.005261444403277352
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -1557,6 +1661,20 @@
           "min_kurtosis": 1.9340841118534873,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "129",
+              "delta_db": 0.0005496209089736279,
+              "stock_drift_db": -0.08495512066669265,
+              "test_repeat_db": -0.06002261613451316
+            },
+            {
+              "id": "138",
+              "delta_db": 0.0016798741742817336,
+              "stock_drift_db": 0.0626827046873456,
+              "test_repeat_db": 0.0050889397228837336
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -1577,6 +1695,20 @@
           "min_kurtosis": 1.9400925602470511,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "130",
+              "delta_db": 0.028519438931125463,
+              "stock_drift_db": 0.0716327753812253,
+              "test_repeat_db": 0.1021625814340445
+            },
+            {
+              "id": "137",
+              "delta_db": -0.004671286844078985,
+              "stock_drift_db": -0.03995522826916442,
+              "test_repeat_db": -0.0008321920186522172
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -1595,8 +1727,24 @@
           "max_signed_rails": 0.0001221001221001221,
           "max_kurtosis": 2.030358750617541,
           "min_kurtosis": 1.936936370506204,
-          "quality_flags": [],
-          "quality": "NO_FLAGS",
+          "quality_flags": [
+            "entry_test_disagreement_above_0.15db"
+          ],
+          "quality": "FLAGGED",
+          "entries": [
+            {
+              "id": "131",
+              "delta_db": -0.0721280375055764,
+              "stock_drift_db": 0.005657527229887197,
+              "test_repeat_db": 0.16194212884518594
+            },
+            {
+              "id": "136",
+              "delta_db": -0.0024778283743569873,
+              "stock_drift_db": -0.02590183918795373,
+              "test_repeat_db": 0.007511635773480657
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -1617,6 +1765,20 @@
           "min_kurtosis": 1.9353428103008994,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "132",
+              "delta_db": 0.020253739268593605,
+              "stock_drift_db": 0.0875401009919835,
+              "test_repeat_db": -0.05120838861145732
+            },
+            {
+              "id": "135",
+              "delta_db": -0.017330298471420112,
+              "stock_drift_db": -0.027043499878479114,
+              "test_repeat_db": 0.0149360204164583
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -1639,6 +1801,20 @@
             "signed_rails_above_0.2pct"
           ],
           "quality": "FLAGGED",
+          "entries": [
+            {
+              "id": "133",
+              "delta_db": 0.05672728940305163,
+              "stock_drift_db": -0.08613814601265324,
+              "test_repeat_db": -0.0279025739215441
+            },
+            {
+              "id": "134",
+              "delta_db": 0.0004250810679150374,
+              "stock_drift_db": -0.03589328019481597,
+              "test_repeat_db": -0.10953814279091408
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -6754,6 +6930,20 @@
           "min_kurtosis": 1.9034323571446525,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "160",
+              "delta_db": 0.025811200582973523,
+              "stock_drift_db": 0.04024924480989918,
+              "test_repeat_db": -0.010541157129092888
+            },
+            {
+              "id": "165",
+              "delta_db": -0.023351369905029645,
+              "stock_drift_db": 0.05360115269920213,
+              "test_repeat_db": 0.002629212853611335
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -6774,6 +6964,20 @@
           "min_kurtosis": 1.9118844370405472,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "161",
+              "delta_db": -0.031155546545487946,
+              "stock_drift_db": 0.03294328320815353,
+              "test_repeat_db": -0.017628748391123047
+            },
+            {
+              "id": "164",
+              "delta_db": -0.042132461925684164,
+              "stock_drift_db": -0.011080005056612427,
+              "test_repeat_db": 0.01856281765488666
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -6794,6 +6998,20 @@
           "min_kurtosis": 1.938502404382693,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "162",
+              "delta_db": 0.03364079135609612,
+              "stock_drift_db": 0.015367950890276396,
+              "test_repeat_db": 0.014522021571687976
+            },
+            {
+              "id": "163",
+              "delta_db": 0.012913811626316869,
+              "stock_drift_db": -0.06268329464769533,
+              "test_repeat_db": 0.01927861438147757
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -6899,9 +7117,25 @@
           "quality_flags": [
             "signed_rails_above_0.2pct",
             "non_gaussian_or_distorted_noise",
-            "stock_drift_above_0.15db"
+            "stock_drift_above_0.15db",
+            "entry_stock_drift_above_0.15db",
+            "entry_test_disagreement_above_0.15db"
           ],
           "quality": "FLAGGED",
+          "entries": [
+            {
+              "id": "160",
+              "delta_db": 0.22504193818009527,
+              "stock_drift_db": -0.6169066358104379,
+              "test_repeat_db": 0.1825001517492965
+            },
+            {
+              "id": "165",
+              "delta_db": -0.27461242223481935,
+              "stock_drift_db": -0.38743053650642645,
+              "test_repeat_db": 0.02119030962291022
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -6925,6 +7159,20 @@
             "non_gaussian_or_distorted_noise"
           ],
           "quality": "FLAGGED",
+          "entries": [
+            {
+              "id": "161",
+              "delta_db": 0.0072505723822002075,
+              "stock_drift_db": 0.030016639988946974,
+              "test_repeat_db": 0.11027222779306739
+            },
+            {
+              "id": "164",
+              "delta_db": -0.02168866319048213,
+              "stock_drift_db": -0.025410308381749562,
+              "test_repeat_db": 0.015369860911712632
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -6944,9 +7192,24 @@
           "max_kurtosis": 3.3896232589466107,
           "min_kurtosis": 1.8736577561833179,
           "quality_flags": [
-            "non_gaussian_or_distorted_noise"
+            "non_gaussian_or_distorted_noise",
+            "entry_stock_drift_above_0.15db"
           ],
           "quality": "FLAGGED",
+          "entries": [
+            {
+              "id": "162",
+              "delta_db": -0.0011137110309925565,
+              "stock_drift_db": -0.00019698831065314266,
+              "test_repeat_db": 0.030206834862053066
+            },
+            {
+              "id": "163",
+              "delta_db": -0.13199586270940658,
+              "stock_drift_db": -0.2832066664642689,
+              "test_repeat_db": -0.027013970740248115
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -7050,6 +7313,26 @@
           "min_kurtosis": 1.9062672798644709,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "64",
+              "delta_db": -0.04150349575670914,
+              "stock_drift_db": 0.00990600928485021,
+              "test_repeat_db": 0.05068924175478355
+            },
+            {
+              "id": "65",
+              "delta_db": -0.044932998424961706,
+              "stock_drift_db": 0.08142997188581301,
+              "test_repeat_db": -0.11262447465489164
+            },
+            {
+              "id": "66",
+              "delta_db": -0.1067800656808257,
+              "stock_drift_db": 0.0016354461512954324,
+              "test_repeat_db": 0.03742703184901702
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -7690,8 +7973,24 @@
           "max_signed_rails": 0.0,
           "max_kurtosis": 2.1397575889937497,
           "min_kurtosis": 1.8463295329031606,
-          "quality_flags": [],
-          "quality": "NO_FLAGS",
+          "quality_flags": [
+            "entry_test_disagreement_above_0.15db"
+          ],
+          "quality": "FLAGGED",
+          "entries": [
+            {
+              "id": "128",
+              "delta_db": -0.0032100325848500033,
+              "stock_drift_db": -0.06533993253143691,
+              "test_repeat_db": -0.031342613921297155
+            },
+            {
+              "id": "139",
+              "delta_db": 0.021300871990321855,
+              "stock_drift_db": -0.0706544804064069,
+              "test_repeat_db": 0.2418015623189819
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -7712,6 +8011,20 @@
           "min_kurtosis": 1.8911331956275055,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "129",
+              "delta_db": 0.05996709035712626,
+              "stock_drift_db": 0.0017749227027923178,
+              "test_repeat_db": 0.0020795390127875046
+            },
+            {
+              "id": "138",
+              "delta_db": 0.054768068241349555,
+              "stock_drift_db": -0.05465641762235866,
+              "test_repeat_db": -0.02858697857908374
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -7732,6 +8045,20 @@
           "min_kurtosis": 1.8934221866016612,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "130",
+              "delta_db": -0.005403118199099496,
+              "stock_drift_db": -0.04004441927419214,
+              "test_repeat_db": 0.027625971790647276
+            },
+            {
+              "id": "137",
+              "delta_db": 0.016517591877806166,
+              "stock_drift_db": 0.0022864126880798932,
+              "test_repeat_db": 0.034596844412340316
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -7752,6 +8079,20 @@
           "min_kurtosis": 1.9324892616142348,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "131",
+              "delta_db": 0.00651714793496762,
+              "stock_drift_db": -0.09420240100900273,
+              "test_repeat_db": -0.021315408750469663
+            },
+            {
+              "id": "136",
+              "delta_db": -0.004891377945763253,
+              "stock_drift_db": 0.00015668333708486752,
+              "test_repeat_db": -0.05863975591853619
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -7772,6 +8113,20 @@
           "min_kurtosis": 1.9193934351858728,
           "quality_flags": [],
           "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "132",
+              "delta_db": 0.0326441715976506,
+              "stock_drift_db": 0.02746963812566606,
+              "test_repeat_db": -0.0013144114591143543
+            },
+            {
+              "id": "135",
+              "delta_db": -0.015813352697076122,
+              "stock_drift_db": 0.03133223182245553,
+              "test_repeat_db": -0.001392188103051559
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -7794,6 +8149,20 @@
             "signed_rails_above_0.2pct"
           ],
           "quality": "FLAGGED",
+          "entries": [
+            {
+              "id": "133",
+              "delta_db": -0.03361665439611471,
+              "stock_drift_db": -0.009644127710321894,
+              "test_repeat_db": -0.11147006481259625
+            },
+            {
+              "id": "134",
+              "delta_db": -0.012115155728858136,
+              "stock_drift_db": -0.06343372259250886,
+              "test_repeat_db": -0.0963184108002635
+            }
+          ],
           "carrier_delta_db": null,
           "input_referred_cn": null,
           "video_sinad": null
@@ -14435,7 +14804,8 @@
         "quality": "FLAGGED",
         "quality_flags": [
           "signed_rails_above_0.2pct",
-          "non_gaussian_or_distorted_noise"
+          "non_gaussian_or_distorted_noise",
+          "entry_stock_drift_above_0.15db"
         ]
       },
       {
@@ -14473,8 +14843,10 @@
         "reason": "explicit unchanged-state profile",
         "captures": 32,
         "delta_db": -0.03738840734109585,
-        "quality": "NO_FLAGS",
-        "quality_flags": []
+        "quality": "FLAGGED",
+        "quality_flags": [
+          "entry_test_disagreement_above_0.15db"
+        ]
       },
       {
         "run": "audit_5805_gaincurve",
@@ -14684,7 +15056,8 @@
         "delta_db": -0.06744823429560645,
         "quality": "FLAGGED",
         "quality_flags": [
-          "non_gaussian_or_distorted_noise"
+          "non_gaussian_or_distorted_noise",
+          "entry_stock_drift_above_0.15db"
         ]
       },
       {
@@ -14711,8 +15084,10 @@
         "reason": "explicit unchanged-state profile",
         "captures": 32,
         "delta_db": 0.00907811008624948,
-        "quality": "NO_FLAGS",
-        "quality_flags": []
+        "quality": "FLAGGED",
+        "quality_flags": [
+          "entry_test_disagreement_above_0.15db"
+        ]
       },
       {
         "run": "audit_5865_gaincurve",
@@ -14913,10 +15288,10 @@
       },
       {
         "captures_per_control": 32,
-        "no_flags_controls": 9,
+        "no_flags_controls": 7,
         "median_delta_db": 0.005599530422864613,
-        "median_absolute_delta_db": 0.008407301202456457,
-        "p95_absolute_delta_db": 0.04936900083845794
+        "median_absolute_delta_db": 0.005599530422864613,
+        "p95_absolute_delta_db": 0.04374553968151436
       },
       {
         "captures_per_control": 64,
@@ -14933,6 +15308,6 @@
         "p95_absolute_delta_db": 0.022126081878736686
       }
     ],
-    "flagged_complete_controls": 8
+    "flagged_complete_controls": 10
   }
 }

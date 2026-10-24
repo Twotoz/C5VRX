@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 import re
 import time
+import math
 
 
 def fields(line):
@@ -25,6 +26,31 @@ def fnv(raw):
     for b in raw:
         h = ((h ^ b) * 16777619) & 0xffffffff
     return f'{h:08x}'
+
+
+def entry_checks(rows):
+    """Keep opposite drift in repeated executions from cancelling in quality."""
+    entries=[];flags=[]
+    for identity in sorted(set(r['id'] for r in rows),key=int):
+        rr=[r for r in rows if r['id']==identity]
+        steps=[]
+        for step in range(4):
+            values=[float(r['m2_host']) for r in rr if int(r['step'])==step]
+            if not values:raise ValueError('missing entry stage')
+            steps.append(sum(values)/len(values))
+        entries.append(dict(id=identity,delta_db=10*math.log10((steps[1]+steps[2])/(steps[0]+steps[3])),
+            stock_drift_db=10*math.log10(steps[3]/steps[0]),test_repeat_db=10*math.log10(steps[2]/steps[1])))
+    if len(entries)>1:
+        if any(abs(e['stock_drift_db'])>.15 for e in entries):flags.append('entry_stock_drift_above_0.15db')
+        if any(abs(e['test_repeat_db'])>.15 for e in entries):flags.append('entry_test_disagreement_above_0.15db')
+    return entries,flags
+
+
+def captures_complete(rows):
+    expected={r['id']:int(r.get('windows_per_stage','4')) for r in rows}
+    counts=Counter((r['id'],int(r['step'])) for r in rows)
+    return bool(expected) and all(n>0 and all(counts[(identity,step)]==n for step in range(4))
+                                  for identity,n in expected.items())
 
 
 class Receipt:
@@ -220,8 +246,7 @@ def analyse(output, plots=True):
     summary = []
     for profile, stages in spectra.items():
         rr = [r for r in rows if r['profile'] == profile]
-        expected={r['id']:4*int(r.get('windows_per_stage','4')) for r in rr}
-        complete = all(n==expected[id] for id,n in Counter(r['id'] for r in rr).items())
+        complete=captures_complete(rr)
         if set(stages) != {'STOCK', 'TEST'} or not complete or any(r['profile_result'] != 'PASS' or r['restored'] != '1' for r in rr):
             status = 'REJECTED_ENTRY' if any(r['profile_result']=='REJECTED_ENTRY' for r in rr) else 'INCOMPLETE'
             summary.append(dict(profile=profile, status=status)); continue
@@ -243,6 +268,7 @@ def analyse(output, plots=True):
         if max_kurt > 2.3 or min_kurt < 1.8: flags.append('non_gaussian_or_distorted_noise')
         if abs(drift) > .15: flags.append('stock_drift_above_0.15db')
         if abs(repeat) > .15: flags.append('test_disagreement_above_0.15db')
+        entries,entry_flags=entry_checks(rr);flags.extend(entry_flags)
         median_delta = float(10*np.log10(np.median([r['m2_host'] for r in rr if r['stage']=='TEST']) /
                                        np.median([r['m2_host'] for r in rr if r['stage']=='STOCK'])))
         summary.append(dict(profile=profile, status='PASS', stock_m2=float(means['STOCK']), test_m2=float(means['TEST']),
@@ -250,6 +276,7 @@ def analyse(output, plots=True):
             stock_nbw_mhz=nbw['STOCK'], test_nbw_mhz=nbw['TEST'],
             max_signed_rails=max_rails, max_kurtosis=max_kurt, min_kurtosis=min_kurt,
             quality_flags=flags, quality='FLAGGED' if flags else 'NO_FLAGS',
+            entries=entries,
             carrier_delta_db=None, input_referred_cn=None, video_sinad=None))
         np.savez_compressed(output / f'psd_{profile}.npz', frequency_hz=f, stock=p['STOCK'], test=p['TEST'])
         if plots:
@@ -278,7 +305,7 @@ def analyse(output, plots=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest='command', required=True)
-    p = sub.add_parser('record'); p.add_argument('port'); p.add_argument('output', type=Path); p.add_argument('--key',choices=['B','C','H','V','E','S','P','O','K','k','%','+','&','(',')','['],default='B');p.add_argument('--frequency',type=int)
+    p = sub.add_parser('record'); p.add_argument('port'); p.add_argument('output', type=Path); p.add_argument('--key',choices=['B','C','H','V','E','S','P','O','K','k','%','+','&','(',')','[',']'],default='B');p.add_argument('--frequency',type=int)
     p = sub.add_parser('analyse'); p.add_argument('output', type=Path); p.add_argument('--no-plots',action='store_true')
     p = sub.add_parser('decode'); p.add_argument('log', type=Path); p.add_argument('output', type=Path)
     a = ap.parse_args()

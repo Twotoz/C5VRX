@@ -75,7 +75,7 @@ def main():
             lo_cap_readbacks=[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_LOCAP ')],
             baseline_registers=baseline,
             adc_baseline=next((dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if line.startswith('PHYLAB_ADC ') and 'stage=STOCK ' in line),None),
-            policy_baseline_registers={addr:baseline.get(addr) for addr in ('600a790c','600a70f4','600a7ce4','600a8060','600a807c')} if meta.get('suite') in ('9','11') else {},
+            policy_baseline_registers={addr:baseline.get(addr) for addr in ('600a790c','600a70f4','600a7ce4','600a8060','600a807c')} if meta.get('suite') in ('9','11','12') else {},
             context_note=json.loads((p/'context-note.json').read_text()) if (p/'context-note.json').exists() else None,
             acquisition=json.loads((p/'acquisition.json').read_text())))
     for p in sorted(RAW.glob('live_*')):
@@ -315,7 +315,7 @@ def main():
         '|---|---|---:|---|---|'])
     footprints=POLICY_FOOTPRINTS
     for r in runs:
-        if r['context'].get('suite') not in ('9','11'):continue
+        if r['context'].get('suite') not in ('9','11','12'):continue
         baseline=r['policy_baseline_registers']
         for s in r['summary']:
             owned=footprints[s['profile']]
@@ -341,6 +341,22 @@ def main():
         'needed. It is not promoted or counted as a new noise/sensitivity '
         'gain. Complete results, including opposite-sign repeats and '
         'quality flags, are retained.','',
+        '## Order-controlled LLTF confirmation','',
+        'Suite12 uses six separately restored ABBA executions: sham, '
+        'unchanged LLTF10, LLTF00, unchanged LLTF10, LLTF00, sham. '
+        'The candidate is not the first profile. Each execution has16 '
+        'captures per stage, the same qualified gain and calibrated DC '
+        'hold, and exact owned-bit restoration. Individual execution '
+        'results remain visible so opposite drifts cannot cancel in the '
+        'aggregate quality decision.','',
+        '| Run | Execution | Profile | Noise delta dB | Stock drift dB | Test repeat dB |',
+        '|---|---:|---|---:|---:|---:|'])
+    for r in runs:
+        if r['context'].get('suite')!='12':continue
+        for s in r['summary']:
+            for e in s.get('entries',[]):
+                lines.append(f"| {r['name']} | {e['id']} | {s['profile']} | {e['delta_db']:+.3f} | {e['stock_drift_db']:+.3f} | {e['test_repeat_db']:+.3f} |")
+    lines.extend(['',
         '## Adjacent LO-capacitor codes','',
         'Only block0x63/host1/reg21[4:0] changes; upper bits, bias, '
         'crystal/VCO codes, ADC selection, 11p, fixed gain and held DC pair '

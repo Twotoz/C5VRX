@@ -317,3 +317,12 @@ python tools/verify_phy_lab_archive.py --spectra
 The raw input directory remains local/ignored; the PR includes derived
 statistics, raw hashes, source/image provenance and the verifier. A
 verification report's aggregate hash identifies the exact summary checked.
+
+Console `]` provides an independent LLTF order confirmation. It executes
+sham, unchanged10, candidate00, unchanged10, candidate00, sham, with16
+captures per ABBA stage and the calibrated gain qualification. Each entry
+restores its bits before the next starts. Per-entry deltas/drift/repeat
+metrics are retained; a multi-entry profile is flagged if any execution
+exceeds the existing0.15 dB drift/repeat threshold. Opposite drifts cannot
+cancel through pooling. Historical multi-entry runs are reanalysed from
+their unchanged raw snapshots under this strengthened quality rule.

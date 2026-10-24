@@ -19,6 +19,21 @@ import phy_noise_lab as lab
 
 
 class Transport(unittest.TestCase):
+    def test_complete_total_cannot_hide_missing_stage(self):
+        good=[dict(id='1',step=str(step),windows_per_stage='1') for step in range(4)]
+        self.assertTrue(lab.captures_complete(good))
+        bad=[dict(r) for r in good];bad[3]['step']='0'
+        self.assertFalse(lab.captures_complete(bad))
+
+    def test_repeated_entry_drift_cannot_cancel(self):
+        rows=[dict(id=str(identity),step=str(step),m2_host=value)
+              for identity,values in [(1,[1,1,1,2]),(2,[2,1,1,1])]
+              for step,value in enumerate(values)]
+        entries,flags=lab.entry_checks(rows)
+        self.assertGreater(entries[0]['stock_drift_db'],3)
+        self.assertLess(entries[1]['stock_drift_db'],-3)
+        self.assertIn('entry_stock_drift_above_0.15db',flags)
+
     def records(self):
         raw = bytes(range(256))*31 + bytes(range(254))
         checksum = lab.fnv(raw)
