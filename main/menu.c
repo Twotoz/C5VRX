@@ -12,6 +12,7 @@
 #include "rf.h"
 #include "menu_entry.h"
 #include "dac_check.h"
+#include "transport_clock.h"
 
 void transport_start_chain(dma_descriptor_t *first);
 void transport_stop_chain(void);
@@ -325,6 +326,13 @@ void menu_render(void)
         break;
     }
     case MENU_FLYWHEEL:
+        if (transport_sample_clock_enabled()) {
+            title("SYNC FLYWHEEL", NULL);
+            value_box(100, 22, 276, "FLYWHEEL", "DISABLED");
+            text("SAMPLE CLOCK IS ENABLED", 100, 36, UI_MUTED, 1);
+            text("CAMERA SYNC ONLY", 100, 47, UI_WHITE, 1);
+            break;
+        }
         title("SYNC FLYWHEEL", "HOLD: ON/OFF");
         value_box(100, 22, 276, "FLYWHEEL", transport_sync_flywheel_enabled() ? "ON" : "OFF");
         text("SAVED, APPLIES ON EXIT", 100, 36, UI_MUTED, 1);
