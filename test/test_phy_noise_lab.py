@@ -226,6 +226,13 @@ int main(void){
     }
     lab_packed_valid=true;lab_packed_gain=0;assert(hardware_gain_ok());
     lab_packed_gain=1;assert(!hardware_gain_ok());lab_packed_valid=false;
+    for(unsigned k=0;k<sizeof(policy_profiles)/sizeof(policy_profiles[0]);++k){
+        reset();const profile_t *p=&policy_profiles[k];uint32_t before[12];
+        for(unsigned j=0;j<p->n;++j)before[j]=MM(p->p[j].addr);
+        assert(run_profile(192+k,p,raw,context_ok,999999));
+        for(unsigned j=0;j<p->n;++j)assert(MM(p->p[j].addr)==(before[j]^(p->p[j].addr==0x600A7CE4?0x80000000u:0)));
+        assert(phy_param[0x26]==7&&phy_param[0x27]==9);
+    }
     for(unsigned k=0;k<sizeof(combo_profiles)/sizeof(combo_profiles[0]);++k){
         reset();const profile_t *p=&combo_profiles[k];uint32_t before[12];uint8_t adc=analog_regs[4];
         for(unsigned j=0;j<p->n;++j)before[j]=MM(p->p[j].addr);

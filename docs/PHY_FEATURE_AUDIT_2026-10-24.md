@@ -149,3 +149,40 @@ current forced-gain receiver. `phy_wifi_agc_sat_gain` writes full words at
 noise benefit follows from either function name, so neither is called with
 guessed arguments. The existing hardware-verified gain table already uses
 the highest documented-by-vendor-table RF stage at G54 and above.
+
+## Further packet/RX policy audit
+
+The complete pinned bodies of four helpers permit small isolated profiles:
+
+| Helper | Full write footprint | Bench action |
+|---|---|---|
+| `phy_lltf_mask_en(a,b)` | 0x600a790c bits13/12 from boolean a/b | Test 00/10/01/11 independently of the other helpers |
+| `phy_wifi_rifs_mode_en(a)` | 0x600a70f4 bit0 | Test 0/1; `phy_rx_rifs_en` is just its wrapper |
+| `phy_vht_support(a)` | 0x600a7ce4 bit5 | Test 0/1, preserving adjacent 11p fields |
+| `phy_rx11blr_cfg(a)` | 0x600a8060 bits10/11 and 0x600a807c bit11 | Test both coupled boolean states |
+
+Suite9 uses a verified matching calibrated DC hold at its fixed screened
+gain, separate ABBA profiles and a stock sham. These are tests of recovered
+boolean writes, not claims about what the packet engine does to continuous
+MODEM_DIAG. Desired-signal phase/amplitude and video are unmeasured.
+
+Two nominal ADC-random helpers do not expose a reversible dither switch.
+`phy_get_adc_rand` is a single `ret`, with no hardware access. The enabled
+branch of `phy_set_adc_rand` turns on RX/TX clocks, changes 0x600a0890 bit24,
+enters PBUS debug, forces DCO/RX power and runs DC calibration. Its disabled
+branch powers RX off and returns to PBUS work mode; it is not exact rollback
+to the original listening state. Do not call this pair as a noise toggle.
+
+`phy_rx_filter_mode` is the already-measured 0x600a0430[21:18] digital filter
+field, rather than a separate new filter. `phy_pkdadc_set` owns additional
+threshold fields beyond its already-tested enable: its full-word write at
+0x600a7068 and unknown meaningful threshold settings prevent treating it as
+one more boolean. `phy_bb_bss_cbw40_dig` clears both bits3:2 at 0x600a9c18
+and sets bit2 from its argument; its higher wrapper also calls bandwidth
+selection. Neither is an independently established noise filter.
+
+The internal `phy_get_loop_snr` calibration routine changes RX/TX clocks,
+PBUS mode and loopback gain, performs DC calibration, starts a TX tone and
+estimates internal IQ SNR. Cleanup depends on its arguments. It does not
+measure a fixed signal arriving at the antenna through the normal live
+receiver, and is not invoked here as a substitute for calibrated weak RF.

@@ -261,3 +261,21 @@ or concurrently with another debugger. Normal flashing should continue to
 use `tools/enter_download.py` rather than blind esptool resets. The helper
 uses Espressif's USB-JTAG protocol and the pinned IDF RTC-watchdog fields;
 it does not make a software reset equivalent to removing all external power.
+
+## Isolated packet-policy controls (console `(`)
+
+Suite9 tests the complete recovered MMIO footprints of LLTF masks (all four
+boolean argument combinations), RIFS0/1, VHT0/1 and 11b-LR0/1, followed by
+an unchanged sham. These are separate profiles with four raw windows per
+STOCK–TEST–TEST–STOCK stage and 1200 ms dwell. No 11p or calibrated IQ
+coefficient change is included. VHT's bit5 shares the 11p register, so the
+masked write must preserve every other bit, including the live 11p fields.
+
+After the conservative gain screen, suite9 explicitly applies the matching
+loaded DC-calibration row and requires its verified held pair during every
+capture. It refuses a missing row rather than changing the baseline to an
+unheld vendor state. The original outer gain, DC pair and held/released mode
+are restored before receiver resume. These packet-oriented controls may
+have no effect on continuous IQ; their names alone do not establish a
+noise filter or sensitivity benefit. The standard transport ACK, timeout,
+hardware tuple and context guards remain mandatory.

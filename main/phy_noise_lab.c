@@ -147,6 +147,23 @@ static const profile_t combo_profiles[] = {
         {0x600A71D8,0x3fe00,0x3cc00},{0x600A7014,0xff800000,0xff000000}},false},
     {"STOCK_SHAM_EXTRA",0,{{0}},false},
 };
+/* Complete isolated MMIO footprints of pinned phy_lltf_mask_en(a,b),
+ * phy_wifi_rifs_mode_en(a), phy_vht_support(a), phy_rx11blr_cfg(a).
+ * No ADC clocks, packet dump/source selection, PBUS or analog helpers.
+ * Packet-oriented names do not establish a continuous-IQ filter effect. */
+static const profile_t policy_profiles[] = {
+    {"LLTF_MASK_00",1,{{0x600A790C,0x3000,0}},false},
+    {"LLTF_MASK_10",1,{{0x600A790C,0x3000,0x2000}},false},
+    {"LLTF_MASK_01",1,{{0x600A790C,0x3000,0x1000}},false},
+    {"LLTF_MASK_11",1,{{0x600A790C,0x3000,0x3000}},false},
+    {"RIFS_ARG0",1,{{0x600A70F4,1,0}},false},
+    {"RIFS_ARG1",1,{{0x600A70F4,1,1}},false},
+    {"VHT_ARG0",1,{{0x600A7CE4,0x20,0}},false},
+    {"VHT_ARG1",1,{{0x600A7CE4,0x20,0x20}},false},
+    {"RX11BLR_ARG0",2,{{0x600A8060,0xc00,0},{0x600A807C,0x800,0}},false},
+    {"RX11BLR_ARG1",2,{{0x600A8060,0xc00,0xc00},{0x600A807C,0x800,0x800}},false},
+    {"POLICY_SHAM",0,{{0}},false},
+};
 static const uint32_t watch[] = {
     0x600A7018,0x600A7C44,0x600A7C50,0x600A7CE4,0x600A7030,
     0x600A7048,0x600A71C4,0x600A7904,0x600A7074,0x600A0438,
@@ -155,7 +172,8 @@ static const uint32_t watch[] = {
     0x600A7818,0x600A781C,0x600A7820,0x600A7824,0x600A7828,
     0x600A782C,0x600A7830,0x600A0C38,0x600A4C5C,0x600A7800,
     0x600A7044,0x600A7124,0x600A8004,0x600A7104,0x600A71D8,
-    0x600A7010,0x600A7014,0x600A7108,0x600A0890,0x600A9C18
+    0x600A7010,0x600A7014,0x600A7108,0x600A0890,0x600A9C18,
+    0x600A790C,0x600A70F4,0x600A8060,0x600A807C
 };
 static void state(unsigned id, const char *stage)
 {
@@ -472,9 +490,10 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
 #ifndef C5VRX_PHY_PINNED
     (void)context_ok;(void)dwell_ms;(void)suite;printf("PHYLAB refused=unverified_phy\n");
 #else
-    if((dwell_ms!=300&&dwell_ms!=1200)||suite>8){printf("PHYLAB refused=arguments\n");return;}
+    if((dwell_ms!=300&&dwell_ms!=1200)||suite>9){printf("PHYLAB refused=arguments\n");return;}
     lab_dwell_ms=dwell_ms;
-    lab_windows=suite>=7?16:4;
+    lab_windows=(suite==7||suite==8)?16:4;
+    sample_dco_check=false;
     uint8_t *raw=malloc(C5V4_LEVEL_SAMPLE_BYTES);
     if(!raw){printf("PHYLAB refused=memory\n");return;}
     /* Caller has paused the receiver; whole-suite task lease excludes tune,
@@ -508,6 +527,11 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
                s_current_gain,tuple.rf_stage,tuple.rf_code,tuple.bb_code,tuple.fine_code,tuple.packed_state,
                arc_gain_highest_rf_stage_start(rf_gain_table()),rf_gain_table()->max_index);
     } else ok=false;
+    if(ok&&suite==9){
+        ok=phylab_hold_current_gain()&&phy_dco_read_pair(sample_dco);
+        sample_dco_check=ok;
+        if(!ok)printf("PHYLAB_POLICY_REFUSED reason=no_matching_calibrated_hold\n");
+    }
     printf("PHYLAB_BEGIN fw=%s freq=%u gain=%u lane=2 dfilt=%d dwell_ms=%u suite=%u windows_per_stage=%u format=Ihigh_Qlow persistent=0 outer_restore=required\n",firmware_id(),rf_frequency_mhz(),s_current_gain,phy_dfilt_hw_mode(),lab_dwell_ms,suite,lab_windows);
     for(unsigned id=0;id<16&&ok&&suite==0;++id){
         unsigned n=id^(id>>1);
@@ -546,6 +570,9 @@ void phy_noise_lab_run(bool (*context_ok)(void),unsigned dwell_ms,unsigned suite
         for(unsigned i=0;i<3&&ok;++i){unsigned n=pass?2-i:i;ok=run_profile(160+pass*3+i,&combo_profiles[n],raw,context_ok,deadline);}
     static const uint8_t dc_gains[]={78,80,83};
     for(unsigned i=0;i<sizeof(dc_gains)&&ok&&suite==8;++i)ok=run_dco(176+i,dc_gains[i],raw,context_ok,deadline);
+    for(unsigned i=0;i<sizeof(policy_profiles)/sizeof(policy_profiles[0])&&ok&&suite==9;++i)
+        ok=run_profile(192+i,&policy_profiles[i],raw,context_ok,deadline);
+    sample_dco_check=false;
     printf("PHYLAB_END status=%s rejected=%u restored=1 input_referred_improvement=unknown\n",ok?(rejected?"COMPLETE_WITH_REJECTIONS":"PASS"):"INCOMPLETE",rejected);
     phy_end();free(raw);
 #endif
