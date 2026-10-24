@@ -197,7 +197,7 @@
       }
     }
   ],
-  "total_valid_captures": 6591,
+  "total_valid_captures": 7359,
   "runs": [
     {
       "name": "audit_5745_clock_extra_short",
@@ -3744,6 +3744,852 @@
         "ended_utc": "2026-10-24T18:08:42.193079+00:00",
         "requested_frequency": 5805,
         "key": "[",
+        "context_errors": []
+      }
+    },
+    {
+      "name": "audit_5805_lltf_confirm3",
+      "context": {
+        "fw": "5.0.0-dev+cea98e2-orde",
+        "freq": "5805",
+        "gain": "75",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "12",
+        "windows_per_stage": "16",
+        "screen_dc": "calibrated",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "POLICY_SHAM",
+          "status": "PASS",
+          "stock_m2": 1.1940772411857576,
+          "test_m2": 1.1927628076077024,
+          "delta_db": -0.004783322684516297,
+          "stock_drift_db": -0.01974245311418897,
+          "test_repeat_db": 0.015100744884014644,
+          "median_delta_db": -0.0026321873403200875,
+          "stock_nbw_mhz": 14.85720592286256,
+          "test_nbw_mhz": 14.882713467885399,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.059170561639148,
+          "min_kurtosis": 1.9208086475310686,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "240",
+              "delta_db": -0.0035579863931334797,
+              "stock_drift_db": -0.0502474101297922,
+              "test_repeat_db": 0.01158375531339947
+            },
+            {
+              "id": "245",
+              "delta_db": -0.005997660931051545,
+              "stock_drift_db": 0.010479733056244589,
+              "test_repeat_db": 0.01858715160229552
+            }
+          ],
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LLTF_MASK_10",
+          "status": "PASS",
+          "stock_m2": 1.1986071447672868,
+          "test_m2": 1.191109770982138,
+          "delta_db": -0.027250748616862545,
+          "stock_drift_db": -0.05158007437133371,
+          "test_repeat_db": 0.011913577636036142,
+          "median_delta_db": -0.0303524246126561,
+          "stock_nbw_mhz": 14.810781600573607,
+          "test_nbw_mhz": 14.780378877878562,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.071869146534523,
+          "min_kurtosis": 1.935540881162668,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "241",
+              "delta_db": -0.010894544634916657,
+              "stock_drift_db": -0.03439724789209109,
+              "test_repeat_db": 0.012788448161124621
+            },
+            {
+              "id": "243",
+              "delta_db": -0.043554314719867725,
+              "stock_drift_db": -0.06864372164984014,
+              "test_repeat_db": 0.011038237700825425
+            }
+          ],
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LLTF_MASK_00",
+          "status": "PASS",
+          "stock_m2": 1.1915479512262936,
+          "test_m2": 1.189804342567621,
+          "delta_db": -0.006359745732322194,
+          "stock_drift_db": 0.001300213856091225,
+          "test_repeat_db": 0.042534011335529115,
+          "median_delta_db": -0.008049089545601596,
+          "stock_nbw_mhz": 14.872992100770194,
+          "test_nbw_mhz": 14.857860544134484,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0631847814824895,
+          "min_kurtosis": 1.913562903159072,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "242",
+              "delta_db": 0.0010579873275434275,
+              "stock_drift_db": 0.024888377527776274,
+              "test_repeat_db": 0.052749739544353254
+            },
+            {
+              "id": "244",
+              "delta_db": -0.013752657428916196,
+              "stock_drift_db": -0.022168946668515047,
+              "test_repeat_db": 0.03233520884749436
+            }
+          ],
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 384,
+      "rejected_captures": [
+        {
+          "metadata": {
+            "id": "241",
+            "step": "0",
+            "stage": "STOCK",
+            "rep": "4",
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "gain": "75",
+            "freq": "5805",
+            "offset": "0",
+            "m2": "1.219461",
+            "kurt": "2.0260",
+            "rails": "0.000000",
+            "fnv1a": "7934d897",
+            "t_us": "61072964",
+            "tx_token": "00000045",
+            "tx_attempt": "0",
+            "windows_per_stage": "16"
+          },
+          "reason": "missing or reordered snapshot bytes"
+        },
+        {
+          "metadata": {
+            "id": "243",
+            "step": "1",
+            "stage": "TEST",
+            "rep": "13",
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "gain": "75",
+            "freq": "5805",
+            "offset": "0",
+            "m2": "1.185136",
+            "kurt": "1.9504",
+            "rails": "0.000000",
+            "fnv1a": "20f8ef8c",
+            "t_us": "107004963",
+            "tx_token": "000000de",
+            "tx_attempt": "0",
+            "windows_per_stage": "16"
+          },
+          "reason": "missing or reordered snapshot bytes"
+        },
+        {
+          "metadata": {
+            "id": "245",
+            "step": "3",
+            "stage": "STOCK",
+            "rep": "2",
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "gain": "75",
+            "freq": "5805",
+            "offset": "0",
+            "m2": "1.186004",
+            "kurt": "2.0079",
+            "rails": "0.000000",
+            "fnv1a": "86930b21",
+            "t_us": "152990696",
+            "tx_token": "00000173",
+            "tx_attempt": "0",
+            "windows_per_stage": "16"
+          },
+          "reason": "missing or reordered snapshot bytes"
+        }
+      ],
+      "raw_log_sha256": "98bff179463e3a5d4240e596ad55516b3a4752351e7899b07a68ea525869ab2d",
+      "manifest_sha256": "b71c1bc9d0b77a58e107cec8057efe63d3bdbf0b82a1fa66c03d13a1eaaac7eb",
+      "dc_selected": [],
+      "retransmissions": [],
+      "bias_readbacks": [
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        }
+      ],
+      "lo_cap_targets": [],
+      "lo_cap_readbacks": [
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        }
+      ],
+      "baseline_registers": {
+        "600a7018": "51e1500c",
+        "600a7c44": "00000001",
+        "600a7c50": "00000000",
+        "600a7ce4": "000100b0",
+        "600a7030": "e3c5a6d5",
+        "600a7048": "ff7dc0f3",
+        "600a71c4": "01450340",
+        "600a7904": "0a20916e",
+        "600a7074": "3201e081",
+        "600a0438": "fd7c0000",
+        "600a0c0c": "00007d02",
+        "600a043c": "00000000",
+        "600a0430": "0003ffff",
+        "600a0448": "16100000",
+        "600a7c14": "6d804000",
+        "600a7c18": "00412cca",
+        "600a7c1c": "00000000",
+        "600a7c20": "00000000",
+        "600a7810": "05000000",
+        "600a7814": "05000000",
+        "600a7818": "55688000",
+        "600a781c": "e5b22200",
+        "600a7820": "0d200000",
+        "600a7824": "55440000",
+        "600a7828": "9d8d0000",
+        "600a782c": "e5b1a200",
+        "600a7830": "95480000",
+        "600a0c38": "f3c10080",
+        "600a4c5c": "00000000",
+        "600a7800": "0f07a2d8",
+        "600a7044": "fe3fe1fe",
+        "600a7124": "b2208553",
+        "600a8004": "013c9190",
+        "600a7104": "06acc7bc",
+        "600a71d8": "078bcde2",
+        "600a7010": "0652013b",
+        "600a7014": "ff50427b",
+        "600a7108": "78185b0d",
+        "600a0890": "40800050",
+        "600a9c18": "10003802",
+        "600a790c": "0000251c",
+        "600a70f4": "f9b2e191",
+        "600a8060": "2612b054",
+        "600a807c": "2612b054"
+      },
+      "adc_baseline": {
+        "id": "240",
+        "stage": "STOCK",
+        "block": "66",
+        "host": "0",
+        "reg": "4",
+        "value": "27",
+        "selector_bits": "0"
+      },
+      "policy_baseline_registers": {
+        "600a790c": "0000251c",
+        "600a70f4": "f9b2e191",
+        "600a7ce4": "000100b0",
+        "600a8060": "2612b054",
+        "600a807c": "2612b054"
+      },
+      "context_note": null,
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T18:23:09.260520+00:00",
+        "ended_utc": "2026-10-24T18:25:11.121399+00:00",
+        "requested_frequency": 5805,
+        "key": "]",
         "context_errors": []
       }
     },
@@ -10090,6 +10936,858 @@
       }
     },
     {
+      "name": "audit_5865_lltf_confirm4",
+      "context": {
+        "fw": "5.0.0-dev+cea98e2-orde",
+        "freq": "5865",
+        "gain": "76",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "12",
+        "windows_per_stage": "16",
+        "screen_dc": "calibrated",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "POLICY_SHAM",
+          "status": "PASS",
+          "stock_m2": 1.4305991175508117,
+          "test_m2": 1.432708049607088,
+          "delta_db": 0.006397481422014309,
+          "stock_drift_db": -0.005077855439915535,
+          "test_repeat_db": -0.01757683530943899,
+          "median_delta_db": 0.005346532336172376,
+          "stock_nbw_mhz": 14.828558513671389,
+          "test_nbw_mhz": 14.849020995453538,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.099725745288032,
+          "min_kurtosis": 1.955438763338201,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "240",
+              "delta_db": 0.003607626394405484,
+              "stock_drift_db": 0.0010879570293963613,
+              "test_repeat_db": -0.036919623300033295
+            },
+            {
+              "id": "245",
+              "delta_db": 0.009182631598547316,
+              "stock_drift_db": -0.01123722700013317,
+              "test_repeat_db": 0.0017207686750000477
+            }
+          ],
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LLTF_MASK_10",
+          "status": "PASS",
+          "stock_m2": 1.4388015242668402,
+          "test_m2": 1.4333754273131563,
+          "delta_db": -0.016409342519683345,
+          "stock_drift_db": 0.010978867928077554,
+          "test_repeat_db": -0.00725561994674224,
+          "median_delta_db": -0.006885048995345995,
+          "stock_nbw_mhz": 14.658623567151537,
+          "test_nbw_mhz": 14.7070058859453,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0868314944097666,
+          "min_kurtosis": 1.9330054124650216,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "241",
+              "delta_db": -0.015358154314214837,
+              "stock_drift_db": 0.060466035096454165,
+              "test_repeat_db": -0.028270069878670534
+            },
+            {
+              "id": "243",
+              "delta_db": -0.017454157774213254,
+              "stock_drift_db": -0.038195696820856155,
+              "test_repeat_db": 0.013636383650523009
+            }
+          ],
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LLTF_MASK_00",
+          "status": "PASS",
+          "stock_m2": 1.4345786297205712,
+          "test_m2": 1.4338534184493432,
+          "delta_db": -0.002196009908758387,
+          "stock_drift_db": -0.013968936774650326,
+          "test_repeat_db": 0.019659500961597312,
+          "median_delta_db": -0.005266503808527957,
+          "stock_nbw_mhz": 14.815285691960383,
+          "test_nbw_mhz": 14.839215093153516,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.1053979435681085,
+          "min_kurtosis": 1.941250796546884,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "entries": [
+            {
+              "id": "242",
+              "delta_db": -0.00554355444572043,
+              "stock_drift_db": 0.004691348416726334,
+              "test_repeat_db": 0.0380637473087328
+            },
+            {
+              "id": "244",
+              "delta_db": 0.0011518798525559744,
+              "stock_drift_db": -0.032645666651930576,
+              "test_repeat_db": 0.0012677157447009318
+            }
+          ],
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 384,
+      "rejected_captures": [
+        {
+          "metadata": {
+            "id": "240",
+            "step": "3",
+            "stage": "STOCK",
+            "rep": "12",
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "gain": "76",
+            "freq": "5865",
+            "offset": "0",
+            "m2": "1.428472",
+            "kurt": "2.0208",
+            "rails": "0.000000",
+            "fnv1a": "3a55712f",
+            "t_us": "429411972",
+            "tx_token": "000001bd",
+            "tx_attempt": "0",
+            "windows_per_stage": "16"
+          },
+          "reason": "missing or reordered snapshot bytes"
+        },
+        {
+          "metadata": {
+            "id": "243",
+            "step": "1",
+            "stage": "TEST",
+            "rep": "1",
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "gain": "76",
+            "freq": "5865",
+            "offset": "0",
+            "m2": "1.406275",
+            "kurt": "2.0016",
+            "rails": "0.000000",
+            "fnv1a": "93d634f8",
+            "t_us": "475718968",
+            "tx_token": "00000252",
+            "tx_attempt": "0",
+            "windows_per_stage": "16"
+          },
+          "reason": "missing or reordered snapshot bytes"
+        },
+        {
+          "metadata": {
+            "id": "245",
+            "step": "2",
+            "stage": "TEST",
+            "rep": "12",
+            "bytes": "8190",
+            "rate_hz": "40000000",
+            "gain": "76",
+            "freq": "5865",
+            "offset": "0",
+            "m2": "1.432644",
+            "kurt": "2.0873",
+            "rails": "0.000000",
+            "fnv1a": "b827a6c7",
+            "t_us": "521978695",
+            "tx_token": "000002ed",
+            "tx_attempt": "0",
+            "windows_per_stage": "16"
+          },
+          "reason": "missing or reordered snapshot bytes"
+        }
+      ],
+      "raw_log_sha256": "ecf6c3bf6f148c052d6a10a9b4fce9d7ec258ad9aea26040316b453be51547a7",
+      "manifest_sha256": "803d917a56d671583839876882ca90ccd057f75258eb0c602a446c4349615e87",
+      "dc_selected": [],
+      "retransmissions": [],
+      "bias_readbacks": [
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        }
+      ],
+      "lo_cap_targets": [],
+      "lo_cap_readbacks": [
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "240",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "240",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "241",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "241",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "242",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "242",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "243",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "243",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "244",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "244",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "245",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "245",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        }
+      ],
+      "baseline_registers": {
+        "600a7018": "51e1500c",
+        "600a7c44": "00000001",
+        "600a7c50": "00000000",
+        "600a7ce4": "000100b0",
+        "600a7030": "e3c5a6d5",
+        "600a7048": "ff7dc0f3",
+        "600a71c4": "01450340",
+        "600a7904": "0a20916e",
+        "600a7074": "3201e081",
+        "600a0438": "fd7c0000",
+        "600a0c0c": "00007d02",
+        "600a043c": "00000000",
+        "600a0430": "0003ffff",
+        "600a0448": "16100003",
+        "600a7c14": "6d804000",
+        "600a7c18": "00412cca",
+        "600a7c1c": "00000000",
+        "600a7c20": "00000000",
+        "600a7810": "05000000",
+        "600a7814": "05000000",
+        "600a7818": "55688000",
+        "600a781c": "e5b22200",
+        "600a7820": "0d200000",
+        "600a7824": "55440000",
+        "600a7828": "9d8d0000",
+        "600a782c": "e5b1a200",
+        "600a7830": "95480000",
+        "600a0c38": "f3c10080",
+        "600a4c5c": "00000000",
+        "600a7800": "0f07a2d8",
+        "600a7044": "fe3fe1fe",
+        "600a7124": "b2208553",
+        "600a8004": "013c9190",
+        "600a7104": "06acc7bc",
+        "600a71d8": "078bcde2",
+        "600a7010": "0652013b",
+        "600a7014": "ff50427b",
+        "600a7108": "78185b0d",
+        "600a0890": "40800050",
+        "600a9c18": "10003802",
+        "600a790c": "0000251c",
+        "600a70f4": "f9b2e191",
+        "600a8060": "2612b054",
+        "600a807c": "2612b054"
+      },
+      "adc_baseline": {
+        "id": "240",
+        "stage": "STOCK",
+        "block": "66",
+        "host": "0",
+        "reg": "4",
+        "value": "23",
+        "selector_bits": "3"
+      },
+      "policy_baseline_registers": {
+        "600a790c": "0000251c",
+        "600a70f4": "f9b2e191",
+        "600a7ce4": "000100b0",
+        "600a8060": "2612b054",
+        "600a807c": "2612b054"
+      },
+      "context_note": {
+        "preparation": "Normal production DC servo given 15s at transient G78 and G72; one IQ witness each; gain mode restored to AUTO before calibrated qualification. No acceptance thresholds relaxed.",
+        "preparation_manifest_sha256": "a61d22d52134785f5c1d2289e22594800d3d4aa26d9890a151861ce0d1ec603d",
+        "preparation_log_sha256": "5ee015d2b35171498367668681842f928f0b167792e9ff3f971fcfef078a2020",
+        "previous_attempt": "audit_5865_lltf_confirm3",
+        "previous_outcome": "No gain passed all qualification windows; no profile executed; exact outer restoration verified."
+      },
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T18:29:20.868892+00:00",
+        "ended_utc": "2026-10-24T18:31:22.807105+00:00",
+        "requested_frequency": 5865,
+        "key": "]",
+        "context_errors": []
+      }
+    },
+    {
       "name": "audit_5865_locap1",
       "context": {
         "fw": "5.0.0-dev+b253aa5-loca",
@@ -14733,6 +16431,126 @@
     }
   ],
   "total_live_witness_captures": 64,
+  "attempts_without_derived_measurement": [
+    {
+      "name": "audit_5745_clock_extra_long",
+      "scope": "No derived measurement; never counted as a PHY noise result",
+      "records": {
+        "PHYLAB_BEGIN ": [
+          {
+            "fw": "5.0.0-dev+82fa299-cloc",
+            "freq": "5745",
+            "gain": "76",
+            "lane": "2",
+            "dfilt": "0",
+            "dwell_ms": "1200",
+            "suite": "5",
+            "format": "Ihigh_Qlow",
+            "persistent": "0"
+          }
+        ],
+        "PHYLAB_END ": [
+          {
+            "status": "INCOMPLETE",
+            "rejected": "0",
+            "restored": "1",
+            "input_referred_improvement": "unknown"
+          }
+        ],
+        "PHYLAB_OUTER_RESTORE ": []
+      },
+      "raw_log_sha256": "c2d6dd8df317d9742034821dcedd0857ae76538f29fe136b932c1e6ddc327882",
+      "manifest_sha256": null,
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T13:17:59.437686+00:00",
+        "ended_utc": "2026-10-24T13:18:19.768222+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_dco1",
+      "scope": "No derived measurement; never counted as a PHY noise result",
+      "records": {
+        "PHYLAB_BEGIN ": [
+          {
+            "fw": "5.0.0-dev+bef2146",
+            "freq": "5865",
+            "gain": "74",
+            "lane": "2",
+            "dfilt": "0",
+            "dwell_ms": "1200",
+            "suite": "8",
+            "windows_per_stage": "16",
+            "format": "Ihigh_Qlow",
+            "persistent": "0"
+          }
+        ],
+        "PHYLAB_END ": [
+          {
+            "status": "INCOMPLETE",
+            "rejected": "0",
+            "restored": "1",
+            "input_referred_improvement": "unknown"
+          }
+        ],
+        "PHYLAB_OUTER_RESTORE ": []
+      },
+      "raw_log_sha256": "efc2962423d8fbcd5765d1aea139225e86b8b3725c50d948d2ce124121df1b41",
+      "manifest_sha256": "a0e70e0f4455050fe671b29f64a815274323b14937be2a3ed5ba9c2f08927b35",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T17:03:52.922236+00:00",
+        "ended_utc": "2026-10-24T17:03:57.817801+00:00"
+      }
+    },
+    {
+      "name": "audit_5865_lltf_confirm3",
+      "scope": "No derived measurement; never counted as a PHY noise result",
+      "records": {
+        "PHYLAB_BEGIN ": [
+          {
+            "fw": "5.0.0-dev+cea98e2-orde",
+            "freq": "5865",
+            "gain": "2",
+            "lane": "2",
+            "dfilt": "0",
+            "dwell_ms": "1200",
+            "suite": "12",
+            "windows_per_stage": "16",
+            "screen_dc": "calibrated",
+            "format": "Ihigh_Qlow",
+            "persistent": "0",
+            "outer_restore": "required"
+          }
+        ],
+        "PHYLAB_END ": [
+          {
+            "status": "INCOMPLETE",
+            "rejected": "0",
+            "restored": "1",
+            "input_referred_improvement": "unknown"
+          }
+        ],
+        "PHYLAB_OUTER_RESTORE ": [
+          {
+            "verified": "1",
+            "gain": "83",
+            "held": "1"
+          }
+        ]
+      },
+      "raw_log_sha256": "c21c2f0ec792fd6c4ee5098de65d5c9b771e28bb777d2e66a979ceba7f1f4dc7",
+      "manifest_sha256": "9d40347277349de636ca0900e2fcca5e54bf0e16486b3d57e224927e4eb7337c",
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T18:25:44.543946+00:00",
+        "ended_utc": "2026-10-24T18:25:57.028880+00:00",
+        "requested_frequency": 5865,
+        "key": "]",
+        "context_errors": []
+      }
+    }
+  ],
   "additional_static_evidence": {
     "file": "bias-extra-evidence.txt",
     "sha256": "5cf7a6e2638bcd8d5b4bb7611671328367f3370bbce233a852428b0f06b8b873"
@@ -14919,6 +16737,24 @@
         "reason": "explicit unchanged-state profile",
         "captures": 64,
         "delta_db": -0.020243539453022596,
+        "quality": "NO_FLAGS",
+        "quality_flags": []
+      },
+      {
+        "run": "audit_5805_lltf_confirm3",
+        "profile": "POLICY_SHAM",
+        "reason": "explicit unchanged-state profile",
+        "captures": 128,
+        "delta_db": -0.004783322684516297,
+        "quality": "NO_FLAGS",
+        "quality_flags": []
+      },
+      {
+        "run": "audit_5805_lltf_confirm3",
+        "profile": "LLTF_MASK_10",
+        "reason": "tested MMIO fields already match baseline",
+        "captures": 128,
+        "delta_db": -0.027250748616862545,
         "quality": "NO_FLAGS",
         "quality_flags": []
       },
@@ -15191,6 +17027,24 @@
         "quality_flags": []
       },
       {
+        "run": "audit_5865_lltf_confirm4",
+        "profile": "POLICY_SHAM",
+        "reason": "explicit unchanged-state profile",
+        "captures": 128,
+        "delta_db": 0.006397481422014309,
+        "quality": "NO_FLAGS",
+        "quality_flags": []
+      },
+      {
+        "run": "audit_5865_lltf_confirm4",
+        "profile": "LLTF_MASK_10",
+        "reason": "tested MMIO fields already match baseline",
+        "captures": 128,
+        "delta_db": -0.016409342519683345,
+        "quality": "NO_FLAGS",
+        "quality_flags": []
+      },
+      {
         "run": "audit_5865_locap1",
         "profile": "LO_CAP_CODE_10",
         "reason": "LO-cap target equals entry code",
@@ -15302,10 +17156,10 @@
       },
       {
         "captures_per_control": 128,
-        "no_flags_controls": 2,
-        "median_delta_db": 0.01189750801235506,
-        "median_absolute_delta_db": 0.01189750801235506,
-        "p95_absolute_delta_db": 0.022126081878736686
+        "no_flags_controls": 6,
+        "median_delta_db": -0.0021254483729592996,
+        "median_absolute_delta_db": 0.011403411970848827,
+        "p95_absolute_delta_db": 0.026253708984175016
       }
     ],
     "flagged_complete_controls": 10

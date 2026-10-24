@@ -54,9 +54,19 @@ def noop_reason(run,profile):
 
 
 def main():
-    runs=[];captures=[];live=[]
+    runs=[];captures=[];live=[];attempts=[]
     for p in sorted(RAW.glob('audit_*')):
-        if not p.is_dir() or not (p/'summary.json').exists():continue
+        if not p.is_dir():continue
+        if not (p/'summary.json').exists():
+            if (p/'console.raw.log').exists() and (p/'acquisition.json').exists():
+                raw=(p/'console.raw.log').read_bytes();text=raw.decode(errors='replace')
+                records={tag:[dict(re.findall(r'(\w+)=([^\s]+)',line)) for line in text.splitlines() if tag in line]
+                         for tag in ('PHYLAB_BEGIN ','PHYLAB_END ','PHYLAB_OUTER_RESTORE ')}
+                attempts.append(dict(name=p.name,scope='No derived measurement; never counted as a PHY noise result',
+                    records=records,raw_log_sha256=hashlib.sha256(raw).hexdigest(),
+                    manifest_sha256=hashlib.sha256((p/'iq/manifest.json').read_bytes()).hexdigest() if (p/'iq/manifest.json').exists() else None,
+                    acquisition=json.loads((p/'acquisition.json').read_text())))
+            continue
         manifest=json.loads((p/'iq/manifest.json').read_text())
         text=(p/'console.raw.log').read_text(errors='replace')
         begin=next(line for line in text.splitlines() if line.startswith('PHYLAB_BEGIN'))
@@ -99,6 +109,7 @@ def main():
         scope='VTX off, noise only, no calibrated carrier or video; no sensitivity/range claim',
         provenance=prov,total_valid_captures=len(captures),runs=runs,live_gain_witnesses=live,
         total_live_witness_captures=sum(len(r['capture_statistics']) for r in live))
+    aggregate['attempts_without_derived_measurement']=attempts
     evidence=RAW/'bias-extra-evidence.txt'
     if evidence.exists():aggregate['additional_static_evidence']=dict(file=evidence.name,sha256=hashlib.sha256(evidence.read_bytes()).hexdigest())
     buf=io.StringIO(newline='');keys=list(dict.fromkeys(k for r in captures for k in r))
@@ -114,7 +125,7 @@ def main():
         'or RF sensitivity/range improvement is established by these noise-only probes.','',
         '## Method and quality','',
         'Each entry uses STOCK → TEST → TEST → STOCK, four separately contiguous '
-        '8,190-byte IQ40 captures per stage (16 per stage for the large joint probes), same gain/lane/frequency/offset, exact '
+        '8,190-byte IQ40 captures per stage (16 for DC, LO-cap, LLTF follow-ups and large joint probes), same gain/lane/frequency/offset, exact '
         'saved-mask rollback. H/V test individual RX/TX/correction/filter/packet '
         'profiles; E repeats output ON→OFF→OFF→ON three times at one fixed gain.','',
         'The first audit at 5865 MHz selected G82 under the earlier four-window '
@@ -336,10 +347,9 @@ def main():
         'initial and two larger runs, versus corresponding unchanged '
         'LLTF10 controls +0.042/+0.026/+0.023 dB. At5865 MHz LLTF00 '
         'gives -0.039/+0.036/+0.004 dB. The small 5805-specific clue '
-        'therefore remains unconfirmed: LLTF00 occurs early in each '
-        'batch, so a counterbalanced order with front/end shams is still '
-        'needed. It is not promoted or counted as a new noise/sensitivity '
-        'gain. Complete results, including opposite-sign repeats and '
+        'therefore motivated the independent order control below: LLTF00 '
+        'occurs early in the original batches. It is not promoted or '
+        'counted as a new noise/sensitivity gain. Complete results, including opposite-sign repeats and '
         'quality flags, are retained.','',
         '## Order-controlled LLTF confirmation','',
         'Suite12 uses six separately restored ABBA executions: sham, '
@@ -357,6 +367,21 @@ def main():
             for e in s.get('entries',[]):
                 lines.append(f"| {r['name']} | {e['id']} | {s['profile']} | {e['delta_db']:+.3f} | {e['stock_drift_db']:+.3f} | {e['test_repeat_db']:+.3f} |")
     lines.extend(['',
+        'At5805 MHz the order-controlled LLTF00 executions give '
+        '+0.001/-0.014 dB, pooled -0.006 dB. The shams give '
+        '-0.004/-0.006 dB and the unchanged LLTF10 executions '
+        '-0.011/-0.044 dB. The earlier small LLTF00 reduction is not '
+        'confirmed independently of order/measurement variation. No '
+        'extra gain is assigned or enabled in production.','',
+        'The5865-MHz confirmation gives LLTF00 -0.002 dB, versus '
+        'sham +0.006 and unchanged LLTF10 -0.016 dB; all entries have '
+        'no quality flags. Its first attempt produced no captures because '
+        'no gain passed every qualification window. Exact outer restoration '
+        'succeeded. The successful retry first let the ordinary DC servo '
+        'settle for15s each at transient G78/G72, restored AUTO, and '
+        'qualified G76 with the original criteria. The preparation manifest '
+        'and log hashes are retained in its context note. Taken together, '
+        'the order controls do not establish the earlier0.04 dB clue.','',
         '## Adjacent LO-capacitor codes','',
         'Only block0x63/host1/reg21[4:0] changes; upper bits, bias, '
         'crystal/VCO codes, ADC selection, 11p, fixed gain and held DC pair '
@@ -456,6 +481,7 @@ def main():
         'combined gain. The actual joint comparisons remain the relevant '
         'noise-only evidence.','',
         '## Archived evidence','',
+        f"- {len(attempts)} attempts without a derived measurement are separately retained with immutable log/manifest hashes and restoration markers. They are not negative or successful PHY measurements.",
         f"- {len(captures)} valid audit IQ captures plus {sum(len(r['capture_statistics']) for r in live)} live fixed-MAX witnesses; all rejected transports are separately recorded.",
         '- [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).',
         '- [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).',

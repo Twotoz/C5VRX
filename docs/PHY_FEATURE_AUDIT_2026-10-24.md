@@ -261,6 +261,8 @@ Additional disassembly of previously unclassified names gives:
 | `phy_rxevm_en` | Owns fields at0x600a7a38/7a34 and calls a reset routine that pulses7a34[1] and7c50[8]. Diagnostic/reset state is not restored by simply writing the original enable; not called as a noise toggle. |
 | `phy_ulp_ext_code_set` | Couples analog0x61 register state and phy_param[652:653], or accepts an arbitrary caller code in its other branch. Factory-code source, consumers and complete restore need further audit; no guessed code is written. |
 
-The 5805-MHz LLTF clue is prioritized for an independent order-controlled
-confirmation before adding unrelated overrides. This ledger distinguishes
-static findings, feasible future probes and actual board evidence.
+The 5805-MHz LLTF clue received an independent order-controlled
+confirmation: candidate00 measured -0.006 dB at5805 and -0.002 dB
+at5865, comparable to shams/unchanged10 controls. No additional benefit
+is established. This ledger distinguishes static findings, feasible future
+probes and actual board evidence; the auxiliary bit probes remain untested.

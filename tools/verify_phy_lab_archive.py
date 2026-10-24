@@ -91,6 +91,8 @@ def verify_run(path,expected,spectra=False):
                     nbw=float(np.sum(power)*(frequency[1]-frequency[0])/np.mean(power[reference])/1e6)
                     if not math.isclose(nbw,result[label+'_nbw_mhz'],rel_tol=1e-10):raise ValueError('PSD NBW mismatch')
     incomplete=[]
+    missing=[identity for identity,result in manifest['results'].items() if result.get('status')=='PASS' and identity not in counts]
+    if missing:raise ValueError(f'{path.name}: complete execution missing from capture manifest: {missing}')
     for identity,count in counts.items():
         result=manifest['results'].get(identity,{})
         if result.get('status')=='PASS' and count!=windows[identity]:
@@ -128,7 +130,15 @@ def main():
                 raise ValueError('live IQ integrity failure')
             live_count+=1
     if live_count!=aggregate.get('total_live_witness_captures',live_count):raise ValueError('live count mismatch')
+    attempts=aggregate.get('attempts_without_derived_measurement',[])
+    for attempt in attempts:
+        path=args.raw/attempt['name']
+        if hashlib.sha256((path/'console.raw.log').read_bytes()).hexdigest()!=attempt['raw_log_sha256']:
+            raise ValueError('no-measurement attempt log changed')
+        if attempt.get('manifest_sha256') and hashlib.sha256((path/'iq/manifest.json').read_bytes()).hexdigest()!=attempt['manifest_sha256']:
+            raise ValueError('no-measurement attempt manifest changed')
     report=dict(scope=__doc__,status='PASS',audit_runs=len(results),audit_captures=total,live_captures=live_count,
+        no_measurement_attempts=len(attempts),
         verified_utc=dt.datetime.now(dt.timezone.utc).isoformat(),verifier_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         numpy_version=np.__version__,scipy_version=importlib.metadata.version('scipy') if args.spectra else None,
         recomputed_spectra=args.spectra,aggregate_sha256=hashlib.sha256(args.summary.read_bytes()).hexdigest(),runs=results)

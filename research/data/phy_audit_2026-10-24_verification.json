@@ -1,15 +1,16 @@
 {
   "scope": "Read-only verification of C5VRX/Twotoz PHY lab raw/derived evidence.\n\nChecks all archived IQ byte counts, SHA-256/FNV hashes, CSV identity and\nprofile completeness. Hardware PASS and intact host transport are separate:\ndamaged captures must keep their derived profile INCOMPLETE. This verifies\nartifact consistency; it does not independently validate closed PHY semantics\nor measure RF sensitivity. Source: https://github.com/Twotoz/C5VRX\nOfficial website and Discord invite: https://twotoz.github.io/C5VRX/\n",
   "status": "PASS",
-  "audit_runs": 40,
-  "audit_captures": 6591,
+  "audit_runs": 42,
+  "audit_captures": 7359,
   "live_captures": 64,
-  "verified_utc": "2026-10-24T18:25:12.217908+00:00",
-  "verifier_sha256": "627b32c21a401cd3dbcc9a58bf53efb5d2b9f9f47fc7b6d8dec66b2c26afde22",
+  "no_measurement_attempts": 3,
+  "verified_utc": "2026-10-24T18:33:14.500564+00:00",
+  "verifier_sha256": "f2b5b98efdb012a8271683f9cd0aa3ad3fdd02d21f68dcf4064dcf581f419424",
   "numpy_version": "2.5.2",
   "scipy_version": "1.18.1",
   "recomputed_spectra": true,
-  "aggregate_sha256": "87a0db268cce79e569f6a610eb2e7510175a2146197824e6a07a03b70c05c0aa",
+  "aggregate_sha256": "941da1e2b56ada16a883794fa0e2a09463765f0f5822483ad9b53179bc2718d8",
   "runs": [
     {
       "run": "audit_5745_clock_extra_short",
@@ -114,6 +115,13 @@
       "rejected_attempts": 0,
       "incomplete_host_exports": [],
       "raw_log_sha256": "d5663fd4f04d1be9db93902b4658ad34192dafab76ba518f8a1ab48a6c4ace69"
+    },
+    {
+      "run": "audit_5805_lltf_confirm3",
+      "valid_captures": 384,
+      "rejected_attempts": 3,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "98bff179463e3a5d4240e596ad55516b3a4752351e7899b07a68ea525869ab2d"
     },
     {
       "run": "audit_5805_locap1",
@@ -268,6 +276,13 @@
       "rejected_attempts": 0,
       "incomplete_host_exports": [],
       "raw_log_sha256": "047c2a6eba7e8abb61330558019ba29d780b6ecd7de4f2ef2745c6632ad0e8ac"
+    },
+    {
+      "run": "audit_5865_lltf_confirm4",
+      "valid_captures": 384,
+      "rejected_attempts": 3,
+      "incomplete_host_exports": [],
+      "raw_log_sha256": "ecf6c3bf6f148c052d6a10a9b4fce9d7ec258ad9aea26040316b453be51547a7"
     },
     {
       "run": "audit_5865_locap1",

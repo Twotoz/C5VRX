@@ -6,7 +6,7 @@ This extends [the first NF/11p bench](NF_PHY_BENCH_2026-10-24.md) and [the stati
 
 ## Method and quality
 
-Each entry uses STOCK → TEST → TEST → STOCK, four separately contiguous 8,190-byte IQ40 captures per stage (16 per stage for the large joint probes), same gain/lane/frequency/offset, exact saved-mask rollback. H/V test individual RX/TX/correction/filter/packet profiles; E repeats output ON→OFF→OFF→ON three times at one fixed gain.
+Each entry uses STOCK → TEST → TEST → STOCK, four separately contiguous 8,190-byte IQ40 captures per stage (16 for DC, LO-cap, LLTF follow-ups and large joint probes), same gain/lane/frequency/offset, exact saved-mask rollback. H/V test individual RX/TX/correction/filter/packet profiles; E repeats output ON→OFF→OFF→ON three times at one fixed gain.
 
 The first audit at 5865 MHz selected G82 under the earlier four-window 0.2% rail screen. Later DC variation/interference caused substantial signed-rail flags. Its complete derived data remain in the archive; the apparent −0.600 dB PKDADC result had −1.057 dB stock drift and does not establish a gain. One FFT profile lost a USB capture and is marked incomplete despite successful hardware rollback.
 
@@ -153,6 +153,9 @@ These profiles use a matching calibrated DC hold at the screened fixed gain, 120
 | audit_5805_lltf_big2 | LLTF_MASK_01 | +0.010 | changed bits | NO_FLAGS |
 | audit_5805_lltf_big2 | LLTF_MASK_11 | -0.003 | changed bits | NO_FLAGS |
 | audit_5805_lltf_big2 | POLICY_SHAM | -0.020 | no-op control | NO_FLAGS |
+| audit_5805_lltf_confirm3 | POLICY_SHAM | -0.005 | no-op control | NO_FLAGS |
+| audit_5805_lltf_confirm3 | LLTF_MASK_10 | -0.027 | no-op control | NO_FLAGS |
+| audit_5805_lltf_confirm3 | LLTF_MASK_00 | -0.006 | changed bits | NO_FLAGS |
 | audit_5805_policy1 | LLTF_MASK_00 | -0.064 | changed bits | NO_FLAGS |
 | audit_5805_policy1 | LLTF_MASK_10 | +0.042 | no-op control | NO_FLAGS |
 | audit_5805_policy1 | LLTF_MASK_01 | +0.043 | changed bits | NO_FLAGS |
@@ -174,6 +177,9 @@ These profiles use a matching calibrated DC hold at the screened fixed gain, 120
 | audit_5865_lltf_big2 | LLTF_MASK_01 | +0.026 | changed bits | NO_FLAGS |
 | audit_5865_lltf_big2 | LLTF_MASK_11 | -0.003 | changed bits | NO_FLAGS |
 | audit_5865_lltf_big2 | POLICY_SHAM | -0.028 | no-op control | NO_FLAGS |
+| audit_5865_lltf_confirm4 | POLICY_SHAM | +0.006 | no-op control | NO_FLAGS |
+| audit_5865_lltf_confirm4 | LLTF_MASK_10 | -0.016 | no-op control | NO_FLAGS |
+| audit_5865_lltf_confirm4 | LLTF_MASK_00 | -0.002 | changed bits | NO_FLAGS |
 | audit_5865_policy1 | LLTF_MASK_00 | -0.039 | changed bits | NO_FLAGS |
 | audit_5865_policy1 | LLTF_MASK_10 | +0.031 | no-op control | NO_FLAGS |
 | audit_5865_policy1 | LLTF_MASK_01 | -0.032 | changed bits | NO_FLAGS |
@@ -188,7 +194,7 @@ These profiles use a matching calibrated DC hold at the screened fixed gain, 120
 
 The first policy request saw 5865 MHz in early boot status, but saved-channel restore completed before the queued suite started at 5805 MHz. The immutable header and captures identify 5805; the folder was corrected to audit_5805_policy1 and a context note retained. The 5865 run was then deliberately retuned and repeated. Host acquisition now checks actual suite/capture frequency after the request as well, drains through outer restoration, and rejects a mismatch instead of silently accepting the early status.
 
-LLTF00 at5805 MHz gives -0.064/-0.026/-0.040 dB across the initial and two larger runs, versus corresponding unchanged LLTF10 controls +0.042/+0.026/+0.023 dB. At5865 MHz LLTF00 gives -0.039/+0.036/+0.004 dB. The small 5805-specific clue therefore remains unconfirmed: LLTF00 occurs early in each batch, so a counterbalanced order with front/end shams is still needed. It is not promoted or counted as a new noise/sensitivity gain. Complete results, including opposite-sign repeats and quality flags, are retained.
+LLTF00 at5805 MHz gives -0.064/-0.026/-0.040 dB across the initial and two larger runs, versus corresponding unchanged LLTF10 controls +0.042/+0.026/+0.023 dB. At5865 MHz LLTF00 gives -0.039/+0.036/+0.004 dB. The small 5805-specific clue therefore motivated the independent order control below: LLTF00 occurs early in the original batches. It is not promoted or counted as a new noise/sensitivity gain. Complete results, including opposite-sign repeats and quality flags, are retained.
 
 ## Order-controlled LLTF confirmation
 
@@ -196,6 +202,22 @@ Suite12 uses six separately restored ABBA executions: sham, unchanged LLTF10, LL
 
 | Run | Execution | Profile | Noise delta dB | Stock drift dB | Test repeat dB |
 |---|---:|---|---:|---:|---:|
+| audit_5805_lltf_confirm3 | 240 | POLICY_SHAM | -0.004 | -0.050 | +0.012 |
+| audit_5805_lltf_confirm3 | 245 | POLICY_SHAM | -0.006 | +0.010 | +0.019 |
+| audit_5805_lltf_confirm3 | 241 | LLTF_MASK_10 | -0.011 | -0.034 | +0.013 |
+| audit_5805_lltf_confirm3 | 243 | LLTF_MASK_10 | -0.044 | -0.069 | +0.011 |
+| audit_5805_lltf_confirm3 | 242 | LLTF_MASK_00 | +0.001 | +0.025 | +0.053 |
+| audit_5805_lltf_confirm3 | 244 | LLTF_MASK_00 | -0.014 | -0.022 | +0.032 |
+| audit_5865_lltf_confirm4 | 240 | POLICY_SHAM | +0.004 | +0.001 | -0.037 |
+| audit_5865_lltf_confirm4 | 245 | POLICY_SHAM | +0.009 | -0.011 | +0.002 |
+| audit_5865_lltf_confirm4 | 241 | LLTF_MASK_10 | -0.015 | +0.060 | -0.028 |
+| audit_5865_lltf_confirm4 | 243 | LLTF_MASK_10 | -0.017 | -0.038 | +0.014 |
+| audit_5865_lltf_confirm4 | 242 | LLTF_MASK_00 | -0.006 | +0.005 | +0.038 |
+| audit_5865_lltf_confirm4 | 244 | LLTF_MASK_00 | +0.001 | -0.033 | +0.001 |
+
+At5805 MHz the order-controlled LLTF00 executions give +0.001/-0.014 dB, pooled -0.006 dB. The shams give -0.004/-0.006 dB and the unchanged LLTF10 executions -0.011/-0.044 dB. The earlier small LLTF00 reduction is not confirmed independently of order/measurement variation. No extra gain is assigned or enabled in production.
+
+The5865-MHz confirmation gives LLTF00 -0.002 dB, versus sham +0.006 and unchanged LLTF10 -0.016 dB; all entries have no quality flags. Its first attempt produced no captures because no gain passed every qualification window. Exact outer restoration succeeded. The successful retry first let the ordinary DC servo settle for15s each at transient G78/G72, restored AUTO, and qualified G76 with the original criteria. The preparation manifest and log hashes are retained in its context note. Taken together, the order controls do not establish the earlier0.04 dB clue.
 
 ## Adjacent LO-capacitor codes
 
@@ -225,12 +247,14 @@ Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to 0x9f/0x7f. The 
 | audit_5805_bias_adc1 | cf / 7f |
 | audit_5805_lltf_big1 | cf / 7f |
 | audit_5805_lltf_big2 | cf / 7f |
+| audit_5805_lltf_confirm3 | cf / 7f |
 | audit_5805_locap1 | cf / 7f |
 | audit_5805_locap2 | cf / 7f |
 | audit_5805_policy1 | cf / 7f |
 | audit_5865_bias_adc1 | cf / 7f |
 | audit_5865_lltf_big1 | cf / 7f |
 | audit_5865_lltf_big2 | cf / 7f |
+| audit_5865_lltf_confirm4 | cf / 7f |
 | audit_5865_locap1 | cf / 7f |
 | audit_5865_locap2 | cf / 7f |
 | audit_5865_policy1 | cf / 7f |
@@ -255,14 +279,15 @@ Controls are selected from explicit shams, unchanged gain-row profiles, identica
 | 16 | 24 | -0.019 | 0.038 | 0.099 |
 | 32 | 7 | +0.006 | 0.006 | 0.044 |
 | 64 | 14 | +0.003 | 0.015 | 0.033 |
-| 128 | 2 | +0.012 | 0.012 | 0.022 |
+| 128 | 6 | -0.002 | 0.011 | 0.026 |
 
-57 complete controls were classified; 10 have quality flags and are retained separately.
+61 complete controls were classified; 10 have quality flags and are retained separately.
 A small favourable point estimate must repeat against these controls; adding selected negative fluctuations does not establish an extra combined gain. The actual joint comparisons remain the relevant noise-only evidence.
 
 ## Archived evidence
 
-- 6591 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
+- 3 attempts without a derived measurement are separately retained with immutable log/manifest hashes and restoration markers. They are not negative or successful PHY measurements.
+- 7359 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
 - [Full raw/PSD replay verification](../research/data/phy_audit_2026-10-24_verification.json). Its aggregate SHA-256 identifies the exact summary checked; compare it before treating a later archive as verified.
