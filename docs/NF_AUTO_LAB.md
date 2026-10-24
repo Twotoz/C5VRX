@@ -297,3 +297,23 @@ a needlessly low gain. New headers include `screen_dc=calibrated`. The
 zero-rail/four-window/six-sigma criteria are unchanged. Gain stays fixed
 through every ABBA profile; this qualification change is not a claimed
 receiver sensitivity improvement.
+
+## Raw/derived archive verification
+
+After compiling the dated report, the read-only verifier checks every
+archived raw IQ file against its byte count, SHA-256 and FNV metadata,
+cross-checks CSV identity/frequency, recomputes DC/variance/kurtosis/rails
+and profile deltas, and verifies that damaged exports remain incomplete.
+With `--spectra` it also recomputes every contiguous-window Welch PSD and
+effective noise bandwidth and compares the saved arrays and summary.
+Live fixed-MAX witnesses are separately hash/count checked. This tests
+artifact consistency, not independent RF truth or closed-PHY semantics.
+
+```sh
+python tools/compile_phy_audit_report.py
+python tools/verify_phy_lab_archive.py --spectra
+```
+
+The raw input directory remains local/ignored; the PR includes derived
+statistics, raw hashes, source/image provenance and the verifier. A
+verification report's aggregate hash identifies the exact summary checked.

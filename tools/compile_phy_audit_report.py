@@ -332,6 +332,15 @@ def main():
         'Host acquisition now checks actual suite/capture frequency after '
         'the request as well, drains through outer restoration, and rejects '
         'a mismatch instead of silently accepting the early status.','',
+        'LLTF00 at5805 MHz gives -0.064/-0.026/-0.040 dB across the '
+        'initial and two larger runs, versus corresponding unchanged '
+        'LLTF10 controls +0.042/+0.026/+0.023 dB. At5865 MHz LLTF00 '
+        'gives -0.039/+0.036/+0.004 dB. The small 5805-specific clue '
+        'therefore remains unconfirmed: LLTF00 occurs early in each '
+        'batch, so a counterbalanced order with front/end shams is still '
+        'needed. It is not promoted or counted as a new noise/sensitivity '
+        'gain. Complete results, including opposite-sign repeats and '
+        'quality flags, are retained.','',
         '## Adjacent LO-capacitor codes','',
         'Only block0x63/host1/reg21[4:0] changes; upper bits, bias, '
         'crystal/VCO codes, ADC selection, 11p, fixed gain and held DC pair '
@@ -434,6 +443,7 @@ def main():
         f"- {len(captures)} valid audit IQ captures plus {sum(len(r['capture_statistics']) for r in live)} live fixed-MAX witnesses; all rejected transports are separately recorded.",
         '- [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).',
         '- [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).',
+        '- [Full raw/PSD replay verification](../research/data/phy_audit_2026-10-24_verification.json). Its aggregate SHA-256 identifies the exact summary checked; compare it before treating a later archive as verified.',
         '- [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.',
         '- Raw IQ/logs, per-run PSD arrays/plots, firmware provenance and build logs remain local under `research/data/nf_phy_2026-10-24/`; raw-log and manifest hashes are in the summary.',
         '- NBW normalization, kurtosis/rails/drift flags and transport checks are exactly as described in [NF_AUTO_LAB.md](NF_AUTO_LAB.md). No calibrated antenna noise temperature, input carrier power, video SINAD or usable attenuation was measured.',

@@ -241,3 +241,26 @@ ABBA suite would violate its fixed-state/calibration ownership guarantees.
 No periodic-tracking noise or range benefit is claimed, and the disabled
 production setting is retained. A coordinated boot/maintenance experiment
 would first need validated gain-table/DC/IQ provenance and epoch handling.
+
+The [configuration/link audit](../research/data/esp_phy_config_audit_2026-10-24.json)
+records the actual generated macros, exact pinned SDK source hashes and
+RF-test archive/map observations. A null macro value means undefined in
+this configuration, not a guessed hardware capability.
+
+## Remaining auxiliary-helper triage
+
+Additional disassembly of previously unclassified names gives:
+
+| Helper | Observed body / next boundary |
+|---|---|
+| `phy_current_level_set` | Stores one byte to phy_param[41]; no immediate hardware write. Meaningful consumers must be traced before treating it as a live bias knob. |
+| `phy_rx_loop_cap_set` | Reads frequency-dependent channel caps and calls phy_txcap_setting. This is not the isolated LO-buffer cap field already measured; complete coupled semantics remain to be established. |
+| `phy_pwdet_always_en`, `phy_pwdet_onetime_en` | Both are single ret stubs in the exact archive; no always-on noise source can be switched by these APIs. |
+| `phy_en_pwdet` | Clears bits3:1 at0x600a0808. A reversible saved-mask probe is possible; the name does not establish polarity or a receive-noise benefit. Not measured yet. |
+| `phy_hemu_ru26_good_res` | Sets bit24 and clears bit25 at0x600a7890. Another bounded packet-policy probe is possible; not measured yet. |
+| `phy_rxevm_en` | Owns fields at0x600a7a38/7a34 and calls a reset routine that pulses7a34[1] and7c50[8]. Diagnostic/reset state is not restored by simply writing the original enable; not called as a noise toggle. |
+| `phy_ulp_ext_code_set` | Couples analog0x61 register state and phy_param[652:653], or accepts an arbitrary caller code in its other branch. Factory-code source, consumers and complete restore need further audit; no guessed code is written. |
+
+The 5805-MHz LLTF clue is prioritized for an independent order-controlled
+confirmation before adding unrelated overrides. This ledger distinguishes
+static findings, feasible future probes and actual board evidence.

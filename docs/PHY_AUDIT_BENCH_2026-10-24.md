@@ -148,6 +148,11 @@ These profiles use a matching calibrated DC hold at the screened fixed gain, 120
 | audit_5805_lltf_big1 | LLTF_MASK_01 | +0.021 | changed bits | NO_FLAGS |
 | audit_5805_lltf_big1 | LLTF_MASK_11 | -0.021 | changed bits | NO_FLAGS |
 | audit_5805_lltf_big1 | POLICY_SHAM | +0.003 | no-op control | NO_FLAGS |
+| audit_5805_lltf_big2 | LLTF_MASK_00 | -0.040 | changed bits | NO_FLAGS |
+| audit_5805_lltf_big2 | LLTF_MASK_10 | +0.023 | no-op control | NO_FLAGS |
+| audit_5805_lltf_big2 | LLTF_MASK_01 | +0.010 | changed bits | NO_FLAGS |
+| audit_5805_lltf_big2 | LLTF_MASK_11 | -0.003 | changed bits | NO_FLAGS |
+| audit_5805_lltf_big2 | POLICY_SHAM | -0.020 | no-op control | NO_FLAGS |
 | audit_5805_policy1 | LLTF_MASK_00 | -0.064 | changed bits | NO_FLAGS |
 | audit_5805_policy1 | LLTF_MASK_10 | +0.042 | no-op control | NO_FLAGS |
 | audit_5805_policy1 | LLTF_MASK_01 | +0.043 | changed bits | NO_FLAGS |
@@ -164,6 +169,11 @@ These profiles use a matching calibrated DC hold at the screened fixed gain, 120
 | audit_5865_lltf_big1 | LLTF_MASK_01 | +0.013 | changed bits | NO_FLAGS |
 | audit_5865_lltf_big1 | LLTF_MASK_11 | -0.054 | changed bits | NO_FLAGS |
 | audit_5865_lltf_big1 | POLICY_SHAM | +0.043 | no-op control | NO_FLAGS |
+| audit_5865_lltf_big2 | LLTF_MASK_00 | +0.004 | changed bits | NO_FLAGS |
+| audit_5865_lltf_big2 | LLTF_MASK_10 | +0.002 | no-op control | NO_FLAGS |
+| audit_5865_lltf_big2 | LLTF_MASK_01 | +0.026 | changed bits | NO_FLAGS |
+| audit_5865_lltf_big2 | LLTF_MASK_11 | -0.003 | changed bits | NO_FLAGS |
+| audit_5865_lltf_big2 | POLICY_SHAM | -0.028 | no-op control | NO_FLAGS |
 | audit_5865_policy1 | LLTF_MASK_00 | -0.039 | changed bits | NO_FLAGS |
 | audit_5865_policy1 | LLTF_MASK_10 | +0.031 | no-op control | NO_FLAGS |
 | audit_5865_policy1 | LLTF_MASK_01 | -0.032 | changed bits | NO_FLAGS |
@@ -178,6 +188,8 @@ These profiles use a matching calibrated DC hold at the screened fixed gain, 120
 
 The first policy request saw 5865 MHz in early boot status, but saved-channel restore completed before the queued suite started at 5805 MHz. The immutable header and captures identify 5805; the folder was corrected to audit_5805_policy1 and a context note retained. The 5865 run was then deliberately retuned and repeated. Host acquisition now checks actual suite/capture frequency after the request as well, drains through outer restoration, and rejects a mismatch instead of silently accepting the early status.
 
+LLTF00 at5805 MHz gives -0.064/-0.026/-0.040 dB across the initial and two larger runs, versus corresponding unchanged LLTF10 controls +0.042/+0.026/+0.023 dB. At5865 MHz LLTF00 gives -0.039/+0.036/+0.004 dB. The small 5805-specific clue therefore remains unconfirmed: LLTF00 occurs early in each batch, so a counterbalanced order with front/end shams is still needed. It is not promoted or counted as a new noise/sensitivity gain. Complete results, including opposite-sign repeats and quality flags, are retained.
+
 ## Adjacent LO-capacitor codes
 
 Only block0x63/host1/reg21[4:0] changes; upper bits, bias, crystal/VCO codes, ADC selection, 11p, fixed gain and held DC pair are retained. The incoming code is a sham and adjacent codes stay inside the vendor helper interval10..31. Sixteen snapshots per ABBA stage are independently verified and the original owned field is restored before resume.
@@ -187,8 +199,13 @@ Only block0x63/host1/reg21[4:0] changes; upper bits, bias, crystal/VCO codes, AD
 | audit_5805_locap1 | 12 / 12 | -0.014 | +0.015 | NO_FLAGS |
 | audit_5805_locap1 | 12 / 11 | +0.014 | -0.032 | NO_FLAGS |
 | audit_5805_locap1 | 12 / 13 | +0.007 | +0.040 | NO_FLAGS |
+| audit_5805_locap2 | 12 / 12 | +0.004 | -0.024 | NO_FLAGS |
+| audit_5805_locap2 | 12 / 11 | +0.045 | +0.012 | NO_FLAGS |
+| audit_5805_locap2 | 12 / 13 | +0.012 | +0.014 | NO_FLAGS |
 | audit_5865_locap1 | 10 / 10 | +0.017 | -0.001 | NO_FLAGS |
 | audit_5865_locap1 | 10 / 11 | -0.013 | -0.013 | NO_FLAGS |
+| audit_5865_locap2 | 10 / 10 | +0.015 | -0.013 | NO_FLAGS |
+| audit_5865_locap2 | 10 / 11 | +0.009 | -0.017 | NO_FLAGS |
 
 The measured stock codes match the formula:10 at5865 MHz and12 at5805 MHz. Code9 at5865 is skipped as outside the vendor interval. Candidate deltas -0.013/+0.014/+0.007 dB are comparable to shams +0.017/-0.014 dB. There is no established additional noise improvement or reason to override the stock cap formula. No RF conversion-gain, PLL phase-noise or usable-video result is claimed.
 
@@ -200,11 +217,15 @@ Pinned phy_bias_reg_set initializes block0x6a/host1 reg0/reg1 to 0x9f/0x7f. The 
 |---|---|
 | audit_5805_bias_adc1 | cf / 7f |
 | audit_5805_lltf_big1 | cf / 7f |
+| audit_5805_lltf_big2 | cf / 7f |
 | audit_5805_locap1 | cf / 7f |
+| audit_5805_locap2 | cf / 7f |
 | audit_5805_policy1 | cf / 7f |
 | audit_5865_bias_adc1 | cf / 7f |
 | audit_5865_lltf_big1 | cf / 7f |
+| audit_5865_lltf_big2 | cf / 7f |
 | audit_5865_locap1 | cf / 7f |
+| audit_5865_locap2 | cf / 7f |
 | audit_5865_policy1 | cf / 7f |
 
 ## Live fixed-MAX witnesses
@@ -226,17 +247,18 @@ Controls are selected from explicit shams, unchanged gain-row profiles, identica
 |---|---:|---:|---:|---:|
 | 16 | 24 | -0.019 | 0.038 | 0.099 |
 | 32 | 9 | +0.006 | 0.008 | 0.049 |
-| 64 | 8 | +0.007 | 0.013 | 0.037 |
+| 64 | 14 | +0.003 | 0.015 | 0.033 |
 | 128 | 2 | +0.012 | 0.012 | 0.022 |
 
-51 complete controls were classified; 8 have quality flags and are retained separately.
+57 complete controls were classified; 8 have quality flags and are retained separately.
 A small favourable point estimate must repeat against these controls; adding selected negative fluctuations does not establish an extra combined gain. The actual joint comparisons remain the relevant noise-only evidence.
 
 ## Archived evidence
 
-- 5631 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
+- 6591 valid audit IQ captures plus 64 live fixed-MAX witnesses; all rejected transports are separately recorded.
 - [All run/profile results, quality and provenance](../research/data/phy_audit_2026-10-24_summary.json).
 - [Derived capture statistics and raw SHA-256 hashes](../research/data/phy_audit_2026-10-24_captures.csv.gz).
+- [Full raw/PSD replay verification](../research/data/phy_audit_2026-10-24_verification.json). Its aggregate SHA-256 identifies the exact summary checked; compare it before treating a later archive as verified.
 - [All 503 pinned-library code symbols with name-based triage](../research/data/esp_phy_inventory_2026-10-24.json). A name category or linked definition is not functional or runtime evidence.
 - Raw IQ/logs, per-run PSD arrays/plots, firmware provenance and build logs remain local under `research/data/nf_phy_2026-10-24/`; raw-log and manifest hashes are in the summary.
 - NBW normalization, kurtosis/rails/drift flags and transport checks are exactly as described in [NF_AUTO_LAB.md](NF_AUTO_LAB.md). No calibrated antenna noise temperature, input carrier power, video SINAD or usable attenuation was measured.

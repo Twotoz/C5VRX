@@ -159,6 +159,18 @@
       }
     },
     {
+      "label": "d69a882-screen2",
+      "baseline": "11p upstream f53bcdf",
+      "app_sha256": "520785e7892272450d51e00c99e26269c7a6d179fd924a32e5ade0f824626c15",
+      "source_sha256": {
+        "main/calibration.c": "a75b9479666c27fc9500e25ee920f65546b7ce9c2e958c1692f4e9f133cc0d50",
+        "main/console.c": "b7765dd5b7279fa4c7644a7b0f0f34bcc10632d2c618fc13d0aa84e43e3b440b",
+        "main/receiver.h": "d1155be7f3f7f2e254966fc1cfca2600fa96ffca9954710965884238ccc1bcee",
+        "main/phy_noise_lab.c": "f013712f1ed870a6b5f8bdcb93fb5d4998bfbe9ed833168b081ba18ee4a39a4e",
+        "main/phy_noise_lab.h": "0e842c0ee4832a29b488f8f39115bb0e0f525b808faa815267e141bdaf302b19"
+      }
+    },
+    {
       "base_pr_head": "eed163246ba9671c0da8f8c8037635957cb1ac36",
       "application_sha256": "f2385c38d734c442dbb8ef2aa2f8888bbba8b664c3811cbea9c8b54374a3c08e",
       "phy_sha256": "dbf33c418c8d408d4005c849d12a1432deea82e2e5e57de3c8ddf914d104fffb",
@@ -173,7 +185,7 @@
       }
     }
   ],
-  "total_valid_captures": 5631,
+  "total_valid_captures": 6591,
   "runs": [
     {
       "name": "audit_5745_clock_extra_short",
@@ -2879,6 +2891,687 @@
       }
     },
     {
+      "name": "audit_5805_lltf_big2",
+      "context": {
+        "fw": "5.0.0-dev+d69a882-scre",
+        "freq": "5805",
+        "gain": "75",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "11",
+        "windows_per_stage": "16",
+        "screen_dc": "calibrated",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "LLTF_MASK_00",
+          "status": "PASS",
+          "stock_m2": 1.2138615221181612,
+          "test_m2": 1.2026625401968807,
+          "delta_db": -0.04025361010597456,
+          "stock_drift_db": 0.03550695047660954,
+          "test_repeat_db": -0.01753832988159867,
+          "median_delta_db": -0.03091500195836567,
+          "stock_nbw_mhz": 14.831448443324076,
+          "test_nbw_mhz": 14.710412964864464,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0751292118444753,
+          "min_kurtosis": 1.9132820211024377,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LLTF_MASK_10",
+          "status": "PASS",
+          "stock_m2": 1.2014825749223643,
+          "test_m2": 1.2079457586234144,
+          "delta_db": 0.023299566210902296,
+          "stock_drift_db": 0.03472390245075394,
+          "test_repeat_db": 0.03403191370615627,
+          "median_delta_db": 0.01576984299501117,
+          "stock_nbw_mhz": 14.779342393060674,
+          "test_nbw_mhz": 14.881420737803278,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.044465416610076,
+          "min_kurtosis": 1.904381886392525,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LLTF_MASK_01",
+          "status": "PASS",
+          "stock_m2": 1.1986310963405744,
+          "test_m2": 1.201444028685329,
+          "delta_db": 0.010180027632602888,
+          "stock_drift_db": -0.011496947765320776,
+          "test_repeat_db": 0.02416212536984338,
+          "median_delta_db": 0.01966058438124478,
+          "stock_nbw_mhz": 14.857838919342552,
+          "test_nbw_mhz": 14.877447505859385,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0289361296888653,
+          "min_kurtosis": 1.9131056537171043,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LLTF_MASK_11",
+          "status": "PASS",
+          "stock_m2": 1.199759064238231,
+          "test_m2": 1.1989889450191649,
+          "delta_db": -0.0027886092032056494,
+          "stock_drift_db": 0.017741070992010083,
+          "test_repeat_db": 0.05289641855781531,
+          "median_delta_db": 0.01855369839905519,
+          "stock_nbw_mhz": 14.710482179388464,
+          "test_nbw_mhz": 14.791557033570115,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0552428589919582,
+          "min_kurtosis": 1.929085294159226,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "POLICY_SHAM",
+          "status": "PASS",
+          "stock_m2": 1.2111672530342403,
+          "test_m2": 1.20553484027843,
+          "delta_db": -0.020243539453022596,
+          "stock_drift_db": -0.00500377593585794,
+          "test_repeat_db": 0.03810921070750533,
+          "median_delta_db": -0.02644311379067055,
+          "stock_nbw_mhz": 14.928641540367323,
+          "test_nbw_mhz": 14.779867147122404,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0281735618291283,
+          "min_kurtosis": 1.9164782485025236,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 320,
+      "rejected_captures": [],
+      "raw_log_sha256": "d5663fd4f04d1be9db93902b4658ad34192dafab76ba518f8a1ab48a6c4ace69",
+      "manifest_sha256": "d66550fadd01978e02eb023a2fd01c581d4dd16242355d399962d53da8d89796",
+      "dc_selected": [],
+      "retransmissions": [],
+      "bias_readbacks": [
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        }
+      ],
+      "lo_cap_targets": [],
+      "lo_cap_readbacks": [
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        }
+      ],
+      "baseline_registers": {
+        "600a7018": "51e1500c",
+        "600a7c44": "00000001",
+        "600a7c50": "00000000",
+        "600a7ce4": "000100b0",
+        "600a7030": "e3c5a6d5",
+        "600a7048": "ff7dc0f3",
+        "600a71c4": "01450340",
+        "600a7904": "0a20916e",
+        "600a7074": "3201e081",
+        "600a0438": "fcfc0000",
+        "600a0c0c": "00007d01",
+        "600a043c": "00000000",
+        "600a0430": "0003ffff",
+        "600a0448": "16100000",
+        "600a7c14": "6d804000",
+        "600a7c18": "00412cca",
+        "600a7c1c": "00000000",
+        "600a7c20": "00000000",
+        "600a7810": "05000000",
+        "600a7814": "05000000",
+        "600a7818": "55688000",
+        "600a781c": "e5b22200",
+        "600a7820": "0d200000",
+        "600a7824": "55440000",
+        "600a7828": "9d8d0000",
+        "600a782c": "e5b1a200",
+        "600a7830": "95480000",
+        "600a0c38": "f3c10080",
+        "600a4c5c": "00000000",
+        "600a7800": "0f07a2d8",
+        "600a7044": "fe3fe1fe",
+        "600a7124": "b2208553",
+        "600a8004": "013c9190",
+        "600a7104": "06acc7bc",
+        "600a71d8": "078bcde2",
+        "600a7010": "0652013b",
+        "600a7014": "ff50427b",
+        "600a7108": "78185b0d",
+        "600a0890": "40800050",
+        "600a9c18": "10003802",
+        "600a790c": "0000251c",
+        "600a70f4": "f9b2e191",
+        "600a8060": "2612b054",
+        "600a807c": "2612b054"
+      },
+      "adc_baseline": {
+        "id": "224",
+        "stage": "STOCK",
+        "block": "66",
+        "host": "0",
+        "reg": "4",
+        "value": "27",
+        "selector_bits": "0"
+      },
+      "policy_baseline_registers": {
+        "600a790c": "0000251c",
+        "600a70f4": "f9b2e191",
+        "600a7ce4": "000100b0",
+        "600a8060": "2612b054",
+        "600a807c": "2612b054"
+      },
+      "context_note": null,
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T18:07:02.152238+00:00",
+        "ended_utc": "2026-10-24T18:08:42.193079+00:00",
+        "requested_frequency": 5805,
+        "key": "[",
+        "context_errors": []
+      }
+    },
+    {
       "name": "audit_5805_locap1",
       "context": {
         "fw": "5.0.0-dev+b253aa5-loca",
@@ -3360,6 +4053,471 @@
         "port": "COM10",
         "started_utc": "2026-10-24T17:48:32.414097+00:00",
         "ended_utc": "2026-10-24T17:49:35.429495+00:00",
+        "requested_frequency": 5805,
+        "key": ")",
+        "context_errors": []
+      }
+    },
+    {
+      "name": "audit_5805_locap2",
+      "context": {
+        "fw": "5.0.0-dev+d69a882-scre",
+        "freq": "5805",
+        "gain": "76",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "10",
+        "windows_per_stage": "16",
+        "screen_dc": "calibrated",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "LO_CAP_CODE_12",
+          "status": "PASS",
+          "stock_m2": 1.46339168729622,
+          "test_m2": 1.4647454220840208,
+          "delta_db": 0.00401565615425627,
+          "stock_drift_db": -0.02433779275294709,
+          "test_repeat_db": 0.017524643400621157,
+          "median_delta_db": 0.013336887536873463,
+          "stock_nbw_mhz": 14.270715265508558,
+          "test_nbw_mhz": 14.72081748598062,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0456594628890814,
+          "min_kurtosis": 1.9069596314222164,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LO_CAP_CODE_11",
+          "status": "PASS",
+          "stock_m2": 1.4548514127051213,
+          "test_m2": 1.470136784469431,
+          "delta_db": 0.045391041557875406,
+          "stock_drift_db": 0.011691418105162076,
+          "test_repeat_db": -0.04017241808170053,
+          "median_delta_db": 0.06678876941384393,
+          "stock_nbw_mhz": 14.416918497766362,
+          "test_nbw_mhz": 14.561897842915295,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0334528975899113,
+          "min_kurtosis": 1.9074563338878021,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LO_CAP_CODE_13",
+          "status": "PASS",
+          "stock_m2": 1.4561181348498198,
+          "test_m2": 1.460223085234532,
+          "delta_db": 0.012225993759943368,
+          "stock_drift_db": 0.014221261599112188,
+          "test_repeat_db": -0.02223375882911027,
+          "median_delta_db": 0.024422991577705708,
+          "stock_nbw_mhz": 14.475075107613257,
+          "test_nbw_mhz": 14.403915465741886,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.031188379650928,
+          "min_kurtosis": 1.9221866980540387,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 192,
+      "rejected_captures": [],
+      "raw_log_sha256": "35c71aa4da9683decb83156595dfcfa93de1e39181ddcc7b011dfa163159b004",
+      "manifest_sha256": "315feb00a8ee5acf6e6aec836f95f9e05695dd29da08b8f7b4cdf2697ecf3a1e",
+      "dc_selected": [],
+      "retransmissions": [],
+      "bias_readbacks": [
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "209",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "209",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "209",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "209",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "209",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "209",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "209",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "209",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        }
+      ],
+      "lo_cap_targets": [
+        {
+          "id": "208",
+          "saved": "12",
+          "target": "12",
+          "mask": "1f",
+          "persistent": "0"
+        },
+        {
+          "id": "209",
+          "saved": "12",
+          "target": "11",
+          "mask": "1f",
+          "persistent": "0"
+        },
+        {
+          "id": "210",
+          "saved": "12",
+          "target": "13",
+          "mask": "1f",
+          "persistent": "0"
+        }
+      ],
+      "lo_cap_readbacks": [
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "209",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "209",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8b"
+        },
+        {
+          "id": "209",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8b"
+        },
+        {
+          "id": "209",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8d"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8d"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8c"
+        }
+      ],
+      "baseline_registers": {
+        "600a7018": "51e1500c",
+        "600a7c44": "00000001",
+        "600a7c50": "00000000",
+        "600a7ce4": "000100b0",
+        "600a7030": "e3c5a6d5",
+        "600a7048": "ff7dc0f3",
+        "600a71c4": "01450340",
+        "600a7904": "0a20916e",
+        "600a7074": "3201e081",
+        "600a0438": "fcfc0000",
+        "600a0c0c": "00007d01",
+        "600a043c": "00000000",
+        "600a0430": "0003ffff",
+        "600a0448": "16100000",
+        "600a7c14": "6d804000",
+        "600a7c18": "00412cca",
+        "600a7c1c": "00000000",
+        "600a7c20": "00000000",
+        "600a7810": "05000000",
+        "600a7814": "05000000",
+        "600a7818": "55688000",
+        "600a781c": "e5b22200",
+        "600a7820": "0d200000",
+        "600a7824": "55440000",
+        "600a7828": "9d8d0000",
+        "600a782c": "e5b1a200",
+        "600a7830": "95480000",
+        "600a0c38": "f3c10080",
+        "600a4c5c": "00000000",
+        "600a7800": "0f07a2d8",
+        "600a7044": "fe3fe1fe",
+        "600a7124": "b2208553",
+        "600a8004": "013c9190",
+        "600a7104": "06acc7bc",
+        "600a71d8": "078bcde2",
+        "600a7010": "0652013b",
+        "600a7014": "ff50427b",
+        "600a7108": "78185b0d",
+        "600a0890": "40800050",
+        "600a9c18": "10003802",
+        "600a790c": "0000251c",
+        "600a70f4": "f9b2e191",
+        "600a8060": "2612b054",
+        "600a807c": "2612b054"
+      },
+      "adc_baseline": {
+        "id": "208",
+        "stage": "STOCK",
+        "block": "66",
+        "host": "0",
+        "reg": "4",
+        "value": "27",
+        "selector_bits": "0"
+      },
+      "policy_baseline_registers": {},
+      "context_note": null,
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T18:05:44.991206+00:00",
+        "ended_utc": "2026-10-24T18:06:47.021594+00:00",
         "requested_frequency": 5805,
         "key": ")",
         "context_errors": []
@@ -7882,6 +9040,687 @@
       }
     },
     {
+      "name": "audit_5865_lltf_big2",
+      "context": {
+        "fw": "5.0.0-dev+d69a882-scre",
+        "freq": "5865",
+        "gain": "74",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "11",
+        "windows_per_stage": "16",
+        "screen_dc": "calibrated",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "LLTF_MASK_00",
+          "status": "PASS",
+          "stock_m2": 0.9550710876340455,
+          "test_m2": 0.9560195639728607,
+          "delta_db": 0.004310816691373544,
+          "stock_drift_db": 0.01577323814253153,
+          "test_repeat_db": 0.02100899698083756,
+          "median_delta_db": 0.00984458270483822,
+          "stock_nbw_mhz": 15.609349347385242,
+          "test_nbw_mhz": 15.59095804025001,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0607086811391704,
+          "min_kurtosis": 1.9492656434466493,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LLTF_MASK_10",
+          "status": "PASS",
+          "stock_m2": 0.9525100580721002,
+          "test_m2": 0.9530387136774499,
+          "delta_db": 0.0024097228213179104,
+          "stock_drift_db": -0.007097646185778368,
+          "test_repeat_db": 0.010253565379498493,
+          "median_delta_db": 0.0071331973473311725,
+          "stock_nbw_mhz": 15.58066711726945,
+          "test_nbw_mhz": 15.413406389196105,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.046077534957984,
+          "min_kurtosis": 1.941774845145819,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LLTF_MASK_01",
+          "status": "PASS",
+          "stock_m2": 0.9514568308421331,
+          "test_m2": 0.9570845451099572,
+          "delta_db": 0.025612149327329005,
+          "stock_drift_db": -0.03342793334439131,
+          "test_repeat_db": 0.05843297788298328,
+          "median_delta_db": 0.0070596230149078025,
+          "stock_nbw_mhz": 15.538558581884743,
+          "test_nbw_mhz": 15.611111897968506,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.05422507447034,
+          "min_kurtosis": 1.9422267757723655,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LLTF_MASK_11",
+          "status": "PASS",
+          "stock_m2": 0.9579824650657984,
+          "test_m2": 0.9573870457398388,
+          "delta_db": -0.0027001300224696965,
+          "stock_drift_db": 0.006851296596172908,
+          "test_repeat_db": -0.023307207924942203,
+          "median_delta_db": -0.0015416636992526408,
+          "stock_nbw_mhz": 15.348238157077397,
+          "test_nbw_mhz": 15.532766879993211,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0727013580788585,
+          "min_kurtosis": 1.9322487061516813,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "POLICY_SHAM",
+          "status": "PASS",
+          "stock_m2": 0.9574773326490359,
+          "test_m2": 0.9512955368976431,
+          "delta_db": -0.02813042046398724,
+          "stock_drift_db": 0.006449576154284277,
+          "test_repeat_db": -0.02599722003634168,
+          "median_delta_db": -0.03200341122471867,
+          "stock_nbw_mhz": 15.516114910481466,
+          "test_nbw_mhz": 15.284609795957103,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.051371998380593,
+          "min_kurtosis": 1.9397524431050732,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 320,
+      "rejected_captures": [],
+      "raw_log_sha256": "047c2a6eba7e8abb61330558019ba29d780b6ecd7de4f2ef2745c6632ad0e8ac",
+      "manifest_sha256": "46021fc8121b62dc31fb5146cd0ab97afb9dd27fd0613ddf0472f89134566f80",
+      "dc_selected": [],
+      "retransmissions": [],
+      "bias_readbacks": [
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        }
+      ],
+      "lo_cap_targets": [],
+      "lo_cap_readbacks": [
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "224",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "224",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "225",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "225",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "226",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "226",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "227",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "227",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "228",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "228",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        }
+      ],
+      "baseline_registers": {
+        "600a7018": "51e1500c",
+        "600a7c44": "00000001",
+        "600a7c50": "00000000",
+        "600a7ce4": "000100b0",
+        "600a7030": "e3c5a6d5",
+        "600a7048": "ff7dc0f3",
+        "600a71c4": "01450340",
+        "600a7904": "0a20916e",
+        "600a7074": "3201e081",
+        "600a0438": "fcfc0000",
+        "600a0c0c": "00007d01",
+        "600a043c": "00000000",
+        "600a0430": "0003ffff",
+        "600a0448": "16100003",
+        "600a7c14": "6d804000",
+        "600a7c18": "00412cca",
+        "600a7c1c": "00000000",
+        "600a7c20": "00000000",
+        "600a7810": "05000000",
+        "600a7814": "05000000",
+        "600a7818": "55688000",
+        "600a781c": "e5b22200",
+        "600a7820": "0d200000",
+        "600a7824": "55440000",
+        "600a7828": "9d8d0000",
+        "600a782c": "e5b1a200",
+        "600a7830": "95480000",
+        "600a0c38": "f3c10080",
+        "600a4c5c": "00000000",
+        "600a7800": "0f07a2d8",
+        "600a7044": "fe3fe1fe",
+        "600a7124": "b2208553",
+        "600a8004": "013c9190",
+        "600a7104": "06acc7bc",
+        "600a71d8": "078bcde2",
+        "600a7010": "0652013b",
+        "600a7014": "ff50427b",
+        "600a7108": "78185b0d",
+        "600a0890": "40800050",
+        "600a9c18": "10003802",
+        "600a790c": "0000251c",
+        "600a70f4": "f9b2e191",
+        "600a8060": "2612b054",
+        "600a807c": "2612b054"
+      },
+      "adc_baseline": {
+        "id": "224",
+        "stage": "STOCK",
+        "block": "66",
+        "host": "0",
+        "reg": "4",
+        "value": "23",
+        "selector_bits": "3"
+      },
+      "policy_baseline_registers": {
+        "600a790c": "0000251c",
+        "600a70f4": "f9b2e191",
+        "600a7ce4": "000100b0",
+        "600a8060": "2612b054",
+        "600a807c": "2612b054"
+      },
+      "context_note": null,
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T18:03:33.637096+00:00",
+        "ended_utc": "2026-10-24T18:05:14.512249+00:00",
+        "requested_frequency": 5865,
+        "key": "[",
+        "context_errors": []
+      }
+    },
+    {
       "name": "audit_5865_locap1",
       "context": {
         "fw": "5.0.0-dev+b253aa5-loca",
@@ -8217,6 +10056,348 @@
         "port": "COM10",
         "started_utc": "2026-10-24T17:45:26.080171+00:00",
         "ended_utc": "2026-10-24T17:46:09.115747+00:00",
+        "requested_frequency": 5865,
+        "key": ")",
+        "context_errors": []
+      }
+    },
+    {
+      "name": "audit_5865_locap2",
+      "context": {
+        "fw": "5.0.0-dev+d69a882-scre",
+        "freq": "5865",
+        "gain": "73",
+        "lane": "2",
+        "dfilt": "0",
+        "dwell_ms": "1200",
+        "suite": "10",
+        "windows_per_stage": "16",
+        "screen_dc": "calibrated",
+        "format": "Ihigh_Qlow",
+        "persistent": "0",
+        "outer_restore": "required"
+      },
+      "summary": [
+        {
+          "profile": "LO_CAP_CODE_10",
+          "status": "PASS",
+          "stock_m2": 0.7956480260852972,
+          "test_m2": 0.7983509388030909,
+          "delta_db": 0.014728506471360299,
+          "stock_drift_db": -0.013304788348616457,
+          "test_repeat_db": 0.008526684520297536,
+          "median_delta_db": 0.017293585401678455,
+          "stock_nbw_mhz": 15.740233638802167,
+          "test_nbw_mhz": 15.755114286653026,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.0697978100159276,
+          "min_kurtosis": 1.8795338939507549,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        },
+        {
+          "profile": "LO_CAP_CODE_11",
+          "status": "PASS",
+          "stock_m2": 0.7961937299574662,
+          "test_m2": 0.7978250403273297,
+          "delta_db": 0.008889096570827605,
+          "stock_drift_db": -0.016741455113371856,
+          "test_repeat_db": 0.01790176174344126,
+          "median_delta_db": 0.0284145326461262,
+          "stock_nbw_mhz": 15.77182635690007,
+          "test_nbw_mhz": 16.065818616310036,
+          "max_signed_rails": 0.0,
+          "max_kurtosis": 2.089535536918722,
+          "min_kurtosis": 1.9011773996341799,
+          "quality_flags": [],
+          "quality": "NO_FLAGS",
+          "carrier_delta_db": null,
+          "input_referred_cn": null,
+          "video_sinad": null
+        }
+      ],
+      "valid_captures": 128,
+      "rejected_captures": [],
+      "raw_log_sha256": "81c20fa9ead3a945262ae9dc70ec36e913a723c3c9a3839aa6d4b1f6241befb0",
+      "manifest_sha256": "6dca4895ee299842c37b569fee4e131909e17fb0bc94a101294f89e464d26e93",
+      "dc_selected": [],
+      "retransmissions": [],
+      "bias_readbacks": [
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "0",
+          "value": "cf"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "6a",
+          "host": "1",
+          "reg": "1",
+          "value": "7f"
+        }
+      ],
+      "lo_cap_targets": [
+        {
+          "id": "208",
+          "saved": "10",
+          "target": "10",
+          "mask": "1f",
+          "persistent": "0"
+        },
+        {
+          "id": "210",
+          "saved": "10",
+          "target": "11",
+          "mask": "1f",
+          "persistent": "0"
+        }
+      ],
+      "lo_cap_readbacks": [
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "208",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "208",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8b"
+        },
+        {
+          "id": "210",
+          "stage": "TEST",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8b"
+        },
+        {
+          "id": "210",
+          "stage": "STOCK",
+          "block": "63",
+          "host": "1",
+          "reg": "21",
+          "value": "8a"
+        }
+      ],
+      "baseline_registers": {
+        "600a7018": "51e1500c",
+        "600a7c44": "00000001",
+        "600a7c50": "00000000",
+        "600a7ce4": "000100b0",
+        "600a7030": "e3c5a6d5",
+        "600a7048": "ff7dc0f3",
+        "600a71c4": "01450340",
+        "600a7904": "0a20916e",
+        "600a7074": "3201e081",
+        "600a0438": "fcfc0000",
+        "600a0c0c": "00007d01",
+        "600a043c": "00000000",
+        "600a0430": "0003ffff",
+        "600a0448": "16100003",
+        "600a7c14": "6d804000",
+        "600a7c18": "00412cca",
+        "600a7c1c": "00000000",
+        "600a7c20": "00000000",
+        "600a7810": "05000000",
+        "600a7814": "05000000",
+        "600a7818": "55688000",
+        "600a781c": "e5b22200",
+        "600a7820": "0d200000",
+        "600a7824": "55440000",
+        "600a7828": "9d8d0000",
+        "600a782c": "e5b1a200",
+        "600a7830": "95480000",
+        "600a0c38": "f3c10080",
+        "600a4c5c": "00000000",
+        "600a7800": "0f07a2d8",
+        "600a7044": "fe3fe1fe",
+        "600a7124": "b2208553",
+        "600a8004": "013c9190",
+        "600a7104": "06acc7bc",
+        "600a71d8": "078bcde2",
+        "600a7010": "0652013b",
+        "600a7014": "ff50427b",
+        "600a7108": "78185b0d",
+        "600a0890": "40800050",
+        "600a9c18": "10003802",
+        "600a790c": "0000251c",
+        "600a70f4": "f9b2e191",
+        "600a8060": "2612b054",
+        "600a807c": "2612b054"
+      },
+      "adc_baseline": {
+        "id": "208",
+        "stage": "STOCK",
+        "block": "66",
+        "host": "0",
+        "reg": "4",
+        "value": "23",
+        "selector_bits": "3"
+      },
+      "policy_baseline_registers": {},
+      "context_note": null,
+      "acquisition": {
+        "port": "COM10",
+        "started_utc": "2026-10-24T18:02:39.234246+00:00",
+        "ended_utc": "2026-10-24T18:03:22.482121+00:00",
         "requested_frequency": 5865,
         "key": ")",
         "context_errors": []
@@ -12352,11 +14533,38 @@
         "quality_flags": []
       },
       {
+        "run": "audit_5805_lltf_big2",
+        "profile": "LLTF_MASK_10",
+        "reason": "tested MMIO fields already match baseline",
+        "captures": 64,
+        "delta_db": 0.023299566210902296,
+        "quality": "NO_FLAGS",
+        "quality_flags": []
+      },
+      {
+        "run": "audit_5805_lltf_big2",
+        "profile": "POLICY_SHAM",
+        "reason": "explicit unchanged-state profile",
+        "captures": 64,
+        "delta_db": -0.020243539453022596,
+        "quality": "NO_FLAGS",
+        "quality_flags": []
+      },
+      {
         "run": "audit_5805_locap1",
         "profile": "LO_CAP_CODE_12",
         "reason": "LO-cap target equals entry code",
         "captures": 64,
         "delta_db": -0.014494018230793439,
+        "quality": "NO_FLAGS",
+        "quality_flags": []
+      },
+      {
+        "run": "audit_5805_locap2",
+        "profile": "LO_CAP_CODE_12",
+        "reason": "LO-cap target equals entry code",
+        "captures": 64,
+        "delta_db": 0.00401565615425627,
         "quality": "NO_FLAGS",
         "quality_flags": []
       },
@@ -12590,11 +14798,38 @@
         "quality_flags": []
       },
       {
+        "run": "audit_5865_lltf_big2",
+        "profile": "LLTF_MASK_10",
+        "reason": "tested MMIO fields already match baseline",
+        "captures": 64,
+        "delta_db": 0.0024097228213179104,
+        "quality": "NO_FLAGS",
+        "quality_flags": []
+      },
+      {
+        "run": "audit_5865_lltf_big2",
+        "profile": "POLICY_SHAM",
+        "reason": "explicit unchanged-state profile",
+        "captures": 64,
+        "delta_db": -0.02813042046398724,
+        "quality": "NO_FLAGS",
+        "quality_flags": []
+      },
+      {
         "run": "audit_5865_locap1",
         "profile": "LO_CAP_CODE_10",
         "reason": "LO-cap target equals entry code",
         "captures": 64,
         "delta_db": 0.017390277959964433,
+        "quality": "NO_FLAGS",
+        "quality_flags": []
+      },
+      {
+        "run": "audit_5865_locap2",
+        "profile": "LO_CAP_CODE_10",
+        "reason": "LO-cap target equals entry code",
+        "captures": 64,
+        "delta_db": 0.014728506471360299,
         "quality": "NO_FLAGS",
         "quality_flags": []
       },
@@ -12685,10 +14920,10 @@
       },
       {
         "captures_per_control": 64,
-        "no_flags_controls": 8,
-        "median_delta_db": 0.006917312052537431,
-        "median_absolute_delta_db": 0.013233106881732818,
-        "p95_absolute_delta_db": 0.03696658043051713
+        "no_flags_controls": 14,
+        "median_delta_db": 0.003392154490998826,
+        "median_absolute_delta_db": 0.014611262351076869,
+        "p95_absolute_delta_db": 0.033216431123671536
       },
       {
         "captures_per_control": 128,
