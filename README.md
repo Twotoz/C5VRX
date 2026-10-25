@@ -25,8 +25,9 @@
 
 C5VRX-5 receives analog 5.8 GHz FPV video using the ESP32-C5's own radio
 and outputs composite PAL/NTSC through a passive 6-bit resistor DAC.
-It includes automatic gain control, startup calibration, a sync flywheel,
-an on-screen menu and browser-based flashing and controls.
+It includes automatic gain control, startup calibration, an on-screen menu
+and browser-based flashing and controls. The sync flywheel was removed on
+2026-10-25 (it caused severe desyncs and poor range on the board).
 
 This branch builds and boots **U80P64-R1 only**. U85Q, kp/LP switching and
 `m/K/k/j/P/O/H` controls are retired; see [P64 integration and evidence](docs/P64.md).
@@ -150,10 +151,8 @@ This is **off by default**; standard flasher builds keep the normal behaviour.
 - This is the recovered composite waveform, including the original colour
   burst, rather than decoded pixels. The FPGA must recover sync and decode
   colour. There is no new burst generator or guaranteed downstream colour lock.
-- This build reserves GPIO2 for the clock and keeps **FLYWHEEL OFF**, including
-  when NVS saved ON. FLYWHEEL is hidden from the menu and console enable
-  requests are refused; its normal saved preference is preserved for a later standard build. The observer also
-  refuses GPIO2 without touching it. `T` reports the clock build.
+- This build reserves GPIO2 for the clock. The flywheel has been removed
+  from all builds. `T` reports `SAMPLE_CLOCK` with the enabled state, pin and rate.
 - The clock follows PARLIO TX: menu, startup and DAC-test rasters also appear
   on the bus, and transport stops/restarts may interrupt it. There is no valid
   strobe or packet framing. The external receiver must tolerate these changes.
@@ -212,9 +211,9 @@ Getting the PCB manufactured (via JLCPCB, PCBWay, etc.) is extremely inexpensive
 
 The menu provides **BAND**, **CHANNEL**, **SCAN**, **VIDEO** (AUTO/NTSC/PAL),
 **CALIBRATE**, **OUTPUT** (0.5-5.0x), **GAIN** (AUTO/MAX/fixed),
-**FLYWHEEL**, **DAC TEST** and **EXIT**. It closes after 30 seconds of
+**DAC TEST** and **EXIT**. It closes after 30 seconds of
 inactivity, or five minutes in DAC TEST. Menu transitions can interrupt video.
-GAIN starts in AUTO on every boot. FLYWHEEL defaults ON and remembers a saved OFF.
+GAIN starts in AUTO on every boot.
 
 ## Serial console (USB, 115200)
 
@@ -234,7 +233,7 @@ release BOOT, reset/replug it and reconnect without a reset sequence.
 | `T` / `h` | Status / help |
 | `b` / `c` / `s` | Next band / next channel / scan |
 | `o` / `n` / `x` / `e` | Open menu / next item / select / exit |
-| `v` / `g` / `G` / `U` | Video standard / output level / gain / flywheel |
+| `v` / `g` / `G` | Video standard / output level / gain |
 | `F` / `Z` | Recalibrate / DAC self-test (ground only) |
 | `D` / `R` | Health report / per-second field diagnostics |
 | `I` / `M` / `L` | IQ snapshot / gain map / bench IQ lane test |
@@ -244,9 +243,9 @@ release BOOT, reset/replug it and reconnect without a reset sequence.
 P64 always uses the same fixed program and LUT. Profiles select only the
 analog filter (DEFAULT, NARROW or WIDE); old `kp_auto` and `lp_cn` settings
 are ignored. `A` toggles experimental live profile switching (default on).
-Live OUTPUT, comparator-format and profile changes share a five-second
+Live OUTPUT and profile changes share a five-second
 cooldown and verified halted restart/rollback. Higher OUTPUT levels can clip.
-GAIN always starts AUTO at boot; OUTPUT and FLYWHEEL preferences are saved.
+GAIN always starts AUTO at boot; the OUTPUT preference is saved.
 Check `T` after changing settings. Retired models remain research only.
 
 The browser terminal and flasher use the port one at a time. **Download log**

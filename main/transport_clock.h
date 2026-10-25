@@ -10,15 +10,13 @@
  * Lifecycle: keep this only while an integration uses or evaluates it.
  * If it goes unused and no integrations depend on it, it may be removed;
  * it is not a permanent receiver requirement. Remove the Kconfig option,
- * this API/header, TX clock routing, sample-clock guards in transport and
- * sync_output_probe, conditional menu entries in receiver/menu/control,
- * and its dedicated host/CI checks and documentation together. Restore
- * clk_out_gpio_num=-1 and normal flywheel/menu behaviour; retain the
- * existing flywheel observer's generic occupied-pin protection.
+ * this API/header, TX clock routing/status and its dedicated host/CI
+ * checks and documentation together. Restore clk_out_gpio_num=-1.
+ * The sync flywheel was removed from main; do not restore it.
  * See https://github.com/Twotoz/C5VRX/issues/256 for the integration request.
  */
 #pragma once
 #include <stdbool.h>
 
-/* True even while TX is stopped: observers must never borrow the pad. */
+/* True even while TX is stopped: other features must never borrow the pad. */
 bool transport_sample_clock_enabled(void);

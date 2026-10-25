@@ -7,6 +7,30 @@ scripts and data live in that branch under `v4/docs/PICTURE_CLIFF_STUDY.md`,
 Synthetic results are host simulations; board results are labelled as such.
 Measured range is not established.
 
+## Sync flywheel removed (operator decision, 2026-10-25)
+
+The C5VRX-5 sync flywheel (PR #212, witness fix PR #218, bounded sync-loss
+scheduling 2026-10-18) is removed from the firmware. Operator report on the
+board: with it the picture showed extreme desyncs and range was poor. This
+is an operator observation, not a controlled attenuation A/B; it agrees with
+the earlier board evidence below (flywheel ON rolled the picture, 2026-10-18)
+and with the range study's conclusion that a sync flywheel is not a range
+lever (`research/README.md`).
+
+Removed: the native comparator observer (`sync_output_probe.c`, GPIO2/RMT),
+the shared edge clock and live gate/output (`sync_edge_clock.c`,
+`sync_live_gate.c`, `sync_live_output.c`, GPTimer alarms writing the DAC OE),
+the comparator flag LUT format and GPIO23 clamp in `transport.c`, the
+coasting restart lease, the 2-ms control-task tick (back to the plain
+50-ms tick), the menu FLYWHEEL item and its PHY-release/retry handshake,
+console `U`, `SYNC_LIVE`/`SYNC_FLYWHEEL*` status lines, NVS key `flywheel`
+(now ignored if present), their host tests and `tools/check_sync_output_iram.py`.
+The flight-log V1 wire slots stay so old logs decode: the session byte 44
+and output flag bits 1..7 read 0, and the observer lock percentages 0xff.
+The live path again only recovers the transmitted composite waveform.
+Not changed: the P64 program/LUT, gain, AFC, filters, OUTPUT scaling and the
+verified halted restart/rollback. The flywheel sections below are history.
+
 ## P64 demodulator on mode 0 (PR #250 model, 2026-10-23)
 
 This branch repairs the P64 model from PR #250 on top of the digital-filter
@@ -1614,6 +1638,16 @@ Host regressions cover cached locked/unlocked states and resumption without
 recounting counters. This does not change the output guard or ISR behavior.
 
 
+## PR #254: retained PHY research (2026-10-25)
+
+[The knowledge-only extraction](PR254_PHY_FINDINGS.md) preserves the 11p
+noise-bandwidth measurements, negative PHY tests, corrected live-G83/DC
+interpretation, recovered helper semantics and measurement limits, with frozen
+source links. It imports no experimental firmware or lab tooling and changes
+no production defaults. Noise-only variance changes are not RF sensitivity
+or range measurements.
+
+
 ## Optional PARLIO TX clock for digital capture (issue #256, 2026-10-25)
 
 Extends C5VRX by Twotoz and contributors' existing RX40/raw32K/TX
@@ -1625,20 +1659,18 @@ The six DAC pins, 6-bit transfer, two lookups and live `[D,D]`/20 MS/s unique
 cadence remain unchanged. The separate menu raster shares the TX unit.
 No CPU sample pacing, extra GPIO lanes or 8-bit demodulation is added.
 
-GPIO2 is reserved for the whole clock build, including stopped TX. Saved
-flywheel ON is ignored without rewriting NVS; runtime enable requests are
-refused. The live tick cannot allocate an observer or switch into comparator
-format, and the observer's session entry independently refuses before
-allocation/register writes. Normal builds retain default ON/saved OFF.
+GPIO2 is reserved for the whole clock build, including stopped TX. Main
+removed the sync flywheel entirely on 2026-10-25, so neither build includes
+flywheel settings, observers, menu entries or refusal guards. This integration
+adds only the optional TX clock route and its `SAMPLE_CLOCK` status line.
 The clock uses the existing falling-edge shift; rising-edge capture and
 external setup/hold must be checked physically. Stops, startup/menu ownership,
 DAC tests and restarts are not a continuously framed live-video bus.
 
-Host regressions exercise the production TX setup, flywheel setters and
-probe refusal in both configurations. CI compiles both firmware variants.
+Host regressions exercise production TX setup, clock status and failure
+propagation in both configurations. CI compiles both firmware variants.
 These checks do not establish clock integrity, FPGA capture, colour lock,
 monitor compatibility, RF sensitivity or range. Bench acceptance requires a
 logic-analyser/scope check of data/clock phase and frequency, six-bit sample
-capture, boot with saved flywheel ON/OFF, console/menu refusal, menu/DAC-test
-entry/exit, retunes and restart recovery. GPIO2 strap loading must also be
-checked with the attached external receiver.
+capture, menu/DAC-test entry/exit, retunes and restart recovery. GPIO2 strap
+loading must also be checked with the attached external receiver.

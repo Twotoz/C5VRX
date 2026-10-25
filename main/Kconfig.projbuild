@@ -6,9 +6,8 @@ config C5VRX_PARLIO_SAMPLE_CLOCK
     help
         Export the 40 MHz TX clock alongside the six DAC data pins for an
         external digital receiver. GPIO2 is reserved for the clock for this
-        entire build; the sync flywheel and its observer are unavailable,
-        regardless of the saved FLYWHEEL setting. The preference is preserved
-        for normal builds. Data shifts on the falling edge; sample on rising.
+        entire build. The sync flywheel has been removed from all builds.
+        Data shifts on the falling edge; sample on rising.
         This is a 6-bit composite waveform, not decoded pixels or 8-bit video.
         Default off. Requires bench validation with the external receiver.
         Added for the FPGA integration in issue #256, not required for analog
