@@ -145,7 +145,10 @@ The standard flasher builds use the first row; everything else is source-only.
 | `C5VRX_OUT_DAC7_CLOCK` | **D10/GPIO10**, 23, 24, 11, 12, 8, 9 | 40 MHz clock |
 | `C5VRX_OUT_DAC8` | **GPIO2**, **D10/GPIO10**, 23, 24, 11, 12, 8, 9 | 8-bit DAC LSB |
 
-GPIO2 is either the sample clock or the lowest bit of an 8-bit DAC. The extra
+**GPIO2 is one shared pin.** With the sync flywheel removed (2026-10-25) it no
+longer carries a sync output, so it is either the clock pin, a DAC pin or a
+future button pin. For now its implemented role is the **40 MHz clock pin**;
+the 8-bit DAC bit is reserved and a button is not implemented. The extra
 bits extend the ladder *below* today's LSB. The live P64 demodulator still
 produces 6-bit codes, so the extra pins are **reserved and held low**: a 7/8-bit
 ladder then shows the same 6-bit waveform until a wider demod program drives
@@ -167,8 +170,8 @@ specified or bench-tested yet.
 - This is the recovered composite waveform, including the original colour
   burst, rather than decoded pixels. The FPGA must recover sync and decode
   colour. There is no new burst generator or guaranteed downstream colour lock.
-- Clock builds reserve GPIO2 for the clock. The flywheel has been removed
-  from all builds. `T` reports `SAMPLE_CLOCK` with the enabled state, pin and rate.
+- Clock builds reserve GPIO2 for the clock. The flywheel (and its GPIO2 use)
+  has been removed from all builds. `T` reports `SAMPLE_CLOCK` with the enabled state, pin and rate.
 - The clock follows PARLIO TX: menu, startup and DAC-test rasters also appear
   on the bus, and transport stops/restarts may interrupt it. There is no valid
   strobe or packet framing. The external receiver must tolerate these changes.

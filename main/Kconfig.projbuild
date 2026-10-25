@@ -4,8 +4,9 @@ choice C5VRX_OUTPUT_PINS
     prompt "Output pins: DAC width and sample clock"
     default C5VRX_OUT_DAC6
     help
-        GPIO2 (MTMS) is shared between the 40 MHz sample clock and the
-        lowest bit of an 8-bit DAC, so choose one of: 6- or 7-bit DAC with
+        GPIO2 (MTMS) is one shared pin. The sync flywheel was removed, so it
+        is either the clock pin, a DAC pin or a future button pin; for now
+        its role is the 40 MHz clock. Choose one of: 6- or 7-bit DAC with
         the clock, or 8-bit DAC without it. Extra DAC bits extend the
         ladder below the existing LSB (D4/GPIO23): D10/GPIO10 is the bit
         just below it, GPIO2 the lowest. The live P64 program still emits

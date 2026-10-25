@@ -1676,9 +1676,10 @@ capture, menu/DAC-test entry/exit, retunes and restart recovery. GPIO2 strap
 loading must also be checked with the attached external receiver.
 
 Follow-up (2026-10-25, operator request): the option became a menuconfig
-choice of output pins. GPIO2 is either the clock or the lowest bit of an
-8-bit DAC: 6-bit (default), 6-bit + clock, 7-bit + clock (extra LSB on
-D10/GPIO10) or 8-bit without clock (extra LSBs GPIO10, GPIO2). The extra bits
+choice of output pins. With the flywheel removed, GPIO2 is one shared pin:
+the clock, a DAC bit or a future button (not implemented); for now its
+implemented role is the 40 MHz clock. Choices: 6-bit (default), 6-bit +
+clock, 7-bit + clock (extra LSB on D10/GPIO10) or 8-bit without clock (extra LSBs GPIO10, GPIO2). The extra bits
 sit below the D4/GPIO23 LSB and are reserved as driven-low GPIO outputs, not
 PARLIO lanes: P64's LUT16 word is full (6 DAC + 6 state + 4 token bits) and TX
 byte bits 6/7 carry LUT token bits on alternate bytes, so routing them would

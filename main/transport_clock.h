@@ -15,8 +15,9 @@
  * The sync flywheel was removed from main; do not restore it.
  * See https://github.com/Twotoz/C5VRX/issues/256 for the integration request.
  *
- * Extra DAC bits (menuconfig "Output pins"): GPIO2 is either the clock or
- * the lowest bit of an 8-bit DAC. Extra bits sit below the D4/GPIO23 LSB;
+ * Extra DAC bits (menuconfig "Output pins"): with the flywheel removed,
+ * GPIO2 is either the clock, the lowest bit of an 8-bit DAC or a future
+ * button pin; for now it is the 40 MHz clock pin. Extra bits sit below the D4/GPIO23 LSB;
  * P64 emits 6-bit codes, so they are reserved and held low until a wider
  * demod program drives them through PARLIO. GPIO10 needs PR #259 (IQ
  * I-LSB on GPIO27) first.
