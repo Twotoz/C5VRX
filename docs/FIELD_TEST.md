@@ -226,3 +226,14 @@ needs about 18/22 KiB, progressive fallback about 9/11 KiB; log heap/free
 block sizes and any deferred/refused entry. Verify the actual monitor picture.
 Board logs and host tests alone do not establish camera lock or range gain.
 See [PR212](PR212.md); final cleaned-build hardware validation is still pending.
+
+## Standalone TBC on main (2026-10-25)
+
+1. With no saved TBC setting, verify ON at boot. Save OFF and ON in turn;
+   verify each survives reboot and flashing with NVS preserved.
+2. Use menu TBC or lowercase `w`; verify uppercase `W` still dumps flight logs.
+3. With OFF, verify `running=0`, CPU becomes zero and wake counters stop
+   advancing after the transition. Re-enable and verify timer/processing resume.
+4. Compare PAL/NTSC ON/OFF with fixed manual OUTPUT, near/weak signal,
+   menu/calibration/retune/loss recovery. Scope H-sync, burst and picture;
+   record actual CPU load and DMA safety. IQ/DAC wiring stays as on main.

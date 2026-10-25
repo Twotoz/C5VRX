@@ -90,6 +90,12 @@ XIAO ESP32-C5. DAC on D4..D9 (GPIO 23, 24, 11, 12, 8, 9; LSB first) with
 ([schematic](docs/hardware/c5vrx-dac-schematic.png)). The
 receiver uses the ESP32-C5's own Wi-Fi radio; no extra RF parts.
 
+TBC (menu or console `w`, saved, default ON) is an experimental line
+corrector. It adjusts only verified normal H-sync leading edges in the
+captured waveform; it does not invent missing pulses or alter burst/picture.
+A saved OFF is respected. OFF stops its periodic timer. Hardware timing,
+CPU load, goggles compatibility and range still require board checks.
+
 ### Wiring the resistor DAC
 
 Six resistors, one per XIAO pin, all joined on one node: that node is the
@@ -181,7 +187,7 @@ Getting the PCB manufactured (via JLCPCB, PCBWay, etc.) is extremely inexpensive
 | Hold 0.6 s | Open menu | Select item |
 
 The menu provides **BAND**, **CHANNEL**, **SCAN**, **VIDEO** (AUTO/NTSC/PAL),
-**CALIBRATE**, **OUTPUT** (0.5-5.0x), **GAIN** (AUTO/MAX/fixed),
+**CALIBRATE**, **OUTPUT** (0.5-5.0x), **GAIN** (AUTO/MAX/fixed), **TBC** (ON/OFF),
 **DAC TEST** and **EXIT**. It closes after 30 seconds of
 inactivity, or five minutes in DAC TEST. Menu transitions can interrupt video.
 GAIN starts in AUTO on every boot.
@@ -201,6 +207,7 @@ without Enter; `h` lists the commands supported by your firmware.
 | `F` / `Z` | Recalibrate / DAC self-test (ground only) |
 | `D` / `R` | Health report / per-second field diagnostics |
 | `I` / `M` / `L` | IQ snapshot / gain map / bench IQ lane test |
+| `w` | Line TBC on/off (saved; default on) |
 | `A` | Live analog filter/profile switching on/off (saved) |
 | `` ` `` | USB download mode |
 

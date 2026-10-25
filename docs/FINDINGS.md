@@ -7,6 +7,40 @@ scripts and data live in that branch under `v4/docs/PICTURE_CLIFF_STUDY.md`,
 Synthetic results are host simulations; board results are labelled as such.
 Measured range is not established.
 
+## Standalone line TBC (2026-10-25)
+
+Operator request: a fresh PR directly on main with only line TBC, default ON.
+The implementation adapts PR #261 at a0123911608b3315a894fe669193c4ee64493302
+and TBC integration guards from PR #259 at 22ad2ab, by C5VRX's Twotoz and
+contributors. All IQ routing, DAC pin assignments and manual OUTPUT behavior
+remain exactly as on main. No OUTPUT AUTO or DAC expansion is included.
+
+A sample-domain PLL tracks verified normal H-sync leading edges in completed
+raw IQ ahead of TX. It may clean only the segment from 1.0 us before the
+edge to 2.8 us into the real sync tip. Missing/invalid pulses pass through;
+burst, picture and vertical intervals are preserved in host fixtures.
+Fresh coherent AFC references are tied to PHY/control/gain and expire after
+500 ms. Every write rechecks DMA positions/context after analysis. Menu,
+pause, startup, scan and PHY ownership refuse writes. Transport teardown
+revokes access before stopping DMA. A sustained >30% measured CPU load for
+3 s trips TBC off; menu or `w` re-enables with one action. Initialization
+failure stays pass-through.
+
+Menu TBC / lowercase console `w` toggles and saves NVS `tbc`. Uppercase `W`
+retains its existing flight-log dump meaning. Default is ON only if no valid
+saved setting exists; saved OFF remains OFF across reboot. The task alone
+starts/stops its timer. OFF stops the 200-us periodic timer and blocks the
+task indefinitely until a toggle notification; it clears CPU-window state.
+The task allocation remains reserved. This fixes the prior OFF behavior
+which still woke every 200 us and reported about 7% CPU on the operator's
+board. That observation does not establish the cause of the picture issue.
+
+Host tests cover waveform invariants, context/deadline refusal, settings
+persistence, timer stop/block while OFF and timer-start failure. Donor
+studies remain synthetic; no C5 worst-case timing, DMA-safety, goggles or
+range acceptance is claimed. Compare ON/OFF on PAL/NTSC, near/weak signal,
+menu/calibration/retune/loss recovery and scope timing on the exact build.
+
 ## Sync flywheel removed (operator decision, 2026-10-25)
 
 The C5VRX-5 sync flywheel (PR #212, witness fix PR #218, bounded sync-loss

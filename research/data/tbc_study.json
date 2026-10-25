@@ -1,0 +1,245 @@
+{
+ "evidence": "host model: research/sim.py physical 4-bit ADC, real P64 LUT, firmware main/sync_tbc.h; not goggle or board acceptance",
+ "rows": [
+  {
+   "standard": "PAL",
+   "deviation": 1.0,
+   "offset_khz": 0.0,
+   "cn_db": 30,
+   "lines": 1220,
+   "rewritten": 1205,
+   "edge_jitter_ns": [
+    12.7,
+    10.1
+   ],
+   "lines_over_100ns_pct": [
+    0.0,
+    0.0
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "PAL",
+   "deviation": 1.0,
+   "offset_khz": 0.0,
+   "cn_db": 12,
+   "lines": 1220,
+   "rewritten": 1204,
+   "edge_jitter_ns": [
+    39.2,
+    12.6
+   ],
+   "lines_over_100ns_pct": [
+    1.23,
+    0.0
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "PAL",
+   "deviation": 1.0,
+   "offset_khz": 0.0,
+   "cn_db": 10,
+   "lines": 1220,
+   "rewritten": 1200,
+   "edge_jitter_ns": [
+    79.6,
+    19.0
+   ],
+   "lines_over_100ns_pct": [
+    5.0,
+    0.16
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "PAL",
+   "deviation": 1.0,
+   "offset_khz": 0.0,
+   "cn_db": 8,
+   "lines": 1220,
+   "rewritten": 1179,
+   "edge_jitter_ns": [
+    117.7,
+    34.8
+   ],
+   "lines_over_100ns_pct": [
+    14.43,
+    0.66
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "PAL",
+   "deviation": 0.69,
+   "offset_khz": 0.0,
+   "cn_db": 12,
+   "lines": 1220,
+   "rewritten": 1188,
+   "edge_jitter_ns": [
+    134.2,
+    26.0
+   ],
+   "lines_over_100ns_pct": [
+    21.23,
+    0.41
+   ],
+   "burst_phase_change_max_deg": 0.008,
+   "burst_amplitude_change_max_pct": 0.019,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "PAL",
+   "deviation": 1.7,
+   "offset_khz": 0.0,
+   "cn_db": 12,
+   "lines": 1220,
+   "rewritten": 1205,
+   "edge_jitter_ns": [
+    14.9,
+    11.8
+   ],
+   "lines_over_100ns_pct": [
+    0.0,
+    0.0
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "PAL",
+   "deviation": 1.0,
+   "offset_khz": 400.0,
+   "cn_db": 12,
+   "lines": 1220,
+   "rewritten": 1203,
+   "edge_jitter_ns": [
+    45.3,
+    14.7
+   ],
+   "lines_over_100ns_pct": [
+    1.56,
+    0.16
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "PAL",
+   "deviation": 1.0,
+   "offset_khz": 0.0,
+   "cn_db": 3,
+   "lines": 1220,
+   "rewritten": 0,
+   "edge_jitter_ns": [
+    181.8,
+    181.8
+   ],
+   "lines_over_100ns_pct": [
+    77.46,
+    77.46
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "NTSC",
+   "deviation": 1.0,
+   "offset_khz": 0.0,
+   "cn_db": 30,
+   "lines": 1014,
+   "rewritten": 999,
+   "edge_jitter_ns": [
+    30.9,
+    16.2
+   ],
+   "lines_over_100ns_pct": [
+    0.0,
+    0.0
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "NTSC",
+   "deviation": 1.0,
+   "offset_khz": 0.0,
+   "cn_db": 12,
+   "lines": 1014,
+   "rewritten": 999,
+   "edge_jitter_ns": [
+    39.3,
+    15.2
+   ],
+   "lines_over_100ns_pct": [
+    0.59,
+    0.1
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "NTSC",
+   "deviation": 1.0,
+   "offset_khz": 0.0,
+   "cn_db": 8,
+   "lines": 1014,
+   "rewritten": 974,
+   "edge_jitter_ns": [
+    113.0,
+    25.7
+   ],
+   "lines_over_100ns_pct": [
+    14.2,
+    0.69
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  },
+  {
+   "standard": "NTSC",
+   "deviation": 0.69,
+   "offset_khz": -300.0,
+   "cn_db": 10,
+   "lines": 1014,
+   "rewritten": 957,
+   "edge_jitter_ns": [
+    127.2,
+    34.2
+   ],
+   "lines_over_100ns_pct": [
+    21.5,
+    0.89
+   ],
+   "burst_phase_change_max_deg": 0.0,
+   "burst_amplitude_change_max_pct": 0.0,
+   "picture_change_max_v": 0.0,
+   "v_pulses_touched": 0
+  }
+ ]
+}

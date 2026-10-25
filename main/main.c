@@ -50,6 +50,7 @@ void app_main(void)
     s_boot_stage = "tasks";
     receiver_start();
     control_start();
+    sync_tbc_start();
     s_boot_stage = "ready";
     printf("C5VRX5 %s ready: %s %u MHz, %s, ultrafine IQ, KEEL-1 ('h' for keys) fw=%s\n",
            esp_app_get_description()->version, rf_channel()->name, rf_frequency_mhz(),

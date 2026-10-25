@@ -693,6 +693,16 @@ requirements by themselves**.
 
 ## Current realtime invariants (C5VRX-5)
 
+- Operator request (2026-10-25): standalone line TBC only, directly on main,
+  default ON; saved OFF/ON restored via NVS `tbc`. Menu TBC / lowercase `w`
+  toggles it; uppercase `W` keeps flight-log dump. Preserve main's IQ/DAC
+  pins and manual OUTPUT. No pin remap, DAC expansion or OUTPUT AUTO.
+  TBC may clean only verified normal H-sync leading edges in completed IQ
+  ahead of TX, never invent missing pulses or rewrite V/burst/picture.
+  Recheck DMA/context before writes; references expire after 500 ms.
+  OFF must stop the periodic timer and block the task until notified.
+  See docs/FINDINGS.md "Standalone line TBC" and docs/FIELD_TEST.md.
+
 - Operator cleanup decision (2026-10-23, confirmed single-model scope):
   active firmware builds and boots U80P64-R1 only (`main/p64.bsasm`). U85Q,
   the kp ladder/tables, LP policy/state, demod selection and console m/K/k/j/P/O/H
