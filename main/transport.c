@@ -54,7 +54,12 @@ static bitscrambler_handle_t s_bs;
 static bool s_tx_enabled;
 static bool s_rx_enabled, s_bs_enabled;
 static bool s_transport_fault;
-static unsigned s_output, s_verified_output, s_output_clipped;
+/* OUTPUT boots AUTO (output_level.h) unless a manual level was saved. */
+static unsigned s_output = OUTPUT_AUTO, s_verified_output, s_output_clipped;
+static output_auto_t s_auto = OUTPUT_AUTO_DEFAULT, s_verified_auto, s_auto_pending;
+static bool s_auto_pending_set;
+static const char *s_auto_source = "default";
+static uint32_t s_auto_applied, s_auto_skipped;
 static bool s_have_verified;
 static uint32_t s_restart_errors, s_rollbacks, s_rollback_fail;
 #define LIVE_TX_NODES ((RAW_RING_BYTES + 4091u) / 4092u)
@@ -262,6 +267,8 @@ bool transport_restart_profile(void)
     if (s_transport_fault || !s_lut_known || !s_started || s_menu_active ||
         !transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
     stage_hooks();
+    /* A waiting AUTO level rides on this restart instead of costing another. */
+    if (s_auto_pending_set) { s_auto = s_auto_pending; s_auto_pending_set = false; }
     const bool ok = resume_live(p64_table);
     transport_guard_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
@@ -281,14 +288,14 @@ uint32_t transport_restart_errors(void) { return s_restart_errors; }
 unsigned transport_output(void) { return s_output; }
 const char *transport_output_name(void)
 {
-    static const char *const names[OUTPUT_LEVELS] = {
-        "1.0x", "1.5x", "2.0x", "2.5x", "3.0x", "3.5x", "4.0x", "4.5x", "5.0x", "0.5x"
+    static const char *const names[OUTPUT_CHOICES] = {
+        "1.0x", "1.5x", "2.0x", "2.5x", "3.0x", "3.5x", "4.0x", "4.5x", "5.0x", "0.5x", "AUTO"
     };
     return names[s_output];
 }
 bool transport_set_output(unsigned level)
 {
-    if (s_transport_fault || level >= OUTPUT_LEVELS) return false;
+    if (s_transport_fault || level >= OUTPUT_CHOICES) return false;
     if (level == s_output) return true;
     if (s_menu_active || !s_started) { s_output = level; return true; }
     if (!transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
@@ -304,6 +311,7 @@ bool transport_set_output(unsigned level)
 typedef struct {
     const uint8_t *program;
     unsigned output, clipped;
+    output_auto_t auto_level;
 } restart_t;
 
 static bool stop_part(void *ctx, tr_part_t part)
@@ -338,6 +346,7 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
     if (stage == TR_BS_ENABLE && rollback) {
         s_output = s_verified_output;
         r->output = s_verified_output;
+        s_auto = r->auto_level = s_verified_auto;
         r->program = tracker_program();
         const uint8_t *inst;
         if (!program_words(r->program, &inst)) return false;
@@ -527,6 +536,45 @@ void transport_start_chain(dma_descriptor_t *first)
     parlio_ll_tx_enable_clock(&PARL_IO, true);
 }
 
+/* A new AUTO target (profile.c: boot/channel prior or a measured VTX).
+ * Applied by transport_output_auto_tick() through the shared guard, at
+ * once while TX is not live, and only when it differs enough to be worth
+ * the goggle's re-lock (output_auto_differs). */
+void transport_output_auto_set(output_auto_t a, const char *source)
+{
+    s_auto_source = source;
+    if (s_output != OUTPUT_AUTO || s_menu_active || !s_started) {
+        s_auto = a;
+        s_auto_pending_set = false;
+        return;
+    }
+    if (!output_auto_differs(s_have_verified ? s_verified_auto : s_auto, a)) {
+        ++s_auto_skipped;
+        s_auto_pending_set = false;
+        return;
+    }
+    s_auto_pending = a;
+    s_auto_pending_set = true;
+}
+
+void transport_output_auto_tick(void)
+{
+    if (!s_auto_pending_set) return;
+    if (s_output != OUTPUT_AUTO || s_menu_active || !s_started) {
+        s_auto = s_auto_pending; s_auto_pending_set = false; return;
+    }
+    if (s_transport_fault || calibration_in_startup() ||
+        !transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return;
+    s_auto = s_auto_pending;
+    s_auto_pending_set = false;
+    const bool ok = resume_live(p64_table);
+    transport_guard_mark(&s_switch_guard, esp_timer_get_time());
+    if (ok) ++s_auto_applied;
+    printf("OUTPUT auto gain_x100=%d porch_x10=%d source=%s result=%s clipped_lut_entries=%u\n",
+           s_verified_auto.gain_x100, s_verified_auto.porch_x10, s_auto_source, ok ? "applied" : "rolled_back",
+           s_output_clipped);
+}
+
 void transport_stop_chain(void)
 {
     if (s_tx_enabled && disable_tx() != ESP_OK) s_transport_fault = true;
@@ -537,7 +585,7 @@ static bool resume_live(const uint16_t *restore_lut)
 {
     if (s_transport_fault) return false;
     stage_hooks();
-    restart_t r = {.program = tracker_program(), .output = s_output};
+    restart_t r = {.program = tracker_program(), .output = s_output, .auto_level = s_auto};
     const uint8_t *program_inst;
     if (!program_words(r.program, &program_inst)) return false;
     memcpy(s_program_work.prefix, r.program, sizeof(s_program_work.prefix));
@@ -550,7 +598,8 @@ static bool resume_live(const uint16_t *restore_lut)
         if (!program_words(r.program, &inst) || r.program[6] != 1u) return false;
         for (unsigned i = 0; i < 1024u; ++i) {
             bool clipped;
-            s_lut_work[i] = output_entry(restore_lut[i], s_output, &clipped);
+            s_lut_work[i] = s_output == OUTPUT_AUTO ? output_auto_entry(restore_lut[i], s_auto, &clipped) :
+                                                      output_entry(restore_lut[i], s_output, &clipped);
             r.clipped += clipped;
         }
     }
@@ -573,6 +622,7 @@ static bool resume_live(const uint16_t *restore_lut)
     memcpy(s_lut_live, s_lut_work, sizeof(s_lut_live));
     const bool output_changed = s_have_verified && s_verified_output != r.output;
     s_verified_output = r.output;
+    s_verified_auto = r.auto_level;
     s_output_clipped = r.clipped;
     s_have_verified = true;
     s_lut_known = true;
@@ -646,10 +696,16 @@ void transport_print(void)
            (unsigned long)s_stage_us[TR_RX_START], (unsigned long)s_stage_us[TR_TX_START]);
     printf("VIDEO_OUTPUT source=%s standard=%s\n", s_menu_active ? "MENU" : s_started ? "LIVE" : "OFF",
            s_video_std == VIDEO_STD_PAL ? "PAL" : "NTSC");
-    printf("OUTPUT level=%s boot_restore=saved default=1.0x clipped_lut_entries=%u recovery_errors=%lu rollbacks=%lu "
+    printf("OUTPUT level=%s boot_restore=saved default=AUTO clipped_lut_entries=%u recovery_errors=%lu rollbacks=%lu "
            "rollback_fail=%lu fault_latched=%u live=%u\n", transport_output_name(), s_output_clipped,
            (unsigned long)s_restart_errors, (unsigned long)s_rollbacks, (unsigned long)s_rollback_fail,
            s_transport_fault, s_started);
+    printf("OUTPUT_AUTO active=%u gain_x100=%d porch_x10=%d source=%s pending=%u applied=%lu skipped=%lu "
+           "target_codes porch=%d sync_depth_x10=%d white_max=%d (~16 mV/code into 75 ohm; model, not measured)\n",
+           s_output == OUTPUT_AUTO, s_have_verified ? s_verified_auto.gain_x100 : s_auto.gain_x100,
+           s_have_verified ? s_verified_auto.porch_x10 : s_auto.porch_x10, s_auto_source, (unsigned)s_auto_pending_set,
+           (unsigned long)s_auto_applied, (unsigned long)s_auto_skipped, OUTPUT_AUTO_PORCH_OUT, OUTPUT_AUTO_SYNC_X10,
+           OUTPUT_AUTO_WHITE_MAX);
     printf("TRANSPORT rx_descriptors=%d tx_empty=%lu rx_overflow=%lu dma_faults=%lu bs_overload=%lu "
            "lut_writes=%lu lut_verify_fail=%lu program=%s switch_wait_ms=%lu prog_verify_fail=%lu\n",
            s_rx_node_count, (unsigned long)s_tx_empty, (unsigned long)s_rx_overflow,

@@ -17,6 +17,7 @@
 #include "gain.h"
 #include "menu_raster.h"
 #include "rf.h"
+#include "output_level.h"
 
 #define IQ_RATE_HZ          40000000u
 #define RAW_RING_BYTES      32768u
@@ -68,7 +69,9 @@ bool transport_faulted(void);
 uint32_t transport_restart_errors(void);
 unsigned transport_output(void);
 const char *transport_output_name(void);
-bool transport_set_output(unsigned level);
+bool transport_set_output(unsigned level);   /* 0..9 manual, OUTPUT_AUTO */
+void transport_output_auto_set(output_auto_t a, const char *source);
+void transport_output_auto_tick(void);       /* control task: applies a waiting AUTO level */
 void transport_stop_chain(void);
 void transport_poll_faults(void);
 uint32_t transport_fault_count(void);

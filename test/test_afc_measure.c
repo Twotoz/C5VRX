@@ -62,6 +62,19 @@ int main(void)
         porch_ok = porch_ok && r.lines && abs(r.porch_khz - (-1000 + off)) <= 60;
     }
     s_offset_hz = 0.;
+    /* OUTPUT AUTO white cap (profile.c): the smoothed extreme opposite the
+     * sync is the picture peak, burst and offset included. */
+    bool peak_ok = true;
+    for (int polarity = -1; polarity <= 1; polarity += 2)
+        for (int white = 2000; white <= 5000; white += 1500)
+            for (int off = -500; off <= 500; off += 500) {
+                s_offset_hz = off * 1000.;
+                fm(2560, polarity, true, white * 1000.);
+                afc2_result_t r = afc2_measure(raw, sizeof(raw), c5vrx_phase8_gain_lut);
+                peak_ok = peak_ok && r.lines && abs(r.peak_khz - (white + off) * -polarity) <= 150;
+            }
+    s_offset_hz = 0.;
+    check("white peak (OUTPUT AUTO cap) within 150 kHz for both polarities and +-0.5 MHz offset", peak_ok);
     check("carrier offset +-1 MHz: span unchanged (deviation needs no AFC lock)", span_ok);
     check("carrier offset +-1 MHz: porch follows the offset", porch_ok);
     uint32_t seed = 42;

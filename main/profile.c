@@ -19,6 +19,7 @@
  * (profile_logic.h) and host-tested. */
 #include "receiver.h"
 #include "profile_logic.h"
+#include "output_auto.h"
 #include "phy.h"
 #include "cn_estimate.h"
 #include "esp_timer.h"
@@ -49,6 +50,7 @@ static struct {
     bool cn_checked;
 } s_gate = {.last_cn = CN_UNKNOWN_X10};
 static dev_monitor_t s_mon;                   /* continuous matching (live only) */
+static output_auto_obs_t s_levels;            /* OUTPUT AUTO evidence, same windows */
 static bool s_live_switch = true;             /* NVS prof_live: in-flight switch allowed */
 static int s_switch_pending = -1;             /* profile a live switch waits for, -1 none */
 static uint32_t s_live_switches, s_live_switch_fail;
@@ -127,10 +129,25 @@ void profile_load(void)
     if (!blob_load("vtxdev", s_dev_table, sizeof(s_dev_table))) memset(s_dev_table, 0, sizeof(s_dev_table));
 }
 
+/* OUTPUT AUTO before this channel's VTX is measured (output_auto.h). */
+static void output_prior(void)
+{
+    output_auto_obs_reset(&s_levels);
+    transport_output_auto_set(output_auto_prior(s_dev_table[rf_channel_index()], DEV_SYNC_KHZ), "prior");
+}
+
+/* A deviation decided from this cycle's windows: their levels set AUTO. */
+static void output_decided(int dev_x100)
+{
+    output_auto_t a;
+    if (output_auto_obs_decide(&s_levels, dev_x100, DEV_SYNC_KHZ, &a)) transport_output_auto_set(a, "measured");
+}
+
 /* Boot, before live TX: always DEFAULT; the stored deviation is only a hint
  * until this boot measures the VTX again. */
 void profile_boot(void)
 {
+    output_prior();
     if (!profile_set(PROFILE_DEFAULT)) printf("PROFILE boot error: DEFAULT not applied\n");
     s_reason = "boot_default";
     printf("PROFILE boot channel=%s stored_deviation_x100=%u (provisional) profile=%s\n", rf_channel()->name,
@@ -147,6 +164,7 @@ void profile_channel_changed(void)
     s_live_channel = (size_t)-1;
     s_switch_pending = -1;
     s_reason = "channel_changed";
+    output_prior();
     if (s_profile == PROFILE_DEFAULT) { profile_live_begin(); return; }
     if (s_menu_active) { (void)profile_set(PROFILE_DEFAULT); }
     else {
@@ -161,6 +179,7 @@ void profile_measure_begin(void)
 {
     s_measuring = MEASURE_OFF;
     dev_reset(&s_dev);
+    output_auto_obs_cycle(&s_levels);
     s_measuring = MEASURE_STARTUP;
 }
 
@@ -175,6 +194,7 @@ void profile_live_begin(void)
     if (s_measuring == MEASURE_LIVE && s_live_channel == ch) return;   /* already running */
     s_measuring = MEASURE_OFF;
     dev_reset(&s_dev);
+    output_auto_obs_cycle(&s_levels);
     dev_monitor_reset(&s_mon, esp_timer_get_time());
     if (s_live_channel != ch) s_live_dev = -1;
     s_live_channel = ch;
@@ -234,6 +254,7 @@ static void live_decided(int dev_x100, int64_t now)
     if (ch != s_live_channel) return;
     if (s_live_dev != dev_x100) carrier_record(dev_x100);
     s_live_dev = dev_x100;
+    output_decided(dev_x100);   /* before a profile switch: one restart applies both */
     const int want = profile_for_deviation(dev_x100);
     const bool class_changed = s_dev_table[ch] == 0 || profile_for_deviation(s_dev_table[ch]) != want;
     if (dev_monitor_should_store(s_dev_table[ch], dev_x100, class_changed, s_mon.stored_us, now)) {
@@ -266,7 +287,10 @@ void profile_observe(const afc2_result_t *r)
     if (mode == MEASURE_LIVE) {
         if (s_live_channel != rf_channel_index()) return;
         if (s_switch_pending >= 0) live_apply();                 /* waiting for the restart cooldown */
-        if (dev_monitor_tick(&s_mon, now)) dev_reset(&s_dev);   /* new cycle, or a timed-out one */
+        if (dev_monitor_tick(&s_mon, now)) {   /* new cycle, or a timed-out one */
+            dev_reset(&s_dev);
+            output_auto_obs_cycle(&s_levels);
+        }
         if (!s_mon.collecting) return;
     }
     if (s_dev.result_x100 >= 0) return;
@@ -294,6 +318,8 @@ void profile_observe(const afc2_result_t *r)
         return;
     }
     int32_t span = s_gate.last_span;
+    /* Same accepted window: porch and white extent for OUTPUT AUTO. */
+    if (r->polarity < 0) output_auto_obs_push(&s_levels, r->porch_khz, r->peak_khz - r->porch_khz);
     unsigned rejected = s_dev.rejected;
     int dev = dev_add(&s_dev, span);
     if (s_dev.rejected != rejected) printf("PROFILE batch rejected (spread or disagreement), count=%u\n", s_dev.rejected);
@@ -312,6 +338,7 @@ void profile_commit(int dev_x100)
     }
     s_live_dev = dev_x100;
     s_live_channel = ch;
+    output_decided(dev_x100);
     int p = profile_for_deviation(dev_x100);
     if (p == PROFILE_DEFAULT) {
         s_reason = dev_x100 >= DEV_WIDE_MIN ? "no_wide_filter" : dev_x100 > DEV_NARROW_MAX ? "measured_default_vtx" :

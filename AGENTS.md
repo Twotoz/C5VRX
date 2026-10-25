@@ -711,6 +711,15 @@ requirements by themselves**.
   ignored; flight-log flywheel slots stay for old logs and read 0. See
   `docs/FINDINGS.md`, "Sync flywheel removed". Do not restore it from git
   history without a new board comparison that beats flywheel OFF.
+- OUTPUT AUTO (2026-10-25, HDZero report: shifted lines, unrecognizable):
+  the default OUTPUT maps the measured blanking to code 19 and scales the
+  measured sync depth to 17.5 codes (~0.28 V; ~1 V sync to white into 75
+  ohm), capped by the session's white peaks (cut <= 30 %), 1.0x..3.0x
+  (`main/output_level.h`, `main/output_auto.h`, host test
+  `test/test_output_auto.c`). Evidence = the deviation monitor's accepted
+  windows; applied by verified halted restart behind the shared guard, only
+  on >= 8 % gain or >= 1.5-code blanking change. Fixed 1.0x gave a nominal
+  VTX ~0.13 V sync (issue #200). Nominal DAC model; scope/HDZero pending.
 - The P64 default is an explicit operator choice, not a host-score promotion.
   Its fixed table is unchanged from the positive VTX-on NTSC check at d894bef;
   PAL, weak-signal/range and the final cleanup still require board checks.

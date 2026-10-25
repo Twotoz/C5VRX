@@ -7,6 +7,37 @@ scripts and data live in that branch under `v4/docs/PICTURE_CLIFF_STUDY.md`,
 Synthetic results are host simulations; board results are labelled as such.
 Measured range is not established.
 
+## OUTPUT AUTO: standard CVBS levels for HDZero (2026-10-25)
+
+Report: on HDZero goggles the C5VRX-5 picture had every line shifted and was
+unrecognizable ("HDZero has no time-base corrector"). Root cause found in
+the output levels. Line timing is passed through: RX and TX are both
+configured at 40 MHz from the PARLIO default clock source with a fixed ring
+delay (a clock-domain check on the board is still open). The fixed
+P64 transfer (-6..+9 MHz on codes 0..63, 4.2 codes/MHz) into the resistor
+DAC (200 ohm || 75 ohm, ~16.1 mV/code) gave a nominal VTX (sync depth 1.914
+MHz) ~8 codes = ~0.13 V of sync and ~0.45 V sync to white at the old 1.0x
+default; the standard is 0.286 V / 1.0 V. A Fatshark-class sync separator
+still triggers; the TP2825 decoder in HDZero slices and line-locks on that
+sync and misplaces lines (`legacy/c5vrx4/HDZERO.md`; issue #200: no live
+video at 1.0x, live video at 2.0x on a compressed-sync VTX).
+
+OUTPUT AUTO is the new default (saved manual levels are kept): the deviation
+monitor's accepted windows (burst/line-timing confirmed, healthy gain, C/N
+>= 8 dB) also give the porch and a smoothed white peak (`afc2_result_t
+peak_khz`). The measured blanking maps to code 19 and the measured sync depth
+to 17.5 codes (~0.28 V); the gain is capped by the 90th-percentile white
+peak (only tightening within a channel session, cutting at most 30 %), and
+bounded 1.0x..3.0x. Before a measurement the stored deviation (or nominal)
+is used. A change is applied by the verified halted restart behind the
+shared guard, folded into a profile restart when one is due, and only for
+>= 8 % gain or >= 1.5-code blanking change, since every restart is a
+goggle re-lock. Host model (`test/test_output_auto.c`): nominal, wide (1.7)
+and narrow (0.69) VTXs get 0.27-0.29 V sync and ~0.97 V sync to white; the
+issue #200 VTX gets 2.24x, 0.21 V sync with slightly clipped whites. These
+are nominal DAC numbers, not scope measurements; HDZero/scope acceptance
+into one 75-ohm load and PAL/NTSC board checks are pending.
+
 ## Sync flywheel removed (operator decision, 2026-10-25)
 
 The C5VRX-5 sync flywheel (PR #212, witness fix PR #218, bounded sync-loss

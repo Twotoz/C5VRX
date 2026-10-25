@@ -253,7 +253,7 @@ static void menu_action(void)
     case MENU_CHANNEL: rf_next_channel(); after_retune(); break;
     case MENU_SCAN: scan(); break;
     case MENU_CALIBRATE: menu_close(); filter_request(); return;   /* runs once the menu is closed */
-    case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
+    case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_CHOICES); break;
     case MENU_GAIN: receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); break;
     case MENU_DAC: menu_dac_step(); break;
     case MENU_VIDEO:
@@ -297,12 +297,14 @@ static void command(int c, unsigned *menu_idle)
         break;
     }
     case 'g': {
-        unsigned next = (transport_output() + 1u) % OUTPUT_LEVELS;
+        unsigned next = (transport_output() + 1u) % OUTPUT_CHOICES;
         bool ok = transport_set_output(next);
         printf("OUTPUT manual %s result=%s wait_ms=%lu%s\n", transport_output_name(),
                ok ? "applied" : "refused", (unsigned long)transport_switch_wait_ms(),
+               transport_output() == OUTPUT_AUTO ? " (sync-referenced CVBS levels from the measured VTX; default)" :
                transport_output() == 9 ? " (low swing: halves noise & clipping; requires sensitive sync)" :
-               (transport_output() ? " WARNING: may clip wide VTX; verify sync/white into 75 ohm" : ""));
+               (transport_output() ? " WARNING: may clip wide VTX; verify sync/white into 75 ohm" :
+                " (fixed 1.0x: sync ~1/2 of standard; HDZero needs AUTO or more)"));
         if (s_menu_active) menu_render();
         break;
     }
@@ -380,6 +382,7 @@ static void control_task(void *arg)
         } else menu_idle = menu_refresh = 0;
 
         transport_poll_faults();
+        transport_output_auto_tick();
         if (phy_generation() != seen_phy || s_control_epoch != seen_control) {
             seen_phy = phy_generation();
             seen_control = s_control_epoch;

@@ -57,6 +57,7 @@ typedef struct {
     int8_t polarity;         /* -1: sync is the low-frequency extreme, +1 high, 0 none */
     int32_t sync_khz;        /* mean instantaneous frequency of the sync tips */
     int32_t porch_khz;       /* mean instantaneous frequency, burst-free porch */
+    int32_t peak_khz;        /* smoothed extreme opposite the sync (white peak of this window) */
     uint32_t sync_pairs, porch_pairs;
     uint8_t standard;        /* 0 unknown, 1 NTSC, 2 PAL (burst or line timing) */
     uint16_t burst_x10;      /* mean burst amplitude in phase codes x10 */
@@ -320,6 +321,9 @@ static inline afc2_result_t afc2_measure(const uint8_t *s, size_t n,
     int best = score[0] > score[1] ? 0 : score[1] > score[0] ? 1 : -1;
     if (best < 0 || !score[best]) return r;
     r.polarity = (int8_t)(best ? 1 : -1);
+    /* Smoothed values are phase codes x2; the boxcars also null the chroma
+     * subcarrier enough that this is the luma peak. */
+    r.peak_khz = (best ? lo : hi) * AFC2_KHZ_PER_CODE_X100 / 200;
 
     int64_t sync_sum = 0, porch_sum = 0, sync_sq = 0, porch_sq = 0;
     int burst_sum = 0, burst_n = 0, std_votes = 0;

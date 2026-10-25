@@ -74,6 +74,12 @@ int main(void)
                 if (!l) assert(out == v && !clipped);
                 if (clipped) assert((out & 63u) == 0 || (out & 63u) == 63);
             }
+    for (unsigned i = 0; i < 1024; ++i) {
+        bool clipped;
+        const uint16_t v = kp_tables[0][i], out = output_auto_entry(v, OUTPUT_AUTO_DEFAULT, &clipped);
+        assert((v & 0xffc0u) == (out & 0xffc0u));
+        if (clipped) assert((out & 63u) == 0 || (out & 63u) == 63);
+    }
     puts("PASS: every restart/rollback stage, terminal cleanup, atomic publication and all DAC/kp maps");
     return 0;
 }

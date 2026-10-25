@@ -96,7 +96,7 @@ void nvs_close(nvs_handle_t h) { (void)h; pending_index = -1; }
 const char *esp_err_to_name(esp_err_t e) { (void)e; return "TEST_FAILURE"; }
 unsigned rf_channel_index(void) { return channel; }
 bool rf_set_channel(unsigned c) { channel = c; return true; }
-bool transport_set_output(unsigned o) { assert(o < OUTPUT_LEVELS); output = o; ++output_applied; return true; }
+bool transport_set_output(unsigned o) { assert(o < OUTPUT_CHOICES); output = o; ++output_applied; return true; }
 void receiver_set_gain_mode(uint8_t mode, bool save) { assert(!save); gain_mode = mode; ++gain_restores; }
 static void boot(void) { output = 0; channel = 0; s_std_mode = STD_MODE_AUTO; output_applied = 0;
     gain_mode = 0; gain_restores = 0; settings_load(); }
@@ -105,7 +105,7 @@ static void seed(unsigned slot, const unsigned char *bytes, size_t n) {
 }
 int main(void) {
     boot(); assert(output == 0 && output_applied == 0 && channel == 0 && s_std_mode == STD_MODE_AUTO);
-    for (unsigned level = 0; level < OUTPUT_LEVELS; ++level) {
+    for (unsigned level = 0; level < OUTPUT_CHOICES; ++level) {
         slots[1].n = 0; writes = commits = 0;
         settings_save_output(level); assert(writes == 1 && commits == 1);
         boot(); assert(output == level && output_applied == 1);
@@ -121,7 +121,7 @@ int main(void) {
     channel = 24; s_std_mode = STD_MODE_NTSC; settings_save();
     assert(writes == 1 && commits == 1); boot();
     assert(channel == 24 && s_std_mode == STD_MODE_NTSC && output == 3);
-    for (unsigned bad = OUTPUT_LEVELS; bad < 256; ++bad) {
+    for (unsigned bad = OUTPUT_CHOICES; bad < 256; ++bad) {
         const unsigned char b = (unsigned char)bad; seed(1, &b, 1);
         boot(); assert(output == 0 && output_applied == 0 && channel == 24);
     }
@@ -135,7 +135,7 @@ int main(void) {
     const unsigned char invalid_settings[] = {1, FPV_CHANNELS, 255, 0};
     seed(0, invalid_settings, 4); boot();
     assert(output == 2 && channel == 0 && s_std_mode == STD_MODE_AUTO);
-    writes = commits = 0; settings_save_output(OUTPUT_LEVELS); settings_save_output(1000);
+    writes = commits = 0; settings_save_output(OUTPUT_CHOICES); settings_save_output(1000);
     assert(!writes && !commits); boot(); assert(output == 2);
     fail_open = 1; boot(); assert(output == 0 && !output_applied); settings_save_output(1);
     fail_open = 0; boot(); assert(output == 2);

@@ -309,7 +309,8 @@ void menu_render(void)
         title("OUTPUT LEVEL", "HOLD: CHANGE");
         value_box(100, 22, 276, "LEVEL", transport_output_name());
         text("SAVED ON EXIT   LOAD: 75 OHM", 100, 38, UI_MUTED, 1);
-        text(transport_output() == 9 ? "LOW SWING REDUCES CLIPPING" :
+        text(transport_output() == OUTPUT_AUTO ? "LEVELS FROM THE VTX SYNC" :
+             transport_output() == 9 ? "LOW SWING REDUCES CLIPPING" :
              (transport_output() ? "HIGH LEVEL MAY CLIP VIDEO" : "INCREASE FOR WEAK SYNC"), 100, 47, UI_WHITE, 1);
         break;
     case MENU_GAIN: {

@@ -49,7 +49,7 @@ void settings_load(void)
 {
     /* Independent key preserves the existing channel/standard blob format. */
     uint8_t output;
-    if (blob_load("output", &output, sizeof(output)) && output < OUTPUT_LEVELS)
+    if (blob_load("output", &output, sizeof(output)) && output < OUTPUT_CHOICES)
         (void)transport_set_output(output);
     settings_t s;
     if (!blob_load("settings", &s, sizeof(s)) || s.version != SETTINGS_VERSION) return;
@@ -59,7 +59,7 @@ void settings_load(void)
 
 void settings_save_output(unsigned level)
 {
-    if (level >= OUTPUT_LEVELS) return;
+    if (level >= OUTPUT_CHOICES) return;
     const uint8_t output = (uint8_t)level;
     uint8_t old;
     if (blob_load("output", &old, sizeof(old)) && old == output) return;

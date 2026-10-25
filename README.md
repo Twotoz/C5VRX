@@ -123,8 +123,9 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
   ground is required.
 - All values are standard E24; 1 % metal-film resistors are fine. Keep
   the wires from the pins to the node short.
-- Too dark or too dim on some goggles: try OUTPUT in the menu (0.5-5.0x,
-  saved). Higher levels can clip; check the loaded output on your display.
+- OUTPUT defaults to AUTO: standard CVBS levels (~0.28 V sync, ~1 V sync to
+  white into 75 ohm) set from the measured VTX sync, which strict digital
+  goggles such as HDZero need. Manual 0.5-5.0x stays in the menu (saved).
 - The XIAO is powered over USB-C or its 5 V pin as usual; the DAC needs no
   separate supply.
 - **Check the build with the DAC self-test** before chasing picture
@@ -181,7 +182,7 @@ Getting the PCB manufactured (via JLCPCB, PCBWay, etc.) is extremely inexpensive
 | Hold 0.6 s | Open menu | Select item |
 
 The menu provides **BAND**, **CHANNEL**, **SCAN**, **VIDEO** (AUTO/NTSC/PAL),
-**CALIBRATE**, **OUTPUT** (0.5-5.0x), **GAIN** (AUTO/MAX/fixed),
+**CALIBRATE**, **OUTPUT** (AUTO default, or 0.5-5.0x), **GAIN** (AUTO/MAX/fixed),
 **DAC TEST** and **EXIT**. It closes after 30 seconds of
 inactivity, or five minutes in DAC TEST. Menu transitions can interrupt video.
 GAIN starts in AUTO on every boot.
@@ -209,7 +210,7 @@ analog filter (DEFAULT, NARROW or WIDE); old `kp_auto` and `lp_cn` settings
 are ignored. `A` toggles experimental live profile switching (default on).
 Live OUTPUT and profile changes share a five-second
 cooldown and verified halted restart/rollback. Higher OUTPUT levels can clip.
-GAIN always starts AUTO at boot; the OUTPUT preference is saved.
+GAIN always starts AUTO at boot; the OUTPUT preference is saved (default AUTO).
 Check `T` after changing settings. Retired models remain research only.
 
 The browser terminal and flasher use the port one at a time. **Download log**
