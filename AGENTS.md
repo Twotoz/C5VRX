@@ -693,6 +693,15 @@ requirements by themselves**.
 
 ## Current realtime invariants (C5VRX-5)
 
+- HDZero compatibility experiment (operator request, 2026-10-25): this branch
+  starts OUTPUT HDZERO (ID 10, DAC-only static 3x low region/soft white knee)
+  and flywheel OFF. Isolate saved choices with hdz_output/hdz_flywheel; do not
+  migrate or overwrite normal output/flywheel keys. Explicit experimental
+  settings persist for A/B. This supersedes older default-ON notes only for
+  this build. Native H/V timing, P64 state and cadence remain unchanged.
+  See docs/HDZERO_COMPAT.md for provenance, limits and required board checks.
+  No physical HDZero acceptance, CVBS compliance or RF gain is claimed.
+
 - Operator cleanup decision (2026-10-23, confirmed single-model scope):
   active firmware builds and boots U80P64-R1 only (`main/p64.bsasm`). U85Q,
   the kp ladder/tables, LP policy/state, demod selection and console m/K/k/j/P/O/H

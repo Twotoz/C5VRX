@@ -47,12 +47,14 @@ void settings_save(void)
 
 void settings_load(void)
 {
-    /* Independent key preserves the existing channel/standard blob format. */
+    /* Isolate both HDZero experiment choices: existing output/flywheel keys
+     * remain untouched, including a saved ON from main. Missing/invalid test
+     * keys leave OUTPUT_DEFAULT / FLYWHEEL_DEFAULT selected by transport. */
     uint8_t output;
-    if (blob_load("output", &output, sizeof(output)) && output < OUTPUT_LEVELS)
+    if (blob_load(OUTPUT_NVS_KEY, &output, sizeof(output)) && output < OUTPUT_LEVELS)
         (void)transport_set_output(output);
     uint8_t flywheel;
-    if (blob_load("flywheel", &flywheel, sizeof(flywheel)) && flywheel <= 1u)
+    if (blob_load(FLYWHEEL_NVS_KEY, &flywheel, sizeof(flywheel)) && flywheel <= 1u)
         transport_sync_flywheel_set_boot(flywheel != 0u);
     settings_t s;
     if (!blob_load("settings", &s, sizeof(s)) || s.version != SETTINGS_VERSION) return;
@@ -65,14 +67,14 @@ void settings_save_output(unsigned level)
     if (level >= OUTPUT_LEVELS) return;
     const uint8_t output = (uint8_t)level;
     uint8_t old;
-    if (blob_load("output", &old, sizeof(old)) && old == output) return;
-    (void)blob_store("output", &output, sizeof(output));
+    if (blob_load(OUTPUT_NVS_KEY, &old, sizeof(old)) && old == output) return;
+    (void)blob_store(OUTPUT_NVS_KEY, &output, sizeof(output));
 }
 
 void settings_save_flywheel(bool on)
 {
     const uint8_t value = on ? 1u : 0u;
     uint8_t old;
-    if (blob_load("flywheel", &old, sizeof(old)) && old == value) return;
-    (void)blob_store("flywheel", &value, sizeof(value));
+    if (blob_load(FLYWHEEL_NVS_KEY, &old, sizeof(old)) && old == value) return;
+    (void)blob_store(FLYWHEEL_NVS_KEY, &value, sizeof(value));
 }

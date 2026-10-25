@@ -90,10 +90,10 @@ static void snapshot(void)
 static void help(void)
 {
     printf("C5VRX-5 keys: T status, D range/health report, M gain map (for a preset), R per-second FIELD_DIAG lines on/off,\n"
-           "  g OUTPUT 0.5x..5.0x in 0.5x steps (saved after application; restored at boot),\n"
+           "  g OUTPUT 0.5x..5.0x + HDZERO sync boost/soft knee (test default HDZERO; saved),\n"
            "  G RX gain AUTO (KEEL-1) -> MAX -> fixed G78..G24 (until the next boot; every boot starts AUTO),\n"
            "  A live VTX profile switch on/off (continuous matching every 30 s; off = report only),\n"
-           "  U sync flywheel ON/OFF (saved; menu FLYWHEEL; default ON),\n"
+           "  U sync flywheel ON/OFF (test setting; menu FLYWHEEL; default OFF for HDZero),\n"
            "  I IQ snapshot, o menu open/close, n/x menu next/select, c next channel, b next band, s scan,\n"
            "  v video standard AUTO/NTSC/PAL, e close menu (web menu direct controls),\n"
            "  F calibrate (startup steps again; video stops), L bench IQ lane comparison (video stops ~3 s),\n"

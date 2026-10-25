@@ -63,7 +63,8 @@ static bool s_rx_enabled, s_bs_enabled;
 static bool s_transport_fault;
 static uint32_t s_stream_generation;
 static bool s_stream_generation_overflow;
-static unsigned s_output, s_verified_output, s_output_clipped;
+static unsigned s_output = OUTPUT_DEFAULT;
+static unsigned s_verified_output, s_output_clipped;
 static bool s_have_verified;
 static uint32_t s_restart_errors, s_rollbacks, s_rollback_fail;
 #define LIVE_TX_NODES ((RAW_RING_BYTES + 4091u) / 4092u)
@@ -291,7 +292,7 @@ unsigned transport_output(void) { return s_output; }
 const char *transport_output_name(void)
 {
     static const char *const names[OUTPUT_LEVELS] = {
-        "1.0x", "1.5x", "2.0x", "2.5x", "3.0x", "3.5x", "4.0x", "4.5x", "5.0x", "0.5x"
+        "1.0x", "1.5x", "2.0x", "2.5x", "3.0x", "3.5x", "4.0x", "4.5x", "5.0x", "0.5x", "HDZERO"
     };
     return names[s_output];
 }
@@ -905,11 +906,11 @@ bool transport_sync_live_release(void)
     return ok && !sync_output_live_active();
 }
 
-/* Saved user setting (menu FLYWHEEL, console U); ON when never saved
- * (operator, 2026-10-18, after the PR #218 witness fix held on the board).
- * A saved OFF is respected and never allocates the observer/output, so
- * its heap stays free for the menu. */
-static bool s_flywheel_boot=true;
+/* HDZero experiment starts with native camera H/V only. Older builds' saved
+ * ON must not re-enable the flywheel on first flash (settings.c uses isolated
+ * keys). Explicit U/menu changes remain available for a controlled A/B test.
+ * OFF never allocates the observer/output or switches to comparator format. */
+static bool s_flywheel_boot=FLYWHEEL_DEFAULT;
 void transport_sync_flywheel_set_boot(bool on) { s_flywheel_boot=on; }
 bool transport_sync_flywheel_enabled(void)
 {
@@ -947,7 +948,7 @@ static bool IRAM_ATTR transport_sync_native_source(void *arg,uint32_t *epoch)
 
 void transport_sync_live_tick(void)
 {
-    /* Saved setting (default ON): allocate lazily on the first control tick
+    /* Saved experiment setting (default OFF): allocate lazily on the first control tick
      * (after receiver startup, same as pressing U) so startup RAM is unchanged. */
     static bool boot_default_applied;
     if(!boot_default_applied) {
@@ -958,7 +959,7 @@ void transport_sync_live_tick(void)
                 s_live_owner->requested=s_live_owner->output_requested=true;
                 printf("SYNC_FLYWHEEL requested=1 boot=saved_or_default_on\n");
             } else printf("SYNC_FLYWHEEL refused=memory\n");
-        } else if(!s_flywheel_boot) printf("SYNC_FLYWHEEL requested=0 boot=saved_off\n");
+        } else if(!s_flywheel_boot) printf("SYNC_FLYWHEEL requested=0 boot=saved_or_default_off\n");
     }
     sync_live_owner_t *s=s_live_owner;
     if(!s || s->fault){transport_output_telem_sample(false);return;}
@@ -1100,7 +1101,7 @@ void transport_print(void)
            (unsigned long)s_stage_us[TR_RX_START], (unsigned long)s_stage_us[TR_TX_START]);
     printf("VIDEO_OUTPUT source=%s standard=%s\n", s_menu_active ? "MENU" : s_started ? "LIVE" : "OFF",
            s_video_std == VIDEO_STD_PAL ? "PAL" : "NTSC");
-    printf("OUTPUT level=%s boot_restore=saved default=1.0x clipped_lut_entries=%u recovery_errors=%lu rollbacks=%lu "
+    printf("OUTPUT level=%s boot_restore=hdz_output default=HDZERO clipped_lut_entries=%u recovery_errors=%lu rollbacks=%lu "
            "rollback_fail=%lu fault_latched=%u live=%u\n", transport_output_name(), s_output_clipped,
            (unsigned long)s_restart_errors, (unsigned long)s_rollbacks, (unsigned long)s_rollback_fail,
            s_transport_fault, s_started);

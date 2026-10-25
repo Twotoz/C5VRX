@@ -60,15 +60,17 @@ HARNESS = r'''
 #include <stdio.h>
 #include <string.h>
 typedef struct { unsigned char bytes[16]; size_t n; } slot_t;
-static slot_t slots[4], pending;
+static slot_t slots[6], pending;
 static int pending_index = -1, writes, commits, fail_open, fail_set, fail_commit;
 static unsigned output, channel, output_applied, gain_mode, gain_restores, flywheel_boot, flywheel_restores;
 std_mode_t s_std_mode;
 static int index_of(const char *key) {
     if (!strcmp(key, "settings")) return 0;
-    if (!strcmp(key, "output")) return 1;
+    if (!strcmp(key, OUTPUT_NVS_KEY)) return 1;
+    if (!strcmp(key, "output")) return 4;
+    if (!strcmp(key, "flywheel")) return 5;
     if (!strcmp(key, "gain_mode")) return 2;
-    if (!strcmp(key, "flywheel")) return 3;
+    if (!strcmp(key, FLYWHEEL_NVS_KEY)) return 3;
     assert(0); return -1;
 }
 esp_err_t nvs_open(const char *ns, int mode, nvs_handle_t *h) {
@@ -101,13 +103,18 @@ bool rf_set_channel(unsigned c) { channel = c; return true; }
 bool transport_set_output(unsigned o) { assert(o < OUTPUT_LEVELS); output = o; ++output_applied; return true; }
 void receiver_set_gain_mode(uint8_t mode, bool save) { assert(!save); gain_mode = mode; ++gain_restores; }
 void transport_sync_flywheel_set_boot(bool on) { flywheel_boot = on; ++flywheel_restores; }
-static void boot(void) { output = 0; channel = 0; s_std_mode = STD_MODE_AUTO; output_applied = 0;
+static void boot(void) { output = OUTPUT_DEFAULT; channel = 0; s_std_mode = STD_MODE_AUTO; output_applied = 0;
     gain_mode = 0; gain_restores = 0; flywheel_boot = 0; flywheel_restores = 0; settings_load(); }
 static void seed(unsigned slot, const unsigned char *bytes, size_t n) {
     assert(n <= sizeof(slots[slot].bytes)); slots[slot].n = n; memcpy(slots[slot].bytes, bytes, n);
 }
 int main(void) {
-    boot(); assert(output == 0 && output_applied == 0 && channel == 0 && s_std_mode == STD_MODE_AUTO);
+    /* A main user with saved 5x and flywheel ON must still start the
+     * experiment at HDZERO/OFF; flashing back must find their keys intact. */
+    const unsigned char old_output = 8, old_flywheel = 1;
+    seed(4, &old_output, 1); seed(5, &old_flywheel, 1);
+    boot(); assert(output == OUTPUT_DEFAULT && output_applied == 0 && channel == 0 && s_std_mode == STD_MODE_AUTO);
+    assert(!flywheel_restores);
     for (unsigned level = 0; level < OUTPUT_LEVELS; ++level) {
         slots[1].n = 0; writes = commits = 0;
         settings_save_output(level); assert(writes == 1 && commits == 1);
@@ -116,7 +123,7 @@ int main(void) {
     }
     const unsigned char legacy[] = {1, 17, STD_MODE_PAL, 0x5a};
     seed(0, legacy, sizeof(legacy)); slots[1].n = 0;
-    boot(); assert(channel == 17 && s_std_mode == STD_MODE_PAL && output == 0);
+    boot(); assert(channel == 17 && s_std_mode == STD_MODE_PAL && output == OUTPUT_DEFAULT);
     settings_save_output(3); boot();
     assert(channel == 17 && s_std_mode == STD_MODE_PAL && output == 3);
     assert(slots[0].n == sizeof(legacy) && !memcmp(slots[0].bytes, legacy, sizeof(legacy)));
@@ -126,10 +133,10 @@ int main(void) {
     assert(channel == 24 && s_std_mode == STD_MODE_NTSC && output == 3);
     for (unsigned bad = OUTPUT_LEVELS; bad < 256; ++bad) {
         const unsigned char b = (unsigned char)bad; seed(1, &b, 1);
-        boot(); assert(output == 0 && output_applied == 0 && channel == 24);
+        boot(); assert(output == OUTPUT_DEFAULT && output_applied == 0 && channel == 24);
     }
     const unsigned char too_long[] = {2, 0}; seed(1, too_long, 2);
-    boot(); assert(output == 0 && output_applied == 0);
+    boot(); assert(output == OUTPUT_DEFAULT && output_applied == 0);
     const unsigned char valid_output = 2; seed(1, &valid_output, 1);
     const unsigned char unknown_settings[] = {2, 17, STD_MODE_PAL, 0};
     seed(0, unknown_settings, 4); boot();
@@ -140,7 +147,7 @@ int main(void) {
     assert(output == 2 && channel == 0 && s_std_mode == STD_MODE_AUTO);
     writes = commits = 0; settings_save_output(OUTPUT_LEVELS); settings_save_output(1000);
     assert(!writes && !commits); boot(); assert(output == 2);
-    fail_open = 1; boot(); assert(output == 0 && !output_applied); settings_save_output(1);
+    fail_open = 1; boot(); assert(output == OUTPUT_DEFAULT && !output_applied); settings_save_output(1);
     fail_open = 0; boot(); assert(output == 2);
     writes = commits = 0; fail_set = 1; settings_save_output(1);
     assert(writes == 1 && !commits); fail_set = 0; boot(); assert(output == 2);
@@ -150,13 +157,15 @@ int main(void) {
      * mode left in NVS by an earlier firmware. */
     boot(); assert(!gain_restores);
     const unsigned char old_fixed = 42; seed(2, &old_fixed, 1); boot(); assert(!gain_restores && gain_mode == 0);
-    /* Flywheel: absent key keeps the firmware default (ON), saved ON/OFF restored. */
+    /* Flywheel: absent key keeps the experiment default (OFF), saved ON/OFF restored. */
     slots[3].n = 0; boot(); assert(!flywheel_restores && flywheel_boot == 0);
     writes = commits = 0; settings_save_flywheel(true); assert(writes == 1 && commits == 1);
     boot(); assert(flywheel_restores == 1 && flywheel_boot == 1 && gain_mode == 0 && output == 1);
     settings_save_flywheel(true); assert(writes == 1 && commits == 1);
     settings_save_flywheel(false); boot(); assert(flywheel_restores == 1 && flywheel_boot == 0);
     const unsigned char bad_flywheel = 7; seed(3, &bad_flywheel, 1); boot(); assert(!flywheel_restores);
+    assert(slots[4].n == 1 && slots[4].bytes[0] == old_output);
+    assert(slots[5].n == 1 && slots[5].bytes[0] == old_flywheel);
     puts("PASS: actual settings.c output save/reboot, legacy compatibility, invalid data, wear and NVS failures");
     return 0;
 }

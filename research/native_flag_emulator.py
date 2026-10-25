@@ -110,7 +110,8 @@ int main(void) {
     if len(result) < 8:
         raise RuntimeError("C LUT exporter produced an incomplete header")
     levels, outputs = struct.unpack("=II", result[:8])
-    if (levels, outputs) != (8, 10):
+    # Eleven reviewed outputs include the HDZERO soft-knee experiment.
+    if (levels, outputs) != (8, 11):
         raise RuntimeError(f"review changed profile dimensions: {levels} kp, {outputs} outputs")
     count = levels * 1024 + levels * outputs * 1024
     if len(result) != 8 + count * 2:
@@ -188,9 +189,8 @@ def prove(idf: Path, compiler: str, threshold: int, output_bytes: int, seed: int
         generator = random.Random(seed)
         raw = bytes(generator.randrange(256) for _ in range(2 * output_bytes + 64))
         raw_hash = hashlib.sha256(raw).hexdigest()
-        for kp in range(8):
-            for level in range(10):
-                baseline_lut = scaled[kp][level]
+        for kp, output_tables in enumerate(scaled):
+            for level, baseline_lut in enumerate(output_tables):
                 marked_lut = [(word & ~1) | int((original & 63) < threshold)
                               for word, original in zip(baseline_lut, reference[kp])]
                 assert all(((old ^ new) & ~1) == 0 for old, new in zip(baseline_lut, marked_lut))
@@ -246,7 +246,7 @@ def prove(idf: Path, compiler: str, threshold: int, output_bytes: int, seed: int
     return {"schema": 2, "attribution": "C5VRX by Twotoz and contributors",
             "result": "PASS", "threshold_unscaled_dac": threshold, "seed": seed,
             "input_sha256": raw_hash, "output_bytes_per_case": output_bytes,
-            "counts": counters, "profile_coverage": {"kp_settings": 8, "output_levels": 10,
+            "counts": counters, "profile_coverage": {"kp_settings": len(reference), "output_levels": len(scaled[0]),
             "programs": ["normal", "lp"]}, "sha256": {name: digest(path) for name, path in paths.items()},
             "assertions": ["SDK instructions/opcodes/read/write unchanged except LP controller output0",
                 "actual firmware LP flag instructions/configuration equal the emulated variant",
