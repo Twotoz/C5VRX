@@ -54,6 +54,7 @@ static bitscrambler_handle_t s_bs;
 static bool s_tx_enabled;
 static bool s_rx_enabled, s_bs_enabled;
 static bool s_transport_fault;
+static volatile uint32_t s_stream_generation;   /* every ring (re)start */
 /* OUTPUT boots AUTO (output_level.h) unless a manual level was saved. */
 static unsigned s_output = OUTPUT_AUTO, s_verified_output, s_output_clipped;
 static output_auto_t s_auto = OUTPUT_AUTO_DEFAULT, s_verified_auto, s_auto_pending;
@@ -454,6 +455,7 @@ static void quiet_interrupts(void)
  * for205us more video latency and no extra memory. */
 static esp_err_t start_rings_tail(void)
 {
+    ++s_stream_generation;   /* positions of the previous stream are void */
     quiet_interrupts();
     /* Make RX endless BEFORE any wait for TX. start_tx may wait/yield for
      * FIFO readiness; deferring this until afterward could let RX reach EOF. */
@@ -729,6 +731,26 @@ int ring_node_index(uint32_t addr)
 }
 
 static uint32_t rx_active_addr(void) { return AHB_DMA.channel[s_rx_dma_ch].in.in_dscr_bf0.val; }
+
+/* Line TBC (sync_tbc.c): where RX has completed and where TX reads, as ring
+ * byte offsets at descriptor granularity. RX: start of the descriptor it is
+ * filling (everything before it is written). TX: start of the descriptor
+ * its DMA is reading. False while the live stream is not running. */
+bool transport_ring_view(uint32_t *rx_complete, uint32_t *tx_reading, uint32_t *generation)
+{
+    if (!s_started || s_menu_active || s_transport_fault || s_rx_dma_ch < 0 || s_tx_dma_ch < 0 ||
+        s_rx_node_count < 3) return false;
+    const uint32_t gen = s_stream_generation;
+    const int rx = ring_node_index(rx_active_addr());
+    const uint32_t tx_addr = AHB_DMA.channel[s_tx_dma_ch].out.out_dscr_bf0.val;
+    if (rx < 0 || tx_addr < (uint32_t)&s_live_tx_nodes[0] ||
+        tx_addr >= (uint32_t)&s_live_tx_nodes[LIVE_TX_NODES]) return false;
+    const unsigned tx = (tx_addr - (uint32_t)&s_live_tx_nodes[0]) / sizeof(dma_descriptor_t);
+    *rx_complete = (uint32_t)(s_rx_nodes[rx].buffer - s_raw_ring);
+    *tx_reading = tx * 4092u;
+    *generation = gen;
+    return gen == s_stream_generation && s_started;
+}
 
 static bool completed_plan(int active, size_t need, control_copy_plan_t *out)
 {

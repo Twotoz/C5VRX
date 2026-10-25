@@ -226,3 +226,24 @@ needs about 18/22 KiB, progressive fallback about 9/11 KiB; log heap/free
 block sizes and any deferred/refused entry. Verify the actual monitor picture.
 Board logs and host tests alone do not establish camera lock or range gain.
 See [PR212](PR212.md); final cleaned-build hardware validation is still pending.
+
+## HDZero fix: line TBC and OUTPUT AUTO (2026-10-25)
+
+Flash the exact build and confirm `T`: `OUTPUT level=AUTO`, the
+`OUTPUT_AUTO` gain/porch and `TBC on=1`. With the VTX on and the HDZero
+connected directly (no external TBC or amplifier):
+
+1. Short range, NTSC then PAL camera: picture stable, no shifted lines.
+   `T` TBC: `locked=1`, `rewritten` close to `lines` minus the vertical
+   interval, `refused_late` near 0, `cpu_permille` (expect below ~250).
+2. Toggle `W` (TBC OFF/ON) on the same scene: compare line stability; OFF
+   must restore the old behaviour at once.
+3. Walk out to the range where the old build shifted lines; repeat 2.
+4. Colour: a saturated test scene (or colour bars) must look the same with
+   TBC ON and OFF; burst lock (colour present) unchanged.
+5. Scope into one 75-ohm load (goggle or termination): sync depth ~0.26 V,
+   sync to white ~0.9 V with AUTO; no clipping on saturated colours.
+6. Menu open/close, channel change, CALIBRATE: picture returns, TBC
+   re-locks (`locks` increments), console stays responsive.
+
+Record firmware hash, VTX, camera, distance and the `T` TBC/OUTPUT lines.

@@ -7,36 +7,93 @@ scripts and data live in that branch under `v4/docs/PICTURE_CLIFF_STUDY.md`,
 Synthetic results are host simulations; board results are labelled as such.
 Measured range is not established.
 
-## OUTPUT AUTO: standard CVBS levels for HDZero (2026-10-25)
+## HDZero fix: line TBC and standard CVBS levels (2026-10-25)
 
 Report: on HDZero goggles the C5VRX-5 picture had every line shifted and was
-unrecognizable ("HDZero has no time-base corrector"). Root cause found in
-the output levels. Line timing is passed through: RX and TX are both
-configured at 40 MHz from the PARLIO default clock source with a fixed ring
-delay (a clock-domain check on the board is still open). The fixed
-P64 transfer (-6..+9 MHz on codes 0..63, 4.2 codes/MHz) into the resistor
-DAC (200 ohm || 75 ohm, ~16.1 mV/code) gave a nominal VTX (sync depth 1.914
-MHz) ~8 codes = ~0.13 V of sync and ~0.45 V sync to white at the old 1.0x
-default; the standard is 0.286 V / 1.0 V. A Fatshark-class sync separator
-still triggers; the TP2825 decoder in HDZero slices and line-locks on that
-sync and misplaces lines (`legacy/c5vrx4/HDZERO.md`; issue #200: no live
-video at 1.0x, live video at 2.0x on a compressed-sync VTX).
+unrecognizable. The user then put a video amplifier/time-base corrector
+between the C5 and the goggles and had perfect sync (operator, 2026-10-25).
+Two causes, both fixed at the source.
 
-OUTPUT AUTO is the new default (saved manual levels are kept): the deviation
-monitor's accepted windows (burst/line-timing confirmed, healthy gain, C/N
->= 8 dB) also give the porch and a smoothed white peak (`afc2_result_t
-peak_khz`). The measured blanking maps to code 19 and the measured sync depth
-to 17.5 codes (~0.28 V); the gain is capped by the 90th-percentile white
-peak (only tightening within a channel session, cutting at most 30 %), and
-bounded 1.0x..3.0x. Before a measurement the stored deviation (or nominal)
-is used. A change is applied by the verified halted restart behind the
-shared guard, folded into a profile restart when one is due, and only for
->= 8 % gain or >= 1.5-code blanking change, since every restart is a
-goggle re-lock. Host model (`test/test_output_auto.c`): nominal, wide (1.7)
-and narrow (0.69) VTXs get 0.27-0.29 V sync and ~0.97 V sync to white; the
-issue #200 VTX gets 2.24x, 0.21 V sync with slightly clipped whites. These
-are nominal DAC numbers, not scope measurements; HDZero/scope acceptance
-into one 75-ohm load and PAL/NTSC board checks are pending.
+**1. Line timing noise (what the TBC removed).** HDZero's TP2825 decoder has
+no time-base corrector: it places every line on that line's own H-sync
+edge. The C5 demodulates 4-bit IQ, so FM noise moves the edge from line to
+line. Host model with the real P64 LUT (`research/tbc_study.py`,
+`research/data/tbc_study.json`; physical 4-bit ADC model, 12 MHz filter):
+leading-edge deviation from a straight line grid is 13 ns rms at 30 dB C/N
+but 39-134 ns rms at 8-12 dB, with 1-21 % of lines more than 100 ns off. An
+analog goggle averages that over many lines; a TP2825 shifts each line. The
+receive chain itself adds no timing error: RX and TX both run at
+PLL_F240M / 6 = 40 MHz with a fixed ring delay, so the camera's line grid is
+a straight line in absolute sample counts.
+
+The new line TBC (`main/sync_tbc.h` pure, `main/sync_tbc.c` runtime; menu
+TBC, console `W`, NVS `tbc`, default ON) works in the sample domain, in the
+raw IQ ring between the RX DMA (data complete) and the TX DMA (~600 us
+later):
+
+- A critically damped second-order PLL (~50 lines) follows the measured
+  leading edges in absolute sample counts. Its residual error is 2-5 ns
+  rms in the model.
+- On every line where the real pulse is verified to be a normal H sync, the
+  raw IQ from 1.0 us before the edge to 2.8 us into the tip is replaced by
+  a clean constant-frequency rotation at the measured porch and tip
+  frequencies with a 100 ns raised-cosine edge at the PLL time. The check
+  needs blanking before the pulse, the tip at the camera's sync level (from
+  the AFC, +-30 % of the sync depth, so no dark picture detail passes),
+  still at the tip at 3.75 us (equalising pulses and serrations fail) and
+  back near blanking at 5.0 us (broad pulses fail).
+- The segment is phase-continuous at both ends and ends inside the real
+  tip, so the demodulator's state re-converges before the real trailing
+  edge. Burst, picture and the vertical interval keep the camera's own
+  samples: in the model the P64 output in burst and picture is
+  bit-identical (burst phase change 0.00-0.01 degrees), and no V-interval
+  pulse or picture byte is touched.
+- Result (model): 8-12 dB C/N leading-edge jitter 39-134 -> 13-35 ns rms,
+  lines > 100 ns off 1-21 % -> <= 0.9 %; at 30 dB 13 -> 10 ns (PAL). Below
+  ~5 dB C/N it does not lock and passes the signal through unchanged.
+
+Safety, from the removed flywheel's lessons: no pulse is ever invented where
+the camera has none; no CPU or interrupt time places an output edge (a
+200 us GPTimer only wakes the task; every wake re-reads both DMA positions);
+nothing is written behind the TX read position or into data the RX has
+overwritten (absolute positions reconciled with elapsed time, so a CPU
+blackout cannot lose a ring wrap); before lock every candidate must be
+confirmed on the very next line, else it is dropped; acquisition needs the
+AFC's confirmed sync/porch levels and runs at most every 20 ms. It never
+runs while the menu, a status screen, calibration, a scan or a paused
+receiver owns the ring. A CPU share above 30 % for 3 s switches it off with
+a message (`T` TBC line: lines, rewritten, refused, locks, cpu_permille).
+Host test `test/test_sync_tbc.c` (synthetic PAL with burst, sync-wide dark
+picture blocks and a V interval, real P64 LUT): only leading-edge segments
+of real H syncs change; jitter 86 -> 16 ns at 14 dB, 201 -> 35 ns at 11 dB;
+burst and picture bit-identical; no write without reference, with a wrong
+reference, without room ahead of TX, or on receiver noise.
+
+**2. Output level.** At the old 1.0x default the fixed P64 transfer
+(-6..+9 MHz on codes 0..63, 4.2 codes/MHz) into the resistor DAC (200 ohm ||
+75 ohm, ~16.1 mV/code) gave a nominal VTX (sync depth 1.914 MHz) ~8 codes =
+~0.13 V of sync and ~0.45 V sync to white; the standard is 0.286 V / 1.0 V
+(issue #200: no live video at 1.0x, live video at 2.0x). OUTPUT AUTO is the
+new default (saved manual levels are kept): the deviation monitor's
+accepted windows (burst/line-timing confirmed, healthy gain, C/N >= 8 dB)
+also give the porch and a smoothed white peak (`afc2_result_t peak_khz`).
+Blanking maps to code 18 and the measured sync depth to 16 codes
+(~0.26 V); the gain is capped so the 90th-percentile luma white stays at
+code 58, leaving ~5 codes (~0.08 V) above white for saturated chroma
+(colours do not clip), only tightening within a channel session and
+cutting at most 30 %, bounded 1.0x..3.0x. Before a measurement the stored
+deviation (or nominal) is used. A change is applied by the verified halted
+restart behind the shared guard, folded into a profile restart when one is
+due, and only for >= 8 % gain or >= 1.5-code blanking change (every
+restart is a goggle re-lock). Host model (`test/test_output_auto.c`):
+nominal, wide (1.7) and narrow (0.69) VTXs get 0.26-0.27 V sync and ~0.9 V
+sync to white; the issue #200 VTX gets 2.05x, 0.19 V sync with slightly
+clipped whites.
+
+Evidence limits: host models and a firmware build. Board checks pending:
+HDZero NTSC/PAL with TBC ON/OFF at short and longer range, scope into one
+75-ohm load (sync ~0.26 V, sync to white ~0.9 V), `T` TBC counters and
+cpu_permille, IDLE/console responsiveness, menu and channel changes.
 
 ## Sync flywheel removed (operator decision, 2026-10-25)
 

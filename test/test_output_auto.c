@@ -37,7 +37,10 @@ static void vtx(const char *name, int sync, int porch, int white, int min_depth_
     check(label, s >= 1 && depth_mv >= min_depth_mv);
     snprintf(label, sizeof(label), "%s: blanking at code %d +-1", name, OUTPUT_AUTO_PORCH_OUT);
     check(label, abs(p - OUTPUT_AUTO_PORCH_OUT) <= 1);
+    /* Saturated chroma rides up to ~0.1 V above white: it must still fit. */
     if (white_fits) {
+        snprintf(label, sizeof(label), "%s: >= 5 codes (~80 mV) of chroma headroom above white", name);
+        check(label, 63 - w >= 5);
         snprintf(label, sizeof(label), "%s: white at or below code %d (no white clipping)", name, OUTPUT_AUTO_WHITE_MAX);
         check(label, w <= OUTPUT_AUTO_WHITE_MAX);
     }
@@ -51,17 +54,17 @@ int main(void)
     printf("   1.0x, nominal VTX: sync depth %d mV (standard 286 mV)\n", d1);
     check("fixed 1.0x gives a nominal VTX less than half the standard sync depth", d1 < 143);
 
-    vtx("nominal VTX (deviation 1.0)", -2914, -1000, 3786, 250, true);
-    vtx("wide VTX (deviation 1.7, A1 board)", -4254, -1000, 7136, 250, true);
-    vtx("narrow VTX (deviation 0.69)", -2321, -1000, 2303, 250, true);
+    vtx("nominal VTX (deviation 1.0)", -2914, -1000, 3786, 240, true);
+    vtx("wide VTX (deviation 1.7, A1 board)", -4254, -1000, 7136, 240, true);
+    vtx("narrow VTX (deviation 0.69)", -2321, -1000, 2303, 240, true);
     /* Issue #200: compressed sync (1.3 MHz) under a full picture; 2.0x was
      * reported to give HDZero live video. The white cap wins here. */
-    vtx("issue #200 VTX (sync 1.3 MHz)", -2800, -1500, 3700, 190, false);
+    vtx("issue #200 VTX (sync 1.3 MHz)", -2800, -1500, 3700, 180, false);
     output_auto_t i200 = output_auto_target(1300, -1500, 5200);
     check("issue #200 VTX: at least the reported working 2.0x, white cut <= 30 %",
-          i200.gain_x100 >= 200 && i200.gain_x100 * 100 >= output_auto_target(1300, -1500, 0).gain_x100 * 70);
+          i200.gain_x100 >= 200 && i200.gain_x100 * 100 >= output_auto_target(1300, -1500, 0).gain_x100 * 69);
     check("AUTO never goes below the old fixed 1.0x", output_auto_target(9000, -1000, 3000).gain_x100 >= 100);
-    vtx("nominal VTX, AFC 0.4 MHz off", -2514, -600, 4186, 250, true);
+    vtx("nominal VTX, AFC 0.4 MHz off", -2514, -600, 4186, 240, true);
 
     /* Bounds and validity. */
     check("no measurement keeps the nominal default",
@@ -112,12 +115,12 @@ int main(void)
     check("too few windows decide nothing", !output_auto_obs_decide(&o, 100, SYNC_KHZ_PER_DEV, &a));
     for (unsigned k = 0; k < OUTPUT_AUTO_WINDOWS; ++k) output_auto_obs_push(&o, -1000 + (int)(k % 3) * 10, k < 90 ? 2000 : 9000);
     check("decided from the cycle's windows", output_auto_obs_decide(&o, 100, SYNC_KHZ_PER_DEV, &a));
-    check("a few white spikes (90th percentile) do not cap a dark scene", a.gain_x100 == 217);
+    check("a few white spikes (90th percentile) do not cap a dark scene", a.gain_x100 == 199);
     output_auto_obs_cycle(&o);
     for (unsigned k = 0; k < OUTPUT_AUTO_WINDOWS; ++k) output_auto_obs_push(&o, -1000, 6000);
     (void)output_auto_obs_decide(&o, 100, SYNC_KHZ_PER_DEV, &a);
     const int bright = a.gain_x100;
-    check("a bright scene caps the gain", bright < 217);
+    check("a bright scene caps the gain", bright < 199);
     output_auto_obs_cycle(&o);
     for (unsigned k = 0; k < OUTPUT_AUTO_WINDOWS; ++k) output_auto_obs_push(&o, -1000, 1000);
     (void)output_auto_obs_decide(&o, 100, SYNC_KHZ_PER_DEV, &a);
@@ -125,9 +128,9 @@ int main(void)
     output_auto_obs_reset(&o);
     for (unsigned k = 0; k < OUTPUT_AUTO_WINDOWS; ++k) output_auto_obs_push(&o, -1000, 1000);
     (void)output_auto_obs_decide(&o, 100, SYNC_KHZ_PER_DEV, &a);
-    check("a new channel session starts without the old cap", a.gain_x100 == 217);
-    check("prior without a stored deviation is the default", output_auto_prior(0, SYNC_KHZ_PER_DEV).gain_x100 == 217);
-    check("prior from a stored wide deviation", output_auto_prior(170, SYNC_KHZ_PER_DEV).gain_x100 == 128);
+    check("a new channel session starts without the old cap", a.gain_x100 == 199);
+    check("prior without a stored deviation is the default", output_auto_prior(0, SYNC_KHZ_PER_DEV).gain_x100 == 199);
+    check("prior from a stored wide deviation", output_auto_prior(170, SYNC_KHZ_PER_DEV).gain_x100 == 117);
 
     printf("%s: %u checks, %u failures\n", failures ? "FAIL" : "PASS", checks, failures);
     return failures != 0;

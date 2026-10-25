@@ -51,10 +51,11 @@ static const uint8_t s_icons[MENU_ITEMS][8] = {
     {0x08, 0x08, 0x1c, 0x7f, 0x1c, 0x08, 0x08, 0x00},   /* calibrate */
     {0x00, 0x08, 0x18, 0x38, 0x78, 0x38, 0x18, 0x08},   /* output */
     {0x00, 0x02, 0x06, 0x0e, 0x1e, 0x3e, 0x7e, 0x00},   /* gain */
+    {0x00, 0x7e, 0x42, 0x42, 0x42, 0x42, 0xc3, 0x00},   /* tbc */
     {0x00, 0x03, 0x03, 0x0f, 0x0f, 0x3f, 0x3f, 0x00},   /* dac test */
     {0x7c, 0x44, 0x04, 0x1f, 0x04, 0x44, 0x7c, 0x00},   /* exit */
 };
-static const char *const s_items[MENU_ITEMS] = {"BAND", "CHANNEL", "SCAN", "VIDEO", "CALIBRATE", "OUTPUT", "GAIN", "DAC TEST",
+static const char *const s_items[MENU_ITEMS] = {"BAND", "CHANNEL", "SCAN", "VIDEO", "CALIBRATE", "OUTPUT", "GAIN", "TBC", "DAC TEST",
                                                 "EXIT"};
 
 static void rect(int x, int y, int w, int h, uint8_t code)
@@ -323,6 +324,12 @@ void menu_render(void)
              100, 47, UI_WHITE, 1);
         break;
     }
+    case MENU_TBC:
+        title("LINE TBC", "HOLD: ON/OFF");
+        value_box(100, 22, 276, "TBC", sync_tbc_enabled() ? "ON" : "OFF");
+        text("SAVED, APPLIES AT ONCE", 100, 36, UI_MUTED, 1);
+        text(sync_tbc_enabled() ? "CLEAN SYNC TIMING FOR HDZERO" : "CAMERA SYNC AS RECEIVED", 100, 47, UI_WHITE, 1);
+        break;
     case MENU_DAC:
         title("DAC TEST", "HOLD: METER STEPS");
         render_dac_pattern();

@@ -32,14 +32,15 @@ static inline uint16_t output_entry(uint16_t value, unsigned level, bool *clippe
  * scales so the measured sync depth becomes OUTPUT_AUTO_SYNC_X10 / 10 codes,
  * capped so the measured white peaks stay at or below OUTPUT_AUTO_WHITE_MAX.
  * Resistor DAC into 200 ohm || 75 ohm: ~16.1 mV per code (dac_check.h model,
- * GPIO resistance ignored), so the targets are sync tip ~0.04 V, blanking
- * ~0.31 V (sync depth ~0.28 V) and white ~1.0 V for a standard VTX. Only
- * DAC6 bits change, as for the manual levels. */
+ * GPIO resistance ignored), so the targets are sync tip ~0.03 V, blanking
+ * ~0.29 V (sync depth ~0.26 V) and white ~0.93 V for a standard VTX: ~5
+ * codes (~0.08 V) stay free above white for saturated chroma, so colours do
+ * not clip. Only DAC6 bits change, as for the manual levels. */
 #define OUTPUT_AUTO         10u
 #define OUTPUT_CHOICES      11u
-#define OUTPUT_AUTO_PORCH_OUT  19
-#define OUTPUT_AUTO_SYNC_X10   175
-#define OUTPUT_AUTO_WHITE_MAX  62
+#define OUTPUT_AUTO_PORCH_OUT  18
+#define OUTPUT_AUTO_SYNC_X10   160
+#define OUTPUT_AUTO_WHITE_MAX  58
 #define OUTPUT_AUTO_GAIN_MIN_X100  100   /* never below the old fixed 1.0x */
 #define OUTPUT_AUTO_GAIN_MAX_X100  300
 /* The sync decides lock: white peaks may cut the sync-referenced gain by at
@@ -52,7 +53,7 @@ typedef struct { int gain_x100, porch_x10; } output_auto_t;
 
 /* Nominal VTX (deviation 1.0) with porch at the AFC target (-1.0 MHz,
  * code 21): the boot value before this channel's VTX is measured. */
-#define OUTPUT_AUTO_DEFAULT ((output_auto_t){.gain_x100 = 217, .porch_x10 = 210})
+#define OUTPUT_AUTO_DEFAULT ((output_auto_t){.gain_x100 = 199, .porch_x10 = 210})
 
 static inline uint16_t output_auto_entry(uint16_t value, output_auto_t a, bool *clipped)
 {

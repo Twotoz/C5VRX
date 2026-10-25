@@ -711,15 +711,24 @@ requirements by themselves**.
   ignored; flight-log flywheel slots stay for old logs and read 0. See
   `docs/FINDINGS.md`, "Sync flywheel removed". Do not restore it from git
   history without a new board comparison that beats flywheel OFF.
-- OUTPUT AUTO (2026-10-25, HDZero report: shifted lines, unrecognizable):
-  the default OUTPUT maps the measured blanking to code 19 and scales the
-  measured sync depth to 17.5 codes (~0.28 V; ~1 V sync to white into 75
-  ohm), capped by the session's white peaks (cut <= 30 %), 1.0x..3.0x
-  (`main/output_level.h`, `main/output_auto.h`, host test
-  `test/test_output_auto.c`). Evidence = the deviation monitor's accepted
-  windows; applied by verified halted restart behind the shared guard, only
-  on >= 8 % gain or >= 1.5-code blanking change. Fixed 1.0x gave a nominal
-  VTX ~0.13 V sync (issue #200). Nominal DAC model; scope/HDZero pending.
+- HDZero fix (2026-10-25; shifted, unrecognizable lines; an inline TBC
+  fixed them on the board). See `docs/FINDINGS.md`, "HDZero fix".
+  - Line TBC (`main/sync_tbc.h`, `main/sync_tbc.c`, menu TBC, console `W`,
+    NVS `tbc`, default ON): a sample-domain PLL on absolute ring positions
+    replaces only the leading edge (1.0 us before to 2.8 us into the tip)
+    of verified normal H syncs with a clean, phase-continuous edge at the
+    PLL time. It is the one allowed change to the received waveform. Keep:
+    no invented pulses, no CPU/IRQ-timed edges, no write behind TX or into
+    overwritten RX data, burst/picture/V interval untouched (host test
+    `test/test_sync_tbc.c`, study `research/tbc_study.py`), next-line
+    confirmation before lock, AFC-level gate, CPU trip at 30 %.
+  - OUTPUT AUTO (default): blanking to code 18, measured sync depth to 16
+    codes (~0.26 V), luma white capped at code 58 (~0.08 V chroma
+    headroom), cut <= 30 %, 1.0x..3.0x (`main/output_level.h`,
+    `main/output_auto.h`, `test/test_output_auto.c`); verified halted
+    restart, only on >= 8 % gain or >= 1.5-code blanking change. Fixed 1.0x
+    gave a nominal VTX ~0.13 V sync (issue #200).
+  - Host models and build only; HDZero/scope board checks pending.
 - The P64 default is an explicit operator choice, not a host-score promotion.
   Its fixed table is unchanged from the positive VTX-on NTSC check at d894bef;
   PAL, weak-signal/range and the final cleanup still require board checks.
@@ -754,7 +763,8 @@ requirements by themselves**.
 - Do not turn a physical SRAM or DMA block boundary into a DSP reset, and do
   not claim sample-gapless RF or AV transport without its physical proof.
 - The live path recovers the transmitted composite waveform; it does not
-  decode pixels or regenerate PAL/NTSC.
+  decode pixels or regenerate PAL/NTSC. Sole exception: the line TBC's
+  clean leading edge on verified normal H syncs (above).
 - Every live kp/program/OUTPUT/profile change is a verified halted restart
   (`transport.c`, `transport_recovery.h`) behind one shared five-second
   guard; RUN/PAUSE LUT or instruction rewrites failed on the board. Bound

@@ -76,6 +76,15 @@ void transport_stop_chain(void);
 void transport_poll_faults(void);
 uint32_t transport_fault_count(void);
 void transport_print(void);
+bool transport_ring_view(uint32_t *rx_complete, uint32_t *tx_reading, uint32_t *generation);
+/* ---- sync_tbc.c: sample-domain line TBC (HDZero) ---- */
+void sync_tbc_start(void);
+void sync_tbc_reference(int32_t sync_khz, int32_t porch_khz, int standard);  /* AFC confirmed window */
+bool sync_tbc_enabled(void);
+void sync_tbc_set(bool on, bool save);
+void sync_tbc_set_boot(bool on);
+void sync_tbc_print(void);
+void settings_save_tbc(bool on);
 /* Flight-log V1 output telemetry. Demod is 0 unknown, 1 verified U85Q,
  * 2 reserved for historical LP logs, 3 verified U80P64-R1. The observer
  * fields keep their wire slots for old logs; firmware writes them empty
@@ -222,7 +231,7 @@ void lane_compare_request(void);
 void self_noise_request(void);   /* bench: noise floor with the video output on vs off (console N) */
 
 /* ---- menu.c ---- */
-enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_CALIBRATE, MENU_OUTPUT, MENU_GAIN, MENU_DAC,
+enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_CALIBRATE, MENU_OUTPUT, MENU_GAIN, MENU_TBC, MENU_DAC,
        MENU_EXIT, MENU_ITEMS };
 extern volatile int s_menu_cursor;
 bool menu_open(void);

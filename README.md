@@ -123,9 +123,14 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
   ground is required.
 - All values are standard E24; 1 % metal-film resistors are fine. Keep
   the wires from the pins to the node short.
-- OUTPUT defaults to AUTO: standard CVBS levels (~0.28 V sync, ~1 V sync to
-  white into 75 ohm) set from the measured VTX sync, which strict digital
-  goggles such as HDZero need. Manual 0.5-5.0x stays in the menu (saved).
+- OUTPUT defaults to AUTO: near-standard CVBS levels (~0.26 V sync, ~0.9 V
+  sync to white into 75 ohm, headroom kept for colour) set from the
+  measured VTX sync, which strict digital goggles such as HDZero need.
+  Manual 0.5-5.0x stays in the menu (saved).
+- TBC (menu, console `W`, default ON) is a built-in line time-base
+  corrector: it puts every H-sync leading edge on a clean, steady line grid
+  so goggles without a TBC (HDZero) stop shifting lines. Colour, picture
+  and the vertical interval are left as received.
 - The XIAO is powered over USB-C or its 5 V pin as usual; the DAC needs no
   separate supply.
 - **Check the build with the DAC self-test** before chasing picture
@@ -182,7 +187,7 @@ Getting the PCB manufactured (via JLCPCB, PCBWay, etc.) is extremely inexpensive
 | Hold 0.6 s | Open menu | Select item |
 
 The menu provides **BAND**, **CHANNEL**, **SCAN**, **VIDEO** (AUTO/NTSC/PAL),
-**CALIBRATE**, **OUTPUT** (AUTO default, or 0.5-5.0x), **GAIN** (AUTO/MAX/fixed),
+**CALIBRATE**, **OUTPUT** (AUTO default, or 0.5-5.0x), **GAIN** (AUTO/MAX/fixed), **TBC** (ON/OFF),
 **DAC TEST** and **EXIT**. It closes after 30 seconds of
 inactivity, or five minutes in DAC TEST. Menu transitions can interrupt video.
 GAIN starts in AUTO on every boot.
@@ -203,6 +208,7 @@ without Enter; `h` lists the commands supported by your firmware.
 | `D` / `R` | Health report / per-second field diagnostics |
 | `I` / `M` / `L` | IQ snapshot / gain map / bench IQ lane test |
 | `A` | Live analog filter/profile switching on/off (saved) |
+| `W` | Line TBC on/off (saved; default on) |
 | `` ` `` | USB download mode |
 
 P64 always uses the same fixed program and LUT. Profiles select only the
