@@ -226,3 +226,23 @@ needs about 18/22 KiB, progressive fallback about 9/11 KiB; log heap/free
 block sizes and any deferred/refused entry. Verify the actual monitor picture.
 Board logs and host tests alone do not establish camera lock or range gain.
 See [PR212](PR212.md); final cleaned-build hardware validation is still pending.
+
+
+## PR #259 line TBC integration from #261 (2026-10-25)
+
+Record the exact build, camera, VTX, goggles and manual OUTPUT level. Keep
+OUTPUT fixed when comparing TBC; OUTPUT AUTO is not included.
+
+1. Compare TBC ON/OFF (W or menu) on PAL and NTSC, near and weak signal.
+   Check actual line stability, colour/burst lock and unchanged picture.
+2. Inspect TBC counters/lock, late refusals and `cpu_permille` with T.
+   Confirm console/IDLE responsiveness; a CPU trip must pass through.
+3. Verify menu/DAC-test entry/exit, retunes, calibration, video loss/recovery
+   and repeated boots. Tracking must reset and reacquire fresh references.
+4. Save OFF/ON and reboot; confirm persistence. A resource initialization
+   failure must leave pass-through and refuse enable until a successful boot.
+5. Scope sync, blanking, white and chroma into the actual 75-ohm load.
+   Manual OUTPUT levels are unchanged; TBC does not correct voltage swing.
+
+The GPIO27/GPIO2 IQ remap and D3 boot loading still need their own checks.
+Host models and clean builds do not establish physical timing or range gain.

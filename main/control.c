@@ -255,6 +255,7 @@ static void menu_action(void)
     case MENU_CALIBRATE: menu_close(); filter_request(); return;   /* runs once the menu is closed */
     case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
     case MENU_GAIN: receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); break;
+    case MENU_TBC: sync_tbc_set(!sync_tbc_enabled(), true); break;
     case MENU_DAC: menu_dac_step(); break;
     case MENU_VIDEO:
         cycle_video_standard();
@@ -275,6 +276,7 @@ static void command(int c, unsigned *menu_idle)
     case 'G': receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); break;
     /* Bench: the real gain step of every table row pair (receiver.c). */
     case 'Q': receiver_pair_sweep_toggle(); break;
+    case 'W': sync_tbc_set(!sync_tbc_enabled(), true); break;
     /* DAC self-test: open the menu on DAC TEST, then step like a hold. */
     case 'Z':
         if (!s_menu_active && !menu_open_checked()) break;
@@ -388,6 +390,7 @@ static void control_task(void *arg)
             settle = own_write ? 2u : RETUNE_SETTLE_TICKS;
         }
         uint32_t gain_epoch = s_gain_epoch, ctx = afc_context();
+        const uint32_t tbc_phy = phy_generation(), tbc_control = s_control_epoch;
         if (s_scan_active) {
             afc2_ctrl_invalidate(&afc);
             memset(&s_afc_evidence, 0, sizeof(s_afc_evidence));
@@ -435,6 +438,8 @@ static void control_task(void *arg)
             s_afc_evidence.raw_porch_khz=r.porch_khz;
             s_afc_evidence.residual_khz=r.porch_khz-afc.target_khz;
         }
+        if (qualified && r.polarity < 0)
+            sync_tbc_reference(r.sync_khz, r.porch_khz, r.standard, tbc_phy, tbc_control, gain_epoch);
         if (valid) { s_last_video_us = now; standard_vote(r.standard); profile_observe(&r); }
         bool was = s_afc_locked;
         if (copied) s_afc_locked = afc2_native_lock(s_afc_locked, valid, afc2_ctrl_can_lock(&afc, true), afc.n, &afc_lost);

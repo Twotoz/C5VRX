@@ -51,6 +51,8 @@ void settings_load(void)
     uint8_t output;
     if (blob_load("output", &output, sizeof(output)) && output < OUTPUT_LEVELS)
         (void)transport_set_output(output);
+    uint8_t tbc;
+    if (blob_load("tbc", &tbc, sizeof(tbc)) && tbc <= 1u) sync_tbc_set_boot(tbc != 0u);
     settings_t s;
     if (!blob_load("settings", &s, sizeof(s)) || s.version != SETTINGS_VERSION) return;
     if (s.channel < FPV_CHANNELS) (void)rf_set_channel(s.channel);
@@ -66,3 +68,10 @@ void settings_save_output(unsigned level)
     (void)blob_store("output", &output, sizeof(output));
 }
 
+void settings_save_tbc(bool on)
+{
+    const uint8_t value = on ? 1u : 0u;
+    uint8_t old;
+    if (blob_load("tbc", &old, sizeof(old)) && old == value) return;
+    (void)blob_store("tbc", &value, sizeof(value));
+}

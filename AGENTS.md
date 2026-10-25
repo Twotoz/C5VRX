@@ -722,6 +722,16 @@ requirements by themselves**.
   ignored; flight-log flywheel slots stay for old logs and read 0. See
   `docs/FINDINGS.md`, "Sync flywheel removed". Do not restore it from git
   history without a new board comparison that beats flywheel OFF.
+- Operator integration (2026-10-25): carry only PR #261's line TBC into
+  PR #259. `main/sync_tbc.h` / `.c`, menu TBC, console W, NVS `tbc`,
+  default ON. It may replace only leading-edge segments of verified normal
+  H syncs in completed raw IQ ahead of TX; no invented pulse or V/burst/picture
+  rewrite. Fresh AFC references are bound to PHY/control/gain and expire at
+  500 ms. Every write rechecks DMA/context after analysis; CPU trip is 30 %
+  for 3 s. Reset tracking on toggles, stream/context changes and invalidation.
+  OUTPUT AUTO is explicitly excluded: preserve manual levels/default/NVS
+  and the current DAC wiring. Donor host results are not physical acceptance.
+  See docs/FINDINGS.md "Line TBC from PR #261" and docs/FIELD_TEST.md.
 - The P64 default is an explicit operator choice, not a host-score promotion.
   Its fixed table is unchanged from the positive VTX-on NTSC check at d894bef;
   PAL, weak-signal/range and the final cleanup still require board checks.
@@ -756,7 +766,8 @@ requirements by themselves**.
 - Do not turn a physical SRAM or DMA block boundary into a DSP reset, and do
   not claim sample-gapless RF or AV transport without its physical proof.
 - The live path recovers the transmitted composite waveform; it does not
-  decode pixels or regenerate PAL/NTSC.
+  decode pixels or regenerate PAL/NTSC. The operator-selected line TBC may
+  clean only verified normal H-sync leading edges as described above.
 - Every live kp/program/OUTPUT/profile change is a verified halted restart
   (`transport.c`, `transport_recovery.h`) behind one shared five-second
   guard; RUN/PAUSE LUT or instruction rewrites failed on the board. Bound

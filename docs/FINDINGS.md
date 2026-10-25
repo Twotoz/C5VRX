@@ -7,6 +7,50 @@ scripts and data live in that branch under `v4/docs/PICTURE_CLIFF_STUDY.md`,
 Synthetic results are host simulations; board results are labelled as such.
 Measured range is not established.
 
+## Line TBC from PR #261 (2026-10-25)
+
+Operator request: integrate only the line TBC from [PR #261](https://github.com/Twotoz/C5VRX/pull/261)
+into PR #259, excluding OUTPUT AUTO. Donor revision
+`a0123911608b3315a894fe669193c4ee64493302`, C5VRX by Twotoz and the
+contributors. This extends the existing raw32K/RX40/P64/TX40 receiver and
+lessons from the removed sync flywheel, not a new RF source or pixel decoder.
+The old GPIO2/DAC-OE flywheel remains removed; GPIO2 stays reserved for IQ.
+
+The pure `main/sync_tbc.h` and runtime `main/sync_tbc.c` track normal H-sync
+leading edges on an absolute sample-domain PLL. Only a measured pulse with
+camera-level sync/porch and normal-width checks can be rewritten, from
+1.0 us before its edge to 2.8 us into its tip. The segment ends inside the
+real tip, preserving the original trailing edge, burst, picture and vertical
+interval. Missing/invalid pulses pass through. No CPU/IRQ time places an
+output edge; a 200-us GPTimer wakes a bounded task. Menu TBC / console W
+is saved independently as NVS `tbc`, default ON. `T` prints TBC diagnostics.
+
+Integration hardening beyond the donor: references publish coherently and
+expire after 500 ms; PHY/control/gain or stream changes reset tracking.
+Analysis cannot authorize a later write using an old DMA snapshot: an optional
+pure-core callback rechecks live DMA positions/context immediately before the
+store loop. The existing descriptor margin is retained. Access is revoked
+before transport teardown and refused during menu/pause/startup/scan/PHY
+ownership. Timer initialization failure cleans up and cannot be overridden
+by W. A CPU share above 30 % for 3 s trips to pass-through. Signed negative
+phase corrections use defined multiplication instead of signed left shifts.
+
+Evidence: the donor study and JSON in `research/tbc_study.py` and
+`research/data/tbc_study.json` are preserved synthetic results. The PAL host
+fixture through the real P64 LUT reports 86→16 ns rms at 14 dB and
+201→35 ns at 11 dB, with bit-identical burst/picture. The updated fixture
+also checks that a revoked live write guard leaves every byte untouched.
+`test/test_tbc_runtime.py` executes the production freshness/context and DMA
+write guards with mocked hardware boundaries. Undefined-behaviour sanitization
+and settings regressions are part of local validation. These do not prove
+C5 worst-case timing, CPU load, continuous DMA safety or HDZero acceptance.
+
+OUTPUT stays manual (0.5–5.0x, default 1.0x and existing saved choices).
+No `output_auto.h`, AUTO LUT/servo, white-peak measurement, profile coupling,
+AUTO menu choice or web change is imported. The two future DAC branches remain
+DNP. Scope actual CVBS levels independently of TBC; no automatic level or
+range gain is claimed. Final firmware build and board checks are separate.
+
 ## GPIO27 IQ loopback experiment (2026-10-25)
 
 Operator request: reserve D10 and D3 for future seventh/eighth DAC branches.
