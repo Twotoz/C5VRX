@@ -693,6 +693,14 @@ requirements by themselves**.
 
 ## Current realtime invariants (C5VRX-5)
 
+- Operator IQ pin experiment (2026-10-25): `RF_IQ_GPIO_NUMS` in `main/rf.h`
+  supplies both MODEM_DIAG routing and PARLIO RX: Q = 1/0/25/7,
+  I = 27/5/3/4. GPIO27 replaces GPIO10; D10 is unassigned, not a seventh
+  DAC bit. GPIO27 is IQ-owned, never a status LED. The XIAO LED/resistor
+  remains attached and high-speed loopback validation is pending; see
+  docs/FINDINGS.md "GPIO27 IQ loopback experiment". Keep the existing DAC
+  wiring and RX40/raw32K/two-lookup/DAC20-at-TX40 cadence.
+
 - Operator cleanup decision (2026-10-23, confirmed single-model scope):
   active firmware builds and boots U80P64-R1 only (`main/p64.bsasm`). U85Q,
   the kp ladder/tables, LP policy/state, demod selection and console m/K/k/j/P/O/H

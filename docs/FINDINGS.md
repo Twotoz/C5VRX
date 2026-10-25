@@ -7,6 +7,43 @@ scripts and data live in that branch under `v4/docs/PICTURE_CLIFF_STUDY.md`,
 Synthetic results are host simulations; board results are labelled as such.
 Measured range is not established.
 
+## GPIO27 IQ loopback experiment (2026-10-25)
+
+Operator request: free a header pin by moving the I-LSB MODEM_DIAG loopback
+from D10/GPIO10 to GPIO27. This extends the existing C5VRX by Twotoz and
+contributors' GPIO-matrix/PARLIO loopback and shared-pin-map precedent in
+`legacy/c5vrx3/docs/custom-board.md`; it is not another RF sample source.
+`RF_IQ_GPIO_NUMS` in `main/rf.h` supplies both RF routing and PARLIO RX,
+including the bench coarse/fine/ultrafine routes and RF restores.
+
+| PARLIO RX bit | Component / ADC bit (ultrafine) | GPIO |
+| --- | --- | --- |
+| 0..3 | Q[4], Q[5], Q[6], Q[9] | 1, 0, 25, 7 |
+| 4..7 | I[4], I[5], I[6], I[9] | 27, 5, 3, 4 |
+
+D10/GPIO10 is now unassigned, not an enabled seventh DAC bit. The D4..D9
+six-bit resistor DAC, U80P64-R1, raw 32-KiB ring, RX40 capture, two-lookup
+hardware demodulator and unique DAC20 duplicated at TX40 are unchanged.
+No per-sample CPU work or runtime pin-switching control is introduced.
+GPIO27 is exclusively IQ-owned, including while menus own TX; no status-LED
+writer may reconfigure it. No active firmware LED writer was found.
+
+The [Seeed XIAO C5 schematic](https://files.seeedstudio.com/wiki/XIAO_ESP32C5/res/Seeed_Studio_XIAO_ESP32C5.pdf)
+connects GPIO27 to the user LED through R15 (1 kOhm). The LED may glow with
+IQ activity. It is not an unbonded or electrically unloaded virtual GPIO.
+GPIO6/26 remain assigned to the battery measurement circuit; USB, BOOT,
+flash/PSRAM and the GPIO2 sync functions are not repurposed.
+
+**Hardware validation pending:** compare the main baseline with this build
+on an unmodified XIAO at 5805 and 5865 MHz, using repeated cold boots, VTX-off
+noise and VTX-on PAL/NTSC. Check IQ snapshots (`I`), sampling-phase status,
+the lane comparison (`L`), menu exit, channel changes and weak-signal recovery.
+Confirm the moved I bit toggles normally, with no extra grain, phase faults,
+sync loss or transport errors. Compare under controlled attenuation before
+claiming unchanged sensitivity. If GPIO27 loading reduces timing margin,
+revert the mapping; do not assume that a lit LED or passing build proves
+correct high-speed capture. No physical IQ/video/range result is claimed.
+
 ## P64 demodulator on mode 0 (PR #250 model, 2026-10-23)
 
 This branch repairs the P64 model from PR #250 on top of the digital-filter

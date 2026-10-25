@@ -89,6 +89,12 @@ XIAO ESP32-C5. DAC on D4..D9 (GPIO 23, 24, 11, 12, 8, 9; LSB first) with
 ([schematic](docs/hardware/c5vrx-dac-schematic.png)). The
 receiver uses the ESP32-C5's own Wi-Fi radio; no extra RF parts.
 
+This development build moves the internal I-LSB loopback from D10/GPIO10
+to the user-LED GPIO27, leaving D10 unassigned. The LED is reserved for IQ
+and may glow during reception. No IQ wiring or DAC changes are needed;
+the output remains 6-bit. GPIO27 capture timing on an unmodified XIAO is
+not yet hardware-validated; see [the pin-routing findings](docs/FINDINGS.md#gpio27-iq-loopback-experiment-2026-10-25).
+
 ### Wiring the resistor DAC
 
 Six resistors, one per XIAO pin, all joined on one node: that node is the

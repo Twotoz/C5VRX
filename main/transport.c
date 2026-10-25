@@ -119,9 +119,8 @@ static esp_err_t prepare_rx(void)
         .clk_in_gpio_num = -1,
         .clk_out_gpio_num = -1,
         .valid_gpio_num = -1,
-        /* Same order as rf.c s_iq_pins: Q bits 0..3, I bits 4..7. */
-        .data_gpio_nums = {GPIO_NUM_1, GPIO_NUM_0, GPIO_NUM_25, GPIO_NUM_7,
-                           GPIO_NUM_10, GPIO_NUM_5, GPIO_NUM_3, GPIO_NUM_4},
+        /* Share RF routing's pin order, including the GPIO27 I-LSB. */
+        .data_gpio_nums = RF_IQ_GPIO_NUMS,
         .flags = {.free_clk = true, .clk_gate_en = false, .allow_pd = false},
     };
     esp_err_t err = parlio_new_rx_unit(&cfg, &s_rx);
