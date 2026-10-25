@@ -32,7 +32,8 @@ The [Seeed XIAO C5 schematic](https://files.seeedstudio.com/wiki/XIAO_ESP32C5/re
 connects GPIO27 to the user LED through R15 (1 kOhm). The LED may glow with
 IQ activity. It is not an unbonded or electrically unloaded virtual GPIO.
 GPIO6/26 remain assigned to the battery measurement circuit; USB, BOOT,
-flash/PSRAM and the GPIO2 sync functions are not repurposed.
+flash/PSRAM are not repurposed. GPIO2 remains unassigned after main's
+sync flywheel removal.
 
 **Hardware validation pending:** compare the main baseline with this build
 on an unmodified XIAO at 5805 and 5865 MHz, using repeated cold boots, VTX-off
@@ -43,6 +44,30 @@ sync loss or transport errors. Compare under controlled attenuation before
 claiming unchanged sensitivity. If GPIO27 loading reduces timing margin,
 revert the mapping; do not assume that a lit LED or passing build proves
 correct high-speed capture. No physical IQ/video/range result is claimed.
+
+## Sync flywheel removed (operator decision, 2026-10-25)
+
+The C5VRX-5 sync flywheel (PR #212, witness fix PR #218, bounded sync-loss
+scheduling 2026-10-18) is removed from the firmware. Operator report on the
+board: with it the picture showed extreme desyncs and range was poor. This
+is an operator observation, not a controlled attenuation A/B; it agrees with
+the earlier board evidence below (flywheel ON rolled the picture, 2026-10-18)
+and with the range study's conclusion that a sync flywheel is not a range
+lever (`research/README.md`).
+
+Removed: the native comparator observer (`sync_output_probe.c`, GPIO2/RMT),
+the shared edge clock and live gate/output (`sync_edge_clock.c`,
+`sync_live_gate.c`, `sync_live_output.c`, GPTimer alarms writing the DAC OE),
+the comparator flag LUT format and GPIO23 clamp in `transport.c`, the
+coasting restart lease, the 2-ms control-task tick (back to the plain
+50-ms tick), the menu FLYWHEEL item and its PHY-release/retry handshake,
+console `U`, `SYNC_LIVE`/`SYNC_FLYWHEEL*` status lines, NVS key `flywheel`
+(now ignored if present), their host tests and `tools/check_sync_output_iram.py`.
+The flight-log V1 wire slots stay so old logs decode: the session byte 44
+and output flag bits 1..7 read 0, and the observer lock percentages 0xff.
+The live path again only recovers the transmitted composite waveform.
+Not changed: the P64 program/LUT, gain, AFC, filters, OUTPUT scaling and the
+verified halted restart/rollback. The flywheel sections below are history.
 
 ## P64 demodulator on mode 0 (PR #250 model, 2026-10-23)
 
@@ -1649,3 +1674,13 @@ observation unavailable, break unlock continuity and clear the summary's
 current observer-validity flags while retaining cumulative-counter deltas.
 Host regressions cover cached locked/unlocked states and resumption without
 recounting counters. This does not change the output guard or ISR behavior.
+
+
+## PR #254: retained PHY research (2026-10-25)
+
+[The knowledge-only extraction](PR254_PHY_FINDINGS.md) preserves the 11p
+noise-bandwidth measurements, negative PHY tests, corrected live-G83/DC
+interpretation, recovered helper semantics and measurement limits, with frozen
+source links. It imports no experimental firmware or lab tooling and changes
+no production defaults. Noise-only variance changes are not RF sensitivity
+or range measurements.
