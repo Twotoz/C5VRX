@@ -246,5 +246,7 @@ OUTPUT fixed when comparing TBC; OUTPUT AUTO is not included.
 5. Scope sync, blanking, white and chroma into the actual 75-ohm load.
    Manual OUTPUT levels are unchanged; TBC does not correct voltage swing.
 
-The GPIO27/GPIO2 IQ remap and D3 boot loading still need their own checks.
+The revised GPIO10 I-LSB / GPIO2 Q-sign routing and future D3 seventh-bit
+boot loading still need their own checks. GPIO27 is no longer used for IQ;
+D10 is IQ-owned and must not have a DAC resistor attached.
 Host models and clean builds do not establish physical timing or range gain.

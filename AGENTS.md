@@ -693,16 +693,17 @@ requirements by themselves**.
 
 ## Current realtime invariants (C5VRX-5)
 
-- Operator IQ pin experiment (2026-10-25): `RF_IQ_GPIO_NUMS` in `main/rf.h`
+- Operator IQ routing decision (2026-10-25): `RF_IQ_GPIO_NUMS` in `main/rf.h`
   supplies both MODEM_DIAG routing and PARLIO RX: Q = 1/0/25/2,
-  I = 27/5/3/4. GPIO27 replaces GPIO10; GPIO2 replaces GPIO7. Reserve
-  D10/GPIO10 (16 kOhm) and D3/GPIO7 (32 kOhm) for future seventh/eighth
-  DAC branches, DNP until wider firmware and hardware validation. These are
-  new low bits: 7-bit D10=bit0; 8-bit D10=bit1, D3=bit0. GPIO2 is IQ-owned,
-  incompatible with PR #257's optional clock. GPIO27 is never a status LED. The XIAO LED/resistor
-  remains attached and high-speed loopback validation is pending; see
-  docs/FINDINGS.md "GPIO27 IQ loopback experiment". Keep the existing DAC
-  wiring and RX40/raw32K/two-lookup/DAC20-at-TX40 cadence.
+  I = 10/5/3/4. Restore I-LSB to GPIO10 after the operator reported that
+  the GPIO27 user-LED route did not work satisfactorily. Keep Q-sign on
+  GPIO2, freeing only D3/GPIO7 for a future seventh DAC branch (16 kOhm,
+  bit0; existing six branches become bits1..6). Keep that branch DNP until
+  wider firmware and hardware validation. D10/GPIO10 is IQ-owned, never a
+  DAC branch; GPIO27 is not used for IQ. GPIO2 is IQ-owned, incompatible
+  with PR #257's optional clock. See docs/FINDINGS.md "IQ routing for a
+  future seventh DAC branch". Keep the existing DAC wiring and
+  RX40/raw32K/two-lookup/DAC20-at-TX40 cadence.
 
 - Operator cleanup decision (2026-10-23, confirmed single-model scope):
   active firmware builds and boots U80P64-R1 only (`main/p64.bsasm`). U85Q,

@@ -90,25 +90,24 @@ XIAO ESP32-C5. DAC on D4..D9 (GPIO 23, 24, 11, 12, 8, 9; LSB first) with
 ([schematic](docs/hardware/c5vrx-dac-schematic.png)). The
 receiver uses the ESP32-C5's own Wi-Fi radio; no extra RF parts.
 
-This development build moves the internal I-LSB loopback from D10/GPIO10
-to the user-LED GPIO27, and the Q-sign loopback from D3/GPIO7 to GPIO2.
-This reserves **D10 and D3 for future seventh/eighth DAC branches**. The LED
-may glow during reception. No external IQ wiring is needed; the active DAC
-remains 6-bit and the extra resistor footprints must stay **unpopulated (DNP)**.
+This development build keeps the internal I-LSB loopback on D10/GPIO10
+and moves the Q-sign loopback from D3/GPIO7 to GPIO2. The user-LED GPIO27
+is no longer used for IQ after an unsuccessful board trial.
+This reserves **D3 for a future seventh DAC branch**. No external IQ wiring
+is needed; the active DAC remains 6-bit. Keep the extra resistor footprint
+**unpopulated (DNP)** and do not connect a DAC resistor to D10/GPIO10.
 
 | Reserved extra branch | XIAO pin / GPIO | Nominal resistor to CVBS | Future significance |
 | --- | --- | --- | --- |
-| Seventh branch | D10 / GPIO10 | 16 kOhm | 7-bit: bit 0; 8-bit: bit 1 |
-| Eighth branch | D3 / GPIO7 | 32 kOhm | 8-bit: bit 0 (LSB) |
+| Seventh branch | D3 / GPIO7 | 16 kOhm | 7-bit: bit 0 (LSB) |
 
-“Seventh/eighth” counts physical branches; these are added **low** bits,
-not new MSBs. Existing D4..D9 branches become bits 1..6 for 7-bit or 2..7
-for 8-bit. These are reserved footprints, not enabled output lanes or a
-validated 7/8-bit resistor network. Wider output needs firmware and loaded
+The added branch is a **low** bit; existing D4..D9 branches become bits 1..6
+for 7-bit. This is a reserved footprint, not an enabled output lane or a
+validated 7-bit resistor network. Wider output needs firmware and loaded
 CVBS level/linearity checks. D3/GPIO7 is a boot strap: check reset loading
-before populating its branch. GPIO2 is now IQ-owned and cannot also carry
-the optional sample clock from PR #257. Both new IQ routes still require
-board validation; see [the pin-routing findings](docs/FINDINGS.md#gpio27-iq-loopback-experiment-2026-10-25).
+before populating its branch. GPIO2 is IQ-owned and cannot also carry
+the optional sample clock from PR #257. The revised routing still requires
+board validation; see [the pin-routing findings](docs/FINDINGS.md#iq-routing-for-a-future-seventh-dac-branch-2026-10-25).
 
 ### Wiring the resistor DAC
 

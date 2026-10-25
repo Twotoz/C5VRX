@@ -43,9 +43,9 @@ static bool s_started;
 static const void *tracker_program(void) { return s_p64; }
 
 /* 6-bit resistor DAC, LSB first (XIAO D4..D9; 8.2k/3.9k/2k/1k/470R/240R
- * plus 200R). Do not change the tested pin order. D10/GPIO10 and D3/GPIO7
- * are reserved for future seventh/eighth branches; keep them disconnected
- * here until a complete wider-DAC implementation is hardware-validated. */
+ * plus 200R). Do not change the tested pin order. D3/GPIO7 is reserved
+ * for a future seventh branch; keep it disconnected here until a complete
+ * wider-DAC implementation is hardware-validated. D10/GPIO10 stays IQ-owned. */
 static const int s_dac_gpio[8] = {23, 24, 11, 12, 8, 9, -1, -1};
 
 DMA_ATTR __attribute__((aligned(64))) uint8_t s_raw_ring[RAW_RING_BYTES];
@@ -113,7 +113,7 @@ static esp_err_t prepare_rx(void)
         .clk_in_gpio_num = -1,
         .clk_out_gpio_num = -1,
         .valid_gpio_num = -1,
-        /* Share RF routing's GPIO27 I-LSB / GPIO2 Q-sign pin order. */
+        /* Share RF routing's GPIO10 I-LSB / GPIO2 Q-sign pin order. */
         .data_gpio_nums = RF_IQ_GPIO_NUMS,
         .flags = {.free_clk = true, .clk_gate_en = false, .allow_pd = false},
     };
