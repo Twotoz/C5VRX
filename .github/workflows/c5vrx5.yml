@@ -121,8 +121,13 @@ jobs:
           python3 test/test_gain_map_context.py
           python3 test/test_afc_telemetry.py
           python3 test/test_sphase_runtime.py
-          python3 test/test_build_defaults.py
           python3 test/test_sample_clock_runtime.py
+      - name: CMake defaults regression
+        shell: bash
+        run: |
+          # CMake is installed by the IDF image, but only export.sh adds it to PATH.
+          . "$IDF_PATH/export.sh"
+          python3 test/test_build_defaults.py
       - name: Analytic IQ lane reference
         shell: bash
         run: |
@@ -157,7 +162,7 @@ jobs:
         shell: bash
         run: |
           . "$IDF_PATH/export.sh"
-          printf 'CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK=y\n' > /tmp/c5vrx-clock.defaults
+          printf 'CONFIG_C5VRX_OUT_DAC6_CLOCK=y\n' > /tmp/c5vrx-clock.defaults
           idf.py -B build-clock -D SDKCONFIG="$PWD/build-clock/sdkconfig" \
             -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;/tmp/c5vrx-clock.defaults" build
           grep -qx 'CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK=y' build-clock/sdkconfig

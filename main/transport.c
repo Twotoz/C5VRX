@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include "driver/bitscrambler.h"
+#include "driver/gpio.h"
 #include "driver/parlio_rx.h"
 #include "driver/parlio_tx.h"
 #include "esp_attr.h"
@@ -48,6 +49,20 @@ static const void *tracker_program(void) { return s_p64; }
  * plus 200R). Do not change the tested pin order. */
 static const int s_dac_gpio[8] = {23, 24, 11, 12, 8, 9, -1, -1};
 
+#ifndef CONFIG_C5VRX_DAC_BITS
+#define CONFIG_C5VRX_DAC_BITS 6
+#endif
+#if CONFIG_C5VRX_DAC_BITS > 6 && !defined(RF_IQ_GPIO_NUMS)
+#error "7/8-bit DAC needs D10/GPIO10, still the IQ I-LSB loopback: merge PR #259 (IQ on GPIO27) first"
+#endif
+#if CONFIG_C5VRX_DAC_BITS > 7 && defined(CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK)
+#error "GPIO2 is either the sample clock or the 8-bit DAC LSB, not both"
+#endif
+/* Extra DAC bits below the D4/GPIO23 LSB, nearest first (issue #256
+ * follow-up). P64 codes are 6-bit, so these are held low, not PARLIO lanes:
+ * TX byte bits 6/7 carry LUT token bits on alternate bytes. */
+static const int s_dac_extra_gpio[2] = {10, 2};
+
 bool transport_sample_clock_enabled(void)
 {
 #ifdef CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK
@@ -55,6 +70,27 @@ bool transport_sample_clock_enabled(void)
 #else
     return false;
 #endif
+}
+
+unsigned transport_dac_bits(void) { return CONFIG_C5VRX_DAC_BITS; }
+
+/* Reserve the extra ladder bits as driven-low outputs for the whole build. */
+static esp_err_t reserve_extra_dac_pins(void)
+{
+    for (unsigned k = 0; k + 6u < transport_dac_bits(); ++k) {
+        const gpio_config_t io = {
+            .pin_bit_mask = 1ull << s_dac_extra_gpio[k],
+            .mode = GPIO_MODE_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        esp_err_t err = gpio_set_level(s_dac_extra_gpio[k], 0);
+        if (err == ESP_OK) err = gpio_config(&io);
+        if (err == ESP_OK) err = gpio_set_level(s_dac_extra_gpio[k], 0);
+        if (err != ESP_OK) return err;
+    }
+    return ESP_OK;
 }
 
 DMA_ATTR __attribute__((aligned(64))) uint8_t s_raw_ring[RAW_RING_BYTES];
@@ -492,7 +528,8 @@ esp_err_t transport_start(void)
 {
     memset(s_raw_ring, 0, sizeof(s_raw_ring));
     sync_dma_c2m(s_raw_ring, sizeof(s_raw_ring));
-    esp_err_t err = prepare_rx();
+    esp_err_t err = reserve_extra_dac_pins();
+    if (err == ESP_OK) err = prepare_rx();
     if (err == ESP_OK) err = prepare_tx();
     if (err != ESP_OK) {
         (void)quiesce(NULL);
@@ -654,6 +691,10 @@ void transport_print(void)
            (unsigned)transport_sample_clock_enabled(),
            transport_sample_clock_enabled() ? 2 : -1,
            transport_sample_clock_enabled() ? 40000000u : 0u);
+    printf("DAC_PINS bits=%u live_code_bits=6 extra_gpio=%d,%d extra_level=low\n",
+           transport_dac_bits(),
+           transport_dac_bits() > 6u ? s_dac_extra_gpio[0] : -1,
+           transport_dac_bits() > 7u ? s_dac_extra_gpio[1] : -1);
     const char *verified_demod = s_have_verified && s_lut_known && !s_transport_fault ?
         P64_MODEL_ID : "unknown";
     printf("DEMOD selected=%s verified=%s p64_model=%s p64_table_sha256=%s\n",

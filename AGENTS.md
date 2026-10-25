@@ -946,3 +946,8 @@ removed the flywheel entirely; do not restore its guards, observers or menu.
 Keep the six-bit D4..D9 mapping, live two-lookup `[D,D]`/20 MS/s unique
 cadence and shared menu TX owner. See README digital tap wiring and
 docs/FINDINGS.md. Host/build checks do not validate physical FPGA timing.
+Menuconfig "Output pins" chooses 6-bit, 6-bit + clock, 7-bit + clock or
+8-bit without clock: GPIO2 is clock or 8-bit LSB, D10/GPIO10 the 7th bit,
+both below the GPIO23 LSB. P64 codes stay 6-bit, so extra pins are held low
+(TX byte bits 6/7 carry LUT tokens; never route them as lanes). 7/8-bit
+builds `#error` until PR #259 frees GPIO10 from IQ. Untested on hardware.

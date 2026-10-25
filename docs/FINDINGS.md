@@ -1674,3 +1674,18 @@ monitor compatibility, RF sensitivity or range. Bench acceptance requires a
 logic-analyser/scope check of data/clock phase and frequency, six-bit sample
 capture, menu/DAC-test entry/exit, retunes and restart recovery. GPIO2 strap
 loading must also be checked with the attached external receiver.
+
+Follow-up (2026-10-25, operator request): the option became a menuconfig
+choice of output pins. GPIO2 is either the clock or the lowest bit of an
+8-bit DAC: 6-bit (default), 6-bit + clock, 7-bit + clock (extra LSB on
+D10/GPIO10) or 8-bit without clock (extra LSBs GPIO10, GPIO2). The extra bits
+sit below the D4/GPIO23 LSB and are reserved as driven-low GPIO outputs, not
+PARLIO lanes: P64's LUT16 word is full (6 DAC + 6 state + 4 token bits) and TX
+byte bits 6/7 carry LUT token bits on alternate bytes, so routing them would
+emit garbage. A 7/8-bit ladder therefore reproduces the 6-bit waveform until a
+wider demodulator exists. GPIO10 is the IQ I-LSB loopback on main; the 7/8-bit
+builds stop with `#error` until PR #259 (IQ on GPIO27, defines
+`RF_IQ_GPIO_NUMS`) is merged. Host tests cover the four choices, pin
+reservation, failure propagation and the build guards; CI compiles the
+standard and 6-bit-clock firmware. No 7/8-bit firmware build, ladder values,
+strap behaviour with a load on GPIO2 or video quality has been tested.

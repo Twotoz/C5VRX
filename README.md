@@ -135,9 +135,25 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
 ### Optional digital video tap (FPGA / external decoder)
 
 Build from source with `idf.py menuconfig` → **C5VRX digital video tap** →
-**Output PARLIO TX sample clock on GPIO2 (MTMS)**
-(`CONFIG_C5VRX_PARLIO_SAMPLE_CLOCK=y`), then `idf.py build flash`.
-This is **off by default**; standard flasher builds keep the normal behaviour.
+**Output pins: DAC width and sample clock**, then `idf.py build flash`.
+The standard flasher builds use the first row; everything else is source-only.
+
+| Choice | DAC bits (LSB → MSB) | GPIO2 / MTMS |
+| --- | --- | --- |
+| `C5VRX_OUT_DAC6` (default) | GPIO 23, 24, 11, 12, 8, 9 | unused |
+| `C5VRX_OUT_DAC6_CLOCK` | GPIO 23, 24, 11, 12, 8, 9 | 40 MHz clock |
+| `C5VRX_OUT_DAC7_CLOCK` | **D10/GPIO10**, 23, 24, 11, 12, 8, 9 | 40 MHz clock |
+| `C5VRX_OUT_DAC8` | **GPIO2**, **D10/GPIO10**, 23, 24, 11, 12, 8, 9 | 8-bit DAC LSB |
+
+GPIO2 is either the sample clock or the lowest bit of an 8-bit DAC. The extra
+bits extend the ladder *below* today's LSB. The live P64 demodulator still
+produces 6-bit codes, so the extra pins are **reserved and held low**: a 7/8-bit
+ladder then shows the same 6-bit waveform until a wider demod program drives
+them. `T` reports `DAC_PINS` with the build's width. The 7/8-bit choices need
+D10/GPIO10, which is the internal IQ I-LSB loopback until
+[PR #259](https://github.com/Twotoz/C5VRX/pull/259) moves it to GPIO27; until
+then the build stops with an error. Resistor values for the extra bits are not
+specified or bench-tested yet.
 
 - Connect the XIAO's rear **GPIO2 / MTMS pad** to the external clock input,
   D4..D9 to data bits 0..5 in the table above, and a common GND. Tap the GPIO
@@ -151,7 +167,7 @@ This is **off by default**; standard flasher builds keep the normal behaviour.
 - This is the recovered composite waveform, including the original colour
   burst, rather than decoded pixels. The FPGA must recover sync and decode
   colour. There is no new burst generator or guaranteed downstream colour lock.
-- This build reserves GPIO2 for the clock. The flywheel has been removed
+- Clock builds reserve GPIO2 for the clock. The flywheel has been removed
   from all builds. `T` reports `SAMPLE_CLOCK` with the enabled state, pin and rate.
 - The clock follows PARLIO TX: menu, startup and DAC-test rasters also appear
   on the bus, and transport stops/restarts may interrupt it. There is no valid

@@ -14,9 +14,17 @@
  * checks and documentation together. Restore clk_out_gpio_num=-1.
  * The sync flywheel was removed from main; do not restore it.
  * See https://github.com/Twotoz/C5VRX/issues/256 for the integration request.
+ *
+ * Extra DAC bits (menuconfig "Output pins"): GPIO2 is either the clock or
+ * the lowest bit of an 8-bit DAC. Extra bits sit below the D4/GPIO23 LSB;
+ * P64 emits 6-bit codes, so they are reserved and held low until a wider
+ * demod program drives them through PARLIO. GPIO10 needs PR #259 (IQ
+ * I-LSB on GPIO27) first.
  */
 #pragma once
 #include <stdbool.h>
 
 /* True even while TX is stopped: other features must never borrow the pad. */
 bool transport_sample_clock_enabled(void);
+/* Physical DAC width of this build (6, 7 or 8); live codes stay 6-bit. */
+unsigned transport_dac_bits(void);
