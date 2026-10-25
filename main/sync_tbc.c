@@ -188,6 +188,7 @@ static void tbc_task(void *arg)
             s_cpu.over_s = s_cpu.permille > TBC_CPU_LIMIT_PERMILLE ? s_cpu.over_s + 1u : 0u;
             if (s_cpu.over_s >= 3u && !s_cpu_tripped) {
                 s_cpu_tripped = true;
+                s_on = false;   /* menu/W can re-enable with a single action */
                 printf("TBC off: CPU %lu permille for 3 s (limit %u); pass-through until W or reboot\n",
                        (unsigned long)s_cpu.permille, TBC_CPU_LIMIT_PERMILLE);
             }
