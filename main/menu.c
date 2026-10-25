@@ -12,6 +12,7 @@
 #include "rf.h"
 #include "menu_entry.h"
 #include "dac_check.h"
+#include "output_level.h"
 
 void transport_start_chain(dma_descriptor_t *first);
 void transport_stop_chain(void);
@@ -311,7 +312,8 @@ void menu_render(void)
         title("OUTPUT LEVEL", "HOLD: CHANGE");
         value_box(100, 22, 276, "LEVEL", transport_output_name());
         text("SAVED ON EXIT   LOAD: 75 OHM", 100, 38, UI_MUTED, 1);
-        text(transport_output() == 9 ? "LOW SWING REDUCES CLIPPING" :
+        text(transport_output() == OUTPUT_HDZERO ? "SYNC BOOST / SOFT WHITE KNEE" :
+             transport_output() == 9 ? "LOW SWING REDUCES CLIPPING" :
              (transport_output() ? "HIGH LEVEL MAY CLIP VIDEO" : "INCREASE FOR WEAK SYNC"), 100, 47, UI_WHITE, 1);
         break;
     case MENU_GAIN: {
@@ -327,7 +329,7 @@ void menu_render(void)
     case MENU_FLYWHEEL:
         title("SYNC FLYWHEEL", "HOLD: ON/OFF");
         value_box(100, 22, 276, "FLYWHEEL", transport_sync_flywheel_enabled() ? "ON" : "OFF");
-        text("SAVED, APPLIES ON EXIT", 100, 36, UI_MUTED, 1);
+        text("HDZERO TEST: DEFAULT OFF", 100, 36, UI_MUTED, 1);
         text(transport_sync_flywheel_enabled() ? "FILLS SYNC WHEN THE CAMERA DROPS" :
              "CAMERA SYNC ONLY", 100, 47, UI_WHITE, 1);
         break;
