@@ -1,6 +1,6 @@
 <div align="center">
 
-**HDZero test build:** starts with OUTPUT **HDZERO** (sync boost + compressed highlights) and FLYWHEEL **OFF**. See [test procedure and limitations](docs/HDZERO_COMPAT.md). Physical goggle validation is pending.
+**HDZero test build:** starts with measured OUTPUT **AUTO**, FLYWHEEL **OFF**, and the 11p 0.3 dB experiment disabled. See [test procedure and limitations](docs/HDZERO_COMPAT.md). Physical goggle validation is pending.
   <img src="assets/C5VRX_logo.gif" alt="C5VRX animated logo" width="760" />
 
   <p><strong>ESP32-C5 Analog 5.8 GHz FPV Receiver</strong></p>

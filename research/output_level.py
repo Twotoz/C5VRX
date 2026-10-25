@@ -19,9 +19,9 @@ from u85q_lp import lp_codes
 
 HERE = Path(__file__).resolve().parent
 CONDUCTANCE = np.array([1 / r for r in (8200, 3900, 2000, 1000, 470, 240)])
-# Nominal 3.3 V GPIO, 200 ohm series, 75 ohm termination. GPIO impedance,
+# Nominal 3.3 V GPIO, 200-ohm shunt in parallel with the 75-ohm termination. GPIO impedance,
 # tolerance, cable and actual goggle loading are NOT measured by this model.
-VOLTS = sim.DAC_VOLTS * 3.3 / (CONDUCTANCE.sum() + 1 / 275) * 75 / 275
+VOLTS = sim.DAC_VOLTS * 3.3 / (CONDUCTANCE.sum() + 1 / 200 + 1 / 75)
 
 
 def transform(lut, gain=1., pivot=21., source_pivot=21.):

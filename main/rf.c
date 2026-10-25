@@ -173,6 +173,11 @@ static void restore_lock(void)
         ESP_EARLY_LOGW(TAG, "11p baseline not applied (unsupported PHY)");
     else
         ESP_ERROR_CHECK(p11);        /* never resume after failed entry/rollback */
+#ifdef C5VRX_DISABLE_11P
+    /* A vendor restore unexpectedly retaining the enabled state is not a
+     * successful OFF test. Refuse it; (0,0) is not a supported inverse. */
+    if(p11!=ESP_ERR_NOT_SUPPORTED)ESP_ERROR_CHECK(phy_11p_hw_enabled()==0?ESP_OK:ESP_ERR_INVALID_STATE);
+#endif
     apply_filter();
     if (!phy_dfilt_apply_default())
         ESP_EARLY_LOGW(TAG, "digital RX filter mode 0 not applied (unsupported PHY or readback mismatch)");
@@ -373,7 +378,12 @@ bool rf_filter_applied(void)
     const int digital = phy_dfilt_hw_mode();
     const int p11 = phy_11p_hw_enabled();
     return phy_filter_code() == s_filter.code && phy_filter_skirt() == (int)s_filter.skirt &&
-           (digital < 0 || digital == PHY_DFILT_MODE_DEFAULT) && p11 != 0;
+           (digital < 0 || digital == PHY_DFILT_MODE_DEFAULT) &&
+#ifdef C5VRX_DISABLE_11P
+           p11 != 1;
+#else
+           p11 != 0;
+#endif
 }
 
 /* 6 bands x 8 channels. */

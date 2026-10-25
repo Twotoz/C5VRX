@@ -62,6 +62,24 @@ static inline int dac_check_expected_mv(uint8_t code, int vdd_mv)
     return (int)(((uint64_t)vdd_mv * on + total / 2u) / total);
 }
 
+/* Actual video wiring: 200 ohms to GND in PARALLEL with the display's
+ * 75-ohm input, not 200 ohms in series. Nominal uV; GPIO VDD/impedance
+ * and resistor tolerances still require a scope measurement. */
+/* Constant-folded divider at nominal 3.3 V; avoids integer division in
+ * the bounded output observer. Each conductance is floor(1e9 / R) nS. */
+static const int32_t dac_loaded_levels_uv[64] = {
+    0, 15183, 31923, 47106, 62250, 77433, 94173, 109356,
+    124500, 139683, 156423, 171606, 186750, 201933, 218673, 233856,
+    264894, 280076, 296817, 312000, 327144, 342327, 359067, 374250,
+    389394, 404577, 421317, 436500, 451644, 466827, 483567, 498750,
+    518750, 533933, 550673, 565856, 581000, 596183, 612923, 628106,
+    643250, 658433, 675173, 690356, 705500, 720683, 737423, 752606,
+    783644, 798827, 815567, 830750, 845894, 861077, 877817, 893000,
+    908144, 923327, 940067, 955250, 970394, 985577, 1002317, 1017500,
+};
+static inline int32_t dac_loaded_uv(unsigned code)
+{ return dac_loaded_levels_uv[code & 63u]; }
+
 /* Pattern: a ramp over every level from blanking (20) to the top code (63),
  * left to right over `width` samples. A correct DAC shows a smooth ramp; a
  * wrong, open or swapped resistor shows bands or brightness reversals. */

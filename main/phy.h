@@ -27,7 +27,8 @@ void phy_observation_changed(void);
  * BBTOP 0x67 regs 6/7 hold the RX0 capacitor code (absolute low six bits),
  * regs 8..13 the second stage (calibrated bytes + skirt offset). The
  * factory bytes are captured once after PHY init for explicit profiles.
- * CALIBRATED code / zero skirt now select the 11p baseline byte 60. */
+ * CALIBRATED / zero skirt select factory bytes in the HDZero 11p-OFF build;
+ * ordinary 11p builds select baseline byte 60. */
 #define PHY_FILTER_CALIBRATED (-1)
 bool phy_filter_capture_base(void);
 bool phy_filter_set_code(int code);
@@ -36,7 +37,7 @@ int phy_filter_code(void);
 int phy_filter_skirt(void);
 int phy_filter_calibrated_code(void);
 /* Hardware read-back of BBTOP 0x67 regs 6..13 against the bytes the shadow
- * code/skirt imply (60 for the 11p defaults). Write-time readback alone
+ * code/skirt imply (factory for 11p-OFF; 60 for 11p defaults). Write-time readback alone
  * cannot see a later vendor write (gain force, channel setup) restoring other bytes. Returns
  * the number of mismatching registers (0 = live filter as set), -1 when
  * unsupported; hw[8]/want[8] receive the bytes when not NULL. */

@@ -1,84 +1,115 @@
-# HDZero CVBS compatibility experiment
+# HDZero: measured native CVBS conditioning / 11p-OFF test build
 
-C5VRX by Twotoz and the C5VRX contributors. Extends the manual OUTPUT work
-from issue #200, the native waveform path and flywheel witness work in PR #218.
-Based on main `78ff43a`. This is a targeted test build, not measured HDZero
-acceptance or a receiver sensitivity improvement.
+C5VRX by Twotoz and the C5VRX contributors. Extends issue #200's output-level
+findings, the existing AFC native-H detector, P64 bounded replay and PR #218's
+flywheel evidence. Based on main `78ff43a`. Physical HDZero acceptance is pending.
 
-HDZero users still report rolling/flickering even with higher OUTPUT settings.
-Issue #200 established that increased output helped one low-deviation VTX;
-`FINDINGS.md` also records a separate case where flywheel OFF stopped rolling.
-These clues do not establish one cause for all goggles/cameras.
+## Problem addressed
 
-## Changes
+The nominal demodulator maps a fixed -6..+9 MHz window to DAC 0..63. Cameras/VTXs
+with different FM deviation therefore produce different **sync depth and
+blanking pedestal**, even after AFC centres their porch. A global multiplier
+neither establishes those references nor knows how much white headroom exists.
+It can clip a bright scene. Flywheel repair is a separate possible cause of
+rolling; `FINDINGS.md` records a board case where OFF restored a stable picture.
+These facts do not prove one cause for every affected goggles/camera pair.
 
-- First boot selects **OUTPUT HDZERO** and **FLYWHEEL OFF**, even if a previous
-  normal build saved another multiplier or flywheel ON. OFF keeps the ordinary
-  six-bit native waveform path; there is no flywheel observer, repair alarm or
-  comparator-format transition until the user explicitly turns it ON.
-- HDZERO uses a **fixed three-times slope around sync, blanking and burst**.
-  Canonical code 21 is the existing AFC -1 MHz porch target. The map sends
-  15/21/27 to 6/24/42. A six-code sync depth becomes eighteen codes; frequency
-  centring remains the job of the existing AFC, not a new output servo.
-- Above canonical code 27 a continuous highlight knee maps 27..63 to 42..63.
-  This retains bright-scene variation where a plain 3x multiplier would clip.
-  It changes highlight contrast and quantizes some adjacent codes together.
-- The ten existing 0.5x..5x multipliers keep their exact mappings and indices.
-  HDZERO is appended as output ID 10 (also in flight logs). Menu OUTPUT and
-  console `g` still cycle all levels. All updates use the existing guarded,
-  verified halted restart and rollback; no writes under the running DSP.
+This build starts OUTPUT **AUTO** and FLYWHEEL **OFF**. There is no fixed 3x
+preset, soft highlight knee, pixel processing or replacement sync raster.
 
-Test settings use `c5vrx5/hdz_output` and `c5vrx5/hdz_flywheel`. Old `output`
-and `flywheel` blobs are neither read nor overwritten. A deliberately selected
-experimental level or flywheel ON survives a reboot **of this build**. Returning
-to ordinary main restores its original saved choices. Channel/standard and RF
-calibration persistence are shared as before. These isolated keys/defaults are
-for this experiment; remove them or decide an explicit opt-in policy before
-promoting the experiment to general production behavior.
+## How AUTO works
 
-The curve only changes DAC6 bits in the LUT; tracker metadata, p64.bsasm,
-raw-ring format, two lookups, unique DAC20/TX40 cadence and DAC pins/resistors
-are unchanged. It does not detect or regenerate sync. A point transform cannot
-repair missing pulses or a malformed camera vertical interval. Normal PAL and
-NTSC timing comes from the camera. There is no periodic menu/black raster or
-automatic LUT retuning which could itself cause a repeated relock.
+1. The existing AFC detector labels native H sync and burst-free back porch in
+   an immutable control snapshot. `cvbs.c` replays that bounded Q4 snapshot
+   through the **actual P64 LUT**, including its recurrent phase states, and
+   averages the emitted DAC voltages inside those labelled regions. This
+   measures the demodulated waveform, rather than assuming AFC frequency is
+   exactly the output of P64. The live hardware still paces every sample.
+2. Qualification requires native video, AFC lock, exact current receiver/gain
+   context, noise-referenced C/N >= 10 dB, held gain, low IQ clipping and two
+   seconds of stable tip/porch observations (at least 24 good windows, with no observation gap over 150 ms). Weak,
+   absent, busy or stale windows discard the pending candidate. No stored fit
+   from another VTX or boot is trusted.
+3. A **single linear transfer in nominal loaded voltage** places the lower tip envelope near
+   ground (without clipping ordinary tip ripple at its mean) and aims for 286 mV NTSC / 300 mV PAL sync depth. The gain is capped
+   by the greatest observed white/peak estimate plus margin and a standard
+   sync-to-white reserve (140/40 NTSC; 10/3 PAL). The inverse resistor-DAC map
+   chooses the nearest output code. There is no highlight knee or selective
+   contrast boost. Burst and picture retain the same linear transfer unless
+   an excursion exceeds the available DAC span.
+4. The complete measured map goes through the existing five-second shared
+   restart guard, halted program/LUT verification and checked rollback. A
+   failed application restores the last verified map **and** LUT. One accepted
+   fit is then frozen for the channel/offset/standard session; a fade cannot pump the
+   contrast or trigger periodic output restarts. Manual OUTPUT remains owned
+   by the user and AUTO never overrides it.
+5. A channel/offset/confirmed-standard change discards the candidate and requests an identity-map
+   reset through the same guard before new qualification. During a cooldown,
+   the previous verified map can remain for up to five seconds; `CVBS_LEVEL`
+   reports `reset_waits_for_shared_guard`. No claim of seamless channel changes
+   is made. Changing to another VTX on the same channel requires a reboot.
 
-## Limitations
+`T` includes `CVBS_LEVEL`: source tip/porch, reserved peak, planned nominal
+sync depth and `headroom_limited`. Before qualification AUTO emits the normal
+1x map. This report is observer/nominal-model evidence, not a voltage measured
+at the goggle input. AUTO is output ID 10; the original ten multiplier maps
+and IDs remain unchanged. P64 program/state bits, raw32K, DAC20/TX40 cadence,
+physical DAC pins and resistor values remain unchanged.
 
-A stronger digital sync step is **not** a guaranteed 0.3 V physical pulse.
-The resistor network, GPIO impedance, cable and actual 75-ohm load still limit
-voltage. Do not infer physical compliance from DAC codes. Negative excursions
-below code 13 saturate at zero; wide-deviation sync may flatten/broaden. An
-unusually large burst or residual CFO can cross the knee and distort colour.
-Highlights are intentionally compressed. Noise below the pedestal is amplified
-along with sync; weak RF may still fail to lock. The patch cannot recover RF
-information or change sensitivity. A continuously monotone map preserves clean
-sample-slot boundaries, not guaranteed analog decoder threshold crossings.
+## Correct electrical model
 
-## Bench comparison on the affected goggles
+The documented DAC has six weighted resistors driving VIDEO, with **200 ohms
+from VIDEO to ground**. The display's 75-ohm termination is in parallel with
+that resistor. The earlier `research/output_level.py` incorrectly modelled
+200 ohms in series and predicted about 0.623 V full scale. Correcting the
+network gives about 1.018 V nominal full scale at 3.3 V GPIO. Firmware uses the
+same corrected model as `dac_loaded_uv()`. GPIO impedance/VDD, tolerances,
+cable and termination still require physical measurement.
 
-1. Record HDZero model/firmware, camera/VTX, PAL/NTSC, load/cable, and `T` output.
-   First flash should show `OUTPUT level=HDZERO` and
-   `SYNC_FLYWHEEL requested=0 boot=saved_or_default_off`. If reusing this test
-   build's settings, select HDZERO/OFF manually. Wait for startup to finish.
-2. With a strong VTX, compare HDZERO/OFF, 1x/OFF, and the previously useful
-   multiplier/OFF on the same scene. Test a moving bright object, dark scene,
-   saturated colours and menu entry/exit. Observe rolling, flicker, colour loss
-   and clipping separately. Live changes briefly interrupt video; wait at least
-   five seconds between them and exclude those deliberate gaps from the result.
-3. Compare the best curve with flywheel OFF versus an explicit ON, then OFF.
-   Do this on the bench: prior rolling is documented; do not use flight as the
-   first test. A saved test ON remains ON until changed back.
-4. Repeat with gradual RF attenuation, short fades, VTX OFF/ON, reboot and
-   channel changes; repeat for both PAL and NTSC and narrow/wide-deviation VTXs.
-5. Scope the DAC into the actual 75-ohm load: sync tip, blanking pedestal,
-   white, burst, H pulse width and vertical interval before/after. Compare
-   simultaneous capture or another display with HDZero to separate input loss
-   from a goggle decoder relock. Attach `T`/flight logs and video of the result.
+Raw P64 DAC codes do vary within a perfectly flat synthetic FM tip. A separate
+1 MHz filter check reduces that variation substantially; raw-code histograms
+alone do not demonstrate HDZero rejection and do not justify changing P64's
+phase-state allocation. This build keeps the validated demodulator intact.
 
-Host tests cover all 65,536 LUT words, unchanged legacy maps, nominal burst
-linearity, monotonicity, bright-level separation, clean H/V sample slots,
-settings isolation, save/reboot/errors, and the existing actual-source
-publication/rollback fixtures across all eleven output choices. SDK/CI build
-and software checks do not prove physical HDZero lock; the above board tests
-are required before calling the problem fixed.
+## RF isolation requested by the operator
+
+The PR #254 0.3 dB noise experiment, `phy_11p_set(1,0)`, is disabled by
+`C5VRX_DISABLE_11P=1` for this build. The helper is never called, including its
+non-inverse (0,0) form. Factory analog bytes are the default and rollback
+baseline; explicit measured filter profiles still work. `rf_filter_applied()`
+accepts/verifies that intended state. Digital RX filter mode 0 remains active.
+
+Filter/DC/noise/gain persistence versions are bumped because the receive
+transfer function differs from 11p-ON main. Previously saved calibration is
+rejected and rebuilt; returning to main also rejects this build's new versions.
+This can run startup calibration again. No physical range claim is made.
+
+Experimental output/flywheel preferences use `hdz_output` / `hdz_flywheel` so
+main's ordinary `output` / `flywheel` keys stay intact. First flash therefore
+starts AUTO/OFF even if main saved flywheel ON. Deliberate test changes survive
+a reboot of this build. RF calibration is shared but version-separated as above.
+
+## Limits and bench checks
+
+This is a receiver-side conditioning patch, not proof of the physical cause on
+an affected HDZero. It cannot repair missing camera information, a malformed
+vertical interval, a bad load/cable or a downstream decoder fault. A finite
+white percentile and standard reserve cannot guarantee a future nonstandard
+camera's peak; `headroom_limited` may leave less than nominal sync depth, and
+future out-of-range excursions may still clip. A wrongly terminated output or
+incorrect resistors cannot be calibrated accurately by this nominal model.
+The bounded observer adds CPU work; its target timing/stack must be checked on
+hardware. Full CVBS compliance and flight safety are not established by CI.
+
+On the bench, record HDZero model/firmware, AV jack versus module bay, camera,
+VTX and PAL/NTSC. After startup, keep strong video present until `CVBS_LEVEL`
+reports a fit. Compare AUTO/OFF with 1x/OFF and the previously useful manual
+level. Test moving bright/dark scenes, saturated colour, menu entry/exit,
+reboot, gradual attenuation, short fades and VTX OFF/ON. Exclude intentional
+OUTPUT restart gaps from flicker results. Test flywheel ON only as an explicit
+bench comparison and turn it back OFF afterwards.
+
+Scope the actual 75-ohm-loaded DAC output: tip/porch/white/burst levels, H pulse
+widths, vertical serrations/equalizing pulses and field timing. Compare a
+known-good receiver and another display. Attach scope/video and `T`/flight
+logs; only those observations can confirm the remaining physical root cause.

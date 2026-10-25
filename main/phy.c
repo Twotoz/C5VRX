@@ -101,6 +101,14 @@ extern uint8_t phy_i2c_readReg(uint8_t block, uint8_t host, uint8_t reg);
 extern void phy_i2c_writeReg(uint8_t block, uint8_t host, uint8_t reg, uint8_t value);
 static uint8_t s_filter_base[8];
 static bool s_filter_base_valid;
+static uint8_t filter_default_byte(unsigned i)
+{
+#ifdef C5VRX_DISABLE_11P
+    return s_filter_base[i];
+#else
+    (void)i; return 60u;
+#endif
+}
 #endif
 static int s_filter_code = PHY_FILTER_CALIBRATED, s_filter_skirt;
 
@@ -119,9 +127,9 @@ bool phy_filter_capture_base(void)
 #endif
 }
 
-/* Default bytes are the 11p baseline (60). Explicit code/skirt profiles
- * retain the factory-byte reference so the sweep can still try wider
- * filters. Verify every write; on mismatch return to the 11p baseline. */
+/* Default bytes follow the build baseline: factory bytes for the HDZero
+ * isolation build, 60 for the 11p experiment. Explicit calibrated profiles
+ * retain the factory reference. Rollback uses the same selected baseline. */
 bool phy_filter_set_code(int code)
 {
 #ifdef C5VRX_PHY_PINNED
@@ -130,14 +138,14 @@ bool phy_filter_set_code(int code)
     bool ok = s_filter_base_valid;
     if(ok)phy_observation_changed();
     for (uint8_t i = 0; ok && i < 2; ++i) {
-        uint8_t v = code == PHY_FILTER_CALIBRATED ? 60u :
+        uint8_t v = code == PHY_FILTER_CALIBRATED ? filter_default_byte(i) :
                     (uint8_t)((s_filter_base[i] & ~63u) | (unsigned)code);
         phy_i2c_writeReg(0x67, 1, 6 + i, v);
         ok = phy_i2c_readReg(0x67, 1, 6 + i) == v;
     }
     if (ok) s_filter_code = code;
     else if (s_filter_base_valid) {
-        for (uint8_t i = 0; i < 2; ++i) phy_i2c_writeReg(0x67, 1, 6 + i, 60u);
+        for (uint8_t i = 0; i < 2; ++i) phy_i2c_writeReg(0x67, 1, 6 + i, filter_default_byte(i));
         s_filter_code = PHY_FILTER_CALIBRATED;
     }
     lock_give();
@@ -156,13 +164,13 @@ bool phy_filter_set_skirt(int offset)
     bool ok = s_filter_base_valid;
     if(ok)phy_observation_changed();
     for (uint8_t i = 2; ok && i < 8; ++i) {
-        uint8_t v = offset ? dsp_filter_code(s_filter_base[i], offset) : 60u;
+        uint8_t v = offset ? dsp_filter_code(s_filter_base[i], offset) : filter_default_byte(i);
         phy_i2c_writeReg(0x67, 1, 6 + i, v);
         ok = phy_i2c_readReg(0x67, 1, 6 + i) == v;
     }
     if (ok) s_filter_skirt = offset;
     else if (s_filter_base_valid) {
-        for (uint8_t i = 2; i < 8; ++i) phy_i2c_writeReg(0x67, 1, 6 + i, 60u);
+        for (uint8_t i = 2; i < 8; ++i) phy_i2c_writeReg(0x67, 1, 6 + i, filter_default_byte(i));
         s_filter_skirt = 0;
     }
     lock_give();
@@ -183,9 +191,9 @@ int phy_filter_hw_mismatch(uint8_t hw[8], uint8_t want[8])
     int bad = 0;
     lock_take();
     for (uint8_t i = 0; i < 8; ++i) {
-        uint8_t w = i < 2 ? (s_filter_code == PHY_FILTER_CALIBRATED ? 60u :
+        uint8_t w = i < 2 ? (s_filter_code == PHY_FILTER_CALIBRATED ? filter_default_byte(i) :
                              (uint8_t)((s_filter_base[i] & ~63u) | (unsigned)s_filter_code)) :
-                    (s_filter_skirt ? dsp_filter_code(s_filter_base[i], s_filter_skirt) : 60u);
+                    (s_filter_skirt ? dsp_filter_code(s_filter_base[i], s_filter_skirt) : filter_default_byte(i));
         uint8_t h = phy_i2c_readReg(0x67, 1, 6 + i);
         if (hw) hw[i] = h;
         if (want) want[i] = w;
@@ -284,6 +292,11 @@ esp_err_t phy_11p_apply_default(void)
 #ifndef C5VRX_PHY_PINNED
     return ESP_ERR_NOT_SUPPORTED;
 #else
+#ifdef C5VRX_DISABLE_11P
+    /* Do not call the vendor helper (including (0,0), not an inverse).
+     * Fresh PHY/vendor restore owns the factory flags and MMIO state. */
+    return ESP_OK;
+#else
     phy_begin();
     uint32_t saved[4];
     uint8_t analog[8], flags[2] = {phy_param[0x26], phy_param[0x27]};
@@ -310,6 +323,7 @@ esp_err_t phy_11p_apply_default(void)
     }
     phy_end();
     return result;
+#endif /* C5VRX_DISABLE_11P */
 #endif
 }
 

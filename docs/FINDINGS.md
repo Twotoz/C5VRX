@@ -1612,3 +1612,32 @@ observation unavailable, break unlock continuity and clear the summary's
 current observer-validity flags while retaining cumulative-counter deltas.
 Host regressions cover cached locked/unlocked states and resumption without
 recounting counters. This does not change the output guard or ISR behavior.
+
+
+## HDZero measured-CVBS / 11p-OFF experiment (2026-10-25)
+
+Supersedes the fixed-output proposal for the HDZero test build; see
+[HDZERO_COMPAT.md](HDZERO_COMPAT.md). C5VRX by Twotoz and the contributors.
+The remaining HDZero roll/flicker is not attributed to a single measured
+hardware cause. The patch addresses the known fixed FM-to-DAC transfer
+mismatch with native-H-labelled **actual P64** tip/porch output observations,
+strong/context/stability gates, a voltage-linear inverse-DAC fit, white reserve,
+one verified guarded application per RF session, and loss hold. Flywheel starts
+OFF. The 11p helper is disabled by explicit operator request, including the
+factory-byte default/rollback path and receive-calibration version separation.
+
+Electrical correction: the 200-ohm resistor is a shunt to GND, in parallel
+with the display's 75-ohm load. The old output-level study used a series
+model (~0.623 V full scale); corrected nominal full scale is ~1.018 V. Earlier
+voltage predictions using that series model are superseded, not scope results.
+The loaded model remains nominal, with unmeasured GPIO/cable/tolerance effects.
+
+A deterministic clean 1.3-MHz sync-span Q4 example runs the production AFC
+label detector and P64 replay, observes about 245/343 mV nominal tip/porch,
+and requests 286 mV after two seconds; the measured lower tip envelope and
+white reserve cap the planned nominal depth to about 256 mV. Software regressions cover
+absent/unknown-C/N refusal, weak-loss hold, RF-session reset, manual ownership,
+failed application and every transport rollback stage with a measured map.
+No physical goggle lock, compliant CVBS waveform, added RF range or board
+observer timing/stack result is established by these tests. A limited peak
+measurement cannot bound an arbitrary future nonstandard camera scene.

@@ -18,6 +18,7 @@ PREFIX = r'''
 #include <stddef.h>
 #include "p64_tables.h"
 #include "sync_flag.h"
+#include "cvbs_level.h"
 #include "transport_recovery.h"
 #include "transport_guard.h"
 #include "transport_lut.h"
@@ -29,6 +30,7 @@ static int64_t esp_timer_get_time(void){return now;}
 static bool s_started,s_transport_fault,s_lut_known,s_have_verified;
 static bool s_flag_format,s_verified_flag;
 static unsigned s_output,s_verified_output,s_output_clipped;
+static cvbs_fit_t s_cvbs_fit,s_verified_cvbs_fit;
 static uint16_t s_lut_live[1024],before[1024];
 static uint32_t s_restart_errors,s_rollback_fail,s_rollbacks,s_control_epoch;
 static unsigned settings_writes,cancels,acquires,stages,checks;
@@ -69,8 +71,8 @@ STAGES = r'''
         for(unsigned i=0;i<1024;++i){
             bool clipped;
             const uint16_t *canonical=p64_table;
-            uint16_t expected=r->flag?sync_flag_entry(canonical[i],r->output,&clipped):
-                output_entry(canonical[i],r->output,&clipped);
+            uint16_t expected=r->flag?output_flag_with_fit(canonical[i],r->output,&r->fit,&clipped):
+                output_entry_with_fit(canonical[i],r->output,&r->fit,&clipped);
             assert(s_lut_work[i]==expected);++checks;
         }
     }
@@ -92,6 +94,7 @@ static void reset(unsigned level,unsigned output){
  s_started=s_lut_known=s_have_verified=true;s_transport_fault=false;
  s_flag_format=s_verified_flag=false;
  s_output=s_verified_output=output;
+ memset(&s_cvbs_fit,0,sizeof(s_cvbs_fit));memset(&s_verified_cvbs_fit,0,sizeof(s_verified_cvbs_fit));
  s_output_clipped=0;
  for(unsigned i=0;i<1024;++i){bool clipped;
   s_lut_live[i]=output_entry(p64_table[i],output,&clipped);s_output_clipped+=clipped;
@@ -111,8 +114,8 @@ static void verify(bool flag,unsigned level,unsigned output){
  unsigned clipped_count=0;
  for(unsigned i=0;i<1024;++i){bool clipped;
   const uint16_t *canonical=p64_table;
-  uint16_t expected=flag?sync_flag_entry(canonical[i],output,&clipped):
-    output_entry(canonical[i],output,&clipped);
+  uint16_t expected=flag?output_flag_with_fit(canonical[i],output,&s_verified_cvbs_fit,&clipped):
+    output_entry_with_fit(canonical[i],output,&s_verified_cvbs_fit,&clipped);
   assert(s_lut_live[i]==expected);clipped_count+=clipped;++checks;
  }
  assert(s_output_clipped==clipped_count);
@@ -174,6 +177,18 @@ int main(void){
  }
  reset(0,0);cancel_ok=false;assert(!transport_flag_format(true)&&!acquires&&!stages);++checks;
  reset(0,0);acquire_ok=false;assert(!transport_flag_format(true)&&!stages&&!s_flag_pin);++checks;
+ /* A measured map participates in every forward/rollback stage. */
+ cvbs_fit_t fit;
+ assert(cvbs_make_fit((cvbs_refs_t){200000,300000,650000,200000},false,&fit));
+ reset(0,OUTPUT_AUTO_CVBS);assert(transport_set_cvbs_fit(&fit));verify(false,0,OUTPUT_AUTO_CVBS);
+ assert(s_verified_cvbs_fit.valid&&!memcmp(&s_verified_cvbs_fit,&fit,sizeof(fit)));
+ for(int stage=0;stage<TR_STAGES;++stage){
+  reset(0,OUTPUT_AUTO_CVBS);assert(transport_set_cvbs_fit(&fit));snapshot();
+  cvbs_fit_t changed;assert(cvbs_make_fit((cvbs_refs_t){100000,300000,800000,100000},true,&changed));
+  fail_forward=stage;assert(!transport_set_cvbs_fit(&changed));verify(false,0,OUTPUT_AUTO_CVBS);
+  assert(!memcmp(&s_verified_cvbs_fit,&fit,sizeof(fit))&&!memcmp(&s_cvbs_fit,&fit,sizeof(fit)));
+  assert(!memcmp(before,s_lut_live,sizeof(before)));
+ }
  /* Cold boot loads only the complete P64 image. */
  reset(0,0);s_have_verified=s_started=s_lut_known=false;
  assert(resume_live(NULL));verify(false,0,0);snapshot();
@@ -218,7 +233,7 @@ def main():
         return source[a:end]+'\n'
     selectors='static void stage_hooks(void){}\n'
     selectors+=''.join(function(signature) for signature in (
-        'bool transport_set_output(unsigned level)', 'bool transport_restart_profile(void)'))
+        'bool transport_set_output(unsigned level)', 'bool transport_restart_profile(void)', 'bool transport_set_cvbs_fit(const cvbs_fit_t *fit)'))
     with tempfile.TemporaryDirectory() as directory:
         path=Path(directory);unit=path/'run.c';binary=path/'run'
         unit.write_text(prefix+tracker+words+restart+rollback+STAGES+'static void stage_hooks(void);\n'+publication+selectors+SUFFIX)

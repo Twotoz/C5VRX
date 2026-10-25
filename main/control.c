@@ -7,6 +7,7 @@
 #include <string.h>
 #include "afc_ctrl.h"
 #include "output_level.h"
+#include "cvbs.h"
 #include "profile_logic.h"
 #include "menu_entry.h"
 #include "cn_estimate.h"
@@ -489,6 +490,10 @@ static void control_task(void *arg)
             }
             phy_end_actuator();
         }
+        cvbs_observe(copied?s_window:NULL,copied?CONTROL_BYTES:0u,&r,
+                     qualified && s_afc_locked && s_detected_std_valid &&
+                     r.standard==(s_detected_std==VIDEO_STD_PAL?2u:1u) && !own_write && ctx==afc_context() && gain_epoch==s_gain_epoch &&
+                     !phy_busy() && !s_menu_active,ctx);
         s_afc_evidence.history=afc2_ctrl_evidence(&afc,(uint64_t)now);
         s_afc_evidence.sampled_us=(uint64_t)now;
         s_afc_evidence.context=ctx;

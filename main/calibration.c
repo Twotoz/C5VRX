@@ -293,7 +293,7 @@ bool calibration_sphase_settled(void)
  * 5: settings measured in the analog branch they fly in (rf_set_filter sets
  * the bandwidth mode up before measuring; every earlier sweep mixed the two
  * branches, board 2026-10-19: chosen 12.5 MHz flew at 19.7 MHz) */
-#define FILTER_VERSION     6u  /* 6: 11p baseline plus measured analog profiles */
+#define FILTER_VERSION     7u  /* 7: HDZero factory/11p-OFF receive baseline */
 /* Two classes from one sweep (research: 12 MHz helps every tested VTX
  * deviation and keeps strong-signal sharpness; 10 MHz adds up to ~1.7 dB
  * for deviation <= ~1.1 but hurts wide VTXs, so it is used only when the
@@ -576,7 +576,7 @@ void filter_request(void) { s_manual_requested = true; }
  * envelope for 5 s, never on a channel where a carrier was seen this boot)
  * and held right after every gain write by the post-gain hook (board,
  * 2026-10-07: DC median ~134 LSB without the hook, ~11 with it). */
-#define DCO_VERSION      8u   /* 8: 11p RF/filter context */
+#define DCO_VERSION      9u   /* 9: HDZero factory/11p-OFF RF/filter context */
 typedef struct {
     int16_t code[2];
     int16_t residual_mcells[2];
@@ -2154,7 +2154,7 @@ void calibration_print(void)
            s_filter_cal.wide.nbw_khz, s_filter_cal.calibrated_nbw_khz);
     uint8_t hw[8] = {0}, want[8] = {0};
     const int bad = phy_filter_hw_mismatch(hw, want);
-    printf("PHY11P want=1 hw_enabled=%d (-1=unsupported; analog profile checked below)\n", phy_11p_hw_enabled());
+    printf("PHY11P build_disabled=1 hw_enabled=%d (-1=unsupported; analog profile checked below)\n", phy_11p_hw_enabled());
     printf("DFILT want=%d hw_mode=%d (-1=unsupported)\n",
            PHY_DFILT_MODE_DEFAULT, phy_dfilt_hw_mode());
     printf("FILTER_HW mismatch=%d hw=%02x%02x%02x%02x%02x%02x%02x%02x want=%02x%02x%02x%02x%02x%02x%02x%02x\n", bad,

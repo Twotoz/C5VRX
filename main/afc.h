@@ -61,6 +61,7 @@ typedef struct {
     uint8_t standard;        /* 0 unknown, 1 NTSC, 2 PAL (burst or line timing) */
     uint16_t burst_x10;      /* mean burst amplitude in phase codes x10 */
     uint16_t period_40m;     /* measured accepted-run spacing; 0 without two agreeing runs */
+    uint16_t level_start, level_end; /* last qualified native sync, raw40 indices; output observer only */
     uint16_t width_40m;      /* mean accepted sync width, smoothed detector */
     /* Video quality: the instantaneous frequency is flat on the sync tips and
      * the back porch by definition, so its spread there is the noise of the
@@ -368,6 +369,7 @@ static inline afc2_result_t afc2_measure(const uint8_t *s, size_t n,
             std_votes -= std_id == 2 ? 1 : -1;
             continue;
         }
+        r.level_start = (uint16_t)start; r.level_end = (uint16_t)end;
         width_sum += (unsigned)(end - start);
         if (r.lines && last_std == std_id) {
             size_t period = start - last_start;

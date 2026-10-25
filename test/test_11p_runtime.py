@@ -34,6 +34,7 @@ typedef int esp_err_t;
 #define ESP_ERR_NOT_SUPPORTED 1
 #define ESP_ERR_INVALID_RESPONSE 2
 #define ESP_FAIL 3
+#define ESP_ERR_INVALID_STATE 4
 #define PHY_FILTER_CALIBRATED (-1)
 static void invalidate(void){assert(locks);++hooks;}
 '''
@@ -173,6 +174,39 @@ class ElevenP(unittest.TestCase):
                                 *(['-DC5VRX_PHY_PINNED=1'] if pinned else []),
                                 str(base/'test.c'),'-o',str(base/'test')],check=True)
                 subprocess.run([str(base/'test')],check=True)
+
+    def test_disabled_build(self):
+        phy=(ROOT/'main/phy.c').read_text();rf=(ROOT/'main/rf.c').read_text()
+        ownership=re.sub(r'^#include[^\n]*\n','',phy.split('#ifdef C5VRX_PHY_PINNED',1)[0],flags=re.M)
+        analog=phy[phy.index('#ifdef C5VRX_PHY_PINNED'):phy.index('/* ---- Digital RX filter')]
+        p11=phy[phy.index('/* ---- 11p receive baseline'):phy.index('/* ---- RX DC DACs')]
+        vendor=VENDOR.replace('phy_11p_hw_enabled()==1','phy_11p_hw_enabled()==0')
+        vendor+='\n#define PHY_DFILT_MODE_DEFAULT 0\nstatic int phy_dfilt_hw_mode(void){return 0;}\n'
+        main=r"""
+int main(void){
+ phy_set_observation_hook(invalidate);factory();assert(phy_filter_capture_base());
+ for(unsigned repeat=0;repeat<5;++repeat){
+  phy_begin();restore_lock();phy_end();assert(!writes && phy_11p_hw_enabled()==0);
+  for(unsigned i=0;i<8;++i)assert(bytes[i]==20+i);
+  assert(!phy_filter_hw_mismatch(NULL,NULL));
+ }
+ s_filter.code=16;s_filter.skirt=8;phy_begin();restore_lock();phy_end();
+ assert(bytes[0]==16&&bytes[1]==16);
+ for(unsigned i=2;i<8;++i)assert(bytes[i]==28+i);
+ s_filter.code=-1;s_filter.skirt=0;phy_begin();restore_lock();phy_end();
+ for(unsigned i=0;i<8;++i)assert(bytes[i]==20+i);
+ assert(rf_filter_applied());
+ assert(!writes&&!phy_filter_hw_mismatch(NULL,NULL)&&phy_param[0x26]==5&&phy_param[0x27]==7);
+ puts("PASS: disabled build never invokes 11p; all restores and profile defaults use factory bytes");
+}
+"""
+        # The disabled branch must not write these registers at all.
+        hardware=HARDWARE.replace('static void write_mmio(', 'static __attribute__((unused)) void write_mmio(')
+        content=SDK+ownership+hardware+function((ROOT/'main/dsp.h').read_text(),'static inline uint8_t dsp_filter_code(')+analog+p11+vendor+function(rf,'static void apply_filter(')+function(rf,'static void restore_lock(')+function(rf,'bool rf_filter_applied(')+main
+        with tempfile.TemporaryDirectory() as directory:
+            base=Path(directory);(base/'test.c').write_text(content)
+            subprocess.run(['cc','-O2','-std=c11','-Wall','-Wextra','-Werror','-DC5VRX_PHY_PINNED=1','-DC5VRX_DISABLE_11P=1',str(base/'test.c'),'-o',str(base/'test')],check=True)
+            subprocess.run([str(base/'test')],check=True)
 
 
 if __name__=='__main__':unittest.main()

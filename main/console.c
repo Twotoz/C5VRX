@@ -10,6 +10,7 @@
 #include "hal/usb_serial_jtag_ll.h"
 #include "rf.h"
 #include "snapshot.h"
+#include "cvbs.h"
 
 extern volatile const char *s_boot_stage;
 
@@ -50,6 +51,7 @@ static void status(void)
     profile_print();
     calibration_print();
     transport_print();
+    cvbs_print();
     transport_sync_live_print();
 }
 
@@ -90,7 +92,7 @@ static void snapshot(void)
 static void help(void)
 {
     printf("C5VRX-5 keys: T status, D range/health report, M gain map (for a preset), R per-second FIELD_DIAG lines on/off,\n"
-           "  g OUTPUT 0.5x..5.0x + HDZERO sync boost/soft knee (test default HDZERO; saved),\n"
+           "  g OUTPUT 0.5x..5.0x + AUTO CVBS measured levels (test default AUTO CVBS; saved),\n"
            "  G RX gain AUTO (KEEL-1) -> MAX -> fixed G78..G24 (until the next boot; every boot starts AUTO),\n"
            "  A live VTX profile switch on/off (continuous matching every 30 s; off = report only),\n"
            "  U sync flywheel ON/OFF (test setting; menu FLYWHEEL; default OFF for HDZero),\n"

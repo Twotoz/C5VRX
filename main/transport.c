@@ -24,6 +24,7 @@
 #include "transport_guard.h"
 #include "transport_recovery.h"
 #include "output_level.h"
+#include "cvbs.h"
 #include "sync_flag.h"
 #include "hal/parlio_ll.h"
 #include "p64_tables.h"
@@ -65,6 +66,7 @@ static uint32_t s_stream_generation;
 static bool s_stream_generation_overflow;
 static unsigned s_output = OUTPUT_DEFAULT;
 static unsigned s_verified_output, s_output_clipped;
+static cvbs_fit_t s_cvbs_fit, s_verified_cvbs_fit;
 static bool s_have_verified;
 static uint32_t s_restart_errors, s_rollbacks, s_rollback_fail;
 #define LIVE_TX_NODES ((RAW_RING_BYTES + 4091u) / 4092u)
@@ -292,7 +294,7 @@ unsigned transport_output(void) { return s_output; }
 const char *transport_output_name(void)
 {
     static const char *const names[OUTPUT_LEVELS] = {
-        "1.0x", "1.5x", "2.0x", "2.5x", "3.0x", "3.5x", "4.0x", "4.5x", "5.0x", "0.5x", "HDZERO"
+        "1.0x", "1.5x", "2.0x", "2.5x", "3.0x", "3.5x", "4.0x", "4.5x", "5.0x", "0.5x", "AUTO"
     };
     return names[s_output];
 }
@@ -308,6 +310,19 @@ bool transport_set_output(unsigned level)
     return ok;
 }
 
+/* A measured fit is volatile and belongs to this RF session. Its complete
+ * map participates in the same publication/rollback transaction as OUTPUT.
+ * A failed application restores the previously verified map and LUT. */
+bool transport_set_cvbs_fit(const cvbs_fit_t *fit)
+{
+    if(!fit || s_output!=OUTPUT_AUTO_CVBS || s_transport_fault || !s_started || s_menu_active ||
+       !transport_guard_ready(&s_switch_guard,esp_timer_get_time()))return false;
+    s_cvbs_fit=*fit;
+    const bool ok=resume_live(p64_table);
+    transport_guard_mark(&s_switch_guard,esp_timer_get_time());
+    return ok;
+}
+
 /* Selected configuration stays separate from the last fully verified live
  * configuration. Publication waits for both DMA starts, including readback
  * of the complete program and LUT on boot/menu/rollback as well as OUTPUT/format changes. */
@@ -315,6 +330,7 @@ typedef struct {
     const uint8_t *program;
     bool flag;
     unsigned output, clipped;
+    cvbs_fit_t fit;
 } restart_t;
 
 /* Comparator-flag DAC pin ownership for the live flywheel format. Ordinary
@@ -422,6 +438,7 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
     restart_t *r = ctx;
     if (stage == TR_BS_ENABLE && rollback) {
         s_output = s_verified_output;
+        s_cvbs_fit = s_verified_cvbs_fit; r->fit = s_verified_cvbs_fit;
         r->output = s_verified_output;
         r->flag = s_verified_flag;
         s_flag_format=s_verified_flag;
@@ -636,7 +653,7 @@ static bool resume_live(const uint16_t *restore_lut)
     if (s_transport_fault) return false;
     stage_hooks();
     restart_t r = {.program=tracker_program(),
-        .flag=s_flag_format,.output=s_output};
+        .flag=s_flag_format,.output=s_output,.fit=s_cvbs_fit};
     const uint8_t *program_inst;
     if (!program_words(r.program, &program_inst)) return false;
     memcpy(s_program_work.prefix, r.program, sizeof(s_program_work.prefix));
@@ -651,8 +668,8 @@ static bool resume_live(const uint16_t *restore_lut)
         if (!program_words(r.program, &inst) || r.program[6] != 1u) return false;
         for (unsigned i = 0; i < 1024u; ++i) {
             bool clipped;
-            s_lut_work[i] = r.flag?sync_flag_entry(restore_lut[i],s_output,&clipped):
-                                  output_entry(restore_lut[i], s_output, &clipped);
+            s_lut_work[i] = r.flag?output_flag_with_fit(restore_lut[i],s_output,&r.fit,&clipped):
+                                  output_entry_with_fit(restore_lut[i], s_output, &r.fit, &clipped);
             r.clipped += clipped;
         }
     }
@@ -678,6 +695,7 @@ static bool resume_live(const uint16_t *restore_lut)
     const bool output_changed = s_have_verified && s_verified_output != r.output;
     s_verified_flag=r.flag;
     s_verified_output = r.output;
+    s_verified_cvbs_fit = s_cvbs_fit = r.fit;
     s_output_clipped = r.clipped;
     s_have_verified = true;
     s_lut_known = true;
@@ -1101,7 +1119,7 @@ void transport_print(void)
            (unsigned long)s_stage_us[TR_RX_START], (unsigned long)s_stage_us[TR_TX_START]);
     printf("VIDEO_OUTPUT source=%s standard=%s\n", s_menu_active ? "MENU" : s_started ? "LIVE" : "OFF",
            s_video_std == VIDEO_STD_PAL ? "PAL" : "NTSC");
-    printf("OUTPUT level=%s boot_restore=hdz_output default=HDZERO clipped_lut_entries=%u recovery_errors=%lu rollbacks=%lu "
+    printf("OUTPUT level=%s boot_restore=hdz_output default=AUTO_CVBS clipped_lut_entries=%u recovery_errors=%lu rollbacks=%lu "
            "rollback_fail=%lu fault_latched=%u live=%u\n", transport_output_name(), s_output_clipped,
            (unsigned long)s_restart_errors, (unsigned long)s_rollbacks, (unsigned long)s_rollback_fail,
            s_transport_fault, s_started);

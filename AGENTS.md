@@ -693,15 +693,19 @@ requirements by themselves**.
 
 ## Current realtime invariants (C5VRX-5)
 
-- HDZero compatibility experiment (operator request, 2026-10-25): this branch
-  starts OUTPUT HDZERO (ID 10, DAC-only static 3x low region/soft white knee)
-  and flywheel OFF. Isolate saved choices with hdz_output/hdz_flywheel; do not
-  migrate or overwrite normal output/flywheel keys. Explicit experimental
-  settings persist for A/B. This supersedes older default-ON notes only for
-  this build. Native H/V timing, P64 state and cadence remain unchanged.
-  See docs/HDZERO_COMPAT.md for provenance, limits and required board checks.
-  No physical HDZero acceptance, CVBS compliance or RF gain is claimed.
-
+- HDZero root-conditioning experiment (operator, 2026-10-25): this branch
+  starts measured OUTPUT AUTO (ID 10, identity until two seconds of qualified
+  native H/P64 tip/porch evidence), flywheel OFF, and C5VRX_DISABLE_11P=1.
+  The 3x/knee proposal is removed. Use the corrected 200-ohm shunt/75-ohm
+  parallel-load model; all live maps use guarded halted verification/rollback.
+  Freeze each accepted map through loss; channel/offset changes request an
+  identity reset via the shared guard before new qualification. Manual OUTPUT
+  stays owned by the user. Fits are volatile; test preferences use hdz_output /
+  hdz_flywheel, without overwriting main's normal choices. Factory bytes are
+  the 11p-OFF default/rollback baseline; RF persistence versions differ from
+  main. Digital filter mode 0 remains active. See docs/HDZERO_COMPAT.md for
+  measured-reference architecture, nominal voltage limits, cooldown/reset
+  behavior and required board tests. No physical HDZero or range acceptance.
 - Operator cleanup decision (2026-10-23, confirmed single-model scope):
   active firmware builds and boots U80P64-R1 only (`main/p64.bsasm`). U85Q,
   the kp ladder/tables, LP policy/state, demod selection and console m/K/k/j/P/O/H
