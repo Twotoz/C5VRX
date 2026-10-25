@@ -233,7 +233,9 @@ See [PR212](PR212.md); final cleaned-build hardware validation is still pending.
 Record the exact build, camera, VTX, goggles and manual OUTPUT level. Keep
 OUTPUT fixed when comparing TBC; OUTPUT AUTO is not included.
 
-1. Compare TBC ON/OFF (W or menu) on PAL and NTSC, near and weak signal.
+1. With erased NVS, verify TBC starts OFF. Save ON and OFF in turn and
+   verify each survives reboot and a firmware flash that preserves NVS.
+   Compare TBC ON/OFF (W or menu) on PAL and NTSC, near and weak signal.
    Check actual line stability, colour/burst lock and unchanged picture.
 2. Inspect TBC counters/lock, late refusals and `cpu_permille` with T.
    Confirm console/IDLE responsiveness; a CPU trip must pass through.

@@ -5,7 +5,7 @@
  * yet, ~600 us later). A GPTimer wakes the task every 200 us; every wake
  * re-reads both DMA positions, so no CPU or interrupt time ever places an
  * output edge: edges are sample positions in the clock-locked stream.
- * Default ON (menu TBC, console W, NVS "tbc"); off restores pure
+ * Default OFF (menu TBC, console W, NVS "tbc"); off restores pure
  * pass-through at once. It never runs while the menu, a status screen,
  * calibration, a scan or a paused receiver owns the ring. */
 #include "receiver.h"
@@ -30,7 +30,7 @@ static tbc_tables_t s_tables;
 static tbc_t s_state;
 static TaskHandle_t s_task;
 static gptimer_handle_t s_timer;
-static volatile bool s_on = true, s_cpu_tripped;
+static volatile bool s_on = false, s_cpu_tripped;
 static bool s_started_task, s_available;
 static volatile uint32_t s_reset_seq;
 

@@ -23,7 +23,8 @@ camera-level sync/porch and normal-width checks can be rewritten, from
 real tip, preserving the original trailing edge, burst, picture and vertical
 interval. Missing/invalid pulses pass through. No CPU/IRQ time places an
 output edge; a 200-us GPTimer wakes a bounded task. Menu TBC / console W
-is saved independently as NVS `tbc`, default ON. `T` prints TBC diagnostics.
+is saved independently as NVS `tbc`, default OFF when no valid setting is stored.
+Saved ON/OFF survives reboot and flashing that preserves NVS. `T` prints TBC diagnostics.
 
 Integration hardening beyond the donor: references publish coherently and
 expire after 500 ms; PHY/control/gain or stream changes reset tracking.

@@ -103,7 +103,7 @@ bool transport_set_output(unsigned o) { assert(o < OUTPUT_LEVELS); output = o; +
 void receiver_set_gain_mode(uint8_t mode, bool save) { assert(!save); gain_mode = mode; ++gain_restores; }
 void sync_tbc_set_boot(bool on) { tbc_boot = on; ++tbc_restores; }
 static void boot(void) { output = 0; channel = 0; s_std_mode = STD_MODE_AUTO; output_applied = 0;
-    gain_mode = 0; gain_restores = 0; tbc_boot = 1; tbc_restores = 0; settings_load(); }
+    gain_mode = 0; gain_restores = 0; tbc_boot = 0; tbc_restores = 0; settings_load(); }
 static void seed(unsigned slot, const unsigned char *bytes, size_t n) {
     assert(n <= sizeof(slots[slot].bytes)); slots[slot].n = n; memcpy(slots[slot].bytes, bytes, n);
 }
@@ -154,13 +154,13 @@ int main(void) {
     /* A "flywheel" key left by an earlier firmware is ignored (flywheel removed). */
     const unsigned char old_flywheel = 1; seed(3, &old_flywheel, 1);
     writes = commits = 0; boot(); assert(!writes && !commits && output == 1 && gain_mode == 0);
-    /* Line TBC: absent key keeps the firmware default (ON), saved OFF/ON restored, bad value ignored. */
-    slots[4].n = 0; boot(); assert(!tbc_restores && tbc_boot == 1);
+    /* Line TBC: absent key keeps the firmware default (OFF), saved OFF/ON restored, bad value ignored. */
+    slots[4].n = 0; boot(); assert(!tbc_restores && tbc_boot == 0);
     writes = commits = 0; settings_save_tbc(false); assert(writes == 1 && commits == 1);
     boot(); assert(tbc_restores == 1 && tbc_boot == 0);
     settings_save_tbc(false); assert(writes == 1);
     settings_save_tbc(true); boot(); assert(tbc_restores == 1 && tbc_boot == 1);
-    const unsigned char bad_tbc = 9; seed(4, &bad_tbc, 1); boot(); assert(!tbc_restores && tbc_boot == 1);
+    const unsigned char bad_tbc = 9; seed(4, &bad_tbc, 1); boot(); assert(!tbc_restores && tbc_boot == 0);
     puts("PASS: actual settings.c output save/reboot, legacy compatibility, invalid data, wear and NVS failures");
     return 0;
 }

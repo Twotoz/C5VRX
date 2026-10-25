@@ -724,8 +724,8 @@ requirements by themselves**.
   history without a new board comparison that beats flywheel OFF.
 - Operator integration (2026-10-25): carry only PR #261's line TBC into
   PR #259. `main/sync_tbc.h` / `.c`, menu TBC, console W, NVS `tbc`,
-  default ON. It may replace only leading-edge segments of verified normal
-  H syncs in completed raw IQ ahead of TX; no invented pulse or V/burst/picture
+  default OFF; saved ON/OFF is restored. It may replace only leading-edge
+  segments of verified normal H syncs in completed raw IQ ahead of TX; no invented pulse or V/burst/picture
   rewrite. Fresh AFC references are bound to PHY/control/gain and expire at
   500 ms. Every write rechecks DMA/context after analysis; CPU trip is 30 %
   for 3 s. Reset tracking on toggles, stream/context changes and invalidation.

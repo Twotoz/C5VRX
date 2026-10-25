@@ -145,7 +145,7 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
   the wires from the pins to the node short.
 - Too dark or too dim on some goggles: try OUTPUT in the menu (0.5-5.0x,
   saved). Higher levels can clip; check the loaded output on your display.
-- TBC (menu or console `W`, saved, default ON) is an experimental line
+- TBC (menu or console `W`, saved, default OFF) is an experimental line
   time-base corrector imported from PR #261. It cleans the leading edge of
   verified normal H-sync pulses; host tests preserve burst, picture and the
   vertical interval. HDZero/goggle compatibility is not yet board-validated.
@@ -227,7 +227,7 @@ without Enter; `h` lists the commands supported by your firmware.
 | `D` / `R` | Health report / per-second field diagnostics |
 | `I` / `M` / `L` | IQ snapshot / gain map / bench IQ lane test |
 | `A` | Live analog filter/profile switching on/off (saved) |
-| `W` | Line TBC on/off (saved; default on) |
+| `W` | Line TBC on/off (saved; default off) |
 | `` ` `` | USB download mode |
 
 P64 always uses the same fixed program and LUT. Profiles select only the
