@@ -149,7 +149,7 @@ test('busy-gated supported keys match console routing across firmware generation
 
 test('VIDEO follows confirmed sync (video=), not the AFC lock', () => {
   const state = new ReceiverConsole();
-  state.push('STATUS channel=A1 freq=5865 afc_locked=0 video=1 standard=AUTO detected=NTSC signal=60 menu=0\n', 1000);
+  state.push('C5VRX-5 keys: T\nSTATUS channel=A1 freq=5865 afc_locked=0 video=1 standard=AUTO detected=NTSC signal=60 menu=0\n', 1000);
   assert.equal(state.view().locked, true);
   state.push('STATUS channel=A1 freq=5865 afc_locked=0 video=0 standard=AUTO detected=NTSC signal=0 menu=0\n', 3000);
   assert.equal(state.view().locked, false);
