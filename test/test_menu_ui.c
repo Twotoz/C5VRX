@@ -88,9 +88,10 @@ int main(int argc, char **argv)
     }
     /* FILTER: every choice, unknown width/deviation, missing classes, the
      * widest offset and C/N strings; firmware: the longest version string. */
-    static const char *const modes[4] = {"AUTO", "NARROW", "NORMAL", "WIDE"};
-    for (unsigned k = 0; k < 4; ++k) {
+    static const char *const modes[5] = {"AUTO", "XNARROW", "NARROW", "NORMAL", "WIDE"};
+    for (unsigned k = 0; k < 5; ++k) {
         v = base(); v.cursor = MENU_FILTER; v.filter_mode = modes[k]; v.filter_active = k ? modes[k] : "NORMAL";
+        v.filter_recommended = k == 1 ? "NORMAL" : NULL;
         snprintf(name, sizeof(name), "filter_%u", k);
         menu_ui_render(ui, &v); check(name, false);
     }

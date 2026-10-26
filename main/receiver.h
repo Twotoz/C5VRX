@@ -176,7 +176,7 @@ bool calibration_in_startup(void);
 /* Calibrated analog filter classes: normal (>= 12 MHz, the default),
  * narrow (>= 10 MHz, low-deviation VTXs), wide (>= 16 MHz, wide VTXs).
  * false when that class was not calibrated. */
-enum { FILTER_NORMAL, FILTER_NARROW, FILTER_WIDE };
+enum { FILTER_NORMAL, FILTER_NARROW, FILTER_WIDE, FILTER_XNARROW };   /* XNARROW: menu only */
 bool filter_setting(int filter_class, rf_filter_t *out);
 /* The DC table of filter f is complete on the current channel (startup). */
 bool calibration_dc_ready(rf_filter_t f);

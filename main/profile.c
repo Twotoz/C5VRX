@@ -27,7 +27,14 @@
 #include <string.h>
 
 static const char *const s_names[PROFILES] = {"DEFAULT 12MHZ", "NARROW 10MHZ", "NARROW 10MHZ (legacy)",
-                                              "WIDE 16MHZ"};
+                                              "WIDE 16MHZ", "XNARROW"};
+
+/* Analog filter class of a profile. */
+static int filter_class(int p)
+{
+    return p == PROFILE_DEFAULT ? FILTER_NORMAL : p == PROFILE_WIDE ? FILTER_WIDE :
+           p == PROFILE_XNARROW ? FILTER_XNARROW : FILTER_NARROW;
+}
 static uint16_t s_dev_table[FPV_CHANNELS];    /* last deviation x100 per channel, provisional */
 static volatile int s_profile = PROFILE_DEFAULT;
 static const char *volatile s_reason = "boot_default";
@@ -74,7 +81,7 @@ bool profile_set(int p)
 {
     if (p < 0 || p >= PROFILES || p == PROFILE_RETIRED_KP050) return false;
     rf_filter_t f;
-    const int cls = p == PROFILE_DEFAULT ? FILTER_NORMAL : p == PROFILE_WIDE ? FILTER_WIDE : FILTER_NARROW;
+    const int cls = filter_class(p);
     if (!filter_setting(cls, &f)) {
         if (p != PROFILE_DEFAULT) return false;
         f = rf_filter();            /* uncalibrated: keep what is set */
@@ -107,7 +114,7 @@ static void carrier_record(int dev_x100)
     flog_put16(c + 6, (uint16_t)(int16_t)rf_offset_khz());
     flog_put32(c + 8, (uint32_t)(int32_t)s_cfo_khz);
     flog_put16(c + 12, (uint16_t)(int16_t)dev_x100);
-    c[14] = (uint8_t)s_profile;
+    c[14] = (uint8_t)profile_flog_code(s_profile);
     c[15] = s_detected_std_valid ? (uint8_t)(s_detected_std == VIDEO_STD_PAL ? 2 : 1) : 0u;
     c[16] = (uint8_t)rf_channel_index();
     flightlog_record(FLOG_T_CARRIER, c, 17);
@@ -201,7 +208,7 @@ static void live_apply(void)
      * operator's FILTER choice needs only the class's filter and DC table. */
     if (s_select == PROFILE_SELECT_AUTO && profile_narrowing(p, s_profile) && !narrow_ready(p)) return;
     rf_filter_t f;
-    const int cls = p == PROFILE_DEFAULT ? FILTER_NORMAL : p == PROFILE_WIDE ? FILTER_WIDE : FILTER_NARROW;
+    const int cls = filter_class(p);
     if (!filter_setting(cls, &f)) { s_switch_pending = -1; ++s_live_switch_fail; return; }
     const rf_filter_t before = rf_filter();
     s_switch_pending = -1;
@@ -231,7 +238,7 @@ static void live_apply(void)
 static bool narrow_ready(int p)
 {
     rf_filter_t f;
-    const int cls = p == PROFILE_DEFAULT ? FILTER_NORMAL : p == PROFILE_WIDE ? FILTER_WIDE : FILTER_NARROW;
+    const int cls = filter_class(p);
     return s_afc_locked && filter_setting(cls, &f) && calibration_dc_ready(f);
 }
 
@@ -352,9 +359,9 @@ int profile_selected(void) { return s_select; }
 bool profile_selectable(int p)
 {
     if (p == PROFILE_DEFAULT) return true;
-    if (p != PROFILE_NARROW && p != PROFILE_WIDE) return false;
+    if (p != PROFILE_NARROW && p != PROFILE_WIDE && p != PROFILE_XNARROW) return false;
     rf_filter_t f;
-    return filter_setting(p == PROFILE_WIDE ? FILTER_WIDE : FILTER_NARROW, &f) && calibration_dc_ready(f);
+    return filter_setting(filter_class(p), &f) && calibration_dc_ready(f);
 }
 
 /* Menu FILTER hold (menu owns TX: plain profile_set) or console f in
@@ -363,8 +370,8 @@ bool profile_selectable(int p)
  * decides again as before. */
 int profile_select_cycle(void)
 {
-    const int next = profile_select_next(s_select, profile_selectable(PROFILE_NARROW),
-                                         profile_selectable(PROFILE_WIDE));
+    const int next = profile_select_next(s_select, profile_selectable(PROFILE_XNARROW),
+                                         profile_selectable(PROFILE_NARROW), profile_selectable(PROFILE_WIDE));
     const int p = next == PROFILE_SELECT_AUTO ? PROFILE_DEFAULT : next;
     s_select = next;
     s_reason = next == PROFILE_SELECT_AUTO ? "menu_auto" : "menu_select";

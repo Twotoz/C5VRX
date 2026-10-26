@@ -68,8 +68,9 @@ typedef struct {
     unsigned gain;                  /* active gain index */
     unsigned gain_max;              /* table maximum */
     /* Analog filter (menu FILTER). */
-    const char *filter_mode;        /* "AUTO", "NARROW", "NORMAL", "WIDE" */
-    const char *filter_active;      /* active class behind AUTO: "NARROW", "NORMAL", "WIDE" */
+    const char *filter_mode;        /* "AUTO", "XNARROW", "NARROW", "NORMAL", "WIDE" */
+    const char *filter_active;      /* active class: "XNARROW", "NARROW", "NORMAL", "WIDE" */
+    const char *filter_recommended; /* what AUTO picks for the measured VTX deviation, NULL unknown */
     unsigned filter_width_khz;      /* measured -3 dB width of the active filter, 0 unknown */
     bool narrow_ok, wide_ok;        /* class calibrated with its own DC table */
     /* VTX and link quality. */

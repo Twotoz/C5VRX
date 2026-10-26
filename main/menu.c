@@ -178,7 +178,8 @@ void menu_render(void)
      * without any sign in the picture. */
     const bool dc_cal = calibration_dc_needed(dc_need, sizeof(dc_need)) != 0;
     const int selected = profile_selected(), active = profile_active();
-    static const char *const s_class[PROFILES] = {"NORMAL", "NARROW", "NARROW", "WIDE"};
+    static const char *const s_class[PROFILES] = {"NORMAL", "NARROW", "NARROW", "WIDE", "XNARROW"};
+    const int dev = profile_live_deviation_x100();   /* what AUTO would pick from the measured VTX */
     const menu_view_t v = {
         .cursor = s_menu_cursor, .cal_sub = s_cal_sub,
         .channel = ch->name, .freq_mhz = ch->freq_mhz,
@@ -200,7 +201,8 @@ void menu_render(void)
         .filter_active = active >= 0 && active < PROFILES ? s_class[active] : "?",
         .filter_width_khz = calibration_filter_width_khz(),
         .narrow_ok = profile_selectable(PROFILE_NARROW), .wide_ok = profile_selectable(PROFILE_WIDE),
-        .deviation_x100 = profile_live_deviation_x100(), .offset_khz = rf_offset_khz(),
+        .filter_recommended = dev > 0 ? s_class[profile_for_deviation(dev)] : NULL,
+        .deviation_x100 = dev, .offset_khz = rf_offset_khz(),
         .cn_x10 = receiver_obs_cn_x10(), .firmware = esp_app_get_description()->version,
     };
     menu_ui_render(s_raster.ui, &v);

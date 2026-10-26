@@ -334,6 +334,11 @@ bool calibration_sphase_settled(void)
 /* Wide VTXs (deviation >= 1.6): the 12 MHz class clips their spectrum
  * (research/data/wide.txt). */
 #define FILTER_WIDE_KHZ    16000u
+/* XNARROW (menu FILTER only, never automatic): the setting with the smallest
+ * -3 dB width, operator 2026-10-26. Mode 12 sweep: BW20 code 63 skirt 0 at
+ * 10.6 MHz, though its noise bandwidth (11.7 MHz) is no lower than NARROW's;
+ * the floor keeps a broken probe from winning. */
+#define FILTER_XNARROW_MIN_KHZ 8000u
 /* Quiet test: dsp_quiet_reason() (dsp.h). */
 #define QUIET_NO_SYNC_US   2000000LL
 /* s_last_video_us starts at 0: "no sync seen yet" is not recent sync. */
@@ -355,6 +360,13 @@ typedef struct {
     uint16_t calibrated_nbw_khz;
 } filter_blob_t;
 static filter_blob_t s_filter_cal;
+/* XNARROW in its own blob ("filter_xn"): the v6 filter blob and every board
+ * calibration made with it stay valid; XNARROW comes with the next FULL. */
+typedef struct {
+    uint8_t version;
+    filter_entry_t xnarrow;
+} filter_xn_blob_t;
+static filter_xn_blob_t s_filter_xn;
 static uint16_t s_original_mhz;
 static const char *s_filter_result = "never";
 
@@ -497,6 +509,8 @@ bool filter_calibrate(bool automatic)
     unsigned narrow_nbw = ok && width >= FILTER_NARROW_KHZ ? cal_nbw : 0, narrow_width = width;
     rf_filter_t wide = calibrated;
     unsigned wide_nbw = ok && width >= FILTER_WIDE_KHZ ? cal_nbw : 0, wide_width = width;
+    rf_filter_t xnarrow = calibrated;   /* smallest -3 dB width, then lower noise bandwidth */
+    unsigned xnarrow_nbw = ok && width >= FILTER_XNARROW_MIN_KHZ ? cal_nbw : 0, xnarrow_width = width;
     static const int8_t codes[FILTER_CODES] = {PHY_FILTER_CALIBRATED, 0, 8, 16, 24, 32, 40, 48, 52, 56, 60, 62, 63};
     static const uint8_t skirts[FILTER_SKIRTS] = {0, 8, 16, 24, 32};
     /* First pass screens all 130 settings. Any screen/full discrepancy
@@ -521,11 +535,16 @@ bool filter_calibrate(bool automatic)
                     if (quiet && nbw && width >= FILTER_WIDE_KHZ && (!wide_nbw || nbw < wide_nbw)) {
                         wide = f; wide_nbw = nbw; wide_width = width;
                     }
+                    if (quiet && nbw && width >= FILTER_XNARROW_MIN_KHZ &&
+                        (!xnarrow_nbw || width < xnarrow_width || (width == xnarrow_width && nbw < xnarrow_nbw))) {
+                        xnarrow = f; xnarrow_nbw = nbw; xnarrow_width = width;
+                    }
                 }
         if (!screen_fault || !ok || pass == 1u) break;
         printf("FILTER_CAL screen=fallback_full\n");
-        best = narrow = wide = calibrated;
+        best = narrow = wide = xnarrow = calibrated;
         best_nbw = best_width = narrow_nbw = narrow_width = wide_nbw = wide_width = 0;
+        xnarrow_nbw = xnarrow_width = 0;
         s_cal_total += 2u * FILTER_CODES * FILTER_SKIRTS;
     }
     /* Re-check on the calibrated bytes before trusting the sweep. */
@@ -533,11 +552,11 @@ bool filter_calibrate(bool automatic)
         fail = carrier ? "carrier_detected" : "recheck_not_quiet";
     /* Independent full rechecks of each distinct winner. Screening never
      * relaxes the stored width requirement, quiet gate or final precision. */
-    rf_filter_t winners[3] = {best, narrow, wide};
-    unsigned *widths[3] = {&best_width, &narrow_width, &wide_width};
-    unsigned *nbws[3] = {&best_nbw, &narrow_nbw, &wide_nbw};
-    static const unsigned minimum[3] = {FILTER_MIN_KHZ, FILTER_NARROW_KHZ, FILTER_WIDE_KHZ};
-    for (unsigned k = 0; ok && k < 3u; ++k) {
+    rf_filter_t winners[4] = {best, narrow, wide, xnarrow};
+    unsigned *widths[4] = {&best_width, &narrow_width, &wide_width, &xnarrow_width};
+    unsigned *nbws[4] = {&best_nbw, &narrow_nbw, &wide_nbw, &xnarrow_nbw};
+    static const unsigned minimum[4] = {FILTER_MIN_KHZ, FILTER_NARROW_KHZ, FILTER_WIDE_KHZ, FILTER_XNARROW_MIN_KHZ};
+    for (unsigned k = 0; ok && k < 4u; ++k) {
         if (!*nbws[k]) continue;
         bool duplicate = false;
         for (unsigned j = 0; j < k; ++j)
@@ -583,6 +602,12 @@ bool filter_calibrate(bool automatic)
         if (!rf_set_filter(best)) { ok = false; fail = "best_not_applied"; }
         else if (!blob_store("filter", &cal, sizeof(cal))) { ok = false; fail = "nvs_failed"; }
         else s_filter_cal = cal;
+        const filter_xn_blob_t xn = {FILTER_VERSION, {xnarrow_nbw ? 1u : 0u, xnarrow.bw20, xnarrow.skirt,
+                                                      xnarrow.code, KHZ16(xnarrow_width), KHZ16(xnarrow_nbw)}};
+        if (ok) {   /* optional class: a failed store only leaves XNARROW out of the menu */
+            if (blob_store("filter_xn", &xn, sizeof(xn))) s_filter_xn = xn;
+            else printf("FILTER_CAL warning: XNARROW not stored\n");
+        }
     }
     if (ok) {
         s_filter_result = "stored";
@@ -592,6 +617,8 @@ bool filter_calibrate(bool automatic)
                best.code, best.skirt, best_width, best_nbw, narrow.bw20 ? "BW20" : "BW40", narrow.code,
                narrow.skirt, narrow_width, narrow_nbw, wide.bw20 ? "BW20" : "BW40", wide.code, wide.skirt,
                wide_width, wide_nbw, cal_nbw);
+        printf("FILTER_CAL xnarrow bw=%s code=%d skirt=%u width_khz=%u nbw_khz=%u\n", xnarrow.bw20 ? "BW20" : "BW40",
+               xnarrow.code, xnarrow.skirt, xnarrow_width, xnarrow_nbw);
     } else {
         if (!rf_set_filter(previous)) printf("FILTER_CAL error: previous filter not applied\n");
         s_filter_result = fail ? fail : "sweep_failed";
@@ -624,6 +651,7 @@ int calibration_filter_class_mhz(void)
     if (filter_setting(FILTER_NARROW, &f) && rf_filter_equal(f, now))
         return s_filter_cal.narrow.width_khz > 11000u ? 12 : 10;
     if (filter_setting(FILTER_WIDE, &f) && rf_filter_equal(f, now)) return 16;
+    if (filter_setting(FILTER_XNARROW, &f) && rf_filter_equal(f, now)) return 10;
     return 20;
 }
 
@@ -635,6 +663,7 @@ unsigned calibration_filter_nbw_khz(void)
     if (filter_setting(FILTER_NORMAL, &f) && rf_filter_equal(f, now) && s_filter_cal.normal.valid) return s_filter_cal.normal.nbw_khz;
     if (filter_setting(FILTER_NARROW, &f) && rf_filter_equal(f, now) && s_filter_cal.narrow.valid) return s_filter_cal.narrow.nbw_khz;
     if (filter_setting(FILTER_WIDE, &f) && rf_filter_equal(f, now) && s_filter_cal.wide.valid) return s_filter_cal.wide.nbw_khz;
+    if (filter_setting(FILTER_XNARROW, &f) && rf_filter_equal(f, now)) return s_filter_xn.xnarrow.nbw_khz;
     return s_filter_cal.calibrated_nbw_khz;
 }
 
@@ -645,6 +674,7 @@ unsigned calibration_filter_width_khz(void)
     if (filter_setting(FILTER_NORMAL, &f) && rf_filter_equal(f, now) && s_filter_cal.normal.valid) return s_filter_cal.normal.width_khz;
     if (filter_setting(FILTER_NARROW, &f) && rf_filter_equal(f, now) && s_filter_cal.narrow.valid) return s_filter_cal.narrow.width_khz;
     if (filter_setting(FILTER_WIDE, &f) && rf_filter_equal(f, now) && s_filter_cal.wide.valid) return s_filter_cal.wide.width_khz;
+    if (filter_setting(FILTER_XNARROW, &f) && rf_filter_equal(f, now)) return s_filter_xn.xnarrow.width_khz;
     return 0u;
 }
 
@@ -655,6 +685,12 @@ unsigned calibration_narrow_width_khz(void)
 
 bool filter_setting(int filter_class, rf_filter_t *out)
 {
+    if (filter_class == FILTER_XNARROW) {
+        const filter_entry_t *x = &s_filter_xn.xnarrow;
+        if (s_filter_xn.version != FILTER_VERSION || !x->valid || !x->nbw_khz) return false;
+        *out = (rf_filter_t){x->code, x->skirt, x->bw20 != 0};
+        return true;
+    }
     const filter_entry_t *e = filter_class == FILTER_NARROW ? &s_filter_cal.narrow :
                               filter_class == FILTER_WIDE ? &s_filter_cal.wide : &s_filter_cal.normal;
     if (s_filter_cal.version != FILTER_VERSION || !e->valid) {
@@ -1504,7 +1540,7 @@ static void dco_startup(bool manual, int64_t deadline)
  * every startup DC pass: a profile switch may only narrow onto a filter whose
  * table is complete there (no missing or template rows, measured with that
  * filter); otherwise it would fly on codes of another filter. */
-#define DCO_READY_MAX 3u
+#define DCO_READY_MAX 4u   /* NORMAL, NARROW, WIDE, XNARROW */
 static struct { uint16_t freq, key; bool ready; } s_dco_ready[DCO_READY_MAX];
 
 static bool dco_current_complete(void)
@@ -1545,10 +1581,10 @@ static void dco_startup_profiles(bool manual, int64_t deadline)
 {
     const rf_filter_t live = rf_filter();
     dco_ready_note();
-    rf_filter_t todo[3];
+    rf_filter_t todo[4];
     unsigned n = 0;
-    static const int classes[3] = {FILTER_NORMAL, FILTER_NARROW, FILTER_WIDE};
-    for (unsigned c = 0; c < 3u; ++c) {
+    static const int classes[4] = {FILTER_NORMAL, FILTER_NARROW, FILTER_WIDE, FILTER_XNARROW};
+    for (unsigned c = 0; c < 4u; ++c) {
         rf_filter_t f;
         if (!filter_setting(classes[c], &f) || rf_filter_equal(f, live)) continue;
         bool dup = false;
@@ -2535,7 +2571,9 @@ static void calibration_generation(void)
     s_dco_index_loaded = true;                 /* never adopt or upgrade the old tables */
     dc_flags_init(&s_dc_flags);
     s_dc_flags_loaded = true;
-    const bool ok = blob_store("filter", &none, sizeof(none)) &&
+    const filter_xn_blob_t no_xn = {0};
+    s_filter_xn = no_xn;
+    const bool ok = blob_store("filter", &none, sizeof(none)) && blob_store("filter_xn", &no_xn, sizeof(no_xn)) &&
                     blob_store("dco_idx", &s_dco_index, sizeof(s_dco_index)) &&
                     blob_store("dc_recal", &s_dc_flags, sizeof(s_dc_flags));
     const uint16_t now = CAL_GENERATION;
@@ -2595,6 +2633,7 @@ void calibration_start(void)
 {
     calibration_generation();
     rf_filter_t loaded;
+    if (!blob_load("filter_xn", &s_filter_xn, sizeof(s_filter_xn))) memset(&s_filter_xn, 0, sizeof(s_filter_xn));
     if (blob_load("filter", &s_filter_cal, sizeof(s_filter_cal)) && filter_setting(FILTER_NORMAL, &loaded)) {
         rf_set_filter(loaded);
         s_filter_result = "loaded";

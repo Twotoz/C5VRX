@@ -274,9 +274,16 @@ static void card_filter(const menu_view_t *v)
     else snprintf(buf, sizeof(buf), "--");
     const int x = text_box(buf, CARD_X, 12, CARD_W - 24, ALIGN_LEFT, FONT_BIG, MENU_INK_WHITE);
     text("MHZ", x + 4, 18, MENU_INK_GREY);
-    /* The class in use (behind AUTO too); a class missing from the hold
-     * cycle has no calibrated filter yet: FULL CAL measures every class. */
-    text_box(v->filter_active, CARD_X, 26, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_WHITE);
+    /* AUTO: the class it chose. A fixed choice (shown in the list) gets
+     * what AUTO would pick for the measured VTX instead. A class missing
+     * from the hold cycle has no calibrated filter yet (CALIBRATE > FULL). */
+    if (!strcmp(v->filter_mode, "AUTO")) {
+        text_box(v->filter_active, CARD_X, 26, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_WHITE);
+    } else {
+        snprintf(buf, sizeof(buf), "REC %s", v->filter_recommended ? v->filter_recommended : "--");
+        const bool same = v->filter_recommended && !strcmp(v->filter_recommended, v->filter_mode);
+        text_box(buf, CARD_X, 26, CARD_W, ALIGN_LEFT, FONT_TEXT, same ? MENU_INK_GREY : MENU_INK_WHITE);
+    }
     if (v->deviation_x100 >= 0) snprintf(buf, sizeof(buf), "DEV %d.%02d", v->deviation_x100 / 100,
                                          v->deviation_x100 % 100);
     else snprintf(buf, sizeof(buf), "DEV --");
