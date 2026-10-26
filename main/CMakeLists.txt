@@ -8,7 +8,9 @@ idf_component_register(
              esp_driver_gpio esp_driver_bitscrambler esp_driver_usb_serial_jtag
              esp_driver_tsens esp_timer esp_mm hal heap esp_hw_support esp_app_format esp_partition)
 
-target_bitscrambler_add_src("p64.bsasm")
+# U55P64-K1 (docs/FINDINGS.md "Coloured dots: kneed tracker gain");
+# p64.bsasm stays the unbuilt U80P64-R1 reference (test/test_p64.py).
+target_bitscrambler_add_src("p64k1.bsasm")
 
 # The AFC decoder must not inherit the application's debug-oriented -Og.
 set_source_files_properties(control.c PROPERTIES COMPILE_OPTIONS "-O2")

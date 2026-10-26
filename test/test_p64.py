@@ -34,10 +34,11 @@ def reference(raw, table):
 
 
 def main():
-    # The sole firmware program must stay P64; retired references are research.
+    # One firmware program: U55P64-K1 (test/test_p64_k1.py) uses these P64
+    # instructions with a kneed-gain table; this program stays the reference.
     build = (ROOT / "main/CMakeLists.txt").read_text()
     assert build.count('target_bitscrambler_add_src(') == 1
-    assert 'target_bitscrambler_add_src("p64.bsasm")' in build
+    assert 'target_bitscrambler_add_src("p64k1.bsasm")' in build
     for name in ("transport.c", "control.c", "receiver.h"):
         source = (ROOT / "main" / name).read_text()
         for retired in ("transport_set_p64", "transport_kp_set", "kp_tables.h", "kp_ladder.h", 'blob_load("kp_auto"', 'blob_load("lp_cn"'):

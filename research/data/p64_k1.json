@@ -1,0 +1,12 @@
+{
+  "model_id": "U55P64-K1",
+  "derived_from": "U80P64-R1 (research/data/p64_repair.json, PR #250 repair)",
+  "changes": {
+    "kp_vid": 0.55,
+    "err_knee": 0.7854,
+    "kp_vid_large": 0.95,
+    "v_video_prior": 0.25
+  },
+  "search": "108 grid candidates (kp_vid 0.5..0.7, knee 30..75 degrees, kp above the knee 0.85..1.0, video prior 0..0.35 rad per 50 ns) on seeds 311/991; gates: clean-tone transfer < 0.5 code, sync-to-porch escape < 0.5 code, lock not below U80P64-R1, SINAD at 30 dB >= 11.6. Ranked by coloured dots at 40 and 12 dB C/N. Validation uses other seeds (research/p64_k1_validation.py).",
+  "evidence": "host simulation only; board test pending"
+}

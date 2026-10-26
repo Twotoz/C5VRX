@@ -1,6 +1,6 @@
 /* C5VRX-5 by Twotoz and the C5VRX contributors: realtime transport.
  * MODEM_DIAG -> PARLIO RX 40 MS/s -> 32 KiB cyclic ring -> TX BitScrambler
- * (U80P64-R1) -> PARLIO TX 40 MHz -> 6-bit resistor DAC. Both GDMA rings run
+ * (U55P64-K1) -> PARLIO TX 40 MHz -> 6-bit resistor DAC. Both GDMA rings run
  * with interrupts off and cleared suc_eof (espressif/esp-idf#19091), so no
  * DMA boundary is a stream boundary; the CPU never paces samples. */
 #include "receiver.h"
@@ -23,7 +23,7 @@
 #include "transport_recovery.h"
 #include "output_level.h"
 #include "hal/parlio_ll.h"
-#include "p64_tables.h"
+#include "p64k1_tables.h"
 #include "snapshot.h"
 #include "control_window.h"
 #include "phase8_gain_lut.h"
@@ -37,10 +37,12 @@
 #include "soc/parl_io_struct.h"
 #include "soc/pcr_struct.h"
 
-/* Fixed U80P64-R1 program and LUT; no runtime demodulator or kp policy. */
-BITSCRAMBLER_PROGRAM(s_p64, "p64");
+/* Fixed U55P64-K1 program and LUT: the U80P64-R1 instructions and layout
+ * with a kneed video loop gain (docs/FINDINGS.md "Coloured dots: kneed
+ * tracker gain"); no runtime demodulator or kp policy. */
+BITSCRAMBLER_PROGRAM(s_p64k1, "p64k1");
 static bool s_started;
-static const void *tracker_program(void) { return s_p64; }
+static const void *tracker_program(void) { return s_p64k1; }
 
 /* 6-bit resistor DAC, LSB first (XIAO D4..D9; 8.2k/3.9k/2k/1k/470R/240R
  * plus 200R). Do not change the tested pin order. D10/GPIO10 and D3/GPIO7
@@ -263,7 +265,7 @@ bool transport_restart_profile(void)
     if (s_transport_fault || !s_lut_known || !s_started || s_menu_active ||
         !transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
     stage_hooks();
-    const bool ok = resume_live(p64_table);
+    const bool ok = resume_live(p64k1_table);
     transport_guard_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
 }
@@ -275,7 +277,7 @@ uint32_t transport_switch_wait_ms(void)
            (uint32_t)((TRANSPORT_SWITCH_GAP_US - (now - s_switch_guard.last_switch_us) + 999) / 1000);
 }
 
-const char *transport_program_name(void) { return P64_MODEL_ID; }
+const char *transport_program_name(void) { return P64K1_MODEL_ID; }
 bool transport_live(void) { return s_started; }
 bool transport_faulted(void) { return s_transport_fault; }
 uint32_t transport_restart_errors(void) { return s_restart_errors; }
@@ -294,7 +296,7 @@ bool transport_set_output(unsigned level)
     if (s_menu_active || !s_started) { s_output = level; return true; }
     if (!transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
     s_output = level;
-    bool ok = resume_live(s_lut_known ? p64_table : NULL);
+    bool ok = resume_live(s_lut_known ? p64k1_table : NULL);
     transport_guard_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
 }
@@ -542,7 +544,7 @@ static bool resume_live(const uint16_t *restore_lut)
     const uint8_t *program_inst;
     if (!program_words(r.program, &program_inst)) return false;
     memcpy(s_program_work.prefix, r.program, sizeof(s_program_work.prefix));
-    if (!restore_lut) restore_lut = p64_table;
+    if (!restore_lut) restore_lut = p64k1_table;
     if (restore_lut == s_lut_live) {
         memcpy(s_lut_work, s_lut_live, sizeof(s_lut_work));
         r.clipped = s_output_clipped;
@@ -616,7 +618,7 @@ void transport_flog_identity(uint8_t *demod, uint8_t *output_level)
 {
     const bool verified = s_started && s_tx_enabled && s_bs_enabled && s_have_verified && s_lut_known &&
                           !s_transport_fault;
-    if (demod) *demod = verified ? FLOG_DEMOD_P64_R1 : FLOG_DEMOD_UNKNOWN;
+    if (demod) *demod = verified ? FLOG_DEMOD_P64_K1 : FLOG_DEMOD_UNKNOWN;
     if (output_level) *output_level = verified ? (uint8_t)s_verified_output : 0xffu;
 }
 
@@ -635,9 +637,9 @@ void transport_flog_output(transport_flog_output_t *out)
 void transport_print(void)
 {
     const char *verified_demod = s_have_verified && s_lut_known && !s_transport_fault ?
-        P64_MODEL_ID : "unknown";
+        P64K1_MODEL_ID : "unknown";
     printf("DEMOD selected=%s verified=%s p64_model=%s p64_table_sha256=%s\n",
-           transport_program_name(), verified_demod, P64_MODEL_ID, P64_TABLE_SHA256);
+           transport_program_name(), verified_demod, P64K1_MODEL_ID, P64K1_TABLE_SHA256);
     printf("TRANSPORT_STAGES_US quiesce=%lu bs_enable=%lu program_load=%lu instruction_verify=%lu lut_verify=%lu "
            "bs_reset=%lu bs_start=%lu rx_enable=%lu tx_enable=%lu rx_start=%lu tx_start=%lu (last restart)\n",
            (unsigned long)s_quiesce_us, (unsigned long)s_stage_us[TR_BS_ENABLE], (unsigned long)s_stage_us[TR_PROGRAM_LOAD],

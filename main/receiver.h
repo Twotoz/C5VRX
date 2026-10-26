@@ -1,7 +1,7 @@
 /* C5VRX-5 by Twotoz and the C5VRX contributors: receiver-wide state.
  *
  * Data plane (hardware only): MODEM_DIAG Q4/I4 (fixed ultrafine lane) ->
- * PARLIO RX 40 MS/s -> 32 KiB cyclic raw ring -> TX BitScrambler U80P64-R1
+ * PARLIO RX 40 MS/s -> 32 KiB cyclic raw ring -> TX BitScrambler U55P64-K1
  * (50 ns span, two bundles, LUT16) -> PARLIO TX 40 MHz [D,D] -> 6-bit DAC.
  * The CPU only observes completed RX descriptors and owns gain, AFC, DC,
  * filter, menu and console. */
@@ -75,7 +75,8 @@ void transport_poll_faults(void);
 uint32_t transport_fault_count(void);
 void transport_print(void);
 /* Flight-log V1 output telemetry. Demod is 0 unknown, 1 verified U85Q,
- * 2 reserved for historical LP logs, 3 verified U80P64-R1. The observer
+ * 2 reserved for historical LP logs, 3 verified U80P64-R1, 5 verified
+ * U55P64-K1 (4 is the separate U80P64-D10 test build). The observer
  * fields keep their wire slots for old logs; firmware writes them empty
  * (lock percentages 0xff) since the sync flywheel was removed. */
 typedef struct {

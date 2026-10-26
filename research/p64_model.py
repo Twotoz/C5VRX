@@ -112,7 +112,14 @@ def build_lut64_from_params(params):
                 next_regime = 1 if (d_theta > cur_exit_th and w > sync_w_th) else 0
             else:
                 gain_vid = min(0.98, kp_vid * boost) if w >= 0.90 else kp_vid * w
-                d_theta = gain_vid * err + (1.0 - gain_vid) * v_vid
+                if params.get('err_knee') is not None:
+                    # U60P64-K1: low gain for small (noise) errors, a second
+                    # gain beyond the knee so fast white still tracks.
+                    knee, big = params['err_knee'], params['kp_vid_large']
+                    mag = gain_vid * min(abs(err), knee) + big * max(0.0, abs(err) - knee)
+                    d_theta = math.copysign(mag, err) + (1.0 - gain_vid) * v_vid
+                else:
+                    d_theta = gain_vid * err + (1.0 - gain_vid) * v_vid
                 next_regime = 0 if (d_theta < cur_enter_th and w > vid_w_th) else 1
 
             d_theta = max(lo_step, min(hi_step, d_theta))
