@@ -7,6 +7,62 @@ scripts and data live in that branch under `v4/docs/PICTURE_CLIFF_STUDY.md`,
 Synthetic results are host simulations; board results are labelled as such.
 Measured range is not established.
 
+## Coloured dots: kneed tracker gain (U55P64-K1 test build, 2026-10-26)
+
+Operator report: random coloured pixels ("sandpaper") on the screen in every
+build, also before the GPIO27/GPIO2 reroute. This test build extends
+U80P64-R1 (PR #250 repair, C5VRX by Twotoz and the contributors) and the
+retired U85Q kp-ladder research (lower kp for less noise). Host model only.
+
+Findings that led here (simulation, flat colour patches, chroma 1 MHz
+around the subcarrier, `research/p64_k1_validation.py` documents the metric):
+
+- At 40 dB C/N the colour grain SNR is ~13.5 dB with U80P64-R1, ~31 dB for an
+  ideal discriminator on unquantised IQ and ~16.7 dB on Q4/I4: the 4-bit IQ,
+  not the DAC (a perfect DAC: no gain) or the tracker (equal to an ideal
+  50 ns discriminator on the same bytes), sets the floor.
+- The dots come mainly from narrow-deviation VTXs: per mille of patch samples
+  with a > 10 IRE colour excursion at 40 dB, ~28 at deviation 0.7 versus
+  ~0.2 at 1.4 and 0 at 1.7. At narrow deviation the chroma is a small phase
+  movement next to the Q4/I4 phase error.
+- Injected Q-sign bit errors produce such dots (1e-3: about twice as many);
+  I-LSB errors barely do. The reroute was ruled out by the operator report.
+- A plain lower video gain (0.70) halved the dots but lost tracking above
+  +6 MHz (up to 17 codes short); clamping the error broke the transfer
+  completely (no frequency state to tell a fast step from an outlier).
+
+U55P64-K1 changes only the video update law of the U80P64-R1 table
+(`research/p64_model.py` `err_knee`/`kp_vid_large`, off for R1, which still
+reproduces): gain 0.55 up to a 45-degree phase error, 0.95 beyond it, and
+a +0.25 rad per 50 ns video prior. Same instructions, 64 states, 16 tokens,
+LUT16 layout, RX40/raw 32 KiB/two lookups/DAC20 at TX40. Parameters from a
+108-candidate grid on seeds 311/991 (`research/data/p64_k1.json`). Flight-log
+demod ID 5 (4 is the separate U80P64-D10 build of PR #276).
+
+Validation, other seeds (2903/4111/5501, 36 cases per row; seed 2903 in
+`research/data/p64_k1_validation.json`, CI `--check`):
+
+| Deviation | Model | dots 40 dB | dots 12 dB | saturation | lock 0 dB |
+| --- | --- | --- | --- | --- | --- |
+| 0.7 | U80P64-R1 | 27.8 | 292 | 0.68 | 0.886 |
+| 0.7 | U55P64-K1 | 3.3 | 93 | 0.48 | 0.830 |
+| 1.4 | U80P64-R1 | 0.2 | 7.8 | 0.56 | 0.727 |
+| 1.4 | U55P64-K1 | 0.2 | 9.8 | 0.57 | 0.559 |
+| 1.7 (16 MHz) | U80P64-R1 | 0.0 | 2.8 | 0.64 | 0.428 |
+| 1.7 (16 MHz) | U55P64-K1 | 0.0 | 5.1 | 0.70 | 0.360 |
+
+**This is a trade-off, not a fix.** With a narrow VTX the dots almost
+disappear, but the colour is much paler (saturation 0.68 -> 0.48, roughly
+the effect of turning the goggle colour down). Weak-signal lock is lower,
+most at deviation 1.4, so range may suffer. Clean-signal SINAD is equal or
+slightly higher. Single-case 0 dB lock values scatter widely; read the
+36-case means.
+
+**Board test pending:** compare with a main U80P64-R1 build on the same VTX
+(note its measured deviation in `T`), PAL and NTSC, close and at the range
+edge; check the coloured dots, colour saturation, sync at the edge and `T`
+(`selected=U55P64-K1 verified=U55P64-K1`, zero transport/verify counters).
+
 ## GPIO27 IQ loopback experiment (2026-10-25)
 
 Operator request: a standalone GPIO-only PR directly on main, reserving

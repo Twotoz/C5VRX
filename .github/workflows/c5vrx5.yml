@@ -154,6 +154,14 @@ jobs:
         run: |
           /tmp/iqf-test-env/bin/python test/test_p64.py
           /tmp/iqf-test-env/bin/python research/p64_validation.py --check
+      - name: U55P64-K1 kneed-gain table, transfer, dots and assembled datapath
+        shell: bash
+        run: |
+          python3 "$IDF_PATH/tools/bsasm.py" main/p64k1.bsasm /tmp/p64k1.bsbin \
+            -c "$IDF_PATH/components/esp_driver_bitscrambler/bsasm_targets/esp32c5.json"
+          /tmp/iqf-test-env/bin/python research/p64_k1.py
+          /tmp/iqf-test-env/bin/python test/test_p64_k1.py
+          /tmp/iqf-test-env/bin/python research/p64_k1_validation.py --check
       - name: Historical kp/LP replay (retired policy baseline)
         run: /tmp/iqf-test-env/bin/python research/ladder_gate.py check research/data/ladder_gate_rates.json
       - name: OUTPUT research invariants (DAC-only changes and bounded policy)

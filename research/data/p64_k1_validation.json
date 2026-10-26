@@ -1,0 +1,511 @@
+{
+ "model_id": "U55P64-K1",
+ "table_sha256": "69111d49be4aa0a2cea6a5b301b3305e5924c0c52b2040a287d79185ed952c7f",
+ "evidence": "host simulation only; board test pending",
+ "results": [
+  {
+   "input": "patches",
+   "standard": "PAL",
+   "dev": 0.7,
+   "cn": 40.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 22.8763,
+     "grain": 9.8733,
+     "saturation": 0.6246
+    },
+    "U55P64-K1": {
+     "dots": 1.6769,
+     "grain": 12.8933,
+     "saturation": 0.4209
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "PAL",
+   "dev": 0.7,
+   "cn": 12.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 263.0294,
+     "grain": 5.9611,
+     "saturation": 0.6217
+    },
+    "U55P64-K1": {
+     "dots": 62.4843,
+     "grain": 9.1891,
+     "saturation": 0.4145
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "PAL",
+   "dev": 0.7,
+   "cn": 30.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 1.0,
+     "sinad": 9.9977
+    },
+    "U55P64-K1": {
+     "lock": 1.0,
+     "sinad": 10.103
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "PAL",
+   "dev": 0.7,
+   "cn": 4.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 1.0,
+     "sinad": -0.5575
+    },
+    "U55P64-K1": {
+     "lock": 1.0,
+     "sinad": 0.822
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "PAL",
+   "dev": 0.7,
+   "cn": 0.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 0.9744,
+     "sinad": -5.6309
+    },
+    "U55P64-K1": {
+     "lock": 0.9781,
+     "sinad": -5.1235
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "PAL",
+   "dev": 1.4,
+   "cn": 40.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 0.7184,
+     "grain": 15.6707,
+     "saturation": 0.4614
+    },
+    "U55P64-K1": {
+     "dots": 0.6613,
+     "grain": 15.2638,
+     "saturation": 0.4755
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "PAL",
+   "dev": 1.4,
+   "cn": 12.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 7.7311,
+     "grain": 11.7987,
+     "saturation": 0.446
+    },
+    "U55P64-K1": {
+     "dots": 9.7071,
+     "grain": 11.4839,
+     "saturation": 0.4606
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "PAL",
+   "dev": 1.4,
+   "cn": 30.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 1.0,
+     "sinad": 13.4722
+    },
+    "U55P64-K1": {
+     "lock": 1.0,
+     "sinad": 13.4716
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "PAL",
+   "dev": 1.4,
+   "cn": 4.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 1.0,
+     "sinad": 2.1314
+    },
+    "U55P64-K1": {
+     "lock": 1.0,
+     "sinad": 2.506
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "PAL",
+   "dev": 1.4,
+   "cn": 0.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 0.9055,
+     "sinad": -3.8138
+    },
+    "U55P64-K1": {
+     "lock": 0.3891,
+     "sinad": -3.4814
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "PAL",
+   "dev": 1.7,
+   "cn": 40.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 0.0787,
+     "grain": 18.013,
+     "saturation": 0.5566
+    },
+    "U55P64-K1": {
+     "dots": 0.0059,
+     "grain": 17.7407,
+     "saturation": 0.6289
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "PAL",
+   "dev": 1.7,
+   "cn": 12.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 2.287,
+     "grain": 12.8838,
+     "saturation": 0.5431
+    },
+    "U55P64-K1": {
+     "dots": 4.2611,
+     "grain": 12.2346,
+     "saturation": 0.5965
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "PAL",
+   "dev": 1.7,
+   "cn": 30.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 1.0,
+     "sinad": 14.5372
+    },
+    "U55P64-K1": {
+     "lock": 1.0,
+     "sinad": 14.8869
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "PAL",
+   "dev": 1.7,
+   "cn": 4.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 1.0,
+     "sinad": -0.6716
+    },
+    "U55P64-K1": {
+     "lock": 0.9963,
+     "sinad": 0.0481
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "PAL",
+   "dev": 1.7,
+   "cn": 0.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 0.4948,
+     "sinad": -5.0338
+    },
+    "U55P64-K1": {
+     "lock": 0.6431,
+     "sinad": -4.6383
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "NTSC",
+   "dev": 0.7,
+   "cn": 40.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 33.7743,
+     "grain": 11.135,
+     "saturation": 0.7373
+    },
+    "U55P64-K1": {
+     "dots": 4.4782,
+     "grain": 13.6282,
+     "saturation": 0.5359
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "NTSC",
+   "dev": 0.7,
+   "cn": 12.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 320.2607,
+     "grain": 6.3315,
+     "saturation": 0.724
+    },
+    "U55P64-K1": {
+     "dots": 122.398,
+     "grain": 9.0021,
+     "saturation": 0.521
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "NTSC",
+   "dev": 0.7,
+   "cn": 30.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 1.0,
+     "sinad": 10.1314
+    },
+    "U55P64-K1": {
+     "lock": 1.0,
+     "sinad": 10.3221
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "NTSC",
+   "dev": 0.7,
+   "cn": 4.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 1.0,
+     "sinad": -0.5121
+    },
+    "U55P64-K1": {
+     "lock": 1.0,
+     "sinad": 0.805
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "NTSC",
+   "dev": 0.7,
+   "cn": 0.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 0.9735,
+     "sinad": -5.5685
+    },
+    "U55P64-K1": {
+     "lock": 0.316,
+     "sinad": -5.0553
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "NTSC",
+   "dev": 1.4,
+   "cn": 40.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 0.0847,
+     "grain": 17.3749,
+     "saturation": 0.6489
+    },
+    "U55P64-K1": {
+     "dots": 0.0605,
+     "grain": 16.9557,
+     "saturation": 0.6621
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "NTSC",
+   "dev": 1.4,
+   "cn": 12.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 9.2323,
+     "grain": 12.5372,
+     "saturation": 0.622
+    },
+    "U55P64-K1": {
+     "dots": 10.1154,
+     "grain": 12.4053,
+     "saturation": 0.6263
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "NTSC",
+   "dev": 1.4,
+   "cn": 30.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 1.0,
+     "sinad": 13.8676
+    },
+    "U55P64-K1": {
+     "lock": 1.0,
+     "sinad": 13.9655
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "NTSC",
+   "dev": 1.4,
+   "cn": 4.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 0.9955,
+     "sinad": 2.0793
+    },
+    "U55P64-K1": {
+     "lock": 0.9955,
+     "sinad": 2.4246
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "NTSC",
+   "dev": 1.4,
+   "cn": 0.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 0.8761,
+     "sinad": -3.766
+    },
+    "U55P64-K1": {
+     "lock": 0.8722,
+     "sinad": -3.442
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "NTSC",
+   "dev": 1.7,
+   "cn": 40.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 0.0,
+     "grain": 17.2978,
+     "saturation": 0.7227
+    },
+    "U55P64-K1": {
+     "dots": 0.0,
+     "grain": 16.9301,
+     "saturation": 0.7787
+    }
+   }
+  },
+  {
+   "input": "patches",
+   "standard": "NTSC",
+   "dev": 1.7,
+   "cn": 12.0,
+   "scores": {
+    "U80P64-R1": {
+     "dots": 3.9871,
+     "grain": 13.4377,
+     "saturation": 0.7048
+    },
+    "U55P64-K1": {
+     "dots": 6.3145,
+     "grain": 12.9729,
+     "saturation": 0.7438
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "NTSC",
+   "dev": 1.7,
+   "cn": 30.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 1.0,
+     "sinad": 14.8663
+    },
+    "U55P64-K1": {
+     "lock": 1.0,
+     "sinad": 15.3484
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "NTSC",
+   "dev": 1.7,
+   "cn": 4.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 0.9955,
+     "sinad": -0.6429
+    },
+    "U55P64-K1": {
+     "lock": 0.991,
+     "sinad": 0.0255
+    }
+   }
+  },
+  {
+   "input": "textured",
+   "standard": "NTSC",
+   "dev": 1.7,
+   "cn": 0.0,
+   "scores": {
+    "U80P64-R1": {
+     "lock": 0.37,
+     "sinad": -4.9685
+    },
+    "U55P64-K1": {
+     "lock": 0.1203,
+     "sinad": -4.5841
+    }
+   }
+  }
+ ]
+}

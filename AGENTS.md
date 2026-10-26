@@ -723,6 +723,14 @@ requirements by themselves**.
 
 ## Current realtime invariants (C5VRX-5)
 
+- Coloured-dots test build (operator request 2026-10-26, docs/FINDINGS.md
+  "Coloured dots: kneed tracker gain"): firmware builds U55P64-K1
+  (`main/p64k1.bsasm`, `research/p64_k1.py`), the U80P64-R1 instructions and
+  layout with video gain 0.55 up to a 45-degree error, 0.95 beyond and a
+  +0.25 rad prior. Host model: far fewer coloured dots with narrow VTXs
+  (deviation 0.7), but paler colour (saturation 0.68 -> 0.48) and lower
+  0 dB lock (deviation 1.4: 0.73 -> 0.56). A trade-off for board comparison,
+  not an accepted default; p64.bsasm stays the unbuilt U80P64-R1 reference.
 - Operator IQ pin experiment (2026-10-25): `RF_IQ_GPIO_NUMS` in `main/rf.h`
   supplies both MODEM_DIAG routing and PARLIO RX: Q = 1/0/25/2,
   I = 27/5/3/4. GPIO27 replaces GPIO10; GPIO2 replaces GPIO7. Reserve
