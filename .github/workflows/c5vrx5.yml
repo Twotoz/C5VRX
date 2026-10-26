@@ -144,6 +144,14 @@ jobs:
         run: |
           /tmp/iqf-test-env/bin/python test/test_p64.py
           /tmp/iqf-test-env/bin/python research/p64_validation.py --check
+      - name: U80P32-D7 seven-bit DAC table, transfer and assembled datapath
+        shell: bash
+        run: |
+          python3 "$IDF_PATH/tools/bsasm.py" main/p32d7.bsasm /tmp/p32d7.bsbin \
+            -c "$IDF_PATH/components/esp_driver_bitscrambler/bsasm_targets/esp32c5.json"
+          /tmp/iqf-test-env/bin/python research/p32d7_model.py
+          /tmp/iqf-test-env/bin/python test/test_p32d7.py
+          /tmp/iqf-test-env/bin/python research/p32d7_validation.py --check
       - name: Historical kp/LP replay (retired policy baseline)
         run: /tmp/iqf-test-env/bin/python research/ladder_gate.py check research/data/ladder_gate_rates.json
       - name: OUTPUT research invariants (DAC-only changes and bounded policy)

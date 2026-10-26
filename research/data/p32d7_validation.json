@@ -1,0 +1,235 @@
+{
+ "model_id": "U80P32-D7",
+ "table_sha256": "752a0ce288d9c9aac8733370c6eaf6368903dc616ded357998f04d4a4f22ad2d",
+ "evidence": "host simulation only; seven-bit board test pending",
+ "results": [
+  {
+   "standard": "PAL",
+   "dev": 0.7,
+   "cn": 30.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 1.0,
+     "sinad": 9.9977
+    },
+    "U80P32-D7 7bit": {
+     "lock": 1.0,
+     "sinad": 8.4
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 1.0,
+     "sinad": 8.9989
+    }
+   }
+  },
+  {
+   "standard": "PAL",
+   "dev": 0.7,
+   "cn": 4.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 1.0,
+     "sinad": -0.5575
+    },
+    "U80P32-D7 7bit": {
+     "lock": 1.0,
+     "sinad": -0.172
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 1.0,
+     "sinad": -0.1221
+    }
+   }
+  },
+  {
+   "standard": "PAL",
+   "dev": 0.7,
+   "cn": 0.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 0.9744,
+     "sinad": -5.6309
+    },
+    "U80P32-D7 7bit": {
+     "lock": 0.967,
+     "sinad": -5.2421
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 0.9707,
+     "sinad": -5.1826
+    }
+   }
+  },
+  {
+   "standard": "PAL",
+   "dev": 1.4,
+   "cn": 30.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 1.0,
+     "sinad": 13.4722
+    },
+    "U80P32-D7 7bit": {
+     "lock": 1.0,
+     "sinad": 12.8154
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 1.0,
+     "sinad": 12.706
+    }
+   }
+  },
+  {
+   "standard": "PAL",
+   "dev": 1.4,
+   "cn": 4.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 1.0,
+     "sinad": 2.1314
+    },
+    "U80P32-D7 7bit": {
+     "lock": 1.0,
+     "sinad": 2.1162
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 1.0,
+     "sinad": 2.1369
+    }
+   }
+  },
+  {
+   "standard": "PAL",
+   "dev": 1.4,
+   "cn": 0.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 0.9055,
+     "sinad": -3.8138
+    },
+    "U80P32-D7 7bit": {
+     "lock": 0.989,
+     "sinad": -3.6488
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 0.989,
+     "sinad": -3.6129
+    }
+   }
+  },
+  {
+   "standard": "NTSC",
+   "dev": 0.7,
+   "cn": 30.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 1.0,
+     "sinad": 10.1314
+    },
+    "U80P32-D7 7bit": {
+     "lock": 1.0,
+     "sinad": 9.143
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 1.0,
+     "sinad": 9.1542
+    }
+   }
+  },
+  {
+   "standard": "NTSC",
+   "dev": 0.7,
+   "cn": 4.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 1.0,
+     "sinad": -0.5121
+    },
+    "U80P32-D7 7bit": {
+     "lock": 1.0,
+     "sinad": -0.1886
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 1.0,
+     "sinad": -0.14
+    }
+   }
+  },
+  {
+   "standard": "NTSC",
+   "dev": 0.7,
+   "cn": 0.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 0.9735,
+     "sinad": -5.5685
+    },
+    "U80P32-D7 7bit": {
+     "lock": 0.9685,
+     "sinad": -5.2173
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 0.964,
+     "sinad": -5.1638
+    }
+   }
+  },
+  {
+   "standard": "NTSC",
+   "dev": 1.4,
+   "cn": 30.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 1.0,
+     "sinad": 13.8676
+    },
+    "U80P32-D7 7bit": {
+     "lock": 1.0,
+     "sinad": 13.1788
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 1.0,
+     "sinad": 13.0639
+    }
+   }
+  },
+  {
+   "standard": "NTSC",
+   "dev": 1.4,
+   "cn": 4.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 0.9955,
+     "sinad": 2.0793
+    },
+    "U80P32-D7 7bit": {
+     "lock": 0.9955,
+     "sinad": 2.053
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 0.9955,
+     "sinad": 2.0759
+    }
+   }
+  },
+  {
+   "standard": "NTSC",
+   "dev": 1.4,
+   "cn": 0.0,
+   "scores": {
+    "U80P64-R1 6bit": {
+     "lock": 0.8761,
+     "sinad": -3.766
+    },
+    "U80P32-D7 7bit": {
+     "lock": 0.7699,
+     "sinad": -3.6134
+    },
+    "U80P32-D7 6bit-board": {
+     "lock": 0.7699,
+     "sinad": -3.576
+    }
+   }
+  }
+ ]
+}

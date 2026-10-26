@@ -62,7 +62,8 @@ enum { FLOG_SNAP_DROPOUT = 1, FLOG_SNAP_VQ_DROP = 2, FLOG_SNAP_FIRST_CARRIER = 3
 
 /* Verified program identity. The firmware/session SHA and kp level identify
  * the exact generated LUT; these IDs bind the instruction/model family. */
-enum { FLOG_DEMOD_UNKNOWN = 0, FLOG_DEMOD_U85Q_1A09F5C092E8 = 1, FLOG_DEMOD_U85Q_LP_1A09F5C092E8 = 2, FLOG_DEMOD_P64_R1 = 3 };
+enum { FLOG_DEMOD_UNKNOWN = 0, FLOG_DEMOD_U85Q_1A09F5C092E8 = 1, FLOG_DEMOD_U85Q_LP_1A09F5C092E8 = 2, FLOG_DEMOD_P64_R1 = 3,
+       FLOG_DEMOD_P32_D7 = 4 };
 /* Bits 1..7 were the sync flywheel's (removed 2026-10-25); kept so old
  * logs decode. Current firmware sets only DEMOD_VERIFIED. */
 enum {

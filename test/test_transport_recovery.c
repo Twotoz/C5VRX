@@ -5,6 +5,7 @@
 #include "transport_recovery.h"
 #include "output_level.h"
 #include "../research/legacy_demod/kp_tables.h"
+#include "p32d7_tables.h"
 typedef struct { int fail, rollback_fail, clean_fail, cleans, starts, published; bool enabled; } model_t;
 static bool clean(void *ctx)
 {
@@ -74,6 +75,21 @@ int main(void)
                 if (!l) assert(out == v && !clipped);
                 if (clipped) assert((out & 63u) == 0 || (out & 63u) == 63);
             }
-    puts("PASS: every restart/rollback stage, terminal cleanup, atomic publication and all DAC/kp maps");
+    /* Seven-bit OUTPUT maps: same curve on the 0..127 code, D10 = bit 0. */
+    for (unsigned c = 0; c < 128; ++c) assert(dac7_code(dac7_lanes(c)) == c);
+    assert(dac7_code(output_entry7(dac7_lanes(38), 8, NULL)) - dac7_code(output_entry7(dac7_lanes(30), 8, NULL)) == 40u);
+    for (unsigned l = 0; l < OUTPUT_LEVELS; ++l)
+        for (unsigned i = 0; i < 1024; ++i) {
+            bool clipped;
+            uint16_t v = p32d7_table[i], out = output_entry7(v, l, &clipped);
+            assert((v & 0xff80u) == (out & 0xff80u));
+            if (!l) assert(out == v && !clipped);
+            if (clipped) assert(dac7_code(out) == 0 || dac7_code(out) == 127);
+            /* An even code (D10 low) keeps the six-bit map's level, within
+             * the half step the six-bit map has to round away. */
+            const int twice6 = 2 * (int)(output_entry(v & 63u, l, NULL) & 63u), c7 = (int)dac7_code(out);
+            if (!(dac7_code(v) & 1u) && !clipped && twice6 < 126) assert(c7 - twice6 <= 1 && twice6 - c7 <= 1);
+        }
+    puts("PASS: every restart/rollback stage, terminal cleanup, atomic publication and all DAC/kp/DAC7 maps");
     return 0;
 }

@@ -112,6 +112,12 @@ board validation. The operator reported unsatisfactory behavior with the
 LED-pin IQ route; this PR isolates it for comparison, not hardware acceptance.
 See [the pin-routing findings](docs/FINDINGS.md#gpio27-iq-loopback-experiment-2026-10-25).
 
+**Seven-bit DAC test build (U80P32-D7):** this firmware drives D10 as
+code bit 0 and uses a 32-state demodulator matched to the seven-bit DAC
+(less precise than U80P64-R1 in simulation). Fit the 15 kOhm D10 branch to
+test it; without it the board shows the six-bit code. See
+[the seven-bit findings](docs/FINDINGS.md#seven-bit-dac-test-u80p32-d7-2026-10-26).
+
 ### Wiring the resistor DAC
 
 Six resistors, one per XIAO pin, all joined on one node: that node is the

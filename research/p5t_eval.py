@@ -320,11 +320,13 @@ def _err_stats(yi, truth, region, burn, period):
     return sinad, spark / cnt, streak
 
 
-def score_codes(case, codes, clean_codes, ref_gain=None):
+def score_codes(case, codes, clean_codes, ref_gain=None, volts=None):
     """Returns dict(lock, sinad, spark, streak, gain). `gain` is the clean
-    calibration gain (IRE per volt) used for the level-compliance check."""
-    y = sg.sosfilt(sim.GOGGLE, sim.DAC_VOLTS[codes])
-    yc = sg.sosfilt(sim.GOGGLE, sim.DAC_VOLTS[clean_codes])
+    calibration gain (IRE per volt) used for the level-compliance check.
+    `volts` maps codes to DAC levels (default: the six-bit sim.DAC_VOLTS)."""
+    volts = sim.DAC_VOLTS if volts is None else volts
+    y = sg.sosfilt(sim.GOGGLE, volts[codes])
+    yc = sg.sosfilt(sim.GOGGLE, volts[clean_codes])
     truth, region = case['truth'], case['region']
     lag, g, off = calibrate_nb(yc, truth, region, BURN)
     yi = apply_cal_nb(y, lag, g, off)

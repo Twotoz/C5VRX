@@ -693,6 +693,15 @@ requirements by themselves**.
 
 ## Current realtime invariants (C5VRX-5)
 
+- Seven-bit DAC test build (operator request 2026-10-26, docs/FINDINGS.md
+  "Seven-bit DAC test"): firmware builds U80P32-D7 (`main/p32d7.bsasm`,
+  `research/p32d7_model.py`), extending U80P64-R1: same RX40/raw32K/
+  two-lookup/DAC20-at-TX40 cadence and 16 tokens, 32 phase states, word
+  bits 0..6 DAC lanes (lane 6 = D10/GPIO10 = code bit 0), 7..11 state.
+  D4..D9 order unchanged; D3 stays reserved. Host model: 0.6-1.6 dB less
+  clean SINAD than U80P64-R1 and no SINAD gain from the seventh bit (the
+  32-state grid limits); board test with R8 fitted pending. p64.bsasm
+  remains the unbuilt six-bit reference (`test/test_p64.py`).
 - Operator IQ pin experiment (2026-10-25): `RF_IQ_GPIO_NUMS` in `main/rf.h`
   supplies both MODEM_DIAG routing and PARLIO RX: Q = 1/0/25/2,
   I = 27/5/3/4. GPIO27 replaces GPIO10; GPIO2 replaces GPIO7. Reserve

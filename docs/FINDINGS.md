@@ -7,6 +7,73 @@ scripts and data live in that branch under `v4/docs/PICTURE_CLIFF_STUDY.md`,
 Synthetic results are host simulations; board results are labelled as such.
 Measured range is not established.
 
+## Seven-bit DAC test (U80P32-D7, 2026-10-26)
+
+Operator request: a seven-bit DAC test build on main, with a demodulator
+matched to the seven-bit DAC instead of U80P64-R1; precision may be lower.
+The seventh branch is D10/GPIO10 through 15 kOhm (R8), the new **code bit 0**;
+D4..D9 keep their tested order and become code bits 1..6. D3/GPIO7 stays
+reserved. This extends U80P64-R1 (PR #250 repair, C5VRX by Twotoz and the
+contributors) and the reserved-branch allocation of the GPIO27 entry below.
+
+Pipeline (unchanged cadence): MODEM_DIAG Q4/I4 -> PARLIO RX40 -> raw 32 KiB
+ring -> TX BitScrambler, two LUT16 lookups per pair -> unique DAC20 as
+[D,D] at TX40. Only the shared word changes: bits 0..6 DAC lanes (lane k =
+D4..D9 for k=0..5, lane 6 = D10), 7..11 next state, 12..15 token. Seven DAC
+bits leave five state bits, so U80P32-D7 has **32 phase states** (7 coarse
+sync, 25 video; 14.4-degree video grid, not measured phase accuracy) and the
+same 16 phase tokens. The table (`research/p32d7_model.py`, parameters
+`research/data/p32d7.json`) emits the committed state advance, as
+U80P64-R1, mapped to the seven-bit code by inverting the nominal loaded
+network against the six-bit black/white span. Menu, idle and self-test
+bytes leave lane 6 low, which is the old six-bit level. OUTPUT scaling acts
+on the 0..127 code (`output_entry7`, 1x bit-exact). Flight-log demod ID 4.
+Without R8 fitted, a six-bit board shows code >> 1 (the last column below).
+
+A 64-state / 8-token split (also 16 bits) lost 3-4 dB clean SINAD and
+weak-signal lock in the same model and was rejected; blending in the
+uncommitted prediction (`output_mix`) gave a transfer bias without a
+picture gain. Parameters were searched on seeds 311/991 (120 candidates);
+validation below is seed 2903, `research/p32d7_validation.py --check`
+(lock / SINAD dB, synthetic physical-ADC model, 12 MHz filter):
+
+| PAL/NTSC dev / C/N | U80P64-R1 6-bit | U80P32-D7 7-bit | U80P32-D7 on 6-bit board |
+| --- | --- | --- | --- |
+| PAL 0.7 / 30 dB | 1.000 / 10.00 | 1.000 / 8.40 | 1.000 / 9.00 |
+| PAL 0.7 / 4 dB | 1.000 / -0.56 | 1.000 / -0.17 | 1.000 / -0.12 |
+| PAL 0.7 / 0 dB | 0.974 / -5.63 | 0.967 / -5.24 | 0.971 / -5.18 |
+| PAL 1.4 / 30 dB | 1.000 / 13.47 | 1.000 / 12.82 | 1.000 / 12.71 |
+| PAL 1.4 / 4 dB | 1.000 / 2.13 | 1.000 / 2.12 | 1.000 / 2.14 |
+| PAL 1.4 / 0 dB | 0.905 / -3.81 | 0.989 / -3.65 | 0.989 / -3.61 |
+| NTSC 0.7 / 30 dB | 1.000 / 10.13 | 1.000 / 9.14 | 1.000 / 9.15 |
+| NTSC 0.7 / 4 dB | 1.000 / -0.51 | 1.000 / -0.19 | 1.000 / -0.14 |
+| NTSC 0.7 / 0 dB | 0.974 / -5.57 | 0.969 / -5.22 | 0.964 / -5.16 |
+| NTSC 1.4 / 30 dB | 1.000 / 13.87 | 1.000 / 13.18 | 1.000 / 13.06 |
+| NTSC 1.4 / 4 dB | 0.996 / 2.08 | 0.996 / 2.05 | 0.996 / 2.08 |
+| NTSC 1.4 / 0 dB | 0.876 / -3.77 | 0.770 / -3.61 | 0.770 / -3.58 |
+
+Over seeds 2903/4111/5501 (PAL/NTSC, deviation 0.7/1.4, 30/4/2/0 dB) mean
+lock was 0.927 versus 0.948 for U80P64-R1 and mean SINAD 1.33 versus
+1.41 dB. Findings, host model only:
+
+- Halving the phase states costs 0.6-1.6 dB clean SINAD; weak-signal lock
+  is comparable (one 0 dB NTSC case lower, one PAL case higher).
+- The seventh bit gives **no measurable SINAD gain** with this tracker: the
+  32-state advance grid (0.8 MHz per video step, ~6.7 seven-bit codes), not
+  DAC resolution, limits the picture. D10 halves the placement error of
+  each level; a demodulator that uses seven bits needs more state than the
+  LUT16 shared word holds with seven DAC bits.
+- `test/test_p32d7.py`: 588 clean tones within 0.49 seven-bit code, porch
+  ripple 1.18 seven-bit codes over 0.8 us (U80P64-R1: below 0.5 six-bit
+  codes), all 32 states reachable, assembled program bit-exact against an
+  independent pair/state reference, lane 7 low, [D,D] duplication.
+
+**Board test pending:** fit R8 (15 kOhm, SJ2 closed), measure the loaded
+CVBS levels and D10 step, compare picture/sync/colour with the main
+U80P64-R1 build on the same VTX (PAL and NTSC), and check `T` reports
+`selected=U80P32-D7 verified=U80P32-D7`, the table SHA-256 and zero
+transport/verify counters. No picture, range or linearity result is claimed.
+
 ## GPIO27 IQ loopback experiment (2026-10-25)
 
 Operator request: a standalone GPIO-only PR directly on main, reserving
