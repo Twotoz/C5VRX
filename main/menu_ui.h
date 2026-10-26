@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include "menu_raster.h"
 
-enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_FILTER, MENU_CALIBRATE, MENU_OUTPUT, MENU_GAIN,
+enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_FILTER, MENU_AFC, MENU_CALIBRATE, MENU_OUTPUT, MENU_GAIN,
        MENU_DAC, MENU_EXIT, MENU_ITEMS };
 #define MENU_VISIBLE_ROWS 9   /* the list scrolls when it has more items */
 /* CALIBRATE submenu (hold on CALIBRATE): QUICK = the active filter and its
@@ -46,6 +46,7 @@ typedef struct {
     int signal;                     /* 0..100 */
     bool video;                     /* confirmed video sync within the last 0.5 s */
     bool afc_locked;                /* AFC centred and locked (FILTER card) */
+    bool afc_off;                   /* AFC disabled (returns tuner to 0 kHz offset) */
     bool level_valid, level_above_noise;
     int level_dbm;
     /* Range warnings, shown in place of the link state. */

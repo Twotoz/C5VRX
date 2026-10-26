@@ -52,7 +52,7 @@ static menu_view_t base(void)
 
 int main(int argc, char **argv)
 {
-    static const char *const names[MENU_ITEMS] = {"band", "channel", "scan", "video", "filter", "calibrate",
+    static const char *const names[MENU_ITEMS] = {"band", "channel", "scan", "video", "filter", "afc", "calibrate",
                                                   "output", "gain", "dac", "exit"};
     s_dir = argc > 1 ? argv[1] : NULL;
     char name[64];
@@ -100,6 +100,9 @@ int main(int argc, char **argv)
     v = base(); v.cursor = MENU_FILTER; v.filter_mode = "NARROW"; v.filter_active = "NARROW";
     v.filter_width_khz = 19950; v.offset_khz = -2500; v.deviation_x100 = 400; v.wide_ok = false;
     menu_ui_render(ui, &v); check("filter_worst", false);
+    v = base(); v.cursor = MENU_AFC; v.afc_off = true;
+    menu_ui_render(ui, &v); check("afc_off", false);
+    v.cursor = MENU_FILTER; menu_ui_render(ui, &v); check("filter_afc_off", false);
     v = base(); v.cursor = MENU_CHANNEL; v.level_dbm = -100; v.cn_x10 = -305; menu_ui_render(ui, &v); check("cn_negative", false);
     v.cn_x10 = 455; menu_ui_render(ui, &v); check("cn_high", false);
     v.cn_x10 = -990; menu_ui_render(ui, &v); check("cn_unknown", false);

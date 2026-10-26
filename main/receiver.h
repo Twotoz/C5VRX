@@ -150,6 +150,7 @@ extern volatile bool s_scan_active;
 extern volatile unsigned s_scan_progress;
 extern volatile int s_cfo_khz;
 extern volatile bool s_afc_locked;
+extern volatile bool s_afc_enabled;
 extern volatile std_mode_t s_std_mode;
 extern volatile video_standard_t s_video_std;      /* standard the menu emits */
 extern volatile bool s_detected_std_valid;

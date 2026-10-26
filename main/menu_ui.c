@@ -156,7 +156,7 @@ static int badge(const char *s, int x, int y, uint8_t fill, uint8_t ink)
 /* ---- settings list ---- */
 
 static const char *const s_items[MENU_ITEMS] = {
-    "BAND", "CHANNEL", "SCAN", "VIDEO", "FILTER", "CALIBRATE", "OUTPUT", "GAIN", "DAC TEST", "EXIT",
+    "BAND", "CHANNEL", "SCAN", "VIDEO", "FILTER", "AFC", "CALIBRATE", "OUTPUT", "GAIN", "DAC TEST", "EXIT",
 };
 
 /* "14.4M" (MHz; the FILTER card spells it out), or "--" while the active
@@ -189,6 +189,7 @@ static void row_value(const menu_view_t *v, int item, const char **value, const 
         *value = v->filter_mode;
         *note = width_text(v->filter_width_khz, width, sizeof(width));
         break;
+    case MENU_AFC: *value = v->afc_off ? "OFF" : "ON"; break;
     case MENU_CALIBRATE: if (v->dc_cal) *value = "DC!"; break;
     case MENU_OUTPUT: *value = v->output_name; break;
     case MENU_GAIN: *value = v->gain_mode; break;
@@ -288,9 +289,10 @@ static void card_filter(const menu_view_t *v)
                                          v->deviation_x100 % 100);
     else snprintf(buf, sizeof(buf), "DEV --");
     text_box(buf, CARD_X, 33, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_GREY);
-    if (v->afc_locked) snprintf(buf, sizeof(buf), "AFC %+dK", v->offset_khz);
+    if (v->afc_off) snprintf(buf, sizeof(buf), "AFC OFF");
+    else if (v->afc_locked) snprintf(buf, sizeof(buf), "AFC %+dK", v->offset_khz);
     else snprintf(buf, sizeof(buf), "AFC NO LOCK");
-    text_box(buf, CARD_X, 40, CARD_W, ALIGN_LEFT, FONT_TEXT, v->afc_locked ? MENU_INK_WHITE : MENU_INK_GREY);
+    text_box(buf, CARD_X, 40, CARD_W, ALIGN_LEFT, FONT_TEXT, (!v->afc_off && v->afc_locked) ? MENU_INK_WHITE : MENU_INK_GREY);
 }
 
 /* CALIBRATE submenu: the title, then QUICK / FULL / BACK in the list's
@@ -366,7 +368,7 @@ static const char *hold_action(const menu_view_t *v)
     switch (v->cursor) {
     case MENU_BAND: case MENU_CHANNEL: case MENU_FILTER: case MENU_OUTPUT: case MENU_GAIN: return "NEXT";
     case MENU_SCAN: return v->scan_active ? NULL : "SCAN";
-    case MENU_VIDEO: return "CHANGE";
+    case MENU_VIDEO: case MENU_AFC: return "CHANGE";
     case MENU_CALIBRATE: return "OPEN";
     case MENU_DAC: return "STEP";
     default: return "EXIT";

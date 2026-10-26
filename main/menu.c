@@ -187,7 +187,7 @@ void menu_render(void)
         .band_letters = "RABEFL", .band_count = FPV_BANDS,
         /* VIDEO = confirmed sync just now; it used to read the AFC lock, so
          * a picture without lock showed SEARCH (operator, 2026-10-26). */
-        .signal = s_signal_strength, .afc_locked = s_afc_locked,
+        .signal = s_signal_strength, .afc_locked = s_afc_locked, .afc_off = !s_afc_enabled,
         .video = s_last_video_us && esp_timer_get_time() - s_last_video_us < 500000,
         .level_valid = lv.valid, .level_above_noise = lv.above_noise, .level_dbm = (lv.carrier_dbm_x10 - 5) / 10,
         .dc_cal = dc_cal, .dc_need = dc_need, .gain_fixed = !receiver_gain_mode_auto(mode),
