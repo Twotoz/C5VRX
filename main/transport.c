@@ -1,7 +1,7 @@
 /* C5VRX-5 by Twotoz and the C5VRX contributors: realtime transport.
  * MODEM_DIAG -> PARLIO RX 40 MS/s -> 32 KiB cyclic ring -> TX BitScrambler
- * (U80P32-D7) -> PARLIO TX 40 MHz -> 7-bit resistor DAC (seven-bit test build,
- * docs/FINDINGS.md "Seven-bit DAC test"). Both GDMA rings run
+ * (U80P64-D10) -> PARLIO TX 40 MHz -> 6-bit resistor DAC plus the D10 branch
+ * (docs/FINDINGS.md "Seven-bit DAC test"). Both GDMA rings run
  * with interrupts off and cleared suc_eof (espressif/esp-idf#19091), so no
  * DMA boundary is a stream boundary; the CPU never paces samples. */
 #include "receiver.h"
@@ -24,7 +24,7 @@
 #include "transport_recovery.h"
 #include "output_level.h"
 #include "hal/parlio_ll.h"
-#include "p32d7_tables.h"
+#include "p64d10_tables.h"
 #include "snapshot.h"
 #include "control_window.h"
 #include "phase8_gain_lut.h"
@@ -38,19 +38,19 @@
 #include "soc/parl_io_struct.h"
 #include "soc/pcr_struct.h"
 
-/* Seven-bit DAC test build: fixed U80P32-D7 program and LUT (32 states,
- * 7-bit codes); no runtime demodulator or kp policy.
+/* Fixed U80P64-D10 program and LUT: the U80P64-R1 tracker (relabelled
+ * states) whose byte B also drives D10; no runtime demodulator or kp policy.
  * docs/FINDINGS.md "Seven-bit DAC test". */
-BITSCRAMBLER_PROGRAM(s_p32d7, "p32d7");
+BITSCRAMBLER_PROGRAM(s_p64d10, "p64d10");
 static bool s_started;
-static const void *tracker_program(void) { return s_p32d7; }
+static const void *tracker_program(void) { return s_p64d10; }
 
 /* Resistor DAC lanes (8.2k/3.9k/2k/1k/470R/240R on XIAO D4..D9, unchanged
  * tested order, plus the 200R load). Lane 6 drives the seventh branch,
- * D10/GPIO10 through 15k, which is the LOGICAL bit 0 of the 7-bit code
- * (D4..D9 = bits 1..6). Menu/idle bytes leave lane 6 low = the old levels;
- * without R8 fitted the output is the 6-bit code (7-bit code >> 1).
- * D3/GPIO7 (eighth branch) stays reserved. */
+ * D10/GPIO10 through 15k (half a D4 step): live video sets it in the second
+ * byte of each pair from the next-state label bit, about a quarter step
+ * after the goggle's averaging. Menu/idle bytes leave lane 6 low = the old
+ * levels; without R8 fitted the output is six-bit. D3/GPIO7 stays reserved. */
 static const int s_dac_gpio[8] = {23, 24, 11, 12, 8, 9, 10, -1};
 
 DMA_ATTR __attribute__((aligned(64))) uint8_t s_raw_ring[RAW_RING_BYTES];
@@ -214,7 +214,7 @@ static esp_err_t start_tx(void)
  * board, writes/readback under RUN or PAUSE fail; HALT with the normal
  * load/reset/start sequence succeeds. Do not claim a seamless live update. */
 static uint16_t s_lut_live[1024];   /* what the LUT RAM holds */
-static bool s_lut_known;            /* shadow valid: verified P32-D7 LUT16 */
+static bool s_lut_known;            /* shadow valid: verified P64-D10 LUT16 */
 /* IDF V1 image: 3 header words, 8 instructions of 9 words, LUT16.
  * Reuse the target LUT storage; only the 300-byte prefix is additional.
  * Prepare before halting so the driver writes the target exactly once. */
@@ -268,7 +268,7 @@ bool transport_restart_profile(void)
     if (s_transport_fault || !s_lut_known || !s_started || s_menu_active ||
         !transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
     stage_hooks();
-    const bool ok = resume_live(p32d7_table);
+    const bool ok = resume_live(p64d10_table);
     transport_guard_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
 }
@@ -280,7 +280,7 @@ uint32_t transport_switch_wait_ms(void)
            (uint32_t)((TRANSPORT_SWITCH_GAP_US - (now - s_switch_guard.last_switch_us) + 999) / 1000);
 }
 
-const char *transport_program_name(void) { return P32D7_MODEL_ID; }
+const char *transport_program_name(void) { return P64D10_MODEL_ID; }
 bool transport_live(void) { return s_started; }
 bool transport_faulted(void) { return s_transport_fault; }
 uint32_t transport_restart_errors(void) { return s_restart_errors; }
@@ -299,7 +299,7 @@ bool transport_set_output(unsigned level)
     if (s_menu_active || !s_started) { s_output = level; return true; }
     if (!transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
     s_output = level;
-    bool ok = resume_live(s_lut_known ? p32d7_table : NULL);
+    bool ok = resume_live(s_lut_known ? p64d10_table : NULL);
     transport_guard_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
 }
@@ -547,7 +547,7 @@ static bool resume_live(const uint16_t *restore_lut)
     const uint8_t *program_inst;
     if (!program_words(r.program, &program_inst)) return false;
     memcpy(s_program_work.prefix, r.program, sizeof(s_program_work.prefix));
-    if (!restore_lut) restore_lut = p32d7_table;
+    if (!restore_lut) restore_lut = p64d10_table;
     if (restore_lut == s_lut_live) {
         memcpy(s_lut_work, s_lut_live, sizeof(s_lut_work));
         r.clipped = s_output_clipped;
@@ -556,7 +556,7 @@ static bool resume_live(const uint16_t *restore_lut)
         if (!program_words(r.program, &inst) || r.program[6] != 1u) return false;
         for (unsigned i = 0; i < 1024u; ++i) {
             bool clipped;
-            s_lut_work[i] = output_entry7(restore_lut[i], s_output, &clipped);
+            s_lut_work[i] = output_entry(restore_lut[i], s_output, &clipped);
             r.clipped += clipped;
         }
     }
@@ -621,7 +621,7 @@ void transport_flog_identity(uint8_t *demod, uint8_t *output_level)
 {
     const bool verified = s_started && s_tx_enabled && s_bs_enabled && s_have_verified && s_lut_known &&
                           !s_transport_fault;
-    if (demod) *demod = verified ? FLOG_DEMOD_P32_D7 : FLOG_DEMOD_UNKNOWN;
+    if (demod) *demod = verified ? FLOG_DEMOD_P64_D10 : FLOG_DEMOD_UNKNOWN;
     if (output_level) *output_level = verified ? (uint8_t)s_verified_output : 0xffu;
 }
 
@@ -640,9 +640,9 @@ void transport_flog_output(transport_flog_output_t *out)
 void transport_print(void)
 {
     const char *verified_demod = s_have_verified && s_lut_known && !s_transport_fault ?
-        P32D7_MODEL_ID : "unknown";
-    printf("DEMOD selected=%s verified=%s model=%s table_sha256=%s dac_bits=7 lane6=D10/GPIO10\n",
-           transport_program_name(), verified_demod, P32D7_MODEL_ID, P32D7_TABLE_SHA256);
+        P64D10_MODEL_ID : "unknown";
+    printf("DEMOD selected=%s verified=%s model=%s table_sha256=%s d10=byteB_state_bit0 lane6=GPIO10\n",
+           transport_program_name(), verified_demod, P64D10_MODEL_ID, P64D10_TABLE_SHA256);
     printf("TRANSPORT_STAGES_US quiesce=%lu bs_enable=%lu program_load=%lu instruction_verify=%lu lut_verify=%lu "
            "bs_reset=%lu bs_start=%lu rx_enable=%lu tx_enable=%lu rx_start=%lu tx_start=%lu (last restart)\n",
            (unsigned long)s_quiesce_us, (unsigned long)s_stage_us[TR_BS_ENABLE], (unsigned long)s_stage_us[TR_PROGRAM_LOAD],

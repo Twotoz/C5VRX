@@ -694,14 +694,15 @@ requirements by themselves**.
 ## Current realtime invariants (C5VRX-5)
 
 - Seven-bit DAC test build (operator request 2026-10-26, docs/FINDINGS.md
-  "Seven-bit DAC test"): firmware builds U80P32-D7 (`main/p32d7.bsasm`,
-  `research/p32d7_model.py`), extending U80P64-R1: same RX40/raw32K/
-  two-lookup/DAC20-at-TX40 cadence and 16 tokens, 32 phase states, word
-  bits 0..6 DAC lanes (lane 6 = D10/GPIO10 = code bit 0), 7..11 state.
-  D4..D9 order unchanged; D3 stays reserved. Host model: 0.6-1.6 dB less
-  clean SINAD than U80P64-R1 and no SINAD gain from the seventh bit (the
-  32-state grid limits); board test with R8 fitted pending. p64.bsasm
-  remains the unbuilt six-bit reference (`test/test_p64.py`).
+  "Seven-bit DAC test"): firmware builds U80P64-D10 (`main/p64d10.bsasm`,
+  `research/p64_d10.py`), the U80P64-R1 tracker with relabelled states;
+  byte B lane 6 = D10/GPIO10 = L6 (next-state label bit 0), byte A keeps it
+  low. Same 64 states, 16 tokens, RX40/raw32K/two-lookup/DAC20-at-TX40
+  cadence; D4..D9 order unchanged, D3 reserved. Host model: +0.2..0.45 dB
+  SINAD on strong signals, from network-aware code choice, not from D10
+  (the table without R8 scores the same). Rejected: U80P32-D7 (32 states,
+  7 DAC bits, -0.6..-1.6 dB) and 64 states x 8 tokens (-3..-4 dB). Board
+  test with R8 fitted pending. p64.bsasm stays the unbuilt reference.
 - Operator IQ pin experiment (2026-10-25): `RF_IQ_GPIO_NUMS` in `main/rf.h`
   supplies both MODEM_DIAG routing and PARLIO RX: Q = 1/0/25/2,
   I = 27/5/3/4. GPIO27 replaces GPIO10; GPIO2 replaces GPIO7. Reserve
