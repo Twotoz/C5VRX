@@ -222,6 +222,7 @@ unsigned calibration_filter_nbw_khz(void);   /* measured noise bandwidth of the 
 uint32_t receiver_sentinel_forwarded(void);
 void receiver_level_feed(const uint8_t *window, size_t bytes);   /* the menu's control windows */
 unsigned calibration_narrow_width_khz(void);   /* measured -3 dB width, 0 = none */
+unsigned calibration_filter_width_khz(void);   /* measured -3 dB width of the active filter, 0 unknown */
 const char *calibration_sphase_state(void);
 bool calibration_sphase_settled(void);
 /* DC correction in place for this gain: held, or not needed (outside the
@@ -236,6 +237,7 @@ void self_noise_request(void);   /* bench: noise floor with the video output on 
 
 /* ---- menu.c ---- */
 extern volatile int s_menu_cursor;
+extern volatile int s_cal_sub;   /* CALIBRATE submenu cursor, -1 = closed */
 bool menu_open(void);
 void menu_close(void);
 void menu_render(void);
@@ -275,6 +277,10 @@ void profile_live_begin(void);
 const char *profile_reason(void);
 void profile_set_reason(const char *reason);
 void profile_print(void);
+/* Menu FILTER: PROFILE_SELECT_AUTO or the chosen profile (this boot only). */
+int profile_selected(void);
+bool profile_selectable(int profile);      /* calibrated filter with its own DC table (DEFAULT: always) */
+int profile_select_cycle(void);            /* hold on FILTER / console f: next choice, applied */
 bool profile_live_mode(void);              /* live profile switch on (NVS prof_live) */
 void profile_set_live_mode(bool on);
 

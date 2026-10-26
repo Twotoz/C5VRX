@@ -638,6 +638,16 @@ unsigned calibration_filter_nbw_khz(void)
     return s_filter_cal.calibrated_nbw_khz;
 }
 
+/* Measured -3 dB width of the active filter (menu FILTER), 0 when unknown. */
+unsigned calibration_filter_width_khz(void)
+{
+    rf_filter_t f, now = rf_filter();
+    if (filter_setting(FILTER_NORMAL, &f) && rf_filter_equal(f, now) && s_filter_cal.normal.valid) return s_filter_cal.normal.width_khz;
+    if (filter_setting(FILTER_NARROW, &f) && rf_filter_equal(f, now) && s_filter_cal.narrow.valid) return s_filter_cal.narrow.width_khz;
+    if (filter_setting(FILTER_WIDE, &f) && rf_filter_equal(f, now) && s_filter_cal.wide.valid) return s_filter_cal.wide.width_khz;
+    return 0u;
+}
+
 unsigned calibration_narrow_width_khz(void)
 {
     return s_filter_cal.narrow.valid ? s_filter_cal.narrow.width_khz : 0u;

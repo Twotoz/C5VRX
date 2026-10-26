@@ -220,3 +220,24 @@ static inline bool profile_live_switch_wanted(bool enabled, int want, int active
     if (!profile_narrowing(want, active)) return true;   /* widen at once */
     return narrow_ok && agree_streak >= DEV_NARROW_AGREE;
 }
+
+/* Menu FILTER: AUTO (the profile logic above decides) or one fixed filter
+ * class chosen by the operator. Hold steps AUTO -> NARROW -> NORMAL ->
+ * WIDE -> AUTO and skips a class that has no calibrated filter with its
+ * own DC table; NORMAL is always there (uncalibrated it keeps the filter
+ * that is set). The choice is not saved: every boot starts AUTO. */
+#define PROFILE_SELECT_AUTO (-1)
+
+static inline int profile_select_next(int current, bool narrow_ok, bool wide_ok)
+{
+    static const int order[] = {PROFILE_SELECT_AUTO, PROFILE_NARROW, PROFILE_DEFAULT, PROFILE_WIDE};
+    const int n = (int)(sizeof(order) / sizeof(order[0]));
+    int at = 0;
+    while (at < n && order[at] != current) ++at;
+    for (int step = 1; step <= n; ++step) {
+        const int p = order[(at + step) % n];
+        if ((p == PROFILE_NARROW && !narrow_ok) || (p == PROFILE_WIDE && !wide_ok)) continue;
+        return p;
+    }
+    return PROFILE_SELECT_AUTO;
+}

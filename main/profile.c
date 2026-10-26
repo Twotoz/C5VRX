@@ -51,6 +51,8 @@ static struct {
 static dev_monitor_t s_mon;                   /* continuous matching (live only) */
 static bool s_live_switch = false;             /* NVS prof_live: in-flight switch allowed */
 static int s_switch_pending = -1;             /* profile a live switch waits for, -1 none */
+/* Menu FILTER (profile_logic.h): AUTO or the operator's class, this boot only. */
+static volatile int s_select = PROFILE_SELECT_AUTO;
 static uint32_t s_live_switches, s_live_switch_fail;
 
 const char *profile_name(int p) { return p >= 0 && p < PROFILES ? s_names[p] : "?"; }
@@ -130,6 +132,7 @@ void profile_load(void)
  * until this boot measures the VTX again. */
 void profile_boot(void)
 {
+    s_select = PROFILE_SELECT_AUTO;
     if (!profile_set(PROFILE_DEFAULT)) printf("PROFILE boot error: DEFAULT not applied\n");
     s_reason = "boot_default";
     printf("PROFILE boot channel=%s stored_deviation_x100=%u (provisional) profile=%s\n", rf_channel()->name,
@@ -146,11 +149,14 @@ void profile_channel_changed(void)
     s_live_channel = (size_t)-1;
     s_switch_pending = -1;
     s_reason = "channel_changed";
-    if (s_profile == PROFILE_DEFAULT) { profile_live_begin(); return; }
-    if (s_menu_active) { (void)profile_set(PROFILE_DEFAULT); }
+    /* A FILTER chosen in the menu stays across channels (a class, not a VTX). */
+    const int p = s_select != PROFILE_SELECT_AUTO && profile_selectable(s_select) ? s_select : PROFILE_DEFAULT;
+    if (p != PROFILE_DEFAULT) s_reason = "menu_select";
+    if (s_profile == p) { profile_live_begin(); return; }
+    if (s_menu_active) { (void)profile_set(p); }
     else {
-        status_screen("CHANNEL", rf_channel()->name, profile_name(PROFILE_DEFAULT), -1);
-        (void)profile_set(PROFILE_DEFAULT);
+        status_screen("CHANNEL", rf_channel()->name, profile_name(p), -1);
+        (void)profile_set(p);
         status_screen_end();
     }
     profile_live_begin();
@@ -191,7 +197,9 @@ static void live_apply(void)
     if (p < 0 || p == s_profile) { s_switch_pending = -1; return; }
     if (s_menu_active || calibration_in_startup() || transport_faulted()) return;
     if (transport_switch_wait_ms()) return;                  /* retry after the cooldown */
-    if (profile_narrowing(p, s_profile) && !narrow_ready(p)) return;   /* lock lost while waiting */
+    /* An automatic narrowing waits for the lock (lost while waiting?); the
+     * operator's FILTER choice needs only the class's filter and DC table. */
+    if (s_select == PROFILE_SELECT_AUTO && profile_narrowing(p, s_profile) && !narrow_ready(p)) return;
     rf_filter_t f;
     const int cls = p == PROFILE_DEFAULT ? FILTER_NORMAL : p == PROFILE_WIDE ? FILTER_WIDE : FILTER_NARROW;
     if (!filter_setting(cls, &f)) { s_switch_pending = -1; ++s_live_switch_fail; return; }
@@ -240,7 +248,8 @@ static void live_decided(int dev_x100, int64_t now)
         if (blob_store("vtxdev", s_dev_table, sizeof(s_dev_table))) s_mon.stored_us = now;
     }
     dev_monitor_decided(&s_mon, dev_x100, want, s_profile, now);
-    const bool switch_now = profile_live_switch_wanted(s_live_switch, want, s_profile, s_mon.agree_streak,
+    const bool switch_now = s_select == PROFILE_SELECT_AUTO &&
+                            profile_live_switch_wanted(s_live_switch, want, s_profile, s_mon.agree_streak,
                                                        narrow_ready(want));
     const char *what = want == s_profile ? "confirms" : switch_now ? "switching from" :
                        s_live_switch && profile_narrowing(want, s_profile) && s_mon.agree_streak >= DEV_NARROW_AGREE ?
@@ -312,7 +321,9 @@ void profile_commit(int dev_x100)
     s_live_dev = dev_x100;
     s_live_channel = ch;
     int p = profile_for_deviation(dev_x100);
-    if (p == PROFILE_DEFAULT) {
+    if (s_select != PROFILE_SELECT_AUTO) {
+        s_reason = "menu_select";   /* the deviation is recorded; the chosen FILTER stays */
+    } else if (p == PROFILE_DEFAULT) {
         s_reason = dev_x100 >= DEV_WIDE_MIN ? "no_wide_filter" : dev_x100 > DEV_NARROW_MAX ? "measured_default_vtx" :
                    "no_narrow_filter";
         /* No status screen: the picture stays (operator: "VTX MATCHED" in
@@ -334,6 +345,39 @@ void profile_commit(int dev_x100)
     printf("PROFILE channel=%s deviation_x100=%d profile=%s reason=%s\n", rf_channel()->name, dev_x100,
            s_names[s_profile], s_reason);
     carrier_record(dev_x100);
+}
+
+int profile_selected(void) { return s_select; }
+
+bool profile_selectable(int p)
+{
+    if (p == PROFILE_DEFAULT) return true;
+    if (p != PROFILE_NARROW && p != PROFILE_WIDE) return false;
+    rf_filter_t f;
+    return filter_setting(p == PROFILE_WIDE ? FILTER_WIDE : FILTER_NARROW, &f) && calibration_dc_ready(f);
+}
+
+/* Menu FILTER hold (menu owns TX: plain profile_set) or console f in
+ * flight (the live switch's filter relock + verified restart, behind the
+ * shared restart guard). AUTO returns to DEFAULT; the profile logic then
+ * decides again as before. */
+int profile_select_cycle(void)
+{
+    const int next = profile_select_next(s_select, profile_selectable(PROFILE_NARROW),
+                                         profile_selectable(PROFILE_WIDE));
+    const int p = next == PROFILE_SELECT_AUTO ? PROFILE_DEFAULT : next;
+    s_select = next;
+    s_reason = next == PROFILE_SELECT_AUTO ? "menu_auto" : "menu_select";
+    if (s_menu_active) {
+        if (!profile_set(p)) printf("PROFILE select %s refused: filter not applied\n", s_names[p]);
+    } else {
+        s_switch_pending = p;
+        live_apply();
+    }
+    printf("PROFILE select=%s active=%s pending=%s width_khz=%u\n",
+           next == PROFILE_SELECT_AUTO ? "AUTO" : s_names[next], s_names[s_profile],
+           s_switch_pending >= 0 ? s_names[s_switch_pending] : "none", calibration_filter_width_khz());
+    return next;
 }
 
 void profile_set_reason(const char *reason) { s_reason = reason; }

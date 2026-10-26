@@ -204,7 +204,9 @@ export class ReceiverConsole {
       freq: c.freq || '',
       band: band ? BAND_NAMES[band] || band : '',
       signal: Number.isFinite(signal) ? Math.max(0, Math.min(100, signal)) : null,
-      locked: c.afc_locked === undefined ? null : c.afc_locked === '1',
+      // VIDEO/SEARCH: confirmed sync (STATUS video=); older firmware only
+      // reports the AFC lock, which stays 0 over a good unlocked picture.
+      locked: c.video !== undefined ? c.video === '1' : c.afc_locked === undefined ? null : c.afc_locked === '1',
       standard: c.standard || '',
       detected: c.detected === undefined ? '' : c.detected === 'none' ? 'NO VIDEO' : c.detected,
       output: this.output.level || '',
