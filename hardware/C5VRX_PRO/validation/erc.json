@@ -1,0 +1,172 @@
+{
+    "$schema": "https://schemas.kicad.org/erc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-10-28T15:22:02",
+    "ignored_checks": [
+        {
+            "description": "Global label only appears once in the schematic",
+            "key": "single_global_label"
+        },
+        {
+            "description": "Four connection points are joined together",
+            "key": "four_way_junction"
+        },
+        {
+            "description": "SPICE model issue",
+            "key": "simulation_model_issue"
+        },
+        {
+            "description": "Assigned footprint doesn't match footprint filters",
+            "key": "footprint_filter"
+        }
+    ],
+    "included_severities": [
+        "error",
+        "warning"
+    ],
+    "kicad_version": "10.0.6",
+    "sheets": [
+        {
+            "path": "/",
+            "uuid_path": "/622b2e65-cc10-5d5e-88e0-0efe41f7ef81",
+            "violations": [
+                {
+                    "description": "Label connected to only one pin",
+                    "items": [
+                        {
+                            "description": "Globaal label 'IQ_Q1'",
+                            "pos": {
+                                "x": 0.4699,
+                                "y": 0.9017
+                            },
+                            "uuid": "9d8a49d6-751e-5f22-acbc-c5a3b941d409"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "isolated_pin_label"
+                },
+                {
+                    "description": "Label connected to only one pin",
+                    "items": [
+                        {
+                            "description": "Globaal label 'IQ_Q0'",
+                            "pos": {
+                                "x": 0.4699,
+                                "y": 0.9271
+                            },
+                            "uuid": "879ba0ff-f280-52a4-9309-a5b35b8bef5e"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "isolated_pin_label"
+                },
+                {
+                    "description": "Label connected to only one pin",
+                    "items": [
+                        {
+                            "description": "Globaal label 'IQ_Q3'",
+                            "pos": {
+                                "x": 0.4699,
+                                "y": 0.9525
+                            },
+                            "uuid": "294a9d93-ff0d-5148-8e9d-07241a5123b7"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "isolated_pin_label"
+                },
+                {
+                    "description": "Label connected to only one pin",
+                    "items": [
+                        {
+                            "description": "Globaal label 'IQ_I2'",
+                            "pos": {
+                                "x": 0.4699,
+                                "y": 0.9779
+                            },
+                            "uuid": "7f4d7f6e-22a3-59cc-887d-84b170b5cef4"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "isolated_pin_label"
+                },
+                {
+                    "description": "Label connected to only one pin",
+                    "items": [
+                        {
+                            "description": "Globaal label 'IQ_I3'",
+                            "pos": {
+                                "x": 0.4699,
+                                "y": 1.0033
+                            },
+                            "uuid": "eb47af01-8bd2-5c6c-9491-880ae5136b8e"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "isolated_pin_label"
+                },
+                {
+                    "description": "Label connected to only one pin",
+                    "items": [
+                        {
+                            "description": "Globaal label 'IQ_I1'",
+                            "pos": {
+                                "x": 0.4699,
+                                "y": 1.0287
+                            },
+                            "uuid": "ff90c3de-725a-500b-a137-57128b7aee99"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "isolated_pin_label"
+                },
+                {
+                    "description": "Label connected to only one pin",
+                    "items": [
+                        {
+                            "description": "Globaal label 'IQ_Q2'",
+                            "pos": {
+                                "x": 0.9271,
+                                "y": 0.9271
+                            },
+                            "uuid": "d6158066-a812-58ec-935d-fab83b067c8d"
+                        }
+                    ],
+                    "severity": "warning",
+                    "type": "isolated_pin_label"
+                }
+            ]
+        },
+        {
+            "path": "/CORE/",
+            "uuid_path": "/622b2e65-cc10-5d5e-88e0-0efe41f7ef81/1e4a4740-dc28-51d2-943e-ae30e888a41c",
+            "violations": []
+        },
+        {
+            "path": "/MEMORY AND CLOCK/",
+            "uuid_path": "/622b2e65-cc10-5d5e-88e0-0efe41f7ef81/1d650b48-0174-5a0a-9d3a-8b3357ef82ab",
+            "violations": []
+        },
+        {
+            "path": "/RF FRONT END/",
+            "uuid_path": "/622b2e65-cc10-5d5e-88e0-0efe41f7ef81/842881de-c1ab-58df-bd92-093d4cc9f7e6",
+            "violations": []
+        },
+        {
+            "path": "/POWER AND USB/",
+            "uuid_path": "/622b2e65-cc10-5d5e-88e0-0efe41f7ef81/26ba6b95-fdae-5a42-8fd3-21dfa31469b1",
+            "violations": []
+        },
+        {
+            "path": "/USER CONTROLS/",
+            "uuid_path": "/622b2e65-cc10-5d5e-88e0-0efe41f7ef81/f6dfe750-105d-5b6a-82df-b39611e2b38b",
+            "violations": []
+        },
+        {
+            "path": "/VIDEO AND BAY/",
+            "uuid_path": "/622b2e65-cc10-5d5e-88e0-0efe41f7ef81/117688ae-7231-510f-8777-e29a6d0707c9",
+            "violations": []
+        }
+    ],
+    "source": "C5VRX_PRO.kicad_sch"
+}

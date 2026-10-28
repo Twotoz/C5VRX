@@ -1,0 +1,10 @@
+*-backups/
+*.kicad_prl
+*.lck
+validation/core.net
+validation/rf.net
+validation/power.net
+exports/core.pdf
+exports/placement.png
+exports/schematic-core-preview.png
+__pycache__/

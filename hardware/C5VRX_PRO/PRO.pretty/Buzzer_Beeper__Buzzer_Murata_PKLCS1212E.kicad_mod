@@ -1,0 +1,335 @@
+(footprint "Buzzer_Beeper__Buzzer_Murata_PKLCS1212E"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "Murata Buzzer https://www.murata.com/~/media/webrenewal/support/library/catalog/products/sound/p37e.ashx")
+	(tags "Murata Buzzer Beeper")
+	(property "Reference" "BZ1"
+		(at 0 -7 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "98498fea-2358-478b-b4be-400584550b94")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "PASSIVE PIEZO"
+		(at 0 7 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "d2ea3965-3b47-4149-81a2-105396d66652")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "389abdf1-dfb9-4ebf-98c7-e12572141b2d")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "3631103c-0236-434a-8c6f-902fe3d25270")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd dnp)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -6.45 2.25)
+		(end -6.45 -2.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "55088719-51fc-4c94-933c-4f270bb5b2e2")
+	)
+	(fp_line
+		(start -6.25 -6.25)
+		(end 6.25 -6.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "ab5aae25-7f6a-4629-9839-c6492e38c1c0")
+	)
+	(fp_line
+		(start -6.25 -2.25)
+		(end -6.45 -2.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "0151be21-ee5e-40e2-af0b-cd1d0c908eb0")
+	)
+	(fp_line
+		(start -6.25 -2.25)
+		(end -6.25 -6.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "ab0256d2-0954-4904-930b-060b218d3197")
+	)
+	(fp_line
+		(start -6.25 2.25)
+		(end -6.45 2.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "948f10bd-0149-41f7-b19a-13d15489a906")
+	)
+	(fp_line
+		(start -6.25 6.25)
+		(end -6.25 2.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "ee689e70-d4eb-40d9-8cc3-7fa7527ca5c8")
+	)
+	(fp_line
+		(start 6.25 -2.25)
+		(end 6.25 -6.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "3f3df770-c484-4916-ab83-b0f54a272c54")
+	)
+	(fp_line
+		(start 6.25 -2.25)
+		(end 6.45 -2.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "06c34ae8-256b-4aa8-9187-aa1d2557312c")
+	)
+	(fp_line
+		(start 6.25 2.25)
+		(end 6.45 2.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "2fb7e2be-c0b5-404c-9a5c-8edc343ada92")
+	)
+	(fp_line
+		(start 6.25 6.25)
+		(end -6.25 6.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "8a4bdc61-e7d5-482f-b87f-47d2326662ba")
+	)
+	(fp_line
+		(start 6.25 6.25)
+		(end 6.25 2.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "d57c2695-702d-4cfe-869b-8fb9bf402f4d")
+	)
+	(fp_line
+		(start 6.45 2.25)
+		(end 6.45 -2.25)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "1870c19c-36f6-4837-9ff6-4243ef7e2a0f")
+	)
+	(fp_line
+		(start -6.12 -6.12)
+		(end 6.12 -6.12)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "c622e533-bebb-4890-89fa-91a8401bd233")
+	)
+	(fp_line
+		(start -6.12 -2.26)
+		(end -6.42 -2.26)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "15b4a77c-c255-46b3-8214-61c667d4f397")
+	)
+	(fp_line
+		(start -6.12 -2.26)
+		(end -6.12 -6.12)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "d3279494-e774-4b49-990d-39593e3e8d7c")
+	)
+	(fp_line
+		(start -6.12 6.12)
+		(end -6.12 2.26)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "34f7b81f-372f-4bcd-a47e-8c0059f44b22")
+	)
+	(fp_line
+		(start -6 -5)
+		(end -5 -6)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "7d458eb5-a1a4-4152-9d5c-39b9a135c3a8")
+	)
+	(fp_line
+		(start -6 6)
+		(end -6 -5)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "2f82ac2c-e389-4c82-81a3-2ab941e19a43")
+	)
+	(fp_line
+		(start -5 -6)
+		(end 6 -6)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "6864630d-70f5-4414-a95c-7ecacd362eba")
+	)
+	(fp_line
+		(start 6 -6)
+		(end 6 6)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "ae8162cf-21c5-46e2-b3d5-212302770f60")
+	)
+	(fp_line
+		(start 6 6)
+		(end -6 6)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "5568b2e9-7157-4398-871c-a10a5120056e")
+	)
+	(fp_line
+		(start 6.12 -6.12)
+		(end 6.12 -2.26)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "51f8e01f-6367-4c4c-9e93-29588f315334")
+	)
+	(fp_line
+		(start 6.12 2.26)
+		(end 6.12 6.12)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "cbc7aa05-4631-4b21-a7df-ac24be3c111d")
+	)
+	(fp_line
+		(start 6.12 6.12)
+		(end -6.12 6.12)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "c7cb7c72-2d05-40ea-b3a1-739f1ccd462e")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "dcb6d110-767d-4161-a3d8-78724cd76fa1")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at -5.6 0)
+		(size 1.2 4)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "616ef75c-4e07-49f4-bee2-87d5f6fc27cd")
+	)
+	(pad "2" smd rect
+		(at 5.6 0)
+		(size 1.2 4)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "256404e0-d42f-420a-a15b-af8656384397")
+	)
+	(embedded_fonts no)
+	(model "${KICAD10_3DMODEL_DIR}/Buzzer_Beeper.3dshapes/Buzzer_Murata_PKLCS1212E.step"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)

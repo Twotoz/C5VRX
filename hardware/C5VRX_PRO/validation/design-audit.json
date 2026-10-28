@@ -1,0 +1,159 @@
+{
+  "status": "CAD consistency passed; fabrication release blocked",
+  "checks": [
+    {
+      "check": "Every schematic net matches its physical PCB pad",
+      "passed": true
+    },
+    {
+      "check": "No unexpected connected physical pads",
+      "passed": true
+    },
+    {
+      "check": "BOM and PCB contain the same component references",
+      "passed": true
+    },
+    {
+      "check": "BOM is complete and names actual intended order codes",
+      "passed": true
+    },
+    {
+      "check": "Exact DIY V3 outline primitives preserved",
+      "passed": true
+    },
+    {
+      "check": "All nine bay pad centres and drills preserved",
+      "passed": true
+    },
+    {
+      "check": "Bay 5V/GND/CVBS unchanged; other contacts remain isolated",
+      "passed": true
+    },
+    {
+      "check": "All 21 active/reserved GPIO roles are unique",
+      "passed": true
+    },
+    {
+      "check": "No flash/PSRAM GPIO used by a user peripheral",
+      "passed": true
+    },
+    {
+      "check": "Native USB pins match C5 datasheet",
+      "passed": true
+    },
+    {
+      "check": "Joystick uses actual ADC GPIO6 and not digital-only GPIO7",
+      "passed": true
+    },
+    {
+      "check": "BOOT and CHIP_PU are separate",
+      "passed": true
+    },
+    {
+      "check": "RF select has a reset pull-down",
+      "passed": true
+    },
+    {
+      "check": "USB-C has two independent 5.1k CC pull-downs",
+      "passed": true
+    },
+    {
+      "check": "USB/bay input diodes have cathodes on the common rail",
+      "passed": true
+    },
+    {
+      "check": "Seventh DAC branch and all buzzer parts are DNP",
+      "passed": true
+    },
+    {
+      "check": "Filter variant defaults to bypass only",
+      "passed": true
+    },
+    {
+      "check": "Retained DAC loaded full-scale is within 0.9\u20131.1 V at 3.3 V",
+      "passed": true
+    },
+    {
+      "check": "Joystick levels are distinct and released voltage is below 2.5 V",
+      "passed": true
+    },
+    {
+      "check": "KiCad DRC has no violations",
+      "passed": true
+    },
+    {
+      "check": "PCB is fully connected",
+      "passed": true
+    },
+    {
+      "check": "Schematic and PCB parity is exact",
+      "passed": true
+    },
+    {
+      "check": "ERC has only seven expected singleton IQ-label warnings",
+      "passed": true
+    }
+  ],
+  "component_count": 91,
+  "gpio_roles": {
+    "iq": [
+      1,
+      0,
+      25,
+      2,
+      27,
+      5,
+      3,
+      4
+    ],
+    "dac": [
+      23,
+      24,
+      11,
+      12,
+      8,
+      9
+    ],
+    "dac7": [
+      10
+    ],
+    "joystick": [
+      6
+    ],
+    "buzzer": [
+      7
+    ],
+    "rf": [
+      26
+    ],
+    "usb": [
+      13,
+      14
+    ],
+    "boot": [
+      28
+    ]
+  },
+  "loaded_dac_white_volts": 1.0174997377017247,
+  "joystick_nominal_volts": {
+    "PRESS": 0.007236842105263158,
+    "UP": 0.2880952380952381,
+    "DOWN": 0.55,
+    "LEFT": 0.9212203023758099,
+    "RIGHT": 1.3444444444444446,
+    "RELEASED": 2.26875
+  },
+  "rf_route_audit": {
+    "segments_by_layer": {
+      "F.Cu": 61,
+      "B.Cu": 2,
+      "In2.Cu": 4
+    },
+    "signal_vias": 4,
+    "impedance_approved": false
+  },
+  "usb_impedance_approved": false,
+  "firmware_board_integration_complete": false,
+  "physically_tested": false,
+  "order_approved": false
+}

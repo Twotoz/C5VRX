@@ -1,0 +1,1 @@
+(fp_lib_table (version 7) (lib (name "PRO") (type "KiCad") (uri "${KIPRJMOD}/PRO.pretty") (options "") (descr "C5VRX PRO local footprints")))

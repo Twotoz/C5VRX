@@ -29,6 +29,14 @@ It includes automatic gain control, quick baseline boot and manual calibration, 
 and browser-based flashing and controls. The sync flywheel was removed on
 2026-10-25 (it caused severe desyncs and poor range on the board).
 
+The [C5VRX PRO hardware proposal](hardware/C5VRX_PRO/README.md) adds a bare
+ESP32-C5 Fat Shark board with vertical SMA, LNA/bypass, USB-C, one-ADC
+joystick and optional seventh DAC bit/buzzer. It extends C5VRX by **Twotoz
+and the C5VRX contributors**; see the [canonical source](https://github.com/Twotoz/C5VRX)
+and [official website and Discord invite](https://twotoz.github.io/C5VRX/).
+The CAD and renders are available for review; this revision is not approved
+for fabrication and its board-specific firmware is still pending.
+
 This branch builds and boots **U80P64-R1 only**. U85Q, kp/LP switching and
 `m/K/k/j/P/O/H` controls are retired; see [P64 integration and evidence](docs/P64.md).
 The fixed R1 table has one positive NTSC observation; PAL, weak-signal/range
