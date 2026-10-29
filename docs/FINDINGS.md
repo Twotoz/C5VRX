@@ -7,6 +7,35 @@ scripts and data live in that branch under `v4/docs/PICTURE_CLIFF_STUDY.md`,
 Synthetic results are host simulations; board results are labelled as such.
 Measured range is not established.
 
+## U85Q on the board and a picture measure for the flight log (blackbox, 2026-10-28)
+
+**U85Q against P64**, same firmware, LEVEL, VTX at 25 mW, NTSC, deviation
+0.66 (walk 296 against walks 286-292 pooled), AFC-gated video % per 5 dB:
+-90..-85 dBm 21 against 23, -85..-80 43 against 58, -80..-75 60 against 70.
+No gain for this VTX (host model: equal at NTSC 0.7; P64 holds sync 1-2 dB
+longer at deviation 1.0-1.4). U85Q stays selectable (menu DEMOD, console m),
+P64 the default. Most of the range lost since 2026-10-20 is the VTX at 25
+instead of 100 mW (6 dB, twice the distance), not the receiver: the pin level
+where the picture goes moved 2-3 dB at most, within the meter's +-1-2 dB.
+
+**video % is the AFC's, not the picture's.** A control window counts only
+with a stationary envelope and timing-confirmed sync and porch pairs within
+~3 lines, so fading, a gain write or one noisy sync fails it. Walk 296: a
+clean picture to -85..-90 dBm by the operator's eye where video % read 33.
+`picture_pct` (`main/picture_sync.h`) decodes every control window in
+software with the live decoder's LUT and counts sync pulses one by one, as
+a goggle's line PLL rides through missing ones. Walk 300 (U85Q): -90..-85
+dBm 58 against 18 %, -85..-80 77 against 54, stronger 95-97 against 60-90;
+the operator's desyncs and noise were at -90..-92 dBm, where picture_pct read
+13-40 %. Cost: ~2 ms wall per window (~18 a second), with a yield every 512
+pairs; the gain observer still took 2873 windows a second (~2700 without).
+
+**Open.** 11 % of walk 300's seconds (and of earlier walks) were not
+recorded because the receiver was owned or paused, up to 4-7 s in a row
+(the second after such a stretch logged 85-98 picture windows, fixed); no
+menu, retune or AFC step was logged then, so which pause it was is not in
+the log yet.
+
 ## LEVEL walks: blind counters, a frozen DC servo and folded windows (blackbox, 2026-10-28)
 
 Walks on LEVEL, 5865 MHz NTSC: sessions 279 (before PR #287), 286 (write
