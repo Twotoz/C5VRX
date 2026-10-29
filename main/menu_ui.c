@@ -430,8 +430,9 @@ void menu_ui_render(menu_ui_rows_t ui, const menu_view_t *v)
         text_box("RETRY HOLD", CARD_X, 28, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_GREY);
     }
     else if (v->exp_open && v->exp_cursor == EXP_IQ_LANE) {
-        text_box(v->exp_reboot ? "REBOOT NEEDED" : "BOOT SETTING", CARD_X, 16, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_WHITE);
-        text_box(v->exp_coarse ? "DC/PHASE OFF" : "DC/PHASE ON", CARD_X, 28, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_GREY);
+        text_box(v->exp_reboot ? "REBOOT" : "BOOT SETTING", CARD_X, 14, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_WHITE);
+        if (v->exp_reboot) text_box("NEEDED", CARD_X, 22, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_WHITE);
+        text_box(v->exp_coarse ? "DC/PHASE OFF" : "DC/PHASE ON", CARD_X, 33, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_GREY);
     }
     else if (v->exp_open && v->exp_cursor == EXP_DAC) card_dac();
     else if (v->cal_sub >= 0) card_cal(v);

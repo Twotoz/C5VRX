@@ -134,6 +134,14 @@ int main(int argc, char **argv)
             menu_ui_render(ui, &v); check(name, i == EXP_DAC);
         }
     }
+    for (unsigned i = 0; i < 3; ++i) {
+        v = base(); v.exp_open = true; v.exp_active = true; v.exp_cursor = EXP_IQ_LANE;
+        v.exp_reboot = i == 0; v.exp_coarse = i == 1; v.exp_failed = i == 2;
+        menu_ui_render(ui, &v); check("exp_status", false);
+    }
+    const menu_status_view_t exp_status = {.title="CALIBRATING", .line1="VTX OFF", .line2="",
+                                            .percent=30, .channel="R1", .freq_mhz=5865, .exp_active=true};
+    menu_ui_render_status(ui, &exp_status); check("status_exp", false);
     /* Status screens: every title/line calibration.c and profile.c show. */
     static const menu_status_view_t status[] = {
         {"CALIBRATING", "LOOKING FOR A QUIET CHANNEL", "ONE TIME ONLY, ABOUT 30 S", -1, "R1", 5658, false},
