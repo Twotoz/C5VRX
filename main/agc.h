@@ -55,7 +55,12 @@ typedef struct {
     uint8_t move_to, move_windows;
     int32_t move_pre_q8, move_sum_q8;
     uint64_t move_us;
-    uint32_t folds, decisions, moves, learned, jumps;
+    /* Fold memory: the row that last folded, until when, and the level it
+     * folded at (agc.c LEVEL_FOLD_MEMORY_US). */
+    uint8_t fold_row;
+    uint64_t fold_until_us;
+    int32_t fold_level_q8;
+    uint32_t folds, decisions, moves, learned, jumps, fold_holds;
 } agc_level_t;
 
 typedef struct {
