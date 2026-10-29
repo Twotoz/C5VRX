@@ -31,7 +31,7 @@ MAGIC_BLOCK, MAGIC_SNAP = 0x424C3543, 0x534C3543
 
 EVENTS = {1: 'channel', 2: 'profile', 3: 'kp', 4: 'cal_start', 5: 'cal_end', 6: 'dc_cal_needed', 7: 'gain_mode',
           8: 'menu', 9: 'fault', 10: 'dropout', 11: 'recovered', 12: 'snapshot', 13: 'dropped', 14: 'attack',
-          15: 'output_gap', 16: 'output_unlock'}
+          15: 'output_gap', 16: 'output_unlock', 17: 'exp'}
 DROPOUT = ['CALIBRATION_OR_PHY', 'FAST_EVIDENCE_LOSS', 'AT_RF_FLOOR', 'DEMOD_CLIFF', 'UNKNOWN']
 SPHASE = ['unverified', 'settled', 'drifted', 'unsettled', 'noise_limited', 'probe_failed']
 # 2: kp0.5 NARROW until 2026-10-23, the menu's XNARROW filter since 2026-10-26.
@@ -42,6 +42,9 @@ RX_REASONS = ['none', 'no_carrier', 'weak_signal', 'dc_clipping', 'overload', 'd
 TRIGGERS = {1: 'dropout', 2: 'vq_drop', 3: 'first_carrier', 4: 'periodic', 5: 'overload', 6: 'edge', 7: 'recover',
             8: 'output_unlock'}
 OUTPUT_DEMODS = {1: 'U85Q 1a09f5c092e8', 2: 'U85Q-LP 1a09f5c092e8', 3: 'U80P64-R1'}
+EXP_NAMES = ['GAIN', 'PHY FILT', 'AFC', 'DEMOD', 'IQ CORR', 'PHASE REPAIR', 'AUTO PROFILE',
+             'FAST GAIN', 'FOLD RADIUS', 'FOLD MEMORY', 'LEVEL TARGET', 'LEVEL RELEASE', 'GAIN RATE',
+             'GAIN CAP', 'LOG CADENCE', 'LNA BIAS', 'CURRENT', 'LOOP CAP', 'SPUR 0', 'IQ LANE']
 OUTPUT_STANDARDS = {1: 'NTSC', 2: 'PAL'}
 
 
@@ -192,7 +195,38 @@ def second(p):
         (d['native_h_lines'], d['repaired_tips'], d['suppressed_tips'],
          d['longest_h_unlock_ms']) = struct.unpack_from('<HHHH', p, 60)
         d['output_observer_gaps'] = p[68]
+    # Picture measure (71-byte records): sync pulses found / expected in the
+    # decoded windows (main/picture_sync.h), apart from the AFC-gated video_pct.
+    d['picture_pct'] = (None if p[69] == 0xff else p[69]) if len(p) >= 71 else None
+    d['picture_windows'] = p[70] if len(p) >= 71 else None
+    d['exp_mask'] = struct.unpack_from('<I', p, 71)[0] if len(p) >= 77 + len(EXP_NAMES) else None
+    d['exp_version'] = p[75] if len(p) >= 77 + len(EXP_NAMES) else None
+    d['exp_mixed'] = p[76] if len(p) >= 77 + len(EXP_NAMES) else None
+    for i, name in enumerate(EXP_NAMES):
+        d['exp_' + name.lower().replace(' ', '_')] = p[77 + i] if d['exp_version'] == 1 else None
     return d
+
+
+def experimental_groups(seconds):
+    """Exact combinations, excluding owned/transition seconds and unknown schema.
+    Counts are observations, not seconds of exposure at a reduced log cadence.
+    No event replay is needed: every observation carries its complete state.
+    """
+    groups = {}
+    for row in seconds:
+        if row.get('exp_version') != 1 or row.get('exp_mixed') or row['flags'] & 0x0f00:
+            continue
+        key = tuple(row['exp_' + n.lower().replace(' ', '_')] for n in EXP_NAMES)
+        groups.setdefault(key, []).append(row)
+    result = []
+    for key, rows in sorted(groups.items()):
+        out = dict(zip(EXP_NAMES, key))
+        out['observations'] = len(rows)
+        for field in ['picture_pct', 'video_pct', 'level_dbm', 'gain_mean']:
+            values = [r[field] for r in rows if r.get(field) is not None]
+            out[field] = sum(values) / len(values) if values else None
+        result.append(out)
+    return result
 
 
 def decode(image):
@@ -219,6 +253,8 @@ def decode(image):
                              'board_id': '%08x' % struct.unpack_from('<I', p, 33)[0], 'gain_max': p[37],
                              'channel_index': p[40], 'gain_mode': p[43], 'flywheel': p[44], 'profile_live': p[45],
                              'freq_mhz': struct.unpack_from('<H', p, 46)[0]}
+            elif t == 7 and len(p) >= 2 and p[0] == 1 and len(p) >= 2 + p[1]:
+                s.setdefault('experimental_states', []).append(dict(zip(EXP_NAMES, p[2:2 + p[1]])))
             elif t == 2 and len(p) >= 56:
                 filt = []
                 for c in range(3):
@@ -276,6 +312,12 @@ def write_out(image, out):
                 w = csv.DictWriter(f, fieldnames=list(s['seconds'][0].keys()))
                 w.writeheader()
                 w.writerows(s['seconds'])
+        groups = experimental_groups(s['seconds'])
+        if groups:
+            with open(f'{name}_experiments.csv', 'w', newline='') as f:
+                w = csv.DictWriter(f, fieldnames=list(groups[0]))
+                w.writeheader()
+                w.writerows(groups)
         meta = {k: v for k, v in s.items() if k != 'seconds'}
         Path(f'{name}.json').write_text(json.dumps(meta, indent=1, default=list))
         print(f"session {s['session']}: {len(s['seconds'])} s, {len(s['events'])} events, "

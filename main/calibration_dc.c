@@ -2,6 +2,7 @@
  * calibration task: per-channel DC tables, quiet/carrier searches, health
  * monitor and the live DC servo. */
 #include "calibration_internal.h"
+#include "experimental.h"
 #include "driver/temperature_sensor.h"
 #include "dc_trim.h"
 /* The servo rows are the RF-stage rows G54..G89 only, and its state lives in
@@ -173,6 +174,7 @@ static bool dco_save(void)
     const unsigned slot = dco_slot_for_store(&s_dco_index, s_dco.freq, filt);
     const uint16_t old_freq = s_dco_index.freq[slot], old_filt = s_dco_index.filt[slot];
     dco_slot_key(slot, key);
+    if (experimental_transfer_active()) return false;
     if (!blob_store(key, &s_dco, sizeof(s_dco))) return false;
     dco_index_touch(&s_dco_index, slot, s_dco.freq, filt);
     memcpy(s_dco_index.templ[slot], s_dco_templ, sizeof(s_dco_templ));
@@ -1095,7 +1097,7 @@ static bool dc_servo_can_fix(unsigned g)
 void servo_service(void)
 {
     if (!s_servo_ready) { dc_servo_init(&s_servo); s_servo_ready = true; }
-    if (s_dc_fault || s_startup || !quiet_owner() || rf_lane() != RF_LANE_ULTRAFINE) {
+    if (experimental_transfer_active() || s_dc_fault || s_startup || !quiet_owner() || rf_lane() != RF_LANE_ULTRAFINE) {
         ++s_servo_skip[0];
         return;
     }

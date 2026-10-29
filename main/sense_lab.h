@@ -8,7 +8,11 @@
 
 /* Suite keys: '0' shams, '1' NF-auto, '2' IQ correction, '3' digital
  * filter, '4' packet/RX policy, '5' clocks, '6' ADC/LO-cap/ULP, '7' analog
- * filter code, '8' gain rows, '9' DAC output off, 'a' all of 1..9. */
+ * filter code, '8' gain rows, '9' DAC output off, 'a' all of 1..9. VTX OFF: 'b' shams,
+ * 'c' existing suites 1..7 and 9 at fixed gain, 'd' bias comparison,
+ * 'f' current_level RAM byte sweep, 'g' calibrated loop-cap settings,
+ * 'h' inferred spur slots, 'i' counterbalanced current-level confirmation
+ * (noise power only); 'e' bias with VTX ON. */
 bool sense_lab_suite_valid(char suite);
 void sense_lab_request(char suite);
 void sense_lab_help(void);

@@ -2,6 +2,8 @@
  * BOOT button and menu, AFC acquisition, PAL/NTSC detection, signal
  * strength and the channel scanner. Observes completed RX descriptors only. */
 #include "receiver.h"
+#define PICTURE_YIELD() taskYIELD()   /* the gain observer shares priority 3 */
+#include "picture_sync.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +20,7 @@
 #include "snapshot.h"
 #include "rf.h"
 #include "flightlog.h"
+#include "experimental.h"
 #include "flightlog_format.h"
 
 #define BOOT_BUTTON      GPIO_NUM_28    /* XIAO ESP32-C5 BOOT */
@@ -135,6 +138,18 @@ static int strength(const metrics_t *m, uint8_t gain)
     power = power < 0 ? 0 : power > 100 ? 100 : power;
     headroom = headroom < 0 ? 0 : headroom > 100 ? 100 : headroom;
     return (coherence * 2 + power + headroom) / 4;
+}
+
+/* Decoder P64 <-> U85Q (console m, menu DEMOD), kept in NVS "demod": live, a
+ * verified restart behind the shared 5 s guard; in the menu, applied by the
+ * restart on menu exit. */
+static void demod_next(void)
+{
+    const uint8_t next = (uint8_t)((transport_demod() + 1u) % TRANSPORT_DEMODS);
+    const bool ok = transport_set_demod(next);
+    if (ok) (void)blob_store("demod", &next, sizeof(next));
+    printf("DEMOD switch to=%s result=%s active=%s%s\n", transport_demod_name(next), ok ? "ok" : "refused",
+           transport_program_name(), ok ? "" : " (guard, fault or rollback: T TRANSPORT and DEMOD)");
 }
 
 static void after_retune(void)
@@ -297,13 +312,45 @@ static void toggle_afc(void)
 /* Press: the next row, in the CALIBRATE submenu while it is open. */
 static void menu_next(void)
 {
-    if (s_cal_sub >= 0) s_cal_sub = (s_cal_sub + 1) % MENU_CAL_ITEMS;
+    s_exp_failed = false;
+    if (s_exp_sub >= 0) s_exp_sub = (s_exp_sub + 1) % EXP_MENU_ITEMS;
+    else if (s_cal_sub >= 0) s_cal_sub = (s_cal_sub + 1) % MENU_CAL_ITEMS;
     else s_menu_cursor = (s_menu_cursor + 1) % MENU_ITEMS;
     menu_render();
 }
 
 static void menu_action(void)
 {
+    if (s_exp_sub >= 0) {
+        const unsigned k = (unsigned)s_exp_sub;
+        uint8_t before[EXP_ITEMS], after[EXP_ITEMS];
+        experimental_snapshot(before);
+        s_exp_failed = false;
+        if (k == EXP_BACK) s_exp_sub = -1;
+        else if (k == EXP_RESET) {
+            experimental_reset();
+            receiver_set_gain_mode(GAIN_MODE_DEFAULT, true);
+            if (!phy_dfilt_select(PHY_DFILT_MODE_DEFAULT)) s_exp_failed = true;
+            if (!s_afc_enabled) toggle_afc();
+            if (!transport_set_demod(TRANSPORT_DEMOD_P64)) s_exp_failed = true;
+            else { const uint8_t d = TRANSPORT_DEMOD_P64; (void)blob_store("demod", &d, 1); }
+            prefs_save();
+        }
+        else if (k == EXP_DAC) menu_dac_step();
+        else if (k == EXP_GAIN) { receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); }
+        else if (k == EXP_DFILT) cycle_dfilt();
+        else if (k == EXP_AFC) toggle_afc();
+        else if (k == EXP_DEMOD) demod_next();
+        else if (k < EXP_ITEMS) s_exp_failed = !experimental_set(k, (experimental_get(k) + 1u) % experimental_items[k].count);
+        experimental_snapshot(after);
+        for (unsigned i = 0; i < EXP_IQ_CORR; ++i) if (before[i] != after[i]) {
+            const uint8_t e[] = {(uint8_t)i, before[i], after[i], 1};
+            flightlog_event(FLOG_E_EXP, e, sizeof(e));
+        }
+        experimental_log_state();
+        menu_render();
+        return;
+    }
     if (s_cal_sub >= 0) {   /* CALIBRATE submenu: QUICK = console F, FULL = console B */
         const int k = s_cal_sub;
         s_cal_sub = -1;
@@ -319,9 +366,11 @@ static void menu_action(void)
     case MENU_FILTER: (void)profile_select_cycle(); prefs_save(); break;
     case MENU_AFC: toggle_afc(); break;
     case MENU_DFILT: cycle_dfilt(); break;
+    case MENU_EXPERIMENTAL: s_exp_sub = 0; break;
     case MENU_CALIBRATE: s_cal_sub = MENU_CAL_QUICK; break;   /* opens the QUICK / FULL / BACK submenu */
     case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
     case MENU_GAIN: receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); break;
+    case MENU_DEMOD: demod_next(); break;   /* applied by the verified restart on menu exit */
     case MENU_DAC: menu_dac_step(); break;
     case MENU_VIDEO:
         cycle_video_standard();
@@ -340,12 +389,14 @@ static void command(int c, unsigned *menu_idle)
     }
     switch (c) {
     case 'G': receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); break;
+    /* Decoder P64 <-> U85Q: a verified restart behind the shared 5 s guard. */
+    case 'm': demod_next(); break;
     /* Bench: the real gain step of every table row pair (receiver.c). */
     case 'Q': receiver_pair_sweep_toggle(); break;
     /* DAC self-test: open the menu on DAC TEST, then step like a hold. */
     case 'Z':
         if (!s_menu_active && !menu_open_checked()) break;
-        if (s_menu_cursor != MENU_DAC || s_cal_sub >= 0) { s_cal_sub = -1; s_menu_cursor = MENU_DAC; menu_render(); }
+        if (s_exp_sub != EXP_DAC || s_cal_sub >= 0) { s_cal_sub = -1; s_menu_cursor = MENU_EXPERIMENTAL; s_exp_sub = EXP_DAC; menu_render(); }
         else menu_dac_step();
         break;
     case 'o': if (s_menu_active) menu_close(); else (void)menu_open_checked(); break;
@@ -394,6 +445,9 @@ static uint32_t s_vq_periods;
 
 /* copy_snapshot() under the same scheduler hold as copy_control_window():
  * a preempted copy fails its overrun check. */
+/* Picture measure totals and its CPU cost per window (T PICTURE). */
+static struct { picture_state_t state; uint32_t found, expected, windows, us_max; uint64_t us_sum; } s_pic;
+
 static bool copy_afc_window(uint8_t *dst)
 {
     vTaskSuspendAll();
@@ -415,6 +469,7 @@ static void control_task(void *arg)
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(TICK_MS));
         int c;
+        experimental_poll();
         for (unsigned k = 0; k < 8 && xQueueReceive(s_commands, &c, 0) == pdTRUE; ++k) command(c, &menu_idle);
 
         /* BOOT button: short = next channel (menu: next item); 0.6 s = menu
@@ -450,7 +505,7 @@ static void control_task(void *arg)
             if (++level_ticks >= 20u) { level_ticks = 0; receiver_level_roll(false, false); }
             /* A multimeter needs longer than 30 s; the page is only reached
              * by pressing through the menu. */
-            const unsigned idle_limit = s_menu_cursor == MENU_DAC ? DAC_IDLE_TICKS : MENU_IDLE_TICKS;
+            const unsigned idle_limit = (s_exp_sub == EXP_DAC || s_menu_cursor == MENU_DAC) ? DAC_IDLE_TICKS : MENU_IDLE_TICKS;
             if (++menu_idle >= idle_limit) {
                 menu_close();
                 printf("[MENU] closed after %u s idle\n", idle_limit * TICK_MS / 1000u);
@@ -498,6 +553,21 @@ static void control_task(void *arg)
          * where the active descriptor began, so it covers s_window. */
         const bool afc_copied = receiver_ok && copy_afc_window(s_afc_window);
         bool window_ok = afc_copied && afc2_envelope_stationary(s_afc_window, AFC_WINDOW_BYTES);
+        /* Picture measure (picture_sync.h): every live window, also those the
+         * AFC leaves out (a gain write, settle, fading): the goggles see those. */
+        if (copied && !s_menu_active && (afc_copied || copy_afc_window(s_afc_window))) {
+            unsigned bits;
+            const uint16_t *lut = transport_decoder_lut(&bits);
+            if (lut) {
+                const int64_t t0 = esp_timer_get_time();
+                const picture_sync_t ps = picture_sync_window(&s_pic.state, s_afc_window, AFC_WINDOW_BYTES, lut, bits);
+                const uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
+                if (ps.expected) diag_picture(ps.found, ps.expected);
+                s_pic.found += ps.found; s_pic.expected += ps.expected; ++s_pic.windows;
+                s_pic.us_sum += us;
+                if (us > s_pic.us_max) s_pic.us_max = us;
+            }
+        }
         const char *afc_window_reason = !copied ? "copy_missing" : settle ? "settle" :
             ctx != afc_context() ? "context" : phy_busy() ? "phy_busy" : !receiver_ok ? "gain_settle" :
             !afc_copied ? "afc_copy_missing" : !window_ok ? "nonstationary" : "measured";
@@ -600,6 +670,8 @@ void control_start(void)
     if (!blob_load("last_std", &s_last_std, 1)) s_last_std = 0xFF;
     uint8_t afc_off = 0;
     if (blob_load("afc_off", &afc_off, 1)) s_afc_enabled = !afc_off;
+    profile_set_live_mode(experimental_get(EXP_AUTO_PROFILE) != 0);
+    experimental_log_state();
     int8_t sign;
     if (blob_load("afc_sign", &sign, 1) && (sign == 1 || sign == -1)) {
         s_afc_sign = sign;
@@ -620,6 +692,7 @@ void control_start(void)
  * without a status request. Read-only. */
 void control_print_beat(void)
 {
+    if (experimental_mask()) printf("EXP active=0x%08lx reboot=%u\n", (unsigned long)experimental_mask(), experimental_reboot_needed());
     /* video: confirmed sync within 0.5 s (the web menu's VIDEO/SEARCH);
      * afc_locked alone said SEARCH over a good picture without a lock. */
     const int64_t video_at = s_last_video_us;
@@ -679,5 +752,9 @@ void control_print(void)
     printf("VIDEO_Q known=%u snr_x10=%d lines_x100=%u lines=%lu windows=%lu periods=%lu (end-to-end: sync/porch "
            "spread of the demodulated video, last second)\n", vq.known, vq.snr_x10, vq.lines_x100,
            (unsigned long)vq.lines, (unsigned long)vq.windows, (unsigned long)s_vq_periods);
+    printf("PICTURE found=%lu expected=%lu windows=%lu us_mean=%lu us_max=%lu (picture_sync.h: sync pulses in the "
+           "decoded control windows since boot, apart from the AFC's video_pct; CPU per window)\n",
+           (unsigned long)s_pic.found, (unsigned long)s_pic.expected, (unsigned long)s_pic.windows,
+           (unsigned long)(s_pic.windows ? s_pic.us_sum / s_pic.windows : 0), (unsigned long)s_pic.us_max);
 }
 

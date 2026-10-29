@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "agc.h"
+#include "experimental.h"
 #include "cn_estimate.h"
 #include "cn_auto.h"
 #include "cn_observation.h"
@@ -133,7 +134,12 @@ static uint8_t agc_decision(uint8_t mode, const dg_observation_t *o)
     const arc_gain_table_t *t = rf_gain_table();
     if (mode != s_agc_mode || s_agc_control != s_control_epoch || s_agc_rows != s_gain_rows_measured) {
         const float n = s_gain_th[t->max_index] > 0.0f ? s_gain_th[t->max_index] : AGC_NOISE_TOP_DEFAULT;
-        if (mode == GAIN_MODE_LEVEL) agc_level_reset(&s_agc.level, s_gain.model_db_q8, t->max_index, (uint16_t)(n * 16.0f));
+        if (mode == GAIN_MODE_LEVEL) {
+            agc_level_reset(&s_agc.level, s_gain.model_db_q8, t->max_index, (uint16_t)(n * 16.0f));
+            const unsigned mem = experimental_get(EXP_FOLD_MEMORY), target = experimental_get(EXP_LEVEL_TARGET);
+            agc_level_options(&s_agc.level, experimental_get(EXP_FOLD_RADIUS), mem == 1 ? 300000u : mem == 2 ? 1000000u : 0,
+                              target == 1 ? -3 : target == 2 ? 3 : 0, experimental_get(EXP_LEVEL_RELEASE));
+        }
         else agc_rssi_reset(&s_agc.rssi, s_gain.model_db_q8, t->max_index);
         s_agc_mode = mode;
         s_agc_control = s_control_epoch;
@@ -150,7 +156,7 @@ static uint8_t agc_decision(uint8_t mode, const dg_observation_t *o)
 static uint32_t s_fold_taken, s_fold_rejected, s_fold_noisy;
 static void fold_measure(dg_observation_t *o, const uint8_t *samples, unsigned n)
 {
-    if (s_gain_mode != GAIN_MODE_LEVEL || s_agc_mode != GAIN_MODE_LEVEL || !agc_folded(o)) return;
+    if (rf_lane() != RF_LANE_ULTRAFINE || s_gain_mode != GAIN_MODE_LEVEL || s_agc_mode != GAIN_MODE_LEVEL || !agc_folded(o)) return;
     o->fold_r_x16 = agc_level_fold_radius(&s_agc.level, samples, n, s_current_gain, &o->fold_raw_x16, &o->fold_fit);
     if (o->fold_r_x16) ++s_fold_taken;
     else if (o->fold_raw_x16) ++s_fold_rejected;
@@ -196,6 +202,7 @@ static dg_map_context_t map_context(void)
 unsigned receiver_export_gain_map(dg_map_blob_t *blob)
 {
     if (!blob) return 0;
+    if (experimental_transfer_active()) { memset(blob, 0, sizeof(*blob)); return 0; }
     if (!phy_try_actuator(phy_generation())) { memset(blob, 0, sizeof(*blob)); return 0; }
     vTaskSuspendAll();
     const uint32_t control=s_control_epoch, phy=phy_generation(), table=rf_table_generation();
@@ -310,10 +317,20 @@ static void apply_target(uint8_t target, uint32_t control, uint32_t phy)
         dg_write_refused(&s_gain, s_current_gain);
         return;
     }
-    if (target == s_current_gain) return;
     const arc_gain_table_t *t = rf_gain_table();
     if (target < 2u) target = 2u;
     if (target > t->max_index) target = t->max_index;
+    const unsigned cap_mode = experimental_get(EXP_GAIN_CAP);
+    const unsigned cap = cap_mode == 1 ? 79u : cap_mode == 2 ? 75u : t->max_index;
+    if (target > cap) target = (uint8_t)cap;
+    if (target == s_current_gain) { dg_write_refused(&s_gain, s_current_gain); return; }
+    /* Rate limit release only: an overload must retain its emergency path. */
+    const unsigned rate = experimental_get(EXP_GAIN_RATE);
+    const int64_t min_us = rate == 1 ? 5000 : rate == 2 ? 20000 : 0;
+    if (target > s_current_gain && min_us && esp_timer_get_time() - s_last_gain_write_us < min_us) {
+        dg_write_refused(&s_gain, s_current_gain);
+        return;
+    }
     /* A task preemption between the first check and the write must not let
      * another PHY owner change the analog state underneath this write. */
     if (!phy_try_actuator_wait(phy, 1)) { ++s_refuse[4]; dg_write_refused(&s_gain, s_current_gain); return; }   /* <= 1 ms */
@@ -458,6 +475,7 @@ static int cna_slot_find(uint16_t freq, rf_filter_t f)
 /* Keep this context's measured rows (54..83) in NVS. */
 static void cna_save(void)
 {
+    if (experimental_transfer_active()) return;
     if (!s_cna_key_valid || !s_cna_dirty) return;
     int k = cna_slot_find(s_cna_freq, s_cna_filter);
     if (k < 0) {   /* a free or the oldest slot */
@@ -513,7 +531,7 @@ static void cna_key_check(void)
  * maps. Return unknown when the current map belongs to another context. */
 bool receiver_export_noise(uint8_t row, float *cells2, uint16_t *samples, int64_t *measured_us)
 {
-    if (row >= CNA_ROWS || !s_cna_key_valid || s_cna_freq != rf_frequency_mhz() ||
+    if (experimental_transfer_active() || row >= CNA_ROWS || !s_cna_key_valid || s_cna_freq != rf_frequency_mhz() ||
         !rf_filter_equal(s_cna_filter, rf_filter())) return false;
     vTaskSuspendAll();
     *cells2 = s_cna_map.noise[row];
@@ -591,6 +609,7 @@ void receiver_gain_table_measured(const float noise_cells2[DG_STATES])
 
 static void cna_probe(const uint8_t *sample, size_t bytes, const dg_observation_t *o, uint8_t row, int64_t now)
 {
+    if (experimental_transfer_active()) return;
     if (row >= CNA_ROWS || ++s_cna_div % CNA_PROBE_DIV) return;
     cna_key_check();
     const bool folded = (o->rails & 3u) == 3u || (o->rails & 12u) == 12u;
@@ -651,7 +670,7 @@ cna_reading_t receiver_cn_reading(void)
 {
     const int64_t now = esp_timer_get_time();
     cna_reading_t r = s_cna;
-    if (s_cna_epoch != s_gain_epoch || now - s_cna_us > 60000 || !receiver_active()) {
+    if (experimental_transfer_active() || s_cna_epoch != s_gain_epoch || now - s_cna_us > 60000 || !receiver_active()) {
         r.x10 = CNA_UNKNOWN_X10; r.confidence = CNA_CONF_NONE; r.source = CNA_SRC_NONE;
     }
     return r;
@@ -665,6 +684,7 @@ int receiver_obs_cn_x10(void)
      * amplitude sequence that the envelope table calls ~3 dB C/N. Without a
      * noise reference, hold the last safe policy instead of inventing RF C/N.
      * M2M4/envelope remain visible in CN_AUTO telemetry. */
+    if (experimental_transfer_active()) return CN_UNKNOWN_X10;
     const cna_reading_t r = receiver_cn_reading();
     const int x10 = cna_control_x10(&r);
     if (x10 == CNA_UNKNOWN_X10 || s_obs_stuck || !receiver_active() ||
@@ -768,7 +788,7 @@ static void sentinel_task(void *arg)
     uint8_t sample[64];
     for (;;) {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        if (!receiver_active() || s_overload_state || s_rx_dma_ch < 0 || s_rx_node_count < 2) continue;
+        if (experimental_get(EXP_FAST_GAIN) || !receiver_active() || s_overload_state || s_rx_dma_ch < 0 || s_rx_node_count < 2) continue;
         uint32_t gain_epoch = s_gain_epoch, control = s_control_epoch, phy = phy_generation();
         if (!copy_sentinel_window(sample) || gain_epoch != s_gain_epoch) continue;
         /* A gain write's transient is no overload (blackbox session 32). */
@@ -908,7 +928,7 @@ static void observer_task(void *arg)
         /* Learn the gain map only from a real VTX: burst-confirmed sync seen
          * by the AFC within the last 500 ms (never from receiver noise). */
         const int64_t video = s_last_video_us;
-        s_gain.learn_enabled = video != 0 && t0 - video < 500000;
+        s_gain.learn_enabled = !experimental_transfer_active() && video != 0 && t0 - video < 500000;
         {
             const uint32_t severe = s_gain.writes_severe;
             const uint8_t from = s_current_gain;

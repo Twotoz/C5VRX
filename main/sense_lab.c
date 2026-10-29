@@ -37,8 +37,9 @@
 #define SENSE_ALL_US     (INT64_C(3600) * 1000000)
 
 static volatile char s_request;
+static bool s_noise_mode; /* b: VTX-off shams, c: VTX-off existing suites */
 
-bool sense_lab_suite_valid(char suite) { return (suite >= '0' && suite <= '9') || suite == 'a'; }
+bool sense_lab_suite_valid(char suite) { return (suite >= '0' && suite <= '9') || (suite >= 'a' && suite <= 'i'); }
 void sense_lab_request(char suite) { if (sense_lab_suite_valid(suite)) s_request = suite; }
 bool sense_lab_pending(void) { return s_request != 0; }
 
@@ -47,6 +48,12 @@ void sense_lab_help(void)
     printf("SENSLAB bench, VTX ON (weak, static), not in flight. Press a suite key within 5 s:\n"
            "  0 shams only, 1 NF-auto patterns, 2 IQ correction, 3 digital filter, 4 packet/RX policy,\n"
            "  5 clocks, 6 ADC selector/LO cap/ULP, 7 analog filter code, 8 gain rows, 9 DAC output off,\n"
+           "  d VTX OFF bias comparison, e same bias comparison with VTX ON,\n"
+           "  f VTX OFF current_level setter (RAM byte; not proven LNA current),\n"
+           "  g VTX OFF loop-cap calibrated settings (no retune or loopback enable),\n"
+           "  h VTX OFF spur reference slot0 / inferred slots1..3, nominal +/-5 MHz,\n"
+           "  i VTX OFF counterbalanced current_level 255/15/0 confirmation,\n"
+           "  b VTX OFF shams, c VTX OFF noise sweep (1..7,9; no gain-row changes),\n"
            "  a all of 1..9 (about 5-10 min). Record with tools/phy_sense_lab.py; docs/PHY_SENSITIVITY_LAB.md\n");
 }
 
@@ -54,6 +61,8 @@ void sense_lab_help(void)
 extern uint8_t phy_i2c_readReg(uint8_t block, uint8_t host, uint8_t reg);
 extern void phy_i2c_writeReg(uint8_t block, uint8_t host, uint8_t reg, uint8_t value);
 extern uint16_t phy_pbus_rd(uint32_t block, uint32_t bank);
+extern uint8_t phy_param[];
+extern void phy_current_level_set(uint8_t level);
 #define MMIO(a) (*(volatile uint32_t *)(uintptr_t)(a))
 
 /* ---- candidate tables: PR #254 recovered footprints ---------------------- */
@@ -148,14 +157,39 @@ typedef struct {
 static lab_t L;
 static const sense_profile_t *s_active;
 static uint32_t s_expect[SENSE_MAX_PATCHES];
+static __attribute__((noreturn)) void fatal(const char *why);
 
 static uint32_t patch_read(const sense_patch_t *p)
 {
+    if (p->kind == SENSE_P_CURRENT) return ((volatile uint8_t *)phy_param)[41];
+    if (p->kind == SENSE_P_PARAM) return ((volatile uint8_t *)phy_param)[p->addr] & p->mask;
+    if (p->kind == SENSE_P_PBUS) return phy_pbus_rd(p->block, p->host) & p->mask;
     if (p->kind == SENSE_P_MMIO) return MMIO(p->addr) & p->mask;
     return phy_i2c_readReg(p->block, p->host, p->reg) & (p->mask & 0xffu);
 }
 static void patch_write(const sense_patch_t *p, uint32_t value)
 {
+    if (p->kind == SENSE_P_CURRENT) {
+        phy_current_level_set((uint8_t)value);
+        return;
+    }
+    if (p->kind == SENSE_P_PARAM) {
+        phy_param[p->addr] = (uint8_t)((phy_param[p->addr] & ~p->mask) | (value & p->mask));
+        return;
+    }
+    if (p->kind == SENSE_P_PBUS) {
+        int64_t until = esp_timer_get_time() + 1000;
+        while (MMIO(0x600A0890) & 0x80000000u)
+            if (esp_timer_get_time() > until) fatal("pbus_busy_before_write");
+        const uint32_t word = (phy_pbus_rd(p->block, p->host) & ~p->mask) | (value & p->mask);
+        until = esp_timer_get_time() + 1000;
+        MMIO(0x600A0884) = (MMIO(0x600A0884) & 0xfffe0001u) |
+            (((word << 6) | ((uint32_t)p->block << 2) | ((uint32_t)p->host << 15)) & 0x1fffcu) | 2u;
+        while (MMIO(0x600A0890) & 0x80000000u)
+            if (esp_timer_get_time() > until) fatal("pbus_write_timeout");
+        MMIO(0x600A0884) &= ~2u;
+        return;
+    }
     if (p->kind == SENSE_P_MMIO) {
         MMIO(p->addr) = (MMIO(p->addr) & ~p->mask) | (value & p->mask);
         return;
@@ -197,6 +231,17 @@ static bool hw_gain_ok(uint32_t packed)
     const uint16_t rf = phy_pbus_rd(8, 1), bb = phy_pbus_rd(0, 2), fine = phy_pbus_rd(1, 2);
     return rf == (packed >> 12) && (bb & 127u) == ((packed >> 4) & 127u) &&
            ((bb & ~127u) == 0u || (bb & ~127u) == 0x100u) && fine == (0xd0u | (packed & 7u));
+}
+/* Rollback witnesses independent of a measurement timeout/menu cancellation.
+ * Undocumented PBUS/spur experiments cannot resume with only a matching
+ * software gain index while the physical gain or DC hold has changed. */
+static bool physical_context_ok(void)
+{
+    uint32_t packed;
+    int pair[2];
+    return rf_frequency_mhz() == L.freq && rf_offset_khz() == L.offset &&
+        s_current_gain == L.gain && tuple_of(L.gain, &packed) && hw_gain_ok(packed) &&
+        L.dco_check && phy_dco_held() && phy_dco_read_pair(pair) && pair[0] == L.dco[0] && pair[1] == L.dco[1];
 }
 static const char *context_fail(uint8_t gain, bool dco)
 {
@@ -243,7 +288,7 @@ static bool capture(uint8_t *raw)
     return false;
 }
 
-typedef struct { sense_acc_t cn, click, origin, rail, video; unsigned lines; } stage_t;
+typedef struct { sense_acc_t cn, click, origin, rail, video, noise; unsigned lines; } stage_t;
 
 static const char *measure_stage(unsigned id, unsigned step, uint8_t gain, bool dco, stage_t *st)
 {
@@ -274,6 +319,7 @@ static const char *measure_stage(unsigned id, unsigned step, uint8_t gain, bool 
                "video_lines=%u video_snr_db=%.2f m2=%.4f kurt=%.4f dc=%.3f/%.3f fnv1a=%08" PRIx32 " t_ms=%lld\n",
                id, step, stage, rep, gain, m.cn_db, m.click_pm, m.origin_pm, m.rail_pm, m.video_lines, m.video_snr_db,
                m.m2, m.kurt, (double)m.dc_i, (double)m.dc_q, hash, (long long)(esp_timer_get_time() / 1000));
+        sense_acc_add(&st->noise, 10.0 * log10(m.m2));
         sense_acc_add(&st->cn, m.cn_db);
         sense_acc_add(&st->click, m.click_pm);
         sense_acc_add(&st->origin, m.origin_pm);
@@ -287,6 +333,25 @@ static const char *measure_stage(unsigned id, unsigned step, uint8_t gain, bool 
 /* Quick per-profile view; tools/phy_sense_lab.py makes the real verdict. */
 static void result(unsigned id, const char *name, const char *status, const stage_t st[4])
 {
+    if (s_noise_mode) {
+        bool complete = !strcmp(status, "PASS");
+        for (unsigned i = 0; i < 4u; ++i) complete &= st[i].noise.n == SENSE_CAPTURES;
+        if (!complete) {
+            printf("SENSLAB_NOISE id=%u name=%s status=%s d_noise_db=nan se_db=nan "
+                   "reason=incomplete_measurement input_referred_claim=none\n", id, name, status);
+            return;
+        }
+        sense_acc_t stock = st[0].noise, test = st[1].noise;
+        stock.n += st[3].noise.n; stock.sum += st[3].noise.sum; stock.sumsq += st[3].noise.sumsq;
+        test.n += st[2].noise.n; test.sum += st[2].noise.sum; test.sumsq += st[2].noise.sumsq;
+        double se = 0;
+        const double delta = sense_delta(&test, &stock, &se);
+        printf("SENSLAB_NOISE id=%u name=%s status=%s d_noise_db=%+.3f se_db=%.3f stock_db_cells2=%.3f "
+               "drift_db=%+.3f agree_db=%+.3f input_referred_claim=none\n", id, name, status, delta, se,
+               sense_acc_mean(&stock), sense_acc_mean(&st[3].noise) - sense_acc_mean(&st[0].noise),
+               sense_acc_mean(&st[2].noise) - sense_acc_mean(&st[1].noise));
+        return;
+    }
     sense_acc_t stock_cn = st[0].cn, test_cn = st[1].cn, stock_click = st[0].click, test_click = st[1].click;
     sense_acc_t stock_video = st[0].video, test_video = st[1].video;
     stock_cn.n += st[3].cn.n; stock_cn.sum += st[3].cn.sum; stock_cn.sumsq += st[3].cn.sumsq;
@@ -313,6 +378,12 @@ static void print_patches(unsigned id, const sense_profile_t *p, const uint32_t 
         if (q->kind == SENSE_P_MMIO)
             printf("SENSLAB_PATCH id=%u i=%u mmio=%08" PRIx32 " mask=%08" PRIx32 " stock=%08" PRIx32 " test=%08" PRIx32 "\n",
                    id, i, q->addr, q->mask, saved[i], q->value & q->mask);
+        else if (q->kind == SENSE_P_CURRENT)
+            printf("SENSLAB_PATCH id=%u i=%u setter=phy_current_level_set param_offset=41 mask=ff stock=%02" PRIx32 " test=%02" PRIx32 "\n",
+                   id, i, saved[i], q->value & 0xffu);
+        else if (q->kind == SENSE_P_PARAM || q->kind == SENSE_P_PBUS)
+            printf("SENSLAB_PATCH id=%u i=%u kind=%s offset=%" PRIu32 " block=%u bank=%u mask=%08" PRIx32 " stock=%08" PRIx32 " test=%08" PRIx32 "\n",
+                   id, i, q->kind == SENSE_P_PARAM ? "param" : "pbus", q->addr, q->block, q->host, q->mask, saved[i], q->value & q->mask);
         else
             printf("SENSLAB_PATCH id=%u i=%u i2c=%02x/%u/%u mask=%02" PRIx32 " stock=%02" PRIx32 " test=%02" PRIx32 "\n", id, i,
                    q->block, q->host, q->reg, q->mask & 0xffu, saved[i], q->value & q->mask & 0xffu);
@@ -323,6 +394,10 @@ static void print_patches(unsigned id, const sense_profile_t *p, const uint32_t 
 static void run_patch(unsigned id, const sense_profile_t *p)
 {
     uint32_t saved[SENSE_MAX_PATCHES];
+    bool owns_pbus = false;
+    for (unsigned i = 0; i < p->n; ++i) owns_pbus |= p->p[i].kind == SENSE_P_PBUS;
+    const uint32_t pbus_command = owns_pbus ? MMIO(0x600A0884) : 0;
+    if (owns_pbus && (!(pbus_command & 1u) || (pbus_command & 2u))) fatal("pbus_entry_not_debug_idle");
     bool noop = p->n > 0;
     for (unsigned i = 0; i < p->n; ++i) {
         saved[i] = patch_read(&p->p[i]);
@@ -352,11 +427,16 @@ static void run_patch(unsigned id, const sense_profile_t *p)
         }
     }
     phy_observation_changed();
-    for (unsigned i = p->n; i-- > 0;) patch_write(&p->p[i], saved[i]);
+    if (p->kind == SENSE_K_SPUR) patch_write(&p->p[3], patch_read(&p->p[3]) & ~0x2000u);
+    for (unsigned i = p->n; i-- > 0;)
+        if (p->kind != SENSE_K_SPUR || i != 3) patch_write(&p->p[i], saved[i]);
+    if (p->kind == SENSE_K_SPUR) patch_write(&p->p[3], saved[3]);
+    if (owns_pbus) MMIO(0x600A0884) = pbus_command;
     memcpy(s_expect, saved, sizeof(saved[0]) * p->n);
-    const bool restored = patches_ok() && filter_ok();
+    const bool restored = patches_ok() && filter_ok() && (!owns_pbus || MMIO(0x600A0884) == pbus_command);
     printf("SENSLAB_RESTORE id=%u verified=%u\n", id, restored);
     if (!restored) fatal("restore_failed");
+    if ((owns_pbus || p->kind == SENSE_K_SPUR) && !physical_context_ok()) fatal("physical_context_restore_failed");
     /* STOCK again: the second control, and after a rejection or a broken
      * capture the witness that the restored state receives normally. */
     if (!why) {
@@ -548,6 +628,128 @@ static void suite_gain(void)
     if (!L.stop) run_patch(id, &k_sham);
 }
 
+/* Espressif phy_bias_reg_set initializes 0x6a/1/0 to 0x9f.
+ * Frequency setup was witnessed at 0xcf, reg1 0x7f. Compare only these
+ * observed states: no guessed current ranges or arbitrary nibble sweeps.
+ * This does not establish that the field is an LNA bias current. */
+static void suite_bias(void)
+{
+    const uint8_t r0 = phy_i2c_readReg(0x6a, 1, 0);
+    const uint8_t r1 = phy_i2c_readReg(0x6a, 1, 1);
+    printf("SENSLAB_BIAS stock_reg0=%02x stock_reg1=%02x target_reg0=9f mode=%s\n",
+           r0, r1, s_noise_mode ? "noise" : "carrier");
+    if (r0 != 0xcf || r1 != 0x7f) {
+        skip(1000, "BIAS_INIT_REG0", "outside_witnessed_operating_state");
+        return;
+    }
+    const sense_profile_t candidate = {
+        "BIAS_INIT_REG0", SENSE_K_PATCH, 1, 0, {P_I(0x6a, 1, 0, 0xf0, 0x90)}
+    };
+    for (unsigned k = 0; k < 3 && !L.stop; ++k) {
+        run_patch(1000 + 2 * k, &k_sham);
+        if (!L.stop) run_patch(1001 + 2 * k, &candidate);
+    }
+    if (!L.stop) run_patch(1006, &k_sham);
+}
+
+/* The pinned setter stores exactly one byte at phy_param+41, with no
+ * hardware writes. No live consumer has been established. Sweep the low
+ * nibble plus wider bit patterns without pretending these are mA values.
+ * The real setter is called for TEST and exact rollback; every stage
+ * verifies the parameter byte as well as gain/DC/filter context. */
+static void suite_current(void)
+{
+    static const uint8_t levels[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 31, 63, 127, 255};
+    printf("SENSLAB_CURRENT stock=%u footprint=phy_param_plus_41 hardware_write_in_setter=0\n", phy_param[41]);
+    run_patch(1100, &k_sham);
+    for (unsigned k = 0; k < sizeof(levels) && !L.stop; ++k) {
+        char name[32];
+        snprintf(name, sizeof(name), "CURRENT_LEVEL_%u", levels[k]);
+        const sense_profile_t p = {name, SENSE_K_PATCH, 1, 0,
+            {{SENSE_P_CURRENT, 0, 0, 0, 0, 0xff, levels[k]}}};
+        run_patch(1101 + 2 * k, &p);
+        if (!L.stop) run_patch(1102 + 2 * k, &k_sham);
+    }
+}
+
+/* Recovered complete 5 GHz footprint of phy_rx_loop_cap_set: two PBUS
+ * words plus phy_param[690]. Use bounded PBUS transactions and restore
+ * the command port too. These are TX capacitor settings used in internal
+ * loopback calibration, not a claimed RX noise/current control. */
+static void suite_loopcap(void)
+{
+    if (!phy_param[42] || !physical_context_ok() || !(MMIO(0x600A0884) & 1u) || (MMIO(0x600A0884) & 2u)) {
+        skip(1200, "LOOPCAP", "requires_5ghz_pbus_debug_idle");
+        return;
+    }
+    const unsigned index = L.freq <= 5240 ? 0 : L.freq <= 5320 ? 1 : L.freq <= 5560 ? 2 :
+        L.freq <= 5640 ? 3 : L.freq <= 5755 ? 4 : L.freq <= 5835 ? 5 : 6;
+    static const uint8_t adjustments[] = {252, 253, 4, 4, 4, 4, 4};
+    run_patch(1200, &k_sham);
+    for (unsigned k = 0; k < 8 && !L.stop; ++k) {
+        const unsigned i = k ? k - 1 : index;
+        const uint8_t a = phy_param[0x2d2 + 2 * i], b = phy_param[0x2d3 + 2 * i];
+        if (a > 31 || b > 15) { skip(1201 + 2 * k, "LOOPCAP", "calibration_bytes_out_of_range"); continue; }
+        unsigned adjusted = (uint8_t)(b + adjustments[i]);
+        if (adjusted < 1) adjusted = 1;
+        if (adjusted > 14) adjusted = 14;
+        char name[32];
+        snprintf(name, sizeof(name), "LOOPCAP_%s_BIN%u", k ? "CAL" : "CURRENT", i);
+        const sense_profile_t p = {name, SENSE_K_PATCH, 3, 0, {
+            {SENSE_P_PARAM, 0, 0, 0, 690, 0xff, 8},
+            {SENSE_P_PBUS, 9, 2, 0, 0, 0x1ff, ((uint32_t)a << 4) | 8u},
+            {SENSE_P_PBUS, 10, 2, 0, 0, 0x1ff, adjusted}}};
+        printf("SENSLAB_LOOPCAP bin=%u cap0=%u cap1=%u adjusted=%u frequency_unchanged=%u\n", i, a, b, adjusted, L.freq);
+        run_patch(1201 + 2 * k, &p);
+        if (!L.stop) run_patch(1202 + 2 * k, &k_sham);
+    }
+}
+
+/* Bounded direct writer derived from phy_spur_reg_write. Four complete
+ * words saved/verified/restored; preserve control[15:14] and other slots'
+ * shared coarse fields. Slots 1..3 are inferred software-layout targets,
+ * not confirmed silicon functions. No persistent configuration changes. */
+static void suite_spurs(void)
+{
+    if (!physical_context_ok()) { skip(1300, "SPUR", "requires_fixed_gain_and_held_dc"); return; }
+    run_patch(1300, &k_sham);
+    for (unsigned slot = 0; slot < 4 && !L.stop; ++slot) {
+        const uint32_t ctrl = 0x600a7c14 + 4 * slot, coef = 0x600a7810 + 8 * slot;
+        const uint32_t stock_ctrl = MMIO(ctrl), stock_shared = MMIO(0x600a7830);
+        printf("SENSLAB_SPUR slot=%u inferred_mapping=%u control=%08" PRIx32 " coeff_a=%08" PRIx32 " coeff_b=%08" PRIx32 " shared=%08" PRIx32 "\n",
+               slot, slot != 0, stock_ctrl, MMIO(coef), MMIO(coef + 4), stock_shared);
+        if (stock_ctrl & 0x2000u) { skip(1301 + 4 * slot, "SPUR", "apparent_slot_already_active"); continue; }
+        for (unsigned sign = 0; sign < 2 && !L.stop; ++sign) {
+            char name[40];
+            snprintf(name, sizeof(name), "SPUR_%s%u_%c512", slot ? "INFERRED" : "REFERENCE", slot, sign ? 'M' : 'P');
+            const unsigned shift = slot * 7;
+            const uint32_t shared = (stock_shared & ~(0x7fu << shift)) | ((sign ? 0x70u : 0x10u) << shift);
+            const uint32_t control = (stock_ctrl & ~0x3fffu) | (sign ? 0x3e00u : 0x2200u);
+            const sense_profile_t p = {name, SENSE_K_SPUR, 4, 0, {
+                P_M(coef, UINT32_MAX, 0x2febfafe), P_M(coef + 4, UINT32_MAX, 0x0865dbae),
+                P_M(0x600a7830, UINT32_MAX, shared), P_M(ctrl, UINT32_MAX, control)}};
+            run_patch(1301 + 4 * slot + 2 * sign, &p);
+            if (!L.stop) run_patch(1302 + 4 * slot + 2 * sign, &k_sham);
+        }
+    }
+}
+
+static void suite_current_confirm(void)
+{
+    /* Forward/reverse halves separate level from time; each trial still
+     * restores its exact entry byte and brackets TEST with STOCK. */
+    static const uint8_t levels[] = {255, 15, 255, 0, 0, 255, 15, 255};
+    run_patch(1400, &k_sham);
+    for (unsigned k = 0; k < sizeof(levels) && !L.stop; ++k) {
+        char name[32];
+        snprintf(name, sizeof(name), "CURRENT_CONFIRM_%u", levels[k]);
+        const sense_profile_t p = {name, SENSE_K_PATCH, 1, 0,
+            {{SENSE_P_CURRENT, 0, 0, 0, 0, 0xff, levels[k]}}};
+        run_patch(1401 + 2 * k, &p);
+        if (!L.stop) run_patch(1402 + 2 * k, &k_sham);
+    }
+}
+
 static void run_suite(char suite)
 {
     printf("SENSLAB_SUITE key=%c\n", suite);
@@ -555,6 +757,11 @@ static void run_suite(char suite)
     case '0':
         for (unsigned k = 0; k < 8u && !L.stop; ++k) run_patch(k, &k_sham);
         break;
+    case 'd': case 'e': suite_bias(); break;
+    case 'f': suite_current(); break;
+    case 'g': suite_loopcap(); break;
+    case 'h': suite_spurs(); break;
+    case 'i': suite_current_confirm(); break;
     case '1': suite_nf_auto(); break;
     case '2': run_list(200, k_iq, sizeof(k_iq) / sizeof(k_iq[0])); break;
     case '3': run_list(300, k_dfilt, sizeof(k_dfilt) / sizeof(k_dfilt[0])); break;
@@ -605,10 +812,15 @@ void sense_lab_run(bool quiet)
     s_request = 0;
     if (!suite) return;
     const int64_t now = esp_timer_get_time();
+    s_noise_mode = suite == 'b' || suite == 'c' || suite == 'd' || (suite >= 'f' && suite <= 'i');
     if (!quiet) { printf("SENSLAB refused=busy\n"); return; }
     if (calibration_in_startup()) { printf("SENSLAB refused=startup_calibration\n"); return; }
-    if (!s_last_video_us || now - s_last_video_us > INT64_C(3000000)) {
+    if (!s_noise_mode && (!s_last_video_us || now - s_last_video_us > INT64_C(3000000))) {
         printf("SENSLAB refused=no_vtx_video (the VTX must be ON and the picture locked; weak but steady)\n");
+        return;
+    }
+    if (s_noise_mode && s_last_video_us && now - s_last_video_us <= INT64_C(3000000)) {
+        printf("SENSLAB refused=recent_video (VTX OFF noise mode requires no recent sync)\n");
         return;
     }
     memset(&L, 0, sizeof(L));
@@ -630,7 +842,7 @@ void sense_lab_run(bool quiet)
         L.offset = rf_offset_khz();
         L.dco_check = phy_dco_held() && phy_dco_read_pair(L.dco);
         for (uint8_t r = 0; r < 8u; ++r) L.filt[r] = phy_i2c_readReg(0x67, 1, 6 + r);
-        L.deadline = esp_timer_get_time() + (suite == 'a' ? SENSE_ALL_US : SENSE_SUITE_US);
+        L.deadline = esp_timer_get_time() + ((suite == 'a' || suite == 'c') ? SENSE_ALL_US : SENSE_SUITE_US);
         /* Baseline: how strong is the carrier? The M2M4 score saturates near
          * 10-11 dB with 4-bit IQ, so the comparison needs a weak carrier. */
         stage_t base;
@@ -646,15 +858,20 @@ void sense_lab_run(bool quiet)
                    firmware_id(), suite, L.freq, L.offset, L.gain, entry_gain, packed, L.dco[0], L.dco[1], L.dco_check,
                    phy_filter_code(), phy_filter_skirt(), phy_dfilt_hw_mode(), phy_11p_hw_enabled(), SENSE_CAPTURES,
                    SENSE_DWELL_MS, cn, sense_acc_mean(&base.click), video, base.video.n, base.cn.n, (long long)video_age_ms);
-            if (cn > 9.0)
+            printf("SENSLAB_MODE mode=%s noise_units=dc_removed_cells2 fixed_gain=%u\n",
+                   s_noise_mode ? "noise_vtx_off" : "carrier_vtx_on", L.gain);
+            if (!s_noise_mode && cn > 9.0)
                 printf("SENSLAB_WARN signal_strong baseline_cn_db=%.2f: M2M4 saturates near 10-11 dB with 4-bit IQ; "
                        "weaken the signal until the picture shows light snow (about 2-8 dB)\n", cn);
-            if (cn < 0.5) printf("SENSLAB_WARN signal_very_weak baseline_cn_db=%.2f: move closer for usable statistics\n", cn);
-            if (!base.video.n) printf("SENSLAB_WARN no_sync_in_baseline: the video SNR metric will be empty\n");
-            if (suite == 'a') {
+            if (!s_noise_mode && cn < 0.5) printf("SENSLAB_WARN signal_very_weak baseline_cn_db=%.2f: move closer for usable statistics\n", cn);
+            if (!s_noise_mode && !base.video.n) printf("SENSLAB_WARN no_sync_in_baseline: the video SNR metric will be empty\n");
+            if (suite == 'a' || suite == 'c') {
                 static const char order[] = "123456789";
-                for (unsigned k = 0; order[k] && !L.stop; ++k) run_suite(order[k]);
-            } else run_suite(suite);
+                for (unsigned k = 0; order[k] && !L.stop; ++k) {
+                    if (s_noise_mode && order[k] == '8') continue; /* gain is fixed in noise comparisons */
+                    run_suite(order[k]);
+                }
+            } else run_suite(suite == 'b' ? '0' : suite);
         }
     }
     s_active = NULL;

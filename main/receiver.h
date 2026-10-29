@@ -63,6 +63,13 @@ void transport_resume_live(void);
 void transport_start_chain(dma_descriptor_t *first);
 uint32_t transport_switch_wait_ms(void);
 const char *transport_program_name(void);
+/* Decoder (transport.c): U80P64-R1 (default) or U85Q, each a fixed program
+ * with its own LUT; kept in NVS "demod" (main.c, console m). */
+enum { TRANSPORT_DEMOD_P64, TRANSPORT_DEMOD_U85Q, TRANSPORT_DEMODS };
+uint8_t transport_demod(void);
+const char *transport_demod_name(uint8_t d);
+bool transport_set_demod(uint8_t d);
+const uint16_t *transport_decoder_lut(unsigned *token_bits);
 bool transport_live(void);
 bool transport_restart_profile(void);
 bool transport_faulted(void);
@@ -247,6 +254,8 @@ void self_noise_request(void);   /* bench: noise floor with the video output on 
 
 /* ---- menu.c ---- */
 extern volatile int s_menu_cursor;
+extern volatile int s_exp_sub; /* -1 closed, else EXP_* */
+extern bool s_exp_failed;
 extern volatile int s_cal_sub;   /* CALIBRATE submenu cursor, -1 = closed */
 bool menu_open(void);
 void menu_close(void);
@@ -299,6 +308,7 @@ void profile_set_live_mode(bool on);
 
 /* ---- diag.c: passive field diagnostics (diag_logic.h) ---- */
 void diag_window(bool measured, bool video_valid, bool afc_step);   /* control task, every window */
+void diag_picture(unsigned found, unsigned expected);                /* control task, every decoded window */
 void diag_poll(void);                   /* console task: prints queued records */
 void diag_report(void);                 /* console D */
 void diag_toggle_stream(void);          /* console R */

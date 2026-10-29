@@ -41,7 +41,9 @@ static inline const char *diag_category_name(int c)
 typedef struct {
     uint32_t t_ms;          /* observation time, ms; wraps after ~49 days */
     uint32_t t_s;           /* uptime, s */
-    uint8_t video_pct;      /* sync-valid / ALL observation windows, % */
+    uint8_t video_pct;      /* sync-valid / ALL observation windows, % (AFC-gated; reads low while moving) */
+    uint8_t picture_pct;    /* sync pulses found / expected in the decoded windows (picture_sync.h), %; 0xff unknown */
+    uint8_t picture_windows; /* windows behind picture_pct */
     uint8_t coverage_pct;   /* measurable / ALL observation windows, % */
     uint8_t sync_measured_pct; /* sync-valid / measurable, % */
     uint8_t measured;       /* event observation had usable AFC measurement */
@@ -67,6 +69,7 @@ typedef struct {
  * threshold ~1-5 dB, research/README.md). */
 #define DIAG_VIDEO_OK_PCT     50u   /* majority of windows have sync evidence */
 #define DIAG_VIDEO_LOST_PCT   5u    /* very little confirmed sync evidence */
+#define DIAG_PICTURE_UNKNOWN  0xffu /* no decoded window this second */
 #define DIAG_FLOOR_CN_X10     20    /* at or below: at the receiver noise */
 #define DIAG_WEAK_CN_X10      80    /* below: a weak carrier */
 #define DIAG_CLIFF_CN_X10     60    /* at or above: RF still clearly there */

@@ -83,6 +83,7 @@ def parse(lines):
             if prof is None or step not in prof['caps']:
                 continue
             values = {k: num(fields.get(k)) for k in (*METRICS, *EXTRA) if k != 'video_cov'}
+            values['m2'] = num(fields.get('m2'))
             values['video_cov'] = 0.0 if values['video_snr_db'] is None else 1.0
             prof['caps'][step].append(values)
         elif tag == 'SENSLAB_APPLY' and current is not None:
@@ -95,7 +96,7 @@ def parse(lines):
             prof = run['profiles'].get(int(fields['id']))
             if prof is not None:
                 prof['aborts'].append(fields.get('reason'))
-        elif tag == 'SENSLAB_RESULT':
+        elif tag in ('SENSLAB_RESULT', 'SENSLAB_NOISE'):
             prof = run['profiles'].get(int(fields['id']))
             if prof is not None:
                 prof['status'] = fields.get('status')
@@ -265,6 +266,8 @@ def analyse(paths, json_path=None, out=sys.stdout):
     for path in paths:
         text = Path(path).read_text(errors='replace').splitlines()
         run = parse(text)
+        if run['begin'].get('suite') in ('b', 'c', 'd', 'f', 'g', 'h', 'i'):
+            raise ValueError('Noise-mode log: use analyse_noise(), not carrier sensitivity scoring')
         profiles, spread = score(run)
         report(path, run, profiles, spread, out)
         runs.append((str(path), run, profiles))
@@ -285,6 +288,38 @@ def analyse(paths, json_path=None, out=sys.stdout):
     }
     if json_path:
         Path(json_path).write_text(json.dumps(result, indent=1, default=str))
+    return result
+
+
+def analyse_noise(paths, json_path=None, out=sys.stdout):
+    """Raw captured noise power, not input-referred noise figure or sensitivity."""
+    runs = []
+    for path in paths:
+        run = parse(Path(path).read_text(errors='replace').splitlines())
+        if run['begin'] and run['begin'].get('suite') not in ('b', 'c', 'd', 'f', 'g', 'h', 'i'):
+            raise ValueError('Expected VTX-off noise mode b/c')
+        profiles = []
+        for p in run['profiles'].values():
+            row = {'id': p['id'], 'name': p['name'], 'complete': complete(p)}
+            if row['complete']:
+                stages = [[10 * math.log10(c['m2']) for c in p['caps'][i]
+                           if c['m2'] is not None and c['m2'] > 0] for i in range(4)]
+                if any(len(v) != CAPTURES_PER_STAGE for v in stages):
+                    row['complete'] = False
+                else:
+                    stock, se_s, _ = mean_se(stages[0] + stages[3])
+                    test, se_t, _ = mean_se(stages[1] + stages[2])
+                    row.update(delta_db=test-stock, se_db=math.hypot(se_s, se_t),
+                               drift_db=mean_se(stages[3])[0]-mean_se(stages[0])[0],
+                               agree_db=mean_se(stages[2])[0]-mean_se(stages[1])[0])
+            profiles.append(row)
+            out.write(f"{row['name']}: {row}\n")
+        runs.append({'log': str(path), 'begin': run['begin'], 'end': run['end'],
+                     'refused': run['refused'], 'profiles': profiles})
+    result = {'mode': 'noise_vtx_off', 'runs': runs,
+              'note': 'Delta is captured noise power at fixed gain; bandwidth/conversion gain can change. Not NF or sensitivity.'}
+    if json_path:
+        Path(json_path).write_text(json.dumps(result, indent=2))
     return result
 
 
@@ -322,7 +357,10 @@ def record(port, outdir, suite, timeout_s):
                 print('timeout: no SENSLAB_END', file=sys.stderr)
     finally:
         s.close()
-    analyse([log], outdir / 'summary.json')
+    if suite in ('b', 'c', 'd', 'f', 'g', 'h', 'i'):
+        analyse_noise([log], outdir / 'summary.json')
+    else:
+        analyse([log], outdir / 'summary.json')
 
 
 def main():
@@ -331,16 +369,17 @@ def main():
     r = sub.add_parser('record')
     r.add_argument('port')
     r.add_argument('outdir')
-    r.add_argument('--suite', default='a', choices=list('0123456789a'))
+    r.add_argument('--suite', default='a', choices=list('0123456789abcdefghi'))
     r.add_argument('--timeout', type=float, default=3900.0)
     a = sub.add_parser('analyse')
     a.add_argument('logs', nargs='+')
     a.add_argument('--json')
+    a.add_argument('--noise', action='store_true', help='VTX-off b/c logs; report noise-power deltas only')
     args = ap.parse_args()
     if args.cmd == 'record':
         record(args.port, args.outdir, args.suite, args.timeout)
     else:
-        analyse(args.logs, args.json)
+        (analyse_noise if args.noise else analyse)(args.logs, args.json)
 
 
 if __name__ == '__main__':

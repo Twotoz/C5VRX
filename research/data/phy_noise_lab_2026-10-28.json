@@ -1,0 +1,1988 @@
+{
+  "project": "C5VRX by Twotoz and contributors",
+  "date": "2026-10-28",
+  "archive_sha256": "dbf33c418c8d408d4005c849d12a1432deea82e2e5e57de3c8ddf914d104fffb",
+  "board": "ESP32-C5 rev1.0, COM10, A1 5865MHz, U85Q",
+  "input": "Operator VTX OFF; antenna/termination not characterized; not calibrated NF.",
+  "units": "delta_db: TEST minus adjacent STOCK, DC-removed Q4/I4 cells squared at fixed screened gain",
+  "limits": [
+    "No calibrated input noise source, carrier response or absolute NF measurement.",
+    "Current-level initial sweep ascending; use counterbalanced confirmation to separate time and setting.",
+    "Incomplete/rejected/broken-IQ measurements have no valid noise delta.",
+    "Spur slots1..3 are inferred address-layout candidates, not confirmed silicon functions."
+  ],
+  "runs": [
+    {
+      "log": "noise-shams-20261028-01/console.log",
+      "begin": {
+        "fw": "5.0.0-noise-lab+local",
+        "suite": "b",
+        "freq": "5865",
+        "offset_khz": "0",
+        "gain": "79",
+        "entry_gain": "79",
+        "packed": "001e77f4",
+        "dco": "245/236",
+        "held": "1",
+        "filter_code": "56",
+        "skirt": "32",
+        "dfilt": "12",
+        "p11": "1",
+        "captures_per_stage": "16",
+        "dwell_ms": "300",
+        "baseline_cn_db": "-15.20",
+        "baseline_click_pm": "38.993",
+        "baseline_video_snr_db": "0.00",
+        "video_caps": "0/16",
+        "video_age_ms": "19562",
+        "lane": "ultrafine",
+        "persistent": "0"
+      },
+      "end": {
+        "status": "COMPLETE",
+        "profiles": "8",
+        "rejected": "0",
+        "breaks_iq": "0",
+        "skipped": "0",
+        "restored": "1",
+        "input_referred_claim": "none"
+      },
+      "refused": null,
+      "profiles": [
+        {
+          "id": 0,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.03710030173686096,
+          "se_db": 0.02404411705832471,
+          "drift_db": -0.014910171317750631,
+          "agree_db": 0.0440153590367931
+        },
+        {
+          "id": 1,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.021294104177366435,
+          "se_db": 0.02185922988882463,
+          "drift_db": 0.00966999145310865,
+          "agree_db": 0.05313503012045029
+        },
+        {
+          "id": 2,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.009755123294231893,
+          "se_db": 0.025438365473553035,
+          "drift_db": 0.020564753262075186,
+          "agree_db": 0.04822732555924336
+        },
+        {
+          "id": 3,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.020992188590300387,
+          "se_db": 0.022259603186617613,
+          "drift_db": -0.002487048620198884,
+          "agree_db": -0.023848923910686715
+        },
+        {
+          "id": 4,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.013082493098456105,
+          "se_db": 0.024268655425017594,
+          "drift_db": -0.012774501611467315,
+          "agree_db": 0.011307483309222377
+        },
+        {
+          "id": 5,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.018302185836814644,
+          "se_db": 0.023461020423451988,
+          "drift_db": -0.05128331018353638,
+          "agree_db": -0.03633324199978283
+        },
+        {
+          "id": 6,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.009201669369019783,
+          "se_db": 0.021554209279515166,
+          "drift_db": -0.002792454319279436,
+          "agree_db": 0.08366188102344019
+        },
+        {
+          "id": 7,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.04697787632887529,
+          "se_db": 0.02708442061445597,
+          "drift_db": 0.00256962156951257,
+          "agree_db": 0.024874508376978355
+        }
+      ],
+      "console_sha256": "ef2d443cba1999edb4fda17f38e46cd8811ff317dccc98fa6e862ff606de26c1",
+      "console_bytes": 114243
+    },
+    {
+      "log": "noise-sweep-20261028-01/console.log",
+      "begin": {
+        "fw": "5.0.0-noise-lab+local",
+        "suite": "c",
+        "freq": "5865",
+        "offset_khz": "0",
+        "gain": "79",
+        "entry_gain": "79",
+        "packed": "001e77f4",
+        "dco": "246/237",
+        "held": "1",
+        "filter_code": "56",
+        "skirt": "32",
+        "dfilt": "12",
+        "p11": "1",
+        "captures_per_stage": "16",
+        "dwell_ms": "300",
+        "baseline_cn_db": "-11.33",
+        "baseline_click_pm": "37.535",
+        "baseline_video_snr_db": "0.00",
+        "video_caps": "0/16",
+        "video_age_ms": "105622",
+        "lane": "ultrafine",
+        "persistent": "0"
+      },
+      "end": {
+        "status": "COMPLETE",
+        "profiles": "90",
+        "rejected": "8",
+        "breaks_iq": "1",
+        "skipped": "3",
+        "restored": "1",
+        "input_referred_claim": "none"
+      },
+      "refused": null,
+      "profiles": [
+        {
+          "id": 100,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.029155649036270326,
+          "se_db": 0.025507388338874715,
+          "drift_db": -0.08310748478053132,
+          "agree_db": 0.009161322136688632
+        },
+        {
+          "id": 101,
+          "name": "NF_AUTO_0",
+          "complete": true,
+          "delta_db": 0.0008945066732160001,
+          "se_db": 0.02627657980803829,
+          "drift_db": -0.00861291626502858,
+          "agree_db": -0.030203841415792354
+        },
+        {
+          "id": 102,
+          "name": "NF_AUTO_1",
+          "complete": true,
+          "delta_db": -2.529514176519143e-05,
+          "se_db": 0.021510897644613426,
+          "drift_db": 0.049733837829104566,
+          "agree_db": -0.026250572425855268
+        },
+        {
+          "id": 103,
+          "name": "NF_AUTO_2",
+          "complete": true,
+          "delta_db": -0.00862922291881052,
+          "se_db": 0.02723380886973834,
+          "drift_db": 0.0017820579868184083,
+          "agree_db": 0.022598802834251863
+        },
+        {
+          "id": 104,
+          "name": "NF_AUTO_3",
+          "complete": true,
+          "delta_db": -0.043430125034484846,
+          "se_db": 0.026546590785207633,
+          "drift_db": 0.00022391680843902861,
+          "agree_db": -0.03835991664201721
+        },
+        {
+          "id": 105,
+          "name": "NF_AUTO_4",
+          "complete": true,
+          "delta_db": -0.001847157095848928,
+          "se_db": 0.024069177192747995,
+          "drift_db": 0.05112284001344136,
+          "agree_db": -0.011022316159629675
+        },
+        {
+          "id": 106,
+          "name": "NF_AUTO_5",
+          "complete": true,
+          "delta_db": 0.04974022825301283,
+          "se_db": 0.02329496751788012,
+          "drift_db": 0.035763181164313096,
+          "agree_db": -0.010010824562071363
+        },
+        {
+          "id": 107,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.010445649015268899,
+          "se_db": 0.02339928880103222,
+          "drift_db": 0.044211875972150594,
+          "agree_db": 0.017456688529297715
+        },
+        {
+          "id": 108,
+          "name": "NF_AUTO_6",
+          "complete": true,
+          "delta_db": -0.029833921623708903,
+          "se_db": 0.018314235353988875,
+          "drift_db": 0.05007060654696183,
+          "agree_db": -0.01700563230857366
+        },
+        {
+          "id": 109,
+          "name": "NF_AUTO_7",
+          "complete": true,
+          "delta_db": 0.01171444674914568,
+          "se_db": 0.02797259211615754,
+          "drift_db": 0.013418872247436653,
+          "agree_db": -0.02153309728798991
+        },
+        {
+          "id": 110,
+          "name": "NF_AUTO_8",
+          "complete": false
+        },
+        {
+          "id": 111,
+          "name": "NF_AUTO_9",
+          "complete": false
+        },
+        {
+          "id": 112,
+          "name": "NF_AUTO_A",
+          "complete": false
+        },
+        {
+          "id": 113,
+          "name": "NF_AUTO_B",
+          "complete": false
+        },
+        {
+          "id": 114,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.0008016564179804675,
+          "se_db": 0.025211067519854018,
+          "drift_db": -0.06682797339397428,
+          "agree_db": 0.03255501078233003
+        },
+        {
+          "id": 115,
+          "name": "NF_AUTO_C",
+          "complete": false
+        },
+        {
+          "id": 116,
+          "name": "NF_AUTO_D",
+          "complete": false
+        },
+        {
+          "id": 117,
+          "name": "NF_AUTO_E",
+          "complete": false
+        },
+        {
+          "id": 118,
+          "name": "NF_AUTO_F",
+          "complete": false
+        },
+        {
+          "id": 119,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.05006484333328487,
+          "se_db": 0.022703596476616857,
+          "drift_db": 0.03517746480583828,
+          "agree_db": -0.019647120973219856
+        },
+        {
+          "id": 200,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.011238030624923567,
+          "se_db": 0.02289538877468096,
+          "drift_db": 0.01419959011737415,
+          "agree_db": 0.03859360474186868
+        },
+        {
+          "id": 201,
+          "name": "IQ_RX_0438_BIT29_OFF",
+          "complete": true,
+          "delta_db": 0.9050415703724157,
+          "se_db": 0.02450302782093545,
+          "drift_db": -0.010958269217828054,
+          "agree_db": -0.030962664443357824
+        },
+        {
+          "id": 202,
+          "name": "IQ_RX_0438_BIT30_OFF",
+          "complete": true,
+          "delta_db": 0.7575094466268224,
+          "se_db": 0.022102066166706513,
+          "drift_db": 0.05858826908453185,
+          "agree_db": -0.02850546287340361
+        },
+        {
+          "id": 203,
+          "name": "IQ_RX_0438_BIT31_OFF",
+          "complete": true,
+          "delta_db": 0.4527448287947067,
+          "se_db": 0.021985805663686485,
+          "drift_db": -0.030229661131299324,
+          "agree_db": -0.020062799624163574
+        },
+        {
+          "id": 204,
+          "name": "IQ_RX_0438_ALL_OFF",
+          "complete": true,
+          "delta_db": 0.9255769541077532,
+          "se_db": 0.022999088116900816,
+          "drift_db": 0.022977824543200853,
+          "agree_db": 0.002789956057777765
+        },
+        {
+          "id": 205,
+          "name": "IQ_TX_0C0C_BIT13_OFF",
+          "complete": true,
+          "delta_db": -0.04828247708760802,
+          "se_db": 0.024492403295216698,
+          "drift_db": -0.009879736840080255,
+          "agree_db": 0.05437819116555698
+        },
+        {
+          "id": 206,
+          "name": "IQ_TX_0C0C_BIT14_OFF",
+          "complete": true,
+          "delta_db": 0.011516012394301889,
+          "se_db": 0.02317229985672477,
+          "drift_db": 0.004455547642577606,
+          "agree_db": 0.020217612355072134
+        },
+        {
+          "id": 207,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.011698989896396839,
+          "se_db": 0.02213666211434993,
+          "drift_db": -0.03830843480434076,
+          "agree_db": -0.044957445746400815
+        },
+        {
+          "id": 208,
+          "name": "IQ_TX_0C0C_ALL_OFF",
+          "complete": true,
+          "delta_db": 0.02688790219761561,
+          "se_db": 0.023014880164475445,
+          "drift_db": -0.007914665420236666,
+          "agree_db": 0.028561975607996892
+        },
+        {
+          "id": 209,
+          "name": "IQ_RX_COEFF_A_ZERO",
+          "complete": true,
+          "delta_db": 0.009091514063637618,
+          "se_db": 0.021834599598906566,
+          "drift_db": -0.010145472384653687,
+          "agree_db": -0.01319056501670346
+        },
+        {
+          "id": 210,
+          "name": "IQ_RX_COEFF_B_ZERO",
+          "complete": true,
+          "delta_db": -0.045970458581963136,
+          "se_db": 0.02864336893154389,
+          "drift_db": 0.023754018038448343,
+          "agree_db": 0.016910263798502356
+        },
+        {
+          "id": 211,
+          "name": "IQ_CORR_ALL_OFF",
+          "complete": true,
+          "delta_db": 0.9254492644067227,
+          "se_db": 0.027565266138491206,
+          "drift_db": -0.04940653901816905,
+          "agree_db": 0.039452320126946994
+        },
+        {
+          "id": 212,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.03520011509252008,
+          "se_db": 0.02564923711757443,
+          "drift_db": 0.01934389270904724,
+          "agree_db": 0.014167772213449226
+        },
+        {
+          "id": 300,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.012167429975495914,
+          "se_db": 0.025036951678940073,
+          "drift_db": -0.012980296879621989,
+          "agree_db": 0.008997323564001292
+        },
+        {
+          "id": 301,
+          "name": "DFILT_MODE4",
+          "complete": true,
+          "delta_db": -0.5104932991872477,
+          "se_db": 0.02660454031057081,
+          "drift_db": 0.03371301643910041,
+          "agree_db": -0.06519775585064469
+        },
+        {
+          "id": 302,
+          "name": "DFILT_MODE8",
+          "complete": true,
+          "delta_db": -0.40047553367403044,
+          "se_db": 0.027528548045652804,
+          "drift_db": 0.015555008095606837,
+          "agree_db": 0.03141687955380679
+        },
+        {
+          "id": 303,
+          "name": "DFILT_MODE12",
+          "complete": true,
+          "delta_db": -0.037496579239080674,
+          "se_db": 0.03012978291974114,
+          "drift_db": -0.005785932132850391,
+          "agree_db": 0.04064650460955033
+        },
+        {
+          "id": 304,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.02104111386969887,
+          "se_db": 0.02541322490234446,
+          "drift_db": 0.041510944121441185,
+          "agree_db": 0.03461020509629442
+        },
+        {
+          "id": 400,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.011980103156339794,
+          "se_db": 0.028932456129087764,
+          "drift_db": -0.016238885880454745,
+          "agree_db": -0.04762193016217342
+        },
+        {
+          "id": 401,
+          "name": "CHAN_A_ARG0",
+          "complete": true,
+          "delta_db": -0.017670133343302474,
+          "se_db": 0.026258813604983902,
+          "drift_db": -0.008195658456605415,
+          "agree_db": -0.018444499825514882
+        },
+        {
+          "id": 402,
+          "name": "CHAN_A_ARG1",
+          "complete": true,
+          "delta_db": 0.04967506826151169,
+          "se_db": 0.035515185160160626,
+          "drift_db": -0.022334610252527476,
+          "agree_db": -0.01690655995128232
+        },
+        {
+          "id": 403,
+          "name": "CHAN_B_ARG0",
+          "complete": true,
+          "delta_db": -0.011714371352482544,
+          "se_db": 0.03179367538353588,
+          "drift_db": -0.1531523860680455,
+          "agree_db": 0.011968141012247635
+        },
+        {
+          "id": 404,
+          "name": "CHAN_B_ARG1",
+          "complete": true,
+          "delta_db": -0.01674054004961434,
+          "se_db": 0.023637679310193727,
+          "drift_db": -0.0383519333011213,
+          "agree_db": 0.0067260178795400805
+        },
+        {
+          "id": 405,
+          "name": "PKDADC_BIT31_OFF",
+          "complete": true,
+          "delta_db": 0.0013617989964727073,
+          "se_db": 0.030185481859580258,
+          "drift_db": -0.07845286586658506,
+          "agree_db": 0.047460356019936256
+        },
+        {
+          "id": 406,
+          "name": "BB_CCA_BIT30_OFF",
+          "complete": true,
+          "delta_db": 0.010377590093427536,
+          "se_db": 0.028181625758462503,
+          "drift_db": 0.0068962786631532325,
+          "agree_db": -0.028599590228282956
+        },
+        {
+          "id": 407,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.05019045782498566,
+          "se_db": 0.02977212386603916,
+          "drift_db": 0.1028224713757675,
+          "agree_db": 0.06983648698566824
+        },
+        {
+          "id": 408,
+          "name": "MAC_CCA_DISABLE",
+          "complete": true,
+          "delta_db": -0.08617082154008049,
+          "se_db": 0.03026059778534349,
+          "drift_db": 0.005313265028650704,
+          "agree_db": -0.0033828119059933215
+        },
+        {
+          "id": 409,
+          "name": "MAC_CCA_ENABLE",
+          "complete": true,
+          "delta_db": 0.05822916348034557,
+          "se_db": 0.025957104829268725,
+          "drift_db": 0.0342937774012988,
+          "agree_db": -0.017424838917549756
+        },
+        {
+          "id": 410,
+          "name": "FFT_FORCE_OFF",
+          "complete": true,
+          "delta_db": -0.02596834196163833,
+          "se_db": 0.026228400720906143,
+          "drift_db": -0.0021144291533259363,
+          "agree_db": -0.028414522513756424
+        },
+        {
+          "id": 411,
+          "name": "FFT_FORCE_SCALE0",
+          "complete": true,
+          "delta_db": 0.006586490056988303,
+          "se_db": 0.02697678315721851,
+          "drift_db": 0.023985081917556883,
+          "agree_db": 0.044192527873240905
+        },
+        {
+          "id": 412,
+          "name": "RX11B_OPT_ARG0",
+          "complete": true,
+          "delta_db": 0.03608948004936341,
+          "se_db": 0.030879555243499144,
+          "drift_db": -0.10085728384806103,
+          "agree_db": -0.032171946218388925
+        },
+        {
+          "id": 413,
+          "name": "RX11B_OPT_ARG1",
+          "complete": true,
+          "delta_db": 0.0006918605749204332,
+          "se_db": 0.027098361852893976,
+          "drift_db": -0.03009071468586022,
+          "agree_db": 0.014663386209266882
+        },
+        {
+          "id": 414,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.05917627477011056,
+          "se_db": 0.020095253172405837,
+          "drift_db": -0.003967968779432951,
+          "agree_db": -0.004432723534879557
+        },
+        {
+          "id": 415,
+          "name": "RXSENSE_ARG0",
+          "complete": true,
+          "delta_db": -0.043870652722364234,
+          "se_db": 0.029924840560337163,
+          "drift_db": 0.08271052379214794,
+          "agree_db": -0.017976315482791883
+        },
+        {
+          "id": 416,
+          "name": "RXSENSE_ARG1",
+          "complete": true,
+          "delta_db": 0.00017117279131717567,
+          "se_db": 0.023013593449983275,
+          "drift_db": 0.04832535539205374,
+          "agree_db": -0.011705590120966392
+        },
+        {
+          "id": 417,
+          "name": "LLTF_MASK_00",
+          "complete": true,
+          "delta_db": -0.0032771056353713135,
+          "se_db": 0.024939277644216995,
+          "drift_db": -0.03442785132689874,
+          "agree_db": 0.0069300766055961915
+        },
+        {
+          "id": 418,
+          "name": "LLTF_MASK_10",
+          "complete": true,
+          "delta_db": -0.025990517370092725,
+          "se_db": 0.029067325155049083,
+          "drift_db": 0.011376767053361547,
+          "agree_db": -0.0003909057540356642
+        },
+        {
+          "id": 419,
+          "name": "LLTF_MASK_01",
+          "complete": true,
+          "delta_db": -0.009793766352558464,
+          "se_db": 0.03011867906206455,
+          "drift_db": -0.09014208753889363,
+          "agree_db": -0.04500733749182295
+        },
+        {
+          "id": 420,
+          "name": "LLTF_MASK_11",
+          "complete": true,
+          "delta_db": -0.05556721474574822,
+          "se_db": 0.0316529487437657,
+          "drift_db": -0.07691662436480584,
+          "agree_db": -0.020217170644608373
+        },
+        {
+          "id": 421,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.030631345368957064,
+          "se_db": 0.02787035671139734,
+          "drift_db": 0.02168871393276728,
+          "agree_db": 0.003106894563895679
+        },
+        {
+          "id": 422,
+          "name": "RIFS_ARG0",
+          "complete": true,
+          "delta_db": 0.01873561068781182,
+          "se_db": 0.024303246718425403,
+          "drift_db": -0.029188875867415476,
+          "agree_db": 0.008441857767627958
+        },
+        {
+          "id": 423,
+          "name": "RIFS_ARG1",
+          "complete": true,
+          "delta_db": 0.01571942202404486,
+          "se_db": 0.023140724094037595,
+          "drift_db": -0.05154377639504215,
+          "agree_db": -0.011157311461936992
+        },
+        {
+          "id": 424,
+          "name": "VHT_ARG0",
+          "complete": true,
+          "delta_db": -0.005782336853901171,
+          "se_db": 0.022361663835792255,
+          "drift_db": -0.0005755588960703051,
+          "agree_db": -0.025454357938520467
+        },
+        {
+          "id": 425,
+          "name": "VHT_ARG1",
+          "complete": true,
+          "delta_db": 0.040782292629157446,
+          "se_db": 0.02756239773321053,
+          "drift_db": -0.0019115891684826636,
+          "agree_db": -0.016064277128893245
+        },
+        {
+          "id": 426,
+          "name": "RX11BLR_ARG0",
+          "complete": true,
+          "delta_db": 0.0027374553580727934,
+          "se_db": 0.025988080458828396,
+          "drift_db": -0.06581928231305145,
+          "agree_db": 0.010132971018223635
+        },
+        {
+          "id": 427,
+          "name": "RX11BLR_ARG1",
+          "complete": true,
+          "delta_db": 0.0062544463015985485,
+          "se_db": 0.026703698187936525,
+          "drift_db": 0.10541933848275065,
+          "agree_db": 0.027696544399869794
+        },
+        {
+          "id": 428,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.012775290353228996,
+          "se_db": 0.02904012410512957,
+          "drift_db": -0.03779647426190991,
+          "agree_db": 0.12739060621229115
+        },
+        {
+          "id": 429,
+          "name": "HEMU_RU26_VENDOR",
+          "complete": true,
+          "delta_db": -0.015516623426595544,
+          "se_db": 0.028868252498370606,
+          "drift_db": 0.0717330039337396,
+          "agree_db": 0.05662063880213264
+        },
+        {
+          "id": 430,
+          "name": "PWDET_VENDOR_CLEAR",
+          "complete": true,
+          "delta_db": -0.05438400135531829,
+          "se_db": 0.024079975690464533,
+          "drift_db": -0.03675014015351685,
+          "agree_db": 0.00033151085338367636
+        },
+        {
+          "id": 431,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.015907532853554507,
+          "se_db": 0.02289887820771102,
+          "drift_db": -0.051515509300073425,
+          "agree_db": -0.009136061460993439
+        },
+        {
+          "id": 500,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.026695477531419876,
+          "se_db": 0.02562945501410526,
+          "drift_db": 0.01789895078054826,
+          "agree_db": 0.048527119655563666
+        },
+        {
+          "id": 501,
+          "name": "TXCLK_ARG0",
+          "complete": true,
+          "delta_db": -0.0655328722238,
+          "se_db": 0.02655232472741967,
+          "drift_db": 0.03188760073596342,
+          "agree_db": -0.018590508775193193
+        },
+        {
+          "id": 502,
+          "name": "TXCLK_ARG1",
+          "complete": true,
+          "delta_db": -0.013020628934424572,
+          "se_db": 0.03013353005443993,
+          "drift_db": 0.07731089268021307,
+          "agree_db": 0.014636611713966019
+        },
+        {
+          "id": 503,
+          "name": "WIFI_ENABLE_ARG0",
+          "complete": false
+        },
+        {
+          "id": 504,
+          "name": "WIFI_ENABLE_ARG1",
+          "complete": true,
+          "delta_db": -0.013653705448783526,
+          "se_db": 0.0202257162410848,
+          "drift_db": -0.04418864656877375,
+          "agree_db": -0.032949667456267484
+        },
+        {
+          "id": 505,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.0464212845454961,
+          "se_db": 0.0244962922041635,
+          "drift_db": 0.08209869199575959,
+          "agree_db": -0.0074700892342285385
+        },
+        {
+          "id": 610,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.0034999216243285503,
+          "se_db": 0.0293721519076815,
+          "drift_db": -0.008163208668758415,
+          "agree_db": 0.12450138979461389
+        },
+        {
+          "id": 611,
+          "name": "ADC_SELECTOR0",
+          "complete": true,
+          "delta_db": -0.40237689252116215,
+          "se_db": 0.07302566719253746,
+          "drift_db": -0.02127055979772141,
+          "agree_db": 0.18302584910807607
+        },
+        {
+          "id": 612,
+          "name": "LO_CAP_PLUS1",
+          "complete": true,
+          "delta_db": -0.0008809357160730613,
+          "se_db": 0.10507863852077844,
+          "drift_db": -0.10638546286908923,
+          "agree_db": 0.07304875596670524
+        },
+        {
+          "id": 613,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.1274522841359209,
+          "se_db": 0.07231476121364434,
+          "drift_db": 0.11890747861806794,
+          "agree_db": -0.007037385695075393
+        },
+        {
+          "id": 710,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.18798194378294664,
+          "se_db": 0.13578413692445773,
+          "drift_db": -0.29342542954018036,
+          "agree_db": 0.019279883729400815
+        },
+        {
+          "id": 711,
+          "name": "FILTER_CODE_M2",
+          "complete": true,
+          "delta_db": 0.02899220575585737,
+          "se_db": 0.029662115106528646,
+          "drift_db": 0.07577140900766643,
+          "agree_db": 0.028328843917911684
+        },
+        {
+          "id": 712,
+          "name": "FILTER_CODE_M1",
+          "complete": true,
+          "delta_db": -0.005256128800000148,
+          "se_db": 0.02602210876620098,
+          "drift_db": -0.055649777294099145,
+          "agree_db": 0.01451175178267139
+        },
+        {
+          "id": 713,
+          "name": "FILTER_CODE_P1",
+          "complete": true,
+          "delta_db": -0.03879665144669353,
+          "se_db": 0.020981198405039234,
+          "drift_db": 0.05317555945248742,
+          "agree_db": -0.002121111063415171
+        },
+        {
+          "id": 714,
+          "name": "FILTER_CODE_P2",
+          "complete": true,
+          "delta_db": -0.14386337465531884,
+          "se_db": 0.10757674570926808,
+          "drift_db": -0.25732346343426205,
+          "agree_db": -0.014245698479437685
+        },
+        {
+          "id": 715,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.0025994052971265447,
+          "se_db": 0.02839570670846956,
+          "drift_db": -0.020736731781349604,
+          "agree_db": 0.004765815887931346
+        },
+        {
+          "id": 900,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.027266429018828475,
+          "se_db": 0.024409658261020324,
+          "drift_db": 0.06624157049396562,
+          "agree_db": 0.020092629143483975
+        },
+        {
+          "id": 901,
+          "name": "DAC_OUTPUT_OFF",
+          "complete": true,
+          "delta_db": 0.008158391443616964,
+          "se_db": 0.022438319666519248,
+          "drift_db": -0.015254143017674693,
+          "agree_db": 0.008476304093004927
+        },
+        {
+          "id": 902,
+          "name": "DAC_OUTPUT_OFF",
+          "complete": true,
+          "delta_db": -0.05192349258417206,
+          "se_db": 0.027238408597435086,
+          "drift_db": -0.015184802317866897,
+          "agree_db": -0.021495461357524448
+        },
+        {
+          "id": 903,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.015636764624164634,
+          "se_db": 0.023212345895492245,
+          "drift_db": -0.005953843347769272,
+          "agree_db": -0.03950660336846834
+        }
+      ],
+      "console_sha256": "227b7f88971a5d93a6a4a39eea9ec1240a007bbd07a939f0160916269367d579",
+      "console_bytes": 1203799
+    },
+    {
+      "log": "bias-noise-20261028-01/console.log",
+      "begin": {
+        "fw": "5.0.0-noise-lab+local",
+        "suite": "d",
+        "freq": "5865",
+        "offset_khz": "0",
+        "gain": "79",
+        "entry_gain": "79",
+        "packed": "001e77f4",
+        "dco": "235/233",
+        "held": "1",
+        "filter_code": "56",
+        "skirt": "32",
+        "dfilt": "12",
+        "p11": "1",
+        "captures_per_stage": "16",
+        "dwell_ms": "300",
+        "baseline_cn_db": "-11.27",
+        "baseline_click_pm": "39.222",
+        "baseline_video_snr_db": "0.00",
+        "video_caps": "0/16",
+        "video_age_ms": "9848",
+        "lane": "ultrafine",
+        "persistent": "0"
+      },
+      "end": {
+        "status": "COMPLETE",
+        "profiles": "7",
+        "rejected": "0",
+        "breaks_iq": "0",
+        "skipped": "0",
+        "restored": "1",
+        "input_referred_claim": "none"
+      },
+      "refused": null,
+      "profiles": [
+        {
+          "id": 1000,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.017840736362012777,
+          "se_db": 0.025736938567940508,
+          "drift_db": 0.00026717812835297394,
+          "agree_db": 0.0344912693370496
+        },
+        {
+          "id": 1001,
+          "name": "BIAS_INIT_REG0",
+          "complete": true,
+          "delta_db": -0.04213954423174915,
+          "se_db": 0.031584583101351434,
+          "drift_db": -0.01959378359293229,
+          "agree_db": 0.08369518440253909
+        },
+        {
+          "id": 1002,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.004858322130544934,
+          "se_db": 0.025073138728136435,
+          "drift_db": -0.013751656699186654,
+          "agree_db": 0.05227998008168644
+        },
+        {
+          "id": 1003,
+          "name": "BIAS_INIT_REG0",
+          "complete": true,
+          "delta_db": -0.08394415310532288,
+          "se_db": 0.022044951186873017,
+          "drift_db": 0.0013603203609156012,
+          "agree_db": -0.007238562485052391
+        },
+        {
+          "id": 1004,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.02697602690775458,
+          "se_db": 0.020728179584527693,
+          "drift_db": 0.03333975251302679,
+          "agree_db": -0.005798403170176769
+        },
+        {
+          "id": 1005,
+          "name": "BIAS_INIT_REG0",
+          "complete": true,
+          "delta_db": -0.022855421351685834,
+          "se_db": 0.029184799847564225,
+          "drift_db": -0.08831164589708163,
+          "agree_db": 0.06430177465588827
+        },
+        {
+          "id": 1006,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.005289580195430688,
+          "se_db": 0.025380754381367842,
+          "drift_db": -0.009611268339457801,
+          "agree_db": 0.018722439984360406
+        }
+      ],
+      "console_sha256": "85856acfb947a01bc416b34bfecb00a6bbd29a2d6f11be266dc91d05de5d743f",
+      "console_bytes": 102381
+    },
+    {
+      "log": "current-noise-20261028-01/console.log",
+      "begin": {
+        "fw": "5.0.0-noise-lab+local",
+        "suite": "f",
+        "freq": "5865",
+        "offset_khz": "0",
+        "gain": "79",
+        "entry_gain": "79",
+        "packed": "001e77f4",
+        "dco": "241/238",
+        "held": "1",
+        "filter_code": "56",
+        "skirt": "32",
+        "dfilt": "12",
+        "p11": "1",
+        "captures_per_stage": "16",
+        "dwell_ms": "300",
+        "baseline_cn_db": "-11.62",
+        "baseline_click_pm": "37.634",
+        "baseline_video_snr_db": "0.00",
+        "video_caps": "0/16",
+        "video_age_ms": "18873",
+        "lane": "ultrafine",
+        "persistent": "0"
+      },
+      "end": {
+        "status": "COMPLETE",
+        "profiles": "41",
+        "rejected": "0",
+        "breaks_iq": "0",
+        "skipped": "0",
+        "restored": "1",
+        "input_referred_claim": "none"
+      },
+      "refused": null,
+      "profiles": [
+        {
+          "id": 1100,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.04725605962236301,
+          "se_db": 0.023712098343140694,
+          "drift_db": -0.01307181223479148,
+          "agree_db": -0.017745838109035184
+        },
+        {
+          "id": 1101,
+          "name": "CURRENT_LEVEL_0",
+          "complete": true,
+          "delta_db": 0.031336101054879606,
+          "se_db": 0.0262584078702871,
+          "drift_db": -0.029658525234596667,
+          "agree_db": 0.024161879321399127
+        },
+        {
+          "id": 1102,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.005274258791136077,
+          "se_db": 0.02513175942668042,
+          "drift_db": -0.03525843532136541,
+          "agree_db": -0.0009094535229108303
+        },
+        {
+          "id": 1103,
+          "name": "CURRENT_LEVEL_1",
+          "complete": true,
+          "delta_db": 0.032264791566454676,
+          "se_db": 0.025185901587776324,
+          "drift_db": -0.004486023596733446,
+          "agree_db": -0.06233196373047534
+        },
+        {
+          "id": 1104,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.012251884715386296,
+          "se_db": 0.02262731518946344,
+          "drift_db": 0.006737482393157634,
+          "agree_db": -0.07483654412733465
+        },
+        {
+          "id": 1105,
+          "name": "CURRENT_LEVEL_2",
+          "complete": true,
+          "delta_db": 0.025107916235873162,
+          "se_db": 0.024216710133103253,
+          "drift_db": 0.010877081179443415,
+          "agree_db": -0.04202789700392007
+        },
+        {
+          "id": 1106,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.02135685675824739,
+          "se_db": 0.01863231080929036,
+          "drift_db": -0.026885718027251926,
+          "agree_db": -0.03294381357586662
+        },
+        {
+          "id": 1107,
+          "name": "CURRENT_LEVEL_3",
+          "complete": true,
+          "delta_db": 0.008452667368302968,
+          "se_db": 0.023119996108539872,
+          "drift_db": 0.03859329801173228,
+          "agree_db": -0.06152365448442154
+        },
+        {
+          "id": 1108,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.014458171367062178,
+          "se_db": 0.022952249071529422,
+          "drift_db": 0.06426803611267928,
+          "agree_db": -0.027250549087352915
+        },
+        {
+          "id": 1109,
+          "name": "CURRENT_LEVEL_4",
+          "complete": true,
+          "delta_db": -0.019809605262489427,
+          "se_db": 0.0315023385735202,
+          "drift_db": 0.07689066331496797,
+          "agree_db": -0.02016701341031535
+        },
+        {
+          "id": 1110,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.017347098879120892,
+          "se_db": 0.027472647565822024,
+          "drift_db": -0.04700860910850757,
+          "agree_db": -0.00484075735403966
+        },
+        {
+          "id": 1111,
+          "name": "CURRENT_LEVEL_5",
+          "complete": true,
+          "delta_db": 0.032124441829597394,
+          "se_db": 0.02927872904189234,
+          "drift_db": 0.02226632053436184,
+          "agree_db": -0.05187865098372946
+        },
+        {
+          "id": 1112,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.0332441401613881,
+          "se_db": 0.02828890263246491,
+          "drift_db": -0.10916256834409843,
+          "agree_db": 0.05077069585351435
+        },
+        {
+          "id": 1113,
+          "name": "CURRENT_LEVEL_6",
+          "complete": true,
+          "delta_db": -0.014678566869870124,
+          "se_db": 0.027609699360938527,
+          "drift_db": -0.05482220253628611,
+          "agree_db": 0.00960653076091944
+        },
+        {
+          "id": 1114,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.019753901962482168,
+          "se_db": 0.022485482641420942,
+          "drift_db": -0.020485737299730467,
+          "agree_db": 0.07434710228500929
+        },
+        {
+          "id": 1115,
+          "name": "CURRENT_LEVEL_7",
+          "complete": true,
+          "delta_db": 0.008343278100490181,
+          "se_db": 0.023021244587207768,
+          "drift_db": 0.014344430759233973,
+          "agree_db": 0.03135228266358414
+        },
+        {
+          "id": 1116,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.04417237575603217,
+          "se_db": 0.021209873970111818,
+          "drift_db": -0.03168197167376352,
+          "agree_db": 0.0016994599382442743
+        },
+        {
+          "id": 1117,
+          "name": "CURRENT_LEVEL_8",
+          "complete": true,
+          "delta_db": 0.03178619134006766,
+          "se_db": 0.021913183153984005,
+          "drift_db": 0.02331943059883912,
+          "agree_db": -0.005192989924922564
+        },
+        {
+          "id": 1118,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.044964800128171056,
+          "se_db": 0.02371595185069671,
+          "drift_db": -0.023104066247499055,
+          "agree_db": -0.0011488710172562477
+        },
+        {
+          "id": 1119,
+          "name": "CURRENT_LEVEL_9",
+          "complete": true,
+          "delta_db": -0.008503710516056806,
+          "se_db": 0.024847076755991057,
+          "drift_db": 0.04894394818077519,
+          "agree_db": -0.007917010107687084
+        },
+        {
+          "id": 1120,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.04454859042916315,
+          "se_db": 0.028523026338013242,
+          "drift_db": 0.06374671338908122,
+          "agree_db": -0.06607646737468187
+        },
+        {
+          "id": 1121,
+          "name": "CURRENT_LEVEL_10",
+          "complete": true,
+          "delta_db": -0.026615396896318977,
+          "se_db": 0.02361749046308414,
+          "drift_db": -0.09364242818324531,
+          "agree_db": 0.0026994477133852612
+        },
+        {
+          "id": 1122,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.01701813698308552,
+          "se_db": 0.0220146125480511,
+          "drift_db": -0.011196636542321947,
+          "agree_db": 0.02061871429125617
+        },
+        {
+          "id": 1123,
+          "name": "CURRENT_LEVEL_11",
+          "complete": true,
+          "delta_db": -0.005574278307334701,
+          "se_db": 0.02210814081714513,
+          "drift_db": 0.06585183571436648,
+          "agree_db": 0.02636607532834745
+        },
+        {
+          "id": 1124,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.014140603878546543,
+          "se_db": 0.02432372729630591,
+          "drift_db": 0.02585837555964332,
+          "agree_db": -0.03123339549307591
+        },
+        {
+          "id": 1125,
+          "name": "CURRENT_LEVEL_12",
+          "complete": true,
+          "delta_db": 0.032533803171072684,
+          "se_db": 0.02055911009710646,
+          "drift_db": -0.06108039790883968,
+          "agree_db": -0.06246810842355366
+        },
+        {
+          "id": 1126,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.013167421563127668,
+          "se_db": 0.023403959130986467,
+          "drift_db": 0.02714997020675103,
+          "agree_db": -0.04256654260067361
+        },
+        {
+          "id": 1127,
+          "name": "CURRENT_LEVEL_13",
+          "complete": true,
+          "delta_db": 0.02248068547855908,
+          "se_db": 0.02210366837797474,
+          "drift_db": 0.018952883455623848,
+          "agree_db": -0.006343518643393331
+        },
+        {
+          "id": 1128,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.002958397610075103,
+          "se_db": 0.0231864890787064,
+          "drift_db": 0.013447514306208497,
+          "agree_db": -0.07866922579012137
+        },
+        {
+          "id": 1129,
+          "name": "CURRENT_LEVEL_14",
+          "complete": true,
+          "delta_db": 0.007408779714601188,
+          "se_db": 0.022745791869917896,
+          "drift_db": -0.01868281242177261,
+          "agree_db": 0.012985071643415225
+        },
+        {
+          "id": 1130,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.04994634905699602,
+          "se_db": 0.02147338347492787,
+          "drift_db": 0.011813187145174986,
+          "agree_db": -0.04712798438120558
+        },
+        {
+          "id": 1131,
+          "name": "CURRENT_LEVEL_15",
+          "complete": true,
+          "delta_db": -0.017995232095140423,
+          "se_db": 0.025607876532635413,
+          "drift_db": 0.0034406848055441586,
+          "agree_db": 0.05657470083504634
+        },
+        {
+          "id": 1132,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.04121690307403636,
+          "se_db": 0.025216286799014973,
+          "drift_db": 0.01664993567182904,
+          "agree_db": -0.046187564632308664
+        },
+        {
+          "id": 1133,
+          "name": "CURRENT_LEVEL_31",
+          "complete": true,
+          "delta_db": -0.04628265789298691,
+          "se_db": 0.02103943308582824,
+          "drift_db": -0.020954215278386812,
+          "agree_db": 0.04203058218076805
+        },
+        {
+          "id": 1134,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.03063401968542223,
+          "se_db": 0.019640996627732946,
+          "drift_db": -0.03350470843862485,
+          "agree_db": -0.007859835654814518
+        },
+        {
+          "id": 1135,
+          "name": "CURRENT_LEVEL_63",
+          "complete": true,
+          "delta_db": 0.017611989987460497,
+          "se_db": 0.022555305017523702,
+          "drift_db": 0.006998875666111459,
+          "agree_db": -0.03355671781845526
+        },
+        {
+          "id": 1136,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.009651955675919588,
+          "se_db": 0.024648603502943612,
+          "drift_db": -0.002107351852770556,
+          "agree_db": -0.059456961964357014
+        },
+        {
+          "id": 1137,
+          "name": "CURRENT_LEVEL_127",
+          "complete": true,
+          "delta_db": -0.010829676495020202,
+          "se_db": 0.021953722932564014,
+          "drift_db": 0.010166539574098188,
+          "agree_db": 0.041215026805178745
+        },
+        {
+          "id": 1138,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.015365941666330762,
+          "se_db": 0.020109134673921565,
+          "drift_db": 0.03269527504228442,
+          "agree_db": -0.0031155045453177266
+        },
+        {
+          "id": 1139,
+          "name": "CURRENT_LEVEL_255",
+          "complete": true,
+          "delta_db": -0.06349817125513013,
+          "se_db": 0.023262895732895226,
+          "drift_db": 0.05272518044884489,
+          "agree_db": -0.015249712294826523
+        },
+        {
+          "id": 1140,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.002124430478353645,
+          "se_db": 0.025143581463478195,
+          "drift_db": 0.01440878001788004,
+          "agree_db": -0.02898853158524073
+        }
+      ],
+      "console_sha256": "7c2979c443e7e019e7178531cf8214a1b1e0e4b47d9b4abf3f70beeb89549f15",
+      "console_bytes": 578229
+    },
+    {
+      "log": "current-confirm-20261028-01/console.log",
+      "begin": {
+        "fw": "5.0.0-noise-lab+local",
+        "suite": "i",
+        "freq": "5865",
+        "offset_khz": "0",
+        "gain": "79",
+        "entry_gain": "79",
+        "packed": "001e77f4",
+        "dco": "242/236",
+        "held": "1",
+        "filter_code": "56",
+        "skirt": "32",
+        "dfilt": "12",
+        "p11": "1",
+        "captures_per_stage": "16",
+        "dwell_ms": "300",
+        "baseline_cn_db": "-12.23",
+        "baseline_click_pm": "42.145",
+        "baseline_video_snr_db": "0.00",
+        "video_caps": "0/16",
+        "video_age_ms": "9755",
+        "lane": "ultrafine",
+        "persistent": "0"
+      },
+      "end": {
+        "status": "COMPLETE",
+        "profiles": "17",
+        "rejected": "0",
+        "breaks_iq": "0",
+        "skipped": "0",
+        "restored": "1",
+        "input_referred_claim": "none"
+      },
+      "refused": null,
+      "profiles": [
+        {
+          "id": 1400,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.0034178633532286895,
+          "se_db": 0.022288362807314166,
+          "drift_db": -0.025075532588483718,
+          "agree_db": 0.039260206990918256
+        },
+        {
+          "id": 1401,
+          "name": "CURRENT_CONFIRM_255",
+          "complete": true,
+          "delta_db": -0.023866598295070318,
+          "se_db": 0.01977179827793823,
+          "drift_db": -0.030975920662148937,
+          "agree_db": 0.0003122742983130422
+        },
+        {
+          "id": 1402,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.005043888309831601,
+          "se_db": 0.022352899345570193,
+          "drift_db": -0.02922523586363468,
+          "agree_db": 0.03322721218583702
+        },
+        {
+          "id": 1403,
+          "name": "CURRENT_CONFIRM_15",
+          "complete": true,
+          "delta_db": -0.03100811290037253,
+          "se_db": 0.0233524978817234,
+          "drift_db": -0.015515630047600482,
+          "agree_db": 0.005438756370475417
+        },
+        {
+          "id": 1404,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.012438667216935428,
+          "se_db": 0.024195198424025555,
+          "drift_db": 0.009051290865613737,
+          "agree_db": 0.012905101933018415
+        },
+        {
+          "id": 1405,
+          "name": "CURRENT_CONFIRM_255",
+          "complete": true,
+          "delta_db": 0.012308710214120389,
+          "se_db": 0.02460661006470644,
+          "drift_db": -0.007865042238131892,
+          "agree_db": -0.06364309599048923
+        },
+        {
+          "id": 1406,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.007955344466552106,
+          "se_db": 0.022304720915525603,
+          "drift_db": -0.01846444298430594,
+          "agree_db": -0.0030984428275901976
+        },
+        {
+          "id": 1407,
+          "name": "CURRENT_CONFIRM_0",
+          "complete": true,
+          "delta_db": -0.0023335125256513933,
+          "se_db": 0.021009058001322616,
+          "drift_db": -0.00445305503301352,
+          "agree_db": -0.006424807675226241
+        },
+        {
+          "id": 1408,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.001610809686849457,
+          "se_db": 0.020139819668423133,
+          "drift_db": -0.019432072751021323,
+          "agree_db": -0.0032657029786857805
+        },
+        {
+          "id": 1409,
+          "name": "CURRENT_CONFIRM_0",
+          "complete": true,
+          "delta_db": -0.02984527409467752,
+          "se_db": 0.025022903012616594,
+          "drift_db": 0.019023490844913837,
+          "agree_db": 0.0493696540446944
+        },
+        {
+          "id": 1410,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.04563999841550359,
+          "se_db": 0.021782293209464548,
+          "drift_db": -0.0018357122499672585,
+          "agree_db": 0.060551189577462416
+        },
+        {
+          "id": 1411,
+          "name": "CURRENT_CONFIRM_255",
+          "complete": true,
+          "delta_db": 0.036623644901204955,
+          "se_db": 0.024032897250888228,
+          "drift_db": -0.04448284950992498,
+          "agree_db": -0.01643209295417325
+        },
+        {
+          "id": 1412,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.004197049531104113,
+          "se_db": 0.01958419512385133,
+          "drift_db": 0.0058386088608584075,
+          "agree_db": -0.052182640142936165
+        },
+        {
+          "id": 1413,
+          "name": "CURRENT_CONFIRM_15",
+          "complete": true,
+          "delta_db": 0.017098506207996245,
+          "se_db": 0.024641229859096347,
+          "drift_db": 0.06723517864860273,
+          "agree_db": 0.01723811490117022
+        },
+        {
+          "id": 1414,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.018433459551155273,
+          "se_db": 0.0227348737783953,
+          "drift_db": 0.0013970058880303782,
+          "agree_db": 0.02723556904011204
+        },
+        {
+          "id": 1415,
+          "name": "CURRENT_CONFIRM_255",
+          "complete": true,
+          "delta_db": 0.007802661670607947,
+          "se_db": 0.020370111950255673,
+          "drift_db": 0.044568593316721916,
+          "agree_db": 0.020110107257725218
+        },
+        {
+          "id": 1416,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.00029088642536478915,
+          "se_db": 0.02352230997156042,
+          "drift_db": -0.0004958161053432164,
+          "agree_db": -0.009465062201687857
+        }
+      ],
+      "console_sha256": "fdf14b7d96b7c88299bbba605d28b41b6bd03df8ae2b0e2a75115100bd21027a",
+      "console_bytes": 242840
+    },
+    {
+      "log": "spur-targeted-20261028-01/console.log",
+      "begin": {
+        "fw": "5.0.0-noise-lab+local",
+        "suite": "h",
+        "freq": "5865",
+        "offset_khz": "0",
+        "gain": "79",
+        "entry_gain": "79",
+        "packed": "001e77f4",
+        "dco": "245/233",
+        "held": "1",
+        "filter_code": "56",
+        "skirt": "32",
+        "dfilt": "12",
+        "p11": "1",
+        "captures_per_stage": "16",
+        "dwell_ms": "300",
+        "baseline_cn_db": "-10.38",
+        "baseline_click_pm": "38.978",
+        "baseline_video_snr_db": "0.00",
+        "video_caps": "0/16",
+        "video_age_ms": "171542",
+        "lane": "ultrafine",
+        "persistent": "0"
+      },
+      "end": {
+        "status": "COMPLETE",
+        "profiles": "13",
+        "rejected": "4",
+        "breaks_iq": "0",
+        "skipped": "1",
+        "restored": "1",
+        "input_referred_claim": "none"
+      },
+      "refused": null,
+      "profiles": [
+        {
+          "id": 1300,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.013098333278828811,
+          "se_db": 0.022640372640770064,
+          "drift_db": -0.009917034442064043,
+          "agree_db": 0.008164152544544834
+        },
+        {
+          "id": 1301,
+          "name": "SPUR_REFERENCE0_P512",
+          "complete": true,
+          "delta_db": 0.0028647960138883377,
+          "se_db": 0.023327326225315897,
+          "drift_db": 0.03147803711756847,
+          "agree_db": 0.024110161478956726
+        },
+        {
+          "id": 1302,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.022179932916816192,
+          "se_db": 0.02788212718290172,
+          "drift_db": 0.020986876746285965,
+          "agree_db": 0.010895301619778586
+        },
+        {
+          "id": 1303,
+          "name": "SPUR_REFERENCE0_M512",
+          "complete": true,
+          "delta_db": -0.011687282375183017,
+          "se_db": 0.021317727514681577,
+          "drift_db": 0.00034145765880122525,
+          "agree_db": 0.04121816208026452
+        },
+        {
+          "id": 1304,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.014510677052789411,
+          "se_db": 0.026042064551503343,
+          "drift_db": -0.02801780337207571,
+          "agree_db": 0.019535524968893547
+        },
+        {
+          "id": 1309,
+          "name": "SPUR_INFERRED2_P512",
+          "complete": false
+        },
+        {
+          "id": 1310,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.004181075159891634,
+          "se_db": 0.020434832401489127,
+          "drift_db": -0.006857750144347641,
+          "agree_db": -0.03158872199410734
+        },
+        {
+          "id": 1311,
+          "name": "SPUR_INFERRED2_M512",
+          "complete": false
+        },
+        {
+          "id": 1312,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.004757369964898395,
+          "se_db": 0.023459638087884257,
+          "drift_db": -0.008301608251827908,
+          "agree_db": -0.058947408610416474
+        },
+        {
+          "id": 1313,
+          "name": "SPUR_INFERRED3_P512",
+          "complete": false
+        },
+        {
+          "id": 1314,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.007805240411177472,
+          "se_db": 0.02803780281990716,
+          "drift_db": 0.0029116857371418448,
+          "agree_db": 0.01998395532304631
+        },
+        {
+          "id": 1315,
+          "name": "SPUR_INFERRED3_M512",
+          "complete": false
+        },
+        {
+          "id": 1316,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.010101159035155405,
+          "se_db": 0.02206958478356627,
+          "drift_db": 0.00021214941821234845,
+          "agree_db": -0.0408605631252259
+        }
+      ],
+      "console_sha256": "00b6847fff44d4673707b2948c4cf40abd038602c9e67ff6aa2b3ff61f1f5759",
+      "console_bytes": 162326
+    },
+    {
+      "log": "loopcap-targeted-20261028-01/console.log",
+      "begin": {
+        "fw": "5.0.0-noise-lab+local",
+        "suite": "g",
+        "freq": "5865",
+        "offset_khz": "0",
+        "gain": "79",
+        "entry_gain": "79",
+        "packed": "001e77f4",
+        "dco": "245/236",
+        "held": "1",
+        "filter_code": "56",
+        "skirt": "32",
+        "dfilt": "12",
+        "p11": "1",
+        "captures_per_stage": "16",
+        "dwell_ms": "300",
+        "baseline_cn_db": "-14.46",
+        "baseline_click_pm": "40.321",
+        "baseline_video_snr_db": "0.00",
+        "video_caps": "0/16",
+        "video_age_ms": "277599",
+        "lane": "ultrafine",
+        "persistent": "0"
+      },
+      "end": {
+        "status": "COMPLETE",
+        "profiles": "17",
+        "rejected": "0",
+        "breaks_iq": "0",
+        "skipped": "0",
+        "restored": "1",
+        "input_referred_claim": "none"
+      },
+      "refused": null,
+      "profiles": [
+        {
+          "id": 1200,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.018095695454038108,
+          "se_db": 0.02100540709605594,
+          "drift_db": 0.004669203303231839,
+          "agree_db": 0.05771907953318145
+        },
+        {
+          "id": 1201,
+          "name": "LOOPCAP_CURRENT_BIN6",
+          "complete": true,
+          "delta_db": 0.05440679910224322,
+          "se_db": 0.023560031298650138,
+          "drift_db": 0.04276933227318125,
+          "agree_db": -0.011947985935664818
+        },
+        {
+          "id": 1202,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.011506630213833802,
+          "se_db": 0.024190297897254295,
+          "drift_db": -0.02249602347827473,
+          "agree_db": -0.0288023575626708
+        },
+        {
+          "id": 1203,
+          "name": "LOOPCAP_CAL_BIN0",
+          "complete": true,
+          "delta_db": 0.036411379809302424,
+          "se_db": 0.020529022508533088,
+          "drift_db": 0.008607164295168168,
+          "agree_db": 0.0015126623936438932
+        },
+        {
+          "id": 1204,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.006672005944161619,
+          "se_db": 0.02331454205817276,
+          "drift_db": 0.011826651139626776,
+          "agree_db": 0.011863303697007943
+        },
+        {
+          "id": 1205,
+          "name": "LOOPCAP_CAL_BIN1",
+          "complete": true,
+          "delta_db": 0.042940107962853524,
+          "se_db": 0.02535414400099299,
+          "drift_db": 0.0432123034091374,
+          "agree_db": 0.018603772012171227
+        },
+        {
+          "id": 1206,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.006540793675070766,
+          "se_db": 0.021360077472494722,
+          "drift_db": -0.004084772489831856,
+          "agree_db": 0.03192245808093386
+        },
+        {
+          "id": 1207,
+          "name": "LOOPCAP_CAL_BIN2",
+          "complete": true,
+          "delta_db": 0.030482323317831295,
+          "se_db": 0.02468723837036826,
+          "drift_db": 0.04937538949836817,
+          "agree_db": 0.00440600914040612
+        },
+        {
+          "id": 1208,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.003095331675077695,
+          "se_db": 0.023563813758335533,
+          "drift_db": -0.005167085282120176,
+          "agree_db": 0.03868155556777708
+        },
+        {
+          "id": 1209,
+          "name": "LOOPCAP_CAL_BIN3",
+          "complete": true,
+          "delta_db": 0.018667575751890375,
+          "se_db": 0.021219621262879105,
+          "drift_db": -0.0206648863755321,
+          "agree_db": -0.01086777697494945
+        },
+        {
+          "id": 1210,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.04358934739516318,
+          "se_db": 0.023475752306672662,
+          "drift_db": 0.029472182807204206,
+          "agree_db": 0.019457500301157893
+        },
+        {
+          "id": 1211,
+          "name": "LOOPCAP_CAL_BIN4",
+          "complete": true,
+          "delta_db": 0.054576731621659214,
+          "se_db": 0.02157858610965004,
+          "drift_db": 0.018754210034984453,
+          "agree_db": -0.029431726770010158
+        },
+        {
+          "id": 1212,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.06355126916579579,
+          "se_db": 0.02200596203898537,
+          "drift_db": -0.020017646137629796,
+          "agree_db": -0.024210097896594895
+        },
+        {
+          "id": 1213,
+          "name": "LOOPCAP_CAL_BIN5",
+          "complete": true,
+          "delta_db": 0.02921104500384164,
+          "se_db": 0.02542730959179855,
+          "drift_db": -0.02326812581933435,
+          "agree_db": 0.01949934202180348
+        },
+        {
+          "id": 1214,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.003302938322536697,
+          "se_db": 0.022454653600413876,
+          "drift_db": -0.03654211192707013,
+          "agree_db": -0.019420126533691295
+        },
+        {
+          "id": 1215,
+          "name": "LOOPCAP_CAL_BIN6",
+          "complete": true,
+          "delta_db": 0.056457229755911165,
+          "se_db": 0.02193581858241193,
+          "drift_db": -0.05678981856073939,
+          "agree_db": 0.016232047447089393
+        },
+        {
+          "id": 1216,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.01360936277092506,
+          "se_db": 0.023839375107818268,
+          "drift_db": 0.01532546899136733,
+          "agree_db": -0.017762610841900006
+        }
+      ],
+      "console_sha256": "dd5f725f8ddcf3c884393da3a51fc3b02a433971e4c9952c0f62d09df7d62d77",
+      "console_bytes": 245832
+    }
+  ]
+}

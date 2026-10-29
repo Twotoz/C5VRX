@@ -111,6 +111,8 @@ jobs:
           /tmp/test_agc_compare | tail -5
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main -DSKIP_BOUNDS -DAGC_CHECKS -DPICTURE_Q -DWRITE_COST_US=7000 -DGAIN_ERR_DB=1.0 -DGAIN_ERR_LOW_DB=6.0 test_agc_compare.c ../main/agc.c ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_agc_compare_err
           /tmp/test_agc_compare_err | tail -5
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_agc_options.c ../main/agc.c -lm -o /tmp/test_agc_options
+          /tmp/test_agc_options
           # LEVEL's carrier radius of a folded window on the exact hardware fold model (adc_fold.h)
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_fold_radius.c ../main/agc.c -lm -o /tmp/test_fold_radius
           /tmp/test_fold_radius
@@ -143,6 +145,8 @@ jobs:
           python3 test/test_flash_tool.py
           python3 test/test_diag_snapshot_runtime.py
           python3 test/test_flight_log_tool.py
+          python3 test/test_experimental_phy.py
+          python3 test/test_experimental.py
           python3 test/test_settings.py
           python3 test/test_phy_observation_hook.py
           python3 test/test_bank1_watch_runtime.py
@@ -152,6 +156,10 @@ jobs:
           python3 test/test_afc_telemetry.py
           python3 test/test_sphase_runtime.py
           python3 test/test_sense_lab_tool.py
+          python3 test/test_bias_suite_runtime.py
+          python3 test/test_current_suite_runtime.py
+          python3 test/test_loopcap_suite_runtime.py
+          python3 test/test_spur_suite_runtime.py
           python3 test/test_phase_repair_runtime.py
           python3 test/test_calibration_search_runtime.py
           python3 test/test_manual_calibration_runtime.py
@@ -174,6 +182,7 @@ jobs:
       - name: U80P64-R1 transfer and assembled datapath
         run: |
           /tmp/iqf-test-env/bin/python test/test_p64.py
+          /tmp/iqf-test-env/bin/python test/test_picture_sync.py
           /tmp/iqf-test-env/bin/python research/p64_validation.py --check
       - name: Historical kp/LP replay (retired policy baseline)
         run: /tmp/iqf-test-env/bin/python research/ladder_gate.py check research/data/ladder_gate_rates.json

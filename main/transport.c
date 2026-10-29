@@ -24,6 +24,7 @@
 #include "output_level.h"
 #include "hal/parlio_ll.h"
 #include "p64_tables.h"
+#include "u85q_table.h"
 #include "snapshot.h"
 #include "control_window.h"
 #include "phase8_gain_lut.h"
@@ -37,10 +38,19 @@
 #include "soc/parl_io_struct.h"
 #include "soc/pcr_struct.h"
 
-/* Fixed U80P64-R1 program and LUT; no runtime demodulator or kp policy. */
+/* Two fixed decoders, each a program with its own LUT16 and no runtime policy
+ * (no kp ladder, no LP): U80P64-R1 (default) and U85Q (operator decision
+ * 2026-10-28, selectable for a like-for-like board comparison; host model:
+ * U85Q holds sync ~0.5-1 dB longer at deviation 0.7, P64 longer at 1.0). The
+ * selection is applied by the same verified restart as OUTPUT and profiles;
+ * a rollback returns to the last verified decoder with its own LUT. */
 BITSCRAMBLER_PROGRAM(s_p64, "p64");
+BITSCRAMBLER_PROGRAM(s_u85q, "u85q");
 static bool s_started;
-static const void *tracker_program(void) { return s_p64; }
+static uint8_t s_demod = TRANSPORT_DEMOD_P64, s_verified_demod = TRANSPORT_DEMOD_P64;
+static const void *demod_program(uint8_t d) { return d == TRANSPORT_DEMOD_U85Q ? s_u85q : s_p64; }
+static const uint16_t *demod_table(uint8_t d) { return d == TRANSPORT_DEMOD_U85Q ? u85q_table : p64_table; }
+static const void *tracker_program(void) { return demod_program(s_demod); }
 
 /* 6-bit resistor DAC, LSB first (XIAO D4..D9; 8.2k/3.9k/2k/1k/470R/240R
  * plus 200R). Do not change the tested pin order. D10/GPIO10 and D3/GPIO7
@@ -209,7 +219,7 @@ static esp_err_t start_tx(void)
  * board, writes/readback under RUN or PAUSE fail; HALT with the normal
  * load/reset/start sequence succeeds. Do not claim a seamless live update. */
 static uint16_t s_lut_live[1024];   /* what the LUT RAM holds */
-static bool s_lut_known;            /* shadow valid: verified P64 LUT16 */
+static bool s_lut_known;            /* shadow valid: the verified decoder's LUT16 */
 /* IDF V1 image: 3 header words, 8 instructions of 9 words, LUT16.
  * Reuse the target LUT storage; only the 300-byte prefix is additional.
  * Prepare before halting so the driver writes the target exactly once. */
@@ -256,14 +266,14 @@ static bool program_words(const uint8_t *bin, const uint8_t **inst)
     return true;
 }
 
-/* The analog profile has already changed its filter; restart the same P64
- * image through the shared guard and verified rollback coordinator. */
+/* The analog profile has already changed its filter; restart the same
+ * decoder image through the shared guard and verified rollback coordinator. */
 bool transport_restart_profile(void)
 {
     if (s_transport_fault || !s_lut_known || !s_started || s_menu_active ||
         !transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
     stage_hooks();
-    const bool ok = resume_live(p64_table);
+    const bool ok = resume_live(demod_table(s_demod));
     transport_guard_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
 }
@@ -275,7 +285,32 @@ uint32_t transport_switch_wait_ms(void)
            (uint32_t)((TRANSPORT_SWITCH_GAP_US - (now - s_switch_guard.last_switch_us) + 999) / 1000);
 }
 
-const char *transport_program_name(void) { return P64_MODEL_ID; }
+const char *transport_demod_name(uint8_t d) { return d == TRANSPORT_DEMOD_U85Q ? U85Q_MODEL_ID : P64_MODEL_ID; }
+const char *transport_program_name(void) { return transport_demod_name(s_demod); }
+uint8_t transport_demod(void) { return s_demod; }
+/* The live, verified decoder's LUT16 (without the OUTPUT scaling) and its
+ * token width, for the picture measure (picture_sync.h); NULL while unknown. */
+const uint16_t *transport_decoder_lut(unsigned *token_bits)
+{
+    if (!s_lut_known || s_transport_fault || !s_started) return NULL;
+    *token_bits = s_verified_demod == TRANSPORT_DEMOD_U85Q ? 5u : 4u;
+    return demod_table(s_verified_demod);
+}
+
+/* Select the decoder: at once while the menu owns TX or before the first
+ * start, else a verified restart behind the shared guard. A failed restart
+ * rolls back to the last verified decoder (restart_stage). */
+bool transport_set_demod(uint8_t d)
+{
+    if (s_transport_fault || d >= TRANSPORT_DEMODS) return false;
+    if (d == s_demod) return true;
+    if (s_menu_active || !s_started) { s_demod = d; return true; }
+    if (!transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
+    s_demod = d;
+    const bool ok = resume_live(demod_table(d));
+    transport_guard_mark(&s_switch_guard, esp_timer_get_time());
+    return ok;
+}
 bool transport_live(void) { return s_started; }
 bool transport_faulted(void) { return s_transport_fault; }
 uint32_t transport_restart_errors(void) { return s_restart_errors; }
@@ -294,7 +329,7 @@ bool transport_set_output(unsigned level)
     if (s_menu_active || !s_started) { s_output = level; return true; }
     if (!transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
     s_output = level;
-    bool ok = resume_live(s_lut_known ? p64_table : NULL);
+    bool ok = resume_live(s_lut_known ? demod_table(s_demod) : NULL);
     transport_guard_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
 }
@@ -339,6 +374,7 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
     if (stage == TR_BS_ENABLE && rollback) {
         s_output = s_verified_output;
         r->output = s_verified_output;
+        s_demod = s_verified_demod;   /* its program goes with the verified LUT below */
         r->program = tracker_program();
         const uint8_t *inst;
         if (!program_words(r->program, &inst)) return false;
@@ -542,7 +578,7 @@ static bool resume_live(const uint16_t *restore_lut)
     const uint8_t *program_inst;
     if (!program_words(r.program, &program_inst)) return false;
     memcpy(s_program_work.prefix, r.program, sizeof(s_program_work.prefix));
-    if (!restore_lut) restore_lut = p64_table;
+    if (!restore_lut) restore_lut = demod_table(s_demod);
     if (restore_lut == s_lut_live) {
         memcpy(s_lut_work, s_lut_live, sizeof(s_lut_work));
         r.clipped = s_output_clipped;
@@ -574,6 +610,7 @@ static bool resume_live(const uint16_t *restore_lut)
     memcpy(s_lut_live, s_lut_work, sizeof(s_lut_live));
     const bool output_changed = s_have_verified && s_verified_output != r.output;
     s_verified_output = r.output;
+    s_verified_demod = s_demod;
     s_output_clipped = r.clipped;
     s_have_verified = true;
     s_lut_known = true;
@@ -616,7 +653,8 @@ void transport_flog_identity(uint8_t *demod, uint8_t *output_level)
 {
     const bool verified = s_started && s_tx_enabled && s_bs_enabled && s_have_verified && s_lut_known &&
                           !s_transport_fault;
-    if (demod) *demod = verified ? FLOG_DEMOD_P64_R1 : FLOG_DEMOD_UNKNOWN;
+    if (demod) *demod = !verified ? FLOG_DEMOD_UNKNOWN :
+                        s_verified_demod == TRANSPORT_DEMOD_U85Q ? FLOG_DEMOD_U85Q_1A09F5C092E8 : FLOG_DEMOD_P64_R1;
     if (output_level) *output_level = verified ? (uint8_t)s_verified_output : 0xffu;
 }
 
@@ -635,9 +673,9 @@ void transport_flog_output(transport_flog_output_t *out)
 void transport_print(void)
 {
     const char *verified_demod = s_have_verified && s_lut_known && !s_transport_fault ?
-        P64_MODEL_ID : "unknown";
-    printf("DEMOD selected=%s verified=%s p64_model=%s p64_table_sha256=%s\n",
-           transport_program_name(), verified_demod, P64_MODEL_ID, P64_TABLE_SHA256);
+        transport_demod_name(s_verified_demod) : "unknown";
+    printf("DEMOD selected=%s verified=%s p64_model=%s p64_table_sha256=%s u85q_table_sha256=%s (console m switches)\n",
+           transport_program_name(), verified_demod, P64_MODEL_ID, P64_TABLE_SHA256, U85Q_TABLE_SHA256);
     printf("TRANSPORT_STAGES_US quiesce=%lu bs_enable=%lu program_load=%lu instruction_verify=%lu lut_verify=%lu "
            "bs_reset=%lu bs_start=%lu rx_enable=%lu tx_enable=%lu rx_start=%lu tx_start=%lu (last restart)\n",
            (unsigned long)s_quiesce_us, (unsigned long)s_stage_us[TR_BS_ENABLE], (unsigned long)s_stage_us[TR_PROGRAM_LOAD],

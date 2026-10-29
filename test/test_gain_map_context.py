@@ -33,6 +33,8 @@ PREFIX = r'''
 #include "gain_map_preset.h"
 #include "cn_observation.h"
 unsigned char phy_param[2048];
+static bool experiment;
+static inline bool experimental_transfer_active(void) { return experiment; }
 static direct_gain_t s_gain;
 static uint8_t s_current_gain=59;
 static dg_map_blob_t s_gain_map_saved, disk;
@@ -139,6 +141,7 @@ int main(void) {
     mutate=true; filter_reads=0; assert(!receiver_export_gain_map(&out)); mutate=false;
     live=a; bind(); s_gain.state=DG_HOLD;
     assert(receiver_export_gain_map(&out)==2 && !memcmp(&out,&saved_a,sizeof(out)));
+    experiment=true;assert(!receiver_export_gain_map(&out));experiment=false;
     /* Saver never stamps current RF onto an old model, never writes NVS
      * under scheduler exclusion, and skips unchanged blobs. */
     s_gain_map_saved_valid=false; gain_map_service(); assert(stores==1 && disk.context.freq_mhz==5865);
