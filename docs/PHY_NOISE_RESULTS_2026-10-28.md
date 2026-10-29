@@ -42,6 +42,8 @@ by the dataset. A console hash establishes identity, not independent RF calibrat
 | Targeted bias `d` | 3 candidates and 4 shams, all complete; mean candidate delta -0.04965 dB |
 | Current-level `f` | 20 levels and 21 shams, all complete; mean candidate delta +0.00178 dB; final restoration verified |
 | Current confirmation `i` | 8 candidates and 9 shams, all complete; four 255 trials mean +0.00822 dB; no reproduced reduction |
+| Loop cap `g` | 7 settings (current bin and calibration bins 0..6) and 8 shams, all complete; +0.019..+0.056 dB against shams -0.064..+0.044; no reduction |
+| Spur slots `h` | slot 0 +-512: +0.003 / -0.012 dB, no effect; slot 1 skipped (already active); slots 2..3 rejected (incomplete), untested |
 
 Existing sweep observations: DFILT mode 4 gave -0.5105 dB and mode 8
 -0.4005 dB against stock mode 12; a mode-12 no-op gave -0.0375 dB.
@@ -156,7 +158,13 @@ DC hold. It reproduces the footprint with 1 ms bounded transactions, saves
 both full nine-bit words, cache byte and command word, and verifies exact
 rollback plus physical gain/DC/frequency. The first candidate uses the
 current frequency; subsequent cross-bin settings are explicitly separate
-calibration-pair experiments without retuning. Results pending at this revision.
+calibration-pair experiments without retuning.
+
+**Board result** (suite `g`, `loopcap-targeted-20261028-01`, VTX off, 5865 MHz,
+G79, 17 profiles complete, none rejected, rollback verified): the current
+bin 6 +0.054 dB and calibration bins 0..6 +0.019..+0.056 dB of noise against
+shams -0.064..+0.044 dB. No setting lowered the noise; all within the sham
+spread.
 
 ## Spur slots: evidence and bounded experiment
 
@@ -192,7 +200,13 @@ proves stored bits, not silicon semantics. A null result cannot establish
 whether a slot is absent or whether its filter is outside MODEM_DIAG.
 A reduction could simply be removed bandwidth, including wanted FM content.
 These controls are not assumed to cancel broadband thermal noise.
-Hardware results pending at this revision.
+
+**Board result** (suite `h`, `spur-targeted-20261028-01`, VTX off, 5865 MHz,
+G79, 13 profiles, rollback verified): slot 0 reference +512 +0.003 dB and
+-512 -0.012 dB against shams -0.015..+0.022 dB, no effect (the no-carrier
+spectra show no in-band spur to remove). Slot 1 was skipped: its readback
+already looked active. Slots 2 and 3 (+-512) were all REJECTED_ENTRY with
+incomplete measurements, so they remain untested.
 
 ## Validation and production policy
 

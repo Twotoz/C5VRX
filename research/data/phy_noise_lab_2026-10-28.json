@@ -1647,6 +1647,342 @@
       ],
       "console_sha256": "fdf14b7d96b7c88299bbba605d28b41b6bd03df8ae2b0e2a75115100bd21027a",
       "console_bytes": 242840
+    },
+    {
+      "log": "spur-targeted-20261028-01/console.log",
+      "begin": {
+        "fw": "5.0.0-noise-lab+local",
+        "suite": "h",
+        "freq": "5865",
+        "offset_khz": "0",
+        "gain": "79",
+        "entry_gain": "79",
+        "packed": "001e77f4",
+        "dco": "245/233",
+        "held": "1",
+        "filter_code": "56",
+        "skirt": "32",
+        "dfilt": "12",
+        "p11": "1",
+        "captures_per_stage": "16",
+        "dwell_ms": "300",
+        "baseline_cn_db": "-10.38",
+        "baseline_click_pm": "38.978",
+        "baseline_video_snr_db": "0.00",
+        "video_caps": "0/16",
+        "video_age_ms": "171542",
+        "lane": "ultrafine",
+        "persistent": "0"
+      },
+      "end": {
+        "status": "COMPLETE",
+        "profiles": "13",
+        "rejected": "4",
+        "breaks_iq": "0",
+        "skipped": "1",
+        "restored": "1",
+        "input_referred_claim": "none"
+      },
+      "refused": null,
+      "profiles": [
+        {
+          "id": 1300,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.013098333278828811,
+          "se_db": 0.022640372640770064,
+          "drift_db": -0.009917034442064043,
+          "agree_db": 0.008164152544544834
+        },
+        {
+          "id": 1301,
+          "name": "SPUR_REFERENCE0_P512",
+          "complete": true,
+          "delta_db": 0.0028647960138883377,
+          "se_db": 0.023327326225315897,
+          "drift_db": 0.03147803711756847,
+          "agree_db": 0.024110161478956726
+        },
+        {
+          "id": 1302,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.022179932916816192,
+          "se_db": 0.02788212718290172,
+          "drift_db": 0.020986876746285965,
+          "agree_db": 0.010895301619778586
+        },
+        {
+          "id": 1303,
+          "name": "SPUR_REFERENCE0_M512",
+          "complete": true,
+          "delta_db": -0.011687282375183017,
+          "se_db": 0.021317727514681577,
+          "drift_db": 0.00034145765880122525,
+          "agree_db": 0.04121816208026452
+        },
+        {
+          "id": 1304,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.014510677052789411,
+          "se_db": 0.026042064551503343,
+          "drift_db": -0.02801780337207571,
+          "agree_db": 0.019535524968893547
+        },
+        {
+          "id": 1309,
+          "name": "SPUR_INFERRED2_P512",
+          "complete": false
+        },
+        {
+          "id": 1310,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.004181075159891634,
+          "se_db": 0.020434832401489127,
+          "drift_db": -0.006857750144347641,
+          "agree_db": -0.03158872199410734
+        },
+        {
+          "id": 1311,
+          "name": "SPUR_INFERRED2_M512",
+          "complete": false
+        },
+        {
+          "id": 1312,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.004757369964898395,
+          "se_db": 0.023459638087884257,
+          "drift_db": -0.008301608251827908,
+          "agree_db": -0.058947408610416474
+        },
+        {
+          "id": 1313,
+          "name": "SPUR_INFERRED3_P512",
+          "complete": false
+        },
+        {
+          "id": 1314,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.007805240411177472,
+          "se_db": 0.02803780281990716,
+          "drift_db": 0.0029116857371418448,
+          "agree_db": 0.01998395532304631
+        },
+        {
+          "id": 1315,
+          "name": "SPUR_INFERRED3_M512",
+          "complete": false
+        },
+        {
+          "id": 1316,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.010101159035155405,
+          "se_db": 0.02206958478356627,
+          "drift_db": 0.00021214941821234845,
+          "agree_db": -0.0408605631252259
+        }
+      ],
+      "console_sha256": "00b6847fff44d4673707b2948c4cf40abd038602c9e67ff6aa2b3ff61f1f5759",
+      "console_bytes": 162326
+    },
+    {
+      "log": "loopcap-targeted-20261028-01/console.log",
+      "begin": {
+        "fw": "5.0.0-noise-lab+local",
+        "suite": "g",
+        "freq": "5865",
+        "offset_khz": "0",
+        "gain": "79",
+        "entry_gain": "79",
+        "packed": "001e77f4",
+        "dco": "245/236",
+        "held": "1",
+        "filter_code": "56",
+        "skirt": "32",
+        "dfilt": "12",
+        "p11": "1",
+        "captures_per_stage": "16",
+        "dwell_ms": "300",
+        "baseline_cn_db": "-14.46",
+        "baseline_click_pm": "40.321",
+        "baseline_video_snr_db": "0.00",
+        "video_caps": "0/16",
+        "video_age_ms": "277599",
+        "lane": "ultrafine",
+        "persistent": "0"
+      },
+      "end": {
+        "status": "COMPLETE",
+        "profiles": "17",
+        "rejected": "0",
+        "breaks_iq": "0",
+        "skipped": "0",
+        "restored": "1",
+        "input_referred_claim": "none"
+      },
+      "refused": null,
+      "profiles": [
+        {
+          "id": 1200,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.018095695454038108,
+          "se_db": 0.02100540709605594,
+          "drift_db": 0.004669203303231839,
+          "agree_db": 0.05771907953318145
+        },
+        {
+          "id": 1201,
+          "name": "LOOPCAP_CURRENT_BIN6",
+          "complete": true,
+          "delta_db": 0.05440679910224322,
+          "se_db": 0.023560031298650138,
+          "drift_db": 0.04276933227318125,
+          "agree_db": -0.011947985935664818
+        },
+        {
+          "id": 1202,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.011506630213833802,
+          "se_db": 0.024190297897254295,
+          "drift_db": -0.02249602347827473,
+          "agree_db": -0.0288023575626708
+        },
+        {
+          "id": 1203,
+          "name": "LOOPCAP_CAL_BIN0",
+          "complete": true,
+          "delta_db": 0.036411379809302424,
+          "se_db": 0.020529022508533088,
+          "drift_db": 0.008607164295168168,
+          "agree_db": 0.0015126623936438932
+        },
+        {
+          "id": 1204,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.006672005944161619,
+          "se_db": 0.02331454205817276,
+          "drift_db": 0.011826651139626776,
+          "agree_db": 0.011863303697007943
+        },
+        {
+          "id": 1205,
+          "name": "LOOPCAP_CAL_BIN1",
+          "complete": true,
+          "delta_db": 0.042940107962853524,
+          "se_db": 0.02535414400099299,
+          "drift_db": 0.0432123034091374,
+          "agree_db": 0.018603772012171227
+        },
+        {
+          "id": 1206,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.006540793675070766,
+          "se_db": 0.021360077472494722,
+          "drift_db": -0.004084772489831856,
+          "agree_db": 0.03192245808093386
+        },
+        {
+          "id": 1207,
+          "name": "LOOPCAP_CAL_BIN2",
+          "complete": true,
+          "delta_db": 0.030482323317831295,
+          "se_db": 0.02468723837036826,
+          "drift_db": 0.04937538949836817,
+          "agree_db": 0.00440600914040612
+        },
+        {
+          "id": 1208,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.003095331675077695,
+          "se_db": 0.023563813758335533,
+          "drift_db": -0.005167085282120176,
+          "agree_db": 0.03868155556777708
+        },
+        {
+          "id": 1209,
+          "name": "LOOPCAP_CAL_BIN3",
+          "complete": true,
+          "delta_db": 0.018667575751890375,
+          "se_db": 0.021219621262879105,
+          "drift_db": -0.0206648863755321,
+          "agree_db": -0.01086777697494945
+        },
+        {
+          "id": 1210,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.04358934739516318,
+          "se_db": 0.023475752306672662,
+          "drift_db": 0.029472182807204206,
+          "agree_db": 0.019457500301157893
+        },
+        {
+          "id": 1211,
+          "name": "LOOPCAP_CAL_BIN4",
+          "complete": true,
+          "delta_db": 0.054576731621659214,
+          "se_db": 0.02157858610965004,
+          "drift_db": 0.018754210034984453,
+          "agree_db": -0.029431726770010158
+        },
+        {
+          "id": 1212,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": -0.06355126916579579,
+          "se_db": 0.02200596203898537,
+          "drift_db": -0.020017646137629796,
+          "agree_db": -0.024210097896594895
+        },
+        {
+          "id": 1213,
+          "name": "LOOPCAP_CAL_BIN5",
+          "complete": true,
+          "delta_db": 0.02921104500384164,
+          "se_db": 0.02542730959179855,
+          "drift_db": -0.02326812581933435,
+          "agree_db": 0.01949934202180348
+        },
+        {
+          "id": 1214,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.003302938322536697,
+          "se_db": 0.022454653600413876,
+          "drift_db": -0.03654211192707013,
+          "agree_db": -0.019420126533691295
+        },
+        {
+          "id": 1215,
+          "name": "LOOPCAP_CAL_BIN6",
+          "complete": true,
+          "delta_db": 0.056457229755911165,
+          "se_db": 0.02193581858241193,
+          "drift_db": -0.05678981856073939,
+          "agree_db": 0.016232047447089393
+        },
+        {
+          "id": 1216,
+          "name": "SHAM",
+          "complete": true,
+          "delta_db": 0.01360936277092506,
+          "se_db": 0.023839375107818268,
+          "drift_db": 0.01532546899136733,
+          "agree_db": -0.017762610841900006
+        }
+      ],
+      "console_sha256": "dd5f725f8ddcf3c884393da3a51fc3b02a433971e4c9952c0f62d09df7d62d77",
+      "console_bytes": 245832
     }
   ]
 }
