@@ -148,12 +148,25 @@ static void snapshot(diag_record_t *r, uint8_t gain, uint32_t faults)
     r->flags = chain_flags(gain, faults);
 }
 
+/* Picture measure (picture_sync.h): sync pulses found / expected over the
+ * control windows of the second, apart from the AFC-gated video_pct. */
+static uint32_t s_pic_found, s_pic_expected, s_pic_windows;
+void diag_picture(unsigned found, unsigned expected)
+{
+    s_pic_found += found;
+    s_pic_expected += expected;
+    ++s_pic_windows;
+}
+
 static void close_second(int64_t now)
 {
     diag_record_t r = {0};
     r.t_s = (uint32_t)(now / 1000000);
     r.t_ms = (uint32_t)(now / 1000);
     diag_coverage(&r, s_acc.windows, s_acc.measured, s_acc.video);
+    r.picture_pct = s_pic_expected ? (uint8_t)(s_pic_found * 100u / s_pic_expected) : DIAG_PICTURE_UNKNOWN;
+    r.picture_windows = (uint8_t)(s_pic_windows > 255u ? 255u : s_pic_windows);
+    s_pic_found = s_pic_expected = s_pic_windows = 0;
     snapshot(&r, (uint8_t)((s_acc.gain_sum + s_acc.windows / 2u) / s_acc.windows), s_acc.faults);
     r.coherence = (int16_t)(s_acc.coh / (long)s_acc.windows);
     /* Mostly a fixed IQ point this second: no carrier to estimate. */
@@ -238,6 +251,7 @@ void diag_window(bool measured, bool video_valid, bool afc_step)
         s_acc.start_us = now;
         s_in_dropout = false;
         s_segment_start_seq = s_seq;
+        s_pic_found = s_pic_expected = s_pic_windows = 0;
     }
     if (owned || boundary) s_acc.owned = true;
     ++s_acc.windows;
@@ -259,7 +273,9 @@ void diag_window(bool measured, bool video_valid, bool afc_step)
     s_seen_faults = faults;
     /* A second the menu, a calibration or the scanner owned says nothing
      * about the RF link; it also ends any dropout bookkeeping. */
-    if (s_acc.owned) { s_in_dropout = false; s_segment_start_seq = s_seq; }
+    /* (Its picture windows go too: walk 300 logged 85-98 in the second after
+     * an owned stretch.) */
+    if (s_acc.owned) { s_in_dropout = false; s_segment_start_seq = s_seq; s_pic_found = s_pic_expected = s_pic_windows = 0; }
     else close_second(now);
     memset(&s_acc, 0, sizeof(s_acc));
     s_acc.start_us = now;

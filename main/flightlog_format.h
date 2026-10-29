@@ -214,10 +214,14 @@ typedef struct {
     uint16_t repaired_tips, suppressed_tips;       /* assisted vs native scheduled tips */
     uint16_t longest_h_unlock_ms;                  /* only during fresh observation */
     uint8_t output_observer_gaps;
+    /* Picture measure (picture_sync.h, 71-byte records since 2026-10-28):
+     * sync pulses found / expected in the decoded control windows, % (0xff
+     * unknown), and how many windows. FIELD_DIAG video_pct stays the AFC's. */
+    uint8_t picture_pct, picture_windows;
 } flog_second_t;
 #define FLOG_LEVEL_UNKNOWN (-32768)
 
-#define FLOG_SECOND_LEN 69u
+#define FLOG_SECOND_LEN 71u
 #define FLOG_SECOND_LEN_V1 34u
 
 static inline uint8_t flog_sat8(uint32_t v) { return (uint8_t)(v > 255u ? 255u : v); }
@@ -250,6 +254,7 @@ static inline void flog_pack_second(const flog_second_t *s, uint8_t p[FLOG_SECON
     flog_put16(p + 60, s->native_h_lines); flog_put16(p + 62, s->repaired_tips);
     flog_put16(p + 64, s->suppressed_tips); flog_put16(p + 66, s->longest_h_unlock_ms);
     p[68] = s->output_observer_gaps;
+    p[69] = s->picture_pct; p[70] = s->picture_windows;
 }
 
 static inline bool flog_unpack_second(const uint8_t *p, uint8_t len, flog_second_t *s)
@@ -294,6 +299,8 @@ static inline bool flog_unpack_second(const uint8_t *p, uint8_t len, flog_second
     s->suppressed_tips = len >= 69u ? (uint16_t)flog_get16(p + 64) : 0;
     s->longest_h_unlock_ms = len >= 69u ? (uint16_t)flog_get16(p + 66) : 0;
     s->output_observer_gaps = len >= 69u ? p[68] : 0;
+    s->picture_pct = len >= 71u ? p[69] : 0xffu;
+    s->picture_windows = len >= 71u ? p[70] : 0;
     return true;
 }
 

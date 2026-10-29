@@ -347,6 +347,7 @@ void flightlog_second(const diag_record_t *r, uint8_t gain_min, uint8_t gain_max
     flog_second_t s = {
         .t_s = r->t_s, .vq_snr_x10 = vq.known ? vq.snr_x10 : 0, .vq_lines_x100 = vq.known ? vq.lines_x100 : 0,
         .cn_x10 = r->cn_x10, .video_pct = r->video_pct, .dropout = dropout,
+        .picture_pct = r->picture_pct, .picture_windows = r->picture_windows,
         .gain_min = gain_min, .gain_mean = r->gain, .gain_max = gain_max,
         .clip_q = flog_sat8((uint32_t)(r->clip_pm < 0 ? 0 : r->clip_pm) / 4u),
         .gain_writes = have ? flog_sat8(r->gain_writes - gw) : 0, .overloads = have ? flog_sat8(r->overloads - ov) : 0,

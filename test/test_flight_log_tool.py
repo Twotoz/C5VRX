@@ -10,7 +10,7 @@ flight_log = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(flight_log)
 
 
-def summary(length=69):
+def summary(length=71):
     p = bytearray(length)
     struct.pack_into('<IhHh', p, 0, 7, 45, 120, 80)
     p[28] = 1 | (3 << 2)
@@ -25,6 +25,8 @@ def summary(length=69):
         p[58:60] = bytes((97, 95))
         struct.pack_into('<HHHH', p, 60, 15625, 12, 3, 106)
         p[68] = 2
+    if length >= 71:
+        p[69:71] = bytes((87, 14))
     return p
 
 
@@ -40,12 +42,16 @@ class FlightLogToolTest(unittest.TestCase):
         self.assertEqual(row['repaired_tips'], 12)
         self.assertEqual(row['longest_h_unlock_ms'], 106)
         self.assertEqual(row['output_observer_gaps'], 2)
+        self.assertEqual(row['picture_pct'], 87)
+        self.assertEqual(row['picture_windows'], 14)
 
     def test_old_record_keeps_output_unknown_and_same_columns(self):
         old = flight_log.second(summary(34))
         new = flight_log.second(summary())
         self.assertIsNone(old['output_demod'])
         self.assertIsNone(old['native_h_lock_pct'])
+        self.assertIsNone(old['picture_pct'])
+        self.assertIsNone(flight_log.second(summary(69))['picture_pct'])
         self.assertEqual(old.keys(), new.keys())
 
 

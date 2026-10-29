@@ -83,7 +83,7 @@ that changes the result, and on a channel change.
 ## Per-second summary (34/38/42/50 legacy bytes; 69 with output telemetry)
 
 One per second while the receiver runs; about 4 hours in the ring at the
-current 69-byte payload (less when rare events occupy blocks).
+current 71-byte payload (less when rare events occupy blocks).
 
 | group | fields (unit) |
 | --- | --- |
@@ -94,6 +94,7 @@ current 69-byte payload (less when rare events occupy blocks).
 | AFC | offset applied (kHz), porch residual (kHz), corrections |
 | demodulator | analog filter profile, reserved historical kp/LP slots (P64 writes unknown kp and LP off), sampling-phase state and last probe excess |
 | received level | carrier at the chip pin (0.1 dBm), the noise it is measured against (dBm), flags: valid, above the noise, exact (G54+), noise learned (`main/rx_level.h`) |
+| picture (71-byte records, since 2026-10-28) | sync pulses found / expected in the decoded control windows (%, `main/picture_sync.h`: the live decoder's LUT in software, a goggle-like count with none of the AFC's gates; 0xff unknown) and how many windows. The link row's share of windows with sync is the AFC's: it reads 20-40 % at the edge and 60-90 % on a strong carrier while moving, where the picture is clean |
 | gain write reasons | writes down (attack), writes up (release) in every gain model (LEVEL, RSSI and fixed gains count their applied writes; before 2026-10-28 only KEEL-1 counted, so LEVEL logs read 0 here and in `gain_writes`), fast-path overloads forwarded (sentinel), overloads within 5 ms of a write |
 | C/N-AUTO | decision C/N plus power, M2M4 and envelope estimates (0.1 dB, -990 unknown), confidence and source (+32: a small carrier on a 4-bit-limited row, not used for decisions), flags (`main/cn_auto.h`); only noise-referenced power may drive AFC/profile decisions; kp/LP consumers are retired |
 | verified output | verified demodulator ID: 3 = `U80P64-R1`; historical IDs 1/2 = `U85Q`/`U85Q-LP` (instruction hash `1a09f5c092e8`), applied output level; flag format, guard standard and requested/active flywheel are history (removed 2026-10-25, read 0); identity is unknown unless the live transport state is verified |

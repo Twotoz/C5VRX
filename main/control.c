@@ -2,6 +2,8 @@
  * BOOT button and menu, AFC acquisition, PAL/NTSC detection, signal
  * strength and the channel scanner. Observes completed RX descriptors only. */
 #include "receiver.h"
+#define PICTURE_YIELD() taskYIELD()   /* the gain observer shares priority 3 */
+#include "picture_sync.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -409,6 +411,9 @@ static uint32_t s_vq_periods;
 
 /* copy_snapshot() under the same scheduler hold as copy_control_window():
  * a preempted copy fails its overrun check. */
+/* Picture measure totals and its CPU cost per window (T PICTURE). */
+static struct { picture_state_t state; uint32_t found, expected, windows, us_max; uint64_t us_sum; } s_pic;
+
 static bool copy_afc_window(uint8_t *dst)
 {
     vTaskSuspendAll();
@@ -513,6 +518,21 @@ static void control_task(void *arg)
          * where the active descriptor began, so it covers s_window. */
         const bool afc_copied = receiver_ok && copy_afc_window(s_afc_window);
         bool window_ok = afc_copied && afc2_envelope_stationary(s_afc_window, AFC_WINDOW_BYTES);
+        /* Picture measure (picture_sync.h): every live window, also those the
+         * AFC leaves out (a gain write, settle, fading): the goggles see those. */
+        if (copied && !s_menu_active && (afc_copied || copy_afc_window(s_afc_window))) {
+            unsigned bits;
+            const uint16_t *lut = transport_decoder_lut(&bits);
+            if (lut) {
+                const int64_t t0 = esp_timer_get_time();
+                const picture_sync_t ps = picture_sync_window(&s_pic.state, s_afc_window, AFC_WINDOW_BYTES, lut, bits);
+                const uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
+                if (ps.expected) diag_picture(ps.found, ps.expected);
+                s_pic.found += ps.found; s_pic.expected += ps.expected; ++s_pic.windows;
+                s_pic.us_sum += us;
+                if (us > s_pic.us_max) s_pic.us_max = us;
+            }
+        }
         const char *afc_window_reason = !copied ? "copy_missing" : settle ? "settle" :
             ctx != afc_context() ? "context" : phy_busy() ? "phy_busy" : !receiver_ok ? "gain_settle" :
             !afc_copied ? "afc_copy_missing" : !window_ok ? "nonstationary" : "measured";
@@ -694,5 +714,9 @@ void control_print(void)
     printf("VIDEO_Q known=%u snr_x10=%d lines_x100=%u lines=%lu windows=%lu periods=%lu (end-to-end: sync/porch "
            "spread of the demodulated video, last second)\n", vq.known, vq.snr_x10, vq.lines_x100,
            (unsigned long)vq.lines, (unsigned long)vq.windows, (unsigned long)s_vq_periods);
+    printf("PICTURE found=%lu expected=%lu windows=%lu us_mean=%lu us_max=%lu (picture_sync.h: sync pulses in the "
+           "decoded control windows since boot, apart from the AFC's video_pct; CPU per window)\n",
+           (unsigned long)s_pic.found, (unsigned long)s_pic.expected, (unsigned long)s_pic.windows,
+           (unsigned long)(s_pic.windows ? s_pic.us_sum / s_pic.windows : 0), (unsigned long)s_pic.us_max);
 }
 

@@ -306,6 +306,7 @@ void profile_set_live_mode(bool on);
 
 /* ---- diag.c: passive field diagnostics (diag_logic.h) ---- */
 void diag_window(bool measured, bool video_valid, bool afc_step);   /* control task, every window */
+void diag_picture(unsigned found, unsigned expected);                /* control task, every decoded window */
 void diag_poll(void);                   /* console task: prints queued records */
 void diag_report(void);                 /* console D */
 void diag_toggle_stream(void);          /* console R */

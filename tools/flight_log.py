@@ -192,6 +192,10 @@ def second(p):
         (d['native_h_lines'], d['repaired_tips'], d['suppressed_tips'],
          d['longest_h_unlock_ms']) = struct.unpack_from('<HHHH', p, 60)
         d['output_observer_gaps'] = p[68]
+    # Picture measure (71-byte records): sync pulses found / expected in the
+    # decoded windows (main/picture_sync.h), apart from the AFC-gated video_pct.
+    d['picture_pct'] = (None if p[69] == 0xff else p[69]) if len(p) >= 71 else None
+    d['picture_windows'] = p[70] if len(p) >= 71 else None
     return d
 
 
