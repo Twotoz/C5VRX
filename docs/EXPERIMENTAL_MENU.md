@@ -41,6 +41,33 @@ Bench results so far: LNA BIAS, CURRENT, LOOP CAP and SPUR 0 did not move the
 receiver noise beyond the shams (PHY_NOISE_RESULTS_2026-10-28.md). Their effect
 on the picture was never measured, which is why they go in this menu.
 
+## Field-only candidates
+
+These cannot show anything on a VTX-off bench: they act on the carrier, the
+video, the deviation or movement. They are scored with `picture_pct`, the
+goggles, and the flight log per setting (A/B on the same walk).
+
+| Item | Values (default first) | Why only the field shows it |
+|---|---|---|
+| GAIN SYNC | OFF / ON: gain writes wait for the next H-sync tip (max one line, 64 us) | A gain write is a step in IQ; in sync it hides in blanking instead of a torn line. There is no line without video. New. |
+| LEVEL TARGET | 0 / -3 / +3 dB | The headroom between noise and fold: +3 means less noise but more folds on peaks, -3 the reverse. Only a moving carrier has peaks. |
+| LEVEL RELEASE | normal / slow / fast | How fast LEVEL climbs back after a fade; walk 292 showed the pendulum at the edge. |
+| GAIN RATE | 0 / 5 / 20 ms minimum between writes | Fewer steps = fewer glitches, but slower follow; a trade-off you only see while moving. |
+| GAIN CAP | G83 / G79 / G75 | The top rows had the same noise floor without a carrier; with a carrier they may fold sooner. |
+| FAST GAIN THR | 500 / 250 / 750 per mille clipped | The sentinel threshold: sooner off a strong peak versus fewer false steps. |
+| DC SPEED | normal / 2x / 0.5x servo step | The DC moves with each gain step and with temperature; the walk showed edge loss from a slow per-row servo. |
+| ANALOG FILTER | stock / -1 / -2 / +1 code | Lab suite 7: narrower = less noise, but clips a wide deviation. Without a carrier only the noise half is measured. |
+| TUNE OFFSET | AFC / -250 / +250 / -500 kHz | Where the carrier sits in the filter and relative to the DC notch; with deviation 0.66 the spectrum is asymmetric. |
+| AFC SPEED | normal / slow / off-after-lock | A VTX drifts as it warms up; a fast loop also follows video content. |
+| SAMPLE PHASE | auto / fixed 0 / 1 / 2 | Bench: all positions equal on noise; on a carrier the slip position decides mixed IQ bits. |
+| SYNC CLEAN | OFF / ON | Recognised sync tips out clean (FINDINGS next step 5); sync only exists with video. |
+| ERASURE | hold / mid-grey | What the DAC outputs on a folded/uncertain pair: hold the previous code or grey; a choice of picture, not noise. Needs a decoder table variant. |
+| LOG CADENCE | 1 s / 5 s / off | Flash writes of the flight log may cause the owned/paused seconds (11 % of walk 300); only a live picture shows a pause. |
+
+Implementation order within this group: GAIN SYNC, LEVEL TARGET/RELEASE,
+GAIN RATE/CAP and LOG CADENCE first (small, in existing code paths); the
+rest after the first field results.
+
 ## Rules
 
 1. **Defaults are the current firmware.** With every item on its default the
