@@ -9,14 +9,98 @@ This extends the PR #254 VTX-off PHY noise lab
 `tools/phy_noise_lab.py` and `docs/PHY_FEATURE_AUDIT_2026-10-24.md` at
 `6274b2d0d51b44fbf7b9bef1cc8fb71bb2470e85`) and the pinned PHY lab in
 `legacy/c5vrx4/main/phy_rx_lab.c` (#150-155). Every register footprint used
-here is PR #254's recovered write mask of the pinned IDF 6.0.2 `libphy.a`
+in suites 1..9 is PR #254's recovered write mask of the pinned IDF 6.0.2 `libphy.a`
 (SHA-256
-`dbf33c418c8d408d4005c849d12a1432deea82e2e5e57de3c8ddf914d104fffb`); none is new reverse engineering. The 11p
+`dbf33c418c8d408d4005c849d12a1432deea82e2e5e57de3c8ddf914d104fffb`). Suites d..g extend that audit. The 11p
 observation is credited to SushiDude (@Ready4Sushi).
 
-**Status: firmware, host tool and host tests only. No board run yet, so no
-candidate is BETTER or WORSE today.** This document is the candidate
-inventory, the measurement design and the test plan.
+**Status: VTX-off board runs completed for shams, the existing sweep and
+the targeted bias comparison. These establish captured noise differences,
+not input-referred noise figure or sensitivity.** This document is the
+candidate inventory, the measurement design and the test plan.
+
+## VTX-off noise-power mode
+
+For captured noise power, switch the VTX off. Console `Sb` runs shams;
+`Sc` runs the existing suites 1..7 and 9, at one screened gain and held DC
+pair. Gain-row suite 8 is excluded. The recent-video requirement is replaced
+by a refusal while sync was observed in the last three seconds. This is not
+proof of an RF-quiet input; record the antenna/termination and environment.
+
+```
+python tools/phy_sense_lab.py record COM10 runs/noise_shams --suite b
+python tools/phy_sense_lab.py record COM10 runs/noise_sweep --suite c
+python tools/phy_sense_lab.py analyse runs/noise_sweep/console.log --noise
+```
+
+Each candidate still uses STOCK-TEST-TEST-STOCK and verified restoration.
+`SENSLAB_NOISE` reports the change in DC-removed complex IQ power in dB,
+with standard error and STOCK drift. Negative means less captured noise;
+it does not establish lower input-referred noise figure. Conversion gain,
+bandwidth and quantization may change too. Carrier scoring refuses these
+logs; promising candidates need a separate fixed-carrier comparison.
+The existing sweep does not include current, loop-cap or extra spur slots;
+those require separate targeted suites and their own footprint audit.
+
+### Targeted bias comparison
+
+Console `Sd` (VTX off) or `Se` (fixed weak carrier) compares the witnessed
+operating byte 0xcf at analog block 0x6a/host 1/register 0 against the 0x9f
+initialization value from Espressif's `phy_bias_reg_set`. It only changes
+bits 7:4, preserving the other nibble. Entry requires register 0 to be 0xcf
+and register 1 to be 0x7f; other states are skipped. Each of three candidate
+trials uses STOCK-TEST-TEST-STOCK, interleaved with shams and exact readback
+and restoration. No arbitrary field values are swept. This tests two known
+register states; neither is established as a specific LNA current setting.
+
+Record with `--suite d` or `--suite e`. Use `analyse --noise` for d logs.
+A changed raw noise floor still needs the e comparison to establish C/N
+benefit. A skip, failed application or incomplete measurement is not a gain.
+
+### Targeted current-level test
+
+Console `Sf` invokes the real pinned `phy_current_level_set` for levels
+0..15, 31, 63, 127 and 255. Its complete immediate write footprint is a
+single byte at `phy_param+41`; the linked setter is one `sb` and `ret`.
+No direct hardware write or live consumer has been established, so these
+are raw byte patterns, not milliamps or documented current levels. Every
+candidate has a sham, exact saved-byte restoration through the same setter,
+and byte readback around every capture. Record with `--suite f`.
+
+Console `Si` repeats 255 four times among 0 and 15 in counterbalanced order,
+with adjacent STOCK stages and shams, to separate value from time drift.
+
+### Targeted loop-cap test
+
+Console `Sg` reproduces the complete 5 GHz footprint of
+`phy_rx_loop_cap_set(freq_mhz)` with bounded PBUS transactions. It requires
+the existing PBUS debug state and an idle command port. It saves and restores
+both nine-bit PBUS words `(9,2)` and `(10,2)`, `phy_param[690]`, and the idle
+command word at `0x600a0884`. Readback and the fixed gain/DC/filter witnesses
+must match. Timeout or failed rollback triggers restart recovery.
+
+The first candidate uses the current frequency's calibration bin. Subsequent
+candidates use the seven stored calibration pairs at `phy_param[0x2d2..0x2df]`,
+without retuning the LO. Bytes outside the recovered capacitor field widths
+are skipped. The vendor's uint8 truncation precedes saturation to 1..14.
+These are TX capacitor settings used for internal loopback calibration;
+the experiment tests possible coupling into live RX, not a demonstrated
+RX noise control. Record with `--suite g`; raw noise alone cannot prove NF.
+
+### Targeted spur experiment
+
+Console `Sh` compares nominal +/-5 MHz frequency codes for reference slot 0
+and inferred address-layout candidates 1..3. Each initially inactive candidate
+uses the recovered coefficients with control bits 15:14 preserved. All four
+complete words are saved and verified, coefficients are installed before
+enable, and rollback disables first and restores original control last.
+An already active entry skips. The physical gain/DC context must also survive
+rollback. Readback does not prove silicon slot semantics; a lower noise power
+may be lost useful bandwidth. Record with `--suite h`.
+
+See [PHY_NOISE_RESULTS_2026-10-28.md](PHY_NOISE_RESULTS_2026-10-28.md) for
+completed measurements, exact footprints and the correction of the invalid
+empty-TEST -5.4 dB output in the original sweep.
 
 ## 1. Why another lab
 
@@ -84,8 +168,8 @@ no-ops (`noop=1`) and are reported, not scored.
 | Native AGC (`phy_agc_max_gain_set`, `phy_wifi_agc_sat_gain`) | Unmasked full-word writes; native AGC caused line noise on a continuous carrier (`legacy/c5vrx3/docs/native-agc-v2.md`) |
 | `phy_get_loop_snr`, `phy_set_adc_rand` | Change clocks/PBUS, start an internal TX tone or run DC calibration; not reversible toggles |
 | Full RF calibration, PLL/temperature tracking | Boot-level maintenance that regenerates gain tables, DC and IQ; needs its own boot comparison |
-| `phy_bias_reg_set`, `phy_current_level_set`, `phy_rx_loop_cap_set`, `phy_rxevm_en` | Owned by frequency calibration, no live consumer traced, or a reset routine without exact rollback (PR #254 audit) |
-| Spur slots 1..3 | Slot semantics and coefficients unverified |
+| Full `phy_bias_reg_set` reset; `phy_rxevm_en` | Reset/calibration routines without an independently scoped rollback. Targeted bias, current and loop-cap comparisons are now separate suites d..g |
+| Spur slots 1..3 as production controls | Silicon semantics unverified; suite h is explicitly a bounded inferred-mapping experiment |
 
 ## 3. How a run protects the receiver
 

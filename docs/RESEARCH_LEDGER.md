@@ -644,6 +644,17 @@ sample must participate before 2:1 reduction, and a live implementation must
 prove sustained hardware throughput plus state continuity before replacing the
 current gapless BitScrambler path.
 
+## PHY noise/current/loop-cap/spur bench work (2026-10-28)
+
+Twotoz's requested continuation of PR #254: VTX-off paired-noise controls,
+targeted witnessed bias states, the real current-level setter, recovered
+loop-cap PBUS/cache footprint, and inferred spur-slot experiments. Findings,
+negative results, the invalid empty-test -5.4 dB correction and evidence
+limits are in [PHY_NOISE_RESULTS_2026-10-28.md](PHY_NOISE_RESULTS_2026-10-28.md),
+with per-profile data in `research/data/phy_noise_lab_2026-10-28.json`.
+These bench controls do not establish a lower absolute NF and are not
+production boot settings. The current-level argument is not calibrated mA.
+
 ## Removed sync flywheel (PR #212/#218 history, removed 2026-10-25)
 
 The C5VRX-5 flywheel (PR #212, witness fix PR #218, bounded sync-loss

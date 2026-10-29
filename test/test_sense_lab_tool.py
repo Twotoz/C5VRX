@@ -112,6 +112,24 @@ def main():
         check(result['runs'][0]['refused'].startswith('no_vtx_video'), 'refusals are reported')
         check(not math.isnan(len(out.getvalue())), 'report text')
 
+    # Noise-only logs must report power, never carrier sensitivity verdicts.
+    with tempfile.TemporaryDirectory() as tmp:
+        lines = make_run(3, 5865)
+        lines = [line.replace('suite=a', 'suite=c').replace('SENSLAB_RESULT', 'SENSLAB_NOISE') for line in lines]
+        lines = [line.replace('m2=4.0000', 'm2=2.0000') if 'stage=TEST' in line else line for line in lines]
+        path = Path(tmp, 'noise.log'); path.write_text('\n'.join(lines))
+        result = lab.analyse_noise([path], None, io.StringIO())
+        good = next(p for p in result['runs'][0]['profiles'] if p['id'] == 7)
+        check(good['complete'] and abs(good['delta_db'] + 3.0103) < 0.001, 'noise half-power is -3.01 dB')
+        check('verdict' not in good, 'noise power is not a sensitivity verdict')
+        short = next(p for p in result['runs'][0]['profiles'] if p['name'] == 'SHORT')
+        check(not short['complete'] and 'delta_db' not in short, 'incomplete noise capture is not scored')
+        try:
+            lab.analyse([path], None, io.StringIO())
+            check(False, 'carrier scorer rejects noise runs')
+        except ValueError:
+            pass
+
     # The firmware's record format carries every field the tool scores.
     source = (Path(__file__).resolve().parent.parent / 'main' / 'sense_lab.c').read_text()
     cap_format = source[source.index('"SENSLAB_CAP '):source.index('t_ms=')]

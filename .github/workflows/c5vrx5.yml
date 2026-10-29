@@ -152,6 +152,10 @@ jobs:
           python3 test/test_afc_telemetry.py
           python3 test/test_sphase_runtime.py
           python3 test/test_sense_lab_tool.py
+          python3 test/test_bias_suite_runtime.py
+          python3 test/test_current_suite_runtime.py
+          python3 test/test_loopcap_suite_runtime.py
+          python3 test/test_spur_suite_runtime.py
           python3 test/test_phase_repair_runtime.py
           python3 test/test_calibration_search_runtime.py
           python3 test/test_manual_calibration_runtime.py

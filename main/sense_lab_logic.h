@@ -137,14 +137,14 @@ static inline void sense_measure(const uint8_t *s, size_t n, const uint8_t lut[2
  * MMIO: addr/mask/value. I2C: analog block/host/reg with an 8-bit mask.
  * A profile with no patches is a sham (STOCK twice); it measures the
  * comparison's own spread. */
-enum { SENSE_P_MMIO = 0, SENSE_P_I2C = 1 };
+enum { SENSE_P_MMIO = 0, SENSE_P_I2C = 1, SENSE_P_CURRENT = 2, SENSE_P_PBUS = 3, SENSE_P_PARAM = 4 };
 typedef struct {
     uint8_t kind;
     uint8_t block, host, reg;    /* I2C */
     uint32_t addr, mask, value;  /* MMIO; I2C uses the low 8 bits of mask/value */
 } sense_patch_t;
 #define SENSE_MAX_PATCHES 12u
-enum { SENSE_K_PATCH = 0, SENSE_K_GAIN = 1, SENSE_K_OUTPUT_OFF = 2 };
+enum { SENSE_K_PATCH = 0, SENSE_K_GAIN = 1, SENSE_K_OUTPUT_OFF = 2, SENSE_K_SPUR = 3 };
 typedef struct {
     const char *name;
     uint8_t kind;                /* SENSE_K_* */
