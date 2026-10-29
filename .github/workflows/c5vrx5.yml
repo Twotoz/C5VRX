@@ -111,6 +111,8 @@ jobs:
           /tmp/test_agc_compare | tail -5
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main -DSKIP_BOUNDS -DAGC_CHECKS -DPICTURE_Q -DWRITE_COST_US=7000 -DGAIN_ERR_DB=1.0 -DGAIN_ERR_LOW_DB=6.0 test_agc_compare.c ../main/agc.c ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_agc_compare_err
           /tmp/test_agc_compare_err | tail -5
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_agc_options.c ../main/agc.c -lm -o /tmp/test_agc_options
+          /tmp/test_agc_options
           # LEVEL's carrier radius of a folded window on the exact hardware fold model (adc_fold.h)
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_fold_radius.c ../main/agc.c -lm -o /tmp/test_fold_radius
           /tmp/test_fold_radius
