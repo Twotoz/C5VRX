@@ -6,6 +6,7 @@
  * Explicit console B also optimizes the filter and prepares other profiles.
  * Gain control/AFC remain the normal receive controls, outside this policy. */
 #include "calibration_internal.h"
+#include "experimental.h"
 #include <stdarg.h>
 #include "esp_chip_info.h"
 #include "esp_mac.h"
@@ -100,11 +101,13 @@ bool video_recent(void)
 static volatile bool s_manual_requested, s_full_requested;
 void filter_request(void)
 {
+    if (experimental_transfer_active()) { printf("CAL refused: reset PHY experiments first\n"); return; }
     if (s_startup) { printf("COMMAND F refused=busy\n"); return; }
     s_manual_requested = true;
 }
 void filter_request_full(void)
 {
+    if (experimental_transfer_active()) { printf("CAL refused: reset PHY experiments first\n"); return; }
     if (s_startup) { printf("COMMAND B refused=busy\n"); return; }
     s_full_requested = true; s_manual_requested = true;
 }
@@ -372,6 +375,7 @@ static void calibration_dump(void)
 static void boot_phase_check(void)
 {
     s_boot_phase_pending = false;
+    if (rf_lane() != RF_LANE_ULTRAFINE) return;
     const int64_t t0 = esp_timer_get_time();
     s_probe_deadline = t0 + 600000;
     s_startup = true;

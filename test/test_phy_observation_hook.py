@@ -24,6 +24,8 @@ SDK = r'''
 #define pdTRUE 1
 typedef int StaticSemaphore_t;
 typedef void *SemaphoreHandle_t;
+static inline void experimental_phy_prepare_restore(void) {}
+static inline bool experimental_phy_restore(void) { return true; }
 static unsigned locks,hooks,writes;
 static bool notified,held=true;
 static uint8_t s_gain=50;

@@ -36,6 +36,8 @@ SDK = r'''
 #define pdTRUE 1
 typedef int StaticSemaphore_t;
 typedef void *SemaphoreHandle_t;
+static inline void experimental_phy_prepare_restore(void) {}
+static inline bool experimental_phy_restore(void) { return true; }
 static unsigned locks, hooks, writes;
 static void *xSemaphoreCreateRecursiveMutexStatic(int *p){return p;}
 static int xSemaphoreTakeRecursive(void *p,int timeout){(void)timeout;assert(p);++locks;return 1;}

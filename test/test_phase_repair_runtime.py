@@ -14,6 +14,8 @@ PREFIX = r'''
 #include <stdio.h>
 #include <string.h>
 #include "sphase_logic.h"
+#include "experimental.h"
+uint8_t experimental_get(unsigned item) { (void)item; return 0; }
 #define RF_LANE_ULTRAFINE 2
 static bool s_startup, s_boot_phase_pending, owner = true;
 static unsigned s_health_blocks, s_health_rejected, calls;

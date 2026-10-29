@@ -16,6 +16,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "experimental.h"
 #include "soc/gpio_sig_map.h"
 #include "soc/lp_aon_reg.h"
 
@@ -158,6 +159,7 @@ static void apply_filter(void)
  * AGC off, forced gain, 11p baseline, analog profile, digital filter, DC hold. */
 static void restore_lock(void)
 {
+    experimental_phy_prepare_restore();
     (void)phy_dco_release();          /* the restore must replay vendor rows */
     enable_continuous_modem();
     ESP_ERROR_CHECK(lock_rx_only());
@@ -173,6 +175,7 @@ static void restore_lock(void)
     apply_filter();
     if (!phy_dfilt_apply_default())
         ESP_EARLY_LOGW(TAG, "digital RX filter mode not applied (unsupported PHY or readback mismatch)");
+    (void)experimental_phy_restore();
     if (s_post_gain_hook) s_post_gain_hook(s_gain);
 }
 
@@ -349,7 +352,8 @@ esp_err_t rf_start(void)
     wifi_promiscuous_filter_t filter = {.filter_mask = 0};
     (void)esp_wifi_set_promiscuous_filter(&filter);
     if ((err = lock_rx_only()) != ESP_OK) return err;
-    if ((err = route_modem_iq(RF_LANE_ULTRAFINE)) != ESP_OK) return err;
+    experimental_load();
+    if ((err = route_modem_iq(experimental_boot_lane())) != ESP_OK) return err;
     phy_begin();
     /* The filter capacitors still hold the per-chip calibration from PHY
      * init; capture them before anything else writes the filter. */
@@ -382,9 +386,11 @@ bool rf_set_gain(uint8_t gain, uint32_t expected_generation)
      * re-write the same gain 50-100 times a second; seen as rolling). */
     if (gain == s_gain && phy_dco_held()) { phy_end_actuator(); return true; }
     phy_observation_changed();
+    experimental_phy_prepare_restore();
     (void)phy_dco_release();          /* a held hold keeps PBUS in debug mode */
     phy_force_rx_gain(true, gain);
     s_gain = gain;
+    (void)experimental_phy_restore();
     if (s_post_gain_hook) s_post_gain_hook(gain);
     phy_end_actuator();
     return true;
@@ -393,9 +399,11 @@ bool rf_set_gain(uint8_t gain, uint32_t expected_generation)
 void rf_force_gain(uint8_t gain)
 {
     phy_begin();
+    experimental_phy_prepare_restore();
     (void)phy_dco_release();
     phy_force_rx_gain(true, gain);
     s_gain = gain;
+    (void)experimental_phy_restore();
     if (s_post_gain_hook) s_post_gain_hook(gain);
     phy_end();
 }
@@ -491,6 +499,7 @@ static const struct { uint8_t channel; uint16_t mhz; } s_centres[] = {
  * analog filter branch from it (see rf_set_filter). */
 static esp_err_t channel_setup(uint16_t mhz)
 {
+    experimental_phy_prepare_restore();
     unsigned best = 0;
     for (unsigned k = 1; k < sizeof(s_centres) / sizeof(s_centres[0]); ++k)
         if (abs((int)mhz - (int)s_centres[k].mhz) < abs((int)mhz - (int)s_centres[best].mhz)) best = k;
@@ -548,6 +557,7 @@ void rf_set_offset_khz(int offset_khz)
     if (offset_khz > RF_OFFSET_MAX_KHZ) offset_khz = RF_OFFSET_MAX_KHZ;
     if (offset_khz == s_offset_khz) return;
     phy_begin();
+    experimental_phy_prepare_restore();
     s_offset_khz = offset_khz;
     phy_chip_set_chan_offset(offset_khz);
     restore_lock();   /* the vendor helper re-enables BB AGC */

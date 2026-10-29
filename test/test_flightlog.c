@@ -60,7 +60,7 @@ int main(void)
     flog_block_head(b, 5u, 42u, 1234u);
     const flog_head_t ph = flog_parse_head(b);
     check("block head round trip", ph.valid && ph.session == 5u && ph.seq == 42u && ph.t0_ms == 1234u);
-    flog_second_t s = {.t_s = 77, .vq_snr_x10 = -45, .vq_lines_x100 = 160, .cn_x10 = -990, .video_pct = 88,
+    flog_second_t s = {.exp_version = 1, .exp_mask = 0x1234, .exp_values = {[9] = 2}, .exp_mixed = 1, .t_s = 77, .vq_snr_x10 = -45, .vq_lines_x100 = 160, .cn_x10 = -990, .video_pct = 88,
                        .dropout = 3, .gain_min = 70, .gain_mean = 75, .gain_max = 83, .clip_q = 9, .gain_writes = 255,
                        .overloads = 2, .dc_i = -20, .dc_q = 13, .off_i = -96, .off_q = 96, .servo_writes = 4,
                        .afc_offset_khz = -1250, .afc_residual_khz = 310, .afc_corrections = 1, .demod = 0x2d,

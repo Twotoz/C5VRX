@@ -32,6 +32,8 @@ static DMA_ATTR __attribute__((aligned(64))) menu_raster_t s_raster;
 static dma_descriptor_t *s_chunks[NODE_CHUNKS];
 static unsigned s_chunk_count, s_node_capacity, s_node_count;
 volatile int s_menu_cursor;
+volatile int s_exp_sub = -1;
+bool s_exp_failed;
 volatile int s_cal_sub = -1;   /* MENU_CAL_* while the CALIBRATE submenu is open */
 /* Status screen: a full-screen message on the menu raster (calibration). */
 static volatile bool s_status;
@@ -129,7 +131,7 @@ static void render_status(void)
     const fpv_channel_t *ch = rf_channel();
     const menu_status_view_t v = {
         .title = s_status_title, .line1 = s_status_line1, .line2 = s_status_line2,
-        .percent = s_status_percent, .channel = ch->name, .freq_mhz = ch->freq_mhz,
+        .percent = s_status_percent, .channel = ch->name, .freq_mhz = ch->freq_mhz, .exp_active = experimental_mask() != 0,
     };
     menu_ui_render_status(s_raster.ui, &v);
     sync_dma_c2m(s_raster.ui, sizeof(s_raster.ui));
@@ -168,7 +170,7 @@ void menu_render(void)
     char gain_mode[16], dc_need[24];
     if (s_splash >= 0) { render_splash(); return; }
     if (s_status) { render_status(); return; }
-    if (s_menu_cursor != MENU_DAC) s_dac_step = DAC_STEP_PATTERN;   /* leaving the item ends the meter */
+    if (!(s_exp_sub == EXP_DAC || (s_exp_sub < 0 && s_menu_cursor == MENU_DAC))) s_dac_step = DAC_STEP_PATTERN;   /* leaving the item ends the meter */
     if (s_dac_step != DAC_STEP_PATTERN) { raster_flat(dac_check_code(s_dac_step)); return; }
     raster_restore();
     const fpv_channel_t *ch = rf_channel();
@@ -181,7 +183,10 @@ void menu_render(void)
     const int selected = profile_selected(), active = profile_active();
     static const char *const s_class[PROFILES] = {"NORMAL", "NARROW", "NARROW", "WIDE", "XNARROW"};
     const int dev = profile_live_deviation_x100();   /* what AUTO would pick from the measured VTX */
-    const menu_view_t v = {
+    menu_view_t v = {
+        .exp_open = s_exp_sub >= 0, .exp_cursor = s_exp_sub < 0 ? 0 : (unsigned)s_exp_sub,
+        .exp_active = experimental_mask() != 0, .exp_failed = s_exp_failed || experimental_phy_failed(),
+        .exp_reboot = experimental_reboot_needed(), .exp_coarse = rf_lane() != RF_LANE_ULTRAFINE,
         .cursor = s_menu_cursor, .cal_sub = s_cal_sub,
         .channel = ch->name, .freq_mhz = ch->freq_mhz,
         .band = index / 8u, .channel_in_band = index % 8u, .band_name = rf_band_name(index / 8u),
@@ -208,6 +213,7 @@ void menu_render(void)
         .deviation_x100 = dev, .offset_khz = rf_offset_khz(),
         .cn_x10 = receiver_obs_cn_x10(), .firmware = esp_app_get_description()->version,
     };
+    experimental_snapshot(v.exp_values);
     menu_ui_render(s_raster.ui, &v);
     sync_dma_c2m(s_raster.ui, sizeof(s_raster.ui));
 }
@@ -327,6 +333,8 @@ void menu_close(void)
     free_nodes();       /* GDMA no longer references the chain */
     s_menu_active = false;
     s_cal_sub = -1;
+    s_exp_sub = -1;
+    s_exp_failed = false;
     s_dac_step = DAC_STEP_PATTERN;
     ++s_control_epoch;
 }

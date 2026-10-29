@@ -12,9 +12,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "menu_raster.h"
+#include "experimental.h"
 
-enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_FILTER, MENU_DFILT, MENU_AFC, MENU_CALIBRATE, MENU_OUTPUT,
-       MENU_GAIN, MENU_DEMOD, MENU_DAC, MENU_EXIT, MENU_ITEMS };
+enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_FILTER, MENU_OUTPUT,
+       MENU_CALIBRATE, MENU_EXPERIMENTAL, MENU_EXIT, MENU_ITEMS,
+       MENU_DFILT, MENU_AFC, MENU_GAIN, MENU_DEMOD, MENU_DAC }; /* legacy action IDs */
 #define MENU_VISIBLE_ROWS 9   /* the list scrolls when it has more items */
 /* CALIBRATE submenu (hold on CALIBRATE): QUICK = the active filter and its
  * DC rows (console F), FULL = every filter class (console B), BACK. */
@@ -32,6 +34,9 @@ enum {
 };
 
 typedef struct {
+    bool exp_open, exp_active, exp_failed, exp_reboot, exp_coarse;
+    unsigned exp_cursor;
+    uint8_t exp_values[EXP_ITEMS];
     int cursor;                     /* MENU_* */
     int cal_sub;                    /* MENU_CAL_* while the CALIBRATE submenu is open, else -1 */
     /* Tuning. */
@@ -89,6 +94,7 @@ typedef struct {
     int percent;                    /* < 0: no bar */
     const char *channel;
     unsigned freq_mhz;
+    bool exp_active;
 } menu_status_view_t;
 
 typedef uint8_t menu_ui_rows_t[MENU_UI_LINES][MENU_UI_BYTES];

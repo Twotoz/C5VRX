@@ -20,6 +20,7 @@
 #include "snapshot.h"
 #include "rf.h"
 #include "flightlog.h"
+#include "experimental.h"
 #include "flightlog_format.h"
 
 #define BOOT_BUTTON      GPIO_NUM_28    /* XIAO ESP32-C5 BOOT */
@@ -311,13 +312,45 @@ static void toggle_afc(void)
 /* Press: the next row, in the CALIBRATE submenu while it is open. */
 static void menu_next(void)
 {
-    if (s_cal_sub >= 0) s_cal_sub = (s_cal_sub + 1) % MENU_CAL_ITEMS;
+    s_exp_failed = false;
+    if (s_exp_sub >= 0) s_exp_sub = (s_exp_sub + 1) % EXP_MENU_ITEMS;
+    else if (s_cal_sub >= 0) s_cal_sub = (s_cal_sub + 1) % MENU_CAL_ITEMS;
     else s_menu_cursor = (s_menu_cursor + 1) % MENU_ITEMS;
     menu_render();
 }
 
 static void menu_action(void)
 {
+    if (s_exp_sub >= 0) {
+        const unsigned k = (unsigned)s_exp_sub;
+        uint8_t before[EXP_ITEMS], after[EXP_ITEMS];
+        experimental_snapshot(before);
+        s_exp_failed = false;
+        if (k == EXP_BACK) s_exp_sub = -1;
+        else if (k == EXP_RESET) {
+            experimental_reset();
+            receiver_set_gain_mode(GAIN_MODE_DEFAULT, true);
+            if (!phy_dfilt_select(PHY_DFILT_MODE_DEFAULT)) s_exp_failed = true;
+            if (!s_afc_enabled) toggle_afc();
+            if (!transport_set_demod(TRANSPORT_DEMOD_P64)) s_exp_failed = true;
+            else { const uint8_t d = TRANSPORT_DEMOD_P64; (void)blob_store("demod", &d, 1); }
+            prefs_save();
+        }
+        else if (k == EXP_DAC) menu_dac_step();
+        else if (k == EXP_GAIN) { receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); }
+        else if (k == EXP_DFILT) cycle_dfilt();
+        else if (k == EXP_AFC) toggle_afc();
+        else if (k == EXP_DEMOD) demod_next();
+        else if (k < EXP_ITEMS) s_exp_failed = !experimental_set(k, (experimental_get(k) + 1u) % experimental_items[k].count);
+        experimental_snapshot(after);
+        for (unsigned i = 0; i < EXP_IQ_CORR; ++i) if (before[i] != after[i]) {
+            const uint8_t e[] = {(uint8_t)i, before[i], after[i], 1};
+            flightlog_event(FLOG_E_EXP, e, sizeof(e));
+        }
+        experimental_log_state();
+        menu_render();
+        return;
+    }
     if (s_cal_sub >= 0) {   /* CALIBRATE submenu: QUICK = console F, FULL = console B */
         const int k = s_cal_sub;
         s_cal_sub = -1;
@@ -333,6 +366,7 @@ static void menu_action(void)
     case MENU_FILTER: (void)profile_select_cycle(); prefs_save(); break;
     case MENU_AFC: toggle_afc(); break;
     case MENU_DFILT: cycle_dfilt(); break;
+    case MENU_EXPERIMENTAL: s_exp_sub = 0; break;
     case MENU_CALIBRATE: s_cal_sub = MENU_CAL_QUICK; break;   /* opens the QUICK / FULL / BACK submenu */
     case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
     case MENU_GAIN: receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); break;
@@ -362,7 +396,7 @@ static void command(int c, unsigned *menu_idle)
     /* DAC self-test: open the menu on DAC TEST, then step like a hold. */
     case 'Z':
         if (!s_menu_active && !menu_open_checked()) break;
-        if (s_menu_cursor != MENU_DAC || s_cal_sub >= 0) { s_cal_sub = -1; s_menu_cursor = MENU_DAC; menu_render(); }
+        if (s_exp_sub != EXP_DAC || s_cal_sub >= 0) { s_cal_sub = -1; s_menu_cursor = MENU_EXPERIMENTAL; s_exp_sub = EXP_DAC; menu_render(); }
         else menu_dac_step();
         break;
     case 'o': if (s_menu_active) menu_close(); else (void)menu_open_checked(); break;
@@ -435,6 +469,7 @@ static void control_task(void *arg)
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(TICK_MS));
         int c;
+        experimental_poll();
         for (unsigned k = 0; k < 8 && xQueueReceive(s_commands, &c, 0) == pdTRUE; ++k) command(c, &menu_idle);
 
         /* BOOT button: short = next channel (menu: next item); 0.6 s = menu
@@ -470,7 +505,7 @@ static void control_task(void *arg)
             if (++level_ticks >= 20u) { level_ticks = 0; receiver_level_roll(false, false); }
             /* A multimeter needs longer than 30 s; the page is only reached
              * by pressing through the menu. */
-            const unsigned idle_limit = s_menu_cursor == MENU_DAC ? DAC_IDLE_TICKS : MENU_IDLE_TICKS;
+            const unsigned idle_limit = (s_exp_sub == EXP_DAC || s_menu_cursor == MENU_DAC) ? DAC_IDLE_TICKS : MENU_IDLE_TICKS;
             if (++menu_idle >= idle_limit) {
                 menu_close();
                 printf("[MENU] closed after %u s idle\n", idle_limit * TICK_MS / 1000u);
@@ -635,6 +670,8 @@ void control_start(void)
     if (!blob_load("last_std", &s_last_std, 1)) s_last_std = 0xFF;
     uint8_t afc_off = 0;
     if (blob_load("afc_off", &afc_off, 1)) s_afc_enabled = !afc_off;
+    profile_set_live_mode(experimental_get(EXP_AUTO_PROFILE) != 0);
+    experimental_log_state();
     int8_t sign;
     if (blob_load("afc_sign", &sign, 1) && (sign == 1 || sign == -1)) {
         s_afc_sign = sign;
@@ -655,6 +692,7 @@ void control_start(void)
  * without a status request. Read-only. */
 void control_print_beat(void)
 {
+    if (experimental_mask()) printf("EXP active=0x%08lx reboot=%u\n", (unsigned long)experimental_mask(), experimental_reboot_needed());
     /* video: confirmed sync within 0.5 s (the web menu's VIDEO/SEARCH);
      * afc_locked alone said SEARCH over a good picture without a lock. */
     const int64_t video_at = s_last_video_us;

@@ -156,7 +156,7 @@ static int badge(const char *s, int x, int y, uint8_t fill, uint8_t ink)
 /* ---- settings list ---- */
 
 static const char *const s_items[MENU_ITEMS] = {
-    "BAND", "CHANNEL", "SCAN", "VIDEO", "FILTER", "PHY FILT", "AFC", "CALIBRATE", "OUTPUT", "GAIN", "DEMOD", "DAC TEST", "EXIT",
+    "BAND", "CHANNEL", "SCAN", "VIDEO", "FILTER", "OUTPUT", "CALIBRATE", "EXPERIMENTAL", "EXIT",
 };
 
 /* "14.4M" (MHz; the FILTER card spells it out), or "--" while the active
@@ -197,6 +197,7 @@ static void row_value(const menu_view_t *v, int item, const char **value, const 
         if (!v->dfilt_default) *note = "LAB";      /* the maps are measured in 12 */
         break;
     }
+    case MENU_EXPERIMENTAL: if (v->exp_active) *value = "EXP"; break;
     case MENU_CALIBRATE: if (v->dc_cal) *value = "DC!"; break;
     case MENU_OUTPUT: *value = v->output_name; break;
     case MENU_GAIN: *value = v->gain_mode; break;
@@ -221,7 +222,7 @@ static void list(const menu_view_t *v)
     if (MENU_ITEMS > MENU_VISIBLE_ROWS) {
         const int track = rows * LIST_PITCH - 1, thumb = track * rows / MENU_ITEMS;
         rect(LIST_W + 4, 0, 2, track, MENU_INK_TRACK);
-        rect(LIST_W + 4, (track - thumb) * first / (MENU_ITEMS - rows), 2, thumb, MENU_INK_GREY);
+        rect(LIST_W + 4, (track - thumb) * first / (MENU_ITEMS > rows ? MENU_ITEMS - rows : 1), 2, thumb, MENU_INK_GREY);
     }
     for (int i = first; i < first + rows; ++i) {
         const int y = 1 + (i - first) * LIST_PITCH;
@@ -235,7 +236,35 @@ static void list(const menu_view_t *v)
             const int nw = text_width(note, FONT_TEXT), vw = text_width(value, FONT_TEXT);
             text_box(note, right - vw - 8 - nw, y, nw, ALIGN_LEFT, FONT_TEXT, MENU_INK_DIM);
         }
-        text_box(s_items[i], 9, y, 100, ALIGN_LEFT, FONT_TEXT, on ? MENU_INK_BLACK : MENU_INK_GREY);
+        text_box(s_items[i], 9, y, i == MENU_EXPERIMENTAL ? 160 : 100, ALIGN_LEFT, FONT_TEXT, on ? MENU_INK_BLACK : MENU_INK_GREY);
+    }
+}
+
+/* Submenu uses eight rows and a title; values and labels own separate
+ * boxes, including the widest PHASE REPAIR / LEVEL RELEASE labels. */
+static void exp_list(const menu_view_t *v)
+{
+    text_box("EXPERIMENTAL", 9, 1, LIST_W - 18, ALIGN_LEFT, FONT_TEXT, MENU_INK_DIM);
+    const unsigned rows = 8;
+    const unsigned first = v->exp_cursor >= rows ? v->exp_cursor - rows + 1 : 0;
+    for (unsigned i = first; i < first + rows && i < EXP_MENU_ITEMS; ++i) {
+        const int y = 8 + (int)(i - first) * LIST_PITCH;
+        const bool on = i == v->exp_cursor;
+        if (on) pill(0, y - 1, LIST_W, 7, MENU_INK_WHITE);
+        const char *label = i < EXP_ITEMS ? experimental_items[i].name :
+                            i == EXP_DAC ? "DAC TEST" : i == EXP_RESET ? "RESET ALL" : "BACK";
+        const char *value = NULL;
+        char mode[12];
+        if (i == EXP_GAIN) value = v->gain_mode;
+        else if (i == EXP_DFILT) { snprintf(mode, sizeof(mode), "%d", v->dfilt_mode); value = mode; }
+        else if (i == EXP_AFC) value = v->afc_off ? "OFF" : "ON";
+        else if (i == EXP_DEMOD) value = v->demod;
+        else if (i < EXP_ITEMS) {
+            const unsigned k = v->exp_values[i];
+            value = k < experimental_items[i].count ? experimental_items[i].values[k] : "?";
+        }
+        text_box(label, 9, y, 138, ALIGN_LEFT, FONT_TEXT, on ? MENU_INK_BLACK : MENU_INK_GREY);
+        if (value) text_box(value, 148, y, LIST_W - 156, ALIGN_RIGHT, FONT_TEXT, on ? MENU_INK_BLACK : MENU_INK_WHITE);
     }
 }
 
@@ -246,6 +275,7 @@ static void list(const menu_view_t *v)
 static void card_status(const menu_view_t *v)
 {
     signal_bars(CARD_X, 1, v->signal);
+    if (v->exp_active) text_box("EXP", CARD_X, 7, CARD_W, ALIGN_RIGHT, FONT_TEXT, MENU_INK_WHITE);
     if (v->dc_cal || v->gain_fixed) badge(v->dc_cal ? "DC CAL!" : "GAIN!", CARD_X + 31, 0, MENU_INK_WHITE, MENU_INK_BLACK);
     else text(v->video ? "VIDEO" : "SEARCH", CARD_X + 32, 1, v->video ? MENU_INK_WHITE : MENU_INK_GREY);
 }
@@ -372,12 +402,14 @@ static void card_dac(void)
 /* What a long press does, one word. */
 static const char *hold_action(const menu_view_t *v)
 {
+    if (v->exp_open) return v->exp_cursor == EXP_BACK ? "BACK" : v->exp_cursor == EXP_RESET ? "RESET" :
+                            v->exp_cursor == EXP_DAC ? "STEP" : "NEXT";
     if (v->cal_sub >= 0) return v->cal_sub == MENU_CAL_BACK ? "BACK" : "START";
     switch (v->cursor) {
     case MENU_BAND: case MENU_CHANNEL: case MENU_FILTER: case MENU_DFILT: case MENU_OUTPUT: case MENU_GAIN: case MENU_DEMOD: return "NEXT";
     case MENU_SCAN: return v->scan_active ? NULL : "SCAN";
     case MENU_VIDEO: case MENU_AFC: return "CHANGE";
-    case MENU_CALIBRATE: return "OPEN";
+    case MENU_CALIBRATE: case MENU_EXPERIMENTAL: return "OPEN";
     case MENU_DAC: return "STEP";
     default: return "EXIT";
     }
@@ -388,11 +420,21 @@ void menu_ui_render(menu_ui_rows_t ui, const menu_view_t *v)
     s_ui = ui;
     menu_ui_overflow = 0;
     memset(ui, MENU_INK_BLACK, sizeof(menu_ui_rows_t));
-    if (v->cal_sub >= 0) cal_list(v);
+    if (v->exp_open) exp_list(v);
+    else if (v->cal_sub >= 0) cal_list(v);
     else list(v);
     pill(CARD_X - 7, 0, W - CARD_X + 7, H, MENU_INK_PANEL);
     card_status(v);
-    if (v->cal_sub >= 0) card_cal(v);
+    if (v->exp_open && v->exp_failed) {
+        text_box("NOT APPLIED", CARD_X, 16, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_WHITE);
+        text_box("RETRY HOLD", CARD_X, 28, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_GREY);
+    }
+    else if (v->exp_open && v->exp_cursor == EXP_IQ_LANE) {
+        text_box(v->exp_reboot ? "REBOOT NEEDED" : "BOOT SETTING", CARD_X, 16, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_WHITE);
+        text_box(v->exp_coarse ? "DC/PHASE OFF" : "DC/PHASE ON", CARD_X, 28, CARD_W, ALIGN_LEFT, FONT_TEXT, MENU_INK_GREY);
+    }
+    else if (v->exp_open && v->exp_cursor == EXP_DAC) card_dac();
+    else if (v->cal_sub >= 0) card_cal(v);
     else if (v->cursor == MENU_DAC) card_dac();
     else if (v->scan_active) card_scan(v);
     else if (v->cursor == MENU_FILTER) card_filter(v);
@@ -414,7 +456,7 @@ void menu_ui_render_status(menu_ui_rows_t ui, const menu_status_view_t *v)
     menu_ui_overflow = 0;
     memset(ui, MENU_INK_BLACK, sizeof(menu_ui_rows_t));
     const int x = 12, w = W - 24;
-    text("C5VRX", x, 1, MENU_INK_WHITE);
+    text(v->exp_active ? "C5VRX EXP" : "C5VRX", x, 1, MENU_INK_WHITE);
     snprintf(buf, sizeof(buf), "%s  %u", v->channel ? v->channel : "", v->freq_mhz);
     text_box(buf, x, 1, w, ALIGN_RIGHT, FONT_TEXT, MENU_INK_GREY);
     rect(x, 9, w, 1, MENU_INK_RULE);

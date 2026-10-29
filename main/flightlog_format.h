@@ -22,6 +22,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "experimental.h"
 
 #define FLOG_FORMAT          1u
 #define FLOG_SECTOR          4096u
@@ -41,6 +42,7 @@
 #define FLOG_BLOCK_ROOM      (FLOG_BLOCK_CRC_AT - FLOG_BLOCK_HEAD)
 
 enum {
+    FLOG_T_EXP = 7,       /* full experimental state: version, count, values */
     FLOG_T_SESSION = 1,   /* identity, settings, reset reason (boot) */
     FLOG_T_CALIB = 2,     /* what the startup phase calibrated, filters, DC tables, sampling phase */
     FLOG_T_CARRIER = 3,   /* channel, AFC, deviation, profile, standard */
@@ -54,6 +56,7 @@ enum {
     FLOG_E_DC_CAL_NEEDED = 6, FLOG_E_GAIN_MODE = 7, FLOG_E_MENU = 8, FLOG_E_FAULT = 9,
     FLOG_E_DROPOUT = 10, FLOG_E_RECOVERED = 11, FLOG_E_SNAPSHOT = 12, FLOG_E_DROPPED = 13,
     FLOG_E_ATTACK = 14,   /* the window that made the gain step down (receiver.c) */
+    FLOG_E_EXP = 17,     /* item, old, new, readback OK */
     FLOG_E_OUTPUT_GAP = 15, FLOG_E_OUTPUT_UNLOCK = 16,
 };
 
@@ -218,10 +221,13 @@ typedef struct {
      * sync pulses found / expected in the decoded control windows, % (0xff
      * unknown), and how many windows. FIELD_DIAG video_pct stays the AFC's. */
     uint8_t picture_pct, picture_windows;
+    uint32_t exp_mask;
+    uint8_t exp_values[EXP_ITEMS];
+    uint8_t exp_version, exp_mixed; /* setting changed during this second */
 } flog_second_t;
 #define FLOG_LEVEL_UNKNOWN (-32768)
 
-#define FLOG_SECOND_LEN 71u
+#define FLOG_SECOND_LEN (77u + EXP_ITEMS)
 #define FLOG_SECOND_LEN_V1 34u
 
 static inline uint8_t flog_sat8(uint32_t v) { return (uint8_t)(v > 255u ? 255u : v); }
@@ -255,6 +261,9 @@ static inline void flog_pack_second(const flog_second_t *s, uint8_t p[FLOG_SECON
     flog_put16(p + 64, s->suppressed_tips); flog_put16(p + 66, s->longest_h_unlock_ms);
     p[68] = s->output_observer_gaps;
     p[69] = s->picture_pct; p[70] = s->picture_windows;
+    flog_put32(p + 71, s->exp_mask);
+    p[75] = s->exp_version; p[76] = s->exp_mixed;
+    memcpy(p + 77, s->exp_values, EXP_ITEMS);
 }
 
 static inline bool flog_unpack_second(const uint8_t *p, uint8_t len, flog_second_t *s)
@@ -301,6 +310,11 @@ static inline bool flog_unpack_second(const uint8_t *p, uint8_t len, flog_second
     s->output_observer_gaps = len >= 69u ? p[68] : 0;
     s->picture_pct = len >= 71u ? p[69] : 0xffu;
     s->picture_windows = len >= 71u ? p[70] : 0;
+    s->exp_mask = len >= FLOG_SECOND_LEN ? flog_get32(p + 71) : 0;
+    s->exp_version = len >= FLOG_SECOND_LEN ? p[75] : 0;
+    s->exp_mixed = len >= FLOG_SECOND_LEN ? p[76] : 0;
+    memset(s->exp_values, 0, sizeof(s->exp_values));
+    if (len >= FLOG_SECOND_LEN) memcpy(s->exp_values, p + 77, EXP_ITEMS);
     return true;
 }
 

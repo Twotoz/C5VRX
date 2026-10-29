@@ -74,6 +74,7 @@ static size_t snap_offset(unsigned slot) { return (size_t)(FLOG_SNAP_FIRST + slo
 void flightlog_record(uint8_t type, const void *payload, uint8_t len)
 {
     if (!s_ready) return;
+    if (!experimental_log_interval() && type != FLOG_T_EXP && type != FLOG_T_EVENT) return;
     taskENTER_CRITICAL(&s_qlock);
     if (s_queue_len + 2u + len > FLOG_QUEUE) {
         ++s_dropped;
@@ -222,7 +223,7 @@ static void snapshot(uint8_t trigger)
 
 void flightlog_snapshot_request(uint8_t trigger)
 {
-    if (!s_ready) return;
+    if (!s_ready || !experimental_log_interval()) return;
     taskENTER_CRITICAL(&s_snap_lock);
     s_snap_request = flog_snap_request_merge(s_snap_request, trigger);
     taskEXIT_CRITICAL(&s_snap_lock);
@@ -238,6 +239,7 @@ static void logger_task(void *arg)
         /* A reference snapshot every 10 minutes. */
         if (!last_periodic) last_periodic = now;
         else if (now - last_periodic >= 600000000LL) { flightlog_snapshot_request(FLOG_SNAP_PERIODIC); last_periodic = now; }
+        if (!experimental_log_interval()) continue; /* no automatic flash writes or snapshots */
         if (xSemaphoreTake(s_flash_lock, 0) != pdTRUE) continue;      /* a dump owns the flash */
         uint8_t t = 0;
         taskENTER_CRITICAL(&s_snap_lock);
@@ -384,8 +386,17 @@ void flightlog_second(const diag_record_t *r, uint8_t gain_min, uint8_t gain_max
     wa = s_gain.writes_severe; wr = s_gain.writes_moderate; sf = receiver_sentinel_forwarded(); oa = s_gain.overloads_after_write;
     gw = r->gain_writes; ov = r->overloads; sw = servo_writes; ac = afc_corr; have = true;
     uint8_t p[FLOG_SECOND_LEN];
+    experimental_snapshot(s.exp_values);
+    s.exp_mask = experimental_mask();
+    s.exp_version = EXP_VERSION;
+    static uint8_t previous[EXP_ITEMS];
+    static bool exp_have;
+    static uint32_t revision;
+    s.exp_mixed = !exp_have || revision != experimental_revision() || memcmp(previous, s.exp_values, EXP_ITEMS) != 0;
+    memcpy(previous, s.exp_values, EXP_ITEMS); exp_have = true; revision = experimental_revision();
     flog_pack_second(&s, p);
-    flightlog_record(FLOG_T_SECOND, p, sizeof(p));
+    const unsigned interval = experimental_log_interval();
+    if (interval && r->t_s % interval == 0) flightlog_record(FLOG_T_SECOND, p, sizeof(p));
     /* A sharp drop of the picture quality against its recent level. */
     static int16_t recent[30];
     static unsigned n;

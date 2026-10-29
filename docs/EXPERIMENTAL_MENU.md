@@ -1,7 +1,9 @@
-# EXPERIMENTAL menu (plan, 2026-10-29)
+# EXPERIMENTAL menu (2026-10-29)
 
-C5VRX-5 by Twotoz and the C5VRX contributors. Status: design plus the first
-piece (LEVEL fold memory, compiled in, off). The rest is still to be built.
+C5VRX-5 by Twotoz and the C5VRX contributors. Status: the field-test menu,
+NVS persistence, runtime hooks, PHY patch rollback, boot lane choice and
+flight-log integration are implemented. Host tests establish software behavior;
+physical menu, RF, PAL/NTSC and walk A/B acceptance remain pending.
 
 Goal: A/B-test every receiver option in the field from the goggles menu,
 without a laptop or a reflash, and see in the flight log exactly which
@@ -14,7 +16,19 @@ BAND, CHANNEL, SCAN, VIDEO, FILTER, OUTPUT, CALIBRATE, EXPERIMENTAL, EXIT
 
 ## EXPERIMENTAL submenu
 
-Press = next row, hold = next value. It scrolls like the main menu.
+Press = next row, hold = next value. Eight submenu rows scroll below the
+EXPERIMENTAL title. The nine main-menu rows fit without scrolling. The
+legacy console controls keep working. MAX/fixed gain still never persist.
+
+Implemented runtime items in addition to the table below:
+
+| Item | Values (baseline first) | Exact behavior |
+|---|---|---|
+| LEVEL TARGET | 0 / -3 / +3 dB | Bias the input level used to score homes by the opposite amount; observations and learning retain their actual scale. |
+| LEVEL RELEASE | NORMAL / SLOW / FAST | Slow histogram decay Q8 250 / 253 / 244; fast jump detection and overload handling stay active. |
+| GAIN RATE | 0 / 5 / 20 ms | Minimum between upward writes only; emergency downward writes bypass it. |
+| GAIN CAP | G83 / G79 / G75 | Limit automatic/live writes to the smaller of the chosen cap and the actual table maximum; explicit calibration owners retain their gain access. |
+| LOG CADENCE | 1 s / 5 s / OFF | Sample one second in every 1/5 seconds. OFF suspends automatic logger flash flushes and snapshots; settings changes can still write NVS. |
 
 | Item | Values (default first) | Applies | Where it lives now |
 |---|---|---|---|
@@ -41,7 +55,7 @@ Bench results so far: LNA BIAS, CURRENT, LOOP CAP and SPUR 0 did not move the
 receiver noise beyond the shams (PHY_NOISE_RESULTS_2026-10-28.md). Their effect
 on the picture was never measured, which is why they go in this menu.
 
-## Field-only candidates
+## Deferred field-only candidates
 
 These cannot show anything on a VTX-off bench: they act on the carrier, the
 video, the deviation or movement. They are scored with `picture_pct`, the
@@ -64,9 +78,14 @@ goggles, and the flight log per setting (A/B on the same walk).
 | ERASURE | hold / mid-grey | What the DAC outputs on a folded/uncertain pair: hold the previous code or grey; a choice of picture, not noise. Needs a decoder table variant. |
 | LOG CADENCE | 1 s / 5 s / off | Flash writes of the flight log may cause the owned/paused seconds (11 % of walk 300); only a live picture shows a pause. |
 
-Implementation order within this group: GAIN SYNC, LEVEL TARGET/RELEASE,
-GAIN RATE/CAP and LOG CADENCE first (small, in existing code paths); the
-rest after the first field results.
+LEVEL TARGET/RELEASE, GAIN RATE/CAP and LOG CADENCE above are implemented.
+The remaining candidates in this table are deliberately not selectable yet:
+the design calls for the next group after first field results. GAIN SYNC also
+requires a trustworthy live H-sync trigger: the current CPU observer reads
+completed buffered IQ, so simply waiting on its last sync would not align an
+RF gain write with the next physical sync tip. No delay-only substitute is
+present. SYNC CLEAN and ERASURE need separate decoder work and a verified
+restart, rather than live instruction/LUT edits.
 
 ## Rules
 
@@ -75,10 +94,23 @@ rest after the first field results.
 2. **EXP marker.** While any item is off its default the menu and the status
    screen show "EXP", so nobody flies an experiment by accident.
 3. **Persisted.** One NVS blob `exp` (version byte plus one byte per item);
-   existing keys (prefs gain/dfilt, afc_off, demod) keep working.
+   existing keys (prefs gain/dfilt, afc_off, demod) keep working. The blob is
+   accepted only with the correct version/length and every value in bounds.
+   Legacy slots in it are reserved zero; snapshots read their actual owners.
 4. **PHY patches** are written with readback after every vendor PHY restore
-   (`restore_lock` in rf.c, the same hook as PHY FILT). If the readback
-   fails, the item falls back to STOCK and the menu reports it.
+   (`restore_lock` and forced gain writes in rf.c). Patches are first
+   restored before vendor channel/offset changes, then reapplied against the
+   new stock. Masked unrelated fields are preserved. PBUS waits are bounded
+   to 1 ms and the command port is restored. On a readback failure the item
+   falls back to STOCK, queues an `exp` event, and shows NOT APPLIED; the
+   control task persists the fallback outside PHY ownership. A failed exact
+   rollback reboots, as in the lab. CURRENT is the setter's RAM byte, not a
+   proven current control. LOOP CAP refuses non-idle/non-debug PBUS; BIAS
+   refuses any stock outside the witnessed cf/7f state; SPUR refuses a
+   vendor-active slot. Baseline noise exports/control C/N and calibration
+   persistence are refused while a transfer experiment is active. The live
+   DC servo and gain-map learning are held too, so temporary experiments
+   cannot train corrections that are later saved under the baseline context.
 5. **IQ LANE** only takes effect at boot (`route_modem_iq` in `rf_start`).
    Off ultrafine the DC servo, the sampling-phase checks and the fold-radius
    estimator are off; the menu says so.
@@ -87,23 +119,43 @@ rest after the first field results.
 
 ## Flight log
 
-- **Session record:** every experimental value plus a bitmask of the items
-  off their default.
+The format remains append-only V1. Record type 7 is a complete experimental
+state (version, count, values), following normal boot settings restoration
+and every menu action. Session identity records retain their existing layout.
+Every new per-second record includes the schema, mask, **full values**, and a
+transition flag. Consequently lost events or ring wrap cannot silently assign
+seconds to the wrong settings. Changes inside a second are excluded from A/B
+scoring, including an A -> B -> A change. No reduced-cadence record pretends
+to average five seconds. Explicit dump/erase commands remain available at OFF.
+
+
+- **Session-associated state record:** every experimental value; seconds carry the default mask.
 - **Event `exp`** on every change: item, old value, new value, readback ok.
-- **Per-second record:** the bitmask, so each second can be scored per setting.
+- **Per-second record:** the bitmask, schema, full values and transition flag.
 - **tools/flight_log.py:** groups `picture_pct`, video %, dBm and gain by
   setting, for side-by-side A/B over the same walk.
 
-## Build order
+## Validation and board acceptance
 
-1. Fold memory in agc.c (done, `LEVEL_FOLD_MEMORY_US` 0) -> runtime value.
-2. `main/experimental.c/.h`: the item table, NVS, defaults, "EXP" bitmask,
-   apply/readback per kind.
-3. Menu: MENU_EXPERIMENTAL plus the submenu (menu_ui.c, menu.c, control.c),
-   host test test_menu_ui.c for every page (no overflow).
-4. Live hooks: IQ CORR, PHASE REPAIR, FAST GAIN, FOLD RADIUS/MEMORY, AUTO PROFILE.
-5. PHY patches in restore_lock: LNA BIAS, CURRENT, LOOP CAP, SPUR 0, using the
-   lab's verified write/rollback code moved into a shared helper.
-6. IQ LANE at boot with "REBOOT NEEDED".
-7. Flight log: session fields, `exp` event, per-second bitmask, tool and tests.
-8. Full local CI, flash via tools/flash.py, board check of every item.
+CI runs the production experiment-state and PHY-boundary harnesses, invalid
+blob/default/rollback checks, every menu value/page, the append-only flight-log
+round trips, Python grouping/legacy-decoding tests and the existing host suite.
+Both standard and PSRAM firmware images must build on the exact PR head.
+
+Physical acceptance (not established by host tests):
+
+1. Flash Full firmware through `tools/flash.py` on an attached board.
+2. Visit every item with the goggles, including DAC TEST and BACK; confirm
+   menu idle exit and reopening. Verify EXP on menu and status screens.
+3. Change/reboot each persistent setting, RESET ALL and confirm baseline;
+   IQ LANE reports REBOOT NEEDED until its actual routing matches. On a
+   non-ultrafine boot DC servo, phase checks and fold-radius estimator stay
+   off; bench L refuses that lane to avoid changing the boot experiment.
+4. Check PHY readback across gain changes, retunes and analog profiles. Test
+   one option at a time before combinations; inspect failure and rollback.
+5. Same-route A/B walks: compare goggles and `_experiments.csv` grouped by
+   the exact setting vector. This is observational grouping, not a causal
+   claim of better range. LOG CADENCE OFF intentionally provides no samples.
+
+Deferred candidates above require their own implementation and physical
+acceptance after these first field results.

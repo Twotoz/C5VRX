@@ -53,8 +53,7 @@ static menu_view_t base(void)
 
 int main(int argc, char **argv)
 {
-    static const char *const names[MENU_ITEMS] = {"band", "channel", "scan", "video", "filter", "dfilt", "afc",
-                                                  "calibrate", "output", "gain", "demod", "dac", "exit"};
+    static const char *const names[MENU_ITEMS] = {"band", "channel", "scan", "video", "filter", "output", "calibrate", "experimental", "exit"};
     s_dir = argc > 1 ? argv[1] : NULL;
     char name[64];
     for (int i = 0; i < MENU_ITEMS; ++i) {
@@ -125,14 +124,24 @@ int main(int argc, char **argv)
         for (unsigned y = 0; y < MENU_UI_LINES && !pill; ++y) pill = ui[y][2] == MENU_INK_WHITE;
         assert(pill);
     }
+    /* Every submenu row/value and marker: same renderer as the firmware. */
+    for (unsigned i = 0; i < EXP_MENU_ITEMS; ++i) {
+        const unsigned count = i < EXP_ITEMS && experimental_items[i].count ? experimental_items[i].count : 1;
+        for (unsigned j = 0; j < count; ++j) {
+            v = base(); v.exp_open = true; v.exp_active = true; v.exp_cursor = i;
+            if (i < EXP_ITEMS) v.exp_values[i] = j;
+            snprintf(name, sizeof(name), "exp_%u_%u", i, j);
+            menu_ui_render(ui, &v); check(name, i == EXP_DAC);
+        }
+    }
     /* Status screens: every title/line calibration.c and profile.c show. */
     static const menu_status_view_t status[] = {
-        {"CALIBRATING", "LOOKING FOR A QUIET CHANNEL", "ONE TIME ONLY, ABOUT 30 S", -1, "R1", 5658},
-        {"CALIBRATING DC", "ROW 12 OF 40", "VTX MAY STAY ON", 30, "E8", 5945},
-        {"FILTER NOT CALIBRATED", "NO QUIET CHANNEL FOUND", "SAFE DEFAULT, RETRY NEXT BOOT", -1, "R1", 5658},
-        {"DC CALIBRATED", "LOWER GAINS NEED NO DC CORRECTION", "", 100, "R1", 5658},
-        {"GAIN NOT AUTO", "FIXED G24 COSTS RANGE", "MENU > GAIN, HOLD TO CHANGE", -1, "R1", 5658},
-        {"BENCH LANE TEST", "VIDEO STOPS FOR ABOUT 3 S", "SAME GAIN, FILTER AND CHANNEL", -1, "R1", 5658},
+        {"CALIBRATING", "LOOKING FOR A QUIET CHANNEL", "ONE TIME ONLY, ABOUT 30 S", -1, "R1", 5658, false},
+        {"CALIBRATING DC", "ROW 12 OF 40", "VTX MAY STAY ON", 30, "E8", 5945, false},
+        {"FILTER NOT CALIBRATED", "NO QUIET CHANNEL FOUND", "SAFE DEFAULT, RETRY NEXT BOOT", -1, "R1", 5658, false},
+        {"DC CALIBRATED", "LOWER GAINS NEED NO DC CORRECTION", "", 100, "R1", 5658, false},
+        {"GAIN NOT AUTO", "FIXED G24 COSTS RANGE", "MENU > GAIN, HOLD TO CHANGE", -1, "R1", 5658, false},
+        {"BENCH LANE TEST", "VIDEO STOPS FOR ABOUT 3 S", "SAME GAIN, FILTER AND CHANNEL", -1, "R1", 5658, false},
     };
     for (unsigned k = 0; k < sizeof(status) / sizeof(status[0]); ++k) {
         menu_ui_render_status(ui, &status[k]);

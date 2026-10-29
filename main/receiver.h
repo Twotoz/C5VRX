@@ -254,6 +254,8 @@ void self_noise_request(void);   /* bench: noise floor with the video output on 
 
 /* ---- menu.c ---- */
 extern volatile int s_menu_cursor;
+extern volatile int s_exp_sub; /* -1 closed, else EXP_* */
+extern bool s_exp_failed;
 extern volatile int s_cal_sub;   /* CALIBRATE submenu cursor, -1 = closed */
 bool menu_open(void);
 void menu_close(void);

@@ -241,6 +241,7 @@ static int dco_preset_class_of(uint16_t key) {
  return -1;
 }
 static struct { char key[16]; uint8_t data[1024]; size_t size; } s_nvs[16];
+static inline bool experimental_transfer_active(void){return false;}
 static bool blob_store(const char *k, const void *d, size_t n) {
  for (unsigned i = 0; i < 16; ++i)
   if (!s_nvs[i].size || !strcmp(s_nvs[i].key, k)) {

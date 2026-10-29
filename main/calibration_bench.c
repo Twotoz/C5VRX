@@ -95,6 +95,7 @@ static void lane_measure(lane_stats_t *st)
 
 void lane_compare(void)
 {
+    if (rf_lane() != RF_LANE_ULTRAFINE) { printf("LANE_CMP requires ULTRAFINE; reset IQ LANE and reboot\n"); return; }
     if (!quiet_owner() || !receiver_pause("LANE_CMP")) { printf("LANE_CMP refused=busy\n"); return; }
     s_scan_active = true;
     status_screen("BENCH LANE TEST", "VIDEO STOPS FOR ABOUT 3 S", "SAME GAIN, FILTER AND CHANNEL", -1);

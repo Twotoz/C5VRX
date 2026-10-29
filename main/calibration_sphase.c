@@ -1,3 +1,4 @@
+#include "experimental.h"
 /* C5VRX-5 by Twotoz and contributors: sampling-phase alignment of the
  * calibration task (boot check, startup qualification, carrier scans and
  * live repair). */
@@ -196,6 +197,7 @@ void phase_service(void)
     static unsigned bad;
     static int64_t next_us, backoff_us = PHASE_REPAIR_BACKOFF_US;
     static uint32_t blocks;
+    if (experimental_get(EXP_PHASE_REPAIR)) { bad = 0; return; }
     if (s_startup || s_boot_phase_pending || !quiet_owner() || rf_lane() != RF_LANE_ULTRAFINE) return;
     if (blocks == s_health_blocks + s_health_rejected) return;           /* no new monitor block */
     blocks = s_health_blocks + s_health_rejected;

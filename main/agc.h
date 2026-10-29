@@ -35,6 +35,12 @@
 #define AGC_MAX_HOMES 30u
 
 typedef struct {
+    /* Runtime experiments, zero keeps the baseline. Filled by the owner
+     * after reset, never by another task while a decision is running. */
+    uint32_t fold_memory_us;
+    bool fold_radius;
+    int8_t target_db;
+    uint8_t release;
     uint8_t max_index, homes;
     uint8_t home[AGC_MAX_HOMES];
     int16_t rel_q8[DG_STATES];        /* row gain minus the top row, dB Q8 (model + learned) */
@@ -74,6 +80,7 @@ typedef struct {
 
 /* row_db_q8: the gain model per row (direct_gain_t model_db_q8), noise_top_x16:
  * receiver noise power at the table maximum, cells^2 x16. */
+void agc_level_options(agc_level_t *a, bool radius, uint32_t memory_us, int target_db, unsigned release);
 void agc_level_reset(agc_level_t *a, const int16_t row_db_q8[DG_STATES], uint8_t max_index, uint16_t noise_top_x16);
 uint8_t agc_level_tick(agc_level_t *a, const dg_observation_t *o, uint8_t current, uint64_t now_us);
 /* The carrier radius of a folded window at row `current`, cells x16, for

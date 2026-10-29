@@ -165,13 +165,24 @@ static void row_noise(agc_level_t *a, unsigned k)
 static void home_quality(agc_level_t *a, unsigned h)
 {
     for (int b = 0; b < AGC_BINS; ++b)
-        a->quality[h][b] = (int8_t)quality(AGC_LMIN_DB + (b + 0.5f) * AGC_BIN_DB, a->rel_q8[a->home[h]] / 256.0f,
+        a->quality[h][b] = (int8_t)quality(AGC_LMIN_DB + (b + 0.5f) * AGC_BIN_DB - a->target_db, a->rel_q8[a->home[h]] / 256.0f,
                                            a->noise_top_x16 / 16.0f);
+}
+
+void agc_level_options(agc_level_t *a, bool radius, uint32_t memory_us, int target_db, unsigned release)
+{
+    a->fold_radius = radius;
+    a->fold_memory_us = memory_us;
+    a->target_db = (int8_t)target_db;
+    a->release = (uint8_t)release;
+    for (unsigned h = 0; h < a->homes; ++h) home_quality(a, h);
 }
 
 void agc_level_reset(agc_level_t *a, const int16_t row_db_q8[DG_STATES], uint8_t max_index, uint16_t noise_top_x16)
 {
     memset(a, 0, sizeof(*a));
+    a->fold_radius = LEVEL_FOLD_RADIUS != 0;
+    a->fold_memory_us = LEVEL_FOLD_MEMORY_US;
     a->max_index = max_index;
     a->noise_top_x16 = noise_top_x16;
     for (unsigned k = 0; k <= max_index; ++k) {
@@ -236,7 +247,7 @@ uint8_t agc_level_tick(agc_level_t *a, const dg_observation_t *o, uint8_t curren
     const uint32_t noise = a->noise_x16[current];
     if (agc_folded(o)) {
         int fold_level;
-        if (LEVEL_FOLD_RADIUS && o->fold_r_x16) {
+        if (a->fold_radius && o->fold_r_x16) {
             /* The carrier's own radius, unfolded (agc_level_fold_radius): one
              * decision goes to the row that fits. The window's power reads
              * low, several dB under the carrier, and the old estimate below
@@ -259,7 +270,7 @@ uint8_t agc_level_tick(agc_level_t *a, const dg_observation_t *o, uint8_t curren
         }
         level_add(a, fold_level, LEVEL_FOLD_WEIGHT);
         a->fold_row = current;
-        a->fold_until_us = now_us + LEVEL_FOLD_MEMORY_US;
+        a->fold_until_us = now_us + a->fold_memory_us;
         a->fold_level_q8 = fold_level;
         a->fold_pending = true;
         a->move_pending = false;   /* a folded level says nothing about the row's gain */
@@ -311,7 +322,7 @@ uint8_t agc_level_tick(agc_level_t *a, const dg_observation_t *o, uint8_t curren
     for (int b = 0; b < AGC_BINS; ++b) total += a->hist[b];
     /* Fold memory: not back into the row that folded (homes run from the top
      * row down), unless the carrier now reads well under the fold. */
-    if (LEVEL_FOLD_MEMORY_US && now_us < a->fold_until_us && a->rel_q8[a->home[best]] >= a->rel_q8[a->fold_row] &&
+    if (a->fold_memory_us && now_us < a->fold_until_us && a->rel_q8[a->home[best]] >= a->rel_q8[a->fold_row] &&
         !(a->level_windows && a->level_ema_q8 < a->fold_level_q8 - LEVEL_FOLD_FAR_Q8)) {
         unsigned below = best;
         while (below + 1u < a->homes && a->rel_q8[a->home[below]] >= a->rel_q8[a->fold_row]) ++below;
@@ -323,8 +334,9 @@ uint8_t agc_level_tick(agc_level_t *a, const dg_observation_t *o, uint8_t curren
     }
     const unsigned cur_h = nearest_home(a->home, a->homes, a->rel_q8, current);
     const int32_t cur_u = level_utility(a, a->hist, cur_h, total);
+    const unsigned decay = a->release == 1 ? 253u : a->release == 2 ? 244u : LEVEL_DECAY_Q8;
     for (int b = 0; b < AGC_BINS; ++b) {
-        a->hist[b] = (uint32_t)(((uint64_t)a->hist[b] * LEVEL_DECAY_Q8) >> 8);
+        a->hist[b] = (uint32_t)(((uint64_t)a->hist[b] * decay) >> 8);
         a->fast[b] = (uint32_t)(((uint64_t)a->fast[b] * LEVEL_FAST_DECAY_Q8) >> 8);
     }
     if (best == cur_h || best_u <= cur_u + LEVEL_HYST * 256) return current;

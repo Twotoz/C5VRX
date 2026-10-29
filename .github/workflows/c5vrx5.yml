@@ -143,6 +143,8 @@ jobs:
           python3 test/test_flash_tool.py
           python3 test/test_diag_snapshot_runtime.py
           python3 test/test_flight_log_tool.py
+          python3 test/test_experimental_phy.py
+          python3 test/test_experimental.py
           python3 test/test_settings.py
           python3 test/test_phy_observation_hook.py
           python3 test/test_bank1_watch_runtime.py
