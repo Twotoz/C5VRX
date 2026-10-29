@@ -386,7 +386,7 @@ void flightlog_second(const diag_record_t *r, uint8_t gain_min, uint8_t gain_max
     wa = s_gain.writes_severe; wr = s_gain.writes_moderate; sf = receiver_sentinel_forwarded(); oa = s_gain.overloads_after_write;
     gw = r->gain_writes; ov = r->overloads; sw = servo_writes; ac = afc_corr; have = true;
     uint8_t p[FLOG_SECOND_LEN];
-    experimental_snapshot(s.exp_values);
+    experimental_effective_snapshot(s.exp_values);
     s.exp_mask = experimental_mask();
     s.exp_version = EXP_VERSION;
     static uint8_t previous[EXP_ITEMS];

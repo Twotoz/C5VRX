@@ -46,7 +46,8 @@ void experimental_load(void);             /* NVS ready, before rf restore/tasks 
 bool experimental_set(unsigned item, uint8_t value);
 void experimental_reset(void);            /* local controls; caller resets legacy choices */
 uint32_t experimental_mask(void);
-void experimental_snapshot(uint8_t values[EXP_ITEMS]);
+void experimental_snapshot(uint8_t values[EXP_ITEMS]); /* menu: requested lane */
+void experimental_effective_snapshot(uint8_t values[EXP_ITEMS]); /* log: actual boot lane */
 void experimental_log_state(void);        /* after legacy choices restore */
 /* IQ correction: caller owns the PHY transaction; after vendor restore. */
 bool experimental_phy_restore(void);

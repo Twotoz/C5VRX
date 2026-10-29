@@ -33,6 +33,7 @@ PREFIX = r'''
 #include "gain_map_preset.h"
 #include "cn_observation.h"
 unsigned char phy_param[2048];
+static inline bool experimental_transfer_active(void) { return false; }
 static direct_gain_t s_gain;
 static uint8_t s_current_gain=59;
 static dg_map_blob_t s_gain_map_saved, disk;

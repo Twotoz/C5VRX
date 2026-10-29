@@ -86,7 +86,11 @@ int main(void) {
  uint8_t v[EXP_ITEMS];experimental_snapshot(v);
  assert(v[0]==255&&v[1]==4&&v[2]==1&&v[3]==1&&v[EXP_AUTO_PROFILE]==1);
  assert(experimental_set(EXP_IQ_LANE,1));assert(experimental_reboot_needed());
+ experimental_effective_snapshot(v);assert(v[EXP_IQ_LANE]==0);
  lane=1;assert(!experimental_reboot_needed()&&experimental_transfer_active());
+ experimental_effective_snapshot(v);assert(v[EXP_IQ_LANE]==1);
+ assert(experimental_set(EXP_IQ_LANE,0));assert(experimental_mask() & (1u<<EXP_IQ_LANE));
+ live=true;experimental_reset();assert(!live);
  assert(events&&records&&dc_resets&&s_control_epoch);
  return 0;
 }

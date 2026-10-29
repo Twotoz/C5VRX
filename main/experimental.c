@@ -61,14 +61,14 @@ bool experimental_reboot_needed(void) { return rf_lane() != experimental_boot_la
 bool experimental_set(unsigned item, uint8_t value)
 {
     if (item >= EXP_ITEMS || !experimental_items[item].count || value >= experimental_items[item].count) return false;
-    const uint8_t old = s_exp.value[item];
-    if (old == value) return true;
-    bool ok = true;
+    const uint8_t old = item == EXP_AUTO_PROFILE ? profile_live_mode() : s_exp.value[item];
+    if (old == value && s_exp.value[item] == value) { s_failed &= ~(1u << item); return true; }
+    bool ok = true, locked = false;
     if (item == EXP_IQ_CORR || (item >= EXP_LNA_BIAS && item <= EXP_SPUR0)) {
         if (!phy_try_actuator(phy_generation())) return false;
+        locked = true;
         phy_observation_changed();
         ok = experimental_phy_option(item, value);
-        phy_end_actuator();
     }
     if (!ok) experimental_fault(item);
     if (ok) {
@@ -77,6 +77,11 @@ bool experimental_set(unsigned item, uint8_t value)
         s_failed &= ~(1u << item);
         if (item == EXP_AUTO_PROFILE) profile_set_live_mode(value != 0);
         ++s_control_epoch;   /* invalidate observations/history before another decision */
+    }
+    /* Publish the choice before releasing PHY ownership: an observer gain
+     * write must never reapply the previous option in between. */
+    if (locked) phy_end_actuator();
+    if (ok) {
         receiver_dc_reset_all();
         if (!save()) printf("EXP persistence failed; value active for this boot\n");
     }
@@ -107,13 +112,19 @@ uint32_t experimental_mask(void)
         const unsigned baseline = i == EXP_GAIN ? GAIN_MODE_DEFAULT : i == EXP_DFILT ? PHY_DFILT_MODE_DEFAULT : 0;
         if (v[i] != baseline) mask |= 1u << i;
     }
+    if (rf_lane() != RF_LANE_ULTRAFINE) mask |= 1u << EXP_IQ_LANE;
     return mask;
+}
+void experimental_effective_snapshot(uint8_t values[EXP_ITEMS])
+{
+    experimental_snapshot(values);
+    values[EXP_IQ_LANE] = rf_lane() == RF_LANE_FINE ? 1 : rf_lane() == RF_LANE_COARSE ? 2 : 0;
 }
 void experimental_log_state(void)
 {
     ++s_revision;
     uint8_t p[2 + EXP_ITEMS] = {EXP_VERSION, EXP_ITEMS};
-    experimental_snapshot(p + 2);
+    experimental_effective_snapshot(p + 2);
     flightlog_record(FLOG_T_EXP, p, sizeof(p));
 }
 

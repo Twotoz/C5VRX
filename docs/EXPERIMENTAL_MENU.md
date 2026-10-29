@@ -122,6 +122,8 @@ restart, rather than live instruction/LUT edits.
 The format remains append-only V1. Record type 7 is a complete experimental
 state (version, count, values), following normal boot settings restoration
 and every menu action. Session identity records retain their existing layout.
+Logs record the actual running lane, including while a different requested
+lane awaits reboot; the menu retains the requested choice.
 Every new per-second record includes the schema, mask, **full values**, and a
 transition flag. Consequently lost events or ring wrap cannot silently assign
 seconds to the wrong settings. Changes inside a second are excluded from A/B
