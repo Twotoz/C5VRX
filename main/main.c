@@ -83,6 +83,9 @@ void app_main(void)
             printf("PREFS restored filter_select=%d gain_mode=%u dfilt=%d\n", p.filter_select, receiver_gain_mode(),
                    phy_dfilt_mode());
         }
+        uint8_t demod;   /* the decoder of the last session (console m, NVS "demod"); set before the first start */
+        if (blob_load("demod", &demod, sizeof(demod)) && demod < TRANSPORT_DEMODS && transport_set_demod(demod))
+            printf("PREFS restored demod=%s\n", transport_demod_name(demod));
     }
     s_boot_stage = "transport";
     if (transport_start() != ESP_OK) {

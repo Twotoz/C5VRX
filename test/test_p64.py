@@ -33,11 +33,37 @@ def reference(raw, table):
     return output
 
 
+def check_u85q():
+    """main/u85q.bsasm is the archived U85Q the host models score, its LUT is
+    main/u85q_table.h, the loader accepts its image and the assembled program
+    decodes as the reference (5-bit tokens)."""
+    program = ROOT / "main/u85q.bsasm"
+    assert program.read_bytes() == (ROOT / "research/legacy_demod/u85q.bsasm").read_bytes()
+    instructions, meta, lut = u85q_lp.assemble(program)
+    header = (ROOT / "main/u85q_table.h").read_text()
+    table = np.array([int(v) for v in header.split("u85q_table[1024] = {", 1)[1].split("};", 1)[0].replace(",", " ").split()],
+                     dtype=np.uint16)
+    assert len(table) == 1024 and np.array_equal(lut, table) and np.array_equal(table, sim.u85q_lut())
+    assert hashlib.sha256(struct.pack("<1024H", *table)).hexdigest() in header
+    binary = u85q_lp._bsasm().insts_to_binary(instructions, meta, lut)
+    assert binary[:7] == bytes((1, 0, 3, 8, 0, 2, 1)) and len(binary) == 300 + 2048   # transport.c program_words()
+    raw = np.random.default_rng(85).integers(0, 256, 12000, dtype=np.uint8)
+    got = np.frombuffer(u85q_lp.emulate(program, raw.tobytes(), len(raw) - 8), dtype=np.uint8)
+    expected = sim._pair_codes(raw, table, sim.PAIR_BITS, 5)[:len(got)]
+    assert np.array_equal(got & 63, expected), "assembled U85Q differs from the pair/state reference"
+    for name in ("transport.c", "control.c", "receiver.h"):
+        source = (ROOT / "main" / name).read_text()
+        assert "kp_tables" not in source and "u85q_lp" not in source, name
+
+
 def main():
-    # The sole firmware program must stay P64; retired references are research.
+    # Two fixed decoders (operator decision 2026-10-28): P64 and the untrained
+    # U85Q, no kp ladder or LP; the retired policies stay research.
     build = (ROOT / "main/CMakeLists.txt").read_text()
-    assert build.count('target_bitscrambler_add_src(') == 1
+    assert build.count('target_bitscrambler_add_src(') == 2
     assert 'target_bitscrambler_add_src("p64.bsasm")' in build
+    assert 'target_bitscrambler_add_src("u85q.bsasm")' in build
+    check_u85q()
     for name in ("transport.c", "control.c", "receiver.h"):
         source = (ROOT / "main" / name).read_text()
         for retired in ("transport_set_p64", "transport_kp_set", "kp_tables.h", "kp_ladder.h", 'blob_load("kp_auto"', 'blob_load("lp_cn"'):

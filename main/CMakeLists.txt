@@ -10,6 +10,7 @@ idf_component_register(
              esp_driver_tsens esp_timer esp_mm hal heap esp_hw_support esp_app_format esp_partition)
 
 target_bitscrambler_add_src("p64.bsasm")
+target_bitscrambler_add_src("u85q.bsasm")
 
 # The AFC decoder must not inherit the application's debug-oriented -Og.
 set_source_files_properties(control.c PROPERTIES COMPILE_OPTIONS "-O2")

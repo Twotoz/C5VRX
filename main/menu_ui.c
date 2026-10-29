@@ -156,7 +156,7 @@ static int badge(const char *s, int x, int y, uint8_t fill, uint8_t ink)
 /* ---- settings list ---- */
 
 static const char *const s_items[MENU_ITEMS] = {
-    "BAND", "CHANNEL", "SCAN", "VIDEO", "FILTER", "PHY FILT", "AFC", "CALIBRATE", "OUTPUT", "GAIN", "DAC TEST", "EXIT",
+    "BAND", "CHANNEL", "SCAN", "VIDEO", "FILTER", "PHY FILT", "AFC", "CALIBRATE", "OUTPUT", "GAIN", "DEMOD", "DAC TEST", "EXIT",
 };
 
 /* "14.4M" (MHz; the FILTER card spells it out), or "--" while the active
@@ -200,6 +200,7 @@ static void row_value(const menu_view_t *v, int item, const char **value, const 
     case MENU_CALIBRATE: if (v->dc_cal) *value = "DC!"; break;
     case MENU_OUTPUT: *value = v->output_name; break;
     case MENU_GAIN: *value = v->gain_mode; break;
+    case MENU_DEMOD: *value = v->demod; break;
     default: break;
     }
 }
@@ -373,7 +374,7 @@ static const char *hold_action(const menu_view_t *v)
 {
     if (v->cal_sub >= 0) return v->cal_sub == MENU_CAL_BACK ? "BACK" : "START";
     switch (v->cursor) {
-    case MENU_BAND: case MENU_CHANNEL: case MENU_FILTER: case MENU_DFILT: case MENU_OUTPUT: case MENU_GAIN: return "NEXT";
+    case MENU_BAND: case MENU_CHANNEL: case MENU_FILTER: case MENU_DFILT: case MENU_OUTPUT: case MENU_GAIN: case MENU_DEMOD: return "NEXT";
     case MENU_SCAN: return v->scan_active ? NULL : "SCAN";
     case MENU_VIDEO: case MENU_AFC: return "CHANGE";
     case MENU_CALIBRATE: return "OPEN";

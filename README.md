@@ -192,7 +192,7 @@ open the menu (menu: select).
 **Menu**, one list with every value in view: BAND, CHANNEL, SCAN, VIDEO
 (AUTO/NTSC/PAL), FILTER (AUTO/XNARROW/NARROW/NORMAL/WIDE), PHY FILT
 (digital filter mode), AFC (ON/OFF), CALIBRATE, OUTPUT (0.5–5.0x), GAIN
-(LEVEL/KEEL/RSSI/MAX/fixed), DAC TEST, EXIT. It closes after 30 s of
+(LEVEL/KEEL/RSSI/MAX/fixed), DEMOD (P64/U85Q), DAC TEST, EXIT. It closes after 30 s of
 inactivity (5 min in DAC TEST); entering and leaving can interrupt video.
 GAIN defaults to **LEVEL**; KEEL and RSSI are kept for comparison
 ([AGC research](docs/FINDINGS.md)). The automatic models are remembered

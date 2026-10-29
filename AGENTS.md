@@ -113,7 +113,7 @@ features and their evidence are in `docs/RESEARCH_LEDGER.md` ("C5VRX-5: the
 distilled receiver") and `docs/FINDINGS.md`; the rules below are current.
 
 - Datapath: MODEM_DIAG Q4/I4 (fixed ultrafine lane) -> PARLIO RX40 -> raw
-  32 KiB ring -> TX BitScrambler U80P64-R1 (`main/p64.bsasm`, two lookups,
+  32 KiB ring -> TX BitScrambler U80P64-R1 (`main/p64.bsasm`, or U85Q, two lookups,
   unique CVBS20 as [D,D] at TX40) -> six-bit resistor DAC (`main/transport.c`,
   `main/rf.c`).
 - Gain: GAIN model LEVEL by default (`main/agc.c`), KEEL-1 and RSSI
@@ -147,6 +147,13 @@ distilled receiver") and `docs/FINDINGS.md`; the rules below are current.
   TBC. The operator reported trouble with the GPIO27 LED route; preserve
   that result as a finding, without asserting a proven electrical cause.
 
+- Operator decision (2026-10-28): U85Q (`main/u85q.bsasm`, the archived untrained
+  program with its own LUT `main/u85q_table.h`; no kp ladder, no LP) is selectable
+  again next to U80P64-R1, the default: menu DEMOD, console `m`, NVS `demod`, a
+  verified restart with rollback to the last verified decoder. Board walk 296:
+  no gain over P64 for an NTSC VTX at deviation 0.66 (host model: equal there;
+  P64 holds sync 1-2 dB longer at deviation 1.0-1.4). This amends the decision
+  below for U85Q only; the kp/LP policies and their keys stay retired.
 - Operator cleanup decision (2026-10-23, confirmed single-model scope):
   active firmware builds and boots U80P64-R1 only (`main/p64.bsasm`). U85Q,
   the kp ladder/tables, LP policy/state, demod selection and console m/K/k/j/P/O/H

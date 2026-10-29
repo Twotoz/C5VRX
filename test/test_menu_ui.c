@@ -47,14 +47,14 @@ static menu_view_t base(void)
         .gain_auto = true, .gain = 42, .gain_max = 78, .filter_mode = "AUTO", .filter_active = "NORMAL",
         .filter_width_khz = 14375, .narrow_ok = true, .wide_ok = true, .dfilt_mode = 12, .dfilt_default = true,
         .deviation_x100 = 73, .offset_khz = 81,
-        .cn_x10 = 124, .firmware = "5.0.0-afcwin",
+        .cn_x10 = 124, .firmware = "5.0.0-afcwin", .demod = "U85Q",
     };
 }
 
 int main(int argc, char **argv)
 {
     static const char *const names[MENU_ITEMS] = {"band", "channel", "scan", "video", "filter", "dfilt", "afc",
-                                                  "calibrate", "output", "gain", "dac", "exit"};
+                                                  "calibrate", "output", "gain", "demod", "dac", "exit"};
     s_dir = argc > 1 ? argv[1] : NULL;
     char name[64];
     for (int i = 0; i < MENU_ITEMS; ++i) {

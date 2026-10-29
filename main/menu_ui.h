@@ -14,7 +14,7 @@
 #include "menu_raster.h"
 
 enum { MENU_BAND, MENU_CHANNEL, MENU_SCAN, MENU_VIDEO, MENU_FILTER, MENU_DFILT, MENU_AFC, MENU_CALIBRATE, MENU_OUTPUT,
-       MENU_GAIN, MENU_DAC, MENU_EXIT, MENU_ITEMS };
+       MENU_GAIN, MENU_DEMOD, MENU_DAC, MENU_EXIT, MENU_ITEMS };
 #define MENU_VISIBLE_ROWS 9   /* the list scrolls when it has more items */
 /* CALIBRATE submenu (hold on CALIBRATE): QUICK = the active filter and its
  * DC rows (console F), FULL = every filter class (console B), BACK. */
@@ -65,6 +65,7 @@ typedef struct {
     const char *output_name;        /* "1.5x" */
     /* Gain. */
     const char *gain_mode;          /* "AUTO", "MAX", "G42" */
+    const char *demod;              /* selected decoder, short: "P64", "U85Q" */
     bool gain_auto;
     unsigned gain;                  /* active gain index */
     unsigned gain_max;              /* table maximum */

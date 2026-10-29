@@ -137,6 +137,18 @@ static int strength(const metrics_t *m, uint8_t gain)
     return (coherence * 2 + power + headroom) / 4;
 }
 
+/* Decoder P64 <-> U85Q (console m, menu DEMOD), kept in NVS "demod": live, a
+ * verified restart behind the shared 5 s guard; in the menu, applied by the
+ * restart on menu exit. */
+static void demod_next(void)
+{
+    const uint8_t next = (uint8_t)((transport_demod() + 1u) % TRANSPORT_DEMODS);
+    const bool ok = transport_set_demod(next);
+    if (ok) (void)blob_store("demod", &next, sizeof(next));
+    printf("DEMOD switch to=%s result=%s active=%s%s\n", transport_demod_name(next), ok ? "ok" : "refused",
+           transport_program_name(), ok ? "" : " (guard, fault or rollback: T TRANSPORT and DEMOD)");
+}
+
 static void after_retune(void)
 {
     ++s_control_epoch;
@@ -322,6 +334,7 @@ static void menu_action(void)
     case MENU_CALIBRATE: s_cal_sub = MENU_CAL_QUICK; break;   /* opens the QUICK / FULL / BACK submenu */
     case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
     case MENU_GAIN: receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); break;
+    case MENU_DEMOD: demod_next(); break;   /* applied by the verified restart on menu exit */
     case MENU_DAC: menu_dac_step(); break;
     case MENU_VIDEO:
         cycle_video_standard();
@@ -340,6 +353,8 @@ static void command(int c, unsigned *menu_idle)
     }
     switch (c) {
     case 'G': receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); break;
+    /* Decoder P64 <-> U85Q: a verified restart behind the shared 5 s guard. */
+    case 'm': demod_next(); break;
     /* Bench: the real gain step of every table row pair (receiver.c). */
     case 'Q': receiver_pair_sweep_toggle(); break;
     /* DAC self-test: open the menu on DAC TEST, then step like a hold. */
