@@ -262,6 +262,17 @@ class ConsoleTest(unittest.TestCase):
             self.assertIn("FIELD_DIAG t=9", out)
             self.assertIn("IQ saved", out)
 
+    def test_higher_rate_snapshot_duration(self):
+        for rate,duration in ((48000000,'170.625us'),(80000000,'102.375us')):
+            with self.subTest(rate=rate), tempfile.TemporaryDirectory() as d:
+                c=flash.Console(io.StringIO(),iq_dir=Path(d))
+                lines=[line.replace('rate_hz=40000000',f'rate_hz={rate}') for line in snapshot_lines()]
+                c.feed('\n'.join(lines)+'\n')
+                bins=list(Path(d).glob('iq_*.bin'))
+                self.assertEqual(len(bins),1)
+                self.assertEqual(bins[0].read_bytes(),IQ)
+                self.assertIn(duration,bins[0].with_suffix('.json').read_text())
+
     def test_bad_iq_snapshot_reported(self):
         with tempfile.TemporaryDirectory() as d:
             c = flash.Console(io.StringIO(), iq_dir=Path(d))

@@ -20,13 +20,32 @@ unsigned experimental_log_interval(void)
 static bool save(void)
 {
     experimental_blob_t old;
-    if (blob_load("exp", &old, sizeof(old)) && !memcmp(&old, &s_exp, sizeof(old))) return true;
-    return blob_store("exp", &s_exp, sizeof(s_exp));
+    experimental_blob_t persisted=s_exp;
+    persisted.value[EXP_SAMPLE_RATE]=transport_rate_mode();
+    if (blob_load("exp", &old, sizeof(old)) && !memcmp(&old, &persisted, sizeof(old))) return true;
+    return blob_store("exp", &persisted, sizeof(persisted));
 }
 void experimental_load(void)
 {
     experimental_blob_t b;
     if (blob_load("exp", &b, sizeof(b)) && experimental_blob_valid(&b)) s_exp = b;
+    else {
+        /* Append-only schema migration: retain all pre-rate experiments. */
+        struct { uint8_t version, value[EXP_ITEMS-1]; } old;
+        memset(&b,0,sizeof(b));
+        if (blob_load("exp",&old,sizeof(old))) {
+            b.version=old.version; memcpy(b.value,old.value,sizeof(old.value));
+            if (experimental_blob_valid(&b)) s_exp=b;
+        }
+    }
+}
+void experimental_rate_result(uint8_t actual, bool applied)
+{
+    if (s_exp.value[EXP_SAMPLE_RATE]==actual && applied) { (void)save(); return; }
+    s_exp.value[EXP_SAMPLE_RATE]=actual;
+    if (!applied) s_failed|=1u<<EXP_SAMPLE_RATE;
+    ++s_revision;
+    (void)save();
 }
 bool experimental_phy_restore(void)
 {
@@ -83,7 +102,7 @@ bool experimental_set(unsigned item, uint8_t value)
     if (locked) phy_end_actuator();
     if (ok) {
         receiver_dc_reset_all();
-        if (!save()) printf("EXP persistence failed; value active for this boot\n");
+        if (item!=EXP_SAMPLE_RATE && !save()) printf("EXP persistence failed; value active for this boot\n");
     }
     const uint8_t e[] = {(uint8_t)item, old, ok ? value : 0, ok};
     flightlog_event(FLOG_E_EXP, e, sizeof(e));
@@ -119,6 +138,7 @@ void experimental_effective_snapshot(uint8_t values[EXP_ITEMS])
 {
     experimental_snapshot(values);
     values[EXP_IQ_LANE] = rf_lane() == RF_LANE_FINE ? 1 : rf_lane() == RF_LANE_COARSE ? 2 : 0;
+    values[EXP_SAMPLE_RATE]=transport_rate_mode();
 }
 void experimental_log_state(void)
 {
@@ -131,5 +151,5 @@ void experimental_log_state(void)
 bool experimental_transfer_active(void)
 {
     return experimental_get(EXP_IQ_CORR) || experimental_get(EXP_LNA_BIAS) || experimental_get(EXP_CURRENT) ||
-           experimental_get(EXP_LOOP_CAP) || experimental_get(EXP_SPUR0) || rf_lane() != RF_LANE_ULTRAFINE;
+           experimental_get(EXP_LOOP_CAP) || experimental_get(EXP_SPUR0) || rf_lane() != RF_LANE_ULTRAFINE || transport_rate_mode()!=0;
 }

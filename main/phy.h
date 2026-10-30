@@ -65,6 +65,10 @@ int phy_dfilt_hw_mode(void);
 bool phy_dfilt_select(int mode);
 int phy_dfilt_mode(void);
 int phy_dfilt_next(int mode);
+/* RX80 source-cadence lab, extending the archived DFILT/ADC probe. Caller
+ * holds receiver observers and flash logging. Exact MMIO/I2C rollback;
+ * ESP_FAIL means restore failed and live operation must stop. */
+esp_err_t phy_rx80_source_probe(void (*observe)(unsigned adc, unsigned mode));
 
 /* PR #254 11p baseline, pinned helper (1,0). Verified full entry and exact
  * saved-state rollback; ESP_ERR_INVALID_RESPONSE = entry failed/restored,

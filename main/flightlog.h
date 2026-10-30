@@ -10,6 +10,8 @@
 void flightlog_start(void);                 /* after settings_load(): partition, resume, session record */
 bool flightlog_ready(void);
 bool flightlog_dumping(void);              /* console W running: periodic lines hold off */
+bool flightlog_bench_lock(void);           /* lab: prevent flash writes during bus-clock experiments */
+void flightlog_bench_unlock(void);
 void flightlog_record(uint8_t type, const void *payload, uint8_t len);
 void flightlog_event(uint8_t kind, const void *data, uint8_t len);
 /* diag.c close_second: the second's record, its gain range and dropout state. */

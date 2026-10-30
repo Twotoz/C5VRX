@@ -28,7 +28,7 @@ def decode(lines):
         if line.startswith('IQSNAP_BEGIN '):
             if metadata is not None:raise ValueError('second capture header')
             metadata=dict(re.findall(r'(\w+)=(\w+)',line))
-            if metadata.get('format')!='Ihigh_Qlow' or metadata.get('bytes')!='8190' or metadata.get('rate_hz')!='40000000':
+            if metadata.get('format')!='Ihigh_Qlow' or metadata.get('bytes')!='8190' or metadata.get('rate_hz') not in ('40000000','48000000','80000000'):
                 raise ValueError('unsupported source format')
         elif line.startswith('IQSNAP_DATA '):
             if metadata is None:raise ValueError('data before header')
@@ -49,7 +49,7 @@ def decode(lines):
 def save(raw,metadata,output):
     # Raw bytes plus a .json sidecar; tools/flash.py --iq writes the same pair.
     metadata=dict(metadata,timestamp_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                  scope='204.75us contiguous snapshot; capture-start state unknown; no full vertical/range validation')
+                  scope=f'{len(raw)*1e6/int(metadata["rate_hz"]):.3f}us contiguous snapshot; capture-start state unknown; no full vertical/range validation')
     output.write_bytes(raw);output.with_suffix('.json').write_text(json.dumps(metadata,indent=2))
 
 

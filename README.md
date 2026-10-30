@@ -28,6 +28,20 @@ outputs composite PAL/NTSC through a passive 6-bit resistor DAC: automatic
 gain control, a quick baseline boot with manual calibration, an on-screen
 menu, and browser-based flashing and controls.
 
+This local `lab/rx80` branch adds experimental 40/48/80 MS/s selection.
+Its RX80 transport has passed bounded throughput and digital tests, but
+the operator reported black video at 80 and noise at 48. Usable RX80 is
+still under investigation; see [the hardware lab evidence](docs/RX80_LAB.md).
+Later captures exposed repeated source samples; the current H40 demod
+corrects their timing inside RX80/TX80. This does not establish 80 million
+independent IQ values per second or stable live video yet.
+The 80-stand also selects the separate experimental **RX80** gain model;
+the existing 40-mode models are restored when leaving it. Live sync loss
+is still being investigated; no range improvement is established.
+These changes extend C5VRX by Twotoz and the C5VRX contributors, from the
+[canonical repository](https://github.com/Twotoz/C5VRX). The original
+project and its Discord invite are on the [official website](https://twotoz.github.io/C5VRX/).
+
 The demodulator is **U80P64-R1** ([evidence and limits](docs/P64.md)). It has
 one positive NTSC check; PAL, weak-signal behaviour and range still need
 hardware validation. Board findings, including the retired U85Q/kp/LP models

@@ -28,7 +28,7 @@ export const RX_REASONS = ['none', 'no_carrier', 'weak_signal', 'dc_clipping', '
 export const RESET_REASONS = ['unknown', 'power-on', 'external', 'software', 'panic', 'interrupt watchdog',
   'task watchdog', 'watchdog', 'deep sleep', 'brownout', 'SDIO', 'USB', 'JTAG', 'eFuse', 'power glitch', 'CPU lockup'];
 const TRIGGERS = { 1: 'dropout', 2: 'picture drop', 3: 'first carrier', 4: 'periodic', 5: 'overload burst', 6: 'range edge', 7: 'recover', 8: 'output unlock' };
-const OUTPUT_DEMODS = { 1: 'U85Q 1a09f5c092e8', 2: 'U85Q-LP 1a09f5c092e8', 3: 'U80P64-R1' };
+const OUTPUT_DEMODS = { 1: 'U85Q 1a09f5c092e8', 2: 'U85Q-LP 1a09f5c092e8', 3: 'U80P64-R1', 4: 'PAIR48-C192', 5: 'PAIR80-C320', 6: 'PAIR80-H40-C256', 7: 'PAIR80-H40-C256-B32' };
 const OUTPUT_STANDARDS = { 1: 'NTSC', 2: 'PAL' };
 
 let crcTable;
@@ -266,7 +266,7 @@ export function decodeImage(image) {
       session: d.getUint32(8, true), seq: d.getUint32(12, true), tMs: d.getUint32(16, true), freq: d.getUint16(20, true),
       gain: h[22], outputDemod: h[40] & 1 ? OUTPUT_DEMODS[h[38]] ?? `unknown (${h[38]})` : null,
       outputLevel: h[40] & 1 && h[39] !== 0xff ? h[39] : null,
-      outputFlags: h[40], iq });
+      outputFlags: h[40], rateHz: h[40] & 1 ? ({ 4: 48000000, 5: 80000000, 6: 80000000, 7: 80000000 }[h[38]] ?? 40000000) : 40000000, iq });
   }
   snapshots.sort((a, b) => a.seq - b.seq);
   return { sessions: [...sessions.values()].sort((a, b) => a.session - b.session), snapshots };

@@ -99,10 +99,13 @@ void app_main(void)
     /* Leave one second of a ten-second target for final TX handover.
      * Never add a fixed warning screen after the normal splash. */
     const int64_t ready_deadline = app_t0 + 9000000;
-    const bool splash = esp_timer_get_time() < ready_deadline && menu_splash_begin();
     s_boot_stage = "tasks";
     receiver_start();
     control_start();
+    /* Essential task stacks take precedence over the optional raster's
+     * ~18 KiB descriptor allocation. With a saved experimental rate, NVS
+     * and restart allocations otherwise left gain_fast unable to start. */
+    const bool splash = esp_timer_get_time() < ready_deadline && menu_splash_begin();
     if (splash) splash_wait_gain(splash_t0, splash_holds, ready_deadline);
     menu_splash_end();
     s_boot_stage = "ready";

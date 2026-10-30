@@ -327,6 +327,7 @@ bool menu_open(void)
 void menu_close(void)
 {
     if (!s_menu_active) return;
+    bool rate_pause=experimental_get(EXP_SAMPLE_RATE)!=transport_rate_mode() && receiver_pause("RATE_SWITCH");
     transport_stop_chain();
     vTaskDelay(pdMS_TO_TICKS(MENU_RELOCK_GAP_MS));
     transport_resume_live();
@@ -337,6 +338,7 @@ void menu_close(void)
     s_exp_failed = false;
     s_dac_step = DAC_STEP_PATTERN;
     ++s_control_epoch;
+    if (rate_pause) receiver_resume();
 }
 
 void menu_set_standard_mode(std_mode_t mode)

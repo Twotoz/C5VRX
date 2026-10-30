@@ -28,14 +28,17 @@ static bool s_afc_enabled=true, live, fail_phy, busy, stored;
 static uint32_t s_control_epoch;
 static unsigned mode=254, dfilt=12, demod, lane=2, events, records, dc_resets;
 static experimental_blob_t disk;
+static size_t disk_bytes=sizeof(disk);
+static unsigned actual_rate;
+static unsigned transport_rate_mode(void){return actual_rate;}
 static uint8_t event_data[4];
 static bool blob_load(const char *k, void *d, size_t n) {
- assert(!strcmp(k,"exp") && n==sizeof(disk));
- if (!stored) return false;
+ assert(!strcmp(k,"exp"));
+ if (!stored || n!=disk_bytes) return false;
  memcpy(d,&disk,n);return true;
 }
 static bool blob_store(const char *k,const void *d,size_t n) {
- assert(!strcmp(k,"exp") && n==sizeof(disk)); memcpy(&disk,d,n);stored=true;return true;
+ assert(!strcmp(k,"exp") && n==sizeof(disk)); memcpy(&disk,d,n);disk_bytes=n;stored=true;return true;
 }
 static unsigned receiver_gain_mode(void){return mode;}
 static unsigned phy_dfilt_mode(void){return dfilt;}
@@ -60,12 +63,24 @@ int main(void) {
  for(unsigned id=EXP_IQ_CORR;id<EXP_ITEMS;++id) {
    for(unsigned v=1;v<experimental_items[id].count;++v) {
      assert(experimental_set(id,v));assert(experimental_get(id)==v);
+     if(id==EXP_SAMPLE_RATE) { actual_rate=v; experimental_rate_result(v,true); }
      assert(disk.value[id]==v && experimental_blob_valid(&disk));
      if(id!=EXP_AUTO_PROFILE) assert(experimental_mask() & (1u<<id));
    }
    assert(experimental_set(id,0));
+   if(id==EXP_SAMPLE_RATE) { actual_rate=0; experimental_rate_result(0,true); }
  }
  assert(!experimental_mask());
+ /* Pending rate changes must not leak through unrelated NVS saves. */
+ assert(experimental_set(EXP_SAMPLE_RATE,2));
+ assert(experimental_set(EXP_IQ_CORR,1));assert(disk.value[EXP_SAMPLE_RATE]==0);
+ experimental_rate_result(0,false);assert(experimental_get(EXP_SAMPLE_RATE)==0);
+ assert(experimental_set(EXP_IQ_CORR,0));
+ /* The old append-only blob retains every old option and defaults rate 40. */
+ disk=(experimental_blob_t){.version=EXP_VERSION};disk.value[EXP_FOLD_MEMORY]=2;
+ disk_bytes=sizeof(disk)-1;stored=true;experimental_load();
+ assert(experimental_get(EXP_FOLD_MEMORY)==2 && experimental_get(EXP_SAMPLE_RATE)==0);
+ disk_bytes=sizeof(disk);assert(experimental_set(EXP_FOLD_MEMORY,0));
  assert(!experimental_set(EXP_ITEMS,1));assert(!experimental_set(EXP_GAIN,1));
  assert(!experimental_set(EXP_FOLD_MEMORY,3));
  disk.value[EXP_FOLD_MEMORY]=255;stored=true;experimental_load();

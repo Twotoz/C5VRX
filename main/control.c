@@ -366,7 +366,7 @@ static void menu_action(void)
     case MENU_FILTER: (void)profile_select_cycle(); prefs_save(); break;
     case MENU_AFC: toggle_afc(); break;
     case MENU_DFILT: cycle_dfilt(); break;
-    case MENU_EXPERIMENTAL: s_exp_sub = 0; break;
+    case MENU_EXPERIMENTAL: s_exp_sub = EXP_SAMPLE_RATE; break;
     case MENU_CALIBRATE: s_cal_sub = MENU_CAL_QUICK; break;   /* opens the QUICK / FULL / BACK submenu */
     case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
     case MENU_GAIN: receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); break;
@@ -551,8 +551,11 @@ static void control_task(void *arg)
          * line earlier, which one descriptor contains in ~43 % of windows
          * (board IQ replay 2026-10-26: 45 % vs 30/30 snapshots). It ends
          * where the active descriptor began, so it covers s_window. */
-        const bool afc_copied = receiver_ok && copy_afc_window(s_afc_window);
-        bool window_ok = afc_copied && afc2_envelope_stationary(s_afc_window, AFC_WINDOW_BYTES);
+        /* IQ80 supplies an exact IQ40 observer view after picture decoding.
+         * Its fixed-size snapshot covers 1.6 lines, so B/W timing evidence
+         * is intermittent; never fabricate the missing preceding line.
+         * IQ48 still holds AFC: it has no integer IQ40 time mapping. */
+        const bool afc_copied = receiver_ok && transport_rate_mode()!=1 && copy_afc_window(s_afc_window);
         /* Picture measure (picture_sync.h): every live window, also those the
          * AFC leaves out (a gain write, settle, fading): the goggles see those. */
         if (copied && !s_menu_active && (afc_copied || copy_afc_window(s_afc_window))) {
@@ -568,13 +571,15 @@ static void control_task(void *arg)
                 if (us > s_pic.us_max) s_pic.us_max = us;
             }
         }
+        const size_t afc_bytes=afc_copied ? rx_rate_observer40(s_afc_window,AFC_WINDOW_BYTES,IQ_RATE_HZ) : 0;
+        const bool window_ok=afc_bytes && afc2_envelope_stationary(s_afc_window,afc_bytes);
         const char *afc_window_reason = !copied ? "copy_missing" : settle ? "settle" :
             ctx != afc_context() ? "context" : phy_busy() ? "phy_busy" : !receiver_ok ? "gain_settle" :
             !afc_copied ? "afc_copy_missing" : !window_ok ? "nonstationary" : "measured";
         if (settle) --settle;
         afc2_result_t r = {0};
         if (window_ok) {
-            r = afc2_measure(s_afc_window, AFC_WINDOW_BYTES, c5vrx_phase8_gain_lut);
+            r = afc2_measure(s_afc_window, afc_bytes, c5vrx_phase8_gain_lut);
             afc2_ctrl_observe_at(&afc, &r, (uint64_t)now);
             vq_add(&s_vq_acc, &r);
         } else afc2_ctrl_miss(&afc);   /* settle and context changes reset via afc2_ctrl_sync */

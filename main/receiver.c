@@ -17,6 +17,7 @@
 #include "phase8_gain_lut.h"
 #include "phy.h"
 #include "rf.h"
+#include "rx80_agc.h"
 
 direct_gain_t s_gain;
 volatile uint8_t s_current_gain = 62u;
@@ -31,10 +32,14 @@ bool s_gain_map_saved_valid;
 
 static TaskHandle_t s_observer, s_sentinel;
 static volatile uint8_t s_gain_mode = GAIN_MODE_DEFAULT;
+static rx80_agc_t s_rx80_agc;
+static unsigned s_gain_rate;
+static uint8_t s_gain80_restore=GAIN_MODE_DEFAULT;
+static bool s_receiver_running;
 
 /* Menu/console cycle: LEVEL (the default), KEEL (KEEL-1), RSSI, MAX, then
  * fixed G78 down to G24. */
-static const uint8_t s_gain_modes[] = {GAIN_MODE_LEVEL, GAIN_MODE_AUTO, GAIN_MODE_RSSI, GAIN_MODE_MAX,
+static const uint8_t s_gain_modes[] = {GAIN_MODE_RX80, GAIN_MODE_LEVEL, GAIN_MODE_AUTO, GAIN_MODE_RSSI, GAIN_MODE_MAX,
                                        78, 72, 66, 60, 54, 48, 42, 36, 30, 24};
 
 uint8_t receiver_gain_mode(void) { return s_gain_mode; }
@@ -46,24 +51,81 @@ uint8_t receiver_gain_mode(void) { return s_gain_mode; }
  * change (logged in the flight log). */
 void receiver_set_gain_mode(uint8_t mode, bool user)
 {
+    if (mode==GAIN_MODE_RX80 && s_gain_rate!=2) mode=GAIN_MODE_DEFAULT;
     if (!receiver_gain_mode_auto(mode) && mode != GAIN_MODE_MAX && (mode < 2u || mode > ARC_VENDOR_GAIN_MAX)) return;
     s_gain_mode = mode;
+    s_rx80_agc=(rx80_agc_t){0};
     if (user) flightlog_event(FLOG_E_GAIN_MODE, &mode, 1);
     char buf[16];
     printf("GAIN mode=%s (%s)\n", receiver_gain_mode_name(mode, buf, sizeof(buf)),
            receiver_gain_mode_auto(mode) ? "kept across reboots" : "this boot only; the next boot starts LEVEL");
 }
 
+void receiver_rate_changed(unsigned rate)
+{
+    const unsigned previous=s_gain_rate;
+    s_gain_rate=rate;
+    if (rate==2 && previous!=2 && receiver_gain_mode_auto(s_gain_mode)) {
+        s_gain80_restore=s_gain_mode==GAIN_MODE_RX80 ? GAIN_MODE_DEFAULT : s_gain_mode;
+        receiver_set_gain_mode(GAIN_MODE_RX80,false);
+        /* Boot set the initial gain before the DC hook was registered.
+         * Reassert under startup/paused ownership so its calibrated DC row
+         * is actually held before the new controller judges the envelope. */
+        if (!s_receiver_running || receiver_paused()) receiver_set_gain(s_current_gain);
+    } else if (rate!=2 && s_gain_mode==GAIN_MODE_RX80) {
+        receiver_set_gain_mode(receiver_gain_mode_auto(s_gain80_restore) ? s_gain80_restore : GAIN_MODE_DEFAULT,false);
+    }
+}
+
+/* Short operator-visible isolation of gain artifacts: four seconds of the
+ * chosen automatic model, then eight at a fixed observed healthy row.
+ * Observers, AFC, DC, logging and the native video path keep running.
+ * No preference is saved; the previous mode is restored before returning. */
+void receiver_gain_hold_bench(void)
+{
+    const uint8_t saved=receiver_gain_mode();
+    if (s_menu_active || receiver_paused() || calibration_in_startup() ||
+        !transport_live() || !receiver_gain_mode_auto(saved)) {
+        printf("GAIN_HOLD refused=need_live_auto_idle\n"); return;
+    }
+    uint8_t selected=s_current_gain;
+    int best=INT_MAX;
+    printf("GAIN_HOLD_BEGIN auto_seconds=4 fixed_seconds=8 hz=%lu\n",(unsigned long)IQ_RATE_HZ);
+    for (unsigned k=0;k<40;++k) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        if (receiver_gain_mode()!=saved || s_menu_active) { printf("GAIN_HOLD cancelled=operator_change\n"); return; }
+        if (esp_timer_get_time()-s_last_gain_write_us<10000 || s_obs_clip_pm>10 ||
+            s_obs_p50<8 || s_obs_p50>40 || s_obs_p95>60) continue;
+        int score=abs(s_obs_p50-20);
+        if (score<best) { best=score; selected=s_current_gain; }
+    }
+    if (best==INT_MAX) { printf("GAIN_HOLD refused=no_healthy_gain\n"); return; }
+    receiver_set_gain_mode(selected,false);
+    printf("GAIN_HOLD_FIXED gain=%u seconds=8\n",selected);
+    for (unsigned k=0;k<80;++k) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        if (receiver_gain_mode()!=selected || s_menu_active) break;
+    }
+    /* A new operator choice wins; do not overwrite it after this bench. */
+    if (receiver_gain_mode()==selected) receiver_set_gain_mode(saved,false);
+    printf("GAIN_HOLD_END mode=%u gain=%u live=%u\n",receiver_gain_mode(),s_current_gain,transport_live());
+}
+
 uint8_t receiver_gain_mode_next(uint8_t mode)
 {
     for (unsigned k = 0; k < sizeof(s_gain_modes); ++k)
-        if (s_gain_modes[k] == mode) return s_gain_modes[(k + 1u) % sizeof(s_gain_modes)];
+        if (s_gain_modes[k] == mode) {
+            unsigned next=(k+1u)%sizeof(s_gain_modes);
+            if (s_gain_modes[next]==GAIN_MODE_RX80 && s_gain_rate!=2) next=(next+1u)%sizeof(s_gain_modes);
+            return s_gain_modes[next];
+        }
     return GAIN_MODE_DEFAULT;
 }
 
 const char *receiver_gain_mode_name(uint8_t mode, char *buf, unsigned size)
 {
     if (mode == GAIN_MODE_AUTO) return "KEEL";
+    if (mode == GAIN_MODE_RX80) return "RX80";
     if (mode == GAIN_MODE_LEVEL) return "LEVEL";
     if (mode == GAIN_MODE_RSSI) return "RSSI";
     if (mode == GAIN_MODE_MAX) return "MAX";
@@ -169,7 +231,13 @@ static uint8_t gain_decision(const dg_observation_t *o)
     if (s_pair_active) return pair_decision(o);
     const uint8_t mode = s_gain_mode;
     if (mode == GAIN_MODE_AUTO) return dg_tick(&s_gain, o);
-    const uint8_t target = mode == GAIN_MODE_LEVEL || mode == GAIN_MODE_RSSI ? agc_decision(mode, o)
+    if (mode==GAIN_MODE_RX80) {
+        s_rx80_agc.dc_floor=arc_gain_highest_rf_stage_start(rf_gain_table());
+        const int64_t video=s_last_video_us;
+        s_rx80_agc.carrier_recent=video>0 && o->observed_us>=(uint64_t)video && o->observed_us-(uint64_t)video<500000u;
+    }
+    const uint8_t target = mode==GAIN_MODE_RX80 ? rx80_agc_tick(&s_rx80_agc,o,s_gain.model_db_q8,s_current_gain,rf_gain_table()->max_index) :
+                         mode == GAIN_MODE_LEVEL || mode == GAIN_MODE_RSSI ? agc_decision(mode, o)
                          : mode == GAIN_MODE_MAX ? rf_gain_table()->max_index : mode;
     /* Once written and settled the model reads HOLD, so profile/DC/C-N gates
      * waiting for a held gain behave as with a steady carrier. */
@@ -252,6 +320,7 @@ static void attack_record(const dg_observation_t *o, uint8_t source, uint8_t fro
 }
 static void gain_map_bind(const dg_map_context_t *context, uint32_t control, uint32_t phy, uint32_t table)
 {
+    s_rx80_agc=(rx80_agc_t){0};
     dg_reset_context(&s_gain, rf_gain_table(), s_current_gain, context);
     /* Every import checks the current transfer context and complete table,
      * including after A -> B -> A. A stored map for A remains available
@@ -956,10 +1025,14 @@ void receiver_start(void)
     esp_timer_handle_t timer;
     ESP_ERROR_CHECK(esp_timer_create(&args, &timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(timer, 200));
+    s_receiver_running=true;
 }
 
 void receiver_print(void)
 {
+    if (s_gain_mode==GAIN_MODE_RX80)
+        printf("AGC model=RX80 attack_requests=%lu release_requests=%lu holds=%lu probe_hz=40000000 clip_limit_pm=10 p95_limit=65 release_db=1 release_ms=60 attack_hold_ms=200\n",
+               (unsigned long)s_rx80_agc.attacks,(unsigned long)s_rx80_agc.releases,(unsigned long)s_rx80_agc.holds);
     if (s_gain_mode == GAIN_MODE_LEVEL)
         printf("AGC model=LEVEL decisions=%lu moves=%lu folds=%lu learned=%lu jumps=%lu fold_radius=%lu/%lu/%lu "
                "(agc.c; rows corrected from the level before/after a move; jumps: the fast history took over; "
@@ -1021,7 +1094,7 @@ void receiver_print(void)
            "obs_windows=%lu obs_us_max=%lu\n",
            s_paused ? "paused" :
            s_gain_mode == GAIN_MODE_AUTO ? "keel1" : s_gain_mode == GAIN_MODE_LEVEL ? "level" :
-           s_gain_mode == GAIN_MODE_RSSI ? "rssi" : "manual",
+           s_gain_mode == GAIN_MODE_RSSI ? "rssi" : s_gain_mode==GAIN_MODE_RX80 ? "rx80" : "manual",
            receiver_gain_mode_name(s_gain_mode, mode, sizeof(mode)),
            s_current_gain, (unsigned)s_gain.state, s_obs_p50, s_obs_p95, s_obs_coherence, s_obs_env_ratio_x100,
            (unsigned)s_obs_stuck, receiver_obs_cn_x10(),
