@@ -134,14 +134,14 @@ distilled receiver") and `docs/FINDINGS.md`; the rules below are current.
 
 - Operator IQ pin experiment (2026-10-25): `RF_IQ_GPIO_NUMS` in `main/rf.h`
   supplies both MODEM_DIAG routing and PARLIO RX: Q = 1/0/25/2,
-  I = 27/5/3/4. GPIO27 replaces GPIO10; GPIO2 replaces GPIO7. Reserve
-  D10/GPIO10 (15 kOhm) and D3/GPIO7 (33 kOhm) for future seventh/eighth
-  DAC branches, DNP until wider firmware and hardware validation. These are
-  new low bits: 7-bit D10=bit0; 8-bit D10=bit1, D3=bit0. GPIO2 is IQ-owned,
-  incompatible with PR #257's optional clock. GPIO27 is never a status LED. The XIAO LED/resistor
-  remains attached and high-speed loopback validation is pending; see
-  docs/FINDINGS.md "GPIO27 IQ loopback experiment". Keep the existing DAC
-  wiring and RX40/raw32K/two-lookup/DAC20-at-TX40 cadence.
+  I = 27/5/3/4. Operator decision (2026-10-30): cancel planned 7/8-bit
+  DAC support, retain six bits. EXPERIMENTAL / Clock Pin D10 defaults OFF;
+  ON applies at boot, exports TX40 on D10/GPIO10 and relocates DAC bit 2
+  from D6/GPIO11 to D3/GPIO7 (move its 2k resistor branch). OFF preserves
+  baseline D4..D9 wiring. GPIO2 remains IQ-owned, GPIO27 is never a status
+  LED. Leave obsolete R8/R9 expansion branches DNP and SJ2/SJ3 open.
+  This extends PR #257 / LAP87's FPGA capture; the D3 timing improvement
+  is unverified. Preserve RX40/raw32K/two-lookup/DAC20-at-TX40 cadence.
 
 - This GPIO-only comparison is directly on main and must remain free of
   TBC. The operator reported trouble with the GPIO27 LED route; preserve
@@ -217,7 +217,7 @@ distilled receiver") and `docs/FINDINGS.md`; the rules below are current.
   (`transport.c`, `transport_recovery.h`) behind one shared five-second
   guard; RUN/PAUSE LUT or instruction rewrites failed on the board. Bound
   every hardware wait.
-- Do not silently change the tested XIAO D4..D9 DAC pin order or the physical
+- Baseline uses XIAO D4..D9; the explicit Clock Pin D10 option relocates bit 2 as above. Do not silently change the DAC pin order or the physical
   8.2k/3.9k/2k/1k/470R/240R plus 200R network.
 
 ## Current receiver settings (PR #212 and later)

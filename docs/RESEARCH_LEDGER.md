@@ -1,5 +1,35 @@
 # C5VRX research ledger (C5VRX-1 to C5VRX-5)
 
+## D10 sample clock and six-bit DAC (2026-10-31)
+
+Operator decision in PR #257 (2026-10-30): abandon planned 7/8-bit DAC
+support, export the sample clock on D10/GPIO10, relocate bit 2 from
+D6/GPIO11 to D3/GPIO7. This supersedes the future expansion reservations
+in the GPIO27 experiment below; the existing PCB footprints are historical.
+
+Extends C5VRX by Twotoz and contributors' PARLIO output and LAP87's FPGA
+bench report in issue #256: GPIO2 clock measured at 40.0 MHz, six lanes,
+falling-edge data/rising-edge capture, identical [D,D] pairs, luma HDMI lock.
+GPIO11 bit-2 rises one TX clock late in 5-8% of pairs in that setup.
+Those are measurements of the old GPIO2-clock builds, not proof of D10/D3.
+
+EXPERIMENTAL / Clock Pin D10 defaults OFF, persists in NVS and applies at
+boot. ON changes both TX clock and bit-2 routing together; OFF keeps the
+original six-resistor wiring. Pending changes never reroute a live or menu
+bus; the reboot indicator and console T distinguish requested/active state.
+Move the 2k branch when changing modes. Leave R8/R9 DNP and SJ2/SJ3 open.
+Both modes share the normal packaged firmware. No CPU sample pacing or
+new DSP stage: MODEM_DIAG Q4/I4 -> RX40 -> raw32K -> two-lookup TX
+BitScrambler -> six-bit composite codes, unique20 as [D,D] at TX40.
+Clock may stop during halted restarts; external capture must reacquire.
+
+Host tests cover production TX setup/error propagation and saved/active
+state across reboot, old settings migration and flight-log compatibility.
+D10/D3 electrical timing, the 25 ns observation, current-base reception,
+FPGA colour and range still require bench validation. This is an optional
+integration tap; remove its menu ID only with wire-format compatibility,
+routing, tests and documentation if no integration uses it.
+
 C5VRX by Twotoz and the C5VRX contributors. This is the project's research
 provenance ledger, moved verbatim from `AGENTS.md` on 2026-10-28 so that the
 agent instructions there carry only the current C5VRX-5 rules. The

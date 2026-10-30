@@ -31,6 +31,18 @@ def summary(length=71):
 
 
 class FlightLogToolTest(unittest.TestCase):
+    def test_experiment_append_keeps_old_records(self):
+        old = summary(97)
+        struct.pack_into('<I', old, 71, 0x1234)
+        old[75] = 1
+        old[86] = 2
+        row = flight_log.second(old)
+        self.assertEqual(row['exp_mask'], 0x1234)
+        self.assertEqual(row['exp_fold_memory'], 2)
+        self.assertIsNone(row['exp_clock_d10'])
+        new = old + bytes((1,))
+        self.assertEqual(flight_log.second(new)['exp_clock_d10'], 1)
+
     def test_output_telemetry_decodes_with_validity(self):
         row = flight_log.second(summary())
         self.assertEqual(row['output_demod'], 'U85Q-LP 1a09f5c092e8')

@@ -109,10 +109,38 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
   [Building and testing the resistor DAC](docs/hardware/dac-build-and-test.md).
 
 IQ routing is internal (no wiring) and uses GPIO27 (the user LED, which may
-glow) and GPIO2. That keeps **D10/GPIO10 and D3/GPIO7 free for a future
-seventh/eighth DAC branch** (15 kΩ and 33 kΩ, added as *low* bits). Leave
-them **unpopulated**: the firmware is 6-bit, and the new IQ routes still need
-board validation ([pin-routing findings](docs/FINDINGS.md#gpio27-iq-loopback-experiment-2026-10-25)).
+glow) and GPIO2. The planned seven/eight-bit DAC expansion is cancelled;
+firmware stays six-bit. Leave the carrier's optional R8/R9 unpopulated and
+SJ2/SJ3 open.
+
+### Optional digital video capture: Clock Pin D10
+
+In **EXPERIMENTAL**, set **Clock Pin D10** to **ON**, then power off and
+move the existing **bit 2 / 2.0 kohm branch from D6/GPIO11 to D3/GPIO7**.
+On the next boot, D10/GPIO10 exports the **40 MHz PARLIO TX clock**, and
+bit 2 uses D3. OFF is the default and retains the original D4-D9 wiring;
+turning it off also needs a reboot and moving the branch back. The menu
+shows a reboot warning until the requested setting matches the active one.
+The ordinary PR firmware includes this option; no custom build is needed.
+
+For FPGA capture, tap the data pins **before the resistors**, use 3.3 V
+inputs and a common ground. With the option active, bit order low to high is
+D4, D5, **D3**, D7, D8, D9. D6 is disconnected from TX. Data shifts on
+falling clock edges; capture on rising edges and verify timing on your board.
+The bus is still six-bit composite video: live samples are identical pairs
+`[D,D]` at TX40, **20 MS/s unique codes**. The original colour burst is
+preserved; the external device owns sync recovery and colour decoding.
+Menu/startup rasters also use this bus. Halted TX/restarts can interrupt the
+clock and video; the capture device must reacquire. Console **T** reports
+`SAMPLE_CLOCK` with active/requested state, pin, rate and DAC-bit-2 pin.
+
+This extends [LAP87's capture tests](https://github.com/Twotoz/C5VRX/issues/256#issuecomment-6530295384).
+The GPIO11 bit-2 rising-edge delay reported there (25 ns) motivates the D3
+route; a timing fix on D3 is **not yet verified**. GPIO2 remains IQ-owned.
+DAC TEST labels bit 2 as D3 when active; in `tools/dac_check.py`, enter
+that branch's measurement using the existing `--d6` argument.
+USB DTR/RTS can trigger the ESP32-C5 USB-Serial-JTAG reset/boot behaviour;
+there is no deliberate host-DTR gate in the video stream.
 
 ### DIY Carrier PCB — REV C: Fat Shark Module + 3.5 mm AV Jack
 
@@ -133,7 +161,7 @@ board validation ([pin-routing findings](docs/FINDINGS.md#gpio27-iq-loopback-exp
 | **Rear solder jumpers** | SJ2 / BIT 7 and SJ3 / BIT 8: extra DAC branches |
 | **Artwork** | C5VRX logos on both sides; REV C and 6–8 BIT DAC markings on the back |
 
-**Current firmware remains six-bit:** leave R8/R9 unpopulated and SJ2/SJ3 open. The jumpers connect hardware only; seven/eight-bit output still needs matching firmware and electrical validation. [Assembly and jumper settings](hardware/C5VRX_JACK_DIY_V3#dac-branches-and-rear-jumpers).
+**Current firmware remains six-bit:** leave R8/R9 unpopulated and SJ2/SJ3 open. The old expansion footprints are retained in the PCB artwork only; seven/eight-bit firmware support is cancelled. Use the rewiring above for Clock Pin D10. [Assembly and jumper settings](hardware/C5VRX_JACK_DIY_V3#dac-branches-and-rear-jumpers).
 
 **Downloads:** [Gerbers + drills](hardware/C5VRX_JACK_DIY_V3/exports/C5VRX_JACK_DIY_V3-gerbers.zip) · [KiCad project](hardware/C5VRX_JACK_DIY_V3) · [BOM](hardware/C5VRX_JACK_DIY_V3/BOM.csv) · [Schematic PDF](hardware/C5VRX_JACK_DIY_V3/exports/C5VRX_JACK_DIY_V3-schematic.pdf) · [STEP](hardware/C5VRX_JACK_DIY_V3/exports/C5VRX_JACK_DIY_V3.step) · [Renders](hardware/C5VRX_JACK_DIY_V3/exports/renders/).
 

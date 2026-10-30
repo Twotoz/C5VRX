@@ -4,6 +4,7 @@
  * with interrupts off and cleared suc_eof (espressif/esp-idf#19091), so no
  * DMA boundary is a stream boundary; the CPU never paces samples. */
 #include "receiver.h"
+#include "experimental.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -52,10 +53,9 @@ static const void *demod_program(uint8_t d) { return d == TRANSPORT_DEMOD_U85Q ?
 static const uint16_t *demod_table(uint8_t d) { return d == TRANSPORT_DEMOD_U85Q ? u85q_table : p64_table; }
 static const void *tracker_program(void) { return demod_program(s_demod); }
 
-/* 6-bit resistor DAC, LSB first (XIAO D4..D9; 8.2k/3.9k/2k/1k/470R/240R
- * plus 200R). Do not change the tested pin order. D10/GPIO10 and D3/GPIO7
- * are reserved for future seventh/eighth branches; keep them disconnected
- * here until a complete wider-DAC implementation is hardware-validated. */
+/* Six-bit DAC only. Baseline wiring stays D4..D9. Clock Pin D10
+ * relocates bit 2 (2k resistor) from D6/GPIO11 to D3/GPIO7 at boot.
+ * D10/GPIO10 then carries PARLIO TX's clock, never an extra DAC bit. */
 static const int s_dac_gpio[8] = {23, 24, 11, 12, 8, 9, -1, -1};
 
 DMA_ATTR __attribute__((aligned(64))) uint8_t s_raw_ring[RAW_RING_BYTES];
@@ -157,11 +157,21 @@ static esp_err_t prepare_tx(void)
         .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
     };
     for (unsigned k = 0; k < 8u; ++k) cfg.data_gpio_nums[k] = s_dac_gpio[k];
+    if (experimental_clock_d10()) {
+        cfg.clk_out_gpio_num = 10;
+        cfg.data_gpio_nums[2] = 7;
+    }
+    /* The driver owns these pads through menu and halted restarts. Data
+     * shifts on falling edges; capture on rising edges (verify on hardware).
+     * Clock can stop with TX: external capture must tolerate interruptions. */
     esp_err_t err = parlio_new_tx_unit(&cfg, &s_tx);
     if (err != ESP_OK) return err;
     const bitscrambler_config_t bs = {.dir = BITSCRAMBLER_DIR_TX, .attach_to = SOC_BITSCRAMBLER_ATTACH_PARL_IO};
     err = bitscrambler_new(&bs, &s_bs);
     if (err != ESP_OK) return err;
+    printf("SAMPLE_CLOCK enabled=%u gpio=%d hz=%u dac_bit2_gpio=%d\n",
+           experimental_clock_d10(), cfg.clk_out_gpio_num,
+           experimental_clock_d10() ? 40000000u : 0u, cfg.data_gpio_nums[2]);
     return enable_tx();
 }
 
@@ -672,6 +682,10 @@ void transport_flog_output(transport_flog_output_t *out)
 
 void transport_print(void)
 {
+    printf("SAMPLE_CLOCK enabled=%u requested=%u gpio=%d hz=%u dac_bit2_gpio=%d reboot=%u\n",
+           experimental_clock_d10(), experimental_get(EXP_CLOCK_D10),
+           experimental_clock_d10() ? 10 : -1, experimental_clock_d10() ? 40000000u : 0u,
+           experimental_clock_d10() ? 7 : 11, experimental_reboot_needed());
     const char *verified_demod = s_have_verified && s_lut_known && !s_transport_fault ?
         transport_demod_name(s_verified_demod) : "unknown";
     printf("DEMOD selected=%s verified=%s p64_model=%s p64_table_sha256=%s u85q_table_sha256=%s (console m switches)\n",
