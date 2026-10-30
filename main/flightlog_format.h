@@ -310,11 +310,15 @@ static inline bool flog_unpack_second(const uint8_t *p, uint8_t len, flog_second
     s->output_observer_gaps = len >= 69u ? p[68] : 0;
     s->picture_pct = len >= 71u ? p[69] : 0xffu;
     s->picture_windows = len >= 71u ? p[70] : 0;
-    s->exp_mask = len >= FLOG_SECOND_LEN ? flog_get32(p + 71) : 0;
-    s->exp_version = len >= FLOG_SECOND_LEN ? p[75] : 0;
-    s->exp_mixed = len >= FLOG_SECOND_LEN ? p[76] : 0;
+    s->exp_mask = len >= 77u ? flog_get32(p + 71) : 0;
+    s->exp_version = len >= 77u ? p[75] : 0;
+    s->exp_mixed = len >= 77u ? p[76] : 0;
     memset(s->exp_values, 0, sizeof(s->exp_values));
-    if (len >= FLOG_SECOND_LEN) memcpy(s->exp_values, p + 77, EXP_ITEMS);
+    if (len > 77u) {
+        unsigned n = len - 77u;
+        if (n > EXP_ITEMS) n = EXP_ITEMS;
+        memcpy(s->exp_values, p + 77, n);
+    }
     return true;
 }
 

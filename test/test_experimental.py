@@ -28,14 +28,15 @@ static bool s_afc_enabled=true, live, fail_phy, busy, stored;
 static uint32_t s_control_epoch;
 static unsigned mode=254, dfilt=12, demod, lane=2, events, records, dc_resets;
 static experimental_blob_t disk;
+static size_t disk_size=sizeof(disk);
 static uint8_t event_data[4];
 static bool blob_load(const char *k, void *d, size_t n) {
- assert(!strcmp(k,"exp") && n==sizeof(disk));
- if (!stored) return false;
+ assert(!strcmp(k,"exp") && (n==sizeof(disk) || n==sizeof(disk)-1));
+ if (!stored || n != disk_size) return false;
  memcpy(d,&disk,n);return true;
 }
 static bool blob_store(const char *k,const void *d,size_t n) {
- assert(!strcmp(k,"exp") && n==sizeof(disk)); memcpy(&disk,d,n);stored=true;return true;
+ assert(!strcmp(k,"exp") && n==sizeof(disk)); memcpy(&disk,d,n);stored=true;disk_size=n;return true;
 }
 static unsigned receiver_gain_mode(void){return mode;}
 static unsigned phy_dfilt_mode(void){return dfilt;}
@@ -91,6 +92,21 @@ int main(void) {
  experimental_effective_snapshot(v);assert(v[EXP_IQ_LANE]==1);
  assert(experimental_set(EXP_IQ_LANE,0));assert(experimental_mask() & (1u<<EXP_IQ_LANE));
  live=true;experimental_reset();assert(!live);
+ lane=2;
+ assert(experimental_set(EXP_CLOCK_D10,1));
+ assert(experimental_reboot_needed()&&!experimental_clock_d10());
+ experimental_effective_snapshot(v);assert(!v[EXP_CLOCK_D10]);
+ experimental_load();assert(experimental_clock_d10()&&!experimental_reboot_needed());
+ assert(experimental_set(EXP_CLOCK_D10,0));
+ assert(experimental_clock_d10()&&experimental_reboot_needed());
+ assert(experimental_mask() & (1u<<EXP_CLOCK_D10));
+ experimental_load();assert(!experimental_clock_d10()&&!experimental_reboot_needed());
+ disk_size=sizeof(disk)-1;disk.value[EXP_FOLD_MEMORY]=2;
+ disk.value[EXP_CLOCK_D10]=1; /* not present in old NVS */
+ experimental_load();
+ assert(experimental_get(EXP_FOLD_MEMORY)==2 && !experimental_get(EXP_CLOCK_D10));
+ assert(!experimental_clock_d10());
+ assert(experimental_set(EXP_FOLD_MEMORY,1));assert(disk_size==sizeof(disk));
  assert(events&&records&&dc_resets&&s_control_epoch);
  return 0;
 }

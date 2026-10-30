@@ -11,8 +11,8 @@
 
 /* Shared MODEM_DIAG output / PARLIO RX input order: Q low..high, I low..high.
  * I's low bit uses the XIAO user-LED GPIO27 instead of D10/GPIO10, freeing
- * D10 for a future seventh DAC branch. Q's sign bit moves from D3/GPIO7
- * to GPIO2, reserving D3 for a future eighth branch. GPIO2 is exclusively
+ * D10 for the optional 40 MHz TX clock. Q's sign bit moves from D3/GPIO7
+ * to GPIO2, freeing D3 for DAC bit 2 when Clock Pin D10 is enabled. GPIO2 is exclusively
  * IQ-owned and cannot export the optional sample clock (PR #257).
  * GPIO27 is exclusively IQ-owned: do not drive it as a status LED. The LED/resistor remains connected; 40 MS/s capture and
  * sampling-phase margin on an unmodified XIAO still need board validation.

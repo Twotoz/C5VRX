@@ -78,11 +78,11 @@ void menu_dac_step(void)
         if (s_dac_step == DAC_STEP_BIT0) {
             printf("DACTEST meter steps: unplug the display, measure CVBS to GND; expected mV at 3.30 V:");
             for (unsigned k = 0; k < DAC_CHECK_BITS; ++k)
-                printf(" %s=%d", dac_check_pins[k], dac_check_expected_mv((uint8_t)(1u << k), DAC_CHECK_VDD_MV));
+                printf(" %s=%d", (k == 2 && experimental_clock_d10()) ? "D3" : dac_check_pins[k], dac_check_expected_mv((uint8_t)(1u << k), DAC_CHECK_VDD_MV));
             printf(" ALL=%d NONE=0 (scale by your 3V3 pin / 3.30)\n", dac_check_expected_mv(63, DAC_CHECK_VDD_MV));
         }
         printf("DACTEST step=%s code=%u expect_mv=%d (record it for tools/dac_check.py)\n",
-               dac_check_step_name(s_dac_step), code, dac_check_expected_mv(code, DAC_CHECK_VDD_MV));
+               (s_dac_step == DAC_STEP_BIT0 + 2 && experimental_clock_d10()) ? "D3" : dac_check_step_name(s_dac_step), code, dac_check_expected_mv(code, DAC_CHECK_VDD_MV));
     }
     if (s_menu_active) menu_render();
 }
@@ -184,6 +184,7 @@ void menu_render(void)
     static const char *const s_class[PROFILES] = {"NORMAL", "NARROW", "NARROW", "WIDE", "XNARROW"};
     const int dev = profile_live_deviation_x100();   /* what AUTO would pick from the measured VTX */
     menu_view_t v = {
+        .clock_d10 = experimental_clock_d10(),
         .exp_open = s_exp_sub >= 0, .exp_cursor = s_exp_sub < 0 ? 0 : (unsigned)s_exp_sub,
         .exp_active = experimental_mask() != 0, .exp_failed = s_exp_failed || experimental_phy_failed(),
         .exp_reboot = experimental_reboot_needed(), .exp_coarse = rf_lane() != RF_LANE_ULTRAFINE,
