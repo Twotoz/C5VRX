@@ -10,7 +10,7 @@ enum {
     EXP_GAIN, EXP_DFILT, EXP_AFC, EXP_DEMOD, EXP_IQ_CORR, EXP_PHASE_REPAIR,
     EXP_AUTO_PROFILE, EXP_FAST_GAIN, EXP_FOLD_RADIUS, EXP_FOLD_MEMORY,
     EXP_LEVEL_TARGET, EXP_LEVEL_RELEASE, EXP_GAIN_RATE, EXP_GAIN_CAP,
-    EXP_LOG_CADENCE, EXP_LNA_BIAS, EXP_CURRENT, EXP_LOOP_CAP, EXP_SPUR0, EXP_IQ_LANE, EXP_ITEMS,
+    EXP_LOG_CADENCE, EXP_LNA_BIAS, EXP_CURRENT, EXP_LOOP_CAP, EXP_SPUR0, EXP_IQ_LANE, EXP_SAMPLE_RATE, EXP_ITEMS,
     EXP_DAC = EXP_ITEMS, EXP_RESET, EXP_BACK, EXP_MENU_ITEMS
 };
 #define EXP_VERSION 1u
@@ -31,6 +31,7 @@ static const experimental_item_t experimental_items[EXP_ITEMS] = {
     {"LOOP CAP", 8, {"STOCK", "BIN 0", "BIN 1", "BIN 2", "BIN 3", "BIN 4", "BIN 5", "BIN 6"}},
     {"SPUR 0", 3, {"STOCK", "+512", "-512"}},
     {"IQ LANE", 3, {"ULTRA", "FINE", "COARSE"}},
+    {"SAMPLE RATE", 3, {"40 MS/S", "48 MS/S", "80 MS/S"}},
 };
 typedef struct { uint8_t version, value[EXP_ITEMS]; } experimental_blob_t;
 /* Reject the entire blob on invalid data; never load half an experiment. */
@@ -67,3 +68,4 @@ bool experimental_reboot_needed(void);
 bool experimental_transfer_active(void);
 
 uint32_t experimental_revision(void);
+void experimental_rate_result(uint8_t actual, bool applied);

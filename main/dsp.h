@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <math.h>
+#include "rx_rate.h"
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -189,7 +190,8 @@ static inline int dsp_dco_step(const float j[4], float di, float dq, int limit, 
 /* Receiver-noise spectrum: 64-point complex FFT of 40 MS/s regions (625 kHz
  * bins), averaged; psd[32] is DC, psd[0] is -20 MHz. */
 #define DSP_FFT_N 64
-#define DSP_BIN_KHZ 625
+#define DSP_PROBE_HZ (rx_rate_observer_hz(C5VRX_SAMPLE_HZ))
+#define DSP_BIN_KHZ (DSP_PROBE_HZ/64000u)
 static inline void dsp_fft64(float re[DSP_FFT_N], float im[DSP_FFT_N])
 {
     for (unsigned i = 1, j = 0; i < DSP_FFT_N; ++i) {
@@ -269,7 +271,7 @@ static inline unsigned dsp_psd_width_khz(const float psd[DSP_FFT_N])
         }
         edge[side] = last;
     }
-    if (edge[0] >= c - 2 && edge[1] >= c - 2) return 40000u;
+    if (edge[0] >= c - 2 && edge[1] >= c - 2) return DSP_PROBE_HZ/1000u;
     return (edge[0] + edge[1] + 1) * DSP_BIN_KHZ;
 }
 

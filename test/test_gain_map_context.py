@@ -30,12 +30,14 @@ PREFIX = r'''
 #include <stdio.h>
 #include <string.h>
 #include "gain.h"
+#include "rx80_agc.h"
 #include "gain_map_preset.h"
 #include "cn_observation.h"
 unsigned char phy_param[2048];
 static bool experiment;
 static inline bool experimental_transfer_active(void) { return experiment; }
 static direct_gain_t s_gain;
+static rx80_agc_t s_rx80_agc;
 static uint8_t s_current_gain=59;
 static dg_map_blob_t s_gain_map_saved, disk;
 static bool s_gain_map_saved_valid, s_map_bound, active=true;

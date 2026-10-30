@@ -6,6 +6,21 @@ import { FlightLogCapture, decodeImage, summarize, secondsCsv, crc32, SECTOR, PA
 
 const le = (n, bytes) => Array.from({ length: bytes }, (_, i) => (n >>> (8 * i)) & 0xff);
 
+test('experimental snapshot identities preserve actual capture rates', () => {
+  for (const [id, name, hz] of [[4, 'PAIR48-C192', 48000000], [5, 'PAIR80-C320', 80000000],
+    [6, 'PAIR80-H40-C256', 80000000], [7, 'PAIR80-H40-C256-B32', 80000000]]) {
+    const data = image();
+    const at = SNAP_FIRST * SECTOR;
+    data[at + 38] = id; data[at + 40] = 1;
+    const iq = data.subarray(at + SNAP_HEAD, at + SNAP_HEAD + SNAP_BYTES);
+    new DataView(data.buffer).setUint32(at + 60, crc32(iq, crc32(data.subarray(at, at + 60))), true);
+    const sn = decodeImage(data).snapshots[0];
+    assert.equal(sn.ok, true);
+    assert.equal(sn.outputDemod, name);
+    assert.equal(sn.rateHz, hz);
+  }
+});
+
 function second(t, snr, gain, dcI, temp, dropout = 0, level = null, output = null) {
   const p = new Uint8Array(output ? 69 : level === null ? 34 : 38);
   const d = new DataView(p.buffer);

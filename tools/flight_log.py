@@ -41,10 +41,11 @@ RX_REASONS = ['none', 'no_carrier', 'weak_signal', 'dc_clipping', 'overload', 'd
               'owned', 'fault', 'low_picture_snr']
 TRIGGERS = {1: 'dropout', 2: 'vq_drop', 3: 'first_carrier', 4: 'periodic', 5: 'overload', 6: 'edge', 7: 'recover',
             8: 'output_unlock'}
-OUTPUT_DEMODS = {1: 'U85Q 1a09f5c092e8', 2: 'U85Q-LP 1a09f5c092e8', 3: 'U80P64-R1'}
+OUTPUT_DEMODS = {1: 'U85Q 1a09f5c092e8', 2: 'U85Q-LP 1a09f5c092e8', 3: 'U80P64-R1',
+                4: 'PAIR48-C192', 5: 'PAIR80-C320', 6: 'PAIR80-H40-C256', 7: 'PAIR80-H40-C256-B32'}
 EXP_NAMES = ['GAIN', 'PHY FILT', 'AFC', 'DEMOD', 'IQ CORR', 'PHASE REPAIR', 'AUTO PROFILE',
              'FAST GAIN', 'FOLD RADIUS', 'FOLD MEMORY', 'LEVEL TARGET', 'LEVEL RELEASE', 'GAIN RATE',
-             'GAIN CAP', 'LOG CADENCE', 'LNA BIAS', 'CURRENT', 'LOOP CAP', 'SPUR 0', 'IQ LANE']
+             'GAIN CAP', 'LOG CADENCE', 'LNA BIAS', 'CURRENT', 'LOOP CAP', 'SPUR 0', 'IQ LANE', 'SAMPLE RATE']
 OUTPUT_STANDARDS = {1: 'NTSC', 2: 'PAL'}
 
 
@@ -199,11 +200,11 @@ def second(p):
     # decoded windows (main/picture_sync.h), apart from the AFC-gated video_pct.
     d['picture_pct'] = (None if p[69] == 0xff else p[69]) if len(p) >= 71 else None
     d['picture_windows'] = p[70] if len(p) >= 71 else None
-    d['exp_mask'] = struct.unpack_from('<I', p, 71)[0] if len(p) >= 77 + len(EXP_NAMES) else None
-    d['exp_version'] = p[75] if len(p) >= 77 + len(EXP_NAMES) else None
-    d['exp_mixed'] = p[76] if len(p) >= 77 + len(EXP_NAMES) else None
+    d['exp_mask'] = struct.unpack_from('<I', p, 71)[0] if len(p) >= 77 else None
+    d['exp_version'] = p[75] if len(p) >= 77 else None
+    d['exp_mixed'] = p[76] if len(p) >= 77 else None
     for i, name in enumerate(EXP_NAMES):
-        d['exp_' + name.lower().replace(' ', '_')] = p[77 + i] if d['exp_version'] == 1 else None
+        d['exp_' + name.lower().replace(' ', '_')] = (p[77+i] if 77+i<len(p) else 0) if d['exp_version'] == 1 else None
     return d
 
 
@@ -298,7 +299,9 @@ def decode(image):
                       'dc_mcells': [dc_i, dc_q],
                       'output_demod': OUTPUT_DEMODS.get(h[38], f'unknown ({h[38]})') if h[40] & 1 else None,
                       'output_level': h[39] if h[40] & 1 and h[39] != 0xff else None,
-                      'output_flags': h[40], 'iq': bytes(iq)})
+                      'output_flags': h[40],
+                      'rate_hz': {4: 48000000, 5: 80000000, 6: 80000000, 7: 80000000}.get(h[38], 40000000) if h[40] & 1 else 40000000,
+                      'iq': bytes(iq)})
     return [sessions[k] for k in sorted(sessions)], sorted(snaps, key=lambda x: x['seq'])
 
 
@@ -326,7 +329,7 @@ def write_out(image, out):
         base = out / f"snap_s{sn['session']:04d}_{sn['seq']:05d}"
         Path(f'{base}.bin').write_bytes(sn['iq'])
         meta = {k: v for k, v in sn.items() if k != 'iq'}
-        meta.update(bytes=len(sn['iq']), rate_hz=40000000, format='Ihigh_Qlow')
+        meta.update(bytes=len(sn['iq']), format='Ihigh_Qlow')
         Path(f'{base}.json').write_text(json.dumps(meta, indent=1))
     print(f'{len(snaps)} snapshots')
 

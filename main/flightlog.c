@@ -67,6 +67,11 @@ bool flightlog_dumping(void) { return s_dumping; }
 static int64_t s_snap_last_us = -FLOG_SNAP_GAP_US;
 
 bool flightlog_ready(void) { return s_ready; }
+bool flightlog_bench_lock(void)
+{
+    return s_flash_lock && xSemaphoreTake(s_flash_lock, pdMS_TO_TICKS(1000)) == pdTRUE;
+}
+void flightlog_bench_unlock(void) { xSemaphoreGive(s_flash_lock); }
 
 static size_t block_offset(unsigned block) { return (size_t)(1u + block) * FLOG_SECTOR; }
 static size_t snap_offset(unsigned slot) { return (size_t)(FLOG_SNAP_FIRST + slot * FLOG_SNAP_SECTORS) * FLOG_SECTOR; }

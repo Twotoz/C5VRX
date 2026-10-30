@@ -7,6 +7,7 @@
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
+#include "esp_system.h"
 #include "freertos/queue.h"
 #include "hal/usb_serial_jtag_ll.h"
 #include "rf.h"
@@ -32,8 +33,8 @@ void firmware_print(void)
     const esp_app_desc_t *d = esp_app_get_description();
     char elf[65] = "";
     (void)esp_app_get_elf_sha256(elf, sizeof(elf));
-    printf("FIRMWARE id=%s version=%s commit=%s elf_sha256=%s built=\"%s %s\" idf=%s cal_dump=1\n", firmware_id(), d->version,
-           C5VRX5_COMMIT, elf[0] ? elf : "unknown", d->date, d->time, d->idf_ver);
+    printf("FIRMWARE id=%s version=%s commit=%s elf_sha256=%s built=\"%s %s\" idf=%s cal_dump=1 reset_reason=%d\n", firmware_id(), d->version,
+           C5VRX5_COMMIT, elf[0] ? elf : "unknown", d->date, d->time, d->idf_ver,(int)esp_reset_reason());
 }
 
 static void status(void)
@@ -43,7 +44,7 @@ static void status(void)
     printf("C5VRX5 version=%s demod=%s lane=ultrafine gain_owner=%s "
            "uptime_s=%lld heap_internal=%u heap_largest=%u heap_min=%u heap_dma=%u heap_dma_largest=%u heap_lp=%u heap_psram=%u fw=%s\n",
            esp_app_get_description()->version, transport_program_name(),
-           gm == GAIN_MODE_AUTO ? "keel1" : gm == GAIN_MODE_LEVEL ? "level" : gm == GAIN_MODE_RSSI ? "rssi" : "manual",
+           gm == GAIN_MODE_AUTO ? "keel1" : gm == GAIN_MODE_LEVEL ? "level" : gm == GAIN_MODE_RSSI ? "rssi" : gm==GAIN_MODE_RX80 ? "rx80" : "manual",
            esp_timer_get_time() / 1000000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT),
            /* Lowest free since boot: the boot peak (splash chain plus the
@@ -69,7 +70,15 @@ static void snapshot(void)
     uint32_t epoch = s_gain_epoch;
     int64_t now = esp_timer_get_time();
     bool settled = now - s_last_gain_write_us >= 500 && s_gain.state != DG_SETTLE;
-    if (!settled || !copy_snapshot(raw) || epoch != s_gain_epoch) {
+    /* As with AFC snapshots, hold the scheduler only for the guarded copy.
+     * Gain/console priority differences otherwise rejected most IQ80 reads. */
+    bool copied=false;
+    if (settled) {
+        vTaskSuspendAll();
+        copied=copy_snapshot(raw);
+        (void)xTaskResumeAll();
+    }
+    if (!settled || !copied || epoch != s_gain_epoch) {
         free(raw);
         printf("IQSNAP_REFUSED stale_or_settling\n");
         return;
@@ -108,6 +117,9 @@ static void help(void)
            "  N bench: noise floor with the video output on vs off (VTX off; video stops ~0.3 s x4),\n"
            "  Z DAC self-test (bench: test pattern, then one flat level per pin for a multimeter),\n"
            "  ! one bench RX sampling-phase slip (T shows phase status),\n"
+           "  0 bench RX clock/DMA rate sweep (video briefly interrupted; restores RX40),\n"
+           "  1/2/3 rate sweep with AHB48/60/80 (60/80 are overclocks; restored),\n"
+           "  4 ten-second RX80 stress; 5 GPIO PRBS oracle; 6 PAIR80 counter demod oracle (bench only),\n"
            "  S + suite key: bench PHY sensitivity lab with the VTX ON (docs/PHY_SENSITIVITY_LAB.md),\n"
            "  ` reboot to USB download (flashing)\n");
 }
@@ -157,6 +169,19 @@ static void console_task(void *arg)
             case 'S': sense_lab_help(); sense_until = esp_timer_get_time() + 5000000; break;
             case 'T': status(); break;
             case 'I': snapshot(); break;
+            case '0': transport_rate_bench(6); break;
+            case '1': transport_rate_bench(5); break;
+            case '2': transport_rate_bench(4); break;
+            case '3': transport_rate_bench(3); break;
+            case '4': transport_rate_stress(); break;
+            case '5': transport_bus_oracle(); break;
+            case '6': transport_counter_oracle(); break;
+            case '7': transport_live80_bench(); break;
+            case '8': transport_native_phase_bench(); break;
+            case '9': transport_live_phase_bench(); break;
+            case 'J': transport_source_rate_bench(); break;
+            case 'V': transport_hold40_oracle(); break;
+            case 'E': receiver_gain_hold_bench(); break;
             case 'F': filter_request(); break;
             case 'B': filter_request_full(); break;
             case 'C': calibration_dump_request(); break;

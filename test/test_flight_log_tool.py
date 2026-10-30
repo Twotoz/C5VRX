@@ -31,6 +31,19 @@ def summary(length=71):
 
 
 class FlightLogToolTest(unittest.TestCase):
+    def test_snapshot_rate_follows_verified_decoder_and_legacy_stays_40(self):
+        for demod, flags, hz in ((3,1,40000000),(4,1,48000000),(5,1,80000000),(6,1,80000000),(7,1,80000000),(0,0,40000000)):
+            image=bytearray(flight_log.PARTITION)
+            at=flight_log.SNAP_FIRST*flight_log.SECTOR
+            struct.pack_into('<I',image,at,flight_log.MAGIC_SNAP)
+            image[at+4]=1
+            image[at+38],image[at+40]=demod,flags
+            iq=image[at+flight_log.SNAP_HEAD:at+flight_log.SNAP_SECTORS*flight_log.SECTOR]
+            struct.pack_into('<I',image,at+60,flight_log.crc32(iq,flight_log.crc32(image[at:at+60])))
+            _,snaps=flight_log.decode(image)
+            self.assertTrue(snaps[0]['ok'])
+            self.assertEqual(snaps[0]['rate_hz'],hz)
+
     def test_output_telemetry_decodes_with_validity(self):
         row = flight_log.second(summary())
         self.assertEqual(row['output_demod'], 'U85Q-LP 1a09f5c092e8')

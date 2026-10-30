@@ -1,7 +1,8 @@
 #include "analog_video_detect.h"
+#include "rx_rate.h"
 
-#define AVD_LAG_MIN   1266
-#define AVD_LAG_MAX   1285
+#define AVD_LAG_MIN   ((int)((uint64_t)1266*C5VRX_SAMPLE_HZ/40000000u))
+#define AVD_LAG_MAX   ((int)((uint64_t)1285*C5VRX_SAMPLE_HZ/40000000u))
 
 analog_video_t analog_video_detect(uint8_t *ep, size_t n, const uint8_t phase[256])
 {
@@ -22,7 +23,7 @@ analog_video_t analog_video_detect(uint8_t *ep, size_t n, const uint8_t phase[25
     for (size_t k = 0; k < n; ++k) sum += d[k];
     int32_t mean_q4 = (int32_t)((sum * 16) / (int32_t)n);
     /* One Phase8 bin per 50 ns = 20 MHz / 256 = 78.125 kHz. */
-    out.offset_khz = (int)((int64_t)mean_q4 * 78125 / 16000);
+    out.offset_khz = (int)((int64_t)mean_q4 * C5VRX_SAMPLE_HZ / (2*256*16000));
     int64_t var = 0;
     for (size_t k = 0; k < n; ++k) {
         int32_t x = d[k] * 16 - mean_q4;
@@ -43,6 +44,6 @@ analog_video_t analog_video_detect(uint8_t *ep, size_t n, const uint8_t phase[25
     }
     out.confidence = best;
     out.lag = best_lag;
-    out.standard = best_lag >= 1277 ? 1 : 2;
+    out.standard = best_lag >= (int)((uint64_t)1277*C5VRX_SAMPLE_HZ/40000000u) ? 1 : 2;
     return out;
 }
