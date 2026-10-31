@@ -9,6 +9,8 @@
 static experimental_blob_t s_exp = {.version = EXP_VERSION};
 static volatile bool s_save_pending;
 static uint32_t s_failed, s_revision;
+static bool s_clock_d10;
+bool experimental_clock_d10(void) { return s_clock_d10; }
 uint32_t experimental_revision(void) { return s_revision; }
 
 uint8_t experimental_get(unsigned item) { return item < EXP_ITEMS ? s_exp.value[item] : 0; }
@@ -25,8 +27,14 @@ static bool save(void)
 }
 void experimental_load(void)
 {
-    experimental_blob_t b;
-    if (blob_load("exp", &b, sizeof(b)) && experimental_blob_valid(&b)) s_exp = b;
+    experimental_blob_t b = {.version = EXP_VERSION};
+    if (!blob_load("exp", &b, sizeof(b))) {
+        /* v1 before D10: preserve existing experiments, default clock OFF. */
+        memset(&b, 0, sizeof(b));
+        (void)blob_load("exp", &b, sizeof(b) - 1u);
+    }
+    if (experimental_blob_valid(&b)) s_exp = b;
+    s_clock_d10 = experimental_get(EXP_CLOCK_D10) != 0;
 }
 bool experimental_phy_restore(void)
 {
@@ -57,7 +65,7 @@ unsigned experimental_boot_lane(void)
     const unsigned v = experimental_get(EXP_IQ_LANE);
     return v == 1 ? RF_LANE_FINE : v == 2 ? RF_LANE_COARSE : RF_LANE_ULTRAFINE;
 }
-bool experimental_reboot_needed(void) { return rf_lane() != experimental_boot_lane(); }
+bool experimental_reboot_needed(void) { return rf_lane() != experimental_boot_lane() || s_clock_d10 != (experimental_get(EXP_CLOCK_D10) != 0); }
 bool experimental_set(unsigned item, uint8_t value)
 {
     if (item >= EXP_ITEMS || !experimental_items[item].count || value >= experimental_items[item].count) return false;
@@ -113,11 +121,13 @@ uint32_t experimental_mask(void)
         if (v[i] != baseline) mask |= 1u << i;
     }
     if (rf_lane() != RF_LANE_ULTRAFINE) mask |= 1u << EXP_IQ_LANE;
+    if (s_clock_d10) mask |= 1u << EXP_CLOCK_D10;
     return mask;
 }
 void experimental_effective_snapshot(uint8_t values[EXP_ITEMS])
 {
     experimental_snapshot(values);
+    values[EXP_CLOCK_D10] = s_clock_d10;
     values[EXP_IQ_LANE] = rf_lane() == RF_LANE_FINE ? 1 : rf_lane() == RF_LANE_COARSE ? 2 : 0;
 }
 void experimental_log_state(void)
