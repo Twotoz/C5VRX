@@ -1547,6 +1547,46 @@ bool copy_snapshot(uint8_t *dst)
                                  s_rx_nodes[later].length, elapsed, plan.safe_bytes, IQ_RATE_HZ);
 }
 
+/* IQ80: 16380 captured bytes (204.75 us) decimated while copying, so no
+ * second buffer. Same completed-ring rule at the native capture rate; the
+ * ring leaves ~150 us before RX could reach the copied bytes. */
+static bool copy_snapshot80(uint8_t *dst)
+{
+    const size_t bytes=2u*C5V4_LEVEL_SAMPLE_BYTES;
+    if (s_rx_dma_ch<0 || s_rx_node_count<4) return false;
+    const int64_t start=esp_timer_get_time();
+    const int active=ring_node_index(rx_active_addr());
+    if (active<0) return false;
+    uintptr_t base=(uintptr_t)s_raw_ring,first=(uintptr_t)s_rx_nodes[0].buffer;
+    if (first<base || first-base>=sizeof(s_raw_ring)) return false;
+    size_t total=0;
+    for (int k=0;k<s_rx_node_count;++k) {
+        uintptr_t a=(uintptr_t)s_rx_nodes[k].buffer;
+        if (a<base || !c5v4_snapshot_segment(sizeof(s_raw_ring),first-base,total,a-base,s_rx_nodes[k].length))
+            return false;
+        total+=s_rx_nodes[k].length;
+    }
+    if (total!=sizeof(s_raw_ring)) return false;
+    const size_t end=(size_t)(s_rx_nodes[active].buffer-s_raw_ring);
+    c5v4_snapshot_plan_t plan;
+    if (!c5v4_snapshot_plan(total,end,s_rx_nodes[active].length,bytes,&plan) || (plan.first&1u)) return false;
+    sync_dma_m2c(s_raw_ring+plan.offset,plan.first);
+    rx_rate_decimate2(dst,s_raw_ring+plan.offset,plan.first/2u);
+    const size_t rest=bytes-plan.first;
+    if (rest) { sync_dma_m2c(s_raw_ring,rest); rx_rate_decimate2(dst+plan.first/2u,s_raw_ring,rest/2u); }
+    const uint64_t elapsed=(uint64_t)(esp_timer_get_time()-start);
+    const int later=ring_node_index(rx_active_addr());
+    if (later<0) return false;
+    const size_t after=(size_t)(s_rx_nodes[later].buffer-s_raw_ring);
+    return c5v4_snapshot_current(total,bytes,(after+total-end)%total,
+                                 s_rx_nodes[later].length,elapsed,plan.safe_bytes,IQ_RATE_HZ);
+}
+
+bool copy_snapshot40(uint8_t *dst)
+{
+    return s_rate==2 ? copy_snapshot80(dst) : s_rate==1 ? false : copy_snapshot(dst);
+}
+
 /* Endpoint bytes (odd ring byte of each pair) of the newest `n` pairs. */
 bool copy_recent_endpoints(uint8_t *dst, size_t n)
 {

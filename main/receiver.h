@@ -117,6 +117,9 @@ bool copy_control_window(uint8_t *dst, size_t bytes);
 bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node);
 bool copy_sentinel_window(uint8_t dst[64]);
 bool copy_snapshot(uint8_t *dst);
+/* The same 8190-sample window as an IQ40 observer view: the snapshot at IQ40,
+ * every second byte of 16380 at IQ80; false at IQ48 (no IQ40 time mapping). */
+bool copy_snapshot40(uint8_t *dst);
 bool copy_recent_endpoints(uint8_t *dst, size_t n);
 void rx_clock_slip(uint32_t us);
 
@@ -182,7 +185,7 @@ extern volatile std_mode_t s_std_mode;
 extern volatile video_standard_t s_video_std;      /* standard the menu emits */
 extern volatile bool s_detected_std_valid;
 extern volatile video_standard_t s_detected_std;
-extern volatile int64_t s_last_video_us;           /* last burst-confirmed sync */
+extern volatile int64_t s_last_video_us;           /* last burst-confirmed sync (IQ48: both picture line syncs) */
 extern QueueHandle_t s_commands;
 void control_start(void);
 bool control_prepare(void); /* reserve unchanged control stack before driver heap fragmentation */

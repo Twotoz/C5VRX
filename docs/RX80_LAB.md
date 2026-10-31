@@ -291,19 +291,29 @@ excess in some contexts. They do not validate a clean image.
 
 ### IQ80 AFC observer view
 
-The pending observer revision uses exact every-second-sample selection of
-the **copied** IQ80 snapshot, after native-rate picture decoding, for the
-existing IQ40 AFC estimator. Acquisition and the DAC path remain IQ80/TX80;
-the CPU only changes its diagnostic buffer in place. No new window-sized
-allocation is needed. The 8190-byte IQ80 capture covers only 1.6 lines, so
-B/W timing confirmation can miss a window that lacks two complete syncs.
-IQ48 still holds AFC, since integer decimation cannot map it to IQ40.
+The first observer revision selected every second sample of the copied
+8190-byte IQ80 snapshot in place, after native-rate picture decoding. That
+view covered only 1.6 lines, so B/W timing confirmation missed windows
+without two complete syncs, and `s_last_video_us` (gain-map learning and
+the RX80 controller's `carrier_recent`) lapsed with it.
+
+Revision 2026-10-31: `copy_snapshot40` copies 16380 captured bytes
+(204.75 us) and decimates them while copying, giving the AFC the same
+8190-sample, 3.2-line IQ40 window as at RX40. Still no second window
+buffer. It keeps the completed-ring rule at the native rate (~150 us before
+RX could reach the copied bytes). The picture measure now runs after the
+AFC on its own native-rate copy. Acquisition and the DAC path remain
+IQ80/TX80. IQ48 still holds AFC, since integer decimation cannot map it to
+IQ40 (see "IQ48 video evidence" below).
 
 `test_rx80_afc.c` generates actual 12.5-ns FM phase steps before observer
 decimation. All 240 tested colour windows (PAL/NTSC, both polarities,
 twenty start phases, -1/0/+1 MHz offsets) recover the expected polarity,
-porch and sync span. All 64 independent noise windows are rejected. This
-is synthetic observer validation, pending the board/VTX check.
+porch and sync span. With the 1.6-line view the test accepted >= 80 %. The
+full window must accept all of them. All 64 independent noise windows are
+rejected. The decimator is also checked on aligned and unaligned ring
+segments. This is synthetic observer validation, pending the board/VTX check.
+The copy time against the ring-lap deadline is not yet measured on the board.
 
 ## Captured duplicate-source fault and H40 demod correction
 
@@ -458,3 +468,29 @@ draft-PR revision raises the power-only threshold to 65 (roughly the
 regression replays those measured unclipped P95 values and requires no
 attack. This last correction has host validation; RF acceptance remains
 open. The PR must stay experimental/draft until that gate is passed.
+
+### Floor release and video evidence (2026-10-31, code review)
+
+The code review found no board log for this, but it did find a feedback
+path. The managed-floor release (`dc_point`, no recent video, row below the
+DC floor) skipped the attack branch. A strong carrier clipping on one side
+(`clip_pm` up to 1000) therefore climbed 1 dB per >= 60 ms whenever video
+evidence lapsed. At 80 MS/s it lapsed often (the 1.6-line AFC view above),
+and the clipping itself suppresses video, which closes the loop. The floor
+release now requires `clip_pm < 100`, the receiver's own "real clipping"
+threshold. Such a window holds, and the receiver's DC-urgent request owns it.
+`test_rx80_agc.c` replays the shape: 2 s of one-sided 30 % clipping without
+video, with no release. The PR still records sync loss at fixed gain, so
+this addresses gain hunting, not the remaining sync loss.
+
+### IQ48 video evidence
+
+The 48 MS/s path has no AFC observer, so before this revision
+`s_last_video_us` never advanced at 48. Gain-map learning stayed off, and
+menu, diag and calibration read "no video". There, the rate-scaled native
+picture measure now provides the evidence when it finds both expected line
+syncs of a settled window (8190 bytes = 2.7 lines). This is weaker than the
+AFC's burst/porch confirmation and never drives a frequency step. 48 keeps
+the 40-MS/s LEVEL/KEEL models. Their measured quality table is for the IQ40
+Phase8 decoder, not the 48 counter decoder, so no 48-specific gain
+optimum is claimed.

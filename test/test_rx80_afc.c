@@ -1,18 +1,20 @@
 /* C5VRX by Twotoz/contributors: IQ80 observer timing against synthetic RF
- * levels, with native 12.5-ns phase accumulation before exact decimation. */
+ * levels, with native 12.5-ns phase accumulation before exact decimation of
+ * the full 16380-byte capture span to the 3.2-line IQ40 AFC window. */
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "rx_rate.h"
 #include "afc.h"
 #include "phase8_gain_lut.h"
 
-static uint8_t raw[8190], reference[4095];
+static uint8_t raw[16384], view[8190], reference[8190];
 static void fm80(unsigned period, unsigned start, int polarity, bool burst, int offset)
 {
     double phase=.3;
-    for(unsigned k=0;k<sizeof(raw);++k) {
+    for(unsigned k=0;k<2*sizeof(reference);++k) {
         unsigned pos=(k+start+period-320u)%period;
         double hz=(pos<376 ? -2914000. : pos<800 || pos>=period-200 ? -1000000. : 2000000.)+offset;
         if(burst && pos>=456 && pos<616)
@@ -31,10 +33,9 @@ int main(void)
     for(int offset=-1000000;offset<=1000000;offset+=1000000)
     for(unsigned start=0;start<5120;start+=256) {
         fm80(standard==2 ? 5120 : 5084,start,polarity,true,offset);
-        size_t n=rx_rate_observer40(raw,sizeof(raw),80000000u);
-        assert(n==sizeof(reference));
-        for(unsigned k=0;k<n;++k) assert(raw[k]==reference[k]);
-        afc2_result_t r=afc2_measure(raw,n,c5vrx_phase8_gain_lut);
+        rx_rate_decimate2(view,raw,sizeof(view));
+        assert(!memcmp(view,reference,sizeof(view)));
+        afc2_result_t r=afc2_measure(view,sizeof(view),c5vrx_phase8_gain_lut);
         ++trials;
         if(!r.lines) continue;
         ++accepted;
@@ -42,17 +43,24 @@ int main(void)
         assert(abs(r.porch_khz-polarity*(1000-offset/1000))<=90);
         assert(abs(abs(r.porch_khz-r.sync_khz)-1914)<=100);
     }
-    assert(accepted*10>=trials*8);
+    /* Half a native window (1.6 lines) accepted >=80 %; 3.2 lines must hold all. */
+    assert(accepted==trials);
     uint32_t seed=42;
     for(unsigned t=0;t<64;++t) {
         for(unsigned k=0;k<sizeof(raw);++k) {
             seed=seed*1664525u+1013904223u;
             raw[k]=(uint8_t)(seed>>24);
         }
-        size_t n=rx_rate_observer40(raw,sizeof(raw),80000000u);
-        assert(!afc2_measure(raw,n,c5vrx_phase8_gain_lut).lines);
+        rx_rate_decimate2(view,raw,sizeof(view));
+        assert(!afc2_measure(view,sizeof(view),c5vrx_phase8_gain_lut).lines);
     }
-    assert(rx_rate_observer40(raw,sizeof(raw),48000000u)==0);
-    assert(rx_rate_observer40(raw,sizeof(raw),40000000u)==sizeof(raw));
-    printf("PASS IQ80 AFC: %u/%u colour windows, both standards/polarities, +/-1MHz offsets; 64 noise windows rejected\n",accepted,trials);
+    /* Ring segments: odd counts and unaligned starts take the byte path. */
+    for(unsigned shift=0;shift<4;++shift)
+        for(size_t count=0;count<9;++count) {
+            memset(view,0xA5,sizeof(view));
+            rx_rate_decimate2(view,raw+shift,count);
+            for(size_t k=0;k<count;++k) assert(view[k]==raw[shift+2*k]);
+            assert(view[count]==0xA5);
+        }
+    printf("PASS IQ80 AFC: %u/%u full 3.2-line colour windows, both standards/polarities, +/-1MHz offsets; 64 noise windows rejected\n",accepted,trials);
 }

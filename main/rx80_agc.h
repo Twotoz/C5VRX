@@ -42,7 +42,11 @@ static inline uint8_t rx80_agc_tick(rx80_agc_t *a,const dg_observation_t *o,
      * is not evidence of an oversized RF circle. Dropping gain there sends
      * the controller back into the same uncorrected floor row repeatedly. */
     const bool dc_point=(dg_one_sided(o) && o->clip_pm>=10u) || (dg_stuck(o) && o->p95>=25u);
-    const bool floor_release=dc_point && !a->carrier_recent && current<a->dc_floor;
+    /* The floor release climbs out of an uncorrected DC row, never from a
+     * window that really clips (>=10 %, the receiver's own "real clipping"):
+     * missing video evidence there is the clipping's effect, and climbing
+     * into it was a feedback loop. */
+    const bool floor_release=dc_point && !a->carrier_recent && current<a->dc_floor && o->clip_pm<100u;
     if (dc_point && !floor_release) {
         a->low=false;++a->holds;return current;
     }

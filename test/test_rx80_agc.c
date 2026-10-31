@@ -115,5 +115,13 @@ int main(void)
     assert(rx80_agc_tick(&a,&o,db,gain,83)==gain);
     o.observed_us=162000;
     assert(rx80_agc_tick(&a,&o,db,gain,83)==54 && !a.attacks);
+    /* Board shape: a strong carrier clipping on one side loses its video
+     * evidence. That absence must not walk the gain up into the clipping. */
+    a=(rx80_agc_t){.dc_floor=54};gain=40;
+    for(uint64_t us=1000;us<2000000;us+=200) {
+        o=at(us,40,90,300);o.rails=1;
+        assert(rx80_agc_tick(&a,&o,db,gain,83)==gain);
+    }
+    assert(!a.releases);
     puts("PASS RX80 AGC: calibrated attack, settling, stale rejection, no scene chasing, bounded weak-source release, DC ownership");
 }
