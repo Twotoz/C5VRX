@@ -11,6 +11,9 @@ idf_component_register(
 
 target_bitscrambler_add_src("p64.bsasm")
 target_bitscrambler_add_src("u85q.bsasm")
+target_bitscrambler_add_src("rx80_counter.bsasm")
+target_bitscrambler_add_src("rx48_counter.bsasm")
+target_bitscrambler_add_src("rx80_hold40.bsasm")
 
 # The AFC decoder must not inherit the application's debug-oriented -Og.
 set_source_files_properties(control.c PROPERTIES COMPILE_OPTIONS "-O2")

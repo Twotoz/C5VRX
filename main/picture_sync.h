@@ -31,9 +31,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "rx_rate.h"
 
-#define PICTURE_LINE_PAIRS_X10 12711u   /* NTSC line, 63.556 us at 20 MS/s, x10 */
-#define PICTURE_MIN_LOW_PAIRS 40u       /* 2 us */
+#define PICTURE_LINE_PAIRS_X10 ((uint32_t)((uint64_t)12711u*C5VRX_SAMPLE_HZ/40000000u))
+#define PICTURE_MIN_LOW_PAIRS ((uint32_t)((uint64_t)40u*C5VRX_SAMPLE_HZ/40000000u))
 #define PICTURE_SETTLE_PAIRS 32u        /* decoder state settles from 0 */
 #define PICTURE_MIN_SPAN 20u            /* median - tip in 4-pair sums (5 codes): else no sync */
 #define PICTURE_YIELD_PAIRS 512u
@@ -49,6 +50,7 @@ typedef struct { const uint16_t *lut; uint16_t threshold_x2; bool valid; } pictu
  * tokens (P64 4, U85Q 5). */
 static inline uint8_t picture_decode(const uint16_t *lut, unsigned bits, unsigned *state, uint8_t a, uint8_t b)
 {
+    if (bits<=2u) return ((lut[b]&255u)-(lut[a]&255u)+(bits==2u ? 32u : 24u))&63u;
     const unsigned address = (a >> 4) | ((a & 15u) << 4) | (((b >> 7) & 1u) << 8) | (((b >> 3) & 1u) << 9);
     const unsigned token = lut[address] >> (16u - bits);
     const unsigned value = lut[(*state << bits) + token];
@@ -60,8 +62,9 @@ static inline picture_sync_t picture_sync_window(picture_state_t *ps, const uint
                                                  const uint16_t *lut, unsigned bits)
 {
     picture_sync_t r = {0, 0};
-    const size_t pairs = bytes / 2u;
-    if (!lut || pairs < PICTURE_SETTLE_PAIRS + 2u * PICTURE_LINE_PAIRS_X10 / 10u) return r;
+    const bool overlap=bits==1u || bits==2u;
+    const size_t pairs = bytes / 2u - (overlap && bytes>=2u ? 1u : 0u);
+    if (!lut || pairs < PICTURE_SETTLE_PAIRS + (bits>2u ? 2u : 1u) * PICTURE_LINE_PAIRS_X10 / 10u) return r;
     if (ps->lut != lut) { ps->lut = lut; ps->valid = false; }   /* another decoder: other levels */
     const bool count = ps->valid;
     const unsigned threshold_x2 = ps->threshold_x2;              /* sum < threshold_x2 / 2 */
@@ -71,7 +74,7 @@ static inline picture_sync_t picture_sync_window(picture_state_t *ps, const uint
     unsigned since = PICTURE_LINE_PAIRS_X10;   /* 10 lines: the first pulse counts; x100 below stays in range */
     for (size_t k = 0; k < pairs; ++k) {
         if (k && !(k % PICTURE_YIELD_PAIRS)) PICTURE_YIELD();
-        const uint8_t c = picture_decode(lut, bits, &state, raw[2 * k], raw[2 * k + 1]);
+        const uint8_t c = picture_decode(lut, bits, &state, raw[2 * k], raw[2 * k + (overlap ? 2u : 1u)]);
         if (k < PICTURE_SETTLE_PAIRS) continue;
         sum += c; sum -= last[n & 3u]; last[n & 3u] = c; ++n;
         if (n < 4u) continue;

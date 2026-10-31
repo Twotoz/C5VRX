@@ -19,7 +19,9 @@
 #include "menu_ui.h"   /* MENU_* items */
 #include "rf.h"
 
-#define IQ_RATE_HZ          40000000u
+#include "rx_rate.h"
+#define IQ_RATE_HZ          ((unsigned)C5VRX_SAMPLE_HZ)
+uint8_t transport_rate_mode(void);
 #define RAW_RING_BYTES      32768u
 #define LIVE_PIPELINE_LAG_BYTES (3u * RAW_RING_BYTES / 4u)
 #define DAC_IDLE_CODE       20u          /* blanking level; sync is 0 */
@@ -81,6 +83,16 @@ void transport_stop_chain(void);
 void transport_poll_faults(void);
 uint32_t transport_fault_count(void);
 void transport_print(void);
+void transport_rate_bench(unsigned ahb_div);
+void transport_rate_stress(void);
+void transport_bus_oracle(void);
+void transport_counter_oracle(void);
+void transport_live80_bench(void);
+void transport_native_phase_bench(void);
+void transport_live_phase_bench(void);
+void transport_source_rate_bench(void);
+void transport_hold40_oracle(void);
+void receiver_gain_hold_bench(void);
 /* Flight-log V1 output telemetry. Demod is 0 unknown, 1 verified U85Q,
  * 2 reserved for historical LP logs, 3 verified U80P64-R1. The observer
  * fields keep their wire slots for old logs; firmware writes them empty
@@ -105,6 +117,9 @@ bool copy_control_window(uint8_t *dst, size_t bytes);
 bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node);
 bool copy_sentinel_window(uint8_t dst[64]);
 bool copy_snapshot(uint8_t *dst);
+/* The same 8190-sample window as an IQ40 observer view: the snapshot at IQ40,
+ * every second byte of 16380 at IQ80; false at IQ48 (no IQ40 time mapping). */
+bool copy_snapshot40(uint8_t *dst);
 bool copy_recent_endpoints(uint8_t *dst, size_t n);
 void rx_clock_slip(uint32_t us);
 
@@ -138,6 +153,7 @@ void receiver_print_map(void);   /* console M: GAINMAP line */
  * (calibration, scan) still write and the mode returns after. The codes
  * are stored (prefs) and logged (flight log), so they keep their values. */
 #define GAIN_MODE_AUTO  0u
+#define GAIN_MODE_RX80  252u
 #define GAIN_MODE_RSSI  253u
 #define GAIN_MODE_LEVEL 254u
 #define GAIN_MODE_MAX   255u
@@ -149,12 +165,13 @@ void receiver_print_map(void);   /* console M: GAINMAP line */
 /* A mode with an automatic controller (not a fixed gain). */
 static inline bool receiver_gain_mode_auto(uint8_t mode)
 {
-    return mode == GAIN_MODE_AUTO || mode == GAIN_MODE_LEVEL || mode == GAIN_MODE_RSSI;
+    return mode == GAIN_MODE_AUTO || mode == GAIN_MODE_LEVEL || mode == GAIN_MODE_RSSI || mode == GAIN_MODE_RX80;
 }
 uint8_t receiver_gain_mode(void);
 void receiver_set_gain_mode(uint8_t mode, bool save);
 uint8_t receiver_gain_mode_next(uint8_t mode);
 const char *receiver_gain_mode_name(uint8_t mode, char *buf, unsigned size);
+void receiver_rate_changed(unsigned rate);
 
 /* ---- control.c ---- */
 extern volatile bool s_menu_active;
@@ -168,7 +185,7 @@ extern volatile std_mode_t s_std_mode;
 extern volatile video_standard_t s_video_std;      /* standard the menu emits */
 extern volatile bool s_detected_std_valid;
 extern volatile video_standard_t s_detected_std;
-extern volatile int64_t s_last_video_us;           /* last burst-confirmed sync */
+extern volatile int64_t s_last_video_us;           /* last burst-confirmed sync (IQ48: both picture line syncs) */
 extern QueueHandle_t s_commands;
 void control_start(void);
 bool control_prepare(void); /* reserve unchanged control stack before driver heap fragmentation */

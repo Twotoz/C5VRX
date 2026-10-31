@@ -4,6 +4,7 @@ Uses the ESP-IDF assembler/parser and existing BitScrambler emulator. Host
 evidence only: physical throughput, picture quality and range remain untested.
 """
 import json
+import re
 import hashlib
 import struct
 import sys
@@ -58,11 +59,12 @@ def check_u85q():
 
 def main():
     # Two fixed decoders (operator decision 2026-10-28): P64 and the untrained
-    # U85Q, no kp ladder or LP; the retired policies stay research.
+    # U85Q, no kp ladder or LP; the retired policies stay research. The
+    # experimental 48/80 MS/s counter decoders are sample-rate paths, not demod policies.
     build = (ROOT / "main/CMakeLists.txt").read_text()
-    assert build.count('target_bitscrambler_add_src(') == 2
-    assert 'target_bitscrambler_add_src("p64.bsasm")' in build
-    assert 'target_bitscrambler_add_src("u85q.bsasm")' in build
+    programs = re.findall(r'target_bitscrambler_add_src\("([^"]+)"\)', build)
+    assert sorted(programs) == sorted(["p64.bsasm", "u85q.bsasm", "rx80_counter.bsasm",
+                                       "rx48_counter.bsasm", "rx80_hold40.bsasm"]), programs
     check_u85q()
     for name in ("transport.c", "control.c", "receiver.h"):
         source = (ROOT / "main" / name).read_text()

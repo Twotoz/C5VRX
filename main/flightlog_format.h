@@ -65,7 +65,9 @@ enum { FLOG_SNAP_DROPOUT = 1, FLOG_SNAP_VQ_DROP = 2, FLOG_SNAP_FIRST_CARRIER = 3
 
 /* Verified program identity. The firmware/session SHA and kp level identify
  * the exact generated LUT; these IDs bind the instruction/model family. */
-enum { FLOG_DEMOD_UNKNOWN = 0, FLOG_DEMOD_U85Q_1A09F5C092E8 = 1, FLOG_DEMOD_U85Q_LP_1A09F5C092E8 = 2, FLOG_DEMOD_P64_R1 = 3 };
+enum { FLOG_DEMOD_UNKNOWN = 0, FLOG_DEMOD_U85Q_1A09F5C092E8 = 1, FLOG_DEMOD_U85Q_LP_1A09F5C092E8 = 2,
+       FLOG_DEMOD_P64_R1 = 3, FLOG_DEMOD_PAIR48 = 4, FLOG_DEMOD_PAIR80 = 5, FLOG_DEMOD_PAIR80_H40 = 6,
+       FLOG_DEMOD_PAIR80_H40_B32 = 7 };
 /* Bits 1..7 were the sync flywheel's (removed 2026-10-25); kept so old
  * logs decode. Current firmware sets only DEMOD_VERIFIED. */
 enum {
@@ -310,11 +312,11 @@ static inline bool flog_unpack_second(const uint8_t *p, uint8_t len, flog_second
     s->output_observer_gaps = len >= 69u ? p[68] : 0;
     s->picture_pct = len >= 71u ? p[69] : 0xffu;
     s->picture_windows = len >= 71u ? p[70] : 0;
-    s->exp_mask = len >= FLOG_SECOND_LEN ? flog_get32(p + 71) : 0;
-    s->exp_version = len >= FLOG_SECOND_LEN ? p[75] : 0;
-    s->exp_mixed = len >= FLOG_SECOND_LEN ? p[76] : 0;
+    s->exp_mask = len >= 77u ? flog_get32(p + 71) : 0;
+    s->exp_version = len >= 77u ? p[75] : 0;
+    s->exp_mixed = len >= 77u ? p[76] : 0;
     memset(s->exp_values, 0, sizeof(s->exp_values));
-    if (len >= FLOG_SECOND_LEN) memcpy(s->exp_values, p + 77, EXP_ITEMS);
+    if (len > 77u) memcpy(s->exp_values, p + 77, len-77u<EXP_ITEMS ? len-77u : EXP_ITEMS);
     return true;
 }
 

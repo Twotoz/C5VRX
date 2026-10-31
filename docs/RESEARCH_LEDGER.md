@@ -1,5 +1,49 @@
 # C5VRX research ledger (C5VRX-1 to C5VRX-5)
 
+## RX80 lab update, 2026-10-30 (experimental)
+
+The AHB clock explains the earlier PARLIO RX byte-rate ceiling in a short
+board comparison: AHB40 caps RX near 40 MB/s, AHB48 near 48 MB/s, and the
+experimental AHB80 overclock allowed approximately 80.00 MS/s of the same
+eight-bit Q4/I4 source with no overflow during 4-ms observations. This
+extends C5VRX's earlier F80/F160 and throughput experiments; it preserves
+their negative results at the original bus clock. The vendor clock HAL
+constrains AHB to <=48 MHz, so this is not a supported production setting.
+TX stayed at 40 MHz. Source integrity, sustained acquisition and a usable
+matched video path remain separate gates. Exact ELF identities, rates,
+restore checks and limitations are in [RX80_LAB.md](RX80_LAB.md).
+
+Later lab work added the requested EXPERIMENTAL 40/48/80 selection and a
+single-engine counter demodulator that consumes every Q4/I4 byte (unique
+CVBS40 duplicated at TX80). Digital PRBS comparisons pass, but the operator
+reports very noisy video at 48 and black at 80: usable RX80 is **not achieved**.
+Actual menu readback confirms RX/TX dividers of three at 80, so the menu
+does not merely leave PARLIO configured at 40. Native MODEM_DIAG phase
+measurements reveal large phase-dependent HF4 differences; full live-chain
+qualification remains under investigation. No range or noise benefit is
+claimed. These are C5VRX lab adaptations of its archived phase/counter and
+transport experiments; see the lab document for provenance and evidence.
+
+Subsequent native captures exposed an exact held alternate IQ pair under
+RX80. Filter/ADC/APB comparisons retain it, so the prior assumption of an
+80-million-fresh-sample GPIO source is now unproven. PAIR80-H40-C256 fixes
+the prototype's differentiation interval and duplicate-alignment sensitivity
+while keeping RX80/TX80; assembled exhaustive checks, bounded digital
+hardware comparisons and a captured-RF sync replay pass. Stable live image
+acceptance and the original fresh80 source target remain open. Saved-rate
+startup now establishes a verified recovery baseline and reserves essential
+receiver tasks before the optional splash raster, fixing observed boot faults.
+
+2026-10-31: frequent line-sync loss remains after H40 and its B32 headroom
+correction. A fixed-G29 run has no gain writes but still only 23--75% sync
+coverage and clipping; visual improvement in gain artifacts is tentative.
+The operator requested a dedicated RX80 AGC. It is separate from the 40-mode
+models (new mode 252), with normalized IQ40 observer geometry, nominal
+row-model steps, fast attack, conservative release and DC-floor handling.
+Early versions hunted even with VTX off; those failures are retained in
+the lab log. The current model still makes top-row corrections and awaits
+a confirmed-on image check. No clean-video/range/fresh80 claim follows.
+
 C5VRX by Twotoz and the C5VRX contributors. This is the project's research
 provenance ledger, moved verbatim from `AGENTS.md` on 2026-10-28 so that the
 agent instructions there carry only the current C5VRX-5 rules. The

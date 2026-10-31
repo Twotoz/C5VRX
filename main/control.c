@@ -366,7 +366,7 @@ static void menu_action(void)
     case MENU_FILTER: (void)profile_select_cycle(); prefs_save(); break;
     case MENU_AFC: toggle_afc(); break;
     case MENU_DFILT: cycle_dfilt(); break;
-    case MENU_EXPERIMENTAL: s_exp_sub = 0; break;
+    case MENU_EXPERIMENTAL: s_exp_sub = EXP_SAMPLE_RATE; break;
     case MENU_CALIBRATE: s_cal_sub = MENU_CAL_QUICK; break;   /* opens the QUICK / FULL / BACK submenu */
     case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
     case MENU_GAIN: receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); break;
@@ -448,10 +448,10 @@ static uint32_t s_vq_periods;
 /* Picture measure totals and its CPU cost per window (T PICTURE). */
 static struct { picture_state_t state; uint32_t found, expected, windows, us_max; uint64_t us_sum; } s_pic;
 
-static bool copy_afc_window(uint8_t *dst)
+static bool copy_afc_window(uint8_t *dst, bool observer40)
 {
     vTaskSuspendAll();
-    const bool ok = copy_snapshot(dst);
+    const bool ok = observer40 ? copy_snapshot40(dst) : copy_snapshot(dst);
     (void)xTaskResumeAll();
     return ok;
 }
@@ -551,23 +551,13 @@ static void control_task(void *arg)
          * line earlier, which one descriptor contains in ~43 % of windows
          * (board IQ replay 2026-10-26: 45 % vs 30/30 snapshots). It ends
          * where the active descriptor began, so it covers s_window. */
-        const bool afc_copied = receiver_ok && copy_afc_window(s_afc_window);
-        bool window_ok = afc_copied && afc2_envelope_stationary(s_afc_window, AFC_WINDOW_BYTES);
-        /* Picture measure (picture_sync.h): every live window, also those the
-         * AFC leaves out (a gain write, settle, fading): the goggles see those. */
-        if (copied && !s_menu_active && (afc_copied || copy_afc_window(s_afc_window))) {
-            unsigned bits;
-            const uint16_t *lut = transport_decoder_lut(&bits);
-            if (lut) {
-                const int64_t t0 = esp_timer_get_time();
-                const picture_sync_t ps = picture_sync_window(&s_pic.state, s_afc_window, AFC_WINDOW_BYTES, lut, bits);
-                const uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
-                if (ps.expected) diag_picture(ps.found, ps.expected);
-                s_pic.found += ps.found; s_pic.expected += ps.expected; ++s_pic.windows;
-                s_pic.us_sum += us;
-                if (us > s_pic.us_max) s_pic.us_max = us;
-            }
-        }
+        /* IQ80: the AFC sees the same 3.2 lines as an IQ40 observer view
+         * (copy_snapshot40, every second captured byte); the picture measure
+         * then takes its own native-rate window. IQ48 holds AFC: it has no
+         * integer IQ40 time mapping. */
+        const uint8_t rate = transport_rate_mode();
+        const bool afc_copied = receiver_ok && copy_afc_window(s_afc_window, true);
+        const bool window_ok = afc_copied && afc2_envelope_stationary(s_afc_window, AFC_WINDOW_BYTES);
         const char *afc_window_reason = !copied ? "copy_missing" : settle ? "settle" :
             ctx != afc_context() ? "context" : phy_busy() ? "phy_busy" : !receiver_ok ? "gain_settle" :
             !afc_copied ? "afc_copy_missing" : !window_ok ? "nonstationary" : "measured";
@@ -591,6 +581,27 @@ static void control_task(void *arg)
             s_afc_evidence.residual_khz=r.porch_khz-afc.target_khz;
         }
         if (valid) { s_last_video_us = now; standard_vote(r.standard); profile_observe(&r); }
+        /* Picture measure (picture_sync.h): every live window, also those the
+         * AFC leaves out (a gain write, settle, fading): the goggles see those. */
+        if (copied && !s_menu_active && ((afc_copied && rate == 0) || copy_afc_window(s_afc_window, false))) {
+            unsigned bits;
+            const uint16_t *lut = transport_decoder_lut(&bits);
+            if (lut) {
+                const int64_t t0 = esp_timer_get_time();
+                const picture_sync_t ps = picture_sync_window(&s_pic.state, s_afc_window, AFC_WINDOW_BYTES, lut, bits);
+                const uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
+                if (ps.expected) diag_picture(ps.found, ps.expected);
+                s_pic.found += ps.found; s_pic.expected += ps.expected; ++s_pic.windows;
+                s_pic.us_sum += us;
+                if (us > s_pic.us_max) s_pic.us_max = us;
+                /* IQ48 has no AFC. There its rate-scaled picture measure
+                 * finding both line syncs of the window is the video evidence
+                 * (gain-map learning, RX/menu/diag carrier state); weaker than
+                 * the AFC's burst/porch confirmation, never a frequency step. */
+                if (rate == 1 && receiver_ok && gain_epoch == s_gain_epoch && ps.expected >= 2u && ps.found == ps.expected)
+                    s_last_video_us = now;
+            }
+        }
         if (!s_afc_enabled && rf_offset_khz() != 0) {
             rf_set_offset_khz(0);
             s_last_gain_write_us = esp_timer_get_time();

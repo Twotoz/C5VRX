@@ -811,3 +811,42 @@ esp_err_t phy_dco_try_pair(uint32_t packed_gain, const int expected[2], const in
     return restored ? ESP_FAIL : ESP_ERR_INVALID_RESPONSE;
 #endif
 }
+
+/* ---- RX80 source-cadence probe ------------------------------------------
+ * Kept outside the digital-filter slice that test_dfilt_runtime.py compiles. */
+/* Extends legacy/c5vrx4's DFILT/ADC lab. */
+esp_err_t phy_rx80_source_probe(void (*observe)(unsigned adc, unsigned mode))
+{
+#ifndef C5VRX_PHY_PINNED
+    (void)observe;
+    return ESP_ERR_NOT_SUPPORTED;
+#else
+    if (!observe) return ESP_ERR_INVALID_ARG;
+    extern void phy_adc_rate_set(uint32_t rate);
+    phy_begin();
+    const uint32_t filt=REG_READ(DFILT_REG),adc=REG_READ(0x600a0448u);
+    const uint8_t i2c=phy_i2c_readReg(0x66,0,4);
+    const unsigned modes[4]={12,0,4,8};
+    bool ok=true;
+    for (unsigned variant=0;variant<2 && ok;++variant) {
+        unsigned selector=(adc&1u)^variant;
+        phy_adc_rate_set(selector);
+        ok=(REG_READ(0x600a0448u)&3u)==(selector ? 3u : 0u) &&
+           (phy_i2c_readReg(0x66,0,4)&4u)==(selector ? 0u : 4u);
+        for (unsigned k=0;k<4 && ok;++k) {
+            phy_rx_filter_mode(modes[k]);
+            ok=phy_dfilt_hw_mode()==(int)modes[k];
+            if (ok) observe(selector,modes[k]);
+        }
+    }
+    phy_adc_rate_set(adc&1u);
+    phy_i2c_writeReg(0x66,0,4,i2c);
+    REG_WRITE(0x600a0448u,adc);
+    REG_WRITE(DFILT_REG,filt);
+    __sync_synchronize();
+    bool restored=REG_READ(0x600a0448u)==adc && REG_READ(DFILT_REG)==filt &&
+                  phy_i2c_readReg(0x66,0,4)==i2c;
+    phy_end();
+    return !restored ? ESP_FAIL : ok ? ESP_OK : ESP_ERR_INVALID_RESPONSE;
+#endif
+}
