@@ -13,6 +13,7 @@
 #include "cn_auto.h"
 #include "cn_observation.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
 #include "gain_map_preset.h"
 #include "phase8_gain_lut.h"
 #include "phy.h"
@@ -29,6 +30,16 @@ volatile uint32_t s_obs_us_max, s_obs_windows;
 dg_map_blob_t s_gain_map_saved;
 bool s_gain_map_saved_valid;
 
+#define OBSERVER_STACK_BYTES 4096u
+#define SENTINEL_STACK_BYTES 3072u
+
+typedef struct {
+    StaticTask_t observer, sentinel;
+    StackType_t observer_stack[OBSERVER_STACK_BYTES / sizeof(StackType_t)] __attribute__((aligned(portBYTE_ALIGNMENT)));
+    StackType_t sentinel_stack[SENTINEL_STACK_BYTES / sizeof(StackType_t)] __attribute__((aligned(portBYTE_ALIGNMENT)));
+} receiver_memory_t;
+static receiver_memory_t *s_receiver_memory;
+static esp_timer_handle_t s_gain_timer;
 static TaskHandle_t s_observer, s_sentinel;
 static volatile uint8_t s_gain_mode = GAIN_MODE_DEFAULT;
 
@@ -942,20 +953,47 @@ static void observer_task(void *arg)
     }
 }
 
-void receiver_start(void)
+/* Reserve essential task storage and timer before RF/driver allocations and
+ * the optional splash. Reservation does not start tasks or issue PHY writes. */
+bool receiver_prepare(void)
 {
+    if (!s_receiver_memory) {
+        s_receiver_memory = heap_caps_aligned_alloc(portBYTE_ALIGNMENT, sizeof(*s_receiver_memory),
+                                                    MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!s_receiver_memory) return false;
+        memset(s_receiver_memory, 0, sizeof(*s_receiver_memory));
+    }
+    if (!s_gain_timer) {
+        const esp_timer_create_args_t args = {.callback = tick_cb, .dispatch_method = ESP_TIMER_TASK,
+            .name = "gain_tick", .skip_unhandled_events = true};
+        if (esp_timer_create(&args, &s_gain_timer) != ESP_OK) {
+            heap_caps_free(s_receiver_memory);
+            s_receiver_memory = NULL;
+            return false;
+        }
+    }
+    return true;
+}
+
+bool receiver_start(void)
+{
+    if (s_observer && s_sentinel) return true;
+    if (!receiver_prepare()) return false;
     s_gain_map_saved_valid = blob_load("gain_map", &s_gain_map_saved, sizeof(s_gain_map_saved)) &&
                              s_gain_map_saved.version == DG_MAP_VERSION && s_gain_map_saved.context_valid;
-    ESP_ERROR_CHECK(xTaskCreate(observer_task, "gain_obs", 4096, NULL, 3, &s_observer) == pdPASS ?
-                    ESP_OK : ESP_ERR_NO_MEM);
-    ESP_ERROR_CHECK(xTaskCreate(sentinel_task, "gain_fast", 3072, NULL, 4, &s_sentinel) == pdPASS ?
-                    ESP_OK : ESP_ERR_NO_MEM);
+    /* Keep the existing start point: the splash owns TX before gain runs.
+     * Stack depths are bytes in IDF; no task storage is allocated here. */
+    s_observer = xTaskCreateStatic(observer_task, "gain_obs", OBSERVER_STACK_BYTES, NULL, 3,
+                                  s_receiver_memory->observer_stack, &s_receiver_memory->observer);
+    if (!s_observer) return false;
+    s_sentinel = xTaskCreateStatic(sentinel_task, "gain_fast", SENTINEL_STACK_BYTES, NULL, 4,
+                                  s_receiver_memory->sentinel_stack, &s_receiver_memory->sentinel);
     /* Notifications request a fresh snapshot, not replay of missed samples. */
-    const esp_timer_create_args_t args = {.callback = tick_cb, .dispatch_method = ESP_TIMER_TASK,
-        .name = "gain_tick", .skip_unhandled_events = true};
-    esp_timer_handle_t timer;
-    ESP_ERROR_CHECK(esp_timer_create(&args, &timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(timer, 200));
+    if (s_sentinel && esp_timer_start_periodic(s_gain_timer, 200) == ESP_OK) return true;
+    if (s_sentinel) vTaskDelete(s_sentinel);
+    vTaskDelete(s_observer);
+    s_observer = s_sentinel = NULL;
+    return false;
 }
 
 void receiver_print(void)

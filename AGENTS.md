@@ -233,7 +233,9 @@ desyncs and poor range); see the realtime invariants above.
 Menu entry allocates internal DMA descriptors in 384-byte chunks before
 touching live video. Interlaced
 NTSC/PAL needs about 18/22 KiB; progressive fallback about 9/11 KiB.
-Keep the 6144-byte control stack reserved before RF/driver allocations.
+Keep control stack/TCB/command-queue storage and receiver stacks/TCBs/timer
+reserved before RF/driver allocations. Reservation must not start gain tasks;
+keep their existing start point after the optional splash takes TX.
 See [PR212](docs/PR212.md) for current behavior, evidence and board checks.
 Historical kp/LP policy (retired by the 2026-10-23 single-model decision):
 PR #230 used predicted picture benefit and noise-referenced C/N to select

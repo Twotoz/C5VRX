@@ -34,6 +34,8 @@
 
 typedef struct {
     StaticTask_t task;
+    StaticQueue_t commands;
+    uint8_t command_storage[16u * sizeof(int)];
     StackType_t stack[CONTROL_STACK_BYTES/sizeof(StackType_t)] __attribute__((aligned(portBYTE_ALIGNMENT)));
 } control_memory_t;
 static control_memory_t *s_control_memory;
@@ -678,7 +680,10 @@ void control_start(void)
         s_afc_sign_state = AFC2_SIGN_CONFIRMED;
         s_afc_sign_saved = true;
     }
-    s_commands = xQueueCreate(16, sizeof(int));
+    /* Queue storage shares the early reservation: the optional splash must
+     * not consume the final heap bytes needed by control startup either. */
+    s_commands = xQueueCreateStatic(16, sizeof(int), s_control_memory->command_storage,
+                                   &s_control_memory->commands);
     ESP_ERROR_CHECK(s_commands ? ESP_OK : ESP_ERR_NO_MEM);
     /* IDF task stack depths are bytes. Reserve before driver allocations,
      * then supply that same 6144-byte stack and TCB without another malloc. */

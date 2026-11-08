@@ -431,6 +431,48 @@ also warns before flashing when the build's configuration differs from
 receiver tasks (it already skips itself when the raster cannot be built),
 which would trade the margin against a progressive splash on some boards.
 
+## Boot-loop fix: reserve receiver memory before the splash (2026-11-08)
+
+Two supplied Web Serial captures of `5.0.573+100bf7bfa34e` on an ESP32-C5
+without PSRAM contain 14 and 15 `ESP_ERR_NO_MEM` aborts respectively at
+`receiver.c:951`, creating `gain_fast`; neither capture reaches ready.
+The 37,224-byte internal-free / 34,816-byte largest-block reading is early:
+its same status block reports output OFF, zero RX descriptors and zero
+transport-stage timings. It does not measure memory at task creation and
+cannot establish an allocator capability mismatch (`heap_largest` already
+uses INTERNAL|8BIT). These captures do not contain a successful boot or
+prove a calibration-table leak. The older boot-stage board measurements
+above establish the splash/task overlap; this fix extends that finding and
+the existing early `control_prepare()` reservation.
+
+`receiver_prepare()` now reserves the unchanged 4096/3072-byte task stacks,
+both TCBs and the gain timer before RF/driver allocations. It starts no task
+or timer. `receiver_start()` uses that storage at the existing point, after
+the optional splash takes TX; it cleans up partial task starts and returns
+failure instead of aborting. The caller closes the splash, stops TX and
+leaves USB diagnostics/download available on receiver startup failure.
+Control's command queue also uses its early reservation, avoiding a final
+heap allocation after splash entry. No stacks are reduced and no PSRAM is
+required. The normal gain, calibration and transport start ordering remains.
+
+The progressive fallback now frees excess chunks retained by a partially
+failed interlaced allocation. Interlaced remains the first choice because
+of the documented display compatibility problem with progressive output.
+Actual raster emission gives 1499/1811 interlaced descriptors (NTSC/PAL),
+versus 748/905 progressive, or 18,048/21,888 versus 9,216/11,136 reserved
+bytes in 384-byte chunks, excluding allocator overhead.
+
+Validation: the production reservation/start functions are compiled in a
+host harness with allocation, task-creation and timer-start failures. Tests
+cover reservation without starting gain, exhausted-heap startup, cleanup,
+retry and idempotence. Actual raster code plus the production reservation
+function covers partial interlaced allocation, progressive trimming and
+complete allocation failure for NTSC/PAL. These are host checks, not board
+acceptance: cold boots with saved F4/RSSI/2.0x settings, populated NVS,
+NTSC/PAL splash and menu cycles, and a strong-VTX gain check remain required.
+Issue #298 also reports a separate USB-reset ROM hang; this change addresses
+only its receiver memory boot loop and must not close the entire issue.
+
 ## PSRAM: 8 MB on the XIAO, now mapped (board, 2026-10-26)
 
 esptool on COM6 reads `ESP32-C5HR8 (revision v1.0)`, "Embedded PSRAM 8MB
