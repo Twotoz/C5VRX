@@ -14,6 +14,7 @@ on:
 permissions:
   contents: write   # delete releases and their tags
   actions: write    # dispatch the web flasher deployment
+  pull-requests: read # inspect PR state with the workflow token
 
 concurrency:
   group: pr-channel-cleanup
@@ -24,25 +25,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Remove channels of closed PRs
+        id: cleanup
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           repo="$GITHUB_REPOSITORY"
-          tags="$(gh api --paginate "repos/${repo}/releases?per_page=100" --jq '.[].tag_name' \
-            | grep -E '^c5vrx5-pr-[0-9]+$' || true)"
+          # jq returns success with no matches; API errors must still fail.
+          tags="$(gh api --paginate "repos/${repo}/releases?per_page=100" \
+            --jq '.[].tag_name | select(test("^c5vrx5-pr-[0-9]+$"))')"
           removed=0
           for tag in $tags; do
             pr="${tag#c5vrx5-pr-}"
             # Ask per PR: a failed lookup aborts the sweep instead of deleting.
-            state="$(gh pr view "$pr" --repo "$repo" --json state --jq .state)"
-            if [[ "$state" != "OPEN" ]]; then
+            state="$(gh api "repos/${repo}/pulls/${pr}" --jq .state)"
+            case "$state" in
+              open) continue ;;
+              closed) ;;
+              *) echo "Unexpected PR state: ${state}" >&2; exit 1 ;;
+            esac
+            if [[ "$state" == "closed" ]]; then
               echo "Removing ${tag} (PR #${pr} is ${state})"
               gh release delete "$tag" --repo "$repo" --yes --cleanup-tag
               removed=$((removed + 1))
+              echo "removed=true" >> "$GITHUB_OUTPUT"
             fi
           done
           echo "Removed ${removed} PR channel(s)."
-          if (( removed > 0 )); then
-            gh workflow run deploy-web.yml --repo "$repo" --ref main
-          fi
+      # Refresh even if a later lookup fails after an earlier deletion.
+      - name: Refresh web flasher mirror
+        if: ${{ always() && steps.cleanup.outputs.removed == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-web.yml --repo "$GITHUB_REPOSITORY" --ref main
