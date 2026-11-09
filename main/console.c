@@ -46,9 +46,8 @@ static void status(void)
            gm == GAIN_MODE_AUTO ? "keel1" : gm == GAIN_MODE_LEVEL ? "level" : gm == GAIN_MODE_RSSI ? "rssi" : "manual",
            esp_timer_get_time() / 1000000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT),
-           /* Lowest free since boot: the boot peak (splash chain plus the
-            * receiver tasks) leaves ~21.9 KB with the PSRAM overlay (~2 KB
-            * without), which a reading now cannot show. */
+           /* Lowest free since boot. Receiver/control storage is reserved
+            * before the optional splash; live free heap hides that peak. */
            (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
            (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
            (unsigned)heap_caps_get_free_size(MALLOC_CAP_RTCRAM),

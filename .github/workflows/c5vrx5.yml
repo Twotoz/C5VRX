@@ -164,6 +164,7 @@ jobs:
           python3 test/test_phase_repair_runtime.py
           python3 test/test_calibration_search_runtime.py
           python3 test/test_manual_calibration_runtime.py
+          python3 test/test_boot_memory_runtime.py
       - name: Analytic IQ lane reference
         shell: bash
         run: |

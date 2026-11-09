@@ -122,7 +122,8 @@ extern dg_map_blob_t s_gain_map_saved;
 extern bool s_gain_map_saved_valid;
 /* Observer-owned context snapshot; refuses unsettled/changed model state. */
 unsigned receiver_export_gain_map(dg_map_blob_t *blob);
-void receiver_start(void);
+bool receiver_prepare(void); /* reserve stacks/TCBs and timer without starting gain */
+bool receiver_start(void);
 bool receiver_active(void);
 bool receiver_paused(void);
 /* Pause gain control for a calibration/scan that owns the gain itself. */
@@ -171,7 +172,7 @@ extern volatile video_standard_t s_detected_std;
 extern volatile int64_t s_last_video_us;           /* last burst-confirmed sync */
 extern QueueHandle_t s_commands;
 void control_start(void);
-bool control_prepare(void); /* reserve unchanged control stack before driver heap fragmentation */
+bool control_prepare(void); /* reserve control stack/TCB and command queue before driver allocations */
 video_standard_t menu_standard(void);
 void control_print(void);
 void control_print_beat(void);   /* STATUS line every 2 s (console.c) */

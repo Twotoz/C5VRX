@@ -248,7 +248,7 @@ static void free_nodes(void)
     s_chunk_count = s_node_capacity = s_node_count = 0;
 }
 
-/* Count the raster, reserve exactly that (grow only), link a cycle.
+/* Count the raster, reserve exactly that, link a cycle.
  * Interlaced first; the progressive field only when its chain cannot be
  * reserved (half the descriptors, but not every display keeps it). */
 static esp_err_t reserve_chain(video_standard_t standard, bool interlaced, unsigned *required)
@@ -259,6 +259,13 @@ static esp_err_t reserve_chain(video_standard_t standard, bool interlaced, unsig
     if (!menu_raster_emit(&s_raster, standard, interlaced, count_segment, required) || !*required)
         return ESP_ERR_INVALID_SIZE;
     unsigned chunks = (*required + NODE_CHUNK - 1u) / NODE_CHUNK;
+    /* A failed interlaced attempt can leave more chunks than progressive
+     * needs. TX is stopped (or this is initial entry): release the excess. */
+    while (s_chunk_count > chunks) {
+        heap_caps_free(s_chunks[--s_chunk_count]);
+        s_chunks[s_chunk_count] = NULL;
+        s_node_capacity -= NODE_CHUNK;
+    }
     while (s_chunk_count < chunks) {
         dma_descriptor_t *c = heap_caps_aligned_alloc(4u, NODE_CHUNK * sizeof(dma_descriptor_t),
                                                       MALLOC_CAP_DMA_DESC_AHB | MALLOC_CAP_INTERNAL);
