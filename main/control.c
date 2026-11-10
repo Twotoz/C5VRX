@@ -143,14 +143,14 @@ static int strength(const metrics_t *m, uint8_t gain)
     return (coherence * 2 + power + headroom) / 4;
 }
 
-/* Decoder P64 -> U85Q -> U50P64 (console m, menu DEMOD), kept in NVS "demod": live, a
+/* Decoder P64 -> U85Q -> U50P64 (console m, menu DEMOD), kept in NVS TRANSPORT_DEMOD_KEY: live, a
  * verified restart behind the shared 5 s guard; in the menu, applied by the
  * restart on menu exit. */
 static void demod_next(void)
 {
     const uint8_t next = (uint8_t)((transport_demod() + 1u) % TRANSPORT_DEMODS);
     const bool ok = transport_set_demod(next);
-    if (ok) (void)blob_store("demod", &next, sizeof(next));
+    if (ok) (void)blob_store(TRANSPORT_DEMOD_KEY, &next, sizeof(next));
     printf("DEMOD switch to=%s result=%s active=%s%s\n", transport_demod_name(next), ok ? "ok" : "refused",
            transport_program_name(), ok ? "" : " (guard, fault or rollback: T TRANSPORT and DEMOD)");
 }
@@ -353,8 +353,8 @@ static void menu_action(void)
             receiver_set_gain_mode(GAIN_MODE_DEFAULT, true);
             if (!phy_dfilt_select(PHY_DFILT_MODE_DEFAULT)) s_exp_failed = true;
             if (!s_afc_enabled) toggle_afc();
-            if (!transport_set_demod(TRANSPORT_DEMOD_P64)) s_exp_failed = true;
-            else { const uint8_t d = TRANSPORT_DEMOD_P64; (void)blob_store("demod", &d, 1); }
+            if (!transport_set_demod(TRANSPORT_DEMOD_DEFAULT)) s_exp_failed = true;
+            else { const uint8_t d = TRANSPORT_DEMOD_DEFAULT; (void)blob_store(TRANSPORT_DEMOD_KEY, &d, 1); }
             prefs_save();
         }
         else if (k == EXP_DAC) menu_dac_step();

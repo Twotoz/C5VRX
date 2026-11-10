@@ -19,6 +19,8 @@ BOUNDARY = r'''
 #include "experimental.h"
 #define GAIN_MODE_DEFAULT 254
 #define PHY_DFILT_MODE_DEFAULT 12
+#define TRANSPORT_DEMOD_P64 0
+#define TRANSPORT_DEMOD_DEFAULT 2
 #define RF_LANE_COARSE 0
 #define RF_LANE_FINE 1
 #define RF_LANE_ULTRAFINE 2
@@ -82,6 +84,7 @@ int main(void) {
  fail_phy=true;assert(!experimental_phy_restore());
  assert(!experimental_get(EXP_IQ_CORR));experimental_poll();assert(!disk.value[EXP_IQ_CORR]);
  fail_phy=false;experimental_reset();assert(!experimental_mask());
+ demod=2;assert(!experimental_mask());demod=0;assert(!experimental_mask());
  mode=255;dfilt=4;demod=1;s_afc_enabled=false;live=true;
  assert((experimental_mask()&15)==15);
  uint8_t v[EXP_ITEMS];experimental_snapshot(v);
