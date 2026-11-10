@@ -31,7 +31,7 @@ static experimental_blob_t disk;
 static size_t disk_size=sizeof(disk);
 static uint8_t event_data[4];
 static bool blob_load(const char *k, void *d, size_t n) {
- assert(!strcmp(k,"exp") && (n==sizeof(disk) || n==sizeof(disk)-1));
+ assert(!strcmp(k,"exp") && n<=sizeof(disk) && n>=sizeof(disk)-2);
  if (!stored || n != disk_size) return false;
  memcpy(d,&disk,n);return true;
 }
@@ -101,11 +101,17 @@ int main(void) {
  assert(experimental_clock_d10()&&experimental_reboot_needed());
  assert(experimental_mask() & (1u<<EXP_CLOCK_D10));
  experimental_load();assert(!experimental_clock_d10()&&!experimental_reboot_needed());
- disk_size=sizeof(disk)-1;disk.value[EXP_FOLD_MEMORY]=2;
- disk.value[EXP_CLOCK_D10]=1; /* not present in old NVS */
+ disk_size=sizeof(disk)-2;disk.value[EXP_FOLD_MEMORY]=2;
+ disk.value[EXP_CLOCK_D10]=1; /* not present in NVS from before D10 */
  experimental_load();
  assert(experimental_get(EXP_FOLD_MEMORY)==2 && !experimental_get(EXP_CLOCK_D10));
  assert(!experimental_clock_d10());
+ disk_size=sizeof(disk)-1;disk.value[EXP_FOLD_MEMORY]=1;disk.value[EXP_CLOCK_D10]=1;
+ disk.value[EXP_OUTPUT_AUTO]=1; /* not present in NVS from before AUTO OUTPUT */
+ experimental_load();
+ assert(experimental_get(EXP_FOLD_MEMORY)==1 && experimental_get(EXP_CLOCK_D10)==1 && !experimental_get(EXP_OUTPUT_AUTO));
+ assert(experimental_set(EXP_CLOCK_D10,0));
+ disk.value[EXP_OUTPUT_AUTO]=0;
  assert(experimental_set(EXP_FOLD_MEMORY,1));assert(disk_size==sizeof(disk));
  assert(events&&records&&dc_resets&&s_control_epoch);
  return 0;

@@ -67,6 +67,11 @@ static bool s_tx_enabled;
 static bool s_rx_enabled, s_bs_enabled;
 static bool s_transport_fault;
 static unsigned s_output, s_verified_output, s_output_clipped;
+/* AUTO OUTPUT (output_auto.h): the selected affine word, 0 = none. It only
+ * applies while the manual level is 1.0x; s_verified_output holds the word
+ * that is live (a manual level or an affine word). */
+static unsigned s_affine;
+static unsigned output_word(void) { return s_output == 0u && s_affine ? s_affine : s_output; }
 static bool s_have_verified;
 static uint32_t s_restart_errors, s_rollbacks, s_rollback_fail;
 #define LIVE_TX_NODES ((RAW_RING_BYTES + 4091u) / 4092u)
@@ -330,15 +335,39 @@ const char *transport_output_name(void)
     static const char *const names[OUTPUT_LEVELS] = {
         "1.0x", "1.5x", "2.0x", "2.5x", "3.0x", "3.5x", "4.0x", "4.5x", "5.0x", "0.5x"
     };
+    const unsigned word = output_word();
+    if (output_is_affine(word)) {
+        static char name[12];
+        const unsigned g = output_affine_gain_q3(word) * 125u;   /* gain x1000 */
+        snprintf(name, sizeof(name), "AUTO %u.%02ux", g / 1000u, g % 1000u / 10u);
+        return name;
+    }
     return names[s_output];
+}
+unsigned transport_output_word(void) { return s_have_verified ? s_verified_output : 0u; }
+/* AUTO OUTPUT: apply an affine word (0: back to the manual level) by the
+ * same verified restart and guard as a manual change. Refused while a manual
+ * level other than 1.0x is selected: the operator's choice wins. */
+bool transport_set_output_affine(unsigned word)
+{
+    if (s_transport_fault || (word && !output_is_affine(word)) || (word && s_output != 0u)) return false;
+    if (word == s_affine) return true;
+    if (s_menu_active || !s_started) { s_affine = word; return true; }
+    if (!transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
+    s_affine = word;
+    bool ok = resume_live(s_lut_known ? demod_table(s_demod) : NULL);
+    transport_guard_mark(&s_switch_guard, esp_timer_get_time());
+    return ok;
 }
 bool transport_set_output(unsigned level)
 {
     if (s_transport_fault || level >= OUTPUT_LEVELS) return false;
     if (level == s_output) return true;
-    if (s_menu_active || !s_started) { s_output = level; return true; }
+    /* A manual change starts from the manual level: AUTO measures again. */
+    if (s_menu_active || !s_started) { s_output = level; s_affine = 0u; return true; }
     if (!transport_guard_ready(&s_switch_guard, esp_timer_get_time())) return false;
     s_output = level;
+    s_affine = 0u;
     bool ok = resume_live(s_lut_known ? demod_table(s_demod) : NULL);
     transport_guard_mark(&s_switch_guard, esp_timer_get_time());
     return ok;
@@ -382,7 +411,8 @@ static bool restart_stage(void *ctx, tr_stage_t stage, bool rollback)
 {
     restart_t *r = ctx;
     if (stage == TR_BS_ENABLE && rollback) {
-        s_output = s_verified_output;
+        if (output_is_affine(s_verified_output)) { s_output = 0u; s_affine = s_verified_output; }
+        else { s_output = s_verified_output; s_affine = 0u; }
         r->output = s_verified_output;
         s_demod = s_verified_demod;   /* its program goes with the verified LUT below */
         r->program = tracker_program();
@@ -584,7 +614,7 @@ static bool resume_live(const uint16_t *restore_lut)
 {
     if (s_transport_fault) return false;
     stage_hooks();
-    restart_t r = {.program = tracker_program(), .output = s_output};
+    restart_t r = {.program = tracker_program(), .output = output_word()};
     const uint8_t *program_inst;
     if (!program_words(r.program, &program_inst)) return false;
     memcpy(s_program_work.prefix, r.program, sizeof(s_program_work.prefix));
@@ -597,7 +627,7 @@ static bool resume_live(const uint16_t *restore_lut)
         if (!program_words(r.program, &inst) || r.program[6] != 1u) return false;
         for (unsigned i = 0; i < 1024u; ++i) {
             bool clipped;
-            s_lut_work[i] = output_entry(restore_lut[i], s_output, &clipped);
+            s_lut_work[i] = output_entry(restore_lut[i], r.output, &clipped);
             r.clipped += clipped;
         }
     }
@@ -626,7 +656,7 @@ static bool resume_live(const uint16_t *restore_lut)
     s_lut_known = true;
     /* A failed restart or
      * rollback returns above and cannot replace the remembered output. */
-    if (output_changed) settings_save_output(r.output);
+    if (output_changed && !output_is_affine(r.output)) settings_save_output(r.output);
     return true;
 }
 
@@ -665,7 +695,9 @@ void transport_flog_identity(uint8_t *demod, uint8_t *output_level)
                           !s_transport_fault;
     if (demod) *demod = !verified ? FLOG_DEMOD_UNKNOWN :
                         s_verified_demod == TRANSPORT_DEMOD_U85Q ? FLOG_DEMOD_U85Q_1A09F5C092E8 : FLOG_DEMOD_P64_R1;
-    if (output_level) *output_level = verified ? (uint8_t)s_verified_output : 0xffu;
+    /* 0..9 a manual level; 0x80 | gain_q3 an AUTO OUTPUT word (gain = low six bits / 8). */
+    if (output_level) *output_level = !verified ? 0xffu : output_is_affine(s_verified_output) ?
+        (uint8_t)(0x80u | output_affine_gain_q3(s_verified_output)) : (uint8_t)s_verified_output;
 }
 
 /* Flight-log V1 output fields keep their wire slots. Without an output

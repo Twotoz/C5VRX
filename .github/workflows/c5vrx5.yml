@@ -128,6 +128,9 @@ jobs:
           /tmp/test_video_quality ../research/data/afc_2026-10-18 ../research/data/edge_dc_2026-10-19 | tail -1
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_afc_evidence.c -o /tmp/test_afc_evidence
           /tmp/test_afc_evidence
+          # AUTO OUTPUT: affine DAC word and the sync/white-referenced level policy
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_output_auto.c -lm -o /tmp/test_output_auto
+          /tmp/test_output_auto
       - name: Archived kp helper regressions (not firmware)
         shell: bash
         run: |

@@ -284,12 +284,26 @@ bool receiver_active(void)
 
 bool receiver_paused(void) { return s_paused; }
 
+/* Every pause is recorded with its owner and duration (FLOG_E_PAUSE, T
+ * PAUSES): walk 300 lost 11 % of its seconds to an owned or paused receiver,
+ * up to 4-7 s in a row, and no record said which owner it was (FINDINGS
+ * "Next steps", 2026-10-29). While paused the gain observer stands still and
+ * the post-gain DC hook is silent. */
+static const char *s_pause_tag = "";
+static int64_t s_pause_us;
+static uint32_t s_pauses, s_pause_total_ms, s_pause_max_ms, s_pauses_video;
+static char s_pause_longest[9];
+
 bool receiver_pause(const char *tag)
 {
     if (s_paused) {
         printf("%s refused=busy\n", tag);
         return false;
     }
+    s_pause_tag = tag ? tag : "";
+    s_pause_us = esp_timer_get_time();
+    /* A pause with video in the last 3 s interrupts a picture in use. */
+    if (s_last_video_us && s_pause_us - s_last_video_us < 3000000) ++s_pauses_video;
     s_paused = true;
     vTaskDelay(pdMS_TO_TICKS(20));   /* let an in-flight window finish */
     return true;
@@ -298,7 +312,24 @@ bool receiver_pause(const char *tag)
 void receiver_resume(void)
 {
     ++s_control_epoch;
+    if (s_paused) {
+        const int64_t us = esp_timer_get_time() - s_pause_us;
+        const uint32_t ms = us < 0 ? 0u : us / 1000 > UINT32_MAX ? UINT32_MAX : (uint32_t)(us / 1000);
+        uint8_t d[12] = {(uint8_t)ms, (uint8_t)(ms >> 8), (uint8_t)(ms >> 16), (uint8_t)(ms >> 24)};
+        strncpy((char *)d + 4, s_pause_tag, 8);
+        flightlog_event(FLOG_E_PAUSE, d, sizeof(d));
+        ++s_pauses;
+        s_pause_total_ms += ms;
+        if (ms >= s_pause_max_ms) { s_pause_max_ms = ms; memcpy(s_pause_longest, d + 4, 8); s_pause_longest[8] = 0; }
+    }
     s_paused = false;
+}
+
+void receiver_pause_print(void)
+{
+    printf("PAUSES count=%lu with_recent_video=%lu total_ms=%lu max_ms=%lu longest=%s now=%s\n", (unsigned long)s_pauses,
+           (unsigned long)s_pauses_video, (unsigned long)s_pause_total_ms, (unsigned long)s_pause_max_ms,
+           s_pause_longest[0] ? s_pause_longest : "none", s_paused ? s_pause_tag : "running");
 }
 
 /* Gain write by the owner of a pause (calibration, scan). */

@@ -77,6 +77,8 @@ uint32_t transport_restart_errors(void);
 unsigned transport_output(void);
 const char *transport_output_name(void);
 bool transport_set_output(unsigned level);
+unsigned transport_output_word(void);          /* the verified live output: a level or an affine word */
+bool transport_set_output_affine(unsigned word);   /* AUTO OUTPUT (output_auto.h); 0 = manual level */
 void transport_stop_chain(void);
 void transport_poll_faults(void);
 uint32_t transport_fault_count(void);
@@ -129,6 +131,8 @@ bool receiver_paused(void);
 /* Pause gain control for a calibration/scan that owns the gain itself. */
 bool receiver_pause(const char *tag);
 void receiver_resume(void);
+void receiver_pause_print(void);                /* T: PAUSES, who paused the receiver and how long */
+void output_auto_print(void);                   /* T: OUTPUT_AUTO (control.c) */
 void receiver_set_gain(uint8_t gain);
 void receiver_print(void);
 void receiver_print_map(void);   /* console M: GAINMAP line */
