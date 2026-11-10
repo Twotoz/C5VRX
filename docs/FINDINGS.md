@@ -36,8 +36,10 @@ at the edge as the policy does; four seeds), lines kept, NTSC deviation 0.7:
 
 From 3 dB every word keeps 0.97 or more. `OUTPUT_AFFINE_TIP` is now 16 and
 the span 44 codes (peak white still on code 60): deviation 0.69 gets 2.25x
-(sync 5.5 -> 12.4 codes, was 2.88x), deviation 1.0 1.50x. The full table,
-PAL deviation 1.0 included, is `research/data/output_tip_headroom.json`.
+(sync 5.5 -> 12.4 codes, was 2.88x), deviation 1.0 1.50x. PAL deviation 1.0
+at 1 dB: U80P64-R1 0.84 at 1.0x, 0.64 on tip 3, 0.75 on tip 16, 0.84 on
+tip 20; U50P64-R1 0.86, 0.72, 0.86, 0.86. The full table is
+`research/data/output_tip_headroom.json`.
 A model of one slicer; the goggle walk decides.
 
 **U50P64-R1 is the default decoder (operator decision 2026-11-10).** The
@@ -46,7 +48,8 @@ deviation 0.6-0.7 and C/N 0-9 dB, the section below) over line lock in the
 model. The same sweep shows the price at 1.0x, NTSC deviation 0.7: lines kept
 0.54 against 0.69 at 1 dB and 0.71 against 0.92 at 2 dB, equal at 0 dB and
 from 3 dB (four seeds; the earlier validation read the lock equal at
-deviation 0.7-1.0). The deviation fallback to U80P64-R1 at 1.10 stays. The
+deviation 0.7-1.0). PAL deviation 1.0 shows no such price: 0.86 against 0.84
+at 1 dB, 0.95 against 0.94 at 2 dB. The deviation fallback to U80P64-R1 at 1.10 stays. The
 choice moved to NVS `demod2`: a choice stored under `demod` is not read, so
 every board starts once on the new default; menu DEMOD and console `m` keep
 all three decoders. EXPERIMENTAL RESET returns to U50; the EXP marker shows
