@@ -121,8 +121,11 @@ int main(void)
         const levels_t bright = vtx(0.69, 1.58, 21.0);
         const unsigned n = feed(&a, bright, 3, &now, &seed, true);
         assert(n == 1 && output_affine_gain_q3(a.word) < g_dark);
-        /* Back to a normal scene: no restart for 30 s, then at most one up. */
-        assert(feed(&a, vtx(0.69, 1.0, 21.0), 20, &now, &seed, true) == 0);   /* ~18 s */
+        /* Back to a normal scene: the span is kept, the level never hunts
+         * with the picture content (~6 minutes of it here). */
+        const unsigned g_bright = output_affine_gain_q3(a.word);
+        assert(feed(&a, vtx(0.69, 1.0, 21.0), 400, &now, &seed, true) == 0 && output_affine_gain_q3(a.word) == g_bright);
+        assert(feed(&a, dark, 400, &now, &seed, true) == 0);
         ++checks;
     }
     /* 6. Scatter (fading, a wrong sync) and missing sync add nothing; a

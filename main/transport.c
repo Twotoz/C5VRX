@@ -26,6 +26,7 @@
 #include "hal/parlio_ll.h"
 #include "p64_tables.h"
 #include "u85q_table.h"
+#include "u50p64_table.h"
 #include "snapshot.h"
 #include "control_window.h"
 #include "phase8_gain_lut.h"
@@ -47,10 +48,19 @@
  * a rollback returns to the last verified decoder with its own LUT. */
 BITSCRAMBLER_PROGRAM(s_p64, "p64");
 BITSCRAMBLER_PROGRAM(s_u85q, "u85q");
+/* U50P64-R1 (research/u50p64.py): the P64 program with loop gain 0.50, a range
+ * decoder for deviation <= ~1.0; selectable only, never automatic. */
+BITSCRAMBLER_PROGRAM(s_u50p64, "u50p64");
 static bool s_started;
 static uint8_t s_demod = TRANSPORT_DEMOD_P64, s_verified_demod = TRANSPORT_DEMOD_P64;
-static const void *demod_program(uint8_t d) { return d == TRANSPORT_DEMOD_U85Q ? s_u85q : s_p64; }
-static const uint16_t *demod_table(uint8_t d) { return d == TRANSPORT_DEMOD_U85Q ? u85q_table : p64_table; }
+static const void *demod_program(uint8_t d)
+{
+    return d == TRANSPORT_DEMOD_U85Q ? s_u85q : d == TRANSPORT_DEMOD_U50P64 ? s_u50p64 : s_p64;
+}
+static const uint16_t *demod_table(uint8_t d)
+{
+    return d == TRANSPORT_DEMOD_U85Q ? u85q_table : d == TRANSPORT_DEMOD_U50P64 ? u50p64_table : p64_table;
+}
 static const void *tracker_program(void) { return demod_program(s_demod); }
 
 /* Six-bit DAC only. Baseline wiring stays D4..D9. Clock Pin D10
@@ -300,7 +310,14 @@ uint32_t transport_switch_wait_ms(void)
            (uint32_t)((TRANSPORT_SWITCH_GAP_US - (now - s_switch_guard.last_switch_us) + 999) / 1000);
 }
 
-const char *transport_demod_name(uint8_t d) { return d == TRANSPORT_DEMOD_U85Q ? U85Q_MODEL_ID : P64_MODEL_ID; }
+const char *transport_demod_name(uint8_t d)
+{
+    return d == TRANSPORT_DEMOD_U85Q ? U85Q_MODEL_ID : d == TRANSPORT_DEMOD_U50P64 ? U50P64_MODEL_ID : P64_MODEL_ID;
+}
+const char *transport_demod_short(uint8_t d)
+{
+    return d == TRANSPORT_DEMOD_U85Q ? "U85Q" : d == TRANSPORT_DEMOD_U50P64 ? "U50" : "P64";
+}
 const char *transport_program_name(void) { return transport_demod_name(s_demod); }
 uint8_t transport_demod(void) { return s_demod; }
 /* The live, verified decoder's LUT16 (without the OUTPUT scaling) and its
@@ -337,7 +354,7 @@ const char *transport_output_name(void)
     };
     const unsigned word = output_word();
     if (output_is_affine(word)) {
-        static char name[12];
+        static char name[24];
         const unsigned g = output_affine_gain_q3(word) * 125u;   /* gain x1000 */
         snprintf(name, sizeof(name), "AUTO %u.%02ux", g / 1000u, g % 1000u / 10u);
         return name;
@@ -694,7 +711,8 @@ void transport_flog_identity(uint8_t *demod, uint8_t *output_level)
     const bool verified = s_started && s_tx_enabled && s_bs_enabled && s_have_verified && s_lut_known &&
                           !s_transport_fault;
     if (demod) *demod = !verified ? FLOG_DEMOD_UNKNOWN :
-                        s_verified_demod == TRANSPORT_DEMOD_U85Q ? FLOG_DEMOD_U85Q_1A09F5C092E8 : FLOG_DEMOD_P64_R1;
+                        s_verified_demod == TRANSPORT_DEMOD_U85Q ? FLOG_DEMOD_U85Q_1A09F5C092E8 :
+                        s_verified_demod == TRANSPORT_DEMOD_U50P64 ? FLOG_DEMOD_U50P64_R1 : FLOG_DEMOD_P64_R1;
     /* 0..9 a manual level; 0x80 | gain_q3 an AUTO OUTPUT word (gain = low six bits / 8). */
     if (output_level) *output_level = !verified ? 0xffu : output_is_affine(s_verified_output) ?
         (uint8_t)(0x80u | output_affine_gain_q3(s_verified_output)) : (uint8_t)s_verified_output;
@@ -720,8 +738,9 @@ void transport_print(void)
            experimental_clock_d10() ? 7 : 11, experimental_reboot_needed());
     const char *verified_demod = s_have_verified && s_lut_known && !s_transport_fault ?
         transport_demod_name(s_verified_demod) : "unknown";
-    printf("DEMOD selected=%s verified=%s p64_model=%s p64_table_sha256=%s u85q_table_sha256=%s (console m switches)\n",
-           transport_program_name(), verified_demod, P64_MODEL_ID, P64_TABLE_SHA256, U85Q_TABLE_SHA256);
+    printf("DEMOD selected=%s verified=%s p64_model=%s p64_table_sha256=%s u85q_table_sha256=%s u50p64_table_sha256=%s "
+           "(console m switches)\n", transport_program_name(), verified_demod, P64_MODEL_ID, P64_TABLE_SHA256,
+           U85Q_TABLE_SHA256, U50P64_TABLE_SHA256);
     printf("TRANSPORT_STAGES_US quiesce=%lu bs_enable=%lu program_load=%lu instruction_verify=%lu lut_verify=%lu "
            "bs_reset=%lu bs_start=%lu rx_enable=%lu tx_enable=%lu rx_start=%lu tx_start=%lu (last restart)\n",
            (unsigned long)s_quiesce_us, (unsigned long)s_stage_us[TR_BS_ENABLE], (unsigned long)s_stage_us[TR_PROGRAM_LOAD],

@@ -24,8 +24,11 @@
  *
  * OA_BATCH windows give medians; a batch whose depth or tip scatter is rejected.
  * The composite span is the larger of the observed tip-to-white and the
- * standard's 3.5 x sync depth (a dark scene must not raise the gain), held
- * with a slow decay. The gain puts that span on OA_SPAN_CODES with the tip
+ * standard's 3.5 x sync depth (a dark scene must not raise the gain), and
+ * its largest value is kept for the whole context: a scene that turns dark
+ * again never raises the gain, so picture content cannot make the level
+ * hunt (each change is a restart). The gain puts that span on OA_SPAN_CODES
+ * with the tip
  * at OUTPUT_AFFINE_TIP, at most OA_SYNC_CODES of sync and OA_GAIN_MAX_Q3.
  * Excursions past the DAC (noise, FM clicks under the tip) saturate, as in a
  * video amplifier.
@@ -35,7 +38,8 @@
  *   down / tip      two agreeing batches when the gain must fall by >= 0.25x
  *                   or the tip moved >= 3 codes (clipping is at stake);
  *   up              four agreeing batches, >= 0.75x more and 30 s since the
- *                   last change.
+ *                   last change (only a deeper sync bound can ask for it:
+ *                   the span itself never shrinks within a context).
  * A context change (channel, decoder, standard, manual OUTPUT) resets all of
  * it and the caller returns to the manual level. Host test:
  * test/test_output_auto.c. No voltage is claimed: the DAC's loaded span is
@@ -61,7 +65,7 @@
 typedef struct {
     uint16_t tip[OA_BATCH], top[OA_BATCH], depth[OA_BATCH];
     unsigned n;
-    unsigned span_hold_x4;        /* tip to white, slow decay; 0 none yet */
+    unsigned span_hold_x4;        /* largest tip-to-white span of this context; 0 none yet */
     unsigned word;                /* applied affine word, 0 = the manual level */
     unsigned want;                /* candidate word, 0 none */
     unsigned agree;               /* consecutive batches agreeing with want */
@@ -133,9 +137,8 @@ static inline bool output_auto_observe(output_auto_t *a, unsigned tip_x4, unsign
     unsigned span = top - tip;
     const unsigned standard = depth * 7u / 2u;      /* sync 40, white 100 of 140 */
     if (span < standard) span = standard;
-    /* Peak hold: up at once, down by 1/16 a batch (a bright scene returns). */
-    if (span >= a->span_hold_x4) a->span_hold_x4 = span;
-    else a->span_hold_x4 -= (a->span_hold_x4 - span + 15u) / 16u;
+    /* Peak hold for the context: a bright scene returns. */
+    if (span > a->span_hold_x4) a->span_hold_x4 = span;
     a->last_tip_x4 = (uint16_t)tip; a->last_depth_x4 = (uint16_t)depth; a->last_span_x4 = (uint16_t)a->span_hold_x4;
     const unsigned cand = output_auto_word(tip, depth, a->span_hold_x4);
     const int g = (int)output_affine_gain_q3(cand), t = (int)output_affine_tip(cand);

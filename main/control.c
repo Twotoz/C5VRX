@@ -143,7 +143,7 @@ static int strength(const metrics_t *m, uint8_t gain)
     return (coherence * 2 + power + headroom) / 4;
 }
 
-/* Decoder P64 <-> U85Q (console m, menu DEMOD), kept in NVS "demod": live, a
+/* Decoder P64 -> U85Q -> U50P64 (console m, menu DEMOD), kept in NVS "demod": live, a
  * verified restart behind the shared 5 s guard; in the menu, applied by the
  * restart on menu exit. */
 static void demod_next(void)
@@ -153,6 +153,24 @@ static void demod_next(void)
     if (ok) (void)blob_store("demod", &next, sizeof(next));
     printf("DEMOD switch to=%s result=%s active=%s%s\n", transport_demod_name(next), ok ? "ok" : "refused",
            transport_program_name(), ok ? "" : " (guard, fault or rollback: T TRANSPORT and DEMOD)");
+}
+
+/* U50P64-R1 follows at most ~5 MHz of instantaneous frequency (loop gain
+ * 0.5) and loses to U80P64-R1 from deviation ~1.2 in the host model
+ * (research/u50p64.py): on a VTX measured wider than U50P64_MAX_DEV_X100 the
+ * session falls back to U80P64-R1. The stored choice is kept: the next boot
+ * starts on it again and decides again on its own measurement. */
+#define U50P64_MAX_DEV_X100 110
+static uint32_t s_demod_fallbacks;
+static void demod_deviation_guard(void)
+{
+    if (transport_demod() != TRANSPORT_DEMOD_U50P64 || s_menu_active) return;
+    const int dev = profile_live_deviation_x100();
+    if (dev < U50P64_MAX_DEV_X100) return;
+    if (!transport_set_demod(TRANSPORT_DEMOD_P64)) return;   /* guard: the next window asks again */
+    ++s_demod_fallbacks;
+    printf("DEMOD fallback to=%s deviation_x100=%d limit=%d (U50P64-R1 is for deviation <= ~1.0)\n",
+           transport_program_name(), dev, U50P64_MAX_DEV_X100);
 }
 
 static void after_retune(void)
@@ -392,7 +410,7 @@ static void command(int c, unsigned *menu_idle)
     }
     switch (c) {
     case 'G': receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); break;
-    /* Decoder P64 <-> U85Q: a verified restart behind the shared 5 s guard. */
+    /* Decoder P64 -> U85Q -> U50P64: a verified restart behind the shared 5 s guard. */
     case 'm': demod_next(); break;
     /* Bench: the real gain step of every table row pair (receiver.c). */
     case 'Q': receiver_pair_sweep_toggle(); break;
@@ -649,6 +667,7 @@ static void control_task(void *arg)
         }
         if (valid) { s_last_video_us = now; standard_vote(r.standard); profile_observe(&r); }
         output_auto_service(valid && gain_epoch == s_gain_epoch, &r, picture, &ps, now);
+        demod_deviation_guard();
         if (!s_afc_enabled && rf_offset_khz() != 0) {
             rf_set_offset_khz(0);
             s_last_gain_write_us = esp_timer_get_time();

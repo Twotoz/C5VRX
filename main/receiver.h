@@ -65,7 +65,9 @@ uint32_t transport_switch_wait_ms(void);
 const char *transport_program_name(void);
 /* Decoder (transport.c): U80P64-R1 (default) or U85Q, each a fixed program
  * with its own LUT; kept in NVS "demod" (main.c, console m). */
-enum { TRANSPORT_DEMOD_P64, TRANSPORT_DEMOD_U85Q, TRANSPORT_DEMODS };
+/* Appended, never reordered: NVS "demod" and the flight log keep these values. */
+enum { TRANSPORT_DEMOD_P64, TRANSPORT_DEMOD_U85Q, TRANSPORT_DEMOD_U50P64, TRANSPORT_DEMODS };
+const char *transport_demod_short(uint8_t d);   /* menu: "P64", "U85Q", "U50" */
 uint8_t transport_demod(void);
 const char *transport_demod_name(uint8_t d);
 bool transport_set_demod(uint8_t d);

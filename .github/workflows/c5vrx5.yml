@@ -189,6 +189,8 @@ jobs:
           /tmp/iqf-test-env/bin/python test/test_p64.py
           /tmp/iqf-test-env/bin/python test/test_picture_sync.py
           /tmp/iqf-test-env/bin/python research/p64_validation.py --check
+      - name: U50P64-R1 range decoder (table, program and transfer gates current)
+        run: /tmp/iqf-test-env/bin/python research/u50p64.py --check
       - name: Historical kp/LP replay (retired policy baseline)
         run: /tmp/iqf-test-env/bin/python research/ladder_gate.py check research/data/ladder_gate_rates.json
       - name: OUTPUT research invariants (DAC-only changes and bounded policy)

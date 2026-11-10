@@ -316,7 +316,7 @@ void receiver_resume(void)
         const int64_t us = esp_timer_get_time() - s_pause_us;
         const uint32_t ms = us < 0 ? 0u : us / 1000 > UINT32_MAX ? UINT32_MAX : (uint32_t)(us / 1000);
         uint8_t d[12] = {(uint8_t)ms, (uint8_t)(ms >> 8), (uint8_t)(ms >> 16), (uint8_t)(ms >> 24)};
-        strncpy((char *)d + 4, s_pause_tag, 8);
+        for (unsigned k = 0; k < 8u && s_pause_tag[k]; ++k) d[4u + k] = (uint8_t)s_pause_tag[k];
         flightlog_event(FLOG_E_PAUSE, d, sizeof(d));
         ++s_pauses;
         s_pause_total_ms += ms;
