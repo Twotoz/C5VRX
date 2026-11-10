@@ -490,6 +490,15 @@ static void output_auto_service(bool sync_confirmed, const afc2_result_t *r, boo
         s_out_auto_key = on ? key : UINT32_MAX;
         return;
     }
+    /* The remembered word must be the one that is live: a manual OUTPUT
+     * cycled away from 1.0x and back inside one menu visit, or a rollback of
+     * another restart, clears the affine word while channel and decoder stay
+     * the same. Without this the next candidates matched the remembered word
+     * and AUTO OUTPUT never applied again in that context. */
+    if (s_out_auto.word && transport_output_word() != s_out_auto.word) {
+        printf("OUTPUT auto reset (live output changed)\n");
+        output_auto_reset(&s_out_auto);
+    }
     /* Confirmed sync below blanking, at least 80 % of this window's sync
      * pulses, levels apart from the bulk: else nothing is learned. */
     if (!sync_confirmed || r->polarity >= 0 || !picture || !s_pic.state.levels || !ps->expected ||
