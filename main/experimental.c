@@ -28,10 +28,13 @@ static bool save(void)
 void experimental_load(void)
 {
     experimental_blob_t b = {.version = EXP_VERSION};
-    if (!blob_load("exp", &b, sizeof(b))) {
-        /* v1 before D10: preserve existing experiments, default clock OFF. */
+    /* Items are appended, never reordered: an older, shorter blob keeps its
+     * experiments and the newer items start on their baseline (before AUTO
+     * OUTPUT: one byte shorter; before Clock Pin D10: two). */
+    for (unsigned missing = 0; missing <= 2u; ++missing) {
         memset(&b, 0, sizeof(b));
-        (void)blob_load("exp", &b, sizeof(b) - 1u);
+        if (blob_load("exp", &b, sizeof(b) - missing)) break;
+        b = (experimental_blob_t){.version = EXP_VERSION};
     }
     if (experimental_blob_valid(&b)) s_exp = b;
     s_clock_d10 = experimental_get(EXP_CLOCK_D10) != 0;

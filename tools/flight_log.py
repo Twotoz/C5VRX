@@ -31,7 +31,7 @@ MAGIC_BLOCK, MAGIC_SNAP = 0x424C3543, 0x534C3543
 
 EVENTS = {1: 'channel', 2: 'profile', 3: 'kp', 4: 'cal_start', 5: 'cal_end', 6: 'dc_cal_needed', 7: 'gain_mode',
           8: 'menu', 9: 'fault', 10: 'dropout', 11: 'recovered', 12: 'snapshot', 13: 'dropped', 14: 'attack',
-          15: 'output_gap', 16: 'output_unlock', 17: 'exp'}
+          15: 'output_gap', 16: 'output_unlock', 17: 'exp', 18: 'output_auto', 19: 'pause'}
 DROPOUT = ['CALIBRATION_OR_PHY', 'FAST_EVIDENCE_LOSS', 'AT_RF_FLOOR', 'DEMOD_CLIFF', 'UNKNOWN']
 SPHASE = ['unverified', 'settled', 'drifted', 'unsettled', 'noise_limited', 'probe_failed']
 # 2: kp0.5 NARROW until 2026-10-23, the menu's XNARROW filter since 2026-10-26.
@@ -41,10 +41,10 @@ RX_REASONS = ['none', 'no_carrier', 'weak_signal', 'dc_clipping', 'overload', 'd
               'owned', 'fault', 'low_picture_snr']
 TRIGGERS = {1: 'dropout', 2: 'vq_drop', 3: 'first_carrier', 4: 'periodic', 5: 'overload', 6: 'edge', 7: 'recover',
             8: 'output_unlock'}
-OUTPUT_DEMODS = {1: 'U85Q 1a09f5c092e8', 2: 'U85Q-LP 1a09f5c092e8', 3: 'U80P64-R1'}
+OUTPUT_DEMODS = {1: 'U85Q 1a09f5c092e8', 2: 'U85Q-LP 1a09f5c092e8', 3: 'U80P64-R1', 4: 'U50P64-R1'}
 EXP_NAMES = ['GAIN', 'PHY FILT', 'AFC', 'DEMOD', 'IQ CORR', 'PHASE REPAIR', 'AUTO PROFILE',
              'FAST GAIN', 'FOLD RADIUS', 'FOLD MEMORY', 'LEVEL TARGET', 'LEVEL RELEASE', 'GAIN RATE',
-             'GAIN CAP', 'LOG CADENCE', 'LNA BIAS', 'CURRENT', 'LOOP CAP', 'SPUR 0', 'IQ LANE', 'CLOCK D10']
+             'GAIN CAP', 'LOG CADENCE', 'LNA BIAS', 'CURRENT', 'LOOP CAP', 'SPUR 0', 'IQ LANE', 'CLOCK D10', 'AUTO OUTPUT']
 OUTPUT_STANDARDS = {1: 'NTSC', 2: 'PAL'}
 
 
@@ -171,7 +171,7 @@ def second(p):
         d['cn_confidence'], d['cn_source'], d['cn_flags'] = p[48] & 3, p[48] >> 2, p[49]
     # Verified output identity and native/assisted sync observer (69-byte records).
     # Defaults are explicit UNKNOWN so old and new records can share one CSV.
-    d.update(output_demod=None, output_level=None, output_standard=None, output_verified=0,
+    d.update(output_demod=None, output_level=None, output_auto_gain=None, output_standard=None, output_verified=0,
              flywheel_requested=0, flywheel_active=0, output_observer_fresh=0,
              native_h_trusted=0, native_v_trusted=0, camera_present=0, output_flag_format=0,
              output_samples=None, output_fresh_samples=None, output_coverage_pct=None,
@@ -187,6 +187,9 @@ def second(p):
         d['output_demod'] = OUTPUT_DEMODS.get(p[51], f'unknown ({p[51]})') if d['output_verified'] else None
         d['output_standard'] = OUTPUT_STANDARDS.get(p[52])
         d['output_level'] = None if p[53] == 0xff else p[53]
+        # 0x80 | gain x8: AUTO OUTPUT (output_auto.h) instead of a manual level
+        if p[53] != 0xff and p[53] & 0x80:
+            d['output_auto_gain'] = (p[53] & 63) / 8
         d['output_samples'], d['output_fresh_samples'] = struct.unpack_from('<HH', p, 54)
         d['output_coverage_pct'] = (round(100 * d['output_fresh_samples'] / d['output_samples'])
                                     if d['output_samples'] else None)
@@ -276,7 +279,13 @@ def decode(image):
                 s['seconds'].append(second(p))
             elif t == 5 and len(p) >= 5:
                 t_ms, kind = struct.unpack_from('<IB', p)
-                s['events'].append({'t_ms': t_ms, 'event': EVENTS.get(kind, str(kind)), 'data': p[5:].hex()})
+                event = {'t_ms': t_ms, 'event': EVENTS.get(kind, str(kind)), 'data': p[5:].hex()}
+                if kind == 19 and len(p) >= 9:      # who paused the receiver, and how long
+                    event['pause_ms'] = struct.unpack_from('<I', p, 5)[0]
+                    event['owner'] = bytes(p[9:17]).split(b'\0')[0].decode('ascii', 'replace')
+                elif kind == 18 and len(p) >= 8:    # AUTO OUTPUT applied
+                    event.update(output_gain=p[5] / 8, source_tip_code=p[6], sync_depth_codes=p[7] / 4)
+                s['events'].append(event)
             elif t == 6 and len(p) >= 6:
                 onset, part, n = struct.unpack_from('<IBB', p)
                 s['traces'].append({'onset_ms': onset, 'part': part, 'entries': [

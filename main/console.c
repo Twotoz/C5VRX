@@ -57,6 +57,8 @@ static void status(void)
     profile_print();
     calibration_print();
     transport_print();
+    output_auto_print();
+    receiver_pause_print();
 }
 
 /* 8190 contiguous IQ bytes as hex lines (tools/capture_iq_snapshot.py). */

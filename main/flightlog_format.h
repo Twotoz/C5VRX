@@ -58,6 +58,8 @@ enum {
     FLOG_E_ATTACK = 14,   /* the window that made the gain step down (receiver.c) */
     FLOG_E_EXP = 17,     /* item, old, new, readback OK */
     FLOG_E_OUTPUT_GAP = 15, FLOG_E_OUTPUT_UNLOCK = 16,
+    FLOG_E_OUTPUT_AUTO = 18,   /* AUTO OUTPUT applied: gain x8, source tip code, sync depth x4 (control.c) */
+    FLOG_E_PAUSE = 19,         /* receiver pause ended: duration ms (u32), first 8 characters of its owner tag */
 };
 
 enum { FLOG_SNAP_DROPOUT = 1, FLOG_SNAP_VQ_DROP = 2, FLOG_SNAP_FIRST_CARRIER = 3, FLOG_SNAP_PERIODIC = 4, FLOG_SNAP_OVERLOAD = 5,
@@ -65,7 +67,8 @@ enum { FLOG_SNAP_DROPOUT = 1, FLOG_SNAP_VQ_DROP = 2, FLOG_SNAP_FIRST_CARRIER = 3
 
 /* Verified program identity. The firmware/session SHA and kp level identify
  * the exact generated LUT; these IDs bind the instruction/model family. */
-enum { FLOG_DEMOD_UNKNOWN = 0, FLOG_DEMOD_U85Q_1A09F5C092E8 = 1, FLOG_DEMOD_U85Q_LP_1A09F5C092E8 = 2, FLOG_DEMOD_P64_R1 = 3 };
+enum { FLOG_DEMOD_UNKNOWN = 0, FLOG_DEMOD_U85Q_1A09F5C092E8 = 1, FLOG_DEMOD_U85Q_LP_1A09F5C092E8 = 2, FLOG_DEMOD_P64_R1 = 3,
+       FLOG_DEMOD_U50P64_R1 = 4 };
 /* Bits 1..7 were the sync flywheel's (removed 2026-10-25); kept so old
  * logs decode. Current firmware sets only DEMOD_VERIFIED. */
 enum {

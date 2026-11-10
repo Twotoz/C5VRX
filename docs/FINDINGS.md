@@ -1,5 +1,113 @@
 # C5VRX-5 findings
 
+## Video level, range decoder, survival row and pause records (2026-11-10, host only)
+
+C5VRX by Twotoz and the C5VRX contributors. Operator question: the picture
+goes at about -85 dBm while the receiver noise reads -95 dBm in 12 MHz; can
+the firmware do better, and can it behave like a normal analog receiver?
+This extends issue #200 (manual OUTPUT, `research/output_level.py`), the
+U80P64-R1 work (PR #250, docs/P64.md), the retired kp ladder
+(`research/legacy_demod`), LEVEL (PR #266) and the "Next steps (2026-10-29)"
+below. **Nothing here was flashed or measured on a board.**
+
+**Reading of the existing evidence.**
+- -95 dBm is the noise in the 12.9 MHz noise bandwidth (C/N 0 dB), not a
+  video sensitivity; -85 dBm is C/N ~12 dB on the meter's own noise scale.
+- Edge snapshots called lost hold clean syncs through P64, U85Q and a float
+  discriminator at C/N 8.7-11 dB ("Range edge audit"), so the loss is not
+  receiver noise or the decoder table. Check here: the real U80P64-R1 table
+  on a synthetic sync/porch signal keeps the levels (-2.34 / -1.00 MHz at
+  deviation 0.68) and an ideal slicer misses 0.6 % of sync samples at
+  C/N 12 dB and 2.6 % at 6 dB.
+- The noise figure cannot be moved from firmware (PHY_NOISE_RESULTS).
+- The operator's VTX has deviation ~0.66-0.73. Above threshold the video
+  SNR follows the deviation squared: 6 dB less than the deviation 1.4 VTX of
+  the 2026-10-20 -92 dBm rating, at the same pin level.
+- The dBm meter is anchored on the 2026-10-19 calibration at 5180 MHz, from
+  before 11p and digital mode 12. It reads C/N over the receiver's own noise;
+  a loss of signal or noise figure in the current receive state would not
+  show in it. The absolute check (research/nfprobe) was not repeated.
+
+**AUTO OUTPUT** (`main/output_auto.h`, EXPERIMENTAL > AUTO OUTPUT, default
+ON; `test/test_output_auto.c`). OUTPUT 1.0x maps -6..+9 MHz onto the 64 DAC
+codes, so a deviation 0.69 VTX uses ~19 of them and its sync is ~5.5 codes
+(issue #200 model: 0.060 V loaded against 0.286 V of CVBS; deviation 1.0:
+0.089 V). The 2026-10-12 study named what a live version needs; this is
+that policy:
+- evidence of the unscaled live decoder per control window: sync tip (3rd
+  percentile) and peak white (99.5th) of the decoded video
+  (`picture_sync.h`), sync depth from the AFC's confirmed sync and porch;
+- only windows with confirmed sync and >= 80 % of their sync pulses; batches
+  of 16, rejected on scatter; weak or missing video holds the setting;
+- the composite span is the larger of the observed tip-to-white and 3.5 x
+  the sync depth (a dark scene cannot raise the gain), its largest value
+  kept for the channel, so picture content cannot make the level hunt; the
+  gain puts it on 57 codes with the tip at code 3, at most 4.0x;
+- applied as an affine output word by the existing verified restart, guard
+  and rollback: the first setting after two agreeing batches (~2 s), down or
+  a moved tip after two, up only after four and 30 s;
+- a manual OUTPUT other than 1.0x wins; a channel or decoder change starts
+  from the manual level again.
+
+Host: deviation 0.69 gets 2.88x (sync 5.5 -> 14 codes, white at 58),
+deviation 1.0 1.88x, the issue #200 levels 2.00x, deviation 1.7 is left
+alone. No voltage is claimed: the DAC's loaded span is not calibrated.
+The flight log stores `0x80 | gain x8` as the output level and an
+`output_auto` event per change.
+
+**U50P64-R1** (`research/u50p64.py`, `main/u50p64.bsasm`, menu DEMOD and
+console m: P64 -> U85Q -> U50, never automatic, P64 stays the default). The
+U80P64-R1 formulas and program with loop gain 0.50 for video and sync. Host
+model, fresh seeds 7301-7304, PAL and NTSC, 12 MHz filter, luma SINAD against
+U80P64-R1 (`research/data/u50p64_validation.json`):
+
+| deviation | C/N 0 | 2 | 4 | 6 | 9 | 12 | 20 dB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.6 | +2.3 | +2.8 | +2.9 | +2.8 | +2.3 | +1.7 | +0.4 |
+| 0.7 | +2.2 | +2.6 | +2.7 | +2.6 | +2.0 | +1.4 | +0.1 |
+| 1.0 | +0.9 | +0.9 | +1.2 | +1.6 | +1.1 | +0.3 | -1.3 |
+| 1.2 | -0.3 | -0.9 | -1.5 | -1.7 | -1.2 | -1.1 | -1.9 |
+| 1.4 | -1.0 | -2.2 | -4.1 | -6.2 | -8.0 | -8.3 | -7.9 |
+
+Line lock is equal at deviation 0.7-1.0; at 0.6 it dipped at one point
+(0.80 against 0.99 at 2 dB). The gain is a narrower loop: a one-pole
+low-pass near 2.3 MHz, the colour subcarrier ~5-6 dB down, and at most
+5 MHz of instantaneous frequency before the loop slips. It trades detail
+and colour level for range and is wrong for a wide VTX: a session whose
+measured deviation is 1.10 or more falls back to U80P64-R1 (the stored
+choice is kept). C/N here is per 20 MHz before the filter. Tried and not
+kept: loop gain 0.45-0.60 without the sync regime (lock lost under 2 dB).
+
+**LEVEL survival row** (`main/agc.c` `LEVEL_EDGE_CN_DB`). A carrier at or
+under 6 dB C/N, or none, scores the top row highest, so LEVEL waits on the
+known high-gain row instead of one or two home rows down (board: G79 with no
+carrier). `test_agc_compare`: score 70.47 -> 70.48, writes 1.6 -> 1.7 /s,
+edge 3 dB 42.6 -> 42.6 %, with gain-model error 70.07 -> 70.04: neutral in
+the model, where the row choice hardly matters at the edge.
+
+**Pause records** (`FLOG_E_PAUSE`, T `PAUSES`). Every receiver pause is
+logged with its owner tag and duration, and counted when video was seen in
+the 3 s before it: the open point of walk 300 (11 % of the seconds owned or
+paused, owner unknown).
+
+**Not done, and why.**
+- A default noise reference from the gain model: without an exact-context
+  reference the AFC and profile decisions must read UNKNOWN (AGENTS.md).
+- A gain write that stays in PBUS debug mode. Every write leaves it
+  (`rf_set_gain`: release, vendor gain 50 for ~2 us, the chip's own DC until
+  the post-gain hook holds again; no hold when the row is banned or the
+  receiver paused). The blackbox cost is ~7 ms of picture per write, but no
+  raw IQ across one write exists; it needs a board prototype with a register
+  diff first.
+- Automatic decoder or filter selection: the kp policies stay retired and
+  the profile does not change in flight (operator decisions).
+
+**Board checks that decide this** (in order): OUTPUT AUTO against 1.0x on
+the low-deviation VTX at the edge (goggle sync, white clipping, colour);
+a fixed-gain walk against LEVEL; U50 against P64 on the same walk
+(`picture_pct`, colour); the static attenuator threshold; T `PAUSES` after
+a walk; research/nfprobe on the current receive state.
+
 ## D10 sample clock and six-bit DAC (2026-10-31)
 
 Operator decision in PR #257 (2026-10-30): abandon planned 7/8-bit DAC
