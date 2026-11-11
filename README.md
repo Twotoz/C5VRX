@@ -106,7 +106,8 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
   with a common ground. Standard E24 1 % resistors are fine; keep the wires
   short. Power comes over USB-C or the 5 V pin.
 - The video level adjusts itself to the VTX (EXPERIMENTAL > AUTO OUTPUT, on
-  by default) while **OUTPUT** is 1.0x. Still too dim on some goggles: raise
+  by default) while **OUTPUT** is 1.0x: the same sync and black level for
+  every VTX, held when the signal gets weak. Still too dim on some goggles: raise
   OUTPUT in the menu (0.5–5.0x, saved; a manual level switches the automatic
   one off and high levels can clip).
 - **Check the build with the DAC self-test** (`Z` or menu DAC TEST) before

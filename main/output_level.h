@@ -16,13 +16,20 @@
  * lines kept 0.92 at 1.0x, 0.51 with the tip on code 3, 0.91 on code 16. */
 #define OUTPUT_AFFINE      0x8000u
 #define OUTPUT_AFFINE_TIP  16
-static inline unsigned output_affine(unsigned gain_q3, unsigned src_tip)
+/* Word: bit 15, gain_q3 in bits 6..11, the source tip in quarter codes: whole
+ * codes in bits 0..5, quarters in bits 12..13. A whole-code tip left the
+ * output tip up to gain / 2 codes off its target (1.5 codes at 3x), which
+ * made the output levels differ between VTXs (research/output_consistency.py). */
+static inline unsigned output_affine_x4(unsigned gain_q3, unsigned src_tip_x4)
 {
-    return OUTPUT_AFFINE | (gain_q3 & 63u) << 6 | (src_tip & 63u);
+    if (src_tip_x4 > 255u) src_tip_x4 = 255u;
+    return OUTPUT_AFFINE | (src_tip_x4 & 3u) << 12 | (gain_q3 & 63u) << 6 | src_tip_x4 >> 2;
 }
+static inline unsigned output_affine(unsigned gain_q3, unsigned src_tip) { return output_affine_x4(gain_q3, 4u * (src_tip & 63u)); }
 static inline bool output_is_affine(unsigned word) { return (word & OUTPUT_AFFINE) != 0u; }
 static inline unsigned output_affine_gain_q3(unsigned word) { return (word >> 6) & 63u; }
-static inline unsigned output_affine_tip(unsigned word) { return word & 63u; }
+static inline unsigned output_affine_tip(unsigned word) { return word & 63u; }   /* whole codes */
+static inline unsigned output_affine_tip_x4(unsigned word) { return (word & 63u) << 2 | ((word >> 12) & 3u); }
 
 static inline uint16_t output_entry(uint16_t value, unsigned level, bool *clipped)
 {
@@ -32,9 +39,9 @@ static inline uint16_t output_entry(uint16_t value, unsigned level, bool *clippe
     static const int scale[OUTPUT_LEVELS] = { 2,  3,  4,  5,  6,  7,  8,  9, 10,  1};
     int code;
     if (output_is_affine(level)) {
-        const int x8 = 8 * OUTPUT_AFFINE_TIP +
-                       (int)output_affine_gain_q3(level) * ((int)(value & 63u) - (int)output_affine_tip(level));
-        code = x8 + 4 >= 0 ? (x8 + 4) / 8 : -((-(x8 + 4) + 7) / 8);   /* floor: nearest code, ties up */
+        const int x32 = 32 * OUTPUT_AFFINE_TIP +
+                        (int)output_affine_gain_q3(level) * (4 * (int)(value & 63u) - (int)output_affine_tip_x4(level));
+        code = x32 + 16 >= 0 ? (x32 + 16) / 32 : -((-(x32 + 16) + 31) / 32);   /* floor: nearest code, ties up */
     } else {
         if (level >= OUTPUT_LEVELS) level = 0;
         int twice = 2 * pivot[level] + scale[level] * ((int)(value & 63u) - 21);

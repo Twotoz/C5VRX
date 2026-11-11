@@ -1,5 +1,101 @@
 # C5VRX-5 findings
 
+## AUTO OUTPUT: fixed output reference levels (2026-11-11, host only)
+
+C5VRX by Twotoz and the C5VRX contributors. Operator review of PR #302: AUTO
+OUTPUT needs one invariant, **the analog CVBS reference levels stay the
+same** whatever the RF level, the gain row, the VTX deviation or the decoder;
+the picture may degrade, the levels may not follow the reception. This
+extends AUTO OUTPUT (PR #301, the two sections below), issue #200
+(`research/output_level.py`) and `research/output_tip_headroom.py`.
+**Nothing here was flashed or measured on a board or into 75 ohm.**
+
+**Acceptance run.** `research/output_consistency.py` (CI) lets the firmware's
+own code decide: a C harness built from `main/` runs `afc2_measure`,
+`picture_sync_window` and `output_auto_observe` with the gates of
+`output_auto_service` on 8190-byte control windows of simulated IQ (sim.py,
+physical ADC, ultrafine lane); `output_entry` maps the noise-free decode of
+the same VTX to the DAC. Levels are DAC codes after the goggle's 5 MHz
+low-pass. Per VTX (NTSC/PAL, deviation 0.5/0.7/1.0/1.3) and decoder
+(U80P64-R1, U50P64-R1): learn at C/N 30 dB; a walk down to 0 dB and back with
+the ADC radius changing 3.0/4.2/5.5 cells per step (the gain row); a cold
+start at C/N 12..2 dB (30 s). One VTX with the issue #200 levels (white 1.57 x
+the standard) checks the DAC bound.
+
+**What the PR #301/#302 policy did** (same run, before this change):
+
+| measure | before | now | limit |
+| --- | ---: | ---: | ---: |
+| level change within one context (walk) | 4.5 codes | 0.0 | 1.0 |
+| sync tip across VTXs and decoders | 7.2 codes | 1.4 | 2.0 |
+| blanking across VTXs and decoders | 8.9 codes | 0.8 | 2.0 |
+| sync depth across VTXs and decoders | 2.4 codes | 1.8 | 2.0 |
+| peak white across VTXs and decoders | 14.7 codes | 1.4 | (reported) |
+
+Three causes:
+- the gain came from the picture (peak white on code 60), not from the sync:
+  the 99.5th percentile grows with noise (33.75 -> 37 codes from C/N 30 to
+  4 dB at deviation 0.7), windows at C/N 6-8 dB still qualified, and the span
+  was kept for the context: a fade lowered the gain for good (PAL deviation
+  0.7: 2.25x -> 2.0x on the way back);
+- a setting under 1.25x was never applied and the gain could not go under
+  1.0x: a deviation 1.3 VTX stayed at 1.0x with its tip on code 10.5;
+- the tip was the 3rd percentile of the decoded video in whole source codes:
+  ~1 code under the sync level for U80P64-R1, plus up to half a code of
+  rounding, times the gain (PAL deviation 0.7: tip on 17.7 with U80, 17.1
+  with U50).
+
+**The policy now** (`main/output_auto.h`):
+- targets: sync tip on DAC code 16, blanking 12.5 codes above it (28.5),
+  white wherever the VTX sends it at that gain (code 60 for 100 IRE);
+- the gain is the sync depth target over the measured sync depth, 0.5x..4.0x,
+  nearest eighth; the picture does not enter it. Only a white that would pass
+  code 63 by more than 3 codes lowers the gain (issue #200 levels), from the
+  peak white of strong batches, kept while the sync depth stays within 12 %;
+- sync level and sync depth both come from the AFC's burst/timing-confirmed
+  levels on the decoders' frequency map. Model: within 0.3 codes of the
+  low-passed decoded sync level for both decoders, and unchanged from C/N 30
+  to 4 dB (depth 5.50 codes throughout at deviation 0.7);
+- the output word carries the source tip in quarter codes
+  (`output_level.h`);
+- trust: a batch of 16 qualified windows is strong when at most 8 other
+  windows fell between them. A weak batch never changes a setting (hold
+  through fades, FM clicks, lost sync, gain writes). With no setting yet, four
+  agreeing weak batches set a provisional one, which two strong batches may
+  correct from one gain step on;
+- hysteresis: a confirmed setting moves only for 0.25x or 3 tip codes; up
+  needs four strong batches and 30 s;
+- a decoder change keeps the level (provisional) instead of returning to
+  1.0x; a channel change or a manual OUTPUT starts again.
+
+**Result** (model): sync tip 16.0-17.4, blanking 28.8-29.6, sync depth
+11.8-13.6, white 57.8-59.2 codes over every standard VTX, decoder, C/N and
+radius of the run; nothing moved during the walk. Modelled into 75 ohm
+(3.3 V GPIO, nominal resistors, 200 ohm series): sync 0.117-0.131 V, video
+0.284-0.298 V, where 1.0x gave 0.041-0.107 V and 0.088-0.233 V.
+
+**Limits.**
+- The hardware does not reach 1 Vpp: the modelled DAC is 0.62 V full scale
+  into 75 ohm, so the fixed levels are ~42 % of CVBS (0.286 / 0.714 V) with
+  the standard's proportions (sync : video 0.42, standard 0.40). More would
+  need another output network, not firmware.
+- A cold start learns the level from C/N 8 dB for every VTX of the run within
+  30 s (6 dB from deviation 0.7, 4 dB from 1.0); below that there is no
+  trustworthy sync and the output stays at 1.0x until there is. A level
+  learned weak was within 1.9 codes of the strong one.
+- The issue #200 VTX holds its level too, with a shallower sync (8.7-10.4
+  codes): its white fills the DAC. Learned weak, its white peak is under-read
+  until a strong batch arrives (6.8 % of samples on code 63 in one case).
+- The AFC levels are read on the decoders' nominal map (-6..+9 MHz on 63
+  codes); a decoder whose output differs from it on the board shifts the tip
+  by that much. The model has no IQ imbalance, DC or filter ripple.
+
+**Board checks that decide this:** sync tip, blanking and white on a scope
+into 75 ohm for two VTX deviations, U50 and P64, at strong signal and through
+an attenuated walk (levels must not move; `OUTPUT_AUTO` on console T shows the
+word, `provisional` and the weak batch count); goggle sync and white clipping
+against OUTPUT 1.0x.
+
 ## Edge window: sync-tip room, U50 default, lanes and DC (2026-11-10, host only)
 
 C5VRX by Twotoz and the C5VRX contributors. Operator question: where can the
@@ -149,6 +245,8 @@ codes, so a deviation 0.69 VTX uses ~19 of them and its sync is ~5.5 codes
 (issue #200 model: 0.060 V loaded against 0.286 V of CVBS; deviation 1.0:
 0.089 V). The 2026-10-12 study named what a live version needs; this is
 that policy:
+- (superseded 2026-11-11 by "AUTO OUTPUT: fixed output reference levels"
+  above: the gain now comes from the sync depth, not the picture span)
 - evidence of the unscaled live decoder per control window: sync tip (3rd
   percentile) and peak white (99.5th) of the decoded video
   (`picture_sync.h`), sync depth from the AFC's confirmed sync and porch;

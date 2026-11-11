@@ -195,6 +195,8 @@ jobs:
         run: /tmp/iqf-test-env/bin/python research/ladder_gate.py check research/data/ladder_gate_rates.json
       - name: OUTPUT research invariants (DAC-only changes and bounded policy)
         run: /tmp/iqf-test-env/bin/python research/output_level.py --check
+      - name: AUTO OUTPUT level consistency (reference levels across deviation, C/N, gain row and decoder)
+        run: OPENBLAS_NUM_THREADS=1 /tmp/iqf-test-env/bin/python research/output_consistency.py --check
       - name: LEVEL quality table (level_quality.h matches the measured demod grid)
         run: /tmp/iqf-test-env/bin/python research/level_quality.py --check
       - name: Fold radius table (fold_radius_table.h matches the hardware fold model)

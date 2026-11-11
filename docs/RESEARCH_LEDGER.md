@@ -45,6 +45,21 @@ live lane change, no PHY write and no board measurement: a route change on a
 carrier and a gain write that stays in PBUS debug mode are open board
 prototypes. See docs/FINDINGS.md "Edge window".
 
+## AUTO OUTPUT level consistency (2026-11-11, host only)
+
+Extends AUTO OUTPUT (PR #301/#302), issue #200's OUTPUT study and the AFC's
+burst/timing-confirmed sync and porch levels (AFC V2, issue #115). Operator
+invariant: fixed output reference levels whatever the RF level, gain row, VTX
+deviation or decoder. `research/output_consistency.py` runs the firmware
+headers on simulated control windows and found the PR #301/#302 policy moving
+the level with the reception (noise read as white, kept for the context) and
+leaving wide VTXs unnormalised. The gain now comes from the AFC sync depth,
+the tip from the AFC sync level, weak batches hold. CPU side only (control
+task, one verified restart per change); the sample path, RX40, raw 32 KiB
+ring, two lookups and DAC20 at TX40 are unchanged. No board, goggle or 75 ohm
+measurement. See docs/FINDINGS.md "AUTO OUTPUT: fixed output reference
+levels".
+
 C5VRX by Twotoz and the C5VRX contributors. This is the project's research
 provenance ledger, moved verbatim from `AGENTS.md` on 2026-10-28 so that the
 agent instructions there carry only the current C5VRX-5 rules. The

@@ -136,8 +136,9 @@ uptime (ms) and type, then:
   the best radius before the fit check (0: the row too noisy to estimate) and
   the fit (1/192 nat per sample, taken at >= -38). LEVEL logs it only
   (`LEVEL_FOLD_RADIUS` 0 in agc.c).
-- **AUTO OUTPUT applied** (`output_auto`): gain x8, source sync-tip code,
-  sync depth in DAC codes x4 (`main/output_auto.h`);
+- **AUTO OUTPUT applied** (`output_auto`): gain x8, source sync-tip code
+  (whole codes; the word itself holds quarter codes), sync depth in DAC
+  codes x4 (`main/output_auto.h`);
 - **receiver pause ended** (`pause`): duration in ms and the first eight
   characters of the owner tag (`SCAN`, `DCO`, `SPHASE`, ...), so a second
   marked owned or paused names who held the receiver.

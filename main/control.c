@@ -469,26 +469,34 @@ static uint32_t s_vq_periods;
 /* Picture measure totals and its CPU cost per window (T PICTURE). */
 static struct { picture_state_t state; uint32_t found, expected, windows, us_max; uint64_t us_sum; } s_pic;
 
-/* AUTO OUTPUT (output_auto.h): the video level from the measured sync tip,
- * sync depth and peak white of the live decoder. Context: the channel and
- * the decoder; another one starts from the manual level again. */
+/* AUTO OUTPUT (output_auto.h): fixed output reference levels from the
+ * measured sync tip and sync depth of the live decoder. Context: the
+ * channel; another one starts from the manual level again. Another decoder
+ * on the same channel keeps the level (the sync depth is the AFC's) and
+ * lets strong evidence correct it. */
 static output_auto_t s_out_auto;
-static uint32_t s_out_auto_key = UINT32_MAX;
+static uint32_t s_out_auto_channel = UINT32_MAX;
+static unsigned s_out_auto_demod;
 static uint32_t s_out_auto_windows, s_out_auto_refused;
 static void output_auto_service(bool sync_confirmed, const afc2_result_t *r, bool picture, const picture_sync_t *ps,
                                 int64_t now)
 {
     const bool on = !experimental_get(EXP_OUTPUT_AUTO) && transport_output() == 0u && !s_menu_active;
-    const uint32_t key = (uint32_t)rf_channel_index() << 8 | transport_demod();
-    if (!on || key != s_out_auto_key) {
+    const uint32_t channel = (uint32_t)rf_channel_index();
+    if (!on || channel != s_out_auto_channel) {
         /* Back to the manual level first; a refusal (the shared guard) is
          * tried again on the next window. Then measure this context afresh. */
         if (s_menu_active) return;
         if (!transport_set_output_affine(0u)) return;
         if (s_out_auto.word) printf("OUTPUT auto reset (%s)\n", on ? "context" : "off");
         output_auto_reset(&s_out_auto);
-        s_out_auto_key = on ? key : UINT32_MAX;
+        s_out_auto_channel = on ? channel : UINT32_MAX;
+        s_out_auto_demod = transport_demod();
         return;
+    }
+    if (transport_demod() != s_out_auto_demod) {
+        s_out_auto_demod = transport_demod();
+        output_auto_requalify(&s_out_auto);
     }
     /* The remembered word must be the one that is live: a manual OUTPUT
      * cycled away from 1.0x and back inside one menu visit, or a rollback of
@@ -500,33 +508,39 @@ static void output_auto_service(bool sync_confirmed, const afc2_result_t *r, boo
         output_auto_reset(&s_out_auto);
     }
     /* Confirmed sync below blanking, at least 80 % of this window's sync
-     * pulses, levels apart from the bulk: else nothing is learned. */
-    if (!sync_confirmed || r->polarity >= 0 || !picture || !s_pic.state.levels || !ps->expected ||
-        ps->found * 5u < ps->expected * 4u) return;
+     * pulses, levels apart from the bulk: else nothing is learned, and the
+     * batch this window falls in counts as weaker evidence. */
     const int32_t depth_khz = r->porch_khz - r->sync_khz;
-    if (depth_khz <= 0) return;
+    if (!sync_confirmed || r->polarity >= 0 || !picture || !s_pic.state.levels || !ps->expected ||
+        ps->found * 5u < ps->expected * 4u || depth_khz <= 0) {
+        output_auto_miss(&s_out_auto);
+        return;
+    }
     ++s_out_auto_windows;
-    /* DAC codes x4: 63 codes over -6..+9 MHz. */
+    /* DAC codes x4: 63 codes over -6..+9 MHz. The tip is the AFC's sync level
+     * on that map, not a percentile of the decoded video. */
     const unsigned depth_x4 = (unsigned)(depth_khz * 252 / 15000);
     unsigned word;
-    if (!output_auto_observe(&s_out_auto, s_pic.state.tip_x4, s_pic.state.top_x4, depth_x4, now, &word)) return;
+    if (!output_auto_observe(&s_out_auto, output_auto_code_x4(r->sync_khz), s_pic.state.top_x4, depth_x4, now, &word)) return;
     if (transport_set_output_affine(word)) {
         output_auto_applied(&s_out_auto, word, now);
         const uint8_t e[3] = {(uint8_t)output_affine_gain_q3(word), (uint8_t)output_affine_tip(word),
                               (uint8_t)(s_out_auto.last_depth_x4 > 255u ? 255u : s_out_auto.last_depth_x4)};
         flightlog_event(FLOG_E_OUTPUT_AUTO, e, sizeof(e));
-        printf("OUTPUT auto gain_x8=%u src_tip=%u depth_x4=%u span_x4=%u (%s)\n", output_affine_gain_q3(word),
-               output_affine_tip(word), s_out_auto.last_depth_x4, s_out_auto.last_span_x4, transport_output_name());
+        printf("OUTPUT auto gain_x8=%u src_tip_x4=%u depth_x4=%u span_x4=%u provisional=%u (%s)\n",
+               output_affine_gain_q3(word), output_affine_tip_x4(word), s_out_auto.last_depth_x4,
+               s_out_auto.last_span_x4, s_out_auto.provisional, transport_output_name());
     } else ++s_out_auto_refused;   /* guard or rollback: the candidate stays, the next batch asks again */
 }
 void output_auto_print(void)
 {
-    printf("OUTPUT_AUTO enabled=%u word_gain_x8=%u src_tip=%u batches=%lu rejected=%lu applied=%lu refused=%lu "
-           "windows=%lu tip_x4=%u depth_x4=%u span_x4=%u live=%s\n", !experimental_get(EXP_OUTPUT_AUTO),
-           s_out_auto.word ? output_affine_gain_q3(s_out_auto.word) : 8u, s_out_auto.word ? output_affine_tip(s_out_auto.word) : 0u,
-           (unsigned long)s_out_auto.batches, (unsigned long)s_out_auto.rejected, (unsigned long)s_out_auto.applied,
-           (unsigned long)s_out_auto_refused, (unsigned long)s_out_auto_windows, s_out_auto.last_tip_x4,
-           s_out_auto.last_depth_x4, s_out_auto.last_span_x4, transport_output_name());
+    printf("OUTPUT_AUTO enabled=%u word_gain_x8=%u src_tip_x4=%u provisional=%u batches=%lu weak=%lu rejected=%lu "
+           "applied=%lu refused=%lu windows=%lu tip_x4=%u depth_x4=%u span_x4=%u live=%s\n", !experimental_get(EXP_OUTPUT_AUTO),
+           s_out_auto.word ? output_affine_gain_q3(s_out_auto.word) : 8u,
+           s_out_auto.word ? output_affine_tip_x4(s_out_auto.word) : 0u, s_out_auto.provisional,
+           (unsigned long)s_out_auto.batches, (unsigned long)s_out_auto.weak, (unsigned long)s_out_auto.rejected,
+           (unsigned long)s_out_auto.applied, (unsigned long)s_out_auto_refused, (unsigned long)s_out_auto_windows,
+           s_out_auto.last_tip_x4, s_out_auto.last_depth_x4, s_out_auto.last_span_x4, transport_output_name());
 }
 
 static bool copy_afc_window(uint8_t *dst)
