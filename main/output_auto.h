@@ -10,8 +10,8 @@
  * Invariant (operator, PR #302 review): the output reference levels are the
  * same whatever the RF level, the gain row, the VTX deviation or the decoder.
  * The picture may get noisier; the levels must not follow the reception.
- *   sync tip   DAC code OUTPUT_AFFINE_TIP (16);
- *   blanking   OA_SYNC_X4 / 4 = 12.5 codes above it (code 28.5);
+ *   sync tip   DAC code OUTPUT_AFFINE_TIP (20);
+ *   blanking   OA_SYNC_X4 / 4 = 11.5 codes above it (code 31.5);
  *   white      what the VTX sends above blanking, at the same gain: code 60
  *              for the standard's 100 IRE (sync 40 of 140).
  * So the gain comes from the sync depth alone, not from the picture: scene
@@ -70,7 +70,7 @@
 #include "output_level.h"
 
 #define OA_BATCH          16u
-#define OA_SYNC_X4        50      /* sync depth target, 12.5 codes: 40/140 of tip 16 .. white 60 */
+#define OA_SYNC_X4        46      /* sync depth target, 11.5 codes: 40/140 of tip 20 .. white 60 */
 #define OA_WHITE_ROOM     (63 - OUTPUT_AFFINE_TIP)   /* codes above the tip the DAC has */
 #define OA_WHITE_OVER     3       /* peak white this far past code 63 before the gain gives way */
 #define OA_WEAK_OVER      5       /* and this much further for the noisy peak of a weak batch */

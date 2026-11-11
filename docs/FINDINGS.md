@@ -27,10 +27,10 @@ the standard) checks the DAC bound.
 | measure | before | now | limit |
 | --- | ---: | ---: | ---: |
 | level change within one context (walk) | 4.5 codes | 0.0 | 1.0 |
-| sync tip across VTXs and decoders | 7.2 codes | 1.4 | 2.0 |
+| sync tip across VTXs and decoders | 7.2 codes | 1.1 | 2.0 |
 | blanking across VTXs and decoders | 8.9 codes | 0.8 | 2.0 |
 | sync depth across VTXs and decoders | 2.4 codes | 1.8 | 2.0 |
-| peak white across VTXs and decoders | 14.7 codes | 1.4 | (reported) |
+| peak white across VTXs and decoders | 14.7 codes | 2.0 | (reported) |
 
 Three causes:
 - the gain came from the picture (peak white on code 60), not from the sync:
@@ -46,7 +46,7 @@ Three causes:
   with U50).
 
 **The policy now** (`main/output_auto.h`):
-- targets: sync tip on DAC code 16, blanking 12.5 codes above it (28.5),
+- targets: sync tip on DAC code 20, blanking 11.5 codes above it (31.5),
   white wherever the VTX sends it at that gain (code 60 for 100 IRE);
 - the gain is the sync depth target over the measured sync depth, 0.5x..4.0x,
   nearest eighth; the picture does not enter it. Only a white that would pass
@@ -68,24 +68,48 @@ Three causes:
 - a decoder change keeps the level (provisional) instead of returning to
   1.0x; a channel change or a manual OUTPUT starts again.
 
-**Result** (model): sync tip 16.0-17.4, blanking 28.8-29.6, sync depth
-11.8-13.6, white 57.8-59.2 codes over every standard VTX, decoder, C/N and
+**Result** (model): sync tip 20.0-21.1, blanking 31.8-32.6, sync depth
+10.8-12.6, white 58.7-60.7 codes over every standard VTX, decoder, C/N and
 radius of the run; nothing moved during the walk. Modelled into 75 ohm
-(3.3 V GPIO, nominal resistors, 200 ohm series): sync 0.117-0.131 V, video
-0.284-0.298 V, where 1.0x gave 0.041-0.107 V and 0.088-0.233 V.
+(3.3 V GPIO, nominal resistors, 200 ohm series): sync 0.108-0.122 V, video
+0.265-0.285 V, where 1.0x gave 0.041-0.107 V and 0.088-0.233 V.
+
+**The tip moved from code 16 to code 20.** The room under the tip counts in
+source codes, tip / gain. PR #302 chose code 16 from a table whose U80P64-R1
+gain was 1.75x at deviation 0.7 (its script read the sync depth off the raw
+decode: 7 codes where the low-passed depth is 5.3). At the gain the fixed
+sync depth needs, `research/output_tip_headroom.py` (now with the levels the
+firmware reads and the quarter-code tip; white stays on code 60 for every
+tip), lines kept, NTSC deviation 0.7:
+
+| decoder | C/N | 1.0x | tip 3 | tip 10 | tip 16 | tip 20 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| U80P64-R1 | 0 dB | 0.46 | 0.00 | 0.00 | 0.38 | 0.57 |
+| U80P64-R1 | 1 dB | 0.69 | 0.00 | 0.20 | 0.79 | 0.86 |
+| U80P64-R1 | 2 dB | 0.92 | 0.21 | 0.39 | 0.87 | 0.90 |
+| U50P64-R1 | 0 dB | 0.46 | 0.02 | 0.26 | 0.37 | 0.57 |
+| U50P64-R1 | 1 dB | 0.54 | 0.35 | 0.71 | 0.57 | 0.74 |
+| U50P64-R1 | 2 dB | 0.71 | 0.53 | 0.72 | 0.74 | 0.75 |
+
+PAL deviation 1.0 (gain 1.4-1.6x) is within 0.02 of 1.0x on tip 20 except
+U80P64-R1 at 0 dB (0.46 against 0.51). From 3 dB tips 10-20 keep 0.97 or
+more. With the tip on 20 and white on 60 the sync is 11.5 codes instead of
+12.5: 8 % less level for the room. A model of one slicer; the goggle walk
+decides.
 
 **Limits.**
 - The hardware does not reach 1 Vpp: the modelled DAC is 0.62 V full scale
-  into 75 ohm, so the fixed levels are ~42 % of CVBS (0.286 / 0.714 V) with
+  into 75 ohm, so the fixed levels are ~40 % of CVBS (0.286 / 0.714 V) with
   the standard's proportions (sync : video 0.42, standard 0.40). More would
   need another output network, not firmware.
 - A cold start learns the level from C/N 8 dB for every VTX of the run within
   30 s (6 dB from deviation 0.7, 4 dB from 1.0); below that there is no
   trustworthy sync and the output stays at 1.0x until there is. A level
-  learned weak was within 1.9 codes of the strong one.
-- The issue #200 VTX holds its level too, with a shallower sync (8.7-10.4
+  learned weak was within 2.0 codes of the strong one.
+- The issue #200 VTX holds its level too, with a shallower sync (8.8-8.9
   codes): its white fills the DAC. Learned weak, its white peak is under-read
-  until a strong batch arrives (6.8 % of samples on code 63 in one case).
+  until a strong batch arrives (up to 3.1 codes off, 14 % of samples on code
+  63 in one case at C/N 6 dB with U50P64-R1).
 - The AFC levels are read on the decoders' nominal map (-6..+9 MHz on 63
   codes); a decoder whose output differs from it on the board shifts the tip
   by that much. The model has no IQ imbalance, DC or filter ripple.
@@ -130,13 +154,18 @@ at the edge as the policy does; four seeds), lines kept, NTSC deviation 0.7:
 | U50P64-R1 | 1 dB | 0.54 | 0.37 | 0.69 | 0.73 | 0.74 |
 | U50P64-R1 | 2 dB | 0.71 | 0.68 | 0.73 | 0.69 | 0.75 |
 
-From 3 dB every word keeps 0.97 or more. `OUTPUT_AFFINE_TIP` is now 16 and
+From 3 dB every word keeps 0.97 or more. `OUTPUT_AFFINE_TIP` became 16 and
 the span 44 codes (peak white still on code 60): deviation 0.69 gets 2.25x
 (sync 5.5 -> 12.4 codes, was 2.88x), deviation 1.0 1.50x. PAL deviation 1.0
 at 1 dB: U80P64-R1 0.84 at 1.0x, 0.64 on tip 3, 0.75 on tip 16, 0.84 on
-tip 20; U50P64-R1 0.86, 0.72, 0.86, 0.86. The full table is
-`research/data/output_tip_headroom.json`.
+tip 20; U50P64-R1 0.86, 0.72, 0.86, 0.86.
 A model of one slicer; the goggle walk decides.
+
+*Superseded 2026-11-11 ("AUTO OUTPUT: fixed output reference levels" above):
+this table used the PR #301 word (gain from the picture span, 1.75x for
+U80P64-R1 here). With the gain from the sync depth the table changes and the
+tip is on code 20; `research/data/output_tip_headroom.json` holds the new
+one.*
 
 **U50P64-R1 is the default decoder (operator decision 2026-11-10).** The
 operator prefers the lower picture noise (+2.2..2.9 dB luma SINAD at
@@ -205,7 +234,7 @@ around the DC point recovers most of it at 9 dB and above; it needs a table
 restart per change, so it only suits a receiver with few analog rows.
 
 **Board checks that decide this** (in order): AUTO OUTPUT against 1.0x at the
-edge with the tip on 16; U50 against P64 on the same walk (`picture_pct`,
+edge with the tip on 20 (was 16, see the section above); U50 against P64 on the same walk (`picture_pct`,
 goggle sync, colour); GAIN CAP G79/G75 against G83; raw IQ across one gain
 write (none exists), then a gain write that stays in PBUS debug mode (the
 section below, "Not done"); a lane route change on a carrier with raw IQ

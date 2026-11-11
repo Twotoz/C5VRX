@@ -11,8 +11,9 @@ loses lines the 1.0x word still shows. This sweep puts the tip on several codes
 Bit-exact decoders (U80P64-R1, U50P64-R1), the firmware's integer output word
 (output_level.h output_entry), the resistor DAC and the goggle model of
 research/sim.py (worse of the ideal and the peak-clamp slicer). The word is the
-one a strong signal would have set (clean tip and peak white), held at the
-edge, as the policy does. Synthetic: no goggle, voltage or range is measured.
+one a strong signal would have set (the sync depth on its target, the tip in
+quarter codes, output_auto.h since 2026-11-11), held at the edge, as the
+policy does. Synthetic: no goggle, voltage or range is measured.
 
     python research/output_tip_headroom.py            print the table
     python research/output_tip_headroom.py --write    rewrite research/data/output_tip_headroom.json
@@ -23,6 +24,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import scipy.signal as sg
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'research'))
@@ -34,24 +36,25 @@ import u50p64  # noqa: E402
 OUT = ROOT / 'research/data/output_tip_headroom.json'
 TIPS = (3, 6, 8, 10, 12, 14, 16, 20)
 WHITE_CODE = 60
-SYNC_CODES = 18
 CNS = (0, 1, 2, 3, 4, 6)
 SEEDS = (4101, 4102, 4103, 4104)
 CASES = (('NTSC', 0.7), ('PAL', 1.0))
 RADIUS = 4.2
 
 
-def affine(codes, gain_q3, src_tip, out_tip):
-    """output_level.h output_entry for an affine word, with the tip on out_tip."""
-    x8 = 8 * out_tip + gain_q3 * (codes.astype(np.int64) - src_tip)
-    return np.clip(np.floor_divide(x8 + 4, 8), 0, 63).astype(np.uint8)
+def affine(codes, gain_q3, src_tip_x4, out_tip):
+    """output_level.h output_entry for an affine word (source tip in quarter codes), with the tip on out_tip."""
+    x32 = 32 * out_tip + gain_q3 * (4 * codes.astype(np.int64) - src_tip_x4)
+    return np.clip(np.floor_divide(x32 + 16, 32), 0, 63).astype(np.uint8)
 
 
 def word(tip, depth, white, out_tip):
-    """output_auto.h output_auto_word: gain (Q3) for the span above out_tip."""
-    span = max(white - tip, depth * 3.5)
-    g = int(8 * (WHITE_CODE - out_tip) / span)
-    return max(8, min(32, g, int(8 * SYNC_CODES / depth)))
+    """output_auto.h output_auto_word: the sync depth on its share (40/140) of the
+    span above out_tip, bounded by the DAC for a white past code 63."""
+    g = int(8 * (WHITE_CODE - out_tip) * 40 / 140 / depth + 0.5)
+    if (white - tip) * g > 8 * (63 - out_tip + 3):
+        g = int(8 * (63 - out_tip) / (white - tip))
+    return max(4, min(32, g))
 
 
 def run():
@@ -71,14 +74,16 @@ def run():
                 for name, lut in luts.items():
                     codes = sim._pair_codes(raw, lut, sim.PAIR_BITS, 4)
                     ref = sim._pair_codes(ref_raw, lut, sim.PAIR_BITS, 4)
-                    sync = ref[np.flatnonzero(c['region'] == 2)[200:-200]]
-                    tip = int(round(float(np.percentile(sync, 50))))
-                    porch = float(np.median(ref[np.flatnonzero(c['region'] == 0)[2000:-2000]]))
-                    white = float(np.percentile(ref[5000:-5000], 99.5))
+                    # The levels the firmware reads (AFC sync and porch): the low-passed decode.
+                    lp = sg.sosfilt(sim.GOGGLE, ref.astype(float))
+                    tip = float(np.median(lp[np.flatnonzero(c['region'] == 2)[200:-200]]))
+                    porch = float(np.median(lp[np.flatnonzero(c['region'] == 0)[2000:-2000]]))
+                    white = float(np.percentile(lp[5000:-5000], 99.5))
+                    tip_x4 = int(round(4 * tip))
                     acc.setdefault((name, '1.0x'), []).append(sim.measure(c, codes, ref)['picture'])
                     for out_tip in TIPS:
                         g = word(tip, max(porch - tip, 1.0), white, out_tip)
-                        m = sim.measure(c, affine(codes, g, tip, out_tip), affine(ref, g, tip, out_tip))
+                        m = sim.measure(c, affine(codes, g, tip_x4, out_tip), affine(ref, g, tip_x4, out_tip))
                         acc.setdefault((name, out_tip), []).append(m['picture'])
                         acc.setdefault((name, f'gain{out_tip}'), []).append(g / 8.0)
             for name in luts:

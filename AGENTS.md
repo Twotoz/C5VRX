@@ -236,16 +236,17 @@ desyncs and poor range); see the realtime invariants above.
 AUTO OUTPUT (2026-11-10, `main/output_auto.h`, EXPERIMENTAL > AUTO OUTPUT, default ON, host-tested only): an
 affine output word applied by the verified restart/guard/rollback; a manual OUTPUT other than 1.0x wins.
 Invariant (operator, PR #302 review, 2026-11-11): the output reference levels are the same whatever the RF
-level, gain row, VTX deviation or decoder: sync tip on DAC code 16, blanking 12.5 codes above it, white at the
+level, gain row, VTX deviation or decoder: sync tip on DAC code 20, blanking 11.5 codes above it, white at the
 same gain. The gain comes from the AFC's sync depth, never from the picture; peak white only bounds it at the
 DAC. Weak batches never change a setting. `research/output_consistency.py` (CI) is the acceptance run; keep it
 passing. See docs/FINDINGS.md "AUTO OUTPUT: fixed output reference levels"; no board or 75 ohm result yet.
 U50P64-R1 (`research/u50p64.py`, loop gain 0.50, a range decoder for deviation <= ~1.0) is the default decoder
 (operator decision 2026-11-10, lower picture noise preferred over the model's line lock; NVS `demod2`, a choice
 stored under the old `demod` key is not read); a measured deviation >= 1.10 falls back to P64 for the session.
-P64 and U85Q stay selectable. The AUTO OUTPUT word keeps its sync tip on DAC code 16 (`OUTPUT_AFFINE_TIP`): on
-code 3 the noise under the tip was cut on one side and the model lost lines at the edge
-(`research/output_tip_headroom.py`); do not move it back towards code 0 without a goggle walk.
+P64 and U85Q stay selectable. The AUTO OUTPUT word keeps its sync tip on DAC code 20 (`OUTPUT_AFFINE_TIP`; 16
+in PR #302, raised 2026-11-11 for the gain the fixed sync depth needs): nearer code 0 the noise under the tip
+was cut on one side and the model lost lines at the edge (`research/output_tip_headroom.py`); do not move it
+back towards code 0 without a goggle walk.
 Lane and DC window study: `research/edge_window.py`, docs/FINDINGS.md "Edge window"; no live lane change exists.
 LEVEL scores the top row highest at or under 6 dB C/N. Every receiver pause is logged (`FLOG_E_PAUSE`).
 See docs/FINDINGS.md "Video level, range decoder, survival row and pause records"; no board result yet.

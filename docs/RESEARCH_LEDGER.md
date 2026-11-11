@@ -54,7 +54,8 @@ deviation or decoder. `research/output_consistency.py` runs the firmware
 headers on simulated control windows and found the PR #301/#302 policy moving
 the level with the reception (noise read as white, kept for the context) and
 leaving wide VTXs unnormalised. The gain now comes from the AFC sync depth,
-the tip from the AFC sync level, weak batches hold. CPU side only (control
+the tip from the AFC sync level, weak batches hold; the tip target moved from
+code 16 to 20 (the tip-headroom sweep at the new gain). CPU side only (control
 task, one verified restart per change); the sample path, RX40, raw 32 KiB
 ring, two lookups and DAC20 at TX40 are unchanged. No board, goggle or 75 ohm
 measurement. See docs/FINDINGS.md "AUTO OUTPUT: fixed output reference

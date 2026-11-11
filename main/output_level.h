@@ -9,13 +9,17 @@
  * level. The measured sync tip (source DAC code) goes to OUTPUT_AFFINE_TIP and
  * everything around it is multiplied by gain_q3 / 8, saturated to the DAC.
  * Like the manual levels it rewrites DAC bits 0..5 only.
- * The tip sits on code 16, not near code 0: at the range edge the receiver
+ * The tip sits on code 20, not near code 0: at the range edge the receiver
  * noise and the FM clicks reach far under the tip, and a DAC that cuts them
- * on one side lifts the low-passed tip towards the porch. Host model
- * (research/output_tip_headroom.py, U80P64-R1, NTSC deviation 0.7, C/N 2 dB):
- * lines kept 0.92 at 1.0x, 0.51 with the tip on code 3, 0.91 on code 16. */
+ * on one side lifts the low-passed tip towards the porch. The room that
+ * matters is in source codes, tip / gain. Host model
+ * (research/output_tip_headroom.py, U80P64-R1, NTSC deviation 0.7, the gain
+ * of output_auto.h, C/N 2 dB): lines kept 0.92 at 1.0x, 0.21 with the tip on
+ * code 3, 0.87 on code 16, 0.90 on code 20; at 0 dB 0.46, 0.00, 0.38, 0.57.
+ * Code 16 (PR #302) was chosen with a gain of 1.75x there; the fixed sync
+ * depth needs ~2.1-2.4x. */
 #define OUTPUT_AFFINE      0x8000u
-#define OUTPUT_AFFINE_TIP  16
+#define OUTPUT_AFFINE_TIP  20
 /* Word: bit 15, gain_q3 in bits 6..11, the source tip in quarter codes: whole
  * codes in bits 0..5, quarters in bits 12..13. A whole-code tip left the
  * output tip up to gain / 2 codes off its target (1.5 codes at 3x), which

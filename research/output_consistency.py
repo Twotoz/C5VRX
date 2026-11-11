@@ -26,8 +26,8 @@ Scenarios, each one AUTO OUTPUT context (one channel, one decoder):
 One VTX with more picture swing than the standard (issue #200 levels) checks
 the DAC bound: its white must stay on the DAC and its level must hold too; it
 is left out of the comparison across VTXs. Learned weak, its white peak is
-under-read until a strong batch arrives (reported as clipped_wide_white_cold_max,
-not gated: that level is provisional).
+under-read until a strong batch arrives (reported as cold_wide_white_max_codes
+and clipped_wide_white_cold_max, not gated: that level is provisional).
 
     python research/output_consistency.py            print the tables
     python research/output_consistency.py --write    rewrite research/data/output_consistency.json
@@ -37,6 +37,7 @@ Host model only: no goggle, voltage, 75 ohm load or range is measured here.
 """
 import json
 import math
+import re
 import struct
 import subprocess
 import sys
@@ -69,6 +70,7 @@ ISSUE200_WHITE = 5.2e6 / (.69 * sim.DEV_PP * 100 / 140)   # output_level.py issu
 CASES = (('NTSC', 0.5, 1.0), ('NTSC', 0.7, 1.0), ('NTSC', 1.0, 1.0), ('PAL', 0.7, 1.0), ('PAL', 1.0, 1.0),
          ('PAL', 1.3, 1.0), ('NTSC', 0.69, ISSUE200_WHITE))   # standard, deviation, white scale
 DECODERS = ('U80P64-R1', 'U50P64-R1')
+AFFINE_TIP = int(re.search(r'#define OUTPUT_AFFINE_TIP\s+(\d+)', (ROOT / 'main/output_level.h').read_text()).group(1))
 U50_MAX_DEVIATION = 1.10      # control.c demod_deviation_guard: U50 falls back to U80 from here
 
 # Acceptance limits, DAC codes (63 codes are the DAC range).
@@ -172,7 +174,7 @@ def affine(codes, word):
     if not word & 0x8000:
         return codes
     gain, tip_x4 = (word >> 6) & 63, (word & 63) << 2 | (word >> 12) & 3
-    x32 = 32 * 16 + gain * (4 * codes.astype(np.int64) - tip_x4)
+    x32 = 32 * AFFINE_TIP + gain * (4 * codes.astype(np.int64) - tip_x4)
     return np.clip(np.floor_divide(x32 + 16, 32), 0, 63).astype(np.uint8)
 
 
@@ -239,7 +241,7 @@ def run():
 
 def summary(rows):
     """Spreads in DAC codes: within a context, cold against strong, and across VTXs and decoders."""
-    walk = cold = clipped = clipped_wide_cold = 0.0
+    walk = cold = cold_wide = clipped = clipped_wide_cold = 0.0
     strong, not_learned = [], set()
     for row in rows:
         s0 = row['steps'][0]
@@ -255,12 +257,15 @@ def summary(rows):
             d = max(abs(s[k] - s0[k]) for k in ('tip', 'blank', 'sync', 'white'))
             if s['step'] == 'walk':
                 walk = max(walk, d)
+            elif s['step'] == 'cold' and s['learned'] and row['white_scale'] != 1.0:
+                cold_wide = max(cold_wide, d)
             elif s['step'] == 'cold' and s['learned']:
                 cold = max(cold, d)
             elif s['step'] == 'cold':
                 not_learned.add(s['cn_db'])
     across = {k: round(max(s[k] for s in strong) - min(s[k] for s in strong), 2) for k in ('tip', 'blank', 'sync', 'white')}
-    return dict(walk_max_codes=round(walk, 2), cold_max_codes=round(cold, 2), across_strong_codes=across,
+    return dict(walk_max_codes=round(walk, 2), cold_max_codes=round(cold, 2), cold_wide_white_max_codes=round(cold_wide, 2),
+                across_strong_codes=across,
                 cold_learned_from_cn_db=min([cn for cn in COLD_CNS if all(c < cn or c not in not_learned for c in COLD_CNS)],
                                             default=99),
                 clipped_max=clipped, clipped_wide_white_cold_max=clipped_wide_cold,
