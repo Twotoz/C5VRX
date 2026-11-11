@@ -7,10 +7,15 @@
 #define OUTPUT_LEVELS 10
 /* AUTO OUTPUT (output_auto.h): an affine output word instead of a manual
  * level. The measured sync tip (source DAC code) goes to OUTPUT_AFFINE_TIP and
- * everything above it is multiplied by gain_q3 / 8, saturated to the DAC.
- * Like the manual levels it rewrites DAC bits 0..5 only. */
+ * everything around it is multiplied by gain_q3 / 8, saturated to the DAC.
+ * Like the manual levels it rewrites DAC bits 0..5 only.
+ * The tip sits on code 16, not near code 0: at the range edge the receiver
+ * noise and the FM clicks reach far under the tip, and a DAC that cuts them
+ * on one side lifts the low-passed tip towards the porch. Host model
+ * (research/output_tip_headroom.py, U80P64-R1, NTSC deviation 0.7, C/N 2 dB):
+ * lines kept 0.92 at 1.0x, 0.51 with the tip on code 3, 0.91 on code 16. */
 #define OUTPUT_AFFINE      0x8000u
-#define OUTPUT_AFFINE_TIP  3
+#define OUTPUT_AFFINE_TIP  16
 static inline unsigned output_affine(unsigned gain_q3, unsigned src_tip)
 {
     return OUTPUT_AFFINE | (gain_q3 & 63u) << 6 | (src_tip & 63u);

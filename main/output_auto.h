@@ -30,8 +30,9 @@
  * hunt (each change is a restart). The gain puts that span on OA_SPAN_CODES
  * with the tip
  * at OUTPUT_AFFINE_TIP, at most OA_SYNC_CODES of sync and OA_GAIN_MAX_Q3.
- * Excursions past the DAC (noise, FM clicks under the tip) saturate, as in a
- * video amplifier.
+ * The tip keeps OUTPUT_AFFINE_TIP codes of room under it (output_level.h):
+ * noise and FM clicks under the tip must not be cut on one side at the edge.
+ * Excursions past the DAC saturate, as in a video amplifier.
  *
  * Changes cost one ~5 ms verified restart, so they are rare by rule:
  *   first setting   two agreeing batches, gain >= 1.25x;
@@ -51,7 +52,7 @@
 #include "output_level.h"
 
 #define OA_BATCH          16u
-#define OA_SPAN_CODES     57      /* tip at 3, peak white at 60 */
+#define OA_SPAN_CODES     (60 - OUTPUT_AFFINE_TIP)   /* peak white at code 60 */
 #define OA_SYNC_CODES     18      /* 40/140 of the DAC range */
 #define OA_GAIN_MIN_Q3    8       /* 1.0x */
 #define OA_GAIN_MAX_Q3    32      /* 4.0x */

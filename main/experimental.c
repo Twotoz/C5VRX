@@ -120,8 +120,10 @@ uint32_t experimental_mask(void)
     experimental_snapshot(v);
     uint32_t mask = 0;
     for (unsigned i = 0; i < EXP_ITEMS; ++i) {
-        const unsigned baseline = i == EXP_GAIN ? GAIN_MODE_DEFAULT : i == EXP_DFILT ? PHY_DFILT_MODE_DEFAULT : 0;
-        if (v[i] != baseline) mask |= 1u << i;
+        const unsigned baseline = i == EXP_GAIN ? GAIN_MODE_DEFAULT : i == EXP_DFILT ? PHY_DFILT_MODE_DEFAULT :
+                                  i == EXP_DEMOD ? TRANSPORT_DEMOD_DEFAULT : 0;
+        /* U80P64-R1 is the default decoder's own deviation fallback (control.c), not an experiment. */
+        if (v[i] != baseline && !(i == EXP_DEMOD && v[i] == TRANSPORT_DEMOD_P64)) mask |= 1u << i;
     }
     if (rf_lane() != RF_LANE_ULTRAFINE) mask |= 1u << EXP_IQ_LANE;
     if (s_clock_d10) mask |= 1u << EXP_CLOCK_D10;

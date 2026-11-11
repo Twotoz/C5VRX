@@ -64,7 +64,8 @@ int main(void)
             }
     assert((output_entry(17, output_affine(8, 17), NULL) & 63u) == OUTPUT_AFFINE_TIP);
     /* 2. A low-deviation VTX (0.69, the board's): settles once, after two
-     * batches, with the composite inside the DAC and the sync >= 2.5x deeper. */
+     * batches, with the composite inside the DAC, the sync >= 2x deeper and
+     * the tip well clear of code 0 (research/output_tip_headroom.py). */
     {
         output_auto_t a; output_auto_reset(&a);
         const levels_t l = vtx(0.69, 1.0, 21.0);
@@ -74,8 +75,12 @@ int main(void)
         int tip, porch, white;
         mapped(a.word, l, &tip, &porch, &white);
         printf("deviation 0.69: gain %.2fx tip %d porch %d white %d (1x: sync %.1f codes)\n", g / 8.0, tip, porch, white, l.depth / 4.0);
-        assert(g >= 20 && g <= OA_GAIN_MAX_Q3 && tip >= 2 && tip <= 4 && white <= 62 && white >= 50);
-        assert(porch - tip >= 13 && porch - tip <= OA_SYNC_CODES + 1);
+        assert(g >= 16 && g <= OA_GAIN_MAX_Q3 && tip >= OUTPUT_AFFINE_TIP - 1 && tip <= OUTPUT_AFFINE_TIP + 1 &&
+               white <= 62 && white >= 50);
+        assert(porch - tip >= 11 && porch - tip <= OA_SYNC_CODES + 1);
+        /* Room under the tip: the unscaled codes down to the decoder's floor
+         * that still come out above code 0 (at least 1 MHz under the tip). */
+        assert((output_entry((uint16_t)((l.tip + 2u) / 4u - 5u), a.word, NULL) & 63u) > 0u);
         /* Steady signal: no further restart, however long. */
         assert(feed(&a, l, 400, &now, &seed, true) == 0);
         ++checks;
@@ -89,7 +94,7 @@ int main(void)
         int tip, porch, white;
         mapped(a.word, n, &tip, &porch, &white);
         printf("deviation 1.00: gain %.2fx tip %d porch %d white %d\n", output_affine_gain_q3(a.word) / 8.0, tip, porch, white);
-        assert(tip >= 2 && white <= 62 && porch - tip >= 13);
+        assert(tip >= OUTPUT_AFFINE_TIP - 1 && white <= 62 && porch - tip >= 11);
         output_auto_reset(&a);
         assert(feed(&a, vtx(1.7, 1.0, 21.0), 20, &now, &seed, true) == 0 && !a.word);
         ++checks;
@@ -103,7 +108,7 @@ int main(void)
         int tip, porch, white;
         mapped(a.word, l, &tip, &porch, &white);
         printf("issue #200 levels: gain %.2fx tip %d porch %d white %d\n", output_affine_gain_q3(a.word) / 8.0, tip, porch, white);
-        assert(white <= 62 && tip >= 2);
+        assert(white <= 62 && tip >= OUTPUT_AFFINE_TIP - 1);
         ++checks;
     }
     /* 5. A dark scene must not raise the gain (the standard span bounds it),

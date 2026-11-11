@@ -30,6 +30,21 @@ FPGA colour and range still require bench validation. This is an optional
 integration tap; remove its menu ID only with wire-format compatibility,
 routing, tests and documentation if no integration uses it.
 
+## Edge window study (2026-11-10, host only)
+
+Extends the sign-preserving lane slices and the retired adaptive-lane
+controller of C5VRX-3/4, IQLaneFusion's ADC bit model, AUTO OUTPUT and
+U50P64-R1. `research/edge_window.py`: at one analog gain (top-row noise) the
+ultrafine lane decodes to about 8 dB C/N, fine 2-15 dB, coarse 8-24 dB, with
+the unchanged U80P64-R1 table; residual DC costs 0.6-0.8 dB per cell at the
+edge. `research/output_tip_headroom.py`: an affine output word with the sync
+tip on code 3 loses lines at 0-2 dB C/N that 1.0x keeps; the tip moved to
+code 16. Source: MODEM_DIAG Q4/I4 at RX40, raw 32 KiB ring, two lookups,
+unique CVBS20 as [D,D] at TX40, all unchanged; no CPU in the sample path. No
+live lane change, no PHY write and no board measurement: a route change on a
+carrier and a gain write that stays in PBUS debug mode are open board
+prototypes. See docs/FINDINGS.md "Edge window".
+
 C5VRX by Twotoz and the C5VRX contributors. This is the project's research
 provenance ledger, moved verbatim from `AGENTS.md` on 2026-10-28 so that the
 agent instructions there carry only the current C5VRX-5 rules. The

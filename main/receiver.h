@@ -63,10 +63,17 @@ void transport_resume_live(void);
 void transport_start_chain(dma_descriptor_t *first);
 uint32_t transport_switch_wait_ms(void);
 const char *transport_program_name(void);
-/* Decoder (transport.c): U80P64-R1 (default) or U85Q, each a fixed program
- * with its own LUT; kept in NVS "demod" (main.c, console m). */
-/* Appended, never reordered: NVS "demod" and the flight log keep these values. */
+/* Decoder (transport.c): U50P64-R1 (default), U80P64-R1 or U85Q, each a fixed
+ * program with its own LUT; kept in NVS TRANSPORT_DEMOD_KEY (main.c, console m).
+ * Operator decision 2026-11-10: the range decoder is the default and a VTX
+ * measured at deviation >= 1.10 falls back to U80P64-R1 for the session
+ * (control.c demod_deviation_guard). The key was "demod" while U80P64-R1 was
+ * the default; a choice stored under it is not read, so every board starts
+ * once on the new default. */
+/* Appended, never reordered: the NVS key and the flight log keep these values. */
 enum { TRANSPORT_DEMOD_P64, TRANSPORT_DEMOD_U85Q, TRANSPORT_DEMOD_U50P64, TRANSPORT_DEMODS };
+#define TRANSPORT_DEMOD_DEFAULT TRANSPORT_DEMOD_U50P64
+#define TRANSPORT_DEMOD_KEY "demod2"
 const char *transport_demod_short(uint8_t d);   /* menu: "P64", "U85Q", "U50" */
 uint8_t transport_demod(void);
 const char *transport_demod_name(uint8_t d);

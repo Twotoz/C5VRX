@@ -28,9 +28,12 @@ outputs composite PAL/NTSC through a passive 6-bit resistor DAC: automatic
 gain control, a quick baseline boot with manual calibration, an on-screen
 menu, and browser-based flashing and controls.
 
-The demodulator is **U80P64-R1** ([evidence and limits](docs/P64.md)). It has
-one positive NTSC check; PAL, weak-signal behaviour and range still need
-hardware validation. Board findings, including the retired U85Q/kp/LP models
+The default demodulator is **U50P64-R1**, the U80P64-R1 formulas with loop
+gain 0.50: less picture noise for a VTX of deviation up to about 1.0 at the
+cost of detail and colour level. A VTX measured wider falls back to
+**U80P64-R1** ([evidence and limits](docs/P64.md)), which has one positive
+NTSC check. U50P64-R1 is host-tested only; PAL, weak-signal behaviour and
+range still need hardware validation. Board findings, including the retired U85Q/kp/LP models
 and the removed sync flywheel, are in [docs/FINDINGS.md](docs/FINDINGS.md).
 
 ## Experimental firmware — flight safety warning

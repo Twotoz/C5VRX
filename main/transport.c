@@ -49,10 +49,11 @@
 BITSCRAMBLER_PROGRAM(s_p64, "p64");
 BITSCRAMBLER_PROGRAM(s_u85q, "u85q");
 /* U50P64-R1 (research/u50p64.py): the P64 program with loop gain 0.50, a range
- * decoder for deviation <= ~1.0; selectable only, never automatic. */
+ * decoder for deviation <= ~1.0; the default since 2026-11-10 (operator), with
+ * the deviation fallback to U80P64-R1 in control.c. */
 BITSCRAMBLER_PROGRAM(s_u50p64, "u50p64");
 static bool s_started;
-static uint8_t s_demod = TRANSPORT_DEMOD_P64, s_verified_demod = TRANSPORT_DEMOD_P64;
+static uint8_t s_demod = TRANSPORT_DEMOD_DEFAULT, s_verified_demod = TRANSPORT_DEMOD_P64;
 static const void *demod_program(uint8_t d)
 {
     return d == TRANSPORT_DEMOD_U85Q ? s_u85q : d == TRANSPORT_DEMOD_U50P64 ? s_u50p64 : s_p64;

@@ -1,5 +1,120 @@
 # C5VRX-5 findings
 
+## Edge window: sync-tip room, U50 default, lanes and DC (2026-11-10, host only)
+
+C5VRX by Twotoz and the C5VRX contributors. Operator question: where can the
+firmware still gain much range, looked at afresh. This extends AUTO OUTPUT
+and U50P64-R1 (PR #301, the section below), the LEVEL walks ("Video follows
+the gain, not the walking"), the lane work of C5VRX-3/4
+(`legacy/c5vrx4/LANE_HANDOVER.md`, `ULTRAFINE_TEST.md`) and IQLaneFusion
+(`research/iq_lane_fusion.py`, whose exact ADC bit model the studies use).
+**Nothing here was flashed or measured on a board.** C/N in this section is
+the carrier over the noise after the 12 MHz filter.
+
+**Reading.** The static threshold already sits where the bit-exact model puts
+it (-92 dBm on 2026-10-20), so the decoder table and the noise floor hold
+little. The gap is static against walking (-92 against -85..-88 dBm), and the
+walks tie it to the gain: 16 points of video while the gain moves, 14 folds a
+second above -78 dBm, edge rows on template DC.
+
+**AUTO OUTPUT cut the noise under the sync tip (fixed).** The affine word put
+the tip on DAC code 3. At the edge the receiver noise and the FM clicks reach
+far under the tip; cut on one side, the low-passed tip rises towards the
+porch and the sync slicer loses lines that OUTPUT 1.0x still shows.
+`research/output_tip_headroom.py` (bit-exact decoders, the firmware's integer
+output word, the goggle model; the word a strong signal would have set, held
+at the edge as the policy does; four seeds), lines kept, NTSC deviation 0.7:
+
+| decoder | C/N | 1.0x | tip 3 | tip 10 | tip 16 | tip 20 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| U80P64-R1 | 0 dB | 0.46 | 0.03 | 0.40 | 0.56 | 0.52 |
+| U80P64-R1 | 1 dB | 0.69 | 0.40 | 0.82 | 0.70 | 0.71 |
+| U80P64-R1 | 2 dB | 0.92 | 0.51 | 0.93 | 0.91 | 0.92 |
+| U50P64-R1 | 0 dB | 0.46 | 0.02 | 0.26 | 0.40 | 0.57 |
+| U50P64-R1 | 1 dB | 0.54 | 0.37 | 0.69 | 0.73 | 0.74 |
+| U50P64-R1 | 2 dB | 0.71 | 0.68 | 0.73 | 0.69 | 0.75 |
+
+From 3 dB every word keeps 0.97 or more. `OUTPUT_AFFINE_TIP` is now 16 and
+the span 44 codes (peak white still on code 60): deviation 0.69 gets 2.25x
+(sync 5.5 -> 12.4 codes, was 2.88x), deviation 1.0 1.50x. PAL deviation 1.0
+at 1 dB: U80P64-R1 0.84 at 1.0x, 0.64 on tip 3, 0.75 on tip 16, 0.84 on
+tip 20; U50P64-R1 0.86, 0.72, 0.86, 0.86. The full table is
+`research/data/output_tip_headroom.json`.
+A model of one slicer; the goggle walk decides.
+
+**U50P64-R1 is the default decoder (operator decision 2026-11-10).** The
+operator prefers the lower picture noise (+2.2..2.9 dB luma SINAD at
+deviation 0.6-0.7 and C/N 0-9 dB, the section below) over line lock in the
+model. The same sweep shows the price at 1.0x, NTSC deviation 0.7: lines kept
+0.54 against 0.69 at 1 dB and 0.71 against 0.92 at 2 dB, equal at 0 dB and
+from 3 dB (four seeds; the earlier validation read the lock equal at
+deviation 0.7-1.0). PAL deviation 1.0 shows no such price: 0.86 against 0.84
+at 1 dB, 0.95 against 0.94 at 2 dB. The deviation fallback to U80P64-R1 at 1.10 stays. The
+choice moved to NVS `demod2`: a choice stored under `demod` is not read, so
+every board starts once on the new default; menu DEMOD and console `m` keep
+all three decoders. EXPERIMENTAL RESET returns to U50; the EXP marker shows
+for U85Q only (U80P64-R1 is the default's own fallback).
+
+**Lanes: one analog gain decodes 2..24 dB C/N.** `research/edge_window.py`:
+the analog gain stays on the top row (receiver noise 4.8 cells^2 on the
+ultrafine lane, 35 ADC codes rms) and only the lane changes; `ideal` places
+every level at radius 4.2 cells, a gain control without write cost. The
+decoder's token plane is the angle of the signed nibble pair, so the same
+table decodes every lane. U80P64-R1, NTSC deviation 0.7, luma SINAD in dB
+(lines kept are 0.96 or more from 2 dB on every lane but coarse at 2 dB,
+0.87):
+
+| C/N | ideal | ultrafine | fine | coarse |
+| ---: | ---: | ---: | ---: | ---: |
+| 2 dB | -6.3 | -6.1 | -6.3 | -7.0 |
+| 6 dB | -0.6 | -0.6 | -0.9 | -2.2 |
+| 10 dB | 3.6 | 0.0 | 3.5 | 2.1 |
+| 14 dB | 6.2 | -2.9 | 6.5 | 6.2 |
+| 20 dB | 8.3 | -1.1 | -3.1 | 9.0 |
+| 24 dB | 9.0 | 2.2 | 4.1 | 9.8 |
+
+On the top row the ultrafine lane folds from about 8 dB C/N, so the gain
+must move exactly where the edge is. The fine lane holds 2-15 dB and the
+coarse lane 8-24 dB at the same analog gain, within ~0.5 dB of the ideal
+where they overlap. A lane change is a GPIO-matrix route: no analog step, no
+other DC row, no decoder restart, and the coarse lane never folds, so it
+reads the real level where a folded window reads small. Lines kept at 0 dB:
+0.51 ultrafine against 0.24 fine (two seeds), so the finer lane still wins
+the last dB.
+
+Not built, and why. The live lane change was retired on 2026-10-04
+(C5VRX-4, a decoder in lane units, before the cost of a gain write was
+measured); its mixed samples during the six route writes are not modelled
+here. On any lane but ultrafine the DC servo, the boot phase check, the drift
+service and the C/N reference are off (`experimental_transfer_active`,
+`servo_service`, `boot_phase_check`), and the noise maps are in ultrafine
+cells: an IQ LANE = FINE walk today compares a lane without its support.
+The like-for-like check that exists is GAIN CAP G79/G75 on the ultrafine lane
+(the same noise-to-fold room by analog gain, all support running).
+
+**DC in cells.** Same script, radius 4.2 cells on the ultrafine lane, luma
+SINAD against the residual DC (split over I and Q):
+
+| C/N | 0 | 0.6 | 1.0 | 1.5 | 2.0 | 3.0 cells | 2.0, token plane centred |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 dB | -3.5 | -3.7 | -4.1 | -4.7 | -5.4 | -6.7 | -5.0 |
+| 6 dB | -0.6 | -0.9 | -1.4 | -2.3 | -3.4 | -5.5 | -2.2 |
+| 9 dB | 2.7 | 2.5 | 2.1 | 1.1 | -0.2 | -3.7 | 1.9 |
+| 12 dB | 5.0 | 4.7 | 4.3 | 3.4 | 2.2 | -1.7 | 4.9 |
+
+At 3 cells the picture is gone under 9 dB (lines kept 0.04 at 4 dB, 0.16 at
+6 dB). One cell costs 0.6-0.8 dB, the servo's 0.3 cells nothing. The same
+analog DC is half as many cells on the fine lane. A token plane computed
+around the DC point recovers most of it at 9 dB and above; it needs a table
+restart per change, so it only suits a receiver with few analog rows.
+
+**Board checks that decide this** (in order): AUTO OUTPUT against 1.0x at the
+edge with the tip on 16; U50 against P64 on the same walk (`picture_pct`,
+goggle sync, colour); GAIN CAP G79/G75 against G83; raw IQ across one gain
+write (none exists), then a gain write that stays in PBUS debug mode (the
+section below, "Not done"); a lane route change on a carrier with raw IQ
+across it, before any live lane control.
+
 ## Video level, range decoder, survival row and pause records (2026-11-10, host only)
 
 C5VRX by Twotoz and the C5VRX contributors. Operator question: the picture

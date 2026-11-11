@@ -172,7 +172,10 @@ distilled receiver") and `docs/FINDINGS.md`; the rules below are current.
   ignored; flight-log flywheel slots stay for old logs and read 0. See
   `docs/FINDINGS.md`, "Sync flywheel removed". Do not restore it from git
   history without a new board comparison that beats flywheel OFF.
-- The P64 default is an explicit operator choice, not a host-score promotion.
+- Operator decision (2026-11-10): U50P64-R1 is the boot decoder, U80P64-R1 its
+  deviation fallback and a menu choice (see "Current receiver settings"). The
+  P64 notes below describe the table and its evidence, no longer the default.
+- The P64 default was an explicit operator choice, not a host-score promotion.
   Its fixed table is unchanged from the positive VTX-on NTSC check at d894bef;
   PAL, weak-signal/range and the final cleanup still require board checks.
   The 7.2-degree grid is not measured input accuracy. Record evidence limits
@@ -233,8 +236,13 @@ desyncs and poor range); see the realtime invariants above.
 AUTO OUTPUT (2026-11-10, `main/output_auto.h`, EXPERIMENTAL > AUTO OUTPUT, default ON, host-tested only): the
 video level follows the live decoder's measured sync tip, sync depth and peak white as an affine output word,
 applied by the verified restart/guard/rollback; weak video holds it, a manual OUTPUT other than 1.0x wins.
-DEMOD also offers U50P64-R1 (`research/u50p64.py`, loop gain 0.50, a range decoder for deviation <= ~1.0;
-selectable only, P64 stays the default, a measured deviation >= 1.10 falls back to P64 for the session).
+U50P64-R1 (`research/u50p64.py`, loop gain 0.50, a range decoder for deviation <= ~1.0) is the default decoder
+(operator decision 2026-11-10, lower picture noise preferred over the model's line lock; NVS `demod2`, a choice
+stored under the old `demod` key is not read); a measured deviation >= 1.10 falls back to P64 for the session.
+P64 and U85Q stay selectable. The AUTO OUTPUT word keeps its sync tip on DAC code 16 (`OUTPUT_AFFINE_TIP`): on
+code 3 the noise under the tip was cut on one side and the model lost lines at the edge
+(`research/output_tip_headroom.py`); do not move it back towards code 0 without a goggle walk.
+Lane and DC window study: `research/edge_window.py`, docs/FINDINGS.md "Edge window"; no live lane change exists.
 LEVEL scores the top row highest at or under 6 dB C/N. Every receiver pause is logged (`FLOG_E_PAUSE`).
 See docs/FINDINGS.md "Video level, range decoder, survival row and pause records"; no board result yet.
 Menu entry allocates internal DMA descriptors in 384-byte chunks before
