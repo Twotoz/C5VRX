@@ -2748,9 +2748,12 @@ or picture claim.
     back down a home row per fold (G17 -> G14 -> G10 -> G4, sync lost in each).
     Whether that is the handheld movement or something in the LNA chain is
     not told apart by these logs.
-  - **AFC did not act:** `cfo_khz` about -1.1 to -1.2 MHz in both logs with
-    `offset_khz=0` and `cn_model_valid=0` throughout the traces. On these low
-    rows the C/N reads UNKNOWN and the AFC holds, as designed.
+  - **AFC:** `cfo_khz` (the raw porch frequency) about -1.1 to -1.2 MHz in
+    both logs against the porch target of -1000 kHz (`AFC_PORCH_TARGET_KHZ`),
+    a residual of 0.1-0.2 MHz, with `offset_khz=0` and `cn_model_valid=0`
+    throughout the traces: on these low rows the C/N reads UNKNOWN and the
+    AFC holds, as designed. No large offset; an earlier reading of these
+    numbers as "1.2 MHz off centre" was wrong.
 - **Open:** the mixed samples of the eight route writes on a carrier (raw IQ
   across a change), the picture at each step, and whether compression of the
   LNA or the C5 input limits before the coarse lane does. 12 dB is at most
