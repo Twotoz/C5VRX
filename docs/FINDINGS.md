@@ -2729,6 +2729,28 @@ or picture claim.
   2 of its own cells or less reads 0.5-6.8 dB (coarse at 4-8 cells): the
   step back at 2.5 cells is on the right side of that. Not modelled: analog
   compression, the route-write transient, fading.
+- **Board logs (operator, LNA, close in, 2026-11-13; two FIELD_TRACE captures
+  of ~18 s, handheld, not a controlled A/B):**
+  - 5.0.583 (before the gain floor fixes): the gain never went under G10 and
+    sat there through runs of clipped windows with sync lost; 64 % of 191
+    samples with sync, 25 % of the clipped ones.
+  - PR #304 build: G4 and G2 are reached; 76 % of 200 samples with sync, 65 %
+    of the clipped ones. Consistent with the fixes; the two walks differ.
+  - **STRONG LANE never stepped on G2.** Runs of clipped windows on G2
+    (20 samples) with no step; all three steps were taken on G4 and each fell
+    back within seconds. Cause: on G2 LEVEL asks for its lowest home, G0,
+    under the receiver floor; the raw target read as "room left" and reset
+    the fold score every window. Fixed (`strong_lane_no_room`, host check in
+    `test_agc_strong.c`); no board result for the fix yet.
+  - **The level swings from empty to clipped within 0.1-1 s on one row**
+    (16-18 % of windows with most samples on the origin, 20 % clipped, on
+    every row used). LEVEL climbs to G10-G17 in the empty stretches and comes
+    back down a home row per fold (G17 -> G14 -> G10 -> G4, sync lost in each).
+    Whether that is the handheld movement or something in the LNA chain is
+    not told apart by these logs.
+  - **AFC did not act:** `cfo_khz` about -1.1 to -1.2 MHz in both logs with
+    `offset_khz=0` and `cn_model_valid=0` throughout the traces. On these low
+    rows the C/N reads UNKNOWN and the AFC holds, as designed.
 - **Open:** the mixed samples of the eight route writes on a carrier (raw IQ
   across a change), the picture at each step, and whether compression of the
   LNA or the C5 input limits before the coarse lane does. 12 dB is at most

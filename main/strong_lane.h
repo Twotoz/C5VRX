@@ -31,6 +31,19 @@
 #define STRONG_LANE_DOWN_PWR_X16 100u
 #define STRONG_LANE_DOWN_US 200000u
 
+#define STRONG_LANE_GAIN_FLOOR 2u      /* the lowest row the receiver writes (receiver.c apply_target) */
+
+/* The gain has no room left: it is on the floor rows and its controller asks
+ * for no lower row than the receiver can write. LEVEL's lowest home row is
+ * G0, under that floor: on G2 it kept asking for G0, which read as room left,
+ * and the lane never stepped on G2 (board log 2026-11-13, PR #304 build:
+ * runs of clipped windows on G2, every step taken on G4). */
+static inline bool strong_lane_no_room(uint8_t current, uint8_t target)
+{
+    if (target < STRONG_LANE_GAIN_FLOOR) target = STRONG_LANE_GAIN_FLOOR;
+    return current <= STRONG_LANE_FLOOR_ROW && target >= current;
+}
+
 typedef struct {
     uint8_t steps;
     uint8_t score;

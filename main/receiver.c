@@ -225,7 +225,7 @@ static uint8_t gain_decision(const dg_observation_t *o)
     if (mode == GAIN_MODE_AUTO || mode == GAIN_MODE_LEVEL || mode == GAIN_MODE_RSSI) {
         const uint8_t t = mode == GAIN_MODE_AUTO ? dg_tick(&s_gain, o) : agc_decision(mode, o);
         if (strong_allowed(mode) && rf_lane() == RF_LANE_ULTRAFINE &&
-            strong_lane_tick(&s_strong, s_current_gain <= STRONG_LANE_FLOOR_ROW && t >= s_current_gain, agc_folded(o),
+            strong_lane_tick(&s_strong, strong_lane_no_room(s_current_gain, t), agc_folded(o),
                              o->clip_pm >= 20u, o->pwr_x16, o->observed_us) > 0) {
             strong_route(1);
             return s_current_gain;
