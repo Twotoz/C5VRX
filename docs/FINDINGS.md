@@ -2705,6 +2705,30 @@ or picture claim.
   to be harmless on a carrier this strong, not measured.
 - **Not reached without an LNA** (close in G21/G24), so the bare board is
   unchanged. The general live lane change stays retired (2026-10-04).
+- **Model (`research/strong_lane.py`, `research/data/strong_lane.json`):**
+  the exact ADC bit model and decoder of `research/edge_window.py`, an ideal
+  carrier at 30 dB C/N on the floor row, luma SINAD in dB (lines kept 1.00
+  in every cell: sync holds, the picture is what goes):
+
+  | radius (ultrafine cells) | over the window | ultrafine | fine | coarse | STRONG LANE |
+  | ---: | ---: | ---: | ---: | ---: | --- |
+  | 6 | -2.5 dB | 10.0 | 10.0 | 3.6 | ultrafine 10.0 |
+  | 8 | +0.0 dB | 2.3 | 8.5 | 6.8 | fine 8.5 |
+  | 10 | +1.9 dB | -3.3 | 9.6 | 9.3 | fine 9.6 |
+  | 12 | +3.5 dB | -2.0 | 10.0 | 10.0 | fine 10.0 |
+  | 16 | +6.0 dB | -0.6 | 2.3 | 8.5 | coarse 8.5 |
+  | 20 | +8.0 dB | -2.3 | -3.3 | 9.6 | coarse 9.6 |
+  | 24 | +9.5 dB | -1.6 | -2.0 | 10.0 | coarse 10.0 |
+  | 31 | +11.8 dB | 0.2 | 3.1 | 10.1 | coarse 10.1 |
+  | 40 | +14.0 dB | 3.4 | 4.7 | 9.6 | coarse 9.6 |
+
+  A folded lane loses 10-14 dB of luma SINAD; the lane the policy settles on
+  stays within ~1.5 dB of an in-window carrier up to the ADC range (32
+  cells, +12 dB). The 40-cell row clips an ideal ADC only; a real front end
+  compresses before or there, so it is no evidence beyond +12 dB. A lane at
+  2 of its own cells or less reads 0.5-6.8 dB (coarse at 4-8 cells): the
+  step back at 2.5 cells is on the right side of that. Not modelled: analog
+  compression, the route-write transient, fading.
 - **Open:** the mixed samples of the eight route writes on a carrier (raw IQ
   across a change), the picture at each step, and whether compression of the
   LNA or the C5 input limits before the coarse lane does. 12 dB is at most
