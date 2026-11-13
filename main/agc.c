@@ -69,6 +69,22 @@
 #define LEVEL_FOLD_MEMORY_US 0u
 #endif
 #define LEVEL_FOLD_FAR_Q8 (6 * 256)
+/* Fade return, the carrier memory of Direct Gain V6 (gain.h; board 2026-10-18:
+ * G21 -> G63 with 742 per mille clipping after every fade) for LEVEL. LEVEL
+ * climbs through a fade and, when the carrier comes back, a folded window
+ * reads low, so it came down one home row per fold. Board log 2026-11-13
+ * (LNA close in, walking): G2 -> G17 in a fade, then G17 -> G14 -> G10 -> G4
+ * with sync lost in each; the rows G10-G17 held 26 % of the samples and 47 %
+ * of the sync losses. LEVEL remembers the lowest row that held a healthy
+ * carrier in the last LEVEL_RETURN_US and its level; a fold on a higher row,
+ * with a carrier that dominates the window and whose remembered level would
+ * itself overflow this row, goes back to it in one write. A carrier that
+ * really went weaker reads small there and LEVEL climbs as before. Noise
+ * peaks folding at the edge never qualify (no lower healthy row, and the
+ * carrier does not dominate). 0 switches it off. */
+#define LEVEL_RETURN_WINDOWS 16u            /* healthy windows running before a row is remembered */
+#define LEVEL_RETURN_MIN_X16 (6u * 16u)     /* carrier power of a healthy row, cells^2 x16 (2.4 cells) */
+#define LEVEL_RETURN_FOLD_Q8 (17 * 256)     /* 7 cells: the remembered level overflows a row from here */
 
 /* RSSI parameters. */
 #ifndef RSSI_DECIDE_US
@@ -198,9 +214,12 @@ void agc_level_options(agc_level_t *a, bool radius, uint32_t memory_us, int targ
     for (unsigned h = 0; h < a->homes; ++h) home_quality(a, h);
 }
 
+void agc_level_return(agc_level_t *a, uint32_t return_us) { a->return_us = return_us; a->anchor_valid = false; }
+
 void agc_level_reset(agc_level_t *a, const int16_t row_db_q8[DG_STATES], uint8_t max_index, uint16_t noise_top_x16)
 {
     memset(a, 0, sizeof(*a));
+    a->return_us = LEVEL_RETURN_US;
     a->fold_radius = LEVEL_FOLD_RADIUS != 0;
     a->fold_memory_us = LEVEL_FOLD_MEMORY_US;
     a->max_index = max_index;
@@ -288,6 +307,23 @@ uint8_t agc_level_tick(agc_level_t *a, const dg_observation_t *o, uint8_t curren
             const int over = c >= 2u * noise ? LEVEL_FOLD_OVER_Q8 : 0;
             fold_level = agc_db_q8(c) - agc_db_q8(16) - rel + over;
         }
+        if (a->return_us && a->anchor_valid && now_us - a->anchor_us <= a->return_us &&
+            a->rel_q8[a->anchor_row] < rel && o->pwr_x16 >= 3u * noise &&
+            a->anchor_level_q8 + rel >= LEVEL_RETURN_FOLD_Q8) {
+            memset(a->hist, 0, sizeof(a->hist));
+            memset(a->fast, 0, sizeof(a->fast));
+            level_add(a, a->anchor_level_q8, 4u * LEVEL_FOLD_WEIGHT);
+            a->fold_row = current;
+            a->fold_until_us = now_us + a->fold_memory_us;
+            a->fold_level_q8 = a->anchor_level_q8;
+            a->fold_pending = a->move_pending = false;
+            a->level_windows = a->anchor_windows = 0;
+            a->decide_us = now_us;
+            ++a->folds;
+            ++a->returns;
+            return a->anchor_row;
+        }
+        a->anchor_windows = 0;
         level_add(a, fold_level, LEVEL_FOLD_WEIGHT);
         a->fold_row = current;
         a->fold_until_us = now_us + a->fold_memory_us;
@@ -301,6 +337,18 @@ uint8_t agc_level_tick(agc_level_t *a, const dg_observation_t *o, uint8_t curren
         if (c < noise / 50u + 1u) c = noise / 50u + 1u;
         const int level = agc_db_q8(c) - agc_db_q8(16) - rel;
         level_add(a, level, LEVEL_WEIGHT);
+        /* Fade return: this row holds a healthy carrier. The lowest such row
+         * stays remembered until it has not been healthy for return_us. */
+        if (c >= noise && c >= LEVEL_RETURN_MIN_X16 && o->clip_pm < 20u) {
+            if (a->anchor_windows < 255u) ++a->anchor_windows;
+            if (a->anchor_windows >= LEVEL_RETURN_WINDOWS &&
+                (!a->anchor_valid || now_us - a->anchor_us > a->return_us || rel <= a->rel_q8[a->anchor_row])) {
+                a->anchor_valid = true;
+                a->anchor_row = current;
+                a->anchor_level_q8 = level;
+                a->anchor_us = now_us;
+            }
+        } else a->anchor_windows = 0;
         if (a->move_pending && current == a->move_to && now_us - a->move_us >= LEVEL_LEARN_SETTLE_US) {
             a->move_sum_q8 += level;
             if (++a->move_windows >= LEVEL_LEARN_WINDOWS) {

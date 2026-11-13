@@ -83,6 +83,39 @@ int main(void)
         CHECK(row == 2 && sl.steps == 1, "folding on G2: row G%u, lane steps %u", row, sl.steps);
         printf("folding on the floor row: LEVEL target under G2 %s, lane step taken\n", below_floor ? "seen" : "not seen");
     }
+    /* Fade return: a strong carrier, a fade of 250 ms to nothing (LEVEL
+     * climbs), then the carrier is back. Board log 2026-11-13: one home row
+     * per fold on the way down, sync lost in each. Writes and folded windows
+     * from the return until the carrier is in the window again. */
+    {
+        unsigned writes[2], folds[2];
+        for (unsigned on = 0; on < 2; ++on) {
+            agc_level_reset(&lv, dg.model_db_q8, t.max_index, (uint16_t)(noise_top * 16.0f));
+            agc_level_return(&lv, on ? 1500000u : 0u);
+            uint8_t row = (uint8_t)t.max_index, peak = 0;
+            writes[on] = folds[on] = 0;
+            for (unsigned w = 0; w < 12000; ++w) {   /* 250 us windows: 1 s carrier, 0.25 s fade, 1.75 s carrier */
+                const bool fade = w >= 4000 && w < 5000;
+                const float rel = lv.rel_q8[row] / 256.0f, level = 80.0f;
+                const float c = fade ? 0.0f : powf(10.0f, (level + rel) / 10.0f), n = noise_top * powf(10.0f, rel / 10.0f);
+                dg_observation_t o = {.observed_us = 1000u + w * 250u};
+                const bool folded = sqrtf(c + n) > 7.0f;
+                if (folded) { o.rails = 15; o.clip_pm = 300; o.pwr_x16 = (uint16_t)(42.0f * 16.0f); }
+                else { const float p = (c + n) * 16.0f; o.pwr_x16 = (uint16_t)(p > 65535.0f ? 65535.0f : p); }
+                uint8_t next = agc_level_tick(&lv, &o, row, o.observed_us);
+                if (next < 2u) next = 2u;
+                if (fade && next > peak) peak = next;
+                if (w >= 5000) { folds[on] += folded; writes[on] += next != row; }
+                row = next;
+            }
+            const float rms = sqrtf(powf(10.0f, (80.0f + lv.rel_q8[row] / 256.0f) / 10.0f));
+            printf("fade return %s: climbed to G%u in the fade, back on G%u (%.1f cells) after %u writes, %u folded windows\n",
+                   on ? "on " : "off", peak, row, rms, writes[on], folds[on]);
+            CHECK(rms <= 7.0f && rms >= 2.0f, "fade return %u ended on G%u", on, row);
+        }
+        CHECK(writes[1] <= 2 && folds[1] < folds[0] && writes[1] <= writes[0], "fade return: %u writes / %u folds on, %u / %u off",
+              writes[1], folds[1], writes[0], folds[0]);
+    }
     printf("PASS test_agc_strong (worst late folds %u)\n", worst_folds);
     return 0;
 }

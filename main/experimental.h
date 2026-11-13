@@ -11,7 +11,7 @@ enum {
     EXP_AUTO_PROFILE, EXP_FAST_GAIN, EXP_FOLD_RADIUS, EXP_FOLD_MEMORY,
     EXP_LEVEL_TARGET, EXP_LEVEL_RELEASE, EXP_GAIN_RATE, EXP_GAIN_CAP,
     EXP_LOG_CADENCE, EXP_LNA_BIAS, EXP_CURRENT, EXP_LOOP_CAP, EXP_SPUR0, EXP_IQ_LANE, EXP_CLOCK_D10,
-    EXP_OUTPUT_AUTO, EXP_STRONG_LANE, EXP_ITEMS,
+    EXP_OUTPUT_AUTO, EXP_STRONG_LANE, EXP_FADE_RETURN, EXP_ITEMS,
     EXP_DAC = EXP_ITEMS, EXP_RESET, EXP_BACK, EXP_MENU_ITEMS
 };
 #define EXP_VERSION 1u
@@ -35,6 +35,7 @@ static const experimental_item_t experimental_items[EXP_ITEMS] = {
     {"Clock Pin D10", 2, {"OFF", "ON"}},
     {"AUTO OUTPUT", 2, {"ON", "OFF"}},     /* output_auto.h: the video level from the measured sync and white */
     {"STRONG LANE", 2, {"ON", "OFF"}},     /* strong_lane.h: a coarser IQ lane when the lowest gain rows still fold */
+    {"FADE RETURN", 2, {"ON", "OFF"}},     /* agc.c LEVEL_RETURN_US: after a fade, back to the remembered row in one write */
 };
 typedef struct { uint8_t version, value[EXP_ITEMS]; } experimental_blob_t;
 /* Reject the entire blob on invalid data; never load half an experiment. */

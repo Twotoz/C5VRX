@@ -71,7 +71,14 @@ typedef struct {
     uint8_t fold_row;
     uint64_t fold_until_us;
     int32_t fold_level_q8;
-    uint32_t folds, decisions, moves, learned, jumps, fold_holds;
+    /* Fade return (agc.c LEVEL_RETURN_US): the lowest row that lately held a
+     * healthy carrier, its level and when; 0 us switches it off. */
+    uint32_t return_us;
+    bool anchor_valid;
+    uint8_t anchor_row, anchor_windows;
+    int32_t anchor_level_q8;
+    uint64_t anchor_us;
+    uint32_t folds, decisions, moves, learned, jumps, fold_holds, returns;
 } agc_level_t;
 
 typedef struct {
@@ -86,6 +93,11 @@ typedef struct {
 /* row_db_q8: the gain model per row (direct_gain_t model_db_q8), noise_top_x16:
  * receiver noise power at the table maximum, cells^2 x16. */
 void agc_level_options(agc_level_t *a, bool radius, uint32_t memory_us, int target_db, unsigned release);
+#ifndef LEVEL_RETURN_US
+#define LEVEL_RETURN_US 1500000u
+#endif
+/* Fade return window in us (0 off); reset sets the default LEVEL_RETURN_US (agc.c). */
+void agc_level_return(agc_level_t *a, uint32_t return_us);
 void agc_level_reset(agc_level_t *a, const int16_t row_db_q8[DG_STATES], uint8_t max_index, uint16_t noise_top_x16);
 uint8_t agc_level_tick(agc_level_t *a, const dg_observation_t *o, uint8_t current, uint64_t now_us);
 /* The carrier radius of a folded window at row `current`, cells x16, for

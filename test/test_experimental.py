@@ -33,7 +33,7 @@ static experimental_blob_t disk;
 static size_t disk_size=sizeof(disk);
 static uint8_t event_data[4];
 static bool blob_load(const char *k, void *d, size_t n) {
- assert(!strcmp(k,"exp") && n<=sizeof(disk) && n>=sizeof(disk)-3);
+ assert(!strcmp(k,"exp") && n<=sizeof(disk) && n>=sizeof(disk)-4);
  if (!stored || n != disk_size) return false;
  memcpy(d,&disk,n);return true;
 }
@@ -106,19 +106,24 @@ int main(void) {
  assert(experimental_clock_d10()&&experimental_reboot_needed());
  assert(experimental_mask() & (1u<<EXP_CLOCK_D10));
  experimental_load();assert(!experimental_clock_d10()&&!experimental_reboot_needed());
- disk_size=sizeof(disk)-3;disk.value[EXP_FOLD_MEMORY]=2;
+ disk_size=sizeof(disk)-4;disk.value[EXP_FOLD_MEMORY]=2;
  disk.value[EXP_CLOCK_D10]=1; /* not present in NVS from before D10 */
  experimental_load();
  assert(experimental_get(EXP_FOLD_MEMORY)==2 && !experimental_get(EXP_CLOCK_D10));
  assert(!experimental_clock_d10());
- disk_size=sizeof(disk)-2;disk.value[EXP_FOLD_MEMORY]=1;disk.value[EXP_CLOCK_D10]=1;
+ disk_size=sizeof(disk)-3;disk.value[EXP_FOLD_MEMORY]=1;disk.value[EXP_CLOCK_D10]=1;
  disk.value[EXP_OUTPUT_AUTO]=1; /* not present in NVS from before AUTO OUTPUT */
  experimental_load();
  assert(experimental_get(EXP_FOLD_MEMORY)==1 && experimental_get(EXP_CLOCK_D10)==1 && !experimental_get(EXP_OUTPUT_AUTO));
- disk_size=sizeof(disk)-1;disk.value[EXP_FOLD_MEMORY]=2;disk.value[EXP_OUTPUT_AUTO]=1;
+ disk_size=sizeof(disk)-2;disk.value[EXP_FOLD_MEMORY]=2;disk.value[EXP_OUTPUT_AUTO]=1;
  disk.value[EXP_STRONG_LANE]=1; /* not present in NVS from before STRONG LANE */
  experimental_load();
  assert(experimental_get(EXP_FOLD_MEMORY)==2 && experimental_get(EXP_OUTPUT_AUTO)==1 && !experimental_get(EXP_STRONG_LANE));
+ disk_size=sizeof(disk)-1;disk.value[EXP_FOLD_MEMORY]=1;disk.value[EXP_STRONG_LANE]=1;
+ disk.value[EXP_FADE_RETURN]=1; /* not present in NVS from before FADE RETURN */
+ experimental_load();
+ assert(experimental_get(EXP_FOLD_MEMORY)==1 && experimental_get(EXP_STRONG_LANE)==1 && !experimental_get(EXP_FADE_RETURN));
+ assert(experimental_set(EXP_STRONG_LANE,0));disk.value[EXP_FADE_RETURN]=0;
  assert(experimental_set(EXP_OUTPUT_AUTO,0));
  /* A lane STRONG LANE routed live is no IQ LANE experiment and needs no reboot. */
  { const unsigned boot=lane; uint8_t sv[EXP_ITEMS]; const uint32_t m0=experimental_mask(); const bool r0=experimental_reboot_needed();
