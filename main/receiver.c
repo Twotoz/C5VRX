@@ -186,9 +186,10 @@ static void fold_measure(dg_observation_t *o, const uint8_t *samples, unsigned n
  * the control epoch invalidates what was observed on the old lane. */
 static strong_lane_t s_strong;
 unsigned receiver_strong_lane(void) { return s_strong.steps; }
-static void strong_route(int step)
+static void strong_route(int step, uint64_t observed_us)
 {
-    strong_lane_applied(&s_strong, step, (uint64_t)esp_timer_get_time());
+    /* The observation's own clock: the next ticks compare against it. */
+    strong_lane_applied(&s_strong, step, observed_us);
     rf_reroute_lane(RF_LANE_ULTRAFINE - s_strong.steps);
     ++s_control_epoch;
     printf("STRONG_LANE lane=%s gain=G%u ups=%lu downs=%lu\n", rf_lane_name(rf_lane()), s_current_gain,
@@ -198,8 +199,10 @@ static void strong_route(int step)
  * fixed gain, the pair sweep or STRONG LANE = OFF. */
 static void strong_release(void)
 {
+    /* Only a lane STRONG LANE routed itself: a boot lane chosen with IQ LANE
+     * (steps 0) is not its to change. */
+    if (!s_strong.steps) return;
     while (s_strong.steps) strong_lane_applied(&s_strong, -1, (uint64_t)esp_timer_get_time());
-    if (rf_lane() == RF_LANE_ULTRAFINE) return;
     rf_reroute_lane(RF_LANE_ULTRAFINE);
     ++s_control_epoch;
     printf("STRONG_LANE lane=ultrafine released\n");
@@ -217,7 +220,7 @@ static uint8_t gain_decision(const dg_observation_t *o)
         if (!strong_allowed(mode)) strong_release();
         else {
             const int step = strong_lane_tick(&s_strong, true, agc_folded(o), o->clip_pm >= 20u, o->pwr_x16, o->observed_us);
-            if (step) strong_route(step);
+            if (step) strong_route(step, o->observed_us);
             return s_current_gain;
         }
     }
@@ -227,7 +230,7 @@ static uint8_t gain_decision(const dg_observation_t *o)
         if (strong_allowed(mode) && rf_lane() == RF_LANE_ULTRAFINE &&
             strong_lane_tick(&s_strong, strong_lane_no_room(s_current_gain, t), agc_folded(o),
                              o->clip_pm >= 20u, o->pwr_x16, o->observed_us) > 0) {
-            strong_route(1);
+            strong_route(1, o->observed_us);
             return s_current_gain;
         }
         if (mode == GAIN_MODE_AUTO) return t;
