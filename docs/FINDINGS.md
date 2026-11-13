@@ -2654,3 +2654,31 @@ model at a time, union). **Evidence:** host simulation and firmware build
 only; the harness shares its picture model with LEVEL's quality function
 (the physics from PR #230), so a board A/B is the deciding test. No range
 or picture claim.
+
+## External LNA close in: gain floor fixes (2026-11-13, host model only)
+
+- **Report (Discord, Krience):** an LNA and CVBS filter taken from an RX5818
+  module in front of the XIAO ESP32-C5: range clearly up, picture worse close
+  in, suspected input saturation. No logs, LNA gain or VTX power known.
+- **Table room:** the bare board already parked at G21/G24 close in (session
+  55). The model puts G2, the receiver floor, ~17 dB under G21 (G21 36.8 dB,
+  G2 19.7 dB, G83 ~94 dB): an LNA of 15-20 dB uses up the whole table close
+  in. Rows 0-16 are RF stages 0-1, the lowest the vendor table has.
+- **Two firmware limits under G20, never reached without an LNA:**
+  - `dg_reset_context` clamped the core to G20 or higher (anchor too). With
+    the hardware under G20 the core and `s_current_gain` differed and
+    `receiver.c` rebound the gain core on every window (rebind counter). Now
+    the floor is G2, as in `apply_target` and the KEEL-1 home rows.
+  - LEVEL's level histogram ended at +80 dB cells^2 at the top row (about G9
+    for a carrier on its best radius). A stronger carrier read as +79 and
+    LEVEL held a row that folded every window: host model, +88 dB held G10
+    with 2000 of 2000 late windows folded; now G4 at 5.7 cells, no folds
+    (`test/test_agc_strong.c`). `AGC_LMAX_DB` is now +100.
+  - `test_agc_compare` scores are identical before and after (no change
+    within the old range).
+- **Not fixed by firmware:** a carrier still too strong at G2, compression of
+  the external LNA itself, or of the C5 input before its gain stages. If the
+  flight log shows the gain at G2-G4 with folds (ATTACK events, rails 15)
+  close in, the front end needs less gain there (an LNA bypass/enable or a
+  lower-gain LNA); a fixed pad costs the range the LNA gave. Board check
+  pending.

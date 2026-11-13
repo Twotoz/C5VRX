@@ -30,8 +30,13 @@
 #ifndef AGC_BIN_DB
 #define AGC_BIN_DB 2              /* bins of the input level, dB */
 #endif
-#define AGC_BINS (100 / AGC_BIN_DB)
 #define AGC_LMIN_DB (-20)         /* bin 0: carrier power at the top row, dB cells^2 */
+/* The top bin must reach a carrier on its best radius at the lowest row
+ * (G2 sits ~74 dB under the top row: ~89 dB). Up to 2026-11-13 it ended at
+ * +80 (about G9): a stronger carrier, an external LNA close in, read as +79
+ * and LEVEL held a row that folded every window (test_agc_strong.c). */
+#define AGC_LMAX_DB 100
+#define AGC_BINS ((AGC_LMAX_DB - AGC_LMIN_DB) / AGC_BIN_DB)
 #define AGC_MAX_HOMES 30u
 
 typedef struct {
