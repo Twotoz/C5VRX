@@ -2754,6 +2754,26 @@ or picture claim.
     throughout the traces: on these low rows the C/N reads UNKNOWN and the
     AFC holds, as designed. No large offset; an earlier reading of these
     numbers as "1.2 MHz off centre" was wrong.
+### FADE RETURN (2026-11-13, host model only)
+
+- **From the board log above:** in a walking fade LEVEL climbed G2 -> G17 and
+  came back one home row per fold (G17 -> G14 -> G10 -> G4, sync lost in
+  each); rows G10-G17 held 26 % of the samples and 47 % of the sync losses.
+  A folded window reads low, so a returning carrier looks small.
+- **Fix (`main/agc.c` LEVEL_RETURN_US, EXPERIMENTAL > FADE RETURN, default
+  ON):** the carrier memory of Direct Gain V6 for LEVEL. LEVEL remembers the
+  lowest row that held a healthy carrier (16 windows running, >= 2.4 cells,
+  no clipping) in the last 1.5 s, and its level. A fold on a higher row, with
+  a carrier dominating the window and a remembered level that would overflow
+  this row, goes back to that row in one write and restarts the level
+  histories from the remembered level. A carrier that really went weaker
+  reads small there and LEVEL climbs as before; edge noise folds never
+  qualify.
+- **Host model (`test/test_agc_strong.c`):** a strong carrier, a 250 ms fade,
+  the carrier back: 1 write and 1 folded window to get back in the window,
+  against 17 writes and 231 folded windows without it. `test_agc_compare`
+  (all scenarios): LEVEL score 70.48 -> 70.57, writes 1.7 -> 1.6 a second,
+  edge unchanged (42.6). No board result.
 - **Open:** the mixed samples of the eight route writes on a carrier (raw IQ
   across a change), the picture at each step, and whether compression of the
   LNA or the C5 input limits before the coarse lane does. 12 dB is at most

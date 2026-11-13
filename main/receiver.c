@@ -151,6 +151,7 @@ static uint8_t agc_decision(uint8_t mode, const dg_observation_t *o)
             const unsigned mem = experimental_get(EXP_FOLD_MEMORY), target = experimental_get(EXP_LEVEL_TARGET);
             agc_level_options(&s_agc.level, experimental_get(EXP_FOLD_RADIUS), mem == 1 ? 300000u : mem == 2 ? 1000000u : 0,
                               target == 1 ? -3 : target == 2 ? 3 : 0, experimental_get(EXP_LEVEL_RELEASE));
+            agc_level_return(&s_agc.level, experimental_get(EXP_FADE_RETURN) ? 0u : LEVEL_RETURN_US);
         }
         else agc_rssi_reset(&s_agc.rssi, s_gain.model_db_q8, t->max_index);
         s_agc_mode = mode;
@@ -1089,10 +1090,12 @@ bool receiver_start(void)
 void receiver_print(void)
 {
     if (s_gain_mode == GAIN_MODE_LEVEL)
-        printf("AGC model=LEVEL decisions=%lu moves=%lu folds=%lu learned=%lu jumps=%lu fold_radius=%lu/%lu/%lu "
+        printf("AGC model=LEVEL decisions=%lu moves=%lu folds=%lu returns=%lu learned=%lu jumps=%lu fold_radius=%lu/%lu/%lu "
                "(agc.c; rows corrected from the level before/after a move; jumps: the fast history took over; "
+               "returns: a fold after a fade went back to the remembered row in one write, EXPERIMENTAL > FADE RETURN; "
                "fold_radius taken/rejected/row too noisy, logged in attack events, used by LEVEL=%u)\n",
                (unsigned long)s_agc.level.decisions, (unsigned long)s_agc.level.moves, (unsigned long)s_agc.level.folds,
+               (unsigned long)s_agc.level.returns,
                (unsigned long)s_agc.level.learned, (unsigned long)s_agc.level.jumps, (unsigned long)s_fold_taken,
                (unsigned long)s_fold_rejected, (unsigned long)s_fold_noisy, (unsigned)agc_level_fold_radius_used());
     else if (s_gain_mode == GAIN_MODE_RSSI)

@@ -247,6 +247,9 @@ STRONG LANE (2026-11-13, `main/strong_lane.h`, EXPERIMENTAL > STRONG LANE, defau
 on rows 0-9 and no lower row asked, a carrier that keeps folding (an external LNA close in) moves to the fine, then
 the coarse IQ lane; a small or absent carrier returns to ultrafine. Gain floor G2 in the core and LEVEL's level range
 to +100 dB belong to it. See docs/FINDINGS.md "External LNA close in"; do not widen it into a general lane control.
+FADE RETURN (2026-11-13, `main/agc.c` LEVEL_RETURN_US, EXPERIMENTAL > FADE RETURN, default ON, host model only): after
+a fade, a fold on a higher row returns LEVEL to the lowest row that held a healthy carrier in the last 1.5 s, in one
+write (Direct Gain V6's carrier memory for LEVEL). See docs/FINDINGS.md "FADE RETURN".
 LEVEL scores the top row highest at or under 6 dB C/N. Every receiver pause is logged (`FLOG_E_PAUSE`).
 See docs/FINDINGS.md "Video level, range decoder, survival row and pause records"; no board result yet.
 Menu entry allocates internal DMA descriptors in 384-byte chunks before
