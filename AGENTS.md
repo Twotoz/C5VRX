@@ -242,7 +242,11 @@ stored under the old `demod` key is not read); a measured deviation >= 1.10 fall
 P64 and U85Q stay selectable. The AUTO OUTPUT word keeps its sync tip on DAC code 16 (`OUTPUT_AFFINE_TIP`): on
 code 3 the noise under the tip was cut on one side and the model lost lines at the edge
 (`research/output_tip_headroom.py`); do not move it back towards code 0 without a goggle walk.
-Lane and DC window study: `research/edge_window.py`, docs/FINDINGS.md "Edge window"; no live lane change exists.
+Lane and DC window study: `research/edge_window.py`, docs/FINDINGS.md "Edge window"; no general live lane change exists.
+STRONG LANE (2026-11-13, `main/strong_lane.h`, EXPERIMENTAL > STRONG LANE, default ON, host policy only): with the gain
+on rows 0-9 and no lower row asked, a carrier that keeps folding (an external LNA close in) moves to the fine, then
+the coarse IQ lane; a small or absent carrier returns to ultrafine. Gain floor G2 in the core and LEVEL's level range
+to +100 dB belong to it. See docs/FINDINGS.md "External LNA close in"; do not widen it into a general lane control.
 LEVEL scores the top row highest at or under 6 dB C/N. Every receiver pause is logged (`FLOG_E_PAUSE`).
 See docs/FINDINGS.md "Video level, range decoder, survival row and pause records"; no board result yet.
 Menu entry allocates internal DMA descriptors in 384-byte chunks before

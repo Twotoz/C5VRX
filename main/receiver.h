@@ -166,6 +166,7 @@ static inline bool receiver_gain_mode_auto(uint8_t mode)
     return mode == GAIN_MODE_AUTO || mode == GAIN_MODE_LEVEL || mode == GAIN_MODE_RSSI;
 }
 uint8_t receiver_gain_mode(void);
+unsigned receiver_strong_lane(void);   /* STRONG LANE steps in use: 0 none, 1 fine, 2 coarse (strong_lane.h) */
 void receiver_set_gain_mode(uint8_t mode, bool save);
 uint8_t receiver_gain_mode_next(uint8_t mode);
 const char *receiver_gain_mode_name(uint8_t mode, char *buf, unsigned size);

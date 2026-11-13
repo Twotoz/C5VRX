@@ -45,6 +45,21 @@ live lane change, no PHY write and no board measurement: a route change on a
 carrier and a gain write that stays in PBUS debug mode are open board
 prototypes. See docs/FINDINGS.md "Edge window".
 
+## STRONG LANE: a coarser lane on the gain floor (2026-11-13, host policy only)
+
+Extends the sign-preserving lane slices, the retired adaptive-lane controller
+and protected lane handover of C5VRX-3/4 and the Edge window study above.
+`main/strong_lane.h`, EXPERIMENTAL > STRONG LANE (default ON): only with the
+analog gain on rows 0-9 and no lower row asked, a carrier that keeps folding
+moves to the fine and then the coarse lane (6 / 12 dB more room); a small or
+absent carrier returns to ultrafine. Source, rates and ownership unchanged:
+MODEM_DIAG Q4/I4 at RX40, raw 32 KiB ring, two lookups, unique CVBS20 as
+[D,D] at TX40; the route is eight GPIO-matrix writes by the gain observer,
+no PHY write, no CPU in the sample path. The mixed samples during the route
+writes are not measured and no lane tags prove a seamless switch. Trigger:
+an external LNA close in (Discord report). See docs/FINDINGS.md "External
+LNA close in". Not a general live lane control; that stays retired.
+
 C5VRX by Twotoz and the C5VRX contributors. This is the project's research
 provenance ledger, moved verbatim from `AGENTS.md` on 2026-10-28 so that the
 agent instructions there carry only the current C5VRX-5 rules. The

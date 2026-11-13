@@ -2680,5 +2680,81 @@ or picture claim.
   the external LNA itself, or of the C5 input before its gain stages. If the
   flight log shows the gain at G2-G4 with folds (ATTACK events, rails 15)
   close in, the front end needs less gain there (an LNA bypass/enable or a
-  lower-gain LNA); a fixed pad costs the range the LNA gave. Board check
-  pending.
+  lower-gain LNA); a fixed pad costs the range the LNA gave.
+- **Board (Krience, PR build of the two fixes):** v5.0.583 degraded from
+  about 1 m, the fixed build only from about 20 cm. One report, no logs.
+
+### STRONG LANE (2026-11-13, host policy only)
+
+- **What is left at 20 cm** is a carrier over the ultrafine window on the
+  lowest rows (or compression; not told apart without logs). The window is
+  the one limit firmware still owns: the fine lane holds 6 dB and the coarse
+  lane 12 dB more at the same analog gain, a GPIO-matrix route with no analog
+  step and no decoder restart ("Edge window" above).
+- **Policy (`main/strong_lane.h`, EXPERIMENTAL > STRONG LANE, default ON):**
+  on rows 0-9 with no lower row asked, 16 folded windows over clean ones
+  (~3 ms) step one lane coarser, at most once per 20 ms. On a coarser lane
+  the gain is held; 200 ms under 2.5 cells rms (5 on the finer lane, a fold
+  needs ~8: 4 dB between the two decisions) steps back. No carrier reads
+  small, so it returns to ultrafine and the normal gain control. A pause
+  owner (calibration, scan), a fixed gain or the pair sweep releases it at
+  once. Console `T`: `STRONG_LANE`.
+- **Side effects on a coarser lane:** the DC servo, C/N reference, map
+  learning and the DC/level/C-N accumulators stand still
+  (`experimental_transfer_active`), so AFC/profile decisions hold; expected
+  to be harmless on a carrier this strong, not measured.
+- **Not reached without an LNA** (close in G21/G24), so the bare board is
+  unchanged. The general live lane change stays retired (2026-10-04).
+- **Model (`research/strong_lane.py`, `research/data/strong_lane.json`):**
+  the exact ADC bit model and decoder of `research/edge_window.py`, an ideal
+  carrier at 30 dB C/N on the floor row, luma SINAD in dB (lines kept 1.00
+  in every cell: sync holds, the picture is what goes):
+
+  | radius (ultrafine cells) | over the window | ultrafine | fine | coarse | STRONG LANE |
+  | ---: | ---: | ---: | ---: | ---: | --- |
+  | 6 | -2.5 dB | 10.0 | 10.0 | 3.6 | ultrafine 10.0 |
+  | 8 | +0.0 dB | 2.3 | 8.5 | 6.8 | fine 8.5 |
+  | 10 | +1.9 dB | -3.3 | 9.6 | 9.3 | fine 9.6 |
+  | 12 | +3.5 dB | -2.0 | 10.0 | 10.0 | fine 10.0 |
+  | 16 | +6.0 dB | -0.6 | 2.3 | 8.5 | coarse 8.5 |
+  | 20 | +8.0 dB | -2.3 | -3.3 | 9.6 | coarse 9.6 |
+  | 24 | +9.5 dB | -1.6 | -2.0 | 10.0 | coarse 10.0 |
+  | 31 | +11.8 dB | 0.2 | 3.1 | 10.1 | coarse 10.1 |
+  | 40 | +14.0 dB | 3.4 | 4.7 | 9.6 | coarse 9.6 |
+
+  A folded lane loses 10-14 dB of luma SINAD; the lane the policy settles on
+  stays within ~1.5 dB of an in-window carrier up to the ADC range (32
+  cells, +12 dB). The 40-cell row clips an ideal ADC only; a real front end
+  compresses before or there, so it is no evidence beyond +12 dB. A lane at
+  2 of its own cells or less reads 0.5-6.8 dB (coarse at 4-8 cells): the
+  step back at 2.5 cells is on the right side of that. Not modelled: analog
+  compression, the route-write transient, fading.
+- **Board logs (operator, LNA, close in, 2026-11-13; two FIELD_TRACE captures
+  of ~18 s, handheld, not a controlled A/B):**
+  - 5.0.583 (before the gain floor fixes): the gain never went under G10 and
+    sat there through runs of clipped windows with sync lost; 64 % of 191
+    samples with sync, 25 % of the clipped ones.
+  - PR #304 build: G4 and G2 are reached; 76 % of 200 samples with sync, 65 %
+    of the clipped ones. Consistent with the fixes; the two walks differ.
+  - **STRONG LANE never stepped on G2.** Runs of clipped windows on G2
+    (20 samples) with no step; all three steps were taken on G4 and each fell
+    back within seconds. Cause: on G2 LEVEL asks for its lowest home, G0,
+    under the receiver floor; the raw target read as "room left" and reset
+    the fold score every window. Fixed (`strong_lane_no_room`, host check in
+    `test_agc_strong.c`); no board result for the fix yet.
+  - **The level swings from empty to clipped within 0.1-1 s on one row**
+    (16-18 % of windows with most samples on the origin, 20 % clipped, on
+    every row used). LEVEL climbs to G10-G17 in the empty stretches and comes
+    back down a home row per fold (G17 -> G14 -> G10 -> G4, sync lost in each).
+    Whether that is the handheld movement or something in the LNA chain is
+    not told apart by these logs.
+  - **AFC:** `cfo_khz` (the raw porch frequency) about -1.1 to -1.2 MHz in
+    both logs against the porch target of -1000 kHz (`AFC_PORCH_TARGET_KHZ`),
+    a residual of 0.1-0.2 MHz, with `offset_khz=0` and `cn_model_valid=0`
+    throughout the traces: on these low rows the C/N reads UNKNOWN and the
+    AFC holds, as designed. No large offset; an earlier reading of these
+    numbers as "1.2 MHz off centre" was wrong.
+- **Open:** the mixed samples of the eight route writes on a carrier (raw IQ
+  across a change), the picture at each step, and whether compression of the
+  LNA or the C5 input limits before the coarse lane does. 12 dB is at most
+  a quarter of the distance in free space.

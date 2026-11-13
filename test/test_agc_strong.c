@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include "agc.h"
 #include "gain.h"
+#include "strong_lane.h"
 
 unsigned char phy_param[1024];
 static agc_level_t lv;
@@ -62,6 +63,25 @@ int main(void)
         printf("level %2d dB: G%02u carrier %.1f cells rms, folded windows in the last half %u\n", level, row, rms, folds_late);
         if (folds_late > worst_folds) worst_folds = folds_late;
         CHECK(folds_late == 0 && rms <= 7.0f, "level %d dB held G%u folding", level, row);
+    }
+    /* Over the window on the floor row: LEVEL asks for its lowest home (G0,
+     * under the receiver floor G2). That is no room left, and STRONG LANE
+     * steps (board log 2026-11-13: it did not, the raw target read as room). */
+    {
+        agc_level_reset(&lv, dg.model_db_q8, t.max_index, (uint16_t)(noise_top * 16.0f));
+        strong_lane_t sl = {0};
+        uint8_t row = 2;
+        bool below_floor = false;
+        for (unsigned w = 0; w < 400 && !sl.steps; ++w) {
+            dg_observation_t o = {.observed_us = 1000u + w * 250u, .rails = 15, .clip_pm = 400, .pwr_x16 = (uint16_t)(42.0f * 16.0f)};
+            const uint8_t target = agc_level_tick(&lv, &o, row, o.observed_us);
+            below_floor |= target < STRONG_LANE_GAIN_FLOOR;
+            if (strong_lane_tick(&sl, strong_lane_no_room(row, target), true, true, o.pwr_x16, o.observed_us) > 0)
+                strong_lane_applied(&sl, 1, o.observed_us);
+            row = target < 2u ? 2u : target;
+        }
+        CHECK(row == 2 && sl.steps == 1, "folding on G2: row G%u, lane steps %u", row, sl.steps);
+        printf("folding on the floor row: LEVEL target under G2 %s, lane step taken\n", below_floor ? "seen" : "not seen");
     }
     printf("PASS test_agc_strong (worst late folds %u)\n", worst_folds);
     return 0;

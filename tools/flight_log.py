@@ -44,7 +44,8 @@ TRIGGERS = {1: 'dropout', 2: 'vq_drop', 3: 'first_carrier', 4: 'periodic', 5: 'o
 OUTPUT_DEMODS = {1: 'U85Q 1a09f5c092e8', 2: 'U85Q-LP 1a09f5c092e8', 3: 'U80P64-R1', 4: 'U50P64-R1'}
 EXP_NAMES = ['GAIN', 'PHY FILT', 'AFC', 'DEMOD', 'IQ CORR', 'PHASE REPAIR', 'AUTO PROFILE',
              'FAST GAIN', 'FOLD RADIUS', 'FOLD MEMORY', 'LEVEL TARGET', 'LEVEL RELEASE', 'GAIN RATE',
-             'GAIN CAP', 'LOG CADENCE', 'LNA BIAS', 'CURRENT', 'LOOP CAP', 'SPUR 0', 'IQ LANE', 'CLOCK D10', 'AUTO OUTPUT']
+             'GAIN CAP', 'LOG CADENCE', 'LNA BIAS', 'CURRENT', 'LOOP CAP', 'SPUR 0', 'IQ LANE', 'CLOCK D10', 'AUTO OUTPUT',
+             'STRONG LANE']
 OUTPUT_STANDARDS = {1: 'NTSC', 2: 'PAL'}
 
 
