@@ -116,6 +116,9 @@ jobs:
           # LEVEL and the core near the table floor (an external LNA close in)
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_agc_strong.c ../main/agc.c ../main/gain.c ../main/arc_phy.c -lm -o /tmp/test_agc_strong
           /tmp/test_agc_strong | tail -1
+          # STRONG LANE: a coarser IQ lane when the floor rows still fold (policy only)
+          cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_strong_lane.c -o /tmp/test_strong_lane
+          /tmp/test_strong_lane
           # LEVEL's carrier radius of a folded window on the exact hardware fold model (adc_fold.h)
           cc -O2 -std=c11 -Wall -Wextra -Werror -I../main test_fold_radius.c ../main/agc.c -lm -o /tmp/test_fold_radius
           /tmp/test_fold_radius

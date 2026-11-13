@@ -33,7 +33,7 @@ static experimental_blob_t disk;
 static size_t disk_size=sizeof(disk);
 static uint8_t event_data[4];
 static bool blob_load(const char *k, void *d, size_t n) {
- assert(!strcmp(k,"exp") && n<=sizeof(disk) && n>=sizeof(disk)-2);
+ assert(!strcmp(k,"exp") && n<=sizeof(disk) && n>=sizeof(disk)-3);
  if (!stored || n != disk_size) return false;
  memcpy(d,&disk,n);return true;
 }
@@ -44,6 +44,8 @@ static unsigned receiver_gain_mode(void){return mode;}
 static unsigned phy_dfilt_mode(void){return dfilt;}
 static unsigned transport_demod(void){return demod;}
 static unsigned rf_lane(void){return lane;}
+static unsigned strong;
+static unsigned receiver_strong_lane(void){return strong;}
 static uint32_t phy_generation(void){return 1;}
 static bool phy_try_actuator(uint32_t gen){assert(gen==1);return !busy;}
 static void phy_end_actuator(void){}
@@ -104,17 +106,27 @@ int main(void) {
  assert(experimental_clock_d10()&&experimental_reboot_needed());
  assert(experimental_mask() & (1u<<EXP_CLOCK_D10));
  experimental_load();assert(!experimental_clock_d10()&&!experimental_reboot_needed());
- disk_size=sizeof(disk)-2;disk.value[EXP_FOLD_MEMORY]=2;
+ disk_size=sizeof(disk)-3;disk.value[EXP_FOLD_MEMORY]=2;
  disk.value[EXP_CLOCK_D10]=1; /* not present in NVS from before D10 */
  experimental_load();
  assert(experimental_get(EXP_FOLD_MEMORY)==2 && !experimental_get(EXP_CLOCK_D10));
  assert(!experimental_clock_d10());
- disk_size=sizeof(disk)-1;disk.value[EXP_FOLD_MEMORY]=1;disk.value[EXP_CLOCK_D10]=1;
+ disk_size=sizeof(disk)-2;disk.value[EXP_FOLD_MEMORY]=1;disk.value[EXP_CLOCK_D10]=1;
  disk.value[EXP_OUTPUT_AUTO]=1; /* not present in NVS from before AUTO OUTPUT */
  experimental_load();
  assert(experimental_get(EXP_FOLD_MEMORY)==1 && experimental_get(EXP_CLOCK_D10)==1 && !experimental_get(EXP_OUTPUT_AUTO));
+ disk_size=sizeof(disk)-1;disk.value[EXP_FOLD_MEMORY]=2;disk.value[EXP_OUTPUT_AUTO]=1;
+ disk.value[EXP_STRONG_LANE]=1; /* not present in NVS from before STRONG LANE */
+ experimental_load();
+ assert(experimental_get(EXP_FOLD_MEMORY)==2 && experimental_get(EXP_OUTPUT_AUTO)==1 && !experimental_get(EXP_STRONG_LANE));
+ assert(experimental_set(EXP_OUTPUT_AUTO,0));
+ /* A lane STRONG LANE routed live is no IQ LANE experiment and needs no reboot. */
+ { const unsigned boot=lane; uint8_t sv[EXP_ITEMS]; const uint32_t m0=experimental_mask(); const bool r0=experimental_reboot_needed();
+   lane=0;strong=2;assert(experimental_mask()==m0 && experimental_reboot_needed()==r0);
+   experimental_effective_snapshot(sv);assert(!sv[EXP_IQ_LANE] && experimental_transfer_active());
+   strong=0;lane=boot; }
  assert(experimental_set(EXP_CLOCK_D10,0));
- disk.value[EXP_OUTPUT_AUTO]=0;
+ disk.value[EXP_OUTPUT_AUTO]=0;disk.value[EXP_STRONG_LANE]=0;
  assert(experimental_set(EXP_FOLD_MEMORY,1));assert(disk_size==sizeof(disk));
  assert(events&&records&&dc_resets&&s_control_epoch);
  return 0;

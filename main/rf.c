@@ -113,6 +113,18 @@ esp_err_t rf_set_lane(unsigned lane)
     return result;
 }
 
+/* Live route change (STRONG LANE, receiver.c): the eight GPIO-matrix output
+ * selects only, on pins route_modem_iq configured at boot. No PHY register;
+ * the caller invalidates the observations made on the old lane. */
+void rf_reroute_lane(unsigned lane)
+{
+    if (lane >= RF_LANES) return;
+    for (unsigned k = 0; k < 8; ++k)
+        esp_rom_gpio_connect_out_signal(s_iq_pins[k], MODEM_DIAG0_IDX + s_lane_diag[lane][k], false, false);
+    __asm__ __volatile__("fence iorw, iorw" ::: "memory");
+    s_lane = lane;
+}
+
 unsigned rf_lane(void) { return s_lane; }
 const char *rf_lane_name(unsigned lane) { return lane < RF_LANES ? s_lane_names[lane] : "?"; }
 

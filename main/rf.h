@@ -61,6 +61,7 @@ static inline bool rf_filter_equal(rf_filter_t a, rf_filter_t b)
 enum { RF_LANE_COARSE, RF_LANE_FINE, RF_LANE_ULTRAFINE, RF_LANES };
 esp_err_t rf_set_lane(unsigned lane);
 unsigned rf_lane(void);
+void rf_reroute_lane(unsigned lane);   /* live, GPIO matrix only (STRONG LANE) */
 const char *rf_lane_name(unsigned lane);
 
 typedef struct { const char *name; uint16_t freq_mhz; } fpv_channel_t;

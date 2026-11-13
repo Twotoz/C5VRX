@@ -18,6 +18,7 @@
 #include "phase8_gain_lut.h"
 #include "phy.h"
 #include "rf.h"
+#include "strong_lane.h"
 
 direct_gain_t s_gain;
 volatile uint8_t s_current_gain = 62u;
@@ -175,13 +176,67 @@ static void fold_measure(dg_observation_t *o, const uint8_t *samples, unsigned n
 }
 
 /* Fixed modes bypass the controller; apply_target clamps to the live table. */
+/* STRONG LANE (strong_lane.h): with the gain on the floor rows and no lower
+ * row asked, a carrier that keeps folding moves to the fine and then the
+ * coarse IQ lane; a small or absent carrier moves back. On a coarser lane
+ * the gain is held (its controller reads ultrafine cells) and the DC, level
+ * and C/N accumulators stand still (observer_task); the DC servo, the C/N
+ * reference and map learning are off there (experimental_transfer_active).
+ * The route is eight GPIO-matrix writes by the observer, no PHY register;
+ * the control epoch invalidates what was observed on the old lane. */
+static strong_lane_t s_strong;
+unsigned receiver_strong_lane(void) { return s_strong.steps; }
+static void strong_route(int step)
+{
+    strong_lane_applied(&s_strong, step, (uint64_t)esp_timer_get_time());
+    rf_reroute_lane(RF_LANE_ULTRAFINE - s_strong.steps);
+    ++s_control_epoch;
+    printf("STRONG_LANE lane=%s gain=G%u ups=%lu downs=%lu\n", rf_lane_name(rf_lane()), s_current_gain,
+           (unsigned long)s_strong.ups, (unsigned long)s_strong.downs);
+}
+/* Back to the ultrafine lane at once: a pause owner (calibration, scan), a
+ * fixed gain, the pair sweep or STRONG LANE = OFF. */
+static void strong_release(void)
+{
+    while (s_strong.steps) strong_lane_applied(&s_strong, -1, (uint64_t)esp_timer_get_time());
+    if (rf_lane() == RF_LANE_ULTRAFINE) return;
+    rf_reroute_lane(RF_LANE_ULTRAFINE);
+    ++s_control_epoch;
+    printf("STRONG_LANE lane=ultrafine released\n");
+}
+static bool strong_allowed(uint8_t mode)
+{
+    return !experimental_get(EXP_STRONG_LANE) && receiver_gain_mode_auto(mode) && !s_pair_active &&
+           experimental_boot_lane() == RF_LANE_ULTRAFINE;
+}
+
 static uint8_t gain_decision(const dg_observation_t *o)
 {
-    if (s_pair_active) return pair_decision(o);
     const uint8_t mode = s_gain_mode;
-    if (mode == GAIN_MODE_AUTO) return dg_tick(&s_gain, o);
-    const uint8_t target = mode == GAIN_MODE_LEVEL || mode == GAIN_MODE_RSSI ? agc_decision(mode, o)
-                         : mode == GAIN_MODE_MAX ? rf_gain_table()->max_index : mode;
+    if (s_strong.steps) {
+        if (!strong_allowed(mode)) strong_release();
+        else {
+            const int step = strong_lane_tick(&s_strong, true, agc_folded(o), o->clip_pm >= 20u, o->pwr_x16, o->observed_us);
+            if (step) strong_route(step);
+            return s_current_gain;
+        }
+    }
+    if (s_pair_active) return pair_decision(o);
+    if (mode == GAIN_MODE_AUTO || mode == GAIN_MODE_LEVEL || mode == GAIN_MODE_RSSI) {
+        const uint8_t t = mode == GAIN_MODE_AUTO ? dg_tick(&s_gain, o) : agc_decision(mode, o);
+        if (strong_allowed(mode) && rf_lane() == RF_LANE_ULTRAFINE &&
+            strong_lane_tick(&s_strong, s_current_gain <= STRONG_LANE_FLOOR_ROW && t >= s_current_gain, agc_folded(o),
+                             o->clip_pm >= 20u, o->pwr_x16, o->observed_us) > 0) {
+            strong_route(1);
+            return s_current_gain;
+        }
+        if (mode == GAIN_MODE_AUTO) return t;
+        if (t == s_current_gain && s_gain.state != DG_HOLD &&
+            o->observed_us > (uint64_t)s_last_gain_write_us && o->observed_us - (uint64_t)s_last_gain_write_us >= 2000u)
+            s_gain.state = DG_HOLD;
+        return t;
+    }
+    const uint8_t target = mode == GAIN_MODE_MAX ? rf_gain_table()->max_index : mode;
     /* Once written and settled the model reads HOLD, so profile/DC/C-N gates
      * waiting for a held gain behave as with a steady carrier. */
     if (target == s_current_gain && s_gain.state != DG_HOLD &&
@@ -306,6 +361,7 @@ bool receiver_pause(const char *tag)
     if (s_last_video_us && s_pause_us - s_last_video_us < 3000000) ++s_pauses_video;
     s_paused = true;
     vTaskDelay(pdMS_TO_TICKS(20));   /* let an in-flight window finish */
+    strong_release();                /* the owner measures on the ultrafine lane */
     return true;
 }
 
@@ -953,7 +1009,7 @@ static void observer_task(void *arg)
         const dg_map_context_t after_context = map_context();
         if (phy != phy_generation() || phy_busy() || gain_epoch != s_gain_epoch || control != s_control_epoch ||
             table != rf_table_generation() || !dg_map_context_equal(&context, &after_context)) continue;
-        if (cn_gain_settled((uint64_t)t0, (uint64_t)s_last_gain_write_us, s_gain.state == DG_SETTLE)) {
+        if (!s_strong.steps && cn_gain_settled((uint64_t)t0, (uint64_t)s_last_gain_write_us, s_gain.state == DG_SETTLE)) {
             dc_accumulate(&o, sizeof(sample), s_current_gain, control, phy, table);
             level_accumulate(&o, s_current_gain);
             cna_probe(sample, sizeof(sample), &o, s_current_gain, t0);
@@ -1052,6 +1108,8 @@ void receiver_print(void)
         printf("RX_LEVEL unknown probes=%lu clipped_pm=%u\n", (unsigned long)lv.probes, lv.clipped_pm);
     printf("GAIN_SAT one_sided=%lu two_sided=%lu to_dc_servo=%lu (saturated observer windows: one rail per axis = DC-pushed, both = large signal; one-sided ones go to the DC servo, not the gain)\n",
            (unsigned long)s_sat_one_sided, (unsigned long)s_sat_two_sided, (unsigned long)s_gain.one_sided_clips);
+    printf("STRONG_LANE enabled=%u lane=%s steps=%u ups=%lu downs=%lu (a coarser IQ lane while the floor rows still fold; EXPERIMENTAL > STRONG LANE)\n",
+           !experimental_get(EXP_STRONG_LANE), rf_lane_name(rf_lane()), s_strong.steps, (unsigned long)s_strong.ups, (unsigned long)s_strong.downs);
     printf("GAIN_WRITES attack=%lu release=%lu refused=%lu rebinds=%lu overloads=%lu overloads_after_write=%lu heat_events=%lu sentinel_forwarded=%lu sentinel_dropped=%lu (why the gain moved; rebinds keep the core's memory on the same receiver; sentinel = 64-sample fast path, gross saturation only)\n",
            (unsigned long)s_gain.writes_severe, (unsigned long)s_gain.writes_moderate, (unsigned long)s_gain.writes_refused,
            (unsigned long)s_rebinds, (unsigned long)s_gain.overloads, (unsigned long)s_gain.overloads_after_write, (unsigned long)s_gain.heat_events,

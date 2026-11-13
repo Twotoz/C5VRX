@@ -2680,5 +2680,32 @@ or picture claim.
   the external LNA itself, or of the C5 input before its gain stages. If the
   flight log shows the gain at G2-G4 with folds (ATTACK events, rails 15)
   close in, the front end needs less gain there (an LNA bypass/enable or a
-  lower-gain LNA); a fixed pad costs the range the LNA gave. Board check
-  pending.
+  lower-gain LNA); a fixed pad costs the range the LNA gave.
+- **Board (Krience, PR build of the two fixes):** v5.0.583 degraded from
+  about 1 m, the fixed build only from about 20 cm. One report, no logs.
+
+### STRONG LANE (2026-11-13, host policy only)
+
+- **What is left at 20 cm** is a carrier over the ultrafine window on the
+  lowest rows (or compression; not told apart without logs). The window is
+  the one limit firmware still owns: the fine lane holds 6 dB and the coarse
+  lane 12 dB more at the same analog gain, a GPIO-matrix route with no analog
+  step and no decoder restart ("Edge window" above).
+- **Policy (`main/strong_lane.h`, EXPERIMENTAL > STRONG LANE, default ON):**
+  on rows 0-9 with no lower row asked, 16 folded windows over clean ones
+  (~3 ms) step one lane coarser, at most once per 20 ms. On a coarser lane
+  the gain is held; 200 ms under 2.5 cells rms (5 on the finer lane, a fold
+  needs ~8: 4 dB between the two decisions) steps back. No carrier reads
+  small, so it returns to ultrafine and the normal gain control. A pause
+  owner (calibration, scan), a fixed gain or the pair sweep releases it at
+  once. Console `T`: `STRONG_LANE`.
+- **Side effects on a coarser lane:** the DC servo, C/N reference, map
+  learning and the DC/level/C-N accumulators stand still
+  (`experimental_transfer_active`), so AFC/profile decisions hold; expected
+  to be harmless on a carrier this strong, not measured.
+- **Not reached without an LNA** (close in G21/G24), so the bare board is
+  unchanged. The general live lane change stays retired (2026-10-04).
+- **Open:** the mixed samples of the eight route writes on a carrier (raw IQ
+  across a change), the picture at each step, and whether compression of the
+  LNA or the C5 input limits before the coarse lane does. 12 dB is at most
+  a quarter of the distance in free space.
