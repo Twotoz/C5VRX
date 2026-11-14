@@ -118,6 +118,40 @@ glow) and GPIO2. The planned seven/eight-bit DAC expansion is cancelled;
 firmware stays six-bit. Leave the carrier's optional R8/R9 unpopulated and
 SJ2/SJ3 open.
 
+### Optional external LNA (more range)
+
+C5VRX-5 now supports an external low-noise amplifier in front of the
+XIAO. Tested with the **Zeenko ZK06-UM** (10 MHz–6 GHz, SMA;
+datasheet at 5.8 GHz: ~22.6 dB gain, ~1.0 dB noise figure), listed under
+[Build components](#build-components).
+
+- **Wiring:** antenna → LNA input → LNA output → IPX (U.FL) to SMA pigtail
+  → the XIAO's IPX antenna connector (both listed under
+  [Build components](#build-components)). Mind the arrow on the LNA: it
+  points from the antenna to the receiver. Keep the antenna-to-LNA cable as
+  short as possible: every dB lost before the LNA is lost range. Power the
+  LNA as its seller specifies.
+- **No setting needed.** The firmware measures its own receiver noise and
+  follows it: the gain stops where the LNA's noise would fold the 4-bit IQ
+  (about G67 with this LNA, G83 without), and the noise reference, signal
+  meter, AGC and live DC model adapt by themselves. Fitting or removing the
+  LNA needs no calibration. Let the receiver see a few seconds without a
+  VTX on its channel after the first boot with a new front end.
+- **What it gives:** the receiver's noise figure drops from ~6 dB to ~1 dB.
+  In a first indoor walk (a small house, rooms and cupboards) the picture
+  held to about **6.5 dB weaker signals** than the bare receiver on the
+  previous firmware (50 % picture near −93 dBm at the antenna against
+  −86.5 dBm). How much distance that is depends on the surroundings: about
+  1.5–1.7× in built-up areas, more in open space; an outdoor A/B is still to
+  come.
+- **Close in** the LNA's extra gain uses up the lowest gain rows sooner;
+  STRONG LANE (EXPERIMENTAL, on by default) takes over when even the lowest
+  row folds. EXPERIMENTAL > LEVEL TOP (9 default; 6 / 12 / 16) sets how much
+  noise the top gain row may carry.
+
+Details and measurements: [docs/FINDINGS.md](docs/FINDINGS.md), "Received
+level at the chip pin" and the external LNA notes.
+
 ### Optional digital video capture: Clock Pin D10
 
 In **EXPERIMENTAL**, set **Clock Pin D10** to **ON**, then power off and
@@ -304,6 +338,8 @@ The C5VRX name and logos have separate terms; see [assets/BRANDING.md](assets/BR
 | C5VRX_JACK_DIY_V3 / REV C carrier | <img src="hardware/C5VRX_JACK_DIY_V3/exports/renders/03-front-straight.png" alt="C5VRX REV C PCB render" width="96" height="65"> | [Gerbers & KiCad files](hardware/C5VRX_JACK_DIY_V3) · [REV B](hardware/C5VRX_JACK_DIY_V2) · [REV A](hardware/C5VRX_JACK_DIY) |
 | Perfboard (alternative) | <img src="web/assets/perfboard.png" alt="Green perfboard" width="42" height="61"> | [View on Amazon](https://link.amazon/B0i2qqMeq) |
 | Resistor kit | <img src="web/assets/resistor-kit.png" alt="Resistor assortment in a storage case" width="72" height="72"> | [View on Amazon](https://link.amazon/B06XSBkln) |
+| Zeenko ZK06-UM LNA (optional, [more range](#optional-external-lna-more-range)) | <img src="web/assets/zeenko-zk06-um-lna.png" alt="Zeenko ZK06-UM LNA" width="72" height="72"> | [View on Amazon](https://link.amazon/B0iY2ccnV) |
+| IPX (U.FL) to SMA pigtail (XIAO to the LNA) | <img src="web/assets/ipx-to-sma-pigtail.png" alt="IPX to SMA pigtail cables" width="72" height="72"> | [View on Amazon](https://link.amazon/B07pMkNyf) |
 
 Affiliate links. As an Amazon Associate, I earn from qualifying purchases.
 All affiliate earnings go back into C5VRX development.
