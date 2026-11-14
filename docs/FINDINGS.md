@@ -2180,6 +2180,21 @@ known distance and power against free space; FPV channel by channel).
   of its probes clipped or folded (the estimate's `CNA_F_CLIPPED` limit);
   `CN_AUTO ... clip_rejects=` counts the refused windows. A row already
   stored that way stays out of RX_LEVEL/LEVEL by the 12 cells^2 limit.
+- **That gate deadlocked LEVEL on the board** (flash of the LEVEL fix, VTX
+  off): LEVEL bound the default 4.8 cells^2, parked on G72 where every
+  learning window clipped (`clip_rejects` rising, `rows_with_noise=0`), so
+  the map never got a row and LEVEL never a reference (17701 folds, no
+  move). A clipped window's power is now kept per row for 5 s as a lower
+  bound (`s_cna_clip_floor`, never stored, no kurtosis test: clipping
+  lowers it, and a row that clips has too much power with or without a
+  carrier). With no clean map row the lowest such row sets the noise; a
+  clean row, learned once LEVEL is under the top, replaces it.
+- **EXPERIMENTAL > LEVEL TOP** (9 / 12 / 16 / 6 cells^2, 9 the baseline):
+  the noise the top row may carry. Behind the ZK06-UM (22.6 dB, NF 0.95 dB
+  at 5.8 GHz; system NF ~1.0 dB by Friis, which predicts the measured 17.5
+  dB noise rise within 0.1 dB) that is about G67 / G68 / G70 / G65; bare
+  boards keep G83 at 9-16. Expected: no C/N difference (the noise enters
+  before the gain), more fold sparkles towards 16. An edge walk decides.
 
 **Use:** a VTX at a known distance and power against free space gives the
 dB lost before the chip. For example, 25 mW with 2 dBi each side over 10 m at

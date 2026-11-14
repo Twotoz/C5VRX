@@ -250,6 +250,12 @@ STRONG LANE (2026-11-13, `main/strong_lane.h`, EXPERIMENTAL > STRONG LANE, defau
 on rows 0-9 and no lower row asked, a carrier that keeps folding (an external LNA close in) moves to the fine, then
 the coarse IQ lane; a small or absent carrier returns to ultrafine. Gain floor G2 in the core and LEVEL's level range
 to +100 dB belong to it. See docs/FINDINGS.md "External LNA close in"; do not widen it into a general lane control.
+External LNA at the range edge (2026-11-14, PR #307, board + host): the useful gain top is the highest row whose
+receiver noise is at most LEVEL TOP cells^2 (EXPERIMENTAL > LEVEL TOP 9/12/16/6, 9 default; `agc.h`,
+`receiver_gain_top`), from C/N-AUTO's map (clipped no-carrier windows a 5 s lower bound). Bare boards keep G83; behind
+a ~22 dB LNA ~G67. LEVEL's homes, its noise reference and the RANGE_DIAG/dropout "at max" checks use it. Board: the pin
+noise stayed within 0.3 dB from G54 to G66, so rows above the top add no C/N; do not force the table maximum behind an
+LNA. No LNA flag exists; it follows the measured noise. See docs/FINDINGS.md "Received level at the chip pin".
 LEVEL scores the top row highest at or under 6 dB C/N. Every receiver pause is logged (`FLOG_E_PAUSE`).
 See docs/FINDINGS.md "Video level, range decoder, survival row and pause records"; no board result yet.
 Menu entry allocates internal DMA descriptors in 384-byte chunks before

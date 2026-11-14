@@ -208,6 +208,9 @@ void agc_level_options(agc_level_t *a, bool radius, uint32_t memory_us, int targ
  * rms, the low end of the table's best radius and 1 dB over the bare A1
  * noise): bare boards keep G83, behind that LNA it is ~G67, where KEEL-1
  * settled on its own (G65-G67). More gain there adds no C/N, only folds. */
+static uint16_t s_top_noise_x16 = LEVEL_TOP_NOISE_MAX_X16;
+void agc_level_set_top_noise(uint16_t noise_max_x16) { s_top_noise_x16 = noise_max_x16 ? noise_max_x16 : LEVEL_TOP_NOISE_MAX_X16; }
+uint16_t agc_level_top_noise(void) { return s_top_noise_x16; }
 void agc_level_reset(agc_level_t *a, const int16_t row_db_q8[DG_STATES], uint8_t max_index, uint16_t noise_top_x16)
 {
     memset(a, 0, sizeof(*a));
@@ -220,7 +223,7 @@ void agc_level_reset(agc_level_t *a, const int16_t row_db_q8[DG_STATES], uint8_t
         row_noise(a, k);
     }
     int top = max_index;
-    while (top > 0 && a->noise_x16[top] > LEVEL_TOP_NOISE_MAX_X16) --top;
+    while (top > 0 && a->noise_x16[top] > s_top_noise_x16) --top;
     a->top_index = (uint8_t)top;
     a->homes = (uint8_t)build_homes(a->home, row_db_q8, (uint8_t)top);
     for (unsigned h = 0; h < a->homes; ++h) home_quality(a, h);

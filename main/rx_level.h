@@ -35,6 +35,7 @@
 #pragma once
 #include <math.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "cn_auto.h"
 
@@ -103,25 +104,40 @@ static inline rx_level_t rx_level_compute(const uint32_t sum_x16[RX_LEVEL_ROWS],
 /* A row whose noise reads over this was learned while the noise itself
  * clipped the 4-bit window (behind an LNA: G72 read 19.8 cells^2, 0.8 dB
  * under the G66 row referred up, board 2026-11-14). Such a row is used only
- * when the map has no other: then the lowest, the least clipped. */
+ * when the map has no other: then the lowest, the least clipped.
+ * clip_floor (optional, cells^2 per row, 0 = none): the power of no-carrier
+ * windows that clipped, which C/N-AUTO does not learn: a lower bound of the
+ * row's noise, used like a clipped map row. Without it a gain model parked
+ * on a clipping row never got a reference: every window there clipped, the
+ * map stayed empty and LEVEL kept the bare-board default (board 2026-11-14,
+ * G72, 17701 folds, no move). */
 #define RX_LEVEL_MAP_CLEAN_CELLS2 12.0f
-static inline float rx_level_noise_from_map(const cna_noise_map_t *m, const int16_t model_q8[RX_LEVEL_ROWS],
-                                            unsigned max_index, uint8_t *row_out)
+static inline float rx_level_noise_from_map_floor(const cna_noise_map_t *m, const float *clip_floor,
+                                                  const int16_t model_q8[RX_LEVEL_ROWS], unsigned max_index,
+                                                  uint8_t *row_out)
 {
     *row_out = 255u;
     int clean = -1, clipped = -1;
+    float clipped_v = 0.0f;
     for (int g = (int)(max_index < RX_LEVEL_ROWS ? max_index : RX_LEVEL_ROWS - 1u); g >= 0; --g) {
-        if (m->n[g] < CNA_MIN_SAMPLES || !(m->noise[g] >= CNA_QLIM_CELLS2)) continue;
-        if (!(m->noise[g] - RX_LEVEL_QUANT_CELLS2 > 0.0f)) continue;
-        if (m->noise[g] <= RX_LEVEL_MAP_CLEAN_CELLS2) { clean = g; break; }
-        clipped = g;   /* keeps the lowest */
+        const bool own = m->n[g] >= CNA_MIN_SAMPLES && m->noise[g] >= CNA_QLIM_CELLS2 &&
+                         m->noise[g] - RX_LEVEL_QUANT_CELLS2 > 0.0f;
+        if (own && m->noise[g] <= RX_LEVEL_MAP_CLEAN_CELLS2) { clean = g; break; }
+        float v = own ? m->noise[g] : 0.0f;
+        if (clip_floor && clip_floor[g] > v) v = clip_floor[g];
+        if (v > RX_LEVEL_MAP_CLEAN_CELLS2) { clipped = g; clipped_v = v; }   /* keeps the lowest */
     }
     const int g = clean >= 0 ? clean : clipped;
     if (g < 0) return 0.0f;
-    const double thermal = (double)m->noise[g] - RX_LEVEL_QUANT_CELLS2;
+    const double thermal = (double)(clean >= 0 ? m->noise[g] : clipped_v) - RX_LEVEL_QUANT_CELLS2;
     const double to_pin = pow(10.0, (double)(model_q8[max_index] - model_q8[g]) / 2560.0);
     *row_out = (uint8_t)g;
     return (float)(thermal * to_pin / RX_LEVEL_NOISE_CELLS2);
+}
+static inline float rx_level_noise_from_map(const cna_noise_map_t *m, const int16_t model_q8[RX_LEVEL_ROWS],
+                                            unsigned max_index, uint8_t *row_out)
+{
+    return rx_level_noise_from_map_floor(m, NULL, model_q8, max_index, row_out);
 }
 
 /* A carrier is shown only on evidence: 1 dB over the noise reference is

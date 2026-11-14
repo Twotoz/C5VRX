@@ -158,6 +158,23 @@ int main(void)
         mc.noise[72] = 19.8f; mc.n[72] = CNA_MIN_SAMPLES; mc.noise[78] = 40.0f; mc.n[78] = CNA_MIN_SAMPLES;
         (void)rx_level_noise_from_map(&mc, g.model_db_q8, top, &row_c);
         check("map: only clipped rows: the lowest (least clipped) is used", row_c == 72u);
+        /* An empty map with a clipped no-carrier window at G72 (LEVEL parked
+         * there, every window clipped, nothing learned): the lower bound is the
+         * first reference; a clean map row below wins over it. */
+        {
+            cna_noise_map_t empty = {0};
+            float floor_cells2[RX_LEVEL_ROWS] = {0};
+            floor_cells2[72] = 19.8f;
+            const float fl = rx_level_noise_from_map_floor(&empty, floor_cells2, g.model_db_q8, top, &row_c);
+            const float want = (float)((19.8 - 1.0 / 6.0) * pow(10.0, (g.model_db_q8[top] - g.model_db_q8[72]) / 2560.0) / 4.76);
+            check("floor: an empty map takes the clipped G72 window as a lower bound", row_c == 72u &&
+                  fabsf(fl - want) < 1e-3f * want);
+            check("floor: without the floor the empty map gives nothing",
+                  rx_level_noise_from_map(&empty, g.model_db_q8, top, &row_c) == 0.0f && row_c == 255u);
+            empty.noise[67] = m.noise[67]; empty.n[67] = CNA_MIN_SAMPLES;
+            (void)rx_level_noise_from_map_floor(&empty, floor_cells2, g.model_db_q8, top, &row_c);
+            check("floor: a clean map row (G67) wins over the floor", row_c == 67u);
+        }
         rx_level_t old = rx_level_compute(sum, n, 0, g.model_db_q8, top, 0.0f);
         check("LNA without the map: the calibration reads the noise as a carrier (the bug)", old.above_noise &&
               old.cn_x10 > 150);

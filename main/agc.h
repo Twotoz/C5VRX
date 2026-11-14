@@ -91,6 +91,10 @@ typedef struct {
 #ifndef LEVEL_TOP_NOISE_MAX_X16
 #define LEVEL_TOP_NOISE_MAX_X16 (9u * 16u)
 #endif
+/* The limit in use (EXPERIMENTAL > LEVEL TOP sets it before a re-bind;
+ * LEVEL_TOP_NOISE_MAX_X16 by default). */
+void agc_level_set_top_noise(uint16_t noise_max_x16);
+uint16_t agc_level_top_noise(void);
 /* row_db_q8: the gain model per row (direct_gain_t model_db_q8), noise_top_x16:
  * receiver noise power at the table maximum, cells^2 x16 (behind an external
  * LNA it can lie far over the 4-bit window: the homes then end at the highest
