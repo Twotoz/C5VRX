@@ -2255,6 +2255,18 @@ known distance and power against free space; FPV channel by channel).
   840 B and the boot splash crashed; with four, heap_min 1208 B, heap_lp
   1036 B. Firmware build only; a board check with a carrier on G40-G53 is
   still to come.
+- **Boot splash: interlaced again, monochrome (2026-11-14).** Every boot
+  logged `[MENU] progressive fallback: interlaced chain did not fit`, also
+  on 5.0.593 (rebuilt and flashed to check): the NTSC interlaced chain took
+  1499 DMA descriptors (~18 KiB) because each of the eight burst phases had
+  its own line prefix. The operator's goggles showed the 240p fallback
+  inverting and desyncing (as noted in menu_raster.h on 2026-10-18). The
+  menu is monochrome, so the burst is gone: every line has one prefix, and
+  a line's tail plus the next line's prefix are one node. NTSC interlaced
+  994 nodes (11.9 KiB), PAL 1203 (14.4 KiB); the raster buffer shrank
+  ~5.2 KB. Board: no fallback, heap_min 1280 -> 11056 B, heap_internal
+  22684 -> 27900 B. `test_no_signal_raster.c` checks the sync grid, the
+  broad pulses, no burst and the node budget.
 - **EXPERIMENTAL > LEVEL TOP** (9 / 12 / 16 / 6 cells^2, 9 the baseline):
   the noise the top row may carry. Behind the ZK06-UM (22.6 dB, NF 0.95 dB
   at 5.8 GHz; system NF ~1.0 dB by Friis, which predicts the measured 17.5
