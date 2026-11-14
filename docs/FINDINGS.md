@@ -2219,6 +2219,21 @@ known distance and power against free space; FPV channel by channel).
   search began there and its carrier gate would stop it before the rows the
   edge uses. They now use `receiver_gain_top()` (the table maximum on a bare
   board) and the DC search skips rows over it.
+- **The noise map follows a front-end change:** the no-carrier learning
+  only takes a row within +0.5/-2 dB of the noise it knows, so a map
+  learned with the LNA never followed its removal and a map learned bare
+  would never take the LNA's noise; with LEVEL, RX_LEVEL and the useful top
+  on the map that matters. A carrier cannot move the noise far: a weak one
+  adds under ~1 dB, a strong one fails the kurtosis test, none lowers it.
+  A noise-like, unclipped window more than 6 dB over or 2 dB under the
+  noise the map expects at that row (`cna_noise_at`), or a clipped
+  no-video window more than 6 dB over it (a lower bound: never
+  overshoots), rebases the whole map by the same thermal ratio and drops
+  its anchors (`cna_front_end_changed`, `cna_noise_rebase`; `CN_AUTO
+  rebases=`). 1-6 dB changes stay slow (0.5 dB steps), as before.
+  The learning gate moved from 2 % to 25 % clipped probes (G67 behind the
+  LNA: 7-15 %, G72: 94 %). Board without the LNA after these builds:
+  noise -94.6 dBm (map row 79), LEVEL G79, no false carrier.
 - **EXPERIMENTAL > LEVEL TOP** (9 / 12 / 16 / 6 cells^2, 9 the baseline):
   the noise the top row may carry. Behind the ZK06-UM (22.6 dB, NF 0.95 dB
   at 5.8 GHz; system NF ~1.0 dB by Friis, which predicts the measured 17.5

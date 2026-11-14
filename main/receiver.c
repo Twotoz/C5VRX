@@ -619,7 +619,7 @@ static uint8_t s_abs_row = 255u;
 static cna_reading_t s_cna;
 static volatile int64_t s_cna_us;
 static volatile uint32_t s_cna_epoch;
-static uint32_t s_cna_learned, s_cna_absent_rejects, s_cna_clip_rejects, s_cna_estimates;
+static uint32_t s_cna_learned, s_cna_absent_rejects, s_cna_clip_rejects, s_cna_rebases, s_cna_estimates;
 static volatile bool s_cna_gain_dirty;
 
 static int cna_slot_find(uint16_t freq, rf_filter_t f)
@@ -809,6 +809,9 @@ static void cna_probe(const uint8_t *sample, size_t bytes, const dg_observation_
     }
     if (s_abs_n >= CNA_ABSENT_PROBES) {
         const float known = s_cna_map.n[row] >= CNA_MIN_SAMPLES ? s_cna_map.noise[row] : 0.0f;
+        uint8_t exp_flags = 0;
+        float exp_uncert;
+        const float expected = cna_noise_at(&s_cna_map, row, s_gain.model_db_q8, now, &exp_flags, &exp_uncert);
         const int64_t video = s_last_video_us;
         const bool quiet_video = !video || now - video > 2000000;
         /* Noise that clips or folds is no noise power of the row: behind an
@@ -830,10 +833,27 @@ static void cna_probe(const uint8_t *sample, size_t bytes, const dg_observation_
             ++s_cna_clip_rejects;
             s_cna_clip_floor[row] = (float)(s_abs_m2 / s_abs_n);
             s_cna_clip_floor_us[row] = now;
+            /* Clipped power far over what the map expects here, with no video:
+             * an LNA fitted after the map was learned bare. The clipped power
+             * is a lower bound, so moving the map to it never overshoots;
+             * the next rows down clip less and finish it (cna_noise_rebase). */
+            if (quiet_video && expected >= CNA_QLIM_CELLS2 &&
+                cna_db((float)(s_abs_m2 / s_abs_n) / expected) > CNA_REBASE_UP_DB) {
+                cna_noise_rebase(&s_cna_map, row, (float)(s_abs_m2 / s_abs_n), expected, now);
+                ++s_cna_rebases;
+                s_cna_dirty = true;
+            }
         }
         else if (quiet_video && cna_carrier_absent(s_abs_m2, s_abs_m4, s_abs_n, known)) {
             cna_noise_learn(&s_cna_map, row, (float)(s_abs_m2 / s_abs_n), now);
             ++s_cna_learned;
+            s_cna_dirty = true;
+        } else if (quiet_video && expected >= CNA_QLIM_CELLS2 &&
+                   cna_front_end_changed(s_abs_m2, s_abs_m4, s_abs_n, expected)) {
+            /* Noise-like and far from the map (cn_auto.h): the front end
+             * changed (an external LNA fitted or removed). */
+            cna_noise_rebase(&s_cna_map, row, (float)(s_abs_m2 / s_abs_n), expected, now);
+            ++s_cna_rebases;
             s_cna_dirty = true;
         } else if (quiet_video) {
             ++s_cna_absent_rejects;
@@ -1219,10 +1239,10 @@ void receiver_print(void)
         const cna_reading_t c = receiver_cn_reading();
         unsigned measured = 0;
         for (unsigned k = 0; k < CNA_ROWS; ++k) measured += s_cna_map.n[k] >= CNA_MIN_SAMPLES;
-        printf("CN_AUTO estimate_x10=%d control_x10=%d power_x10=%d m2m4_x10=%d confidence=%u source=%u flags=0x%02x noise_cells2=%.3f rows_with_noise=%u learned=%lu absent_rejects=%lu clip_rejects=%lu estimates=%lu nbw_khz=%u (self-calibrating C/N, cn_auto.h)\n",
+        printf("CN_AUTO estimate_x10=%d control_x10=%d power_x10=%d m2m4_x10=%d confidence=%u source=%u flags=0x%02x noise_cells2=%.3f rows_with_noise=%u learned=%lu absent_rejects=%lu clip_rejects=%lu rebases=%lu estimates=%lu nbw_khz=%u (self-calibrating C/N, cn_auto.h)\n",
                c.x10, receiver_obs_cn_x10(), c.power_x10, c.m2m4_x10, c.confidence, c.source, c.flags,
                (double)c.noise_cells2, measured,
-               (unsigned long)s_cna_learned, (unsigned long)s_cna_absent_rejects, (unsigned long)s_cna_clip_rejects, (unsigned long)s_cna_estimates,
+               (unsigned long)s_cna_learned, (unsigned long)s_cna_absent_rejects, (unsigned long)s_cna_clip_rejects, (unsigned long)s_cna_rebases, (unsigned long)s_cna_estimates,
                calibration_filter_nbw_khz());
     }
     printf("GAIN_TABLE measured_rows=%u g83_g72_db=%.2f (top rows from the receiver-noise map; the rest the model, joined)\n",
