@@ -472,6 +472,8 @@ static rx_level_t s_level;
 static float s_noise_rel;          /* learned noise, calibration units; 0 = not yet */
 static uint16_t s_noise_freq;
 static rf_filter_t s_noise_filter;   /* the noise belongs to this filter too (NARROW reads lower) */
+static uint8_t s_level_noise_row = 255u;   /* noise-map row the level's noise came from, 255 = none */
+static float level_noise_from_map(uint8_t *row);
 static void level_accumulate(const dg_observation_t *o, uint8_t gain)
 {
     if (gain >= RX_LEVEL_ROWS || s_obs_stuck) return;
@@ -493,17 +495,25 @@ void receiver_level_roll(bool no_carrier, bool video)
         f.bw20 != s_noise_filter.bw20) {
         s_noise_freq = rf_frequency_mhz(); s_noise_filter = f; s_noise_rel = 0.0f;
     }
-    rx_level_t r = rx_level_compute(sum, n, clipped, s_gain.model_db_q8, s_gain.table.max_index, s_noise_rel);
+    /* The noise: C/N-AUTO's map of this context (with or without an external
+     * LNA, rx_level.h), else the reference learned below, else the
+     * calibration. */
+    uint8_t map_row;
+    const float map_rel = level_noise_from_map(&map_row);
+    s_level_noise_row = map_row;
+    rx_level_t r = rx_level_compute(sum, n, clipped, s_gain.model_db_q8, s_gain.table.max_index,
+                                    map_rel > 0.0f ? map_rel : s_noise_rel);
     /* Learn the noise with no carrier at the table maximum, inside -3..+4 dB
      * of the calibration (a carrier the supervisor missed stays out). */
     if (no_carrier && r.valid && r.gain_min == s_gain.table.max_index && r.rel > 0.5f && r.rel < 2.5f) {
         s_noise_rel = s_noise_rel > 0.0f ? s_noise_rel + (r.rel - s_noise_rel) / 8.0f : r.rel;
-        r = rx_level_compute(sum, n, clipped, s_gain.model_db_q8, s_gain.table.max_index, s_noise_rel);
+        if (!(map_rel > 0.0f))
+            r = rx_level_compute(sum, n, clipped, s_gain.model_db_q8, s_gain.table.max_index, s_noise_rel);
     }
     s_level = rx_level_gate(r, video);
 }
 rx_level_t receiver_level(void) { return s_level; }
-bool receiver_noise_learned(void) { return s_noise_rel > 0.0f; }
+bool receiver_noise_learned(void) { return s_level_noise_row != 255u || s_noise_rel > 0.0f; }
 /* The menu owns TX and the gain observer stands still, so the menu feeds
  * its control windows here instead (control.c), in 256-byte probes like
  * the observer's, and rolls once a second. */
@@ -640,6 +650,19 @@ bool receiver_export_noise(uint8_t row, float *cells2, uint16_t *samples, int64_
     *measured_us = s_cna_map.us[row];
     (void)xTaskResumeAll();
     return *samples >= CNA_MIN_SAMPLES && *cells2 > 0;
+}
+/* The received level's noise at the pin from the map (rx_level.h), in
+ * calibration units; 0 when the map belongs to another context or has no
+ * row. Read-only like the export: never cna_key_check() here. */
+static float level_noise_from_map(uint8_t *row)
+{
+    *row = 255u;
+    if (experimental_transfer_active() || !s_cna_key_valid || s_cna_freq != rf_frequency_mhz() ||
+        !rf_filter_equal(s_cna_filter, rf_filter())) return 0.0f;
+    vTaskSuspendAll();
+    const float rel = rx_level_noise_from_map(&s_cna_map, s_gain.model_db_q8, s_gain.table.max_index, row);
+    (void)xTaskResumeAll();
+    return rel;
 }
 
 void receiver_cn_noise_store(uint8_t row, float cells2)
@@ -1100,11 +1123,13 @@ void receiver_print(void)
                (unsigned long)s_agc.rssi.folds);
     const rx_level_t lv = s_level;
     if (lv.valid)
-        printf("RX_LEVEL carrier_dbm=%.1f input_dbm=%.1f noise_dbm=%.1f noise_learned=%u cn_db=%.1f above_noise=%u exact=%u gains=%u-%u probes=%lu clipped_pm=%u "
+        printf("RX_LEVEL carrier_dbm=%.1f input_dbm=%.1f noise_dbm=%.1f noise_learned=%u noise_src=%s noise_row=%u cn_db=%.1f above_noise=%u exact=%u gains=%u-%u probes=%lu clipped_pm=%u "
                "(at the chip pin; calibrated against the Wi-Fi PHY RSSI: +-1 dB at G54-G83, a few dB below G54; "
                "free space for 25 mW, 2 dBi each side, 10 m at 5.8 GHz is ~-50 dBm)\n",
-               lv.carrier_dbm_x10 / 10.0, lv.input_dbm_x10 / 10.0, lv.noise_dbm_x10 / 10.0, (unsigned)(s_noise_rel > 0.0f),
-               lv.cn_x10 / 10.0,
+               lv.carrier_dbm_x10 / 10.0, lv.input_dbm_x10 / 10.0, lv.noise_dbm_x10 / 10.0,
+               (unsigned)receiver_noise_learned(),
+               s_level_noise_row != 255u ? "map" : s_noise_rel > 0.0f ? "g83" : "cal",
+               s_level_noise_row != 255u ? (unsigned)s_level_noise_row : 0u, lv.cn_x10 / 10.0,
                (unsigned)lv.above_noise, (unsigned)lv.exact, lv.gain_min, lv.gain_max, (unsigned long)lv.probes,
                lv.clipped_pm);
     else
