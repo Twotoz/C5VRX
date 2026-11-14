@@ -602,9 +602,17 @@ typedef struct {
 static cna_store_t s_cna_store;
 static bool s_cna_store_loaded;
 static cna_noise_map_t s_cna_map;
-static float s_cna_clip_floor[CNA_ROWS];   /* power of clipped windows: a lower bound, never stored (rx_level.h) */
-static int64_t s_cna_clip_floor_us[CNA_ROWS];
-#define CNA_CLIP_FLOOR_US 5000000ll   /* a clipped row's bound holds 5 s after its last clipped window */
+/* Power of clipped windows: a lower bound, never stored (rx_level.h); 0
+ * once expired. Stamps in 0.1 s (uint16, wraps after ~110 min; entries
+ * expire long before). Kept small: HP RAM decides whether the boot
+ * splash gets its interlaced descriptor chain (~18 KiB for NTSC); with
+ * 64-bit stamps and a per-call copy of the floor the build fell to the
+ * progressive fallback, whose colour phase flips and desyncs some goggles
+ * (board 2026-11-14). */
+static float s_cna_clip_floor[CNA_ROWS];
+static uint16_t s_cna_clip_floor_ds[CNA_ROWS];
+#define CNA_CLIP_FLOOR_DS 50u   /* a clipped row's bound holds 5 s after its last clipped window */
+static inline uint16_t now_ds(int64_t us) { return (uint16_t)(us / 100000); }
 static uint16_t s_cna_freq;
 static rf_filter_t s_cna_filter;
 static bool s_cna_key_valid, s_cna_dirty;
@@ -671,7 +679,7 @@ static void cna_key_check(void)
         s_cna_store_loaded = true;
     }
     memset(&s_cna_map, 0, sizeof(s_cna_map));
-    memset(s_cna_clip_floor, 0, sizeof(s_cna_clip_floor)); memset(s_cna_clip_floor_us, 0, sizeof(s_cna_clip_floor_us));
+    memset(s_cna_clip_floor, 0, sizeof(s_cna_clip_floor)); memset(s_cna_clip_floor_ds, 0, sizeof(s_cna_clip_floor_ds));
     memset(s_rowdc_n, 0, sizeof(s_rowdc_n));
     s_cna_freq = freq; s_cna_filter = f; s_cna_key_valid = true; s_cna_dirty = false;
     s_cna_acc_row = s_abs_row = 255u;
@@ -706,12 +714,11 @@ static float level_noise_from_map(uint8_t *row)
     *row = 255u;
     if (experimental_transfer_active() || !s_cna_key_valid || s_cna_freq != rf_frequency_mhz() ||
         !rf_filter_equal(s_cna_filter, rf_filter())) return 0.0f;
-    static float floor_now[CNA_ROWS];
-    const int64_t now = esp_timer_get_time();
+    const uint16_t now = now_ds(esp_timer_get_time());
     vTaskSuspendAll();
-    for (unsigned k = 0; k < CNA_ROWS; ++k)
-        floor_now[k] = s_cna_clip_floor_us[k] && now - s_cna_clip_floor_us[k] <= CNA_CLIP_FLOOR_US ? s_cna_clip_floor[k] : 0.0f;
-    const float rel = rx_level_noise_from_map_floor(&s_cna_map, floor_now, s_gain.model_db_q8,
+    for (unsigned k = 0; k < CNA_ROWS; ++k)   /* expire in place (no copy: HP RAM) */
+        if (s_cna_clip_floor[k] > 0.0f && (uint16_t)(now - s_cna_clip_floor_ds[k]) > CNA_CLIP_FLOOR_DS) s_cna_clip_floor[k] = 0.0f;
+    const float rel = rx_level_noise_from_map_floor(&s_cna_map, s_cna_clip_floor, s_gain.model_db_q8,
                                                     s_gain.table.max_index, row);
     (void)xTaskResumeAll();
     return rel;
@@ -823,7 +830,7 @@ static void cna_probe(const uint8_t *sample, size_t bytes, const dg_observation_
          * (board, same day). Refused over a quarter of the probes. */
         const bool clean = s_abs_clip * 4u <= s_abs_n;
         if (!clean) {
-            /* Not learned, but kept for CNA_CLIP_FLOOR_US as a lower bound of
+            /* Not learned, but kept for CNA_CLIP_FLOOR_DS as a lower bound of
              * the row's power (not stored): it gives LEVEL/RX_LEVEL a first
              * reference when the gain sits on a row where every window clips
              * (rx_level.h). No kurtosis test: clipping lowers it (board
@@ -832,7 +839,7 @@ static void cna_probe(const uint8_t *sample, size_t bytes, const dg_observation_
              * expiry keeps a VTX close at boot from lowering the top later. */
             ++s_cna_clip_rejects;
             s_cna_clip_floor[row] = (float)(s_abs_m2 / s_abs_n);
-            s_cna_clip_floor_us[row] = now;
+            s_cna_clip_floor_ds[row] = now_ds(now);
             /* Clipped power far over what the map expects here, with no video:
              * an LNA fitted after the map was learned bare. The clipped power
              * is a lower bound, so moving the map to it never overshoots;

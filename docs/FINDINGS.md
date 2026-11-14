@@ -2234,6 +2234,39 @@ known distance and power against free space; FPV channel by channel).
   The learning gate moved from 2 % to 25 % clipped probes (G67 behind the
   LNA: 7-15 %, G72: 94 %). Board without the LNA after these builds:
   noise -94.6 dBm (map row 79), LEVEL G79, no false carrier.
+- **No DC hold under the table (blackbox session 389, ~22 dB LNA):** the
+  DC table, its hold and the servo cover G54-G89 (the top RF stage) only;
+  under it the chip's own DC applied. Behind the LNA a medium carrier sits
+  on G46-G53, and there the DC read 1-2.6 cells (I/Q -1.05/2.65): 12 s
+  without picture at 7-10 dB C/N and ~-85 dBm at the antenna, until the
+  operator cut the power (reset reason poweron; no crash). Without the LNA
+  those rows only see strong carriers, whose circle (5-8 cells) tolerates
+  that DC. With the VTX off the DC there cannot be measured (the noise is
+  under one ADC step); the servo measures it on the carrier circle.
+- **LOW DC (EXPERIMENTAL, default ON):** every row G30-G53 (stages 4-7) is held on the
+  chip's own bank-2 codes (read once per table context in vendor mode,
+  right after the gain write) plus one live trim per RF stage (8 stages:
+  G0, G10, G17, G25, G30, G38, G43, G47), servoed like the template rows on
+  one extra servo slot per stage (LP RAM). Bank 1 stays the chip's own (phy.c
+  pins it only inside the table span). Nothing is stored. OFF restores the
+  chip's own DC. Console `T`: `DC_LOW on= holds= steps= stage= trim= base=`.
+  Stages 0-3 (G0-G29: very strong carriers only, where the chip's DC does
+  no harm) keep the chip's own DC: with all eight stages heap_min fell to
+  840 B and the boot splash crashed; with four, heap_min 1208 B, heap_lp
+  1036 B. Firmware build only; a board check with a carrier on G40-G53 is
+  still to come.
+- **Boot splash: interlaced again, monochrome (2026-11-14).** Every boot
+  logged `[MENU] progressive fallback: interlaced chain did not fit`, also
+  on 5.0.593 (rebuilt and flashed to check): the NTSC interlaced chain took
+  1499 DMA descriptors (~18 KiB) because each of the eight burst phases had
+  its own line prefix. The operator's goggles showed the 240p fallback
+  inverting and desyncing (as noted in menu_raster.h on 2026-10-18). The
+  menu is monochrome, so the burst is gone: every line has one prefix, and
+  a line's tail plus the next line's prefix are one node. NTSC interlaced
+  994 nodes (11.9 KiB), PAL 1203 (14.4 KiB); the raster buffer shrank
+  ~5.2 KB. Board: no fallback, heap_min 1280 -> 11056 B, heap_internal
+  22684 -> 27900 B. `test_no_signal_raster.c` checks the sync grid, the
+  broad pulses, no burst and the node budget.
 - **EXPERIMENTAL > LEVEL TOP** (9 / 12 / 16 / 6 cells^2, 9 the baseline):
   the noise the top row may carry. Behind the ZK06-UM (22.6 dB, NF 0.95 dB
   at 5.8 GHz; system NF ~1.0 dB by Friis, which predicts the measured 17.5

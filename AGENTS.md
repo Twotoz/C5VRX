@@ -256,6 +256,10 @@ receiver noise is at most LEVEL TOP cells^2 (EXPERIMENTAL > LEVEL TOP 9/12/16/6,
 a ~22 dB LNA ~G67. LEVEL's homes, its noise reference and the RANGE_DIAG/dropout "at max" checks use it. Board: the pin
 noise stayed within 0.3 dB from G54 to G66, so rows above the top add no C/N; do not force the table maximum behind an
 LNA. No LNA flag exists; it follows the measured noise. See docs/FINDINGS.md "Received level at the chip pin".
+LOW DC (2026-11-14, EXPERIMENTAL > LOW DC, default ON, firmware build only): rows G30-G53 (RF stages 4-7, under the
+DC table; G0-G29 keep the chip's DC: RAM, heap_min 840 B and a crashing boot splash with all stages) are held on the chip's own bank-2 codes plus one live servo trim per RF stage (one extra LP-RAM servo slot a
+stage); nothing is stored; OFF = the chip's own DC. Behind an LNA medium carriers sit there (session 389: 2.6 cells of
+DC, no picture at 7-10 dB C/N).
 LEVEL scores the top row highest at or under 6 dB C/N. Every receiver pause is logged (`FLOG_E_PAUSE`).
 See docs/FINDINGS.md "Video level, range decoder, survival row and pause records"; no board result yet.
 Menu entry allocates internal DMA descriptors in 384-byte chunks before
