@@ -11,7 +11,7 @@ enum {
     EXP_AUTO_PROFILE, EXP_FAST_GAIN, EXP_FOLD_RADIUS, EXP_FOLD_MEMORY,
     EXP_LEVEL_TARGET, EXP_LEVEL_RELEASE, EXP_GAIN_RATE, EXP_GAIN_CAP,
     EXP_LOG_CADENCE, EXP_LNA_BIAS, EXP_CURRENT, EXP_LOOP_CAP, EXP_SPUR0, EXP_IQ_LANE, EXP_CLOCK_D10,
-    EXP_OUTPUT_AUTO, EXP_STRONG_LANE, EXP_ITEMS,
+    EXP_OUTPUT_AUTO, EXP_STRONG_LANE, EXP_LEVEL_TOP, EXP_ITEMS,
     EXP_DAC = EXP_ITEMS, EXP_RESET, EXP_BACK, EXP_MENU_ITEMS
 };
 /* 2 (2026-11-14): AUTO OUTPUT's values swapped to OFF/ON, OFF the baseline
@@ -40,6 +40,9 @@ static const experimental_item_t experimental_items[EXP_ITEMS] = {
     {"Clock Pin D10", 2, {"OFF", "ON"}},
     {"AUTO OUTPUT", 2, {"OFF", "ON"}},     /* output_auto.h: the video level from the measured sync and white (v2 order) */
     {"STRONG LANE", 2, {"ON", "OFF"}},     /* strong_lane.h: a coarser IQ lane when the lowest gain rows still fold */
+    /* agc.h LEVEL_TOP_NOISE_MAX_X16: the most receiver noise (cells^2) the top
+     * gain row may carry; behind an external LNA it sets the highest row. */
+    {"LEVEL TOP", 4, {"9", "12", "16", "6"}},
 };
 typedef struct { uint8_t version, value[EXP_ITEMS]; } experimental_blob_t;
 /* Reject the entire blob on invalid data; never load half an experiment. */

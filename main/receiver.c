@@ -140,12 +140,50 @@ static unsigned s_agc_rows = UINT_MAX;
 static unsigned s_gain_rows_measured;
 static float s_gain_th[DG_STATES];
 #define AGC_NOISE_TOP_DEFAULT 4.8f   /* cells^2 at G83 when no noise map yet (Wi-Fi reference, FINDINGS) */
+/* LEVEL's receiver noise at the table maximum (thermal cells^2 x16) from the
+ * C/N-AUTO map of this channel and filter, rolled at 1 Hz with the received
+ * level (receiver_level_roll); 0 = none. The boot gain table (s_gain_th)
+ * only measures rows whose noise does not clip, so behind an external LNA it
+ * had no top row and LEVEL took the bare-board default 4.8 cells^2, ~17 dB
+ * under the real noise (board 2026-11-14): the noise read as a carrier and
+ * the homes ran from G83. A bound value that moved more than ~1 dB re-binds. */
+static volatile uint16_t s_map_noise_top_x16;
+static uint16_t s_agc_noise_x16;
+
+/* The noise-limited top row (LEVEL_TOP_NOISE_MAX_X16) from the map's noise at
+ * the table maximum, for every gain model and the range diagnosis: behind an
+ * external LNA the table maximum is never the receiver's sensitive state,
+ * the rows above this one only fold. The table maximum without a map value. */
+/* EXPERIMENTAL > LEVEL TOP: 9 (baseline), 12, 16 or 6 cells^2. */
+static uint16_t level_top_noise_x16(void)
+{
+    static const uint8_t cells2[] = {9u, 12u, 16u, 6u};
+    const unsigned v = experimental_get(EXP_LEVEL_TOP);
+    return (uint16_t)((v < sizeof(cells2) ? cells2[v] : 9u) * 16u);
+}
+uint8_t receiver_gain_top(void)
+{
+    const unsigned max = rf_gain_table()->max_index;
+    const uint32_t top_x16 = s_map_noise_top_x16, limit_x16 = level_top_noise_x16();
+    if (!top_x16 || top_x16 <= limit_x16 || max >= DG_STATES) return (uint8_t)max;
+    /* row k's noise: top * 10^((model[k] - model[max]) / 10 dB) */
+    const float room_q8 = 2560.0f * log10f((float)limit_x16 / (float)top_x16);   /* negative */
+    int k = (int)max;
+    while (k > 0 && (float)(s_gain.model_db_q8[k] - s_gain.model_db_q8[max]) > room_q8) --k;
+    return (uint8_t)k;
+}
 
 static uint8_t agc_decision(uint8_t mode, const dg_observation_t *o)
 {
     const arc_gain_table_t *t = rf_gain_table();
-    if (mode != s_agc_mode || s_agc_control != s_control_epoch || s_agc_rows != s_gain_rows_measured) {
-        const float n = s_gain_th[t->max_index] > 0.0f ? s_gain_th[t->max_index] : AGC_NOISE_TOP_DEFAULT;
+    const uint32_t map_x16 = s_map_noise_top_x16, bound_x16 = s_agc_noise_x16;
+    const bool noise_moved = mode == GAIN_MODE_LEVEL && s_agc_mode == GAIN_MODE_LEVEL && map_x16 &&
+                             (map_x16 * 4u > bound_x16 * 5u || map_x16 * 5u < bound_x16 * 4u);
+    if (mode != s_agc_mode || s_agc_control != s_control_epoch || s_agc_rows != s_gain_rows_measured || noise_moved) {
+        const float n = map_x16 ? map_x16 / 16.0f :
+                        s_gain_th[t->max_index] > 0.0f ? s_gain_th[t->max_index] : AGC_NOISE_TOP_DEFAULT;
+        s_agc_noise_x16 = (uint16_t)(n * 16.0f);
+        agc_level_set_top_noise(level_top_noise_x16());   /* an experiment change re-binds via s_control_epoch */
         if (mode == GAIN_MODE_LEVEL) {
             agc_level_reset(&s_agc.level, s_gain.model_db_q8, t->max_index, (uint16_t)(n * 16.0f));
             const unsigned mem = experimental_get(EXP_FOLD_MEMORY), target = experimental_get(EXP_LEVEL_TARGET);
@@ -156,8 +194,10 @@ static uint8_t agc_decision(uint8_t mode, const dg_observation_t *o)
         s_agc_mode = mode;
         s_agc_control = s_control_epoch;
         s_agc_rows = s_gain_rows_measured;
-        printf("AGC model=%s bound top=G%u noise_top=%.2f cells2 rows_measured=%u\n",
-               mode == GAIN_MODE_LEVEL ? "LEVEL" : "RSSI", t->max_index, (double)n, s_gain_rows_measured);
+        printf("AGC model=%s bound top=G%u noise_top=%.2f cells2 noise_src=%s homes_from=G%u rows_measured=%u\n",
+               mode == GAIN_MODE_LEVEL ? "LEVEL" : "RSSI", t->max_index, (double)n,
+               map_x16 ? "map" : s_gain_th[t->max_index] > 0.0f ? "gtab" : "default",
+               mode == GAIN_MODE_LEVEL ? s_agc.level.top_index : t->max_index, s_gain_rows_measured);
     }
     return mode == GAIN_MODE_LEVEL ? agc_level_tick(&s_agc.level, o, s_current_gain, o->observed_us)
                                    : agc_rssi_tick(&s_agc.rssi, o, s_current_gain, o->observed_us);
@@ -501,6 +541,9 @@ void receiver_level_roll(bool no_carrier, bool video)
     uint8_t map_row;
     const float map_rel = level_noise_from_map(&map_row);
     s_level_noise_row = map_row;
+    /* The same noise at the table maximum for LEVEL (agc_decision). */
+    const float top_x16 = map_rel * RX_LEVEL_NOISE_CELLS2 * 16.0f;
+    s_map_noise_top_x16 = map_rel > 0.0f ? (uint16_t)(top_x16 > 65535.0f ? 65535.0f : top_x16 < 1.0f ? 1.0f : top_x16) : 0u;
     rx_level_t r = rx_level_compute(sum, n, clipped, s_gain.model_db_q8, s_gain.table.max_index,
                                     map_rel > 0.0f ? map_rel : s_noise_rel);
     /* Learn the noise with no carrier at the table maximum, inside -3..+4 dB
@@ -559,6 +602,9 @@ typedef struct {
 static cna_store_t s_cna_store;
 static bool s_cna_store_loaded;
 static cna_noise_map_t s_cna_map;
+static float s_cna_clip_floor[CNA_ROWS];   /* power of clipped windows: a lower bound, never stored (rx_level.h) */
+static int64_t s_cna_clip_floor_us[CNA_ROWS];
+#define CNA_CLIP_FLOOR_US 5000000ll   /* a clipped row's bound holds 5 s after its last clipped window */
 static uint16_t s_cna_freq;
 static rf_filter_t s_cna_filter;
 static bool s_cna_key_valid, s_cna_dirty;
@@ -568,12 +614,12 @@ static cna_sums_t s_cna_acc;
 static uint8_t s_cna_acc_row = 255u;
 static uint32_t s_cna_acc_probes, s_cna_acc_clip, s_cna_div;
 static double s_abs_m2, s_abs_m4;
-static uint32_t s_abs_n;
+static uint32_t s_abs_n, s_abs_clip;   /* probes; of them clipped or folded */
 static uint8_t s_abs_row = 255u;
 static cna_reading_t s_cna;
 static volatile int64_t s_cna_us;
 static volatile uint32_t s_cna_epoch;
-static uint32_t s_cna_learned, s_cna_absent_rejects, s_cna_estimates;
+static uint32_t s_cna_learned, s_cna_absent_rejects, s_cna_clip_rejects, s_cna_rebases, s_cna_estimates;
 static volatile bool s_cna_gain_dirty;
 
 static int cna_slot_find(uint16_t freq, rf_filter_t f)
@@ -625,6 +671,7 @@ static void cna_key_check(void)
         s_cna_store_loaded = true;
     }
     memset(&s_cna_map, 0, sizeof(s_cna_map));
+    memset(s_cna_clip_floor, 0, sizeof(s_cna_clip_floor)); memset(s_cna_clip_floor_us, 0, sizeof(s_cna_clip_floor_us));
     memset(s_rowdc_n, 0, sizeof(s_rowdc_n));
     s_cna_freq = freq; s_cna_filter = f; s_cna_key_valid = true; s_cna_dirty = false;
     s_cna_acc_row = s_abs_row = 255u;
@@ -659,8 +706,13 @@ static float level_noise_from_map(uint8_t *row)
     *row = 255u;
     if (experimental_transfer_active() || !s_cna_key_valid || s_cna_freq != rf_frequency_mhz() ||
         !rf_filter_equal(s_cna_filter, rf_filter())) return 0.0f;
+    static float floor_now[CNA_ROWS];
+    const int64_t now = esp_timer_get_time();
     vTaskSuspendAll();
-    const float rel = rx_level_noise_from_map(&s_cna_map, s_gain.model_db_q8, s_gain.table.max_index, row);
+    for (unsigned k = 0; k < CNA_ROWS; ++k)
+        floor_now[k] = s_cna_clip_floor_us[k] && now - s_cna_clip_floor_us[k] <= CNA_CLIP_FLOOR_US ? s_cna_clip_floor[k] : 0.0f;
+    const float rel = rx_level_noise_from_map_floor(&s_cna_map, floor_now, s_gain.model_db_q8,
+                                                    s_gain.table.max_index, row);
     (void)xTaskResumeAll();
     return rel;
 }
@@ -748,24 +800,65 @@ static void cna_probe(const uint8_t *sample, size_t bytes, const dg_observation_
         if (s_rowdc_n[row] < 65535u) ++s_rowdc_n[row];
     }
     /* No-carrier evidence at this row. */
-    if (s_abs_row != row) { s_abs_row = row; s_abs_m2 = s_abs_m4 = 0.0; s_abs_n = 0; }
+    if (s_abs_row != row) { s_abs_row = row; s_abs_m2 = s_abs_m4 = 0.0; s_abs_n = s_abs_clip = 0; }
     {
         double m2, m4;
         cna_moments(&ps, pi, pq, &m2, &m4);
         s_abs_m2 += m2; s_abs_m4 += m4; ++s_abs_n;
+        s_abs_clip += folded || o->clip_pm >= 20u;
     }
     if (s_abs_n >= CNA_ABSENT_PROBES) {
         const float known = s_cna_map.n[row] >= CNA_MIN_SAMPLES ? s_cna_map.noise[row] : 0.0f;
+        uint8_t exp_flags = 0;
+        float exp_uncert;
+        const float expected = cna_noise_at(&s_cna_map, row, s_gain.model_db_q8, now, &exp_flags, &exp_uncert);
         const int64_t video = s_last_video_us;
         const bool quiet_video = !video || now - video > 2000000;
-        if (quiet_video && cna_carrier_absent(s_abs_m2, s_abs_m4, s_abs_n, known)) {
+        /* Noise that clips or folds is no noise power of the row: behind an
+         * external LNA G83 folded every window (board 2026-11-14, gain MAX)
+         * and was learned as noise, 6 dB over the pin noise; G72 clipped 94 %
+         * of its probes. At the useful top a few noise peaks touch the rails
+         * (G67: 7-15 % of the probes) and barely move the mean power: a 2 %
+         * limit refused every window there and the map stayed empty
+         * (board, same day). Refused over a quarter of the probes. */
+        const bool clean = s_abs_clip * 4u <= s_abs_n;
+        if (!clean) {
+            /* Not learned, but kept for CNA_CLIP_FLOOR_US as a lower bound of
+             * the row's power (not stored): it gives LEVEL/RX_LEVEL a first
+             * reference when the gain sits on a row where every window clips
+             * (rx_level.h). No kurtosis test: clipping lowers it (board
+             * 2026-11-14: the floor never filled behind the LNA), and a row
+             * that clips has too much power with or without a carrier; the
+             * expiry keeps a VTX close at boot from lowering the top later. */
+            ++s_cna_clip_rejects;
+            s_cna_clip_floor[row] = (float)(s_abs_m2 / s_abs_n);
+            s_cna_clip_floor_us[row] = now;
+            /* Clipped power far over what the map expects here, with no video:
+             * an LNA fitted after the map was learned bare. The clipped power
+             * is a lower bound, so moving the map to it never overshoots;
+             * the next rows down clip less and finish it (cna_noise_rebase). */
+            if (quiet_video && expected >= CNA_QLIM_CELLS2 &&
+                cna_db((float)(s_abs_m2 / s_abs_n) / expected) > CNA_REBASE_UP_DB) {
+                cna_noise_rebase(&s_cna_map, row, (float)(s_abs_m2 / s_abs_n), expected, now);
+                ++s_cna_rebases;
+                s_cna_dirty = true;
+            }
+        }
+        else if (quiet_video && cna_carrier_absent(s_abs_m2, s_abs_m4, s_abs_n, known)) {
             cna_noise_learn(&s_cna_map, row, (float)(s_abs_m2 / s_abs_n), now);
             ++s_cna_learned;
+            s_cna_dirty = true;
+        } else if (quiet_video && expected >= CNA_QLIM_CELLS2 &&
+                   cna_front_end_changed(s_abs_m2, s_abs_m4, s_abs_n, expected)) {
+            /* Noise-like and far from the map (cn_auto.h): the front end
+             * changed (an external LNA fitted or removed). */
+            cna_noise_rebase(&s_cna_map, row, (float)(s_abs_m2 / s_abs_n), expected, now);
+            ++s_cna_rebases;
             s_cna_dirty = true;
         } else if (quiet_video) {
             ++s_cna_absent_rejects;
         }
-        s_abs_m2 = s_abs_m4 = 0.0; s_abs_n = 0;
+        s_abs_m2 = s_abs_m4 = 0.0; s_abs_n = s_abs_clip = 0;
     }
     /* The estimate. */
     if (s_cna_acc_row != row) { s_cna_acc_row = row; memset(&s_cna_acc, 0, sizeof(s_cna_acc)); s_cna_acc_probes = s_cna_acc_clip = 0; }
@@ -1146,10 +1239,10 @@ void receiver_print(void)
         const cna_reading_t c = receiver_cn_reading();
         unsigned measured = 0;
         for (unsigned k = 0; k < CNA_ROWS; ++k) measured += s_cna_map.n[k] >= CNA_MIN_SAMPLES;
-        printf("CN_AUTO estimate_x10=%d control_x10=%d power_x10=%d m2m4_x10=%d confidence=%u source=%u flags=0x%02x noise_cells2=%.3f rows_with_noise=%u learned=%lu absent_rejects=%lu estimates=%lu nbw_khz=%u (self-calibrating C/N, cn_auto.h)\n",
+        printf("CN_AUTO estimate_x10=%d control_x10=%d power_x10=%d m2m4_x10=%d confidence=%u source=%u flags=0x%02x noise_cells2=%.3f rows_with_noise=%u learned=%lu absent_rejects=%lu clip_rejects=%lu rebases=%lu estimates=%lu nbw_khz=%u (self-calibrating C/N, cn_auto.h)\n",
                c.x10, receiver_obs_cn_x10(), c.power_x10, c.m2m4_x10, c.confidence, c.source, c.flags,
                (double)c.noise_cells2, measured,
-               (unsigned long)s_cna_learned, (unsigned long)s_cna_absent_rejects, (unsigned long)s_cna_estimates,
+               (unsigned long)s_cna_learned, (unsigned long)s_cna_absent_rejects, (unsigned long)s_cna_clip_rejects, (unsigned long)s_cna_rebases, (unsigned long)s_cna_estimates,
                calibration_filter_nbw_khz());
     }
     printf("GAIN_TABLE measured_rows=%u g83_g72_db=%.2f (top rows from the receiver-noise map; the rest the model, joined)\n",

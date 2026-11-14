@@ -243,6 +243,9 @@ int receiver_obs_cn_x10(void);
 void receiver_level_roll(bool no_carrier, bool video);   /* video: sync seen this second */   /* 1 Hz, the supervisor (diag.c) */
 rx_level_t receiver_level(void);    /* last full second */
 bool receiver_noise_learned(void);
+/* Highest useful gain row: the table maximum, or behind an external LNA the
+ * highest row whose receiver noise does not fold (agc.h LEVEL_TOP_NOISE_MAX_X16). */
+uint8_t receiver_gain_top(void);
 void receiver_pair_sweep_toggle(void);   /* bench, console Q */
 #include "cn_auto.h"
 cna_reading_t receiver_cn_reading(void);   /* C/N-AUTO: value, confidence, source */

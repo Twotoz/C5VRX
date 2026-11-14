@@ -2146,6 +2146,100 @@ known distance and power against free space; FPV channel by channel).
 - **With an LNA the pin level is not the antenna level:** noise and carrier
   both carry the LNA's gain; the dBm reads at the C5 pin, the C/N is the
   chain's.
+- **Board check of PR #306 (2026-11-14, same LNA, VTX off, fixed G66):**
+  `RX_LEVEL input_dbm=-79.2 noise_dbm=-80.0 noise_src=map noise_row=72
+  above_noise=0`: no false carrier. The G72 row had been learned while the
+  noise clipped (19.8 cells^2, 0.8 dB low); the map now skips rows over 12
+  cells^2 (`RX_LEVEL_MAP_CLEAN_CELLS2`) for the highest clean one, and uses
+  a clipped row (the lowest) only when nothing else is measured.
+- **LEVEL behind an LNA (same board, LEVEL, VTX off):** LEVEL held G72 and
+  folded in 5155 of 5239 decisions (`clip_pm` 238); `RX_LEVEL` read
+  `unknown` (every probe clipped). Its noise at the top row came from the
+  boot gain table (`s_gain_th`, rows whose noise does not clip, so no G83
+  behind an LNA) or the bare default 4.8 cells^2, ~17 dB under the real
+  noise, so the noise read as a carrier and the homes ran from G83. Now:
+  LEVEL's `noise_top` comes from the same C/N-AUTO map (rolled at 1 Hz,
+  re-bound when it moves more than ~1 dB), and its homes start at the
+  highest row whose noise is at most 9 cells^2 (`LEVEL_TOP_NOISE_MAX_X16`,
+  3 cells rms; bare G83 is 4.8-7 cells^2, so bare boards keep G83). A row
+  above that top goes to the best home without hysteresis. Host model
+  (`test_agc_strong.c`): the old bound holds G72 with no carrier, the new
+  one G67, where KEEL-1 settled on the board (G65-G67), and no level from
+  no carrier to the table floor folds. `test_agc_compare` scores unchanged.
+  Console: `AGC model=LEVEL bound ... noise_src=map|gtab|default homes_from=G..`.
+- **Gain does not add C/N behind the LNA (board, same LNA, VTX off, fixed
+  gains):** the pin-referred noise read -79.2/-79.3 dBm at G54, -79.4/-79.5
+  at G60 and at G66 (`RX_LEVEL input_dbm`, clipping 0-6 per mille): 12 dB
+  more gain, the same pin noise within 0.3 dB, so the noise enters before
+  the gain rows and higher rows only scale signal and noise together. G72
+  clipped 942-954 per mille of the probes, G78 and MAX all of them.
+- **C/N-AUTO learned folded noise:** in that sweep the MAX step (G83, every
+  window folded) was learned as row 83's noise (`cna_carrier_absent`
+  passed), and `RX_LEVEL` read a false 10.8 dB carrier again (`noise_row=83`).
+  The no-carrier learning now takes a 256-probe window only when at most 2 %
+  of its probes clipped or folded (the estimate's `CNA_F_CLIPPED` limit);
+  `CN_AUTO ... clip_rejects=` counts the refused windows. A row already
+  stored that way stays out of RX_LEVEL/LEVEL by the 12 cells^2 limit.
+- **That gate deadlocked LEVEL on the board** (flash of the LEVEL fix, VTX
+  off): LEVEL bound the default 4.8 cells^2, parked on G72 where every
+  learning window clipped (`clip_rejects` rising, `rows_with_noise=0`), so
+  the map never got a row and LEVEL never a reference (17701 folds, no
+  move). A clipped window's power is now kept per row for 5 s as a lower
+  bound (`s_cna_clip_floor`, never stored, no kurtosis test: clipping
+  lowers it, and a row that clips has too much power with or without a
+  carrier). With no clean map row the lowest such row sets the noise; a
+  clean row, learned once LEVEL is under the top, replaces it.
+- **Edge walk with the LNA (blackbox session 378, firmware of PR #307
+  before the clip floor):** the top worked (gain never over G65), the
+  picture at ~50 % near -91 dBm at the antenna (pin level minus the 22.6 dB
+  datasheet gain), about 4.5 dB better than the bare-board -86.5 dBm of
+  2026-10-27 (another session and route). It still went at 4-7 dB C/N
+  instead of ~1.5: `dc_residual` / `CALIBRATION_OR_PHY` dropouts with DC
+  2.2-2.8 cells on rows G57-G63, template rows on this board, while LEVEL
+  crossed G38-G65 within a second (fading). The per-row servo never held a
+  row long enough, and its first adoption had pinned every row, after which
+  no correction was shared at all.
+- **Shared DC model (`dc_servo.h` dc_model_t):** the live trim of a row is
+  `shared + local(row)`. A step on a row whose codes are its own
+  (calibrated or adopted) or that has settled is drift and moves every row;
+  a step on an unsettled template row is its own, and template rows without
+  one inherit the nearest row's. A row whose shared steps do not settle it
+  (3 strikes) turns local, so rows cannot fight over the shared part.
+  Adoption keeps the offset and what neighbours inherit (no more pinning).
+  Host model (`test_dc_servo.c`): a common shift fixed on every row in two
+  visits of one row; 18 template rows 30-47 codes off within a code after
+  38 hopping visits; a 10-code drift after settling fixed everywhere in one
+  visit; one calibrated row 15 codes off of its own ends local with every
+  other row at 0. Console `T`: `DC_MODEL shared= shared_steps= local_steps=`.
+  Works the same with and without an LNA and needs no calibration;
+  calibration only gives rows their own codes.
+- **Calibration behind an LNA:** the filter calibration and check, the DC
+  profile pass and the startup noise map ran at the table maximum, where
+  the LNA's noise folds (`FILTER_CAL gain=83 clip_pm=190`); the DC row
+  search began there and its carrier gate would stop it before the rows the
+  edge uses. They now use `receiver_gain_top()` (the table maximum on a bare
+  board) and the DC search skips rows over it.
+- **The noise map follows a front-end change:** the no-carrier learning
+  only takes a row within +0.5/-2 dB of the noise it knows, so a map
+  learned with the LNA never followed its removal and a map learned bare
+  would never take the LNA's noise; with LEVEL, RX_LEVEL and the useful top
+  on the map that matters. A carrier cannot move the noise far: a weak one
+  adds under ~1 dB, a strong one fails the kurtosis test, none lowers it.
+  A noise-like, unclipped window more than 6 dB over or 2 dB under the
+  noise the map expects at that row (`cna_noise_at`), or a clipped
+  no-video window more than 6 dB over it (a lower bound: never
+  overshoots), rebases the whole map by the same thermal ratio and drops
+  its anchors (`cna_front_end_changed`, `cna_noise_rebase`; `CN_AUTO
+  rebases=`). 1-6 dB changes stay slow (0.5 dB steps), as before.
+  The learning gate moved from 2 % to 25 % clipped probes (G67 behind the
+  LNA: 7-15 %, G72: 94 %). Board without the LNA after these builds:
+  noise -94.6 dBm (map row 79), LEVEL G79, no false carrier.
+- **EXPERIMENTAL > LEVEL TOP** (9 / 12 / 16 / 6 cells^2, 9 the baseline):
+  the noise the top row may carry. Behind the ZK06-UM (22.6 dB, NF 0.95 dB
+  at 5.8 GHz; system NF ~1.0 dB by Friis, which predicts the measured 17.5
+  dB noise rise within 0.1 dB) that is about G67 / G68 / G70 / G65; bare
+  boards keep G83 at 9-16. Expected: no C/N difference (the noise enters
+  before the gain), more fold sparkles towards 16. An edge walk decides.
 
 **Use:** a VTX at a known distance and power against free space gives the
 dB lost before the chip. For example, 25 mW with 2 dBi each side over 10 m at

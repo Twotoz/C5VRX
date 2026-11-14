@@ -29,10 +29,10 @@ void experimental_load(void)
 {
     experimental_blob_t b = {.version = EXP_VERSION};
     /* Items are appended, never reordered: an older, shorter blob keeps its
-     * experiments and the newer items start on their baseline (before STRONG
-     * LANE: one byte shorter; before AUTO OUTPUT: two; before Clock Pin D10:
-     * three). */
-    for (unsigned missing = 0; missing <= 3u; ++missing) {
+     * experiments and the newer items start on their baseline (before LEVEL
+     * TOP: one byte shorter; before STRONG LANE: two; before AUTO OUTPUT:
+     * three; before Clock Pin D10: four). */
+    for (unsigned missing = 0; missing <= 4u; ++missing) {
         memset(&b, 0, sizeof(b));
         if (blob_load("exp", &b, sizeof(b) - missing)) break;
         b = (experimental_blob_t){.version = EXP_VERSION};

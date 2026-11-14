@@ -83,6 +83,63 @@ int main(void)
         CHECK(row == 2 && sl.steps == 1, "folding on G2: row G%u, lane steps %u", row, sl.steps);
         printf("folding on the floor row: LEVEL target under G2 %s, lane step taken\n", below_floor ? "seen" : "not seen");
     }
+    /* LNA at the range edge (board 2026-11-14, ~21 dB LNA): the receiver noise
+     * at G83 is ~17.5 dB over the bare board, ~270 cells^2. Bound with the
+     * bare default (4.8) LEVEL takes that noise for a carrier and holds G72
+     * with no VTX, the row the board held (noise ~27 cells^2, 5.2 cells rms:
+     * the board folded there in 5155 of 5239 decisions; this model counts a
+     * fold only over 7 cells rms). Bound with the real noise its homes start
+     * where the noise is <= 9 cells^2 and no level folds, with or without a
+     * carrier. */
+    {
+        const float lna_noise = 4.8f * powf(10.0f, 1.75f);
+        unsigned old_folds = 0, new_worst = 0, old_edge_row = 0;
+        for (int pass = 0; pass < 2; ++pass) {
+            for (int level = -20; level <= 88; level += 4) {   /* -20: no carrier; 24: C/N 0 dB; 88: the table floor */
+                agc_level_reset(&lv, dg.model_db_q8, t.max_index, (uint16_t)((pass ? lna_noise : noise_top) * 16.0f));
+                uint8_t row = (uint8_t)t.max_index;
+                unsigned folds_late = 0;
+                for (unsigned w = 0; w < 4000; ++w) {
+                    const float rel = lv.rel_q8[row] / 256.0f;
+                    const float c = level > -20 ? powf(10.0f, (level + rel) / 10.0f) : 0.0f;
+                    const float n = lna_noise * powf(10.0f, rel / 10.0f);
+                    dg_observation_t o = {.observed_us = 1000u + w * 250u};
+                    if (sqrtf(c + n) > 7.0f) {
+                        o.rails = 15; o.clip_pm = 300; o.pwr_x16 = (uint16_t)(42.0f * 16.0f);
+                        if (w >= 2000) ++folds_late;
+                    } else {
+                        const float p = (c + n) * 16.0f;
+                        o.pwr_x16 = (uint16_t)(p > 65535.0f ? 65535.0f : p);
+                    }
+                    row = agc_level_tick(&lv, &o, row, o.observed_us);
+                    if (row < 2u) row = 2u;
+                }
+                if (!pass) { old_folds += folds_late; if (level == -20) old_edge_row = row; }
+                else {
+                    const float rel = lv.rel_q8[row] / 256.0f;
+                    const float n = lna_noise * powf(10.0f, rel / 10.0f);
+                    if (folds_late > new_worst) new_worst = folds_late;
+                    CHECK(folds_late == 0, "LNA level %d dB held G%u folding (%u)", level, row, folds_late);
+                    if (level <= 24) CHECK(row == lv.top_index && n <= 9.0f,
+                                           "LNA edge level %d dB: G%u (top G%u), noise %.1f cells2", level, row, lv.top_index, n);
+                }
+            }
+            if (pass) printf("LNA noise %.0f cells2 at G83: homes from G%u, no late folds at any level; "
+                             "bare-default bound held G%u with no carrier (%u late folds in this model)\n",
+                             lna_noise, lv.top_index, old_edge_row, old_folds);
+        }
+        {   /* the old bound's no-carrier row: noise over the 9 cells^2 (the board's G72) */
+            const float n_old = lna_noise * powf(10.0f, lv.rel_q8[old_edge_row] / 2560.0f);
+            CHECK(old_edge_row > lv.top_index && n_old > 9.0f, "bare-default bound with no carrier held G%u (noise %.1f)",
+                  old_edge_row, n_old);
+        }
+        CHECK(lv.top_index < t.max_index && lv.top_index >= 60, "LNA top row G%u", lv.top_index);
+        /* Bare board: unchanged top (the default and the 1.7 dB higher A1 noise). */
+        agc_level_reset(&lv, dg.model_db_q8, t.max_index, (uint16_t)(4.8f * 16.0f));
+        CHECK(lv.top_index == t.max_index, "bare default top G%u", lv.top_index);
+        agc_level_reset(&lv, dg.model_db_q8, t.max_index, (uint16_t)(4.76f * 1.48f * 16.0f));
+        CHECK(lv.top_index == t.max_index, "bare A1 top G%u", lv.top_index);
+    }
     printf("PASS test_agc_strong (worst late folds %u)\n", worst_folds);
     return 0;
 }

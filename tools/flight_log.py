@@ -45,7 +45,7 @@ OUTPUT_DEMODS = {1: 'U85Q 1a09f5c092e8', 2: 'U85Q-LP 1a09f5c092e8', 3: 'U80P64-R
 EXP_NAMES = ['GAIN', 'PHY FILT', 'AFC', 'DEMOD', 'IQ CORR', 'PHASE REPAIR', 'AUTO PROFILE',
              'FAST GAIN', 'FOLD RADIUS', 'FOLD MEMORY', 'LEVEL TARGET', 'LEVEL RELEASE', 'GAIN RATE',
              'GAIN CAP', 'LOG CADENCE', 'LNA BIAS', 'CURRENT', 'LOOP CAP', 'SPUR 0', 'IQ LANE', 'CLOCK D10', 'AUTO OUTPUT',
-             'STRONG LANE']
+             'STRONG LANE', 'LEVEL TOP']
 # Experiment schema versions (main/experimental.h EXP_VERSION). Version 2
 # (2026-11-14) swapped AUTO OUTPUT to OFF/ON with OFF the baseline; values are
 # reported in the version-2 meaning (AUTO OUTPUT: 0 = OFF, 1 = ON).
