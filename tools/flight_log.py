@@ -46,6 +46,21 @@ EXP_NAMES = ['GAIN', 'PHY FILT', 'AFC', 'DEMOD', 'IQ CORR', 'PHASE REPAIR', 'AUT
              'FAST GAIN', 'FOLD RADIUS', 'FOLD MEMORY', 'LEVEL TARGET', 'LEVEL RELEASE', 'GAIN RATE',
              'GAIN CAP', 'LOG CADENCE', 'LNA BIAS', 'CURRENT', 'LOOP CAP', 'SPUR 0', 'IQ LANE', 'CLOCK D10', 'AUTO OUTPUT',
              'STRONG LANE']
+# Experiment schema versions (main/experimental.h EXP_VERSION). Version 2
+# (2026-11-14) swapped AUTO OUTPUT to OFF/ON with OFF the baseline; values are
+# reported in the version-2 meaning (AUTO OUTPUT: 0 = OFF, 1 = ON).
+EXP_VERSIONS = (1, 2)
+EXP_AUTO_OUTPUT = EXP_NAMES.index('AUTO OUTPUT')
+
+
+def exp_values(version, values):
+    """Experiment values of a record in the current (version-2) meaning."""
+    values = list(values)
+    if version == 1 and len(values) > EXP_AUTO_OUTPUT and values[EXP_AUTO_OUTPUT] in (0, 1):
+        values[EXP_AUTO_OUTPUT] ^= 1   # v1: 0 = ON, 1 = OFF
+    return values
+
+
 OUTPUT_STANDARDS = {1: 'NTSC', 2: 'PAL'}
 
 
@@ -206,8 +221,9 @@ def second(p):
     d['exp_mask'] = struct.unpack_from('<I', p, 71)[0] if len(p) >= 77 else None
     d['exp_version'] = p[75] if len(p) >= 77 else None
     d['exp_mixed'] = p[76] if len(p) >= 77 else None
+    values = exp_values(d['exp_version'], p[77:77 + len(EXP_NAMES)]) if d['exp_version'] in EXP_VERSIONS else []
     for i, name in enumerate(EXP_NAMES):
-        d['exp_' + name.lower().replace(' ', '_')] = p[77 + i] if d['exp_version'] == 1 and len(p) > 77 + i else None
+        d['exp_' + name.lower().replace(' ', '_')] = values[i] if i < len(values) else None
     return d
 
 
@@ -218,7 +234,7 @@ def experimental_groups(seconds):
     """
     groups = {}
     for row in seconds:
-        if row.get('exp_version') != 1 or row.get('exp_mixed') or row['flags'] & 0x0f00:
+        if row.get('exp_version') not in EXP_VERSIONS or row.get('exp_mixed') or row['flags'] & 0x0f00:
             continue
         key = tuple(row['exp_' + n.lower().replace(' ', '_')] for n in EXP_NAMES)
         groups.setdefault(key, []).append(row)
@@ -257,8 +273,8 @@ def decode(image):
                              'board_id': '%08x' % struct.unpack_from('<I', p, 33)[0], 'gain_max': p[37],
                              'channel_index': p[40], 'gain_mode': p[43], 'flywheel': p[44], 'profile_live': p[45],
                              'freq_mhz': struct.unpack_from('<H', p, 46)[0]}
-            elif t == 7 and len(p) >= 2 and p[0] == 1 and len(p) >= 2 + p[1]:
-                s.setdefault('experimental_states', []).append(dict(zip(EXP_NAMES, p[2:2 + p[1]])))
+            elif t == 7 and len(p) >= 2 and p[0] in EXP_VERSIONS and len(p) >= 2 + p[1]:
+                s.setdefault('experimental_states', []).append(dict(zip(EXP_NAMES, exp_values(p[0], p[2:2 + p[1]]))))
             elif t == 2 and len(p) >= 56:
                 filt = []
                 for c in range(3):

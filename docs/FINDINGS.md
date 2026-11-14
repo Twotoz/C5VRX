@@ -144,7 +144,13 @@ below. **Nothing here was flashed or measured on a board.**
   show in it. The absolute check (research/nfprobe) was not repeated.
 
 **AUTO OUTPUT** (`main/output_auto.h`, EXPERIMENTAL > AUTO OUTPUT, default
-ON; `test/test_output_auto.c`). OUTPUT 1.0x maps -6..+9 MHz onto the 64 DAC
+OFF since 2026-11-14, ON before; `test/test_output_auto.c`). Operator
+decision 2026-11-14: every word it applies is a verified halted restart of
+the transport (~5 ms, ~80 lines without video), and no goggle comparison
+against 1.0x exists yet; it stays an experiment until one does. The NVS
+experiment schema went to version 2 (values OFF/ON, OFF the baseline); a
+version-1 blob keeps every other experiment and starts AUTO OUTPUT OFF.
+OUTPUT 1.0x maps -6..+9 MHz onto the 64 DAC
 codes, so a deviation 0.69 VTX uses ~19 of them and its sync is ~5.5 codes
 (issue #200 model: 0.060 V loaded against 0.286 V of CVBS; deviation 1.0:
 0.089 V). The 2026-10-12 study named what a live version needs; this is

@@ -478,7 +478,7 @@ static uint32_t s_out_auto_windows, s_out_auto_refused;
 static void output_auto_service(bool sync_confirmed, const afc2_result_t *r, bool picture, const picture_sync_t *ps,
                                 int64_t now)
 {
-    const bool on = !experimental_get(EXP_OUTPUT_AUTO) && transport_output() == 0u && !s_menu_active;
+    const bool on = experimental_get(EXP_OUTPUT_AUTO) != 0u && transport_output() == 0u && !s_menu_active;   /* OFF by default */
     const uint32_t key = (uint32_t)rf_channel_index() << 8 | transport_demod();
     if (!on || key != s_out_auto_key) {
         /* Back to the manual level first; a refusal (the shared guard) is
@@ -522,7 +522,7 @@ static void output_auto_service(bool sync_confirmed, const afc2_result_t *r, boo
 void output_auto_print(void)
 {
     printf("OUTPUT_AUTO enabled=%u word_gain_x8=%u src_tip=%u batches=%lu rejected=%lu applied=%lu refused=%lu "
-           "windows=%lu tip_x4=%u depth_x4=%u span_x4=%u live=%s\n", !experimental_get(EXP_OUTPUT_AUTO),
+           "windows=%lu tip_x4=%u depth_x4=%u span_x4=%u live=%s\n", experimental_get(EXP_OUTPUT_AUTO) != 0u,
            s_out_auto.word ? output_affine_gain_q3(s_out_auto.word) : 8u, s_out_auto.word ? output_affine_tip(s_out_auto.word) : 0u,
            (unsigned long)s_out_auto.batches, (unsigned long)s_out_auto.rejected, (unsigned long)s_out_auto.applied,
            (unsigned long)s_out_auto_refused, (unsigned long)s_out_auto_windows, s_out_auto.last_tip_x4,
