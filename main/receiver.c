@@ -150,6 +150,22 @@ static float s_gain_th[DG_STATES];
 static volatile uint16_t s_map_noise_top_x16;
 static uint16_t s_agc_noise_x16;
 
+/* The noise-limited top row (LEVEL_TOP_NOISE_MAX_X16) from the map's noise at
+ * the table maximum, for every gain model and the range diagnosis: behind an
+ * external LNA the table maximum is never the receiver's sensitive state,
+ * the rows above this one only fold. The table maximum without a map value. */
+uint8_t receiver_gain_top(void)
+{
+    const unsigned max = rf_gain_table()->max_index;
+    const uint32_t top_x16 = s_map_noise_top_x16;
+    if (!top_x16 || top_x16 <= LEVEL_TOP_NOISE_MAX_X16 || max >= DG_STATES) return (uint8_t)max;
+    /* row k's noise: top * 10^((model[k] - model[max]) / 10 dB) */
+    const float room_q8 = 2560.0f * log10f((float)LEVEL_TOP_NOISE_MAX_X16 / (float)top_x16);   /* negative */
+    int k = (int)max;
+    while (k > 0 && (float)(s_gain.model_db_q8[k] - s_gain.model_db_q8[max]) > room_q8) --k;
+    return (uint8_t)k;
+}
+
 static uint8_t agc_decision(uint8_t mode, const dg_observation_t *o)
 {
     const arc_gain_table_t *t = rf_gain_table();

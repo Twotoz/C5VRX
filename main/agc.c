@@ -208,9 +208,6 @@ void agc_level_options(agc_level_t *a, bool radius, uint32_t memory_us, int targ
  * rms, the low end of the table's best radius and 1 dB over the bare A1
  * noise): bare boards keep G83, behind that LNA it is ~G67, where KEEL-1
  * settled on its own (G65-G67). More gain there adds no C/N, only folds. */
-#ifndef LEVEL_TOP_NOISE_MAX_X16
-#define LEVEL_TOP_NOISE_MAX_X16 (9u * 16u)
-#endif
 void agc_level_reset(agc_level_t *a, const int16_t row_db_q8[DG_STATES], uint8_t max_index, uint16_t noise_top_x16)
 {
     memset(a, 0, sizeof(*a));

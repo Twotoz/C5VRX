@@ -84,6 +84,13 @@ typedef struct {
     uint32_t folds, moves;
 } agc_rssi_t;
 
+/* The noise-limited top row: the highest row whose receiver noise is at most
+ * this (cells^2 x16, 3 cells rms). Bare boards keep G83 (4.8-7 cells^2);
+ * behind an external LNA higher rows add no C/N, only folds (agc.c,
+ * receiver_gain_top). */
+#ifndef LEVEL_TOP_NOISE_MAX_X16
+#define LEVEL_TOP_NOISE_MAX_X16 (9u * 16u)
+#endif
 /* row_db_q8: the gain model per row (direct_gain_t model_db_q8), noise_top_x16:
  * receiver noise power at the table maximum, cells^2 x16 (behind an external
  * LNA it can lie far over the 4-bit window: the homes then end at the highest
