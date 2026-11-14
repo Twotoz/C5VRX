@@ -123,9 +123,14 @@ static inline float rx_level_noise_from_map_floor(const cna_noise_map_t *m, cons
         const bool own = m->n[g] >= CNA_MIN_SAMPLES && m->noise[g] >= CNA_QLIM_CELLS2 &&
                          m->noise[g] - RX_LEVEL_QUANT_CELLS2 > 0.0f;
         if (own && m->noise[g] <= RX_LEVEL_MAP_CLEAN_CELLS2) { clean = g; break; }
-        float v = own ? m->noise[g] : 0.0f;
-        if (clip_floor && clip_floor[g] > v) v = clip_floor[g];
-        if (v > RX_LEVEL_MAP_CLEAN_CELLS2) { clipped = g; clipped_v = v; }   /* keeps the lowest */
+        /* A clipped map row, or any row with a fresh clipped-window bound
+         * (also under 12 cells^2: a row whose few clipped peaks the learning
+         * refused). The lowest one is kept: the least clipped. */
+        const float fl = clip_floor ? clip_floor[g] : 0.0f;
+        const float v = (own ? m->noise[g] : 0.0f) > fl ? m->noise[g] : fl;
+        if (((own && m->noise[g] > RX_LEVEL_MAP_CLEAN_CELLS2) || fl > 0.0f) && v - RX_LEVEL_QUANT_CELLS2 > 0.0f) {
+            clipped = g; clipped_v = v;
+        }
     }
     const int g = clean >= 0 ? clean : clipped;
     if (g < 0) return 0.0f;

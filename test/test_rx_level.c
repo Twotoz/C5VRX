@@ -174,6 +174,13 @@ int main(void)
             empty.noise[67] = m.noise[67]; empty.n[67] = CNA_MIN_SAMPLES;
             (void)rx_level_noise_from_map_floor(&empty, floor_cells2, g.model_db_q8, top, &row_c);
             check("floor: a clean map row (G67) wins over the floor", row_c == 67u);
+            /* A bound under 12 cells^2 (a few clipped peaks at the useful top,
+             * board: G67 7-15 % of the probes) also counts with an empty map. */
+            cna_noise_map_t none = {0};
+            float low_floor[RX_LEVEL_ROWS] = {0};
+            low_floor[67] = 8.5f; low_floor[72] = 19.8f;
+            (void)rx_level_noise_from_map_floor(&none, low_floor, g.model_db_q8, top, &row_c);
+            check("floor: a bound under 12 cells2 counts, the lowest row wins", row_c == 67u);
         }
         rx_level_t old = rx_level_compute(sum, n, 0, g.model_db_q8, top, 0.0f);
         check("LNA without the map: the calibration reads the noise as a carrier (the bug)", old.above_noise &&

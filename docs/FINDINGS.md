@@ -2189,6 +2189,36 @@ known distance and power against free space; FPV channel by channel).
   lowers it, and a row that clips has too much power with or without a
   carrier). With no clean map row the lowest such row sets the noise; a
   clean row, learned once LEVEL is under the top, replaces it.
+- **Edge walk with the LNA (blackbox session 378, firmware of PR #307
+  before the clip floor):** the top worked (gain never over G65), the
+  picture at ~50 % near -91 dBm at the antenna (pin level minus the 22.6 dB
+  datasheet gain), about 4.5 dB better than the bare-board -86.5 dBm of
+  2026-10-27 (another session and route). It still went at 4-7 dB C/N
+  instead of ~1.5: `dc_residual` / `CALIBRATION_OR_PHY` dropouts with DC
+  2.2-2.8 cells on rows G57-G63, template rows on this board, while LEVEL
+  crossed G38-G65 within a second (fading). The per-row servo never held a
+  row long enough, and its first adoption had pinned every row, after which
+  no correction was shared at all.
+- **Shared DC model (`dc_servo.h` dc_model_t):** the live trim of a row is
+  `shared + local(row)`. A step on a row whose codes are its own
+  (calibrated or adopted) or that has settled is drift and moves every row;
+  a step on an unsettled template row is its own, and template rows without
+  one inherit the nearest row's. A row whose shared steps do not settle it
+  (3 strikes) turns local, so rows cannot fight over the shared part.
+  Adoption keeps the offset and what neighbours inherit (no more pinning).
+  Host model (`test_dc_servo.c`): a common shift fixed on every row in two
+  visits of one row; 18 template rows 30-47 codes off within a code after
+  38 hopping visits; a 10-code drift after settling fixed everywhere in one
+  visit; one calibrated row 15 codes off of its own ends local with every
+  other row at 0. Console `T`: `DC_MODEL shared= shared_steps= local_steps=`.
+  Works the same with and without an LNA and needs no calibration;
+  calibration only gives rows their own codes.
+- **Calibration behind an LNA:** the filter calibration and check, the DC
+  profile pass and the startup noise map ran at the table maximum, where
+  the LNA's noise folds (`FILTER_CAL gain=83 clip_pm=190`); the DC row
+  search began there and its carrier gate would stop it before the rows the
+  edge uses. They now use `receiver_gain_top()` (the table maximum on a bare
+  board) and the DC search skips rows over it.
 - **EXPERIMENTAL > LEVEL TOP** (9 / 12 / 16 / 6 cells^2, 9 the baseline):
   the noise the top row may carry. Behind the ZK06-UM (22.6 dB, NF 0.95 dB
   at 5.8 GHz; system NF ~1.0 dB by Friis, which predicts the measured 17.5

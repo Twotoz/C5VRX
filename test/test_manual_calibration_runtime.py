@@ -223,6 +223,10 @@ int main(void){window_stats_t w;
 #define ARC_VENDOR_GAIN_MAX 89u
 #define PROBE_BYTES 256u
 #define RTC_FAST_ATTR
+#define DC_SERVO_ROW0 54u
+#define DC_SERVO_ROWS 36u
+#define DC_MODEL_ROWS DC_SERVO_ROWS
+#include "dc_servo.h"
 typedef struct { int8_t code; uint8_t skirt; bool bw20; } rf_filter_t;
 typedef struct { uint8_t max_index, band5; } arc_gain_table_t;
 static const arc_gain_table_t s_tab = {83, 1};

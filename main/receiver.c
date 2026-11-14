@@ -813,9 +813,12 @@ static void cna_probe(const uint8_t *sample, size_t bytes, const dg_observation_
         const bool quiet_video = !video || now - video > 2000000;
         /* Noise that clips or folds is no noise power of the row: behind an
          * external LNA G83 folded every window (board 2026-11-14, gain MAX)
-         * and was learned as noise, 6 dB over the pin noise. The same 2 %
-         * as the estimate's CNA_F_CLIPPED. */
-        const bool clean = s_abs_clip * 50u <= s_abs_n;
+         * and was learned as noise, 6 dB over the pin noise; G72 clipped 94 %
+         * of its probes. At the useful top a few noise peaks touch the rails
+         * (G67: 7-15 % of the probes) and barely move the mean power: a 2 %
+         * limit refused every window there and the map stayed empty
+         * (board, same day). Refused over a quarter of the probes. */
+        const bool clean = s_abs_clip * 4u <= s_abs_n;
         if (!clean) {
             /* Not learned, but kept for CNA_CLIP_FLOOR_US as a lower bound of
              * the row's power (not stored): it gives LEVEL/RX_LEVEL a first
