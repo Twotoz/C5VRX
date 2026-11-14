@@ -125,8 +125,9 @@ XIAO. Tested with the **Zeenko ZK06-UM** (10 MHz–6 GHz, SMA;
 datasheet at 5.8 GHz: ~22.6 dB gain, ~1.0 dB noise figure), listed under
 [Build components](#build-components).
 
-- **Wiring:** antenna → LNA input → LNA output → the XIAO's antenna
-  connector (adapter or pigtail as needed). Mind the arrow on the LNA: it
+- **Wiring:** antenna → LNA input → LNA output → IPX (U.FL) to SMA pigtail
+  → the XIAO's IPX antenna connector (both listed under
+  [Build components](#build-components)). Mind the arrow on the LNA: it
   points from the antenna to the receiver. Keep the antenna-to-LNA cable as
   short as possible: every dB lost before the LNA is lost range. Power the
   LNA as its seller specifies.
@@ -338,6 +339,7 @@ The C5VRX name and logos have separate terms; see [assets/BRANDING.md](assets/BR
 | Perfboard (alternative) | <img src="web/assets/perfboard.png" alt="Green perfboard" width="42" height="61"> | [View on Amazon](https://link.amazon/B0i2qqMeq) |
 | Resistor kit | <img src="web/assets/resistor-kit.png" alt="Resistor assortment in a storage case" width="72" height="72"> | [View on Amazon](https://link.amazon/B06XSBkln) |
 | Zeenko ZK06-UM LNA (optional, [more range](#optional-external-lna-more-range)) | <img src="web/assets/zeenko-zk06-um-lna.png" alt="Zeenko ZK06-UM LNA" width="72" height="72"> | [View on Amazon](https://link.amazon/B0iY2ccnV) |
+| IPX (U.FL) to SMA pigtail (XIAO to the LNA) | <img src="web/assets/ipx-to-sma-pigtail.png" alt="IPX to SMA pigtail cables" width="72" height="72"> | [View on Amazon](https://link.amazon/B07pMkNyf) |
 
 Affiliate links. As an Amazon Associate, I earn from qualifying purchases.
 All affiliate earnings go back into C5VRX development.
