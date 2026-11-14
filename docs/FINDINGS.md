@@ -2146,6 +2146,27 @@ known distance and power against free space; FPV channel by channel).
 - **With an LNA the pin level is not the antenna level:** noise and carrier
   both carry the LNA's gain; the dBm reads at the C5 pin, the C/N is the
   chain's.
+- **Board check of PR #306 (2026-11-14, same LNA, VTX off, fixed G66):**
+  `RX_LEVEL input_dbm=-79.2 noise_dbm=-80.0 noise_src=map noise_row=72
+  above_noise=0`: no false carrier. The G72 row had been learned while the
+  noise clipped (19.8 cells^2, 0.8 dB low); the map now skips rows over 12
+  cells^2 (`RX_LEVEL_MAP_CLEAN_CELLS2`) for the highest clean one, and uses
+  a clipped row (the lowest) only when nothing else is measured.
+- **LEVEL behind an LNA (same board, LEVEL, VTX off):** LEVEL held G72 and
+  folded in 5155 of 5239 decisions (`clip_pm` 238); `RX_LEVEL` read
+  `unknown` (every probe clipped). Its noise at the top row came from the
+  boot gain table (`s_gain_th`, rows whose noise does not clip, so no G83
+  behind an LNA) or the bare default 4.8 cells^2, ~17 dB under the real
+  noise, so the noise read as a carrier and the homes ran from G83. Now:
+  LEVEL's `noise_top` comes from the same C/N-AUTO map (rolled at 1 Hz,
+  re-bound when it moves more than ~1 dB), and its homes start at the
+  highest row whose noise is at most 9 cells^2 (`LEVEL_TOP_NOISE_MAX_X16`,
+  3 cells rms; bare G83 is 4.8-7 cells^2, so bare boards keep G83). A row
+  above that top goes to the best home without hysteresis. Host model
+  (`test_agc_strong.c`): the old bound holds G72 with no carrier, the new
+  one G67, where KEEL-1 settled on the board (G65-G67), and no level from
+  no carrier to the table floor folds. `test_agc_compare` scores unchanged.
+  Console: `AGC model=LEVEL bound ... noise_src=map|gtab|default homes_from=G..`.
 
 **Use:** a VTX at a known distance and power against free space gives the
 dB lost before the chip. For example, 25 mW with 2 dBi each side over 10 m at

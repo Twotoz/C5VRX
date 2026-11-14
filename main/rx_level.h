@@ -100,19 +100,28 @@ static inline rx_level_t rx_level_compute(const uint32_t sum_x16[RX_LEVEL_ROWS],
  * probes. The highest row has the largest thermal share and the smallest
  * model distance to the calibration. 0 when the map has no such row;
  * *row_out is the row used (255 = none). */
+/* A row whose noise reads over this was learned while the noise itself
+ * clipped the 4-bit window (behind an LNA: G72 read 19.8 cells^2, 0.8 dB
+ * under the G66 row referred up, board 2026-11-14). Such a row is used only
+ * when the map has no other: then the lowest, the least clipped. */
+#define RX_LEVEL_MAP_CLEAN_CELLS2 12.0f
 static inline float rx_level_noise_from_map(const cna_noise_map_t *m, const int16_t model_q8[RX_LEVEL_ROWS],
                                             unsigned max_index, uint8_t *row_out)
 {
     *row_out = 255u;
+    int clean = -1, clipped = -1;
     for (int g = (int)(max_index < RX_LEVEL_ROWS ? max_index : RX_LEVEL_ROWS - 1u); g >= 0; --g) {
         if (m->n[g] < CNA_MIN_SAMPLES || !(m->noise[g] >= CNA_QLIM_CELLS2)) continue;
-        const double thermal = (double)m->noise[g] - RX_LEVEL_QUANT_CELLS2;
-        if (!(thermal > 0.0)) continue;
-        const double to_pin = pow(10.0, (double)(model_q8[max_index] - model_q8[g]) / 2560.0);
-        *row_out = (uint8_t)g;
-        return (float)(thermal * to_pin / RX_LEVEL_NOISE_CELLS2);
+        if (!(m->noise[g] - RX_LEVEL_QUANT_CELLS2 > 0.0f)) continue;
+        if (m->noise[g] <= RX_LEVEL_MAP_CLEAN_CELLS2) { clean = g; break; }
+        clipped = g;   /* keeps the lowest */
     }
-    return 0.0f;
+    const int g = clean >= 0 ? clean : clipped;
+    if (g < 0) return 0.0f;
+    const double thermal = (double)m->noise[g] - RX_LEVEL_QUANT_CELLS2;
+    const double to_pin = pow(10.0, (double)(model_q8[max_index] - model_q8[g]) / 2560.0);
+    *row_out = (uint8_t)g;
+    return (float)(thermal * to_pin / RX_LEVEL_NOISE_CELLS2);
 }
 
 /* A carrier is shown only on evidence: 1 dB over the noise reference is

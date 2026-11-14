@@ -146,6 +146,18 @@ int main(void)
                r.input_dbm_x10 / 10.0, r.above_noise);
         check("map, LNA: the highest measured row (G67), noise -79.2 dBm, VTX off reads no carrier",
               row == 67u && !r.above_noise && abs(r.noise_dbm_x10 + 792) <= 3);
+        /* A row learned while the noise clipped (G72 19.8 cells^2 on the board)
+         * reads low; the clean G67 below it wins, and alone it is still used. */
+        cna_noise_map_t mc = m;
+        mc.noise[72] = 19.8f; mc.n[72] = CNA_MIN_SAMPLES;
+        uint8_t row_c = 0;
+        const float with_clip = rx_level_noise_from_map(&mc, g.model_db_q8, top, &row_c);
+        check("map: a clipped higher row (G72, 19.8 cells2) is skipped for the clean G67",
+              row_c == 67u && fabsf(with_clip - lna) < 1e-3f * lna);
+        memset(&mc, 0, sizeof(mc));
+        mc.noise[72] = 19.8f; mc.n[72] = CNA_MIN_SAMPLES; mc.noise[78] = 40.0f; mc.n[78] = CNA_MIN_SAMPLES;
+        (void)rx_level_noise_from_map(&mc, g.model_db_q8, top, &row_c);
+        check("map: only clipped rows: the lowest (least clipped) is used", row_c == 72u);
         rx_level_t old = rx_level_compute(sum, n, 0, g.model_db_q8, top, 0.0f);
         check("LNA without the map: the calibration reads the noise as a carrier (the bug)", old.above_noise &&
               old.cn_x10 > 150);

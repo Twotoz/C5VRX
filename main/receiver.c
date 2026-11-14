@@ -140,12 +140,26 @@ static unsigned s_agc_rows = UINT_MAX;
 static unsigned s_gain_rows_measured;
 static float s_gain_th[DG_STATES];
 #define AGC_NOISE_TOP_DEFAULT 4.8f   /* cells^2 at G83 when no noise map yet (Wi-Fi reference, FINDINGS) */
+/* LEVEL's receiver noise at the table maximum (thermal cells^2 x16) from the
+ * C/N-AUTO map of this channel and filter, rolled at 1 Hz with the received
+ * level (receiver_level_roll); 0 = none. The boot gain table (s_gain_th)
+ * only measures rows whose noise does not clip, so behind an external LNA it
+ * had no top row and LEVEL took the bare-board default 4.8 cells^2, ~17 dB
+ * under the real noise (board 2026-11-14): the noise read as a carrier and
+ * the homes ran from G83. A bound value that moved more than ~1 dB re-binds. */
+static volatile uint16_t s_map_noise_top_x16;
+static uint16_t s_agc_noise_x16;
 
 static uint8_t agc_decision(uint8_t mode, const dg_observation_t *o)
 {
     const arc_gain_table_t *t = rf_gain_table();
-    if (mode != s_agc_mode || s_agc_control != s_control_epoch || s_agc_rows != s_gain_rows_measured) {
-        const float n = s_gain_th[t->max_index] > 0.0f ? s_gain_th[t->max_index] : AGC_NOISE_TOP_DEFAULT;
+    const uint32_t map_x16 = s_map_noise_top_x16, bound_x16 = s_agc_noise_x16;
+    const bool noise_moved = mode == GAIN_MODE_LEVEL && s_agc_mode == GAIN_MODE_LEVEL && map_x16 &&
+                             (map_x16 * 4u > bound_x16 * 5u || map_x16 * 5u < bound_x16 * 4u);
+    if (mode != s_agc_mode || s_agc_control != s_control_epoch || s_agc_rows != s_gain_rows_measured || noise_moved) {
+        const float n = map_x16 ? map_x16 / 16.0f :
+                        s_gain_th[t->max_index] > 0.0f ? s_gain_th[t->max_index] : AGC_NOISE_TOP_DEFAULT;
+        s_agc_noise_x16 = (uint16_t)(n * 16.0f);
         if (mode == GAIN_MODE_LEVEL) {
             agc_level_reset(&s_agc.level, s_gain.model_db_q8, t->max_index, (uint16_t)(n * 16.0f));
             const unsigned mem = experimental_get(EXP_FOLD_MEMORY), target = experimental_get(EXP_LEVEL_TARGET);
@@ -156,8 +170,10 @@ static uint8_t agc_decision(uint8_t mode, const dg_observation_t *o)
         s_agc_mode = mode;
         s_agc_control = s_control_epoch;
         s_agc_rows = s_gain_rows_measured;
-        printf("AGC model=%s bound top=G%u noise_top=%.2f cells2 rows_measured=%u\n",
-               mode == GAIN_MODE_LEVEL ? "LEVEL" : "RSSI", t->max_index, (double)n, s_gain_rows_measured);
+        printf("AGC model=%s bound top=G%u noise_top=%.2f cells2 noise_src=%s homes_from=G%u rows_measured=%u\n",
+               mode == GAIN_MODE_LEVEL ? "LEVEL" : "RSSI", t->max_index, (double)n,
+               map_x16 ? "map" : s_gain_th[t->max_index] > 0.0f ? "gtab" : "default",
+               mode == GAIN_MODE_LEVEL ? s_agc.level.top_index : t->max_index, s_gain_rows_measured);
     }
     return mode == GAIN_MODE_LEVEL ? agc_level_tick(&s_agc.level, o, s_current_gain, o->observed_us)
                                    : agc_rssi_tick(&s_agc.rssi, o, s_current_gain, o->observed_us);
@@ -501,6 +517,9 @@ void receiver_level_roll(bool no_carrier, bool video)
     uint8_t map_row;
     const float map_rel = level_noise_from_map(&map_row);
     s_level_noise_row = map_row;
+    /* The same noise at the table maximum for LEVEL (agc_decision). */
+    const float top_x16 = map_rel * RX_LEVEL_NOISE_CELLS2 * 16.0f;
+    s_map_noise_top_x16 = map_rel > 0.0f ? (uint16_t)(top_x16 > 65535.0f ? 65535.0f : top_x16 < 1.0f ? 1.0f : top_x16) : 0u;
     rx_level_t r = rx_level_compute(sum, n, clipped, s_gain.model_db_q8, s_gain.table.max_index,
                                     map_rel > 0.0f ? map_rel : s_noise_rel);
     /* Learn the noise with no carrier at the table maximum, inside -3..+4 dB
