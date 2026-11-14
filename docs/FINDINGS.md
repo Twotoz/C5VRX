@@ -2167,6 +2167,19 @@ known distance and power against free space; FPV channel by channel).
   one G67, where KEEL-1 settled on the board (G65-G67), and no level from
   no carrier to the table floor folds. `test_agc_compare` scores unchanged.
   Console: `AGC model=LEVEL bound ... noise_src=map|gtab|default homes_from=G..`.
+- **Gain does not add C/N behind the LNA (board, same LNA, VTX off, fixed
+  gains):** the pin-referred noise read -79.2/-79.3 dBm at G54, -79.4/-79.5
+  at G60 and at G66 (`RX_LEVEL input_dbm`, clipping 0-6 per mille): 12 dB
+  more gain, the same pin noise within 0.3 dB, so the noise enters before
+  the gain rows and higher rows only scale signal and noise together. G72
+  clipped 942-954 per mille of the probes, G78 and MAX all of them.
+- **C/N-AUTO learned folded noise:** in that sweep the MAX step (G83, every
+  window folded) was learned as row 83's noise (`cna_carrier_absent`
+  passed), and `RX_LEVEL` read a false 10.8 dB carrier again (`noise_row=83`).
+  The no-carrier learning now takes a 256-probe window only when at most 2 %
+  of its probes clipped or folded (the estimate's `CNA_F_CLIPPED` limit);
+  `CN_AUTO ... clip_rejects=` counts the refused windows. A row already
+  stored that way stays out of RX_LEVEL/LEVEL by the 12 cells^2 limit.
 
 **Use:** a VTX at a known distance and power against free space gives the
 dB lost before the chip. For example, 25 mW with 2 dBi each side over 10 m at

@@ -587,12 +587,12 @@ static cna_sums_t s_cna_acc;
 static uint8_t s_cna_acc_row = 255u;
 static uint32_t s_cna_acc_probes, s_cna_acc_clip, s_cna_div;
 static double s_abs_m2, s_abs_m4;
-static uint32_t s_abs_n;
+static uint32_t s_abs_n, s_abs_clip;   /* probes; of them clipped or folded */
 static uint8_t s_abs_row = 255u;
 static cna_reading_t s_cna;
 static volatile int64_t s_cna_us;
 static volatile uint32_t s_cna_epoch;
-static uint32_t s_cna_learned, s_cna_absent_rejects, s_cna_estimates;
+static uint32_t s_cna_learned, s_cna_absent_rejects, s_cna_clip_rejects, s_cna_estimates;
 static volatile bool s_cna_gain_dirty;
 
 static int cna_slot_find(uint16_t freq, rf_filter_t f)
@@ -767,24 +767,31 @@ static void cna_probe(const uint8_t *sample, size_t bytes, const dg_observation_
         if (s_rowdc_n[row] < 65535u) ++s_rowdc_n[row];
     }
     /* No-carrier evidence at this row. */
-    if (s_abs_row != row) { s_abs_row = row; s_abs_m2 = s_abs_m4 = 0.0; s_abs_n = 0; }
+    if (s_abs_row != row) { s_abs_row = row; s_abs_m2 = s_abs_m4 = 0.0; s_abs_n = s_abs_clip = 0; }
     {
         double m2, m4;
         cna_moments(&ps, pi, pq, &m2, &m4);
         s_abs_m2 += m2; s_abs_m4 += m4; ++s_abs_n;
+        s_abs_clip += folded || o->clip_pm >= 20u;
     }
     if (s_abs_n >= CNA_ABSENT_PROBES) {
         const float known = s_cna_map.n[row] >= CNA_MIN_SAMPLES ? s_cna_map.noise[row] : 0.0f;
         const int64_t video = s_last_video_us;
         const bool quiet_video = !video || now - video > 2000000;
-        if (quiet_video && cna_carrier_absent(s_abs_m2, s_abs_m4, s_abs_n, known)) {
+        /* Noise that clips or folds is no noise power of the row: behind an
+         * external LNA G83 folded every window (board 2026-11-14, gain MAX)
+         * and was learned as noise, 6 dB over the pin noise. The same 2 %
+         * as the estimate's CNA_F_CLIPPED. */
+        const bool clean = s_abs_clip * 50u <= s_abs_n;
+        if (!clean) ++s_cna_clip_rejects;
+        else if (quiet_video && cna_carrier_absent(s_abs_m2, s_abs_m4, s_abs_n, known)) {
             cna_noise_learn(&s_cna_map, row, (float)(s_abs_m2 / s_abs_n), now);
             ++s_cna_learned;
             s_cna_dirty = true;
         } else if (quiet_video) {
             ++s_cna_absent_rejects;
         }
-        s_abs_m2 = s_abs_m4 = 0.0; s_abs_n = 0;
+        s_abs_m2 = s_abs_m4 = 0.0; s_abs_n = s_abs_clip = 0;
     }
     /* The estimate. */
     if (s_cna_acc_row != row) { s_cna_acc_row = row; memset(&s_cna_acc, 0, sizeof(s_cna_acc)); s_cna_acc_probes = s_cna_acc_clip = 0; }
@@ -1165,10 +1172,10 @@ void receiver_print(void)
         const cna_reading_t c = receiver_cn_reading();
         unsigned measured = 0;
         for (unsigned k = 0; k < CNA_ROWS; ++k) measured += s_cna_map.n[k] >= CNA_MIN_SAMPLES;
-        printf("CN_AUTO estimate_x10=%d control_x10=%d power_x10=%d m2m4_x10=%d confidence=%u source=%u flags=0x%02x noise_cells2=%.3f rows_with_noise=%u learned=%lu absent_rejects=%lu estimates=%lu nbw_khz=%u (self-calibrating C/N, cn_auto.h)\n",
+        printf("CN_AUTO estimate_x10=%d control_x10=%d power_x10=%d m2m4_x10=%d confidence=%u source=%u flags=0x%02x noise_cells2=%.3f rows_with_noise=%u learned=%lu absent_rejects=%lu clip_rejects=%lu estimates=%lu nbw_khz=%u (self-calibrating C/N, cn_auto.h)\n",
                c.x10, receiver_obs_cn_x10(), c.power_x10, c.m2m4_x10, c.confidence, c.source, c.flags,
                (double)c.noise_cells2, measured,
-               (unsigned long)s_cna_learned, (unsigned long)s_cna_absent_rejects, (unsigned long)s_cna_estimates,
+               (unsigned long)s_cna_learned, (unsigned long)s_cna_absent_rejects, (unsigned long)s_cna_clip_rejects, (unsigned long)s_cna_estimates,
                calibration_filter_nbw_khz());
     }
     printf("GAIN_TABLE measured_rows=%u g83_g72_db=%.2f (top rows from the receiver-noise map; the rest the model, joined)\n",
