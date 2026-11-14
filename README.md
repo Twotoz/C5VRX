@@ -120,13 +120,10 @@ SJ2/SJ3 open.
 
 ### Optional external LNA (more range)
 
-<img src="assets/zeenko-zk06-um-lna.png" alt="Zeenko ZK06-UM LNA" width="260" align="right">
-
 C5VRX-5 now supports an external low-noise amplifier in front of the
 XIAO. Tested with the **Zeenko ZK06-UM** (10 MHz–6 GHz, SMA;
-datasheet at 5.8 GHz: ~22.6 dB gain, ~1.0 dB noise figure):
-**[Zeenko ZK06-UM on Amazon](https://link.amazon/B0iY2ccnV)**
-*(affiliate link: buying through it supports C5VRX at no extra cost to you).*
+datasheet at 5.8 GHz: ~22.6 dB gain, ~1.0 dB noise figure), listed under
+[Build components](#build-components).
 
 - **Wiring:** antenna → LNA input → LNA output → the XIAO's antenna
   connector (adapter or pigtail as needed). Mind the arrow on the LNA: it
@@ -153,7 +150,6 @@ datasheet at 5.8 GHz: ~22.6 dB gain, ~1.0 dB noise figure):
 
 Details and measurements: [docs/FINDINGS.md](docs/FINDINGS.md), "Received
 level at the chip pin" and the external LNA notes.
-<br clear="right">
 
 ### Optional digital video capture: Clock Pin D10
 
@@ -341,6 +337,7 @@ The C5VRX name and logos have separate terms; see [assets/BRANDING.md](assets/BR
 | C5VRX_JACK_DIY_V3 / REV C carrier | <img src="hardware/C5VRX_JACK_DIY_V3/exports/renders/03-front-straight.png" alt="C5VRX REV C PCB render" width="96" height="65"> | [Gerbers & KiCad files](hardware/C5VRX_JACK_DIY_V3) · [REV B](hardware/C5VRX_JACK_DIY_V2) · [REV A](hardware/C5VRX_JACK_DIY) |
 | Perfboard (alternative) | <img src="web/assets/perfboard.png" alt="Green perfboard" width="42" height="61"> | [View on Amazon](https://link.amazon/B0i2qqMeq) |
 | Resistor kit | <img src="web/assets/resistor-kit.png" alt="Resistor assortment in a storage case" width="72" height="72"> | [View on Amazon](https://link.amazon/B06XSBkln) |
+| Zeenko ZK06-UM LNA (optional, [more range](#optional-external-lna-more-range)) | <img src="web/assets/zeenko-zk06-um-lna.png" alt="Zeenko ZK06-UM LNA" width="72" height="72"> | [View on Amazon](https://link.amazon/B0iY2ccnV) |
 
 Affiliate links. As an Amazon Associate, I earn from qualifying purchases.
 All affiliate earnings go back into C5VRX development.
