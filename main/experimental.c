@@ -37,6 +37,14 @@ void experimental_load(void)
         if (blob_load("exp", &b, sizeof(b) - missing)) break;
         b = (experimental_blob_t){.version = EXP_VERSION};
     }
+    /* Version 1 had AUTO OUTPUT as ON/OFF with ON the baseline: a stored 0
+     * cannot tell the default from a choice, so it starts OFF, the new
+     * baseline (an explicit OFF stays OFF). Saved by the next poll. */
+    if (b.version == EXP_VERSION_V1) {
+        b.version = EXP_VERSION;
+        b.value[EXP_OUTPUT_AUTO] = 0;
+        if (experimental_blob_valid(&b)) s_save_pending = true;
+    }
     if (experimental_blob_valid(&b)) s_exp = b;
     s_clock_d10 = experimental_get(EXP_CLOCK_D10) != 0;
 }

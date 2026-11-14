@@ -20,14 +20,23 @@
  * arrive: 25 mW (14 dBm), 2 dBi each side, 10 m at 5.8 GHz is ~-50 dBm.
  * The difference is what is lost before the chip.
  *
- * The noise is learned per channel with no carrier (VTX off, at the table
- * maximum): on the board it read 1.7 dB above the 5180 MHz calibration at
- * 5865 MHz, the edge of the C5's documented range. The carrier is the pin
- * level minus that noise; until it is learned the calibration is used. */
+ * The noise comes first from C/N-AUTO's noise map (cn_auto.h) of this
+ * channel and filter: the highest row that measured real noise, referred to
+ * the pin like the probes (rx_level_noise_from_map). That works with and
+ * without an external LNA: bare, the top row measures and the reference is
+ * the calibration's (on the board 1.7 dB above it at 5865 MHz, the edge of
+ * the C5's documented range); behind an LNA the top rows clip and the
+ * highest clean row carries the LNA's gain and noise. The older reference,
+ * learned with no carrier at the table maximum within -3..+4 dB of the
+ * calibration, never learned behind an LNA (2026-11-14: VTX off read as a
+ * -79.5 dBm carrier, noise 17 dB over the calibration at G65-G67); it stays
+ * the fallback while the map has no row, then the calibration. The carrier
+ * is the pin level minus that noise. */
 #pragma once
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include "cn_auto.h"
 
 #define RX_LEVEL_NOISE_DBM      (-96.7f)   /* thermal noise at G83, default filter */
 #define RX_LEVEL_NOISE_CELLS2   4.76f
@@ -82,6 +91,28 @@ static inline rx_level_t rx_level_compute(const uint32_t sum_x16[RX_LEVEL_ROWS],
     r.carrier_dbm_x10 = r.above_noise ? (int)lround(10.0 * (RX_LEVEL_NOISE_DBM + 10.0 * log10(carrier))) : r.input_dbm_x10;
     r.cn_x10 = r.above_noise ? (int)lround(100.0 * log10(carrier / noise_rel)) : -990;
     return r;
+}
+
+/* The receiver's noise at the pin, in units of the G83 calibration noise,
+ * from a C/N-AUTO noise map: the highest row up to `max_index` with its own
+ * measurement of real noise (not quantisation-limited), its thermal share
+ * referred to the pin with the gain model, as rx_level_compute refers the
+ * probes. The highest row has the largest thermal share and the smallest
+ * model distance to the calibration. 0 when the map has no such row;
+ * *row_out is the row used (255 = none). */
+static inline float rx_level_noise_from_map(const cna_noise_map_t *m, const int16_t model_q8[RX_LEVEL_ROWS],
+                                            unsigned max_index, uint8_t *row_out)
+{
+    *row_out = 255u;
+    for (int g = (int)(max_index < RX_LEVEL_ROWS ? max_index : RX_LEVEL_ROWS - 1u); g >= 0; --g) {
+        if (m->n[g] < CNA_MIN_SAMPLES || !(m->noise[g] >= CNA_QLIM_CELLS2)) continue;
+        const double thermal = (double)m->noise[g] - RX_LEVEL_QUANT_CELLS2;
+        if (!(thermal > 0.0)) continue;
+        const double to_pin = pow(10.0, (double)(model_q8[max_index] - model_q8[g]) / 2560.0);
+        *row_out = (uint8_t)g;
+        return (float)(thermal * to_pin / RX_LEVEL_NOISE_CELLS2);
+    }
+    return 0.0f;
 }
 
 /* A carrier is shown only on evidence: 1 dB over the noise reference is

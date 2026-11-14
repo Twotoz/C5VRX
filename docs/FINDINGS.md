@@ -144,7 +144,13 @@ below. **Nothing here was flashed or measured on a board.**
   show in it. The absolute check (research/nfprobe) was not repeated.
 
 **AUTO OUTPUT** (`main/output_auto.h`, EXPERIMENTAL > AUTO OUTPUT, default
-ON; `test/test_output_auto.c`). OUTPUT 1.0x maps -6..+9 MHz onto the 64 DAC
+OFF since 2026-11-14, ON before; `test/test_output_auto.c`). Operator
+decision 2026-11-14: every word it applies is a verified halted restart of
+the transport (~5 ms, ~80 lines without video), and no goggle comparison
+against 1.0x exists yet; it stays an experiment until one does. The NVS
+experiment schema went to version 2 (values OFF/ON, OFF the baseline); a
+version-1 blob keeps every other experiment and starts AUTO OUTPUT OFF.
+OUTPUT 1.0x maps -6..+9 MHz onto the 64 DAC
 codes, so a deviation 0.69 VTX uses ~19 of them and its sync is ~5.5 codes
 (issue #200 model: 0.060 V loaded against 0.286 V of CVBS; deviation 1.0:
 0.089 V). The 2026-10-12 study named what a live version needs; this is
@@ -2122,6 +2128,24 @@ known distance and power against free space; FPV channel by channel).
 - **Noise:** learned per channel with no carrier at the table maximum. At
   5865 MHz (A1) it reads -95.0 dBm, 1.7 dB above the 5180 MHz calibration.
   A1 is at the top of the C5's documented range.
+- **Noise behind an external LNA (2026-11-14):** that reference only learns
+  at the table maximum and within -3..+4 dB of the calibration. Behind an
+  LNA (~21 dB, operator's board, VTX off, A1, 12 MHz filter) the gain
+  model held G65-G67 and the pin noise read 17.5 dB over the calibration:
+  it never learned (`noise_learned=0`) and the noise itself showed as a
+  `-79.5 dBm` carrier with 17 dB C/N. C/N-AUTO's noise map (the control
+  C/N) was right on the same board (`power_x10=-106`, no carrier). The
+  meter now takes its noise from that map first: the highest row of the
+  current channel/filter that measured real noise, referred to the pin
+  with the gain model (`rx_level_noise_from_map`). Bare, that is the top
+  row and the same -95.0 dBm; behind an LNA the highest clean row, which
+  carries the LNA's gain and noise. The old reference stays the fallback,
+  then the calibration. Console `T` shows `noise_src=map|g83|cal` and
+  `noise_row`. Host test only; the map itself inherits C/N-AUTO's limits
+  (a map saved without the LNA stays until a quiet boot re-measures it).
+- **With an LNA the pin level is not the antenna level:** noise and carrier
+  both carry the LNA's gain; the dBm reads at the C5 pin, the C/N is the
+  chain's.
 
 **Use:** a VTX at a known distance and power against free space gives the
 dB lost before the chip. For example, 25 mW with 2 dBi each side over 10 m at

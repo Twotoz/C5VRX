@@ -14,7 +14,12 @@ enum {
     EXP_OUTPUT_AUTO, EXP_STRONG_LANE, EXP_ITEMS,
     EXP_DAC = EXP_ITEMS, EXP_RESET, EXP_BACK, EXP_MENU_ITEMS
 };
-#define EXP_VERSION 1u
+/* 2 (2026-11-14): AUTO OUTPUT's values swapped to OFF/ON, OFF the baseline
+ * (operator: every applied word is a verified ~5 ms restart, unproven on a
+ * goggle). experimental_load migrates a version-1 blob: the other items
+ * keep their values, AUTO OUTPUT starts OFF. */
+#define EXP_VERSION 2u
+#define EXP_VERSION_V1 1u
 
 typedef struct { const char *name; uint8_t count; const char *values[8]; } experimental_item_t;
 static const experimental_item_t experimental_items[EXP_ITEMS] = {
@@ -33,7 +38,7 @@ static const experimental_item_t experimental_items[EXP_ITEMS] = {
     {"SPUR 0", 3, {"STOCK", "+512", "-512"}},
     {"IQ LANE", 3, {"ULTRA", "FINE", "COARSE"}},
     {"Clock Pin D10", 2, {"OFF", "ON"}},
-    {"AUTO OUTPUT", 2, {"ON", "OFF"}},     /* output_auto.h: the video level from the measured sync and white */
+    {"AUTO OUTPUT", 2, {"OFF", "ON"}},     /* output_auto.h: the video level from the measured sync and white (v2 order) */
     {"STRONG LANE", 2, {"ON", "OFF"}},     /* strong_lane.h: a coarser IQ lane when the lowest gain rows still fold */
 };
 typedef struct { uint8_t version, value[EXP_ITEMS]; } experimental_blob_t;

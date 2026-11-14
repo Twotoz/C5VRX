@@ -105,10 +105,10 @@ GND ---------------+------> GND (goggle / monitor AV-in ground)
 - Connect the node to the video input (tip) of the goggles, DVR or monitor,
   with a common ground. Standard E24 1 % resistors are fine; keep the wires
   short. Power comes over USB-C or the 5 V pin.
-- The video level adjusts itself to the VTX (EXPERIMENTAL > AUTO OUTPUT, on
-  by default) while **OUTPUT** is 1.0x. Still too dim on some goggles: raise
-  OUTPUT in the menu (0.5–5.0x, saved; a manual level switches the automatic
-  one off and high levels can clip).
+- The video level is **OUTPUT** in the menu (0.5–5.0x, saved; high levels
+  can clip). EXPERIMENTAL > AUTO OUTPUT (off by default) lets it follow the
+  VTX while OUTPUT is 1.0x; every change it makes is a short (~5 ms) video
+  restart.
 - **Check the build with the DAC self-test** (`Z` or menu DAC TEST) before
   chasing picture problems: see
   [Building and testing the resistor DAC](docs/hardware/dac-build-and-test.md).
