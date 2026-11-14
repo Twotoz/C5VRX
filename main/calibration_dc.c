@@ -11,8 +11,14 @@
 #define DC_SERVO_ROW0 54u
 #define DC_SERVO_TABLE_ROWS 36u        /* servo slots of the table rows G54..G89 */
 #define DC_LOW_STAGES 8u               /* RF stages under the table: G0, 10, 17, 25, 30, 38, 43, 47 */
-/* One servo slot per lower RF stage after the table rows (LP RAM: ~64 B a slot). */
-#define DC_SERVO_ROWS (DC_SERVO_TABLE_ROWS + DC_LOW_STAGES)
+/* LOW DC serves stages 4-7 (G30-G53): behind an LNA medium carriers sit
+ * there; G0-G29 only carry very strong carriers (a 5+ cell circle), where
+ * the chip's own DC does no harm, and RAM is tight (heap_min fell to 840 B
+ * with all eight stages and their rows). One servo slot per served stage
+ * after the table rows (LP RAM: ~64 B a slot). */
+#define DC_LOW_STAGE_FIRST 4u
+#define DC_LOW_SLOTS (DC_LOW_STAGES - DC_LOW_STAGE_FIRST)
+#define DC_SERVO_ROWS (DC_SERVO_TABLE_ROWS + DC_LOW_SLOTS)
 #define DC_MODEL_ROWS DC_SERVO_TABLE_ROWS   /* the DC table rows G54..G89, index g - DC_SERVO_ROW0 (HP RAM) */
 #include "dc_servo.h"
 #include "flightlog_format.h"
@@ -152,11 +158,12 @@ static inline unsigned mrow(unsigned g) { return g >= DC_SERVO_ROW0 && g - DC_SE
  * RF stage, servoed on the carrier like the table rows. Bank 1 stays the
  * chip's own there (phy.c pins it only inside the table span). RAM only,
  * nothing stored. */
-#define DC_LOW_ROW0 2u                 /* the receiver floor (apply_target) */
-static int16_t s_low_base[DC_SERVO_ROW0][2];
-static uint8_t s_low_base_ok[(DC_SERVO_ROW0 + 7u) / 8u];
-static int16_t s_low_trim[DC_LOW_STAGES][2];
-static uint8_t s_low_slot_row[DC_LOW_STAGES];
+#define DC_LOW_ROW0 30u                /* first row of stage 4 on the 5 GHz table (rows under it decode lower) */
+#define DC_LOW_ROWS (DC_SERVO_ROW0 - DC_LOW_ROW0)
+static int16_t s_low_base[DC_LOW_ROWS][2];
+static uint8_t s_low_base_ok[(DC_LOW_ROWS + 7u) / 8u];
+static int16_t s_low_trim[DC_LOW_SLOTS][2];
+static uint8_t s_low_slot_row[DC_LOW_SLOTS];
 static uint32_t s_low_holds, s_low_steps, s_low_read_fails;
 static uint32_t s_dco_reloads;      /* dco_select() loads of another table (each drops the trims) */
 static uint8_t s_dco_reload_why;    /* 1 none yet, 2 filter, 3 freq, 4 rows, 5 band, 6 IQ scale, 7 version */
@@ -367,16 +374,19 @@ static void dco_preset_fill(void)
                   s_dco.freq, cls, n, (unsigned)DCO_PRESET_BOARDS);
 }
 
-/* The lower RF stage of row g (0..DC_LOW_STAGES-1), -1 for the table rows,
- * a row the table cannot decode or LOW DC switched off. */
+/* The LOW DC slot of row g (0..DC_LOW_SLOTS-1: its RF stage minus
+ * DC_LOW_STAGE_FIRST), -1 for the table rows, the stages LOW DC does not
+ * serve, a row the table cannot decode or LOW DC switched off. */
 static int dc_low_stage(unsigned g)
 {
     if (experimental_get(EXP_LOW_DC) || g < DC_LOW_ROW0 || g >= DC_SERVO_ROW0 || g >= s_dco.lo) return -1;
     arc_gain_tuple_t tuple;
-    if (!arc_gain_tuple_decode(rf_gain_table(), (uint8_t)g, &tuple) || tuple.rf_stage >= DC_LOW_STAGES) return -1;
-    return tuple.rf_stage;
+    if (!arc_gain_tuple_decode(rf_gain_table(), (uint8_t)g, &tuple) || tuple.rf_stage < DC_LOW_STAGE_FIRST ||
+        tuple.rf_stage >= DC_LOW_STAGES) return -1;
+    return (int)(tuple.rf_stage - DC_LOW_STAGE_FIRST);
 }
-static inline bool low_base_ok(unsigned g) { return (s_low_base_ok[g >> 3] >> (g & 7u)) & 1u; }
+static inline unsigned low_idx(unsigned g) { return g - DC_LOW_ROW0; }
+static inline bool low_base_ok(unsigned g) { return (s_low_base_ok[low_idx(g) >> 3] >> (low_idx(g) & 7u)) & 1u; }
 
 /* A low row: the chip's own bank-2 codes (read once, in vendor mode right
  * after the gain write) plus its stage's live trim. */
@@ -387,12 +397,12 @@ static bool dco_low_codes(uint8_t g, int code[2])
     if (!low_base_ok(g)) {
         int pair[2];
         if (phy_dco_held() || !phy_dco_read_pair(pair)) { ++s_low_read_fails; return false; }
-        s_low_base[g][0] = (int16_t)pair[0];
-        s_low_base[g][1] = (int16_t)pair[1];
-        s_low_base_ok[g >> 3] |= (uint8_t)(1u << (g & 7u));
+        s_low_base[low_idx(g)][0] = (int16_t)pair[0];
+        s_low_base[low_idx(g)][1] = (int16_t)pair[1];
+        s_low_base_ok[low_idx(g) >> 3] |= (uint8_t)(1u << (low_idx(g) & 7u));
     }
     for (unsigned a = 0; a < 2; ++a) {
-        const int v = s_low_base[g][a] + s_low_trim[st][a];
+        const int v = s_low_base[low_idx(g)][a] + s_low_trim[st][a];
         code[a] = v < 0 ? 0 : v > 511 ? 511 : v;
     }
     ++s_low_holds;
@@ -404,7 +414,7 @@ static bool dco_low_codes(uint8_t g, int code[2])
 static bool dco_hold_codes(uint8_t g, int code[2], bool *preset)
 {
     *preset = false;
-    if (g < s_dco.lo && g < DC_SERVO_ROW0) return dco_low_codes(g, code);
+    if (g < s_dco.lo && g < DC_SERVO_ROW0) return g >= DC_LOW_ROW0 && dco_low_codes(g, code);
     if (g < s_dco.lo || g > s_dco.hi || s_dco_banned[g] || s_dco.freq != rf_frequency_mhz() ||
         s_dco.e[g].valid != DCO_ROW_OK) return false;
     code[0] = dco_trimmed(g, 0);
@@ -1201,7 +1211,7 @@ static void servo_low_rows(void)
             if (!fault) { ++s_servo_skip[3]; continue; }
             s_dc_fault = true;
             (void)receiver_pause("DC_LIVE_RESTORE_FAILED");
-            printf("DC_SERVO fault=restore_failed gain=%u (low stage %d); gain owner paused\n", g, st);
+            printf("DC_SERVO fault=restore_failed gain=%u (low stage %d); gain owner paused\n", g, st + (int)DC_LOW_STAGE_FIRST);
             const uint8_t code = 1;
             flightlog_event(FLOG_E_FAULT, &code, 1);
             return;
@@ -1642,12 +1652,12 @@ void cal_dc_print(rf_filter_t f)
            mrow(s_current_gain) < DC_MODEL_ROWS ? (unsigned)s_dc_model.strikes[mrow(s_current_gain)] : 0u);
     {
         const int st = dc_low_stage(s_current_gain);
-        printf("DC_LOW on=%u holds=%lu steps=%lu read_fails=%lu stage=%d trim=%d/%d base=%d/%d (rows under the DC table: "
+        printf("DC_LOW on=%u holds=%lu steps=%lu read_fails=%lu stage=%d trim=%d/%d base=%d/%d (rows G30-G53 under the DC table: "
                "the chip's own codes plus one trim per RF stage; EXPERIMENTAL > LOW DC)\n",
                !experimental_get(EXP_LOW_DC), (unsigned long)s_low_holds, (unsigned long)s_low_steps,
-               (unsigned long)s_low_read_fails, st, st >= 0 ? s_low_trim[st][0] : 0, st >= 0 ? s_low_trim[st][1] : 0,
-               st >= 0 && low_base_ok(s_current_gain) ? s_low_base[s_current_gain][0] : -1,
-               st >= 0 && low_base_ok(s_current_gain) ? s_low_base[s_current_gain][1] : -1);
+               (unsigned long)s_low_read_fails, st >= 0 ? st + (int)DC_LOW_STAGE_FIRST : -1, st >= 0 ? s_low_trim[st][0] : 0, st >= 0 ? s_low_trim[st][1] : 0,
+               st >= 0 && low_base_ok(s_current_gain) ? s_low_base[low_idx(s_current_gain)][0] : -1,
+               st >= 0 && low_base_ok(s_current_gain) ? s_low_base[low_idx(s_current_gain)][1] : -1);
     }
     printf("DCO_BAN unbans=%lu deferred_to_servo=%lu (a hold is released for 2-32 s only where the servo cannot trim it)\n",
            (unsigned long)s_dco_unbans, (unsigned long)s_dco_guard_deferred);

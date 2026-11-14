@@ -2243,14 +2243,17 @@ known distance and power against free space; FPV channel by channel).
   those rows only see strong carriers, whose circle (5-8 cells) tolerates
   that DC. With the VTX off the DC there cannot be measured (the noise is
   under one ADC step); the servo measures it on the carrier circle.
-- **LOW DC (EXPERIMENTAL, default ON):** every row G2-G53 is held on the
+- **LOW DC (EXPERIMENTAL, default ON):** every row G30-G53 (stages 4-7) is held on the
   chip's own bank-2 codes (read once per table context in vendor mode,
   right after the gain write) plus one live trim per RF stage (8 stages:
   G0, G10, G17, G25, G30, G38, G43, G47), servoed like the template rows on
   one extra servo slot per stage (LP RAM). Bank 1 stays the chip's own (phy.c
   pins it only inside the table span). Nothing is stored. OFF restores the
   chip's own DC. Console `T`: `DC_LOW on= holds= steps= stage= trim= base=`.
-  Firmware and host build only; a board check with a carrier on G40-G53 is
+  Stages 0-3 (G0-G29: very strong carriers only, where the chip's DC does
+  no harm) keep the chip's own DC: with all eight stages heap_min fell to
+  840 B and the boot splash crashed; with four, heap_min 1208 B, heap_lp
+  1036 B. Firmware build only; a board check with a carrier on G40-G53 is
   still to come.
 - **EXPERIMENTAL > LEVEL TOP** (9 / 12 / 16 / 6 cells^2, 9 the baseline):
   the noise the top row may carry. Behind the ZK06-UM (22.6 dB, NF 0.95 dB
