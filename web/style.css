@@ -285,6 +285,11 @@ summary { cursor: pointer; color: #b0b7c1; min-height: 32px; }
 .module-offer img { display: block; width: 100%; height: auto; }
 .module-offer figcaption { margin-top: 7px; color: var(--muted); font-size: 12px; }
 .module-copy p { margin-top: 0; }
+.module-copy a.seller-logo { position: relative; display: block; width: min(240px, 100%); margin: 0 0 16px; }
+.seller-logo img { display: block; width: 100%; height: auto; }
+.seller-logo .seller-logo-spin { position: absolute; left: 5.67%; top: 21.73%; width: 35.75%; animation: seller-logo-spin 6s linear infinite; }
+@keyframes seller-logo-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .seller-logo .seller-logo-spin { animation: none; } }
 .project-info a.seller-button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 18px; background: var(--accent); border: 1px solid var(--accent); color: #fff; font-size: .9375rem; font-weight: 600; text-decoration: none; }
 .project-info a.seller-button:hover, .project-info a.seller-button:focus-visible { color: #fff; text-decoration: none; opacity: .85; }
 .module-copy .seller-note { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
