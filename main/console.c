@@ -4,6 +4,7 @@
 #include "sense_lab.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -95,6 +96,87 @@ static void snapshot(void)
     printf("IQSNAP_END fnv1a=%08lx\n", (unsigned long)hash);
 }
 
+/* Bench frame sweep (J, tools/frame_sweep.py): snapshots spread over one
+ * video frame, each FRAME_SWEEP_STEP_NS later in the frame than the one
+ * before, one per frame, until the whole frame is covered (~8 s for NTSC).
+ * They are kept in PSRAM (the PSRAM build, sdkconfig.psram.defaults) and
+ * printed afterwards, so the VTX can go off during the print. A refused copy
+ * is retried on the next RX descriptor boundary. Each record carries its
+ * boundary time; the host places it by that time and the fitted line period.
+ * Live video keeps running. */
+#define FRAME_SWEEP_STEP_NS 150000
+#define FRAME_SWEEP_TRIES 4
+static void frame_sweep(void)
+{
+    if (s_menu_active || receiver_paused()) { printf("IQSWEEP_REFUSED context_busy\n"); return; }
+    const bool pal = s_detected_std_valid && s_detected_std == VIDEO_STD_PAL;
+    const int64_t frame_ns = pal ? 40000000 : 33366667;   /* NTSC 1001/30 ms */
+    const unsigned n = (unsigned)(frame_ns / FRAME_SWEEP_STEP_NS) + 3u;
+    uint8_t *store = heap_caps_malloc((size_t)n * C5V4_LEVEL_SAMPLE_BYTES, MALLOC_CAP_SPIRAM);
+    int64_t *when = heap_caps_calloc(n, sizeof(int64_t), MALLOC_CAP_SPIRAM);
+    uint8_t *gain = heap_caps_calloc(n, 1, MALLOC_CAP_SPIRAM), *ok = heap_caps_calloc(n, 1, MALLOC_CAP_SPIRAM);
+    uint8_t *tmp = malloc(C5V4_LEVEL_SAMPLE_BYTES);
+    if (!store || !when || !gain || !ok || !tmp) {
+        printf("IQSWEEP_REFUSED memory need=%u psram_free=%u (J needs the PSRAM build)\n", n * C5V4_LEVEL_SAMPLE_BYTES,
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+        goto out;
+    }
+    printf("IQSWEEP_CAPTURE n=%u std=%s (keep the camera still)\n", n, pal ? "PAL" : "NTSC");
+    const int64_t t0 = esp_timer_get_time() + 20000;
+    unsigned good = 0, retries = 0, frames = 0;
+    for (unsigned k = 0; k < n; ++k) {
+        int64_t target;
+        while ((target = t0 + ((int64_t)k * FRAME_SWEEP_STEP_NS + (int64_t)frames * frame_ns) / 1000) <
+               esp_timer_get_time() + 1000)
+            ++frames;   /* held up past this frame: the same place one frame later */
+        ++frames;
+        while (esp_timer_get_time() < target - 1500) vTaskDelay(1);
+        while (esp_timer_get_time() < target) { }
+        for (unsigned tr = 0; tr < FRAME_SWEEP_TRIES && !ok[k]; ++tr) {
+            if (s_menu_active || receiver_paused()) break;
+            gain[k] = (uint8_t)s_current_gain;
+            if (copy_snapshot_at_boundary(tmp, &when[k])) {
+                memcpy(store + (size_t)k * C5V4_LEVEL_SAMPLE_BYTES, tmp, C5V4_LEVEL_SAMPLE_BYTES);
+                ok[k] = 1;
+                ++good;
+            } else {
+                ++retries;
+            }
+        }
+    }
+    printf("IQSWEEP_BEGIN n=%u good=%u retries=%u bytes=%u rate_hz=%u std=%s frame_ns=%lld step_ns=%d freq_mhz=%u fw=%s "
+           "(capture done: the VTX may go off)\n",
+           n, good, retries, C5V4_LEVEL_SAMPLE_BYTES, IQ_RATE_HZ, pal ? "PAL" : "NTSC", (long long)frame_ns,
+           FRAME_SWEEP_STEP_NS, rf_frequency_mhz(), firmware_id());
+    static const char hex[] = "0123456789abcdef";
+    char line[513];
+    for (unsigned k = 0; k < n; ++k) {
+        if (!ok[k]) { printf("IQSWEEP_SNAP k=%u ok=0\n", k); continue; }
+        const uint8_t *raw = store + (size_t)k * C5V4_LEVEL_SAMPLE_BYTES;
+        uint32_t hash = 2166136261u;
+        for (unsigned j = 0; j < C5V4_LEVEL_SAMPLE_BYTES; ++j) hash = (hash ^ raw[j]) * 16777619u;
+        printf("IQSWEEP_SNAP k=%u ok=1 frames=0 t_us=%lld gain=%u fnv1a=%08lx\n", k, (long long)when[k], gain[k],
+               (unsigned long)hash);
+        for (unsigned offset = 0; offset < C5V4_LEVEL_SAMPLE_BYTES; offset += 256) {
+            unsigned size = C5V4_LEVEL_SAMPLE_BYTES - offset > 256 ? 256 : C5V4_LEVEL_SAMPLE_BYTES - offset;
+            for (unsigned j = 0; j < size; ++j) {
+                line[2 * j] = hex[raw[offset + j] >> 4];
+                line[2 * j + 1] = hex[raw[offset + j] & 15];
+            }
+            line[2 * size] = 0;
+            printf("IQSWEEP_DATA k=%u offset=%u %s\n", k, offset, line);
+            vTaskDelay(1);
+        }
+    }
+    printf("IQSWEEP_END n=%u good=%u\n", n, good);
+out:
+    free(tmp);
+    heap_caps_free(ok);
+    heap_caps_free(gain);
+    heap_caps_free(when);
+    heap_caps_free(store);
+}
+
 static void help(void)
 {
     printf("C5VRX-5 keys: T status, C calibration data dump (read only), D range/health report, M gain map (for a preset), R per-second FIELD_DIAG lines on/off,\n"
@@ -102,7 +184,7 @@ static void help(void)
            "  G RX gain LEVEL -> KEEL (KEEL-1) -> RSSI -> MAX -> fixed G78..G24 (models kept across reboots; MAX/fixed: next boot LEVEL),\n"
            "  A live VTX profile switch on/off (continuous matching every 30 s; off = report only),\n"
            "  m decoder U80P64-R1 <-> U85Q (verified restart, saved; video stops briefly),\n"
-           "  I IQ snapshot, o menu open/close, n/x menu next/select, c next channel, b next band, s scan,\n"
+           "  I IQ snapshot, J bench frame sweep (one frame of IQ, still camera; tools/frame_sweep.py), o menu open/close, n/x menu next/select, c next channel, b next band, s scan,\n"
            "  v video standard AUTO/NTSC/PAL, f analog filter AUTO/NARROW/NORMAL/WIDE (this boot; calibrated classes),\n"
            "  e close menu (web menu direct controls),\n"
            "  F calibrate current filter; B full RF optimization (ground only; video stops), L bench IQ lane comparison (video stops ~3 s),\n"
@@ -158,6 +240,7 @@ static void console_task(void *arg)
             case 'S': sense_lab_help(); sense_until = esp_timer_get_time() + 5000000; break;
             case 'T': status(); break;
             case 'I': snapshot(); break;
+            case 'J': frame_sweep(); break;
             case 'F': filter_request(); break;
             case 'B': filter_request_full(); break;
             case 'C': calibration_dump_request(); break;

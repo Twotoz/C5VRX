@@ -27,6 +27,7 @@
 #include "p64_tables.h"
 #include "u85q_table.h"
 #include "u50p64_table.h"
+#include "d32_table.h"
 #include "snapshot.h"
 #include "control_window.h"
 #include "phase8_gain_lut.h"
@@ -52,15 +53,22 @@ BITSCRAMBLER_PROGRAM(s_u85q, "u85q");
  * decoder for deviation <= ~1.0; the default since 2026-11-10 (operator), with
  * the deviation fallback to U80P64-R1 in control.c. */
 BITSCRAMBLER_PROGRAM(s_u50p64, "u50p64");
+/* D32-R2 (research/nl_tracker.py build_d32c): the U85Q program with its own
+ * table: sample A's angle in 32 sectors, the tracked sector as state, a full
+ * step inside the video window and 0.7 of a step outside it (clicks); the
+ * advance made is the DAC code; five token bits. */
+BITSCRAMBLER_PROGRAM(s_d32, "d32");
 static bool s_started;
 static uint8_t s_demod = TRANSPORT_DEMOD_DEFAULT, s_verified_demod = TRANSPORT_DEMOD_P64;
 static const void *demod_program(uint8_t d)
 {
-    return d == TRANSPORT_DEMOD_U85Q ? s_u85q : d == TRANSPORT_DEMOD_U50P64 ? s_u50p64 : s_p64;
+    return d == TRANSPORT_DEMOD_U85Q ? s_u85q : d == TRANSPORT_DEMOD_U50P64 ? s_u50p64 :
+           d == TRANSPORT_DEMOD_D32 ? s_d32 : s_p64;
 }
 static const uint16_t *demod_table(uint8_t d)
 {
-    return d == TRANSPORT_DEMOD_U85Q ? u85q_table : d == TRANSPORT_DEMOD_U50P64 ? u50p64_table : p64_table;
+    return d == TRANSPORT_DEMOD_U85Q ? u85q_table : d == TRANSPORT_DEMOD_U50P64 ? u50p64_table :
+           d == TRANSPORT_DEMOD_D32 ? d32_table : p64_table;
 }
 static const void *tracker_program(void) { return demod_program(s_demod); }
 
@@ -313,11 +321,13 @@ uint32_t transport_switch_wait_ms(void)
 
 const char *transport_demod_name(uint8_t d)
 {
-    return d == TRANSPORT_DEMOD_U85Q ? U85Q_MODEL_ID : d == TRANSPORT_DEMOD_U50P64 ? U50P64_MODEL_ID : P64_MODEL_ID;
+    return d == TRANSPORT_DEMOD_U85Q ? U85Q_MODEL_ID : d == TRANSPORT_DEMOD_U50P64 ? U50P64_MODEL_ID :
+           d == TRANSPORT_DEMOD_D32 ? D32_MODEL_ID : P64_MODEL_ID;
 }
 const char *transport_demod_short(uint8_t d)
 {
-    return d == TRANSPORT_DEMOD_U85Q ? "U85Q" : d == TRANSPORT_DEMOD_U50P64 ? "U50" : "P64";
+    return d == TRANSPORT_DEMOD_U85Q ? "U85Q" : d == TRANSPORT_DEMOD_U50P64 ? "U50" :
+           d == TRANSPORT_DEMOD_D32 ? "D32" : "P64";
 }
 const char *transport_program_name(void) { return transport_demod_name(s_demod); }
 uint8_t transport_demod(void) { return s_demod; }
@@ -326,7 +336,7 @@ uint8_t transport_demod(void) { return s_demod; }
 const uint16_t *transport_decoder_lut(unsigned *token_bits)
 {
     if (!s_lut_known || s_transport_fault || !s_started) return NULL;
-    *token_bits = s_verified_demod == TRANSPORT_DEMOD_U85Q ? 5u : 4u;
+    *token_bits = s_verified_demod == TRANSPORT_DEMOD_U85Q || s_verified_demod == TRANSPORT_DEMOD_D32 ? 5u : 4u;
     return demod_table(s_verified_demod);
 }
 
@@ -713,7 +723,8 @@ void transport_flog_identity(uint8_t *demod, uint8_t *output_level)
                           !s_transport_fault;
     if (demod) *demod = !verified ? FLOG_DEMOD_UNKNOWN :
                         s_verified_demod == TRANSPORT_DEMOD_U85Q ? FLOG_DEMOD_U85Q_1A09F5C092E8 :
-                        s_verified_demod == TRANSPORT_DEMOD_U50P64 ? FLOG_DEMOD_U50P64_R1 : FLOG_DEMOD_P64_R1;
+                        s_verified_demod == TRANSPORT_DEMOD_U50P64 ? FLOG_DEMOD_U50P64_R1 :
+                        s_verified_demod == TRANSPORT_DEMOD_D32 ? FLOG_DEMOD_D32_R1 : FLOG_DEMOD_P64_R1;
     /* 0..9 a manual level; 0x80 | gain_q3 an AUTO OUTPUT word (gain = low six bits / 8). */
     if (output_level) *output_level = !verified ? 0xffu : output_is_affine(s_verified_output) ?
         (uint8_t)(0x80u | output_affine_gain_q3(s_verified_output)) : (uint8_t)s_verified_output;
@@ -740,8 +751,8 @@ void transport_print(void)
     const char *verified_demod = s_have_verified && s_lut_known && !s_transport_fault ?
         transport_demod_name(s_verified_demod) : "unknown";
     printf("DEMOD selected=%s verified=%s p64_model=%s p64_table_sha256=%s u85q_table_sha256=%s u50p64_table_sha256=%s "
-           "(console m switches)\n", transport_program_name(), verified_demod, P64_MODEL_ID, P64_TABLE_SHA256,
-           U85Q_TABLE_SHA256, U50P64_TABLE_SHA256);
+           "d32_table_sha256=%s (console m switches)\n", transport_program_name(), verified_demod, P64_MODEL_ID,
+           P64_TABLE_SHA256, U85Q_TABLE_SHA256, U50P64_TABLE_SHA256, D32_TABLE_SHA256);
     printf("TRANSPORT_STAGES_US quiesce=%lu bs_enable=%lu program_load=%lu instruction_verify=%lu lut_verify=%lu "
            "bs_reset=%lu bs_start=%lu rx_enable=%lu tx_enable=%lu rx_start=%lu tx_start=%lu (last restart)\n",
            (unsigned long)s_quiesce_us, (unsigned long)s_stage_us[TR_BS_ENABLE], (unsigned long)s_stage_us[TR_PROGRAM_LOAD],
@@ -907,6 +918,33 @@ bool copy_snapshot(uint8_t *dst)
     size_t after = (size_t)(s_rx_nodes[later].buffer - s_raw_ring);
     return c5v4_snapshot_current(total, C5V4_LEVEL_SAMPLE_BYTES, (after + total - end) % total,
                                  s_rx_nodes[later].length, elapsed, plan.safe_bytes, IQ_RATE_HZ);
+}
+
+/* Bench frame sweep (console J): wait for the next RX descriptor boundary,
+ * time it, and copy the 8190 bytes that end there. Interrupts are off only
+ * while polling for the boundary (at most FRAME_SWEEP_WAIT_US), so the time
+ * is the boundary's to about a microsecond; the copy runs with them on. The
+ * realtime path is DMA and the BitScrambler, which do not see this. */
+#define FRAME_SWEEP_WAIT_US 400
+bool copy_snapshot_at_boundary(uint8_t *dst, int64_t *boundary_us)
+{
+    static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+    if (s_rx_dma_ch < 0 || s_rx_node_count < 4) return false;
+    const int64_t limit = esp_timer_get_time() + FRAME_SWEEP_WAIT_US;
+    uint32_t start, now;
+    int64_t t;
+    portENTER_CRITICAL(&mux);
+    start = rx_active_addr();
+    do {
+        now = rx_active_addr();
+        t = esp_timer_get_time();
+    } while (now == start && t < limit);
+    portEXIT_CRITICAL(&mux);
+    /* copy_snapshot ends at the descriptor active when it starts (and checks
+     * itself that RX did not reach the copied bytes): still the timed one. */
+    if (now == start || rx_active_addr() != now) return false;
+    *boundary_us = t;
+    return copy_snapshot(dst);
 }
 
 /* Endpoint bytes (odd ring byte of each pair) of the newest `n` pairs. */

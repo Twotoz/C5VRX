@@ -28,12 +28,15 @@ outputs composite PAL/NTSC through a passive 6-bit resistor DAC: automatic
 gain control, a quick baseline boot with manual calibration, an on-screen
 menu, and browser-based flashing and controls.
 
-The default demodulator is **U50P64-R1**, the U80P64-R1 formulas with loop
-gain 0.50: less picture noise for a VTX of deviation up to about 1.0 at the
-cost of detail and colour level. A VTX measured wider falls back to
-**U80P64-R1** ([evidence and limits](docs/P64.md)), which has one positive
-NTSC check. U50P64-R1 is host-tested only; PAL, weak-signal behaviour and
-range still need hardware validation. Board findings, including the retired U85Q/kp/LP models
+The default demodulator is **D32-R2** (2026-11-15): the phase difference of
+successive samples in 32 sectors, with click suppression for steps no video
+carrier can make. On a board capture it left 41 % less colour noise (the
+coloured dots) than U50P64-R1, confirmed on the goggle; in the host model it
+holds the picture about as long as U50P64-R1 for a VTX of deviation ~0.7 and
+longer for wide VTXs, with a grainier luma just above the edge. **U50P64-R1**
+(loop gain 0.50) and **U80P64-R1** ([evidence and limits](docs/P64.md)) stay
+selectable. D32-R2's range is host-modelled only; a walk against U50P64-R1
+is still needed. Board findings, including the retired U85Q/kp/LP models
 and the removed sync flywheel, are in [docs/FINDINGS.md](docs/FINDINGS.md).
 
 ## Experimental firmware — flight safety warning
@@ -259,7 +262,7 @@ open the menu (menu: select).
 **Menu**, one list with every value in view: BAND, CHANNEL, SCAN, VIDEO
 (AUTO/NTSC/PAL), FILTER (AUTO/XNARROW/NARROW/NORMAL/WIDE), PHY FILT
 (digital filter mode), AFC (ON/OFF), CALIBRATE, OUTPUT (0.5–5.0x), GAIN
-(LEVEL/KEEL/RSSI/MAX/fixed), DEMOD (P64/U85Q/U50), DAC TEST, EXIT. It closes after 30 s of
+(LEVEL/KEEL/RSSI/MAX/fixed), DEMOD (P64/U85Q/U50/D32), DAC TEST, EXIT. It closes after 30 s of
 inactivity (5 min in DAC TEST); entering and leaving can interrupt video.
 GAIN defaults to **LEVEL**; KEEL and RSSI are kept for comparison
 ([AGC research](docs/FINDINGS.md)). The automatic models are remembered

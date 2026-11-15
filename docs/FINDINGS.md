@@ -1,5 +1,79 @@
 # C5VRX-5 findings
 
+## Colour dots, the frame sweep and D32-R2 (2026-11-15, board capture + host)
+
+C5VRX by Twotoz and the C5VRX contributors. Operator report: coloured dots
+in the picture whatever the decoder. This extends the U50P64-R1/U85Q decoder
+work and LEVEL on the measured demod quality.
+
+**A whole frame from IQ snapshots.** Console `J` (PSRAM build,
+`sdkconfig.psram.defaults`) takes one 8190-byte snapshot per video frame,
+each 150 us later in the frame, timed on an RX descriptor boundary (~1 us),
+kept in PSRAM and printed afterwards (~8 s of VTX). `tools/frame_sweep.py`
+captures and rebuilds; `tools/frame_puzzle.py` combines several sweeps:
+fitted line period, a line lock on each line's own H-sync, the sweeps aligned
+on the picture, per line piece the snapshot that agrees best, NTSC colour from
+each line's burst. Three sweeps (605 snapshots) gave a 98 % complete frame
+(room, OSD) for every decoder on exactly the same IQ.
+
+**Same IQ, flat picture, 5 MHz:**
+
+| decoder | colour noise (IRE) | luma grain (IRE) | sync-tip noise (IRE) | burst/sync |
+| --- | ---: | ---: | ---: | ---: |
+| U50P64-R1 | 3.06 | 4.11 | 7.08 | 0.57 |
+| U80P64-R1 | 2.66 | 4.58 | | 0.71 |
+| U85Q | 2.16 | 4.53 | | 0.75 |
+| **D32-R2** | **1.80** | 4.41 | | 0.82 |
+| float discriminator, all samples | 1.37 | 4.44 | 4.72 | 0.84 |
+| Kalman/RTS smoother on the exact cell arcs (`research/pc_demod.py`) | 1.38 | 4.55 | 4.50 | 0.84 |
+
+- U50P64-R1's loop (gain 0.5) passes 0.62 at 3.58 MHz on a clean carrier;
+  the goggle's ACC turns the weak burst up and the noise with it, and its
+  16 phase sectors leave a structured pattern. That is most of the dots.
+- The output word adds almost nothing (the float discriminator rounded to
+  the six-bit word: 1.42; to a 625 kHz advance lattice: 1.47). No offline
+  demodulator beats 1.37: the rest is in the IQ. On flat stretches the
+  noise does not grow with the carrier's frequency (-2.5..+2.5 MHz:
+  135-182 kHz rms), so it is not a sampling-phase error; the host model puts
+  ~3.0 IRE of the sync-tip noise on 4-bit quantisation and ~3.8 IRE on
+  carrier phase noise (5-bit IQ: -15 %, perfect IQ: -19 %).
+- Loop gain alone (16 or 32 sectors, 0.5-1.0) and an error-dependent gain
+  (`research/nl_tracker.py` build_lut) stay at 2.1-2.8. The sharpest
+  difference the two lookups can make, sample A's angle in 32 sectors against
+  the previous one (D32), reaches 1.80. Its edge was weak (host lock at
+  -2 dB C/N 0.18 / 0.07 for deviation 0.7 / 1.0 against 0.63 / 0.57 for
+  U50P64-R1).
+- D32-R2 adds click suppression: a phase step outside -110..+135 degrees per
+  50 ns (more than a composite carrier can move) moves the state only 0.7 of
+  the way. Colour noise stays 1.80. Host model (4 PAL/NTSC cases, lock /
+  luma SINAD):
+
+| C/N | dev 0.7 U50 | dev 0.7 D32-R2 | dev 1.0 U50 | dev 1.0 D32-R2 | dev 1.4 U50 | dev 1.4 D32-R2 |
+| --- | --- | --- | --- | --- | --- | --- |
+| -2 dB | 0.63 / -6.0 | 0.60 / -8.5 | 0.57 / -5.4 | 0.22 / -6.6 | | |
+| 0 dB | 0.96 / -3.5 | 0.96 / -6.5 | 0.95 / -3.1 | 0.96 / -4.6 | 0.88 / -4.8 | 0.84 / -3.8 |
+| 4 dB | 1.00 / 2.2 | 1.00 / -1.6 | 1.00 / 3.3 | 1.00 / 1.1 | 1.00 / -2.0 | 1.00 / 1.9 |
+| 9 dB | 1.00 / 6.3 | 1.00 / 3.6 | 1.00 / 8.4 | 1.00 / 6.4 | 1.00 / 1.3 | 1.00 / 8.4 |
+
+**LEVEL radius.** On a strong carrier the measured LEVEL table
+(`level_quality.py`) counted luma SINAD only up to 12 dB, so every radius from
+2.5 to 7 cells scored 96-100 and its maximum sat at 3.0 cells. On a flat field
+(`research/strong_grain.py`, C/N 35 dB, deviation 0.68) D32-R2 reads 22.1 /
+24.3 / 28.9 dB at 2.5 / 4.0 / 5.5 cells and U50P64-R1 26.3 / 25.2 / 28.1:
+both are best at 5.5-6 cells, D32-R2 up to ~7 dB worse under ~4. From the
+15 dB grid row up, `level_quality.py` now subtracts the grain SNR under each
+row's best radius at the SINAD term's own slope (3.33 units per dB); rows
+under 15 dB, where range is decided, are bit-identical. At 32 dB the table
+reads 87-88 for 2.5-4.0 cells and 100 at 5.5.
+
+**Decision (operator, 2026-11-15):** D32-R2 is the default decoder. On the
+goggle: "flink beter" (D32 without click suppression; D32-R2 has the same
+strong-signal table). Open: a range walk D32-R2 against U50P64-R1; the luma
+just above the edge is grainier in the model; the LEVEL radius change is host
+only. A C/N-switched decoder pair was built and dropped (operator: no decoder
+switching). The remaining noise is in the IQ: the operator holds it to be the
+C5, not the camera or VTX; a clean reference source would settle it.
+
 ## Edge window: sync-tip room, U50 default, lanes and DC (2026-11-10, host only)
 
 C5VRX by Twotoz and the C5VRX contributors. Operator question: where can the
