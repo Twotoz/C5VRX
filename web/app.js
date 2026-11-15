@@ -733,6 +733,7 @@ function receiverValues(v) {
     demod: v.demod,
     liveProfile: v.liveProfile === undefined ? '' : v.liveProfile ? 'ON' : 'OFF · REPORT ONLY',
     profile: v.profile,
+    filter: v.filter,
     dac: !v.dacStep ? '' : v.dacStep === 'PATTERN' ? 'TEST PATTERN ON SCREEN'
       : `${v.dacStep}${v.dacStep === 'NONE' || v.dacStep === 'ALL' ? '' : ' ONLY'} · EXPECT ${v.dacExpect} mV`
   };

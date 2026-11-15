@@ -288,6 +288,8 @@ summary { cursor: pointer; color: #b0b7c1; min-height: 32px; }
 .project-info a.seller-button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 18px; background: var(--accent); border: 1px solid var(--accent); color: #fff; font-size: .9375rem; font-weight: 600; text-decoration: none; }
 .project-info a.seller-button:hover, .project-info a.seller-button:focus-visible { color: #fff; text-decoration: none; opacity: .85; }
 .module-copy .seller-note { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
+.feature-list { margin: 0 0 12px; padding-left: 20px; color: var(--text-2); line-height: 1.7; }
+.feature-list li { margin: 6px 0; }
 .hardware-heading { margin-top: 30px; }
 .hardware-heading + .hardware-purchase { margin-top: 0; }
 .project-faq details { border-top: 1px solid var(--line); }
