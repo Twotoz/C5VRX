@@ -137,15 +137,17 @@ static bool count_segment(void *ctx,const uint8_t *data,unsigned bytes) {
 int main(void) {
  unsigned required;
  for(unsigned pal=0;pal<2;++pal) {
-  limit=40; /* Interlaced fails after partial allocation, progressive fits. */
-  assert(reserve_chain(pal,true,&required)==ESP_ERR_NO_MEM && allocated==40);
+  /* Monochrome raster (shared tail+prefix nodes): interlaced NTSC 994 /
+   * PAL 1203 nodes (32 / 38 chunks), progressive 496 / 601 (16 / 19). */
+  limit=30; /* Interlaced fails after partial allocation, progressive fits. */
+  assert(reserve_chain(pal,true,&required)==ESP_ERR_NO_MEM && allocated==30);
   assert(reserve_chain(pal,false,&required)==ESP_OK);
-  assert(required==(pal?905u:748u));
-  assert(allocated==(pal?29u:24u) && s_chunk_count==allocated);
+  assert(required==(pal?601u:496u));
+  assert(allocated==(pal?19u:16u) && s_chunk_count==allocated);
   assert(s_node_capacity==allocated*NODE_CHUNK);
   for(unsigned i=s_chunk_count;i<58;++i)assert(!s_chunks[i]);
   free_nodes();assert(!allocated && !s_node_capacity && !s_node_count);
-  limit=20; /* Neither chain fits: caller can release every partial chunk. */
+  limit=10; /* Neither chain fits: caller can release every partial chunk. */
   assert(reserve_chain(pal,true,&required)==ESP_ERR_NO_MEM);
   assert(reserve_chain(pal,false,&required)==ESP_ERR_NO_MEM);
   free_nodes();assert(!allocated);
