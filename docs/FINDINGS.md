@@ -1,5 +1,82 @@
 # C5VRX-5 findings
 
+## Strong-signal grain and the LEVEL radius (2026-11-15, host + old snapshots)
+
+C5VRX by Twotoz and the C5VRX contributors. Operator report: the picture is
+always a little grainy, whatever decoder. This extends LEVEL on the measured
+demod quality (section "LEVEL on the measured demod quality" below) and the
+U50P64-R1 range decoder. **Not flashed or checked on a goggle yet.**
+
+**Where the grain comes from (host model, flat grey field, C/N 45 dB, NTSC,
+deviation 0.66, radius 4.2 cells; SNR = 100 IRE over the rms in 5 MHz):** an
+ideal float discriminator gives 52 dB, the same discriminator on the 4-bit
+ultrafine IQ 27-29 dB, U50P64-R1 26.5, U80P64-R1 23.6, U85Q 23.7. The six-bit
+DAC word alone, on the ideal discriminator, stays above 55 dB, and the real
+resistor values change nothing: the DAC is not the floor. A strong carrier
+cannot get under it: it is the phase resolution of a ~4-cell circle in 4-bit
+IQ and of the 16-token / 64-state decoder lattice (10 address bits per lookup,
+two lookups per 50 ns).
+
+**Old board snapshots** (`research/data/afc_2026-10-18`, 14 snapshots, 41
+sync tips, G27-G42, deviation 0.68): 21-22 dB on the tips (U80P64-R1 18.5).
+Above 5 MHz the noise is equal in amplitude and phase, as the quantizer model
+predicts. Under 3 MHz it is 3-7 times larger in phase than in amplitude
+(0.3-1 MHz: 0.405 against 0.056 cells), a white video-band noise that rides on
+the carrier: VTX modulation noise or the C5 LO, not thermal noise and not the
+quantizer. Its source is not attributed yet (needs strong-carrier snapshots
+of a second VTX and of a clean CW source). The circle fit also reads 0.2-0.4
+cells of DC on every snapshot.
+
+**The radius matters, LEVEL did not see it** (`research/strong_grain.py`,
+`research/data/strong_grain.json`: physical-ADC model, 12 MHz filter, both
+production decoders, NTSC and PAL, deviation 0.68 and 1.0, five grey levels,
+two seeds). Grain SNR at C/N 30 dB:
+
+| radius (cells rms) | 2.5 | 3.0 | 3.5 | 4.0 | 4.5 | 5.0 | 5.5 | 6.0 | 6.5 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| U50P64-R1, dev 0.68 | 26.8 | 27.4 | 25.0 | 25.0 | 27.4 | 27.1 | **28.1** | 27.4 | 27.3 |
+| U50P64-R1, dev 1.0 | 28.9 | 29.6 | 28.3 | 28.2 | 29.2 | 29.0 | **29.7** | 29.6 | 29.2 |
+| U80P64-R1, dev 0.68 | 23.5 | 24.9 | 21.8 | 21.7 | 24.3 | 23.8 | **26.4** | 24.9 | 24.5 |
+| U80P64-R1, dev 1.0 | 26.5 | 27.7 | 26.2 | 25.9 | 27.3 | 26.8 | **27.7** | 27.7 | 27.2 |
+
+Both decoders are worst at 3.5-4.0 cells and best at 5.5: up to 3 dB (U50)
+and 4.7 dB (U80) of grain from the radius alone, the same at 15 and 20 dB C/N.
+The measured grid (`level_quality_grid.json`, U80P64-R1, deviation 1.0) shows
+the same dip in its luma SINAD (C/N 30: 11.4 / 11.2 dB at 3.5 / 4.0 against
+12.4-12.6 at 5.5-6.0), but `level_quality.py` counted SINAD only up to
+SINAD_FULL (12 dB) and then made each row monotonic around its maximum (3.0
+cells at 32 dB): every radius from 2.5 to 7 scored 96-100, under LEVEL's
+hysteresis of 6, so a strong carrier stayed wherever it was put.
+
+**Change:** from the 15 dB grid row up, `level_quality.py` subtracts the grain
+SNR under that row's best radius at the SINAD term's own slope (40 units per
+12 dB, 3.33 per dB). At 32 dB the table now reads 88 for 2.5-4.0 cells and
+100 at 5.5; at 22 dB 91 against 99. Rows under 15 dB (14.2 dB after the
+filter and below), where range is decided, are bit-identical, so the survival
+row and every edge decision are unchanged. Expected gain on a strong carrier
+that sat at 3.5-4.0 cells: 2-3 dB less grain (U50P64-R1), more with U80P64-R1.
+It does not remove the phase-only component of the snapshots.
+
+**AGC harness** (`test/test_agc_compare.c`, PICTURE_Q, 7 ms per write). The
+harness scores with `level_quality.h` itself, so the new table also changes
+its scorer; the fair test holds the scorer on the new (grain-aware) table and
+swaps only the table LEVEL decides with: 67.78 old, **68.02 new**; writes
+1.7 -> 2.6 per second (CI limit 3). Every edge, walk-out and 6 dB walking
+scenario is identical (edge 3 dB 42.6 both). Gains: close walking 88.2 ->
+93.5, fast drone mid 87.9 -> 92.1, close moving/Rayleigh/fast +0.6..1.1.
+Cost: close with a hand on the antenna 68.5 -> 65.8 (14 -> 22 writes per
+second): after each -25 dB spell LEVEL now also leaves the 3.5-4 cell rows.
+Half or three-quarter grain weight keeps that loss (65.3 / 66.0) and gives
+up the gains (67.96 / 68.02), so the full weight stays. On the old scorer,
+which does not see grain, the new table costs 0.45 (its extra writes).
+Board check pending: a strong carrier close in, U50P64-R1, compare the
+picture and the LEVEL write rate with this build and with main.
+
+**Not changed: the DC servo deadband.** DC costs about 0.5 dB at 5.5 cells
+(U50P64-R1 dev 0.68: 28.1 dB at 0.15 cells, 27.6 at 0.3), the deadband (250
+mcells per axis) is already about one DCO code (170-550 mcells per code on the
+board), and a smaller one hunts with a DCO write per step.
+
 ## Edge window: sync-tip room, U50 default, lanes and DC (2026-11-10, host only)
 
 C5VRX by Twotoz and the C5VRX contributors. Operator question: where can the
