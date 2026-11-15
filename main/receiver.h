@@ -63,18 +63,24 @@ void transport_resume_live(void);
 void transport_start_chain(dma_descriptor_t *first);
 uint32_t transport_switch_wait_ms(void);
 const char *transport_program_name(void);
-/* Decoder (transport.c): U50P64-R1 (default), U80P64-R1 or U85Q, each a fixed
- * program with its own LUT; kept in NVS TRANSPORT_DEMOD_KEY (main.c, console m).
- * Operator decision 2026-11-10: the range decoder is the default and a VTX
- * measured at deviation >= 1.10 falls back to U80P64-R1 for the session
- * (control.c demod_deviation_guard). The key was "demod" while U80P64-R1 was
- * the default; a choice stored under it is not read, so every board starts
- * once on the new default. */
+/* Decoder (transport.c): D32-R2 (default), U50P64-R1, U80P64-R1 or U85Q, each a
+ * fixed program with its own LUT; kept in NVS TRANSPORT_DEMOD_KEY (main.c,
+ * console m). Operator decision 2026-11-15: D32-R2 is the default (the
+ * fewest colour dots, confirmed on the goggle). U50P64-R1 stays selectable
+ * and keeps its deviation fallback to U80P64-R1 (control.c
+ * demod_deviation_guard). The key was "demod" (U80P64-R1 default) and
+ * "demod2" (U50P64-R1 default); a choice stored under an old key is not read,
+ * so every board starts once on the new default. */
 /* Appended, never reordered: the NVS key and the flight log keep these values. */
-enum { TRANSPORT_DEMOD_P64, TRANSPORT_DEMOD_U85Q, TRANSPORT_DEMOD_U50P64, TRANSPORT_DEMODS };
-#define TRANSPORT_DEMOD_DEFAULT TRANSPORT_DEMOD_U50P64
-#define TRANSPORT_DEMOD_KEY "demod2"
-const char *transport_demod_short(uint8_t d);   /* menu: "P64", "U85Q", "U50" */
+/* D32-R2 (2026-11-15, research/nl_tracker.py): the U85Q program, a 32-sector
+ * phase difference with click suppression: the fewest colour dots (board
+ * capture, 1.80 against 3.06 IRE for U50P64-R1), line lock close to
+ * U50P64-R1 at the edge for deviation ~0.7 (host model), its luma 3-4 dB
+ * noisier at 2-9 dB C/N. */
+enum { TRANSPORT_DEMOD_P64, TRANSPORT_DEMOD_U85Q, TRANSPORT_DEMOD_U50P64, TRANSPORT_DEMOD_D32, TRANSPORT_DEMODS };
+#define TRANSPORT_DEMOD_DEFAULT TRANSPORT_DEMOD_D32
+#define TRANSPORT_DEMOD_KEY "demod3"
+const char *transport_demod_short(uint8_t d);   /* menu: "P64", "U85Q", "U50", "D32" */
 uint8_t transport_demod(void);
 const char *transport_demod_name(uint8_t d);
 bool transport_set_demod(uint8_t d);
@@ -116,6 +122,8 @@ bool copy_control_window(uint8_t *dst, size_t bytes);
 bool copy_probe_window(uint8_t dst[PROBE_BYTES], int *node);
 bool copy_sentinel_window(uint8_t dst[64]);
 bool copy_snapshot(uint8_t *dst);
+/* Bench frame sweep: the 8190 bytes ending at the next RX descriptor boundary and its time. */
+bool copy_snapshot_at_boundary(uint8_t *dst, int64_t *boundary_us);
 bool copy_recent_endpoints(uint8_t *dst, size_t n);
 void rx_clock_slip(uint32_t us);
 
