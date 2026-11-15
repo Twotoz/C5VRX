@@ -21,14 +21,14 @@ if args[:2]==['api','--paginate']:
     assert '--jq' in args and 'select(test(' in args[-1]
     for tag in data['tags']:
         if re.fullmatch(r'c5vrx5-pr-[0-9]+',tag): print(tag)
-elif args[0]=='api' and '/pulls/' in args[1]:
-    assert args[2:]==['--jq','.state']
-    state=data['states'][args[1].rsplit('/',1)[1]]
-    if state=='error': sys.exit(1)
-    print(state)
+elif args[:2]==['pr','list']:
+    assert '--state' in args and args[args.index('--state')+1]=='open'
+    if data.get('pr_list_error'): sys.exit(1)
+    for pr,state in data['states'].items():
+        if state=='open': print(pr)
 elif args[:2]==['release','delete']:
     assert args[-2:]==['--yes','--cleanup-tag']
-    if data.get('delete_error'): sys.exit(1)
+    if data.get('delete_error') is True or args[2] in (data.get('delete_error') or []): sys.exit(1)
 else:
     raise AssertionError(args)
 '''
@@ -71,18 +71,22 @@ class CleanupTest(unittest.TestCase):
         self.assertNotEqual(rc, 0)
         self.assertEqual((deleted, output), ([], ''))
 
-    def test_failed_or_unknown_lookup_never_deletes(self):
-        for state in ['error', '', 'unknown']:
-            with self.subTest(state=state):
-                rc, deleted, output = self.execute(['c5vrx5-pr-276'], {'276': state})
-                self.assertNotEqual(rc, 0)
-                self.assertEqual((deleted, output), ([], ''))
+    def test_failed_open_pr_listing_never_deletes(self):
+        rc, deleted, output = self.execute(['c5vrx5-pr-276'], {'276': 'closed'}, pr_list_error=True)
+        self.assertNotEqual(rc, 0)
+        self.assertEqual((deleted, output), ([], ''))
+
+    def test_channel_of_a_pr_the_api_cannot_find_is_removed(self):
+        # A per-PR lookup used to abort the sweep on HTTP 404 (every run from
+        # 2026-11-13 on); a PR that is not in the open listing is not open.
+        rc, deleted, output = self.execute(['c5vrx5-pr-276', 'c5vrx5-pr-296'], {'296': 'open'})
+        self.assertEqual((rc, deleted, output), (0, ['c5vrx5-pr-276'], 'removed=true\n'))
 
     def test_partial_failure_preserves_refresh_signal(self):
         rc, deleted, output = self.execute(
-            ['c5vrx5-pr-276', 'c5vrx5-pr-299'], {'276': 'closed', '299': 'error'})
+            ['c5vrx5-pr-276', 'c5vrx5-pr-273'], {}, delete_error=['c5vrx5-pr-273'])
         self.assertNotEqual(rc, 0)
-        self.assertEqual((deleted, output), (['c5vrx5-pr-276'], 'removed=true\n'))
+        self.assertEqual((deleted, output), (['c5vrx5-pr-276', 'c5vrx5-pr-273'], 'removed=true\n'))
         self.assertIn("always() && steps.cleanup.outputs.removed == 'true'", WORKFLOW)
 
     def test_delete_failure_does_not_claim_success(self):
