@@ -280,19 +280,22 @@ summary { cursor: pointer; color: #b0b7c1; min-height: 32px; }
 .project-info, .project-faq { margin-top: 30px; padding-top: 24px; border-top: 1px solid var(--line); }
 .project-info h3 { margin: 22px 0 8px; font-size: 16px; font-weight: 600; }
 .project-info p, .project-faq p { margin: 0 0 12px; color: var(--text-2); line-height: 1.7; }
-.kit-preview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
-.kit-preview figure { margin: 0; }
-.kit-preview img { display: block; width: 100%; height: auto; }
-.kit-preview figcaption { margin-top: 7px; color: var(--muted); font-size: 12px; }
+.module-offer { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; align-items: center; }
+.module-offer figure { margin: 0; }
+.module-offer img { display: block; width: 100%; height: auto; }
+.module-offer figcaption { margin-top: 7px; color: var(--muted); font-size: 12px; }
+.module-copy p { margin-top: 0; }
+.project-info a.seller-button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 18px; background: var(--accent); border: 1px solid var(--accent); color: #fff; font-size: .9375rem; font-weight: 600; text-decoration: none; }
+.project-info a.seller-button:hover, .project-info a.seller-button:focus-visible { color: #fff; text-decoration: none; opacity: .85; }
+.module-copy .seller-note { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
 .hardware-heading { margin-top: 30px; }
 .hardware-heading + .hardware-purchase { margin-top: 0; }
 .project-faq details { border-top: 1px solid var(--line); }
 .project-faq summary { padding: 14px 0; font-weight: 600; cursor: pointer; }
 .project-faq details p { padding-bottom: 4px; }
-#tools, #about, #diy-kit, #hardware, #faq { scroll-margin-top: 20px; }
+#tools, #about, #module, #hardware, #faq { scroll-margin-top: 20px; }
 @media (max-width: 640px) {
-  .kit-preview { grid-template-columns: 1fr; }
-  .kit-preview figure { max-width: 100%; }
+  .module-offer { grid-template-columns: 1fr; }
 }
 
 .calibration-report { display: grid; gap: .65rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border, #334155); }
