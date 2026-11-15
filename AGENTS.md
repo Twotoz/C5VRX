@@ -432,7 +432,10 @@ the project explicitly changes hosting architecture.
 - `.github/workflows/pr-channel-cleanup.yml` deletes every `c5vrx5-pr-<number>`
   release whose PR is no longer open, then dispatches Deploy Web Flasher. It
   sweeps on `pull_request_target` close (no path filter, runs despite merge
-  conflicts, never checks out PR code), hourly and manually. A per-PR cleanup
+  conflicts, never checks out PR code), after every C5VRX-5 Build (`workflow_run`:
+  new firmware) and manually; no hourly schedule (operator, 2026-11-15). It reads
+  the open PRs in one listing and removes every `c5vrx5-pr-N` not among them (a
+  per-PR lookup aborted every run on one HTTP 404 from 2026-11-13 on). A per-PR cleanup
   on the build's `pull_request` close event is not reliable: GitHub does not
   deliver it for PRs with merge conflicts or outside the path filter, which
   left channels of closed PRs in the flasher.

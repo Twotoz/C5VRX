@@ -4,11 +4,15 @@ name: PR Channel Cleanup
 # the web flasher mirror. A sweep rather than a per-PR delete: pull_request
 # close events are not delivered for PRs with merge conflicts or outside the
 # build's path filter, so channels of closed PRs stayed in the flasher.
+# Runs after every C5VRX-5 Build (when firmware is published), on PR close
+# and by hand; no hourly schedule (operator, 2026-11-15: sweep when new
+# firmware goes in, not every hour).
 on:
   pull_request_target:   # base-repo context: runs on close even with conflicts; never checks out PR code
     types: [closed]
-  schedule:
-    - cron: '17 * * * *'
+  workflow_run:
+    workflows: ["C5VRX-5 Build"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -34,22 +38,21 @@ jobs:
           # jq returns success with no matches; API errors must still fail.
           tags="$(gh api --paginate "repos/${repo}/releases?per_page=100" \
             --jq '.[].tag_name | select(test("^c5vrx5-pr-[0-9]+$"))')"
+          # The open PRs in one listing: a failed listing aborts the sweep
+          # before anything is deleted. A per-PR lookup used to abort every
+          # run on one HTTP 404 (every run failed from 2026-11-13 on, so
+          # channels of closed PRs stayed in the flasher).
+          list="$(gh pr list --repo "$repo" --state open --limit 1000 --json number --jq '.[].number')"
+          open_prs=" $(echo $list) "
+          echo "Open PRs:${open_prs}"
           removed=0
           for tag in $tags; do
             pr="${tag#c5vrx5-pr-}"
-            # Ask per PR: a failed lookup aborts the sweep instead of deleting.
-            state="$(gh api "repos/${repo}/pulls/${pr}" --jq .state)"
-            case "$state" in
-              open) continue ;;
-              closed) ;;
-              *) echo "Unexpected PR state: ${state}" >&2; exit 1 ;;
-            esac
-            if [[ "$state" == "closed" ]]; then
-              echo "Removing ${tag} (PR #${pr} is ${state})"
-              gh release delete "$tag" --repo "$repo" --yes --cleanup-tag
-              removed=$((removed + 1))
-              echo "removed=true" >> "$GITHUB_OUTPUT"
-            fi
+            if [[ "$open_prs" == *" ${pr} "* ]]; then continue; fi
+            echo "Removing ${tag} (PR #${pr} is not open)"
+            gh release delete "$tag" --repo "$repo" --yes --cleanup-tag
+            removed=$((removed + 1))
+            echo "removed=true" >> "$GITHUB_OUTPUT"
           done
           echo "Removed ${removed} PR channel(s)."
       # Refresh even if a later lookup fails after an earlier deletion.
