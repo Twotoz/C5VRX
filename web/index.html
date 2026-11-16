@@ -133,8 +133,7 @@
         <nav class="project-shortcuts" aria-label="Explore C5VRX">
           <a href="#tools">Web flasher</a>
           <a href="#about">How it works</a>
-          <a href="#module">Receiver module</a>
-          <a href="#hardware">Build components</a>
+          <a href="#hardware">Get the hardware</a>
           <a href="#faq">FAQ</a>
         </nav>
       </div>
@@ -498,50 +497,83 @@
         <p>The <a href="https://github.com/Twotoz/C5VRX" target="_blank" rel="noopener noreferrer">C5VRX GitHub repository</a> includes GPL-3.0-only firmware, schematics, host tests and documented experiments. Read the <a href="https://github.com/Twotoz/C5VRX/blob/main/docs/FINDINGS.md" target="_blank" rel="noopener noreferrer">receiver findings</a> for the evidence and limits of each change, or join the project’s Discord from the link above to share builds and test results.</p>
       </section>
 
-      <section class="project-info" id="module" aria-labelledby="moduleTitle">
-        <h2 id="moduleTitle">Ready-made C5VRX receiver module</h2>
-        <div class="module-offer">
-          <figure>
-            <img src="assets/c5vrx-module.jpg" alt="C5VRX receiver module with a Seeed Studio XIAO ESP32-C5, antenna and video connector, next to a small FPV drone" width="1200" height="800" loading="lazy" decoding="async">
-            <figcaption>C5VRX receiver module · sold by FPVGate</figcaption>
-          </figure>
-          <div class="module-copy">
+      <section class="project-info hardware-section" id="hardware" aria-labelledby="hardwareTitle">
+        <h2 id="hardwareTitle">Get the hardware</h2>
+        <p>Two ways to a C5VRX receiver: buy a ready-made module, or build your own from a XIAO ESP32-C5 and six resistors. Both run the same firmware from the <a href="#tools">USB web flasher</a>.</p>
+
+        <div class="hardware-option module-card" id="module" aria-labelledby="moduleTitle">
+          <p class="option-label">Option 1 · Ready-made</p>
+          <h3 id="moduleTitle">C5VRX receiver module</h3>
+          <div class="module-gallery">
+            <figure>
+              <img src="assets/c5vrx-module.jpg" alt="C5VRX receiver module with a Seeed Studio XIAO ESP32-C5, antenna and video connector, next to a small FPV drone" width="1200" height="800" loading="lazy" decoding="async">
+              <figcaption>The module next to a micro drone</figcaption>
+            </figure>
+            <figure>
+              <img src="assets/c5vrx-module-goggles.jpg" alt="C5VRX receiver module installed in the module bay of Fat Shark goggles" width="1200" height="800" loading="lazy" decoding="async">
+              <figcaption>Installed in Fat Shark goggles</figcaption>
+            </figure>
+          </div>
+          <div class="module-offer">
             <a class="seller-logo" href="https://fpvgate.xyz/shop" target="_blank" rel="noopener noreferrer" aria-label="FPVGate shop">
               <img src="assets/fpvgate-logo.png" alt="FPVGate.xyz — Affordable Lap Timing" width="720" height="381" loading="lazy" decoding="async">
               <img class="seller-logo-spin" src="assets/fpvgate-logo-spin.png" alt="" width="257" height="257" loading="lazy" decoding="async">
             </a>
-            <p>Prefer not to build on perfboard? FPVGate sells a ready-made receiver module for C5VRX with a XIAO ESP32-C5. Flash it with the <a href="#tools">USB web flasher</a> and connect your goggles or monitor.</p>
-            <a class="seller-button" href="https://fpvgate.xyz/shop" target="_blank" rel="noopener noreferrer">Buy from FPVGate</a>
-            <p class="seller-note">FPVGate is an independent third-party seller. Send questions about orders, shipping, payment, returns or the module hardware to FPVGate, not to the C5VRX project.</p>
+            <div class="module-copy">
+              <p>FPVGate sells a ready-made C5VRX receiver module. Flash it with the <a href="#tools">USB web flasher</a> and connect your goggles or monitor. Check the shop for what is included.</p>
+              <a class="seller-button" href="https://fpvgate.xyz/shop" target="_blank" rel="noopener noreferrer">Buy from FPVGate</a>
+              <p class="seller-note">FPVGate is an independent third-party seller. Send questions about orders, shipping, payment, returns or the module hardware to FPVGate, not to the C5VRX project.</p>
+            </div>
           </div>
         </div>
-      </section>
 
-      <h2 id="hardware" class="section-title hardware-heading">Hardware for a DIY C5VRX receiver</h2>
-      <aside class="hardware-purchase" aria-label="Get the hardware">
-        <div class="hardware-photo"><img src="assets/xiao-esp32c5.png" alt="Seeed Studio XIAO ESP32-C5 board" width="320" height="240" loading="lazy"></div>
-        <div class="hardware-copy">
-          <p class="hardware-title">Buy your XIAO ESP32-C5 here</p>
-          <a class="amazon-button" href="https://link.amazon/B0gopCVDt" target="_blank" rel="sponsored noopener noreferrer" aria-describedby="affiliateDisclosure" aria-label="Buy XIAO ESP32-C5 on Amazon">Buy on Amazon</a>
+        <div class="hardware-option" aria-labelledby="diyTitle">
+          <p class="option-label">Option 2 · Build it yourself</p>
+          <h3 id="diyTitle">DIY build components</h3>
+          <p>Solder one resistor to each of six GPIO pins, join the other ends and add 200 Ω to GND. The <a href="https://github.com/Twotoz/C5VRX/blob/main/README.md#hardware" target="_blank" rel="noopener noreferrer">wiring guide</a> lists the pins and values.</p>
+          <div class="product-grid" role="group" aria-label="Build components">
+            <article class="product-card">
+              <div class="product-photo"><img src="assets/products/xiao-esp32c5.webp" alt="Seeed Studio XIAO ESP32-C5 board" width="320" height="320" loading="lazy" decoding="async"></div>
+              <h4>XIAO ESP32-C5</h4>
+              <p>The receiver itself: Seeed Studio’s ESP32-C5 board with an IPX antenna connector.</p>
+              <a class="amazon-button" href="https://link.amazon/B0gopCVDt" target="_blank" rel="sponsored noopener noreferrer" aria-describedby="affiliateDisclosure" aria-label="Buy XIAO ESP32-C5 on Amazon">Buy on Amazon</a>
+            </article>
+            <article class="product-card">
+              <div class="product-photo"><img src="assets/products/perfboard.webp" alt="Green perfboard" width="320" height="320" loading="lazy" decoding="async"></div>
+              <h4>Perfboard</h4>
+              <p>Holds the XIAO and the resistor network.</p>
+              <a class="amazon-button" href="https://link.amazon/B0i2qqMeq" target="_blank" rel="sponsored noopener noreferrer" aria-describedby="affiliateDisclosure" aria-label="Buy perfboard on Amazon">Buy on Amazon</a>
+            </article>
+            <article class="product-card">
+              <div class="product-photo"><img src="assets/products/resistor-kit.webp" alt="Resistor assortment in a storage case" width="320" height="320" loading="lazy" decoding="async"></div>
+              <h4>Resistor kit</h4>
+              <p>An assortment for the six DAC resistors and the 200 Ω load; check the values against the wiring guide.</p>
+              <a class="amazon-button" href="https://link.amazon/B06XSBkln" target="_blank" rel="sponsored noopener noreferrer" aria-describedby="affiliateDisclosure" aria-label="Buy resistor kit on Amazon">Buy on Amazon</a>
+            </article>
+          </div>
         </div>
-      </aside>
-      <div class="hardware-extras" role="group" aria-label="Build components">
-        <article class="hardware-extra">
-          <img src="assets/perfboard.png" alt="Green perfboard" width="125" height="182" loading="lazy">
-          <div class="hardware-copy">
-            <p class="hardware-title">Perfboard</p>
-            <a class="amazon-button" href="https://link.amazon/B0i2qqMeq" target="_blank" rel="sponsored noopener noreferrer" aria-describedby="affiliateDisclosure" aria-label="Buy perfboard on Amazon">Buy on Amazon</a>
+
+        <div class="hardware-option" aria-labelledby="lnaTitle">
+          <p class="option-label">Optional · More range</p>
+          <h3 id="lnaTitle">External LNA</h3>
+          <p>A low-noise amplifier between the antenna and the XIAO, tested with the Zeenko ZK06-UM. Wire antenna → LNA → pigtail → the XIAO’s IPX connector. No setting is needed: the firmware measures its own noise and adapts its gain. See the <a href="https://github.com/Twotoz/C5VRX/blob/main/README.md#optional-external-lna-more-range" target="_blank" rel="noopener noreferrer">LNA notes</a>.</p>
+          <div class="product-grid" role="group" aria-label="Optional range components">
+            <article class="product-card">
+              <div class="product-photo"><img src="assets/products/zeenko-zk06-um-lna.webp" alt="Zeenko ZK06-UM LNA" width="320" height="320" loading="lazy" decoding="async"></div>
+              <h4>Zeenko ZK06-UM LNA</h4>
+              <p>10 MHz–6 GHz, SMA. Datasheet at 5.8 GHz: ~22.6 dB gain, ~1.0 dB noise figure.</p>
+              <a class="amazon-button" href="https://link.amazon/B0iY2ccnV" target="_blank" rel="sponsored noopener noreferrer" aria-describedby="affiliateDisclosure" aria-label="Buy Zeenko ZK06-UM LNA on Amazon">Buy on Amazon</a>
+            </article>
+            <article class="product-card">
+              <div class="product-photo"><img src="assets/products/ipx-to-sma-pigtail.webp" alt="IPX to SMA pigtail cables" width="320" height="320" loading="lazy" decoding="async"></div>
+              <h4>IPX to SMA pigtail</h4>
+              <p>Connects the LNA output to the XIAO’s IPX (U.FL) antenna connector.</p>
+              <a class="amazon-button" href="https://link.amazon/B07pMkNyf" target="_blank" rel="sponsored noopener noreferrer" aria-describedby="affiliateDisclosure" aria-label="Buy IPX to SMA pigtail on Amazon">Buy on Amazon</a>
+            </article>
           </div>
-        </article>
-        <article class="hardware-extra">
-          <img src="assets/resistor-kit.png" alt="Resistor assortment in a storage case" width="500" height="500" loading="lazy">
-          <div class="hardware-copy">
-            <p class="hardware-title">Resistor kit</p>
-            <a class="amazon-button" href="https://link.amazon/B06XSBkln" target="_blank" rel="sponsored noopener noreferrer" aria-describedby="affiliateDisclosure" aria-label="Buy resistor kit on Amazon">Buy on Amazon</a>
-          </div>
-        </article>
-      </div>
-      <p class="affiliate-note" id="affiliateDisclosure">Affiliate links. As an Amazon Associate, I earn from qualifying purchases. All affiliate earnings go back into C5VRX development.</p>
+        </div>
+        <p class="affiliate-note" id="affiliateDisclosure">Amazon links are affiliate links. As an Amazon Associate, I earn from qualifying purchases. All affiliate earnings go back into C5VRX development. The FPVGate link is not an affiliate link.</p>
+      </section>
       <section class="project-faq" id="faq" aria-labelledby="faqTitle">
         <h2 id="faqTitle">Frequently asked questions</h2>
         <details>
