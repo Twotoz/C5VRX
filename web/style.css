@@ -293,6 +293,9 @@ summary { cursor: pointer; color: #b0b7c1; min-height: 32px; }
 .project-info .product-card h4 { margin: 0 0 4px; color: var(--text); font-size: 15px; font-weight: 600; }
 .project-info .product-card p { flex: 1; margin: 0 0 12px; font-size: 13px; line-height: 1.55; }
 .project-info .product-card a.amazon-button { align-self: stretch; color: #fff; text-decoration: none; }
+.project-info .product-card a.store-button { display: inline-flex; align-items: center; justify-content: center; align-self: stretch; min-height: 36px; margin-top: 6px; padding: 7px 14px; background: transparent; border: 1px solid var(--accent); color: var(--accent); font-size: .875rem; font-weight: 600; text-decoration: none; }
+.project-info .product-card a.store-button:hover { background: var(--accent); color: #fff; text-decoration: none; }
+.project-info .product-card a.store-button:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 .project-info a.seller-button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 18px; background: var(--accent); border: 1px solid var(--accent); color: #fff; font-size: .9375rem; font-weight: 600; text-decoration: none; }
 .project-info a.seller-button:hover, .project-info a.seller-button:focus-visible { color: #fff; text-decoration: none; opacity: .85; }
 .feature-list { margin: 0 0 12px; padding-left: 20px; color: var(--text-2); line-height: 1.7; }
@@ -307,7 +310,7 @@ summary { cursor: pointer; color: #b0b7c1; min-height: 32px; }
   .hardware-option { padding: 16px; }
   .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .product-card { padding: 10px; }
-  .project-info .product-card a.amazon-button { padding: 7px 6px; white-space: nowrap; font-size: .8125rem; }
+  .project-info .product-card a.amazon-button, .project-info .product-card a.store-button { padding: 7px 6px; white-space: nowrap; font-size: .8125rem; }
 }
 
 .calibration-report { display: grid; gap: .65rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border, #334155); }
