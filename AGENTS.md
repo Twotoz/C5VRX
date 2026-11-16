@@ -440,8 +440,10 @@ the project explicitly changes hosting architecture.
   firmware built with `-DC5VRX_HWX=<id>` (pin map hooks in `rf.h`,
   `transport.c`, `experimental.c`, `console.c`; production never includes `hwx.h`). The
   C5VRX-5 Build lists them (`hwx-list`), builds them (`build-hwx`) and publishes
-  one mutable prerelease per experiment, `c5vrx5-hwx-<id>` on main and
-  `c5vrx5-hwx-<id>-pr-<number>` per PR, never Latest. Ids are `[a-z0-9_]+`.
+  prereleases, never Latest: on main an immutable `c5vrx5-hwx-<id>-v5.0.<run
+  number>` per experiment whose inputs changed (never replace its assets), per
+  PR a mutable `c5vrx5-hwx-<id>-pr-<number>`. Ids are `[a-z0-9_]+`. The first
+  unversioned `c5vrx5-hwx-<id>` channel is deleted by the first versioned build.
 - `.github/workflows/pr-channel-cleanup.yml` deletes every `c5vrx5-pr-<number>`
   and `c5vrx5-hwx-<id>-pr-<number>` release whose PR is no longer open, then dispatches Deploy Web Flasher. It
   sweeps on `pull_request_target` close (no path filter, runs despite merge
@@ -469,8 +471,9 @@ generations (2026-10-12). Their published releases stay as they are.
 - **C5VRX-5**: `c5vrx5-v5.*` releases newest first, then `c5vrx5-pr-*`
   prereleases (explicit confirmation before flashing an unmerged build).
 - **Local File**: a user-supplied `.bin`.
-- **Hardware experiments**: `c5vrx5-hwx-*` builds per experiment, main channel
-  first; every flash asks for confirmation (bench builds, no DAC video).
+- **Hardware experiments**: grouped per experiment, its newest 10 versions
+  (Latest first, mirrored) then its PR channels; every flash asks for
+  confirmation (bench builds, no DAC video).
 - **Legacy builds**: the newest 20 archived C5VRX-3 semantic releases
   (`v3.*`), frozen; no new legacy builds are produced.
 

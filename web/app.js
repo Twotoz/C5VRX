@@ -75,8 +75,9 @@ const FALLBACK_RELEASES = [
 ];
 const VERSION_TAG_PATTERN = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const ALPHA_TAG_PATTERN = /^c5vrx5-(?:pr-[0-9]+|v5\.[0-9]+\.[0-9]+)$/;
-// Hardware experiments: one channel per experiment on main, one per experiment and PR.
-const HWX_TAG_PATTERN = /^c5vrx5-hwx-([a-z0-9_]+?)(?:-pr-([0-9]+))?$/;
+// Hardware experiments: immutable versions per experiment from main
+// (c5vrx5-hwx-<id>-v5.0.N) and one channel per experiment and PR.
+const HWX_TAG_PATTERN = /^c5vrx5-hwx-([a-z0-9_]+)-(?:v(5\.[0-9]+\.[0-9]+)|pr-([0-9]+))$/;
 
 function log(msg, type = 'info') {
   if (type === 'error') $('flashLog').open = true;
@@ -220,11 +221,18 @@ async function fetchReleases({ quiet = false } = {}) {
   const isPr = rel => Number(rel.tag_name.startsWith('c5vrx5-pr-'));
   const alpha = data.filter(rel => ALPHA_TAG_PATTERN.test(rel.tag_name || ''))
     .sort((a, b) => (isPr(a) - isPr(b)) || byDate(a, b));
-  // Hardware experiments: by experiment, its main channel before PR channels.
+  // Hardware experiments: by experiment, its versions (newest first) before PR channels.
   const hwxKey = rel => rel.tag_name.match(HWX_TAG_PATTERN);
+  const versionParts = v => (v || '').split('.').map(Number);
+  const byVersion = (a, b) => {
+    const [x, y] = [versionParts(hwxKey(a)[2]), versionParts(hwxKey(b)[2])];
+    for (let i = 0; i < 3; ++i) if (x[i] !== y[i]) return (y[i] || 0) - (x[i] || 0);
+    return 0;
+  };
   const hwx = data.filter(rel => HWX_TAG_PATTERN.test(rel.tag_name || ''))
     .sort((a, b) => hwxKey(a)[1].localeCompare(hwxKey(b)[1]) ||
-      (Number(Boolean(hwxKey(a)[2])) - Number(Boolean(hwxKey(b)[2]))) || byDate(a, b));
+      (Number(Boolean(hwxKey(a)[3])) - Number(Boolean(hwxKey(b)[3]))) ||
+      (hwxKey(a)[3] ? byDate(a, b) : byVersion(a, b)));
   if (isFlashing) return;   // never swap the lists under a running flash
   const signature = list => list.map(rel => `${rel.tag_name}@${rel.published_at || ''}`).join(',');
   const releasesChanged = signature(releases) !== signature(githubReleases);
@@ -275,12 +283,23 @@ function populateAlphaBuildDropdown(keepTag) {
 
 function populateHwxBuildDropdown(keepTag) {
   selectHwxBuild.replaceChildren();
+  // One group per experiment; its newest version is marked Latest.
+  let group = null;
+  let latestShown = false;
   githubHwxBuilds.forEach((rel, index) => {
-    const [, id, pr] = rel.tag_name.match(HWX_TAG_PATTERN);
+    const [, id, version, pr] = rel.tag_name.match(HWX_TAG_PATTERN);
+    if (!group || group.label !== id) {
+      group = document.createElement('optgroup');
+      group.label = id;
+      selectHwxBuild.appendChild(group);
+      latestShown = false;
+    }
     const opt = document.createElement('option');
     opt.value = index;
-    opt.textContent = pr ? `${id} — PR #${pr} / unmerged` : `${id} (main)`;
-    selectHwxBuild.appendChild(opt);
+    opt.textContent = pr ? `${id} — PR #${pr} / unmerged`
+      : `${id} v${version}${latestShown ? '' : ' (Latest)'}`;
+    if (!pr) latestShown = true;
+    group.appendChild(opt);
   });
   if (githubHwxBuilds.length) {
     const kept = githubHwxBuilds.findIndex(rel => rel.tag_name === keepTag);
