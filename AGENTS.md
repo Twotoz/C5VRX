@@ -437,8 +437,8 @@ the project explicitly changes hosting architecture.
   (`c5vrx5-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}`):
   a `github.ref`-only group let a merged PR's cleanup cancel the main build.
 - Hardware experiments (`hardware_experiments/<id>/hwx.h`, 2026-11-16): the same
-  firmware built with `-DC5VRX_HWX=<id>` (pin map hooks in `rf.h`, `rf.c`,
-  `transport.c`, `experimental.c`; production never includes `hwx.h`). The
+  firmware built with `-DC5VRX_HWX=<id>` (pin map hooks in `rf.h`,
+  `transport.c`, `experimental.c`, `console.c`; production never includes `hwx.h`). The
   C5VRX-5 Build lists them (`hwx-list`), builds them (`build-hwx`) and publishes
   one mutable prerelease per experiment, `c5vrx5-hwx-<id>` on main and
   `c5vrx5-hwx-<id>-pr-<number>` per PR, never Latest. Ids are `[a-z0-9_]+`.
