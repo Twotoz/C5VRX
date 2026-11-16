@@ -35,6 +35,15 @@
  * two apart without a flag pin. A scan, calibration or other receiver pause
  * and the boot splash put IQ back on the pads.
  *
+ * UART link (HWX_LINK_UART, adapted from c5-fpga-hdmi by zubon2003,
+ * https://github.com/zubon2003/c5-fpga-hdmi, GPL-3.0-only, release v0.3.1):
+ * UART1 115200 8N1, XIAO D4/GPIO23 = TX to the FPGA, D5/GPIO24 = RX from
+ * the FPGA. The FPGA sends b / c / s / ? (next band, next channel, scan,
+ * report); the receiver answers "CH <name> <MHz>" CR LF on every channel
+ * change, on ? and once a second. Same pins and protocol as c5-fpga-hdmi's
+ * patched C5VRX-5 v5.0.523, so its bitstream's buttons and channel display
+ * work with this build.
+ *
  * MTMS (GPIO2) is not connected. 3.3 V LVCMOS inputs on the FPGA, no
  * pull-ups/downs (GPIO7/25 are strapping pads), common ground. Data can
  * pause during receiver restarts; the FPGA must reacquire. */
@@ -47,3 +56,7 @@
 #define HWX_NO_DAC 1
 /* The menu raster on the IQ pads while the menu is shown (see above). */
 #define HWX_MENU_ON_IQ 1
+/* UART link to the FPGA on two former DAC pins (see above). */
+#define HWX_LINK_UART 1
+#define HWX_LINK_TX 23
+#define HWX_LINK_RX 24

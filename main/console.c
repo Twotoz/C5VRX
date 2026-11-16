@@ -44,6 +44,9 @@ void firmware_print(void)
 #else
            1u);
 #endif
+#ifdef HWX_LINK_UART
+    printf("HWX link=uart1 tx_gpio=%d rx_gpio=%d baud=115200\n", HWX_LINK_TX, HWX_LINK_RX);
+#endif
 #endif
 }
 
@@ -232,6 +235,77 @@ static void usb_reader_task(void *arg)
     }
 }
 
+#ifdef HWX_LINK_UART
+/* Hardware experiment FPGA link, adapted from c5-fpga-hdmi by zubon2003
+ * (https://github.com/zubon2003/c5-fpga-hdmi, GPL-3.0-only, release v0.3.1,
+ * firmware/c5vrx5-v5.0.523-fpga-link.patch): UART1 at 115200 8N1 on
+ * HWX_LINK_TX (to the FPGA) / HWX_LINK_RX (from the FPGA), two former DAC
+ * pins. The FPGA's buttons send console keys; only b (next band), c (next
+ * channel), s (scan) and ? (report now) are taken, so nothing on this wire
+ * can reboot, calibrate or change saved settings. The receiver answers
+ * "CH <name> <MHz>\r\n" when the channel changes, on ? and once a second
+ * (the FPGA's on-screen display). No task of its own (the console task
+ * polls it), the minimum RX ring and no TX ring (a report fits the
+ * hardware FIFO); it starts after the receiver tasks (main.c), out of the
+ * boot-time heap peak. */
+#include "driver/uart.h"
+#define LINK_UART UART_NUM_1
+#define LINK_RX_RING (SOC_UART_FIFO_LEN + 16)
+
+static bool s_link_up;
+
+static void link_report(void)
+{
+    const fpv_channel_t *ch = rf_channel();
+    char line[32];
+    int n = snprintf(line, sizeof(line), "CH %s %u\r\n", ch ? ch->name : "--", (unsigned)rf_frequency_mhz());
+    if (n > 0) uart_write_bytes(LINK_UART, line, (size_t)n);
+}
+
+/* Called from the console task at least every 100 ms. */
+static void link_poll(void)
+{
+    static size_t last_index = (size_t)-1;
+    static int64_t last_report;
+    if (!s_link_up) return;
+    uint8_t buf[16];
+    int got = uart_read_bytes(LINK_UART, buf, sizeof(buf), 0);
+    bool now = false;
+    for (int k = 0; k < got; ++k) {
+        uint8_t c = buf[k];
+        if (c == 'b' || c == 'c' || c == 's') (void)xQueueSend(s_keys, &c, 0);
+        else if (c == '?') now = true;
+    }
+    size_t index = rf_channel_index();
+    int64_t t = esp_timer_get_time();
+    if (now || index != last_index || t - last_report >= 1000000) {
+        last_index = index;
+        last_report = t;
+        link_report();
+    }
+}
+
+void console_link_start(void)
+{
+    const uart_config_t cfg = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+    esp_err_t err = uart_driver_install(LINK_UART, LINK_RX_RING, 0, 0, NULL, 0);
+    if (err == ESP_OK) err = uart_param_config(LINK_UART, &cfg);
+    if (err == ESP_OK) err = uart_set_pin(LINK_UART, HWX_LINK_TX, HWX_LINK_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    s_link_up = err == ESP_OK;   /* never fatal: the receiver runs without the link */
+    printf("FPGA_LINK uart=1 tx=%d rx=%d baud=115200 %s\n", HWX_LINK_TX, HWX_LINK_RX,
+           err == ESP_OK ? "ok" : esp_err_to_name(err));
+}
+#else
+static void link_poll(void) {}
+#endif
+
 static void console_task(void *arg)
 {
     (void)arg;
@@ -271,6 +345,7 @@ static void console_task(void *arg)
             }
         }
         diag_poll();
+        link_poll();
         /* Bank-1 watch: prints only when a layer changes (rf_bank1_check). */
         static int64_t bank1_beat;
         if (esp_timer_get_time() - bank1_beat >= 5000000 && !calibration_in_startup()) {

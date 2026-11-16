@@ -124,4 +124,5 @@ void app_main(void)
            esp_app_get_description()->version, rf_channel()->name, rf_frequency_mhz(),
            transport_program_name(), receiver_gain_mode_name(receiver_gain_mode(), gain_name, sizeof(gain_name)),
            firmware_id());
+    console_link_start();   /* hardware experiment FPGA link; production: nothing */
 }

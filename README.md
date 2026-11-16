@@ -177,6 +177,15 @@ clock and video; the capture device must reacquire. Console **T** reports
 `SAMPLE_CLOCK` with active/requested state, pin, rate and DAC-bit-2 pin.
 
 This extends [LAP87's capture tests](https://github.com/Twotoz/C5VRX/issues/256#issuecomment-6530295384).
+
+For a raw-IQ FPGA receiver, the web flasher's **Hardware experiments** tab
+has `fpga_iq`: no DAC; MODEM_DIAG Q4/I4 on the header pins as in
+[c5-fpga-hdmi](https://github.com/zubon2003/c5-fpga-hdmi) by zubon2003
+(Tang Primer 25K Dock, PMOD J4), and that project's UART link on D4/D5
+(GPIO23 TX, GPIO24 RX; keys b/c/s/?, `CH <name> <MHz>` reports), adapted
+from its release v0.3.1 (GPL-3.0-only). The menu raster is shown on the IQ
+pins while the menu is open. Pins and wiring:
+[`hardware_experiments/fpga_iq/hwx.h`](hardware_experiments/fpga_iq/hwx.h).
 The GPIO11 bit-2 rising-edge delay reported there (25 ns) motivates the D3
 route; a timing fix on D3 is **not yet verified**. GPIO2 remains IQ-owned.
 DAC TEST labels bit 2 as D3 when active; in `tools/dac_check.py`, enter

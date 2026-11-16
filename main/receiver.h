@@ -357,6 +357,13 @@ bool blob_store(const char *key, const void *data, size_t size);
 
 /* ---- console.c ---- */
 void console_start(void);
+/* Hardware experiment FPGA UART link (hwx.h HWX_LINK_UART, console.c),
+ * started once the receiver tasks exist; production: nothing. */
+#ifdef HWX_LINK_UART
+void console_link_start(void);
+#else
+static inline void console_link_start(void) {}
+#endif
 const char *firmware_id(void);   /* "<version>+<commit 12>", the fw= field of log lines */
 void firmware_print(void);       /* FIRMWARE line: version, full commit, ELF SHA-256, build time */
 

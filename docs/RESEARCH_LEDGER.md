@@ -18,6 +18,15 @@ puts PARLIO TX (the menu raster, six-bit codes on iq[5:0], iq[7:6] = 0) on
 the eight pads; `receiver_pause`, menu close and the boot splash route
 MODEM_DIAG back. The receiver does not read IQ while the menu is shown
 (`receiver_active`). Firmware build only; no board or FPGA check yet.
+UART link (same day, operator request): adapted from c5-fpga-hdmi by
+zubon2003 (https://github.com/zubon2003/c5-fpga-hdmi, GPL-3.0-only, release
+v0.3.1, `firmware/c5vrx5-v5.0.523-fpga-link.patch`, which itself modifies
+C5VRX-5 v5.0.523): UART1 115200 8N1 on D4/GPIO23 (TX) and D5/GPIO24 (RX),
+keys b/c/s/? only, `CH <name> <MHz>` on change, on ? and every second; no
+task of its own, started after the receiver tasks (that project found a
+link task broke boot with ESP_ERR_NO_MEM on v5.0.523). Its README also
+reports that the C5's GPIO IQ updates at 80 MHz while C5VRX captures at
+40 MS/s; not checked here. Firmware build only.
 
 ## D10 sample clock and six-bit DAC (2026-10-31)
 
