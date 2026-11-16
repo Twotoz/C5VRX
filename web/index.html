@@ -132,9 +132,9 @@
         <p>Build your own 5.8 GHz analog FPV receiver with an ESP32-C5. Six resistors connected to its GPIO pins make the AV video output. Build it on perfboard or get a ready-made module, flash the firmware over USB and connect your goggles or monitor.</p>
         <nav class="project-shortcuts" aria-label="Explore C5VRX">
           <a href="#tools">Web flasher</a>
-          <a href="#about">How it works</a>
           <a href="#hardware">Get the hardware</a>
           <a href="#faq">FAQ</a>
+          <a href="#about">How it works</a>
         </nav>
       </div>
       <section class="safety-notice" id="safety" aria-labelledby="safetyTitle">
@@ -478,24 +478,6 @@
         <p class="hint">Connecting the terminal releases the flasher and the other way round; they never share the port. The menu updates by itself while the receiver is connected.</p>
       </section>
 
-      <section class="project-info" id="about" aria-labelledby="aboutTitle">
-        <h2 id="aboutTitle">What is C5VRX?</h2>
-        <p>C5VRX turns an ESP32-C5 into a 5.8 GHz analog FPV video receiver. It is an open-source project by Twotoz and the C5VRX contributors.</p>
-        <p>The basic idea is simple: solder one resistor to each of six GPIO pins, then join the other ends together. That connection is your AV video output for analog goggles or a monitor. Follow the wiring guide below and <a href="#safety">ground-test your setup</a>.</p>
-        <h3>Build and flash an ESP32-C5 FPV receiver</h3>
-        <p><strong>Build it yourself on perfboard, or get a <a href="#module">ready-made receiver module</a>.</strong> For a perfboard build, start with a Seeed Studio XIAO ESP32-C5 and the six GPIO resistors. Add a 200 Ω resistor from the joined output to GND, and connect your goggles’ or monitor’s video input and ground. The <a href="https://github.com/Twotoz/C5VRX/blob/main/README.md#hardware" target="_blank" rel="noopener noreferrer">wiring guide</a> shows exactly which pins and resistor values to use. Then install the firmware with the <a href="#tools">USB web flasher</a>.</p>
-        <h3>What the current C5VRX-5 firmware does</h3>
-        <ul class="feature-list">
-          <li><strong>D32-R2 decoder by default.</strong> Chosen after a goggle check for cleaner colour. U50P64-R1, U80P64-R1 and U85Q remain selectable for comparison.</li>
-          <li><strong>LEVEL gain control.</strong> Picks the gain row with the best measured picture quality for the received level, holds still through fading and reacts at once to a sudden jump. It also adapts to an external LNA.</li>
-          <li><strong>Calibration only when you ask.</strong> Boot uses saved settings with no RF sweep; the receiver trims DC live and only recommends calibration when it cannot hold a row.</li>
-          <li><strong>Built-in flight log.</strong> Records picture quality, signal, gain, DC and dropouts for every session. Read it in the browser below.</li>
-          <li><strong>EXPERIMENTAL menu.</strong> Field tests in the goggle menu, such as AUTO OUTPUT and the D10 sample clock (both off by default).</li>
-        </ul>
-        <p>The receiver runs and holds video on the test boards; its range has not been measured yet.</p>
-        <h3>Open-source firmware and receiver research</h3>
-        <p>The <a href="https://github.com/Twotoz/C5VRX" target="_blank" rel="noopener noreferrer">C5VRX GitHub repository</a> includes GPL-3.0-only firmware, schematics, host tests and documented experiments. Read the <a href="https://github.com/Twotoz/C5VRX/blob/main/docs/FINDINGS.md" target="_blank" rel="noopener noreferrer">receiver findings</a> for the evidence and limits of each change, or join the project’s Discord from the link above to share builds and test results.</p>
-      </section>
 
       <section class="project-info hardware-section" id="hardware" aria-labelledby="hardwareTitle">
         <h2 id="hardwareTitle">Get the hardware</h2>
@@ -592,6 +574,24 @@
           <summary>Is C5VRX qualified for flight?</summary>
           <p>C5VRX is experimental. Passing tests or installing a versioned release does not establish flight safety or guarantee range. Read the <a href="#safety">safety and warranty disclaimer</a>, complete calibration and ground-test every firmware and hardware/settings combination.</p>
         </details>
+      </section>
+      <section class="project-info" id="about" aria-labelledby="aboutTitle">
+        <h2 id="aboutTitle">What is C5VRX?</h2>
+        <p>C5VRX turns an ESP32-C5 into a 5.8 GHz analog FPV video receiver. It is an open-source project by Twotoz and the C5VRX contributors.</p>
+        <p>The basic idea is simple: solder one resistor to each of six GPIO pins, then join the other ends together. That connection is your AV video output for analog goggles or a monitor. Follow the <a href="#hardware">hardware section</a> and <a href="#safety">ground-test your setup</a>.</p>
+        <h3>Build and flash an ESP32-C5 FPV receiver</h3>
+        <p><strong>Build it yourself on perfboard, or get a <a href="#module">ready-made receiver module</a>.</strong> For a perfboard build, start with a Seeed Studio XIAO ESP32-C5 and the six GPIO resistors. Add a 200 Ω resistor from the joined output to GND, and connect your goggles’ or monitor’s video input and ground. The <a href="https://github.com/Twotoz/C5VRX/blob/main/README.md#hardware" target="_blank" rel="noopener noreferrer">wiring guide</a> shows exactly which pins and resistor values to use. Then install the firmware with the <a href="#tools">USB web flasher</a>.</p>
+        <h3>What the current C5VRX-5 firmware does</h3>
+        <ul class="feature-list">
+          <li><strong>D32-R2 decoder by default.</strong> Chosen after a goggle check for cleaner colour. U50P64-R1, U80P64-R1 and U85Q remain selectable for comparison.</li>
+          <li><strong>LEVEL gain control.</strong> Picks the gain row with the best measured picture quality for the received level, holds still through fading and reacts at once to a sudden jump. It also adapts to an external LNA.</li>
+          <li><strong>Calibration only when you ask.</strong> Boot uses saved settings with no RF sweep; the receiver trims DC live and only recommends calibration when it cannot hold a row.</li>
+          <li><strong>Built-in flight log.</strong> Records picture quality, signal, gain, DC and dropouts for every session. Read it in the browser below.</li>
+          <li><strong>EXPERIMENTAL menu.</strong> Field tests in the goggle menu, such as AUTO OUTPUT and the D10 sample clock (both off by default).</li>
+        </ul>
+        <p>The receiver runs and holds video on the test boards; its range has not been measured yet.</p>
+        <h3>Open-source firmware and receiver research</h3>
+        <p>The <a href="https://github.com/Twotoz/C5VRX" target="_blank" rel="noopener noreferrer">C5VRX GitHub repository</a> includes GPL-3.0-only firmware, schematics, host tests and documented experiments. Read the <a href="https://github.com/Twotoz/C5VRX/blob/main/docs/FINDINGS.md" target="_blank" rel="noopener noreferrer">receiver findings</a> for the evidence and limits of each change, or join the project’s Discord from the link above to share builds and test results.</p>
       </section>
     </main>
     <footer>C5VRX by Twotoz and the C5VRX contributors · <a href="https://github.com/Twotoz/C5VRX/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GPL-3.0-only</a> · <a href="#safety">Safety &amp; warranty</a></footer>
