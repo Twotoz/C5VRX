@@ -12,6 +12,12 @@ DMA, ring or lookup in the FPGA path, no clock pin (the FPGA samples on its
 own clock). The receiver keeps its RX40/raw32K loopback; PARLIO TX runs on
 no pads. Evidence: host checks of the pin map and a firmware build only.
 Pin map and wiring: `hardware_experiments/fpga_iq/hwx.h`.
+Menu on the IQ pads (same day, operator request): while the menu or a
+status screen is shown and no receiver pause measures IQ, the GPIO matrix
+puts PARLIO TX (the menu raster, six-bit codes on iq[5:0], iq[7:6] = 0) on
+the eight pads; `receiver_pause`, menu close and the boot splash route
+MODEM_DIAG back. The receiver does not read IQ while the menu is shown
+(`receiver_active`). Firmware build only; no board or FPGA check yet.
 
 ## D10 sample clock and six-bit DAC (2026-10-31)
 

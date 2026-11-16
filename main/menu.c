@@ -311,6 +311,9 @@ static void entry_start(void)
     transport_stop_tx();
     vTaskDelay(pdMS_TO_TICKS(MENU_RELOCK_GAP_MS));
     transport_start_chain(node(0));
+    /* Hardware experiment: the menu on the IQ pads while nothing measures
+     * IQ; the boot splash keeps IQ (the receiver runs under it). */
+    rf_hwx_pads_tx(s_splash < 0 && !receiver_paused());
 }
 
 bool menu_open(void)
@@ -335,6 +338,7 @@ bool menu_open(void)
 void menu_close(void)
 {
     if (!s_menu_active) return;
+    rf_hwx_pads_tx(false);
     transport_stop_chain();
     vTaskDelay(pdMS_TO_TICKS(MENU_RELOCK_GAP_MS));
     transport_resume_live();
