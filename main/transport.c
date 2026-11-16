@@ -144,12 +144,7 @@ static esp_err_t prepare_rx(void)
         .clk_src = PARLIO_CLK_SRC_DEFAULT,
         .exp_clk_freq_hz = IQ_RATE_HZ,
         .clk_in_gpio_num = -1,
-#ifdef HWX_CLOCK_GPIO
-        /* Hardware experiment: the RX sample clock for external capture. */
-        .clk_out_gpio_num = HWX_CLOCK_GPIO,
-#else
         .clk_out_gpio_num = -1,
-#endif
         .valid_gpio_num = -1,
         /* Share MODEM_DIAG routing's GPIO27 I-LSB / GPIO2 Q-sign pin order. */
         .data_gpio_nums = RF_IQ_GPIO_NUMS,

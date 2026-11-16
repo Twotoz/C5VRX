@@ -36,14 +36,6 @@ class HardwareExperiments(unittest.TestCase):
                 self.assertIn('HWX_NAME', d)
                 pads = list(d.get('HWX_IQ_GPIO_NUMS', []))
                 self.assertIn(len(pads), (0, 8))
-                n = int(d.get('HWX_EXTRA_BITS', '0'))
-                if n:
-                    self.assertEqual((len(d['HWX_EXTRA_Q_GPIOS']), len(d['HWX_EXTRA_I_GPIOS'])), (n, n))
-                    # Lowest exported bit on ULTRAFINE is ADC4: at most four bits below it.
-                    self.assertLessEqual(n, 4)
-                    pads += d['HWX_EXTRA_Q_GPIOS'] + d['HWX_EXTRA_I_GPIOS']
-                if 'HWX_CLOCK_GPIO' in d:
-                    pads.append(int(d['HWX_CLOCK_GPIO']))
                 self.assertEqual(len(pads), len(set(pads)), 'a pad is used twice')
                 self.assertFalse(set(pads) & RESERVED)
                 self.assertLessEqual(set(pads), XIAO_PADS)
@@ -53,6 +45,7 @@ class HardwareExperiments(unittest.TestCase):
     def test_fpga_iq_matches_the_tang_constraints(self):
         d = defines((ROOT / 'hardware_experiments/fpga_iq/hwx.h').read_text())
         self.assertEqual(d['HWX_IQ_GPIO_NUMS'], [1, 0, 25, 7, 10, 5, 3, 4])
+        self.assertEqual(set(d), {'HWX_NAME', 'HWX_IQ_GPIO_NUMS', 'HWX_NO_DAC'})   # as the J4 table: no extras
         cst = (ROOT / 'hardware_experiments/fpga_iq/tang_primer_25k_dock.cst').read_text()
         balls = dict(re.findall(r'IO_LOC "iq\[(\d)\]" (\w+);', cst))
         self.assertEqual(balls, {'0': 'C11', '1': 'C10', '2': 'B11', '3': 'B10',
@@ -67,8 +60,7 @@ class HardwareExperiments(unittest.TestCase):
         for name in ('transport.c', 'rf.c', 'experimental.c'):
             source = (ROOT / 'main' / name).read_text()
             for hook in re.findall(r'HWX_\w+', source):
-                self.assertIn(hook, {'HWX_CLOCK_GPIO', 'HWX_NO_DAC', 'HWX_EXTRA_BITS',
-                                     'HWX_EXTRA_Q_GPIOS', 'HWX_EXTRA_I_GPIOS'}, name)
+                self.assertEqual(hook, 'HWX_NO_DAC', name)
 
 
 if __name__ == '__main__':

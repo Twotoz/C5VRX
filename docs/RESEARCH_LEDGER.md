@@ -1,19 +1,16 @@
 # C5VRX research ledger (C5VRX-1 to C5VRX-5)
 
-## Hardware experiment FPGA_IQ: raw ADC bits to an FPGA (2026-11-16)
+## Hardware experiment FPGA_IQ: raw Q4/I4 to an FPGA (2026-11-16)
 
 Operator request: a hardware experiment build without the resistor DAC that
-sends as many bits as possible, with a clock, to an FPGA (Tang Primer 25K
-Dock, PMOD J4). Extends the PR #257 Clock Pin D10 work and LAP87's FPGA
+sends the raw IQ bits to an FPGA, wired as the operator's Tang Primer 25K
+Dock PMOD J4 table. Extends the PR #257 Clock Pin D10 work and LAP87's FPGA
 capture (issue #256): the FPGA gets the receiver's input instead of the
-decoder output. Source/tap: MODEM_DIAG ADC bits through the GPIO matrix
-straight to pads; no CPU, DMA, ring or lookup in the FPGA path. Rate: the
-PARLIO RX sample clock (40 MHz) exported on D4/GPIO23. Bits: per channel the
-lane's sign plus six magnitude bits (ULTRAFINE {9,6,5,4,3,2,1}) on 14 pads,
-the eight base bits on the pre-2026-10-25 IQ pads {1,0,25,7,10,5,3,4}. The
-receiver keeps its RX40/raw32K loopback; PARLIO TX runs on no pads.
-Evidence: host checks of the pin map and a firmware build only. ADC bits
-3..1, the clock/data phase at the FPGA and the extra pads' balls are open.
+decoder output. Source/tap: MODEM_DIAG ULTRAFINE Q4/I4 through the GPIO
+matrix straight to the pre-2026-10-25 IQ pads {1,0,25,7,10,5,3,4}; no CPU,
+DMA, ring or lookup in the FPGA path, no clock pin (the FPGA samples on its
+own clock). The receiver keeps its RX40/raw32K loopback; PARLIO TX runs on
+no pads. Evidence: host checks of the pin map and a firmware build only.
 Pin map and wiring: `hardware_experiments/fpga_iq/hwx.h`.
 
 ## D10 sample clock and six-bit DAC (2026-10-31)

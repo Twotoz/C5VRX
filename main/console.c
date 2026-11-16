@@ -37,13 +37,8 @@ void firmware_print(void)
            C5VRX5_COMMIT, elf[0] ? elf : "unknown", d->date, d->time, d->idf_ver);
 #ifdef C5VRX_HWX
     static const int iq[8] = RF_IQ_GPIO_NUMS;
-    printf("HWX id=%s name=%s iq_gpio=%d,%d,%d,%d,%d,%d,%d,%d clock_gpio=%d dac=%u\n", C5VRX_HWX_ID, HWX_NAME,
+    printf("HWX id=%s name=%s iq_gpio=%d,%d,%d,%d,%d,%d,%d,%d dac=%u\n", C5VRX_HWX_ID, HWX_NAME,
            iq[0], iq[1], iq[2], iq[3], iq[4], iq[5], iq[6], iq[7],
-#ifdef HWX_CLOCK_GPIO
-           HWX_CLOCK_GPIO,
-#else
-           -1,
-#endif
 #ifdef HWX_NO_DAC
            0u);
 #else
