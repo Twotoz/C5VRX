@@ -46,3 +46,14 @@ if(EXISTS "${C5_PHY_ARCHIVE}")
         message(WARNING "Unverified C5 PHY: analog/digital filter and DC correction disabled (${C5_PHY_SHA256})")
     endif()
 endif()
+
+# Hardware experiment build (hardware_experiments/<id>/hwx.h): idf.py -DC5VRX_HWX=<id>.
+# Production builds leave it unset and never see the experiment's pin map.
+if(C5VRX_HWX)
+    set(C5VRX_HWX_DIR "${CMAKE_CURRENT_LIST_DIR}/../hardware_experiments/${C5VRX_HWX}")
+    if(NOT C5VRX_HWX MATCHES "^[a-z0-9_]+$" OR NOT EXISTS "${C5VRX_HWX_DIR}/hwx.h")
+        message(FATAL_ERROR "Unknown hardware experiment '${C5VRX_HWX}' (hardware_experiments/<id>/hwx.h)")
+    endif()
+    target_include_directories(${COMPONENT_LIB} PRIVATE "${C5VRX_HWX_DIR}")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE C5VRX_HWX=1 C5VRX_HWX_ID="${C5VRX_HWX}")
+endif()

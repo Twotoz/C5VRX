@@ -59,6 +59,23 @@ static const uint8_t s_lane_diag[RF_LANES][8] = {
 static const char *const s_lane_names[RF_LANES] = {"coarse", "fine", "ultrafine"};
 static unsigned s_lane = RF_LANE_ULTRAFINE;
 
+#ifdef HWX_EXTRA_BITS
+/* Hardware experiment (hwx.h): output-only pads with the ADC bits one, two,
+ * three... below the lane's lowest exported Q and I bit, for an external
+ * capture device. Not read by the receiver. */
+static const gpio_num_t s_hwx_q_pins[HWX_EXTRA_BITS] = HWX_EXTRA_Q_GPIOS;
+static const gpio_num_t s_hwx_i_pins[HWX_EXTRA_BITS] = HWX_EXTRA_I_GPIOS;
+static void route_hwx_extra(unsigned lane)
+{
+    for (unsigned k = 0; k < HWX_EXTRA_BITS; ++k) {
+        esp_rom_gpio_connect_out_signal(s_hwx_q_pins[k], MODEM_DIAG0_IDX + s_lane_diag[lane][0] - 1u - k, false, false);
+        esp_rom_gpio_connect_out_signal(s_hwx_i_pins[k], MODEM_DIAG0_IDX + s_lane_diag[lane][4] - 1u - k, false, false);
+    }
+}
+#else
+static void route_hwx_extra(unsigned lane) { (void)lane; }
+#endif
+
 extern int lmac_stop_hw_txq(void);
 extern void phy_wifi_fbw_sel(uint32_t val);
 extern void phy_force_rx_gain(bool enable, uint8_t gain_idx);
@@ -88,6 +105,9 @@ static esp_err_t route_modem_iq(unsigned lane)
 {
     uint64_t mask = 0;
     for (unsigned k = 0; k < 8; ++k) mask |= 1ULL << s_iq_pins[k];
+#ifdef HWX_EXTRA_BITS
+    for (unsigned k = 0; k < HWX_EXTRA_BITS; ++k) mask |= (1ULL << s_hwx_q_pins[k]) | (1ULL << s_hwx_i_pins[k]);
+#endif
     const gpio_config_t cfg = {
         .pin_bit_mask = mask,
         .mode = GPIO_MODE_INPUT_OUTPUT,
@@ -99,6 +119,7 @@ static esp_err_t route_modem_iq(unsigned lane)
     if (err != ESP_OK) return err;
     for (unsigned k = 0; k < 8; ++k)
         esp_rom_gpio_connect_out_signal(s_iq_pins[k], MODEM_DIAG0_IDX + s_lane_diag[lane][k], false, false);
+    route_hwx_extra(lane);
     __asm__ __volatile__("fence iorw, iorw" ::: "memory");
     s_lane = lane;
     return ESP_OK;
@@ -121,6 +142,7 @@ void rf_reroute_lane(unsigned lane)
     if (lane >= RF_LANES) return;
     for (unsigned k = 0; k < 8; ++k)
         esp_rom_gpio_connect_out_signal(s_iq_pins[k], MODEM_DIAG0_IDX + s_lane_diag[lane][k], false, false);
+    route_hwx_extra(lane);
     __asm__ __volatile__("fence iorw, iorw" ::: "memory");
     s_lane = lane;
 }

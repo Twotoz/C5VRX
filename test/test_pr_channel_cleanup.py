@@ -20,7 +20,7 @@ if args[:2]==['api','--paginate']:
     if data.get('list_error'): sys.exit(1)
     assert '--jq' in args and 'select(test(' in args[-1]
     for tag in data['tags']:
-        if re.fullmatch(r'c5vrx5-pr-[0-9]+',tag): print(tag)
+        if re.fullmatch(r'c5vrx5-(hwx-[a-z0-9_]+-)?pr-[0-9]+',tag): print(tag)
 elif args[:2]==['pr','list']:
     assert '--state' in args and args[args.index('--state')+1]=='open'
     if data.get('pr_list_error'): sys.exit(1)
@@ -62,6 +62,12 @@ class CleanupTest(unittest.TestCase):
             ['c5vrx5-v5.0.573', 'v3.1.0', 'c5vrx5-pr-299', 'c5vrx5-pr-276'],
             {'299': 'open', '276': 'closed'})
         self.assertEqual((rc, deleted, output), (0, ['c5vrx5-pr-276'], 'removed=true\n'))
+
+    def test_hardware_experiment_pr_channels_are_removed(self):
+        rc, deleted, output = self.execute(
+            ['c5vrx5-hwx-fpga_iq', 'c5vrx5-hwx-fpga_iq-pr-299', 'c5vrx5-hwx-fpga_iq-pr-276'],
+            {'299': 'open', '276': 'closed'})
+        self.assertEqual((rc, deleted, output), (0, ['c5vrx5-hwx-fpga_iq-pr-276'], 'removed=true\n'))
 
     def test_empty_list_is_success(self):
         self.assertEqual(self.execute(), (0, [], ''))

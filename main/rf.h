@@ -16,8 +16,17 @@
  * IQ-owned and cannot export the optional sample clock (PR #257).
  * GPIO27 is exclusively IQ-owned: do not drive it as a status LED. The LED/resistor remains connected; 40 MS/s capture and
  * sampling-phase margin on an unmodified XIAO still need board validation.
- * These are GPIO-matrix loopbacks; no external IQ wiring is required. */
+ * These are GPIO-matrix loopbacks; no external IQ wiring is required.
+ * A hardware experiment build (-DC5VRX_HWX=<id>, hardware_experiments/<id>/
+ * hwx.h) may replace the pads; production never includes hwx.h. */
+#ifdef C5VRX_HWX
+#include "hwx.h"
+#endif
+#ifdef HWX_IQ_GPIO_NUMS
+#define RF_IQ_GPIO_NUMS HWX_IQ_GPIO_NUMS
+#else
 #define RF_IQ_GPIO_NUMS {1, 0, 25, 2, 27, 5, 3, 4}
+#endif
 
 esp_err_t rf_start(void);
 /* Stop the dump writer and Wi-Fi, request a USB download boot and restart,

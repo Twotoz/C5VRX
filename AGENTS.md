@@ -436,8 +436,14 @@ the project explicitly changes hosting architecture.
 - Keep its concurrency group separated by event type and PR identity
   (`c5vrx5-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}`):
   a `github.ref`-only group let a merged PR's cleanup cancel the main build.
+- Hardware experiments (`hardware_experiments/<id>/hwx.h`, 2026-11-16): the same
+  firmware built with `-DC5VRX_HWX=<id>` (pin map hooks in `rf.h`, `rf.c`,
+  `transport.c`, `experimental.c`; production never includes `hwx.h`). The
+  C5VRX-5 Build lists them (`hwx-list`), builds them (`build-hwx`) and publishes
+  one mutable prerelease per experiment, `c5vrx5-hwx-<id>` on main and
+  `c5vrx5-hwx-<id>-pr-<number>` per PR, never Latest. Ids are `[a-z0-9_]+`.
 - `.github/workflows/pr-channel-cleanup.yml` deletes every `c5vrx5-pr-<number>`
-  release whose PR is no longer open, then dispatches Deploy Web Flasher. It
+  and `c5vrx5-hwx-<id>-pr-<number>` release whose PR is no longer open, then dispatches Deploy Web Flasher. It
   sweeps on `pull_request_target` close (no path filter, runs despite merge
   conflicts, never checks out PR code), after every C5VRX-5 Build (`workflow_run`:
   new firmware) and manually; no hourly schedule (operator, 2026-11-15). It reads
@@ -463,6 +469,8 @@ generations (2026-10-12). Their published releases stay as they are.
 - **C5VRX-5**: `c5vrx5-v5.*` releases newest first, then `c5vrx5-pr-*`
   prereleases (explicit confirmation before flashing an unmerged build).
 - **Local File**: a user-supplied `.bin`.
+- **Hardware experiments**: `c5vrx5-hwx-*` builds per experiment, main channel
+  first; every flash asks for confirmation (bench builds, no DAC video).
 - **Legacy builds**: the newest 20 archived C5VRX-3 semantic releases
   (`v3.*`), frozen; no new legacy builds are produced.
 
