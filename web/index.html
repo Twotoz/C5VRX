@@ -168,6 +168,7 @@
           <div class="sources" role="group" aria-label="Firmware source">
             <button type="button" id="tabAlpha" aria-pressed="true" class="source-button active">C5VRX-5</button>
             <button type="button" id="tabLocal" aria-pressed="false" class="source-button">Local File</button>
+            <button type="button" id="tabHwx" aria-pressed="false" class="source-button">Hardware experiments</button>
             <button type="button" id="tabGithub" aria-pressed="false" class="source-button">Legacy builds</button>
           </div>
 
@@ -213,6 +214,36 @@
                 <input type="text" id="inputFlashOffset" class="form-control" value="0x0" placeholder="0x0 or 0x10000" autocomplete="off" spellcheck="false">
                 <small class="text-muted">Use <code>0x0</code> for a merged image, <code>0x10000</code> for an application binary.</small>
               </div>
+            </div>
+          </div>
+
+          <!-- Hardware experiments (hardware_experiments/<id>) -->
+          <div id="paneHwx" class="tab-pane">
+            <div class="warning-box">
+              <strong>Hardware experiments</strong>
+              <span>Builds for bench hardware such as an FPGA capture board. They drive pins differently from a normal receiver (no DAC video output) and need the wiring in the experiment's <code>hwx.h</code>. Not for goggles or flight. Flash a normal C5VRX-5 build to go back.</span>
+            </div>
+            <div class="field">
+              <label for="selectHwxBuild">Experiment</label>
+              <div class="select-row">
+                <select id="selectHwxBuild" class="form-control"><option value="">Loading hardware experiments…</option></select>
+              </div>
+            </div>
+            <details class="release-metadata">
+              <summary>Build details</summary>
+              <div id="hwxBuildDetails" class="info-box" hidden>
+                <div class="info-row"><span class="info-label">Build</span><span class="info-value" id="infoHwxBuildName">-</span></div>
+                <div class="info-row"><span class="info-label">Published</span><span class="info-value" id="infoHwxBuildDate">-</span></div>
+                <div class="info-row"><span class="info-label">Tag</span><span class="info-value" id="infoHwxBuildTag">-</span></div>
+                <div class="info-row"><span class="info-label">Assets</span><span class="info-value" id="infoHwxBuildAssets">-</span></div>
+              </div>
+            </details>
+            <div class="field">
+              <label for="selectHwxPackageType">Package</label>
+              <select id="selectHwxPackageType" class="form-control">
+                <option value="merged">Full firmware</option>
+                <option value="app_only">App only</option>
+              </select>
             </div>
           </div>
 

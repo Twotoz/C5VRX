@@ -46,6 +46,9 @@ void experimental_load(void)
         if (experimental_blob_valid(&b)) s_save_pending = true;
     }
     if (experimental_blob_valid(&b)) s_exp = b;
+#ifdef HWX_NO_DAC
+    s_exp.value[EXP_CLOCK_D10] = 0;   /* D10 is a hardware experiment pad */
+#endif
     s_clock_d10 = experimental_get(EXP_CLOCK_D10) != 0;
 }
 bool experimental_phy_restore(void)
@@ -87,6 +90,9 @@ bool experimental_reboot_needed(void)
 bool experimental_set(unsigned item, uint8_t value)
 {
     if (item >= EXP_ITEMS || !experimental_items[item].count || value >= experimental_items[item].count) return false;
+#ifdef HWX_NO_DAC
+    if (item == EXP_CLOCK_D10 && value) return false;
+#endif
     const uint8_t old = item == EXP_AUTO_PROFILE ? profile_live_mode() : s_exp.value[item];
     if (old == value && s_exp.value[item] == value) { s_failed &= ~(1u << item); return true; }
     bool ok = true, locked = false;

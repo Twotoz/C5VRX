@@ -181,6 +181,10 @@ static esp_err_t prepare_tx(void)
         .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
     };
     for (unsigned k = 0; k < 8u; ++k) cfg.data_gpio_nums[k] = s_dac_gpio[k];
+#ifdef HWX_NO_DAC
+    /* Hardware experiment without the resistor DAC: TX runs on no pads. */
+    for (unsigned k = 0; k < 8u; ++k) cfg.data_gpio_nums[k] = -1;
+#endif
     if (experimental_clock_d10()) {
         cfg.clk_out_gpio_num = 10;
         cfg.data_gpio_nums[2] = 7;

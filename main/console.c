@@ -35,6 +35,16 @@ void firmware_print(void)
     (void)esp_app_get_elf_sha256(elf, sizeof(elf));
     printf("FIRMWARE id=%s version=%s commit=%s elf_sha256=%s built=\"%s %s\" idf=%s cal_dump=1\n", firmware_id(), d->version,
            C5VRX5_COMMIT, elf[0] ? elf : "unknown", d->date, d->time, d->idf_ver);
+#ifdef C5VRX_HWX
+    static const int iq[8] = RF_IQ_GPIO_NUMS;
+    printf("HWX id=%s name=%s iq_gpio=%d,%d,%d,%d,%d,%d,%d,%d dac=%u\n", C5VRX_HWX_ID, HWX_NAME,
+           iq[0], iq[1], iq[2], iq[3], iq[4], iq[5], iq[6], iq[7],
+#ifdef HWX_NO_DAC
+           0u);
+#else
+           1u);
+#endif
+#endif
 }
 
 static void status(void)
