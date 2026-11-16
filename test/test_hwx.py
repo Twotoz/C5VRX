@@ -45,7 +45,7 @@ class HardwareExperiments(unittest.TestCase):
     def test_fpga_iq_matches_the_tang_constraints(self):
         d = defines((ROOT / 'hardware_experiments/fpga_iq/hwx.h').read_text())
         self.assertEqual(d['HWX_IQ_GPIO_NUMS'], [1, 0, 25, 7, 10, 5, 3, 4])
-        self.assertEqual(set(d), {'HWX_NAME', 'HWX_IQ_GPIO_NUMS', 'HWX_NO_DAC'})   # as the J4 table: no extras
+        self.assertEqual(set(d), {'HWX_NAME', 'HWX_IQ_GPIO_NUMS', 'HWX_NO_DAC', 'HWX_MENU_ON_IQ'})   # as the J4 table: no extras
         cst = (ROOT / 'hardware_experiments/fpga_iq/tang_primer_25k_dock.cst').read_text()
         balls = dict(re.findall(r'IO_LOC "iq\[(\d)\]" (\w+);', cst))
         self.assertEqual(balls, {'0': 'C11', '1': 'C10', '2': 'B11', '3': 'B10',
@@ -57,10 +57,10 @@ class HardwareExperiments(unittest.TestCase):
         self.assertIn('#define RF_IQ_GPIO_NUMS {1, 0, 25, 2, 27, 5, 3, 4}', rf)
         cmake = (ROOT / 'main/CMakeLists.txt').read_text()
         self.assertIn('if(C5VRX_HWX)', cmake)
-        for name in ('transport.c', 'rf.c', 'experimental.c'):
+        for name in ('transport.c', 'rf.c', 'experimental.c', 'menu.c', 'receiver.c'):
             source = (ROOT / 'main' / name).read_text()
             for hook in re.findall(r'HWX_\w+', source):
-                self.assertEqual(hook, 'HWX_NO_DAC', name)
+                self.assertIn(hook, {'HWX_NO_DAC', 'HWX_MENU_ON_IQ'}, name)
 
 
 if __name__ == '__main__':

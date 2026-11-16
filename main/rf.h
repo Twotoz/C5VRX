@@ -71,6 +71,14 @@ enum { RF_LANE_COARSE, RF_LANE_FINE, RF_LANE_ULTRAFINE, RF_LANES };
 esp_err_t rf_set_lane(unsigned lane);
 unsigned rf_lane(void);
 void rf_reroute_lane(unsigned lane);   /* live, GPIO matrix only (STRONG LANE) */
+/* Hardware experiment HWX_MENU_ON_IQ (hwx.h): true puts PARLIO TX (the menu
+ * raster) on the eight IQ pads instead of MODEM_DIAG, false routes MODEM_DIAG
+ * back. Production: a no-op. */
+#ifdef HWX_MENU_ON_IQ
+void rf_hwx_pads_tx(bool tx);
+#else
+static inline void rf_hwx_pads_tx(bool tx) { (void)tx; }
+#endif
 const char *rf_lane_name(unsigned lane);
 
 typedef struct { const char *name; uint16_t freq_mhz; } fpv_channel_t;

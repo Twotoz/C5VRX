@@ -27,6 +27,14 @@
  *   7      I sign   MTCK back pad  4     12      G10
  *   -      GND      GND            -     3/4     -
  *
+ * Menu on the IQ pads (HWX_MENU_ON_IQ): while the menu or a status screen
+ * is shown and nothing measures IQ, the eight pads carry PARLIO TX instead:
+ * iq[5:0] = the menu raster's six-bit composite codes (sync 0, black 20,
+ * white 60; the DAC's bit order) at TX40, iq[7:6] = 0. Raw IQ never holds
+ * I sign and I bit 2 at 0 for a whole line (64 us), so the FPGA can tell the
+ * two apart without a flag pin. A scan, calibration or other receiver pause
+ * and the boot splash put IQ back on the pads.
+ *
  * MTMS (GPIO2) is not connected. 3.3 V LVCMOS inputs on the FPGA, no
  * pull-ups/downs (GPIO7/25 are strapping pads), common ground. Data can
  * pause during receiver restarts; the FPGA must reacquire. */
@@ -37,3 +45,5 @@
 #define HWX_IQ_GPIO_NUMS {1, 0, 25, 7, 10, 5, 3, 4}
 /* No resistor DAC: PARLIO TX drives no pads and Clock Pin D10 is refused. */
 #define HWX_NO_DAC 1
+/* The menu raster on the IQ pads while the menu is shown (see above). */
+#define HWX_MENU_ON_IQ 1
