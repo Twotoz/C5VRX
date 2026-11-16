@@ -59,7 +59,6 @@ static const uint8_t s_lane_diag[RF_LANES][8] = {
 static const char *const s_lane_names[RF_LANES] = {"coarse", "fine", "ultrafine"};
 static unsigned s_lane = RF_LANE_ULTRAFINE;
 
-
 extern int lmac_stop_hw_txq(void);
 extern void phy_wifi_fbw_sel(uint32_t val);
 extern void phy_force_rx_gain(bool enable, uint8_t gain_idx);
