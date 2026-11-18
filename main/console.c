@@ -12,6 +12,10 @@
 #include "hal/usb_serial_jtag_ll.h"
 #include "rf.h"
 #include "snapshot.h"
+#ifdef HWX_CHANNEL_RX_GPIO
+#include "channel_link.h"
+#include "driver/uart.h"
+#endif
 
 extern volatile const char *s_boot_stage;
 
@@ -214,10 +218,51 @@ static void help(void)
  * the download key itself and queues the rest for the console task. */
 static QueueHandle_t s_keys;
 
+#ifdef HWX_CHANNEL_RX_GPIO
+/* Hardware experiment channel link (channel_link.h): the external FPGA
+ * repeats the wanted channel on one UART wire; a valid frame for another
+ * channel than the current one queues CMD_SET_CHANNEL, at most every 300 ms. */
+static bool s_link_ok;
+static void channel_link_start(void)
+{
+    const uart_config_t cfg = {
+        .baud_rate = 115200, .data_bits = UART_DATA_8_BITS, .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1, .flow_ctrl = UART_HW_FLOWCTRL_DISABLE, .source_clk = UART_SCLK_DEFAULT,
+    };
+    s_link_ok = uart_driver_install(UART_NUM_1, 256, 0, 0, NULL, 0) == ESP_OK &&
+                uart_param_config(UART_NUM_1, &cfg) == ESP_OK &&
+                uart_set_pin(UART_NUM_1, UART_PIN_NO_CHANGE, HWX_CHANNEL_RX_GPIO, UART_PIN_NO_CHANGE,
+                             UART_PIN_NO_CHANGE) == ESP_OK;
+    printf("HWX channel_link rx_gpio=%d %s\n", HWX_CHANNEL_RX_GPIO, s_link_ok ? "ready" : "FAILED");
+}
+static void channel_link_poll(void)
+{
+    static channel_link_t parser;
+    static int64_t last_queued;
+    uint8_t buf[32];
+    if (!s_link_ok) return;
+    const int n = uart_read_bytes(UART_NUM_1, buf, sizeof buf, 0);
+    for (int k = 0; k < n; ++k) {
+        const int ch = channel_link_feed(&parser, buf[k], FPV_CHANNELS);
+        if (ch < 0 || (size_t)ch == rf_channel_index()) continue;
+        const int64_t now = esp_timer_get_time();
+        if (now - last_queued < 300000) continue;
+        last_queued = now;
+        const int command = CMD_SET_CHANNEL + ch;
+        if (s_commands) (void)xQueueSend(s_commands, &command, 0);
+        printf("HWX channel_link request %s%u %u MHz\n", rf_band_name((unsigned)ch / 8u), (unsigned)ch % 8u + 1u,
+               rf_channel_freq((size_t)ch));
+    }
+}
+#endif
+
 static void usb_reader_task(void *arg)
 {
     (void)arg;
     for (;;) {
+#ifdef HWX_CHANNEL_RX_GPIO
+        channel_link_poll();
+#endif
         for (unsigned k = 0; k < 64; ++k) {
             uint8_t c;
             if (usb_serial_jtag_ll_read_rxfifo(&c, 1) == 0) break;
@@ -291,6 +336,9 @@ static void console_task(void *arg)
 
 void console_start(void)
 {
+#ifdef HWX_CHANNEL_RX_GPIO
+    channel_link_start();
+#endif
     s_keys = xQueueCreate(64, 1);
     ESP_ERROR_CHECK(s_keys ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xTaskCreate(console_task, "console", 6144, NULL, 2, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);

@@ -63,7 +63,11 @@ class HardwareExperiments(unittest.TestCase):
         self.assertEqual(int(d['HWX_RX_CLK_GPIO']), 10)
         self.assertNotIn(11, d['HWX_IQ_GPIO_NUMS'])          # LAP87: GPIO11 bit 2 one TX clock late
         self.assertEqual(set(d), {'HWX_NAME', 'HWX_IQ_GPIO_NUMS', 'HWX_RX_CLK_GPIO', 'HWX_NO_DAC',
-                                  'HWX_MENU_ON_IQ', 'HWX_FIXED_LANE'})
+                                  'HWX_MENU_ON_IQ', 'HWX_FIXED_LANE', 'HWX_CHANNEL_RX_GPIO'})
+        link = int(d['HWX_CHANNEL_RX_GPIO'])
+        self.assertIn(link, XIAO_PADS)
+        self.assertNotIn(link, d['HWX_IQ_GPIO_NUMS'] + [int(d['HWX_RX_CLK_GPIO'])])
+        self.assertNotIn(link, RESERVED | {2, 7, 25})                 # no strapping pad
         cst = (ROOT / 'hardware_experiments/tang9k_dual/fpga/tang_nano_9k.cst').read_text()
         loc = {n: int(p) for n, p in re.findall(r'IO_LOC "([\w\[\]]+)" (\d+);', cst)}
         iotype = dict(re.findall(r'IO_PORT "([\w\[\]]+)" IO_TYPE=(\w+)', cst))
@@ -91,10 +95,11 @@ class HardwareExperiments(unittest.TestCase):
         self.assertIn('#define RF_IQ_GPIO_NUMS {1, 0, 25, 2, 27, 5, 3, 4}', rf)
         cmake = (ROOT / 'main/CMakeLists.txt').read_text()
         self.assertIn('if(C5VRX_HWX)', cmake)
-        for name in ('transport.c', 'rf.c', 'experimental.c', 'menu.c', 'receiver.c'):
+        for name in ('transport.c', 'rf.c', 'experimental.c', 'menu.c', 'receiver.c', 'control.c'):
             source = (ROOT / 'main' / name).read_text()
             for hook in re.findall(r'HWX_\w+', source):
-                self.assertIn(hook, {'HWX_NO_DAC', 'HWX_MENU_ON_IQ', 'HWX_RX_CLK_GPIO', 'HWX_FIXED_LANE'}, name)
+                self.assertIn(hook, {'HWX_NO_DAC', 'HWX_MENU_ON_IQ', 'HWX_RX_CLK_GPIO', 'HWX_FIXED_LANE',
+                                     'HWX_CHANNEL_RX_GPIO'}, name)
 
 
 if __name__ == '__main__':

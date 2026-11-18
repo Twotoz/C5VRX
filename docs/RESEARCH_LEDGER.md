@@ -50,6 +50,18 @@ two C5s with the lite combiner do not fit the 1K (1396/1152 LUT4 = 121%,
 all four block RAMs). One C5 alone on the 1K (`build.sh 1k-single`, DAC)
 uses 127 LUT4 (11%), one block RAM, 77 MHz at 40 MHz.
 
+Channel link (operator request 2026-11-18: the FPGA sets the channel, nothing
+else): one UART wire (115200 8N1) from the FPGA to D9 of both C5s carries a
+repeated four-byte frame (0xC5, 'C', index, 0x79 ^ index;
+`main/channel_link.h`, host test `test/test_channel_link.c`). Built only with
+HWX_CHANNEL_RX_GPIO: the C5 queues an absolute channel command
+(CMD_SET_CHANNEL) that takes the menu's channel path (rf_set_channel,
+after_retune: saved and flight-logged) when the index differs. The 9K drives
+it from bank 3 through one NPN (inverted); button S2 steps channel / band and
+the line stays silent until the first press. Icarus check of the button and
+transmitter against the parser rules; firmware not compiled here, no board
+test.
+
 ## Hardware experiment FPGA_IQ: raw Q4/I4 to an FPGA (2026-11-16)
 
 Operator request: a hardware experiment build without the resistor DAC that

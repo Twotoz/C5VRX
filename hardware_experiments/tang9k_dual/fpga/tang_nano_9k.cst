@@ -9,6 +9,14 @@ IO_LOC "xtal" 52;
 IO_PORT "xtal" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
 IO_LOC "btn_n" 4;
 IO_PORT "btn_n" IO_TYPE=LVCMOS18 PULL_MODE=UP;
+IO_LOC "btn2_n" 3;
+IO_PORT "btn2_n" IO_TYPE=LVCMOS18 PULL_MODE=UP;
+
+// Channel link to D9 of both C5s. Bank 3 is 1.8 V, too low for a C5 input:
+// pin 80 drives an NPN (1k into the base, emitter to GND); its collector,
+// pulled to 3.3 V with 4.7k, is the link wire. The FPGA sends inverted.
+IO_LOC "link_tx" 80;
+IO_PORT "link_tx" IO_TYPE=LVCMOS18 PULL_MODE=NONE DRIVE=8;
 
 // C5 A (timing master): RX40 on RPLL_T_IN
 IO_LOC "clk_a" 63;

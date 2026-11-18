@@ -18,7 +18,7 @@ NEXTPNR="${NEXTPNR:-$(command -v yowasp-nextpnr-himbaechel-gowin || command -v n
 case "$OUT" in
     dac|lcd|hdmi)
         DEF="-DOUT_$(echo "$OUT" | tr a-z A-Z)"; TOP=top
-        SRC="$R/top.v $R/align_b.v $R/mrc_core.v $R/cordic_angle.v $R/cordic_iter.v $R/mul_dsp.v"
+        SRC="$R/top.v $R/align_b.v $R/mrc_core.v $R/cordic_angle.v $R/cordic_iter.v $R/mul_dsp.v $R/channel_buttons.v $R/channel_link_tx.v"
         DEV=GW1NR-LV9QN88PC6/I5; FAM=GW1N-9C; CST="$HERE/tang_nano_9k.cst"; NAME="tang9k_dual_$OUT" ;;
     1k|1k-single)
         DEF=""; [ "$OUT" = 1k-single ] && DEF="-DSINGLE"; TOP=top_1k

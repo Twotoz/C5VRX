@@ -18,12 +18,18 @@
 // raster is passed straight to the output.
 //
 // Onboard LEDs (active low, bank 3): 0 C5 A clock, 1 C5 B clock, 2 B
-// combined (aligned and coherent), 3 menu passthrough, 4 heartbeat.
-// Button S1 (pin 4): reset. Extends FPGA_IQ, PR #257 and the dual-C5 study.
+// combined (aligned and coherent), 3 menu passthrough, 4 heartbeat, 5 the
+// FPGA owns the channel.
+// Button S1 (pin 4): reset. Button S2 (pin 3): channel for both C5s, short
+// press = next channel, hold = next band, sent over the channel link
+// (channel_link_tx.v, C5 side main/channel_link.h; silent until the first
+// press). Extends FPGA_IQ, PR #257 and the dual-C5 study.
 `default_nettype none
 module top (
     input  wire       xtal,        // 27 MHz
-    input  wire       btn_n,       // S1, active low
+    input  wire       btn_n,       // S1, active low: reset
+    input  wire       btn2_n,      // S2, active low: channel (short) / band (hold)
+    output wire       link_tx,     // channel link to D9 of both C5s, inverted (transistor level shifter)
     input  wire       clk_a,       // C5 A RX40
     input  wire [7:0] iq_a,        // C5 A iq[7:0] = {I sign, I2, I1, I0, Q sign, Q2, Q1, Q0}
     input  wire       clk_b,       // C5 B RX40 (through the 1.8 V divider)
@@ -109,6 +115,13 @@ module top (
         cnt_b <= (sb[2] != sb[1]) ? 21'd0 : (cnt_b[20] ? cnt_b : cnt_b + 21'd1);
         beat  <= beat + 25'd1;
     end
-    assign led_n = ~{1'b0, beat[24], s_menu[2], s_en[2], ~cnt_b[20], ~cnt_a[20]};
+    assign led_n = ~{link_valid, beat[24], s_menu[2], s_en[2], ~cnt_b[20], ~cnt_a[20]};
+
+    // ---- channel link (27 MHz domain) -------------------------------------------
+    wire [5:0] link_index;
+    wire       link_valid;
+    channel_buttons #(.CLK_HZ(27000000)) u_btn (.clk(xtal), .btn_n(btn2_n), .index(link_index), .valid(link_valid));
+    channel_link_tx #(.CLK_HZ(27000000), .INVERT(1)) u_link (.clk(xtal), .valid(link_valid), .index(link_index),
+                                                             .tx(link_tx));
 endmodule
 `default_nettype wire

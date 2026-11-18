@@ -30,6 +30,8 @@
  *   clk    RX40     D10       10    63 (RPLL_T_IN)     79 via 680R series,
  *                                                      820R to GND (bank 3
  *                                                      is 1.8 V)
+ *   link   UART RX  D9        9     channel link from the FPGA, one wire
+ *                                     to both C5s (see below)
  *   GND    GND      GND       -     GND                GND
  *
  * All other Tang pins above are bank 1/2 (3.3 V LVCMOS) header pins that
@@ -46,7 +48,17 @@
  * holds I sign and I bit 2 at 0 for a whole line (64 us). The FPGA passes
  * that raster to its output. Data and clock pause during receiver
  * restarts; the FPGA must reacquire. Common ground, no pull-ups/downs
- * (GPIO7/25 are strapping pads). */
+ * (GPIO7/25 are strapping pads).
+ *
+ * Channel link (HWX_CHANNEL_RX_GPIO, main/channel_link.h): the FPGA owns the
+ * channel. It repeats a four-byte frame (0xC5, 'C', index, 0x79 ^ index) at
+ * 115200 8N1 on one wire to D9 of both C5s; a C5 on another channel retunes
+ * through the menu's channel path (saved, flight-logged). A channel chosen
+ * on a C5 itself is therefore overridden while the FPGA sends. The line
+ * stays silent until the FPGA's channel button is first pressed. On the
+ * Tang Nano 9K the link leaves bank 3 (1.8 V) through one NPN: 1k into the
+ * base from pin 80, emitter to GND, collector to the link wire with 4.7k to
+ * 3.3 V (the FPGA sends inverted). */
 #pragma once
 
 #define HWX_NAME "TANG9K_DUAL"
@@ -60,3 +72,5 @@
 #define HWX_MENU_ON_IQ 1
 /* STRONG LANE OFF and IQ LANE ULTRA, not selectable. */
 #define HWX_FIXED_LANE 1
+/* Channel link from the FPGA (main/channel_link.h): UART RX on D9. */
+#define HWX_CHANNEL_RX_GPIO 9

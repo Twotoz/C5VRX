@@ -193,6 +193,9 @@ extern volatile bool s_detected_std_valid;
 extern volatile video_standard_t s_detected_std;
 extern volatile int64_t s_last_video_us;           /* last burst-confirmed sync */
 extern QueueHandle_t s_commands;
+/* s_commands value for an absolute channel (hardware-experiment channel link,
+ * console.c): CMD_SET_CHANNEL + index. Plain console keys stay below 0x100. */
+#define CMD_SET_CHANNEL 0x100
 void control_start(void);
 bool control_prepare(void); /* reserve control stack/TCB and command queue before driver allocations */
 video_standard_t menu_standard(void);

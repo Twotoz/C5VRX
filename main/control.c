@@ -405,7 +405,8 @@ static void command(int c, unsigned *menu_idle)
 {
     *menu_idle = 0;
     if (menu_status_active()) {   /* a calibration owns the picture */
-        printf("COMMAND %c refused=busy (a calibration or lane test owns the picture; retry when it ends)\n", c);
+        if (c < CMD_SET_CHANNEL)   /* the channel link repeats itself: no message per frame */
+            printf("COMMAND %c refused=busy (a calibration or lane test owns the picture; retry when it ends)\n", c);
         return;
     }
     switch (c) {
@@ -446,7 +447,14 @@ static void command(int c, unsigned *menu_idle)
         if (s_menu_active) menu_render();
         break;
     }
-    default: break;
+    default:
+        /* Hardware experiment channel link (console.c): an absolute channel from the
+         * external FPGA, applied like the menu's channel step. */
+        if (c >= CMD_SET_CHANNEL && c < CMD_SET_CHANNEL + (int)FPV_CHANNELS) {
+            const size_t ch = (size_t)(c - CMD_SET_CHANNEL);
+            if (ch != rf_channel_index() && rf_set_channel(ch) == ESP_OK) after_retune();
+        }
+        break;
     }
 }
 
