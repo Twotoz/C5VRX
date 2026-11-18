@@ -49,6 +49,11 @@ void experimental_load(void)
 #ifdef HWX_NO_DAC
     s_exp.value[EXP_CLOCK_D10] = 0;   /* D10 is a hardware experiment pad */
 #endif
+#ifdef HWX_FIXED_LANE
+    /* An external IQ capture reads the ultrafine bits: no lane switch. */
+    s_exp.value[EXP_IQ_LANE] = 0;
+    s_exp.value[EXP_STRONG_LANE] = 1;   /* OFF */
+#endif
     s_clock_d10 = experimental_get(EXP_CLOCK_D10) != 0;
 }
 bool experimental_phy_restore(void)
@@ -92,6 +97,9 @@ bool experimental_set(unsigned item, uint8_t value)
     if (item >= EXP_ITEMS || !experimental_items[item].count || value >= experimental_items[item].count) return false;
 #ifdef HWX_NO_DAC
     if (item == EXP_CLOCK_D10 && value) return false;
+#endif
+#ifdef HWX_FIXED_LANE
+    if ((item == EXP_IQ_LANE && value) || (item == EXP_STRONG_LANE && value != 1)) return false;
 #endif
     const uint8_t old = item == EXP_AUTO_PROFILE ? profile_live_mode() : s_exp.value[item];
     if (old == value && s_exp.value[item] == value) { s_failed &= ~(1u << item); return true; }

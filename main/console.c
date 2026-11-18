@@ -44,6 +44,9 @@ void firmware_print(void)
 #else
            1u);
 #endif
+#ifdef HWX_RX_CLK_GPIO
+    printf("HWX rx_clk_gpio=%d\n", HWX_RX_CLK_GPIO);
+#endif
 #endif
 }
 

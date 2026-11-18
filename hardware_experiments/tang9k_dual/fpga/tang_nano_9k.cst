@@ -1,0 +1,79 @@
+// C5VRX by Twotoz and the C5VRX contributors: hardware experiment
+// TANG9K_DUAL, Sipeed Tang Nano 9K physical constraints (QFN88P pin numbers,
+// Sipeed pinmap: bank 1/2 = 3.3 V, bank 3 = 1.8 V). The C5 wiring is the
+// same for every output; see ../hwx.h for the XIAO side. Pins 68-75 (HDMI,
+// AC-coupled with 49.9R pull-ups on the connector side) and the 40-pin LCD
+// pins (33-35, 40-42, 51, 53-57, 68-75) carry no C5 signal.
+
+IO_LOC "xtal" 52;
+IO_PORT "xtal" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "btn_n" 4;
+IO_PORT "btn_n" IO_TYPE=LVCMOS18 PULL_MODE=UP;
+
+// C5 A (timing master): RX40 on RPLL_T_IN
+IO_LOC "clk_a" 63;
+IO_PORT "clk_a" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_a[0]" 38;
+IO_PORT "iq_a[0]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_a[1]" 37;
+IO_PORT "iq_a[1]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_a[2]" 36;
+IO_PORT "iq_a[2]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_a[3]" 39;
+IO_PORT "iq_a[3]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_a[4]" 25;
+IO_PORT "iq_a[4]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_a[5]" 26;
+IO_PORT "iq_a[5]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_a[6]" 27;
+IO_PORT "iq_a[6]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_a[7]" 28;
+IO_PORT "iq_a[7]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+// C5 B: RX40 through 680R series / 820R to GND into bank 3 (1.8 V)
+IO_LOC "clk_b" 79;
+IO_PORT "clk_b" IO_TYPE=LVCMOS18 PULL_MODE=NONE;
+IO_LOC "iq_b[0]" 29;
+IO_PORT "iq_b[0]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_b[1]" 30;
+IO_PORT "iq_b[1]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_b[2]" 77;
+IO_PORT "iq_b[2]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_b[3]" 76;
+IO_PORT "iq_b[3]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_b[4]" 48;
+IO_PORT "iq_b[4]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_b[5]" 49;
+IO_PORT "iq_b[5]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_b[6]" 31;
+IO_PORT "iq_b[6]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "iq_b[7]" 32;
+IO_PORT "iq_b[7]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+// OUT_DAC: six-bit composite, bit 0 (8.2k) .. bit 5 (240R)
+IO_LOC "dac[0]" 33;
+IO_PORT "dac[0]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC "dac[1]" 34;
+IO_PORT "dac[1]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC "dac[2]" 40;
+IO_PORT "dac[2]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC "dac[3]" 35;
+IO_PORT "dac[3]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC "dac[4]" 41;
+IO_PORT "dac[4]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC "dac[5]" 42;
+IO_PORT "dac[5]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+
+// onboard LEDs (bank 3, active low)
+IO_LOC "led_n[0]" 10;
+IO_PORT "led_n[0]" IO_TYPE=LVCMOS18 PULL_MODE=UP DRIVE=8;
+IO_LOC "led_n[1]" 11;
+IO_PORT "led_n[1]" IO_TYPE=LVCMOS18 PULL_MODE=UP DRIVE=8;
+IO_LOC "led_n[2]" 13;
+IO_PORT "led_n[2]" IO_TYPE=LVCMOS18 PULL_MODE=UP DRIVE=8;
+IO_LOC "led_n[3]" 14;
+IO_PORT "led_n[3]" IO_TYPE=LVCMOS18 PULL_MODE=UP DRIVE=8;
+IO_LOC "led_n[4]" 15;
+IO_PORT "led_n[4]" IO_TYPE=LVCMOS18 PULL_MODE=UP DRIVE=8;
+IO_LOC "led_n[5]" 16;
+IO_PORT "led_n[5]" IO_TYPE=LVCMOS18 PULL_MODE=UP DRIVE=8;

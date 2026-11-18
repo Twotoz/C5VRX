@@ -1,5 +1,44 @@
 # C5VRX research ledger (C5VRX-1 to C5VRX-5)
 
+## Hardware experiment TANG9K_DUAL: two C5s, MRC on a Tang Nano 9K (2026-11-18)
+
+Operator request: two C5s feed one Sipeed Tang Nano 9K (GW1NR-9), which
+combines both IQ streams and drives the output (six-bit DAC now; 40-pin LCD
+or HDMI selectable at build time, both still need a video decoder). Extends
+FPGA_IQ, the PR #257 / LAP87 clock export (issue #256) and the dual-C5
+selection-diversity notes in `legacy/c5vrx3/docs/range-v2-research-notes.md`
+section 10. Firmware: `hardware_experiments/tang9k_dual/hwx.h` (front pads
+D0-D5, D7, D8 for Q4/I4 ultrafine; GPIO11 avoided; PARLIO RX sample clock
+exported on D10 via `clk_out_gpio_num`; STRONG LANE / IQ LANE held on
+ultrafine; menu raster on the pads as FPGA_IQ). FPGA: `hardware_experiments/
+tang9k_dual/fpga/` (RTL, Tang Nano 9K constraints, open-source build).
+
+Pipeline: MODEM_DIAG Q4/I4 {9,6,5,4} per C5 -> GPIO matrix pads -> FPGA
+capture on each C5's own RX40 clock (PLL_F240M/6, every second sample of
+the ~80 MS/s modem bus, as the receiver's own PARLIO RX) -> C5 B through a
+64-entry dual-clock buffer, whole-sample alignment to C5 A by cross-product
+correlation (acquisition over 57 offsets, then lag -1/0/+1 tracking) ->
+pre-detection MRC at 40 MS/s (cross-product phase tracker tau 3.2 us,
+envelope-moment SNR weights a/sigma^2 every 128 samples) -> 10-step CORDIC
+discriminator -> one unique six-bit code per 40 MS/s sample on the DAC pins
+(no [D,D] pairs, no BitScrambler, no CPU). C5 A is the timing master. The
+receivers keep their own gain, DC and AFC on RX40/raw32K.
+
+Evidence, host only: integer model `fpga/model/mrc_model.py` against a float
+MRC and one C5 (`eval_model.py`, research/sim.py NTSC deviation 0.7, two
+branches with independent noise, 300 Hz Rayleigh fading, own LO and AGC,
+three seeds): lock fraction one C5 / MRC at 4 dB C/N 0.40 / 1.00 static and
+0.48 / 0.92 fading; SINAD +3 to +5 dB. An earlier float study (40 vs 80 MS/s,
+4 vs 5 bits, 0-25 ns and 15/60 kHz LO offsets between the C5s): 80 MS/s gave
+nothing, a fifth bit +0.3-0.7 dB SINAD, MRC far more; selection per line
+recovered most of the lock gain under fading but none static. RTL
+`mrc_core.v` is bit-exact with the model in Icarus Verilog (0 mismatches,
+four cases); `align_b.v` locks a 40 ppm fast B clock in 3 ms and holds it
+within one sample, with a combined error within 0.05 % of ideal pairs. No
+synthesis-proven timing, board capture, eye/skew measurement, goggle check
+or range result yet; the ~80 vs 40 MS/s pad toggle rate (FPGA_IQ note) is
+still unmeasured.
+
 ## Hardware experiment FPGA_IQ: raw Q4/I4 to an FPGA (2026-11-16)
 
 Operator request: a hardware experiment build without the resistor DAC that
