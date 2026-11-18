@@ -2,21 +2,35 @@
 # C5VRX by Twotoz and the C5VRX contributors: TANG9K_DUAL bitstream build
 # with the open-source Gowin flow (Yosys, nextpnr-himbaechel, Apicula).
 #   pip install apycula yowasp-yosys yowasp-nextpnr-himbaechel-gowin
-#   hardware_experiments/tang9k_dual/fpga/build.sh dac
-# Writes build/tang9k_dual_<out>.fs; flash with openFPGALoader -b tangnano9k.
+#   hardware_experiments/tang9k_dual/fpga/build.sh dac        Tang Nano 9K, two C5s, DAC
+#   hardware_experiments/tang9k_dual/fpga/build.sh 1k-single  Tang Nano 1K, one C5, DAC
+#   hardware_experiments/tang9k_dual/fpga/build.sh 1k         Tang Nano 1K, two C5s, lite
+#                                                             combiner: does NOT fit (121% LUT)
+# (lcd and hdmi stop with "not implemented yet".) Writes build/<name>.fs;
+# flash with openFPGALoader -b tangnano9k / -b tangnano1k.
 set -euo pipefail
 OUT="${1:-dac}"
-case "$OUT" in dac) DEF=OUT_DAC ;; lcd) DEF=OUT_LCD ;; hdmi) DEF=OUT_HDMI ;;
-    *) echo "usage: $0 dac|lcd|hdmi" >&2; exit 2 ;; esac
 HERE="$(cd "$(dirname "$0")" && pwd)"
+R="$HERE/rtl"
 B="$HERE/build"; mkdir -p "$B"
 YOSYS="${YOSYS:-$(command -v yowasp-yosys || command -v yosys)}"
 NEXTPNR="${NEXTPNR:-$(command -v yowasp-nextpnr-himbaechel-gowin || command -v nextpnr-himbaechel)}"
-"$YOSYS" -q -l "$B/yosys_$OUT.log" -p "
-  read_verilog -D$DEF -I$HERE/rtl $HERE/rtl/top.v $HERE/rtl/align_b.v $HERE/rtl/mrc_core.v $HERE/rtl/cordic_angle.v $HERE/rtl/cordic_iter.v $HERE/rtl/mul_dsp.v;
-  synth_gowin ${SYNTH_OPTS:--nodsp} -top top -json $B/tang9k_dual_$OUT.json"
-"$NEXTPNR" -q -l "$B/nextpnr_$OUT.log" --json "$B/tang9k_dual_$OUT.json" --write "$B/tang9k_dual_${OUT}_pnr.json" \
-  --device GW1NR-LV9QN88PC6/I5 --vopt family=GW1N-9C --vopt cst="$HERE/tang_nano_9k.cst" \
-  --freq 40 --report "$B/report_$OUT.json"
-gowin_pack -d GW1N-9C -o "$B/tang9k_dual_$OUT.fs" "$B/tang9k_dual_${OUT}_pnr.json"
-echo "bitstream: $B/tang9k_dual_$OUT.fs"
+case "$OUT" in
+    dac|lcd|hdmi)
+        DEF="-DOUT_$(echo "$OUT" | tr a-z A-Z)"; TOP=top
+        SRC="$R/top.v $R/align_b.v $R/mrc_core.v $R/cordic_angle.v $R/cordic_iter.v $R/mul_dsp.v"
+        DEV=GW1NR-LV9QN88PC6/I5; FAM=GW1N-9C; CST="$HERE/tang_nano_9k.cst"; NAME="tang9k_dual_$OUT" ;;
+    1k|1k-single)
+        DEF=""; [ "$OUT" = 1k-single ] && DEF="-DSINGLE"; TOP=top_1k
+        SRC="$R/top_1k.v $R/align_lite.v $R/lite_core.v"
+        DEV=GW1NZ-LV1QN48C6/I5; FAM=GW1NZ-1; CST="$HERE/tang_nano_1k.cst"; NAME="tang1k_$OUT" ;;
+    *) echo "usage: $0 dac|lcd|hdmi|1k|1k-single" >&2; exit 2 ;;
+esac
+EXTRA=""; [ "$FAM" = GW1NZ-1 ] && EXTRA="--vopt sspi_as_gpio"
+"$YOSYS" -q -l "$B/yosys_$NAME.log" -p "
+  read_verilog $DEF -I$R $SRC;
+  synth_gowin ${SYNTH_OPTS:--nodsp} -top $TOP -json $B/$NAME.json"
+"$NEXTPNR" -q -l "$B/nextpnr_$NAME.log" --json "$B/$NAME.json" --write "$B/${NAME}_pnr.json" \
+  --device "$DEV" --vopt family="$FAM" --vopt cst="$CST" $EXTRA --freq 40 --report "$B/report_$NAME.json"
+gowin_pack -d "$FAM" -o "$B/$NAME.fs" "$B/${NAME}_pnr.json"
+echo "bitstream: $B/$NAME.fs"

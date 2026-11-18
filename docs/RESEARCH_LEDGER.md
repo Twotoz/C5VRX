@@ -39,6 +39,17 @@ synthesis-proven timing, board capture, eye/skew measurement, goggle check
 or range result yet; the ~80 vs 40 MS/s pad toggle rate (FPGA_IQ note) is
 still unmeasured.
 
+Tang Nano 1K (GW1NZ-1: 1152 LUT4, 4 block RAMs, no multipliers), operator
+question 2026-11-18: a multiplier-free "lite" combiner computes the same
+MRC in the angle/log domain with tables (`fpga/model/lite_model.py`,
+`rtl/lite_core.v`, bit-exact in Icarus; `rtl/align_lite.v` with sign-only
+correlators). Host model: it keeps most of the gain (lock at 4 dB C/N one
+C5 / 9K MRC / 1K lite: 0.39 / 1.00 / 1.00 static, 0.48 / 0.92 / 0.90 300 Hz
+fading; SINAD 0.1-0.8 dB under the 9K). Negative result, place and route:
+two C5s with the lite combiner do not fit the 1K (1396/1152 LUT4 = 121%,
+all four block RAMs). One C5 alone on the 1K (`build.sh 1k-single`, DAC)
+uses 127 LUT4 (11%), one block RAM, 77 MHz at 40 MHz.
+
 ## Hardware experiment FPGA_IQ: raw Q4/I4 to an FPGA (2026-11-16)
 
 Operator request: a hardware experiment build without the resistor DAC that
