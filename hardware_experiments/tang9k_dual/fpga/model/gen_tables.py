@@ -40,7 +40,14 @@ def main():
     body += rom('g_rom', 8, m.G) + rom('isq_rom', 8, m.ISQ) + rom('cs_rom', 16, cs)
     body += ['end', '']
     (HERE.parent / 'rtl' / 'rom_init.vh').write_text('\n'.join(body))
-    print('wrote rtl/tables.vh, rtl/rom_init.vh')
+    # mrc3_core.v: the weight tables once, the cos/sin table per tracker
+    gi = head + ['// weight ROMs (block RAM), included inside mrc3_core.', 'initial begin']
+    gi += rom('g_rom', 8, m.G) + rom('isq_rom', 8, m.ISQ) + ['end', '']
+    (HERE.parent / 'rtl' / 'rom_gi_init.vh').write_text('\n'.join(gi))
+    csi = head + ['// cos/sin ROM (block RAM), included inside mrc3_trk.', 'initial begin']
+    csi += rom('cs_rom', 16, cs) + ['end', '']
+    (HERE.parent / 'rtl' / 'rom_cs_init.vh').write_text('\n'.join(csi))
+    print('wrote rtl/tables.vh, rtl/rom_init.vh, rtl/rom_gi_init.vh, rtl/rom_cs_init.vh')
 
 
 if __name__ == '__main__':

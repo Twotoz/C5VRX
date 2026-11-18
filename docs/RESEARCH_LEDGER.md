@@ -62,6 +62,23 @@ the line stays silent until the first press. Icarus check of the button and
 transmitter against the parser rules; firmware not compiled here, no board
 test.
 
+Tripleversity (operator request 2026-11-18: three C5s on a Tang Nano 20K,
+`hardware_experiments/tripleversity/hwx.h`, FPGA `top3_20k.v`, `mrc3_core.v`):
+each C5 sends only the top three bits of its 4-bit lane (sign, bit 2, bit 1
+of I and Q; STRONG LANE / IQ LANE stay selectable, no HWX_FIXED_LANE) plus
+its RX40 clock: 3 x 7 wires on the 20K's 3.3 V header, beside the 40-pin
+LCD. B and C each get their own `align_b.v` and phase tracker; weights for
+all three every 128 samples. Host model (`fpga/model/mrc3_model.py`,
+`eval3.py`, 300 Hz fading, lock / SINAD dB): 4 dB C/N one C5 0.63 / -6.9,
+two C5s 4-bit 0.91 / -4.0, three C5s 3-bit 0.96 / -1.2; 6 dB 0.52 / -8.2,
+0.93 / -2.8, 1.00 / 1.1. RTL bit-exact with the model in Icarus
+(`fpga/sim/run_tb3.py`: 0 mismatches, seven cases: three/two/one branch,
+static and fading, random raw words; latency 17). Open-source place and
+route for GW2AR-18 (`build.sh 20k`, code on the LCD's green lines as a fit
+stage): 8380 LUT4 (40 %), 3 BSRAM, 45 MULT9 + 4 MULT18, A clock 100 MHz
+against 40 MHz; bitstream packs. The LCD video decoder, OSD, DVR and button
+markers are not written; no board capture, goggle or range result.
+
 ## Hardware experiment FPGA_IQ: raw Q4/I4 to an FPGA (2026-11-16)
 
 Operator request: a hardware experiment build without the resistor DAC that

@@ -89,6 +89,31 @@ class HardwareExperiments(unittest.TestCase):
         self.assertFalse(set(dac) & set(pins))
         self.assertLessEqual(set(dac), lcd - {68, 69, 70, 71, 72, 73, 74, 75})
 
+    def test_tripleversity_matches_the_tang_nano_20k_constraints(self):
+        d = defines((ROOT / 'hardware_experiments/tripleversity/hwx.h').read_text())
+        self.assertEqual(d['HWX_IQ_GPIO_NUMS'], [1, 0, 25, 7, 23, 24, 12, 8])
+        self.assertEqual(int(d['HWX_RX_CLK_GPIO']), 10)
+        self.assertNotIn('HWX_FIXED_LANE', d)                   # STRONG LANE stays selectable
+        self.assertEqual(set(d), {'HWX_NAME', 'HWX_IQ_GPIO_NUMS', 'HWX_RX_CLK_GPIO', 'HWX_NO_DAC',
+                                  'HWX_MENU_ON_IQ', 'HWX_CHANNEL_RX_GPIO'})
+        cst = (ROOT / 'hardware_experiments/tang9k_dual/fpga/tang_nano_20k.cst').read_text()
+        loc = {n: int(p) for n, p in re.findall(r'IO_LOC "([\w\[\]]+)" (\d+);', cst)}
+        iotype = dict(re.findall(r'IO_PORT "([\w\[\]]+)" IO_TYPE=(\w+)', cst))
+        lcd = set(range(25, 43)) | {48, 49, 77}                  # Sipeed rgb_lcd example
+        c5 = [f'iq_{s}[{k}]' for s in 'abc' for k in range(6)] + ['clk_a', 'clk_b', 'clk_c', 'link_tx']
+        pins = [loc[n] for n in c5]
+        self.assertEqual(len(pins), len(set(pins)), 'a Tang pin is used twice')
+        self.assertFalse(set(pins) & lcd, 'C5 wiring must not use LCD pins')
+        for n in c5:
+            self.assertEqual(iotype[n], 'LVCMOS33', n)
+        # the table in hwx.h names the same pins
+        h = (ROOT / 'hardware_experiments/tripleversity/hwx.h').read_text()
+        for k in range(6):
+            row = re.search(rf'iq_x\[{k}\]\s+(\d+)\s+(\d+)\s+(\d+)', h)
+            self.assertEqual([int(v) for v in row.groups()], [loc[f'iq_{s}[{k}]'] for s in 'abc'])
+        row = re.search(r'clk_x\s+(\d+)\s+(\d+)\s+(\d+)', h)
+        self.assertEqual([int(v) for v in row.groups()], [loc[f'clk_{s}'] for s in 'abc'])
+
     def test_production_never_includes_an_experiment(self):
         rf = (ROOT / 'main/rf.h').read_text()
         self.assertIn('#ifdef C5VRX_HWX\n#include "hwx.h"\n#endif', rf)
