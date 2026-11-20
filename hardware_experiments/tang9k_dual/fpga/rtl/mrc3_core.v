@@ -2,9 +2,13 @@
 // combiner and demodulator. Pre-detection maximal-ratio combining of C5 A
 // with up to two more C5s (3-bit I/Q each: the top three bits of their 4-bit
 // lane), a cross-product phase tracker per extra branch, then the CORDIC FM
-// discriminator: one six-bit code per 40 MS/s sample. The arithmetic and
-// pipeline of mrc_core.v, generalised; bit-exact with fpga/model/mrc3_model.py
+// discriminator. The arithmetic and pipeline of mrc_core.v, generalised;
+// bit-exact with fpga/model/mrc3_model.py run(..., disc=True, valid=...)
 // (fpga/sim/run_tb3.py). raw_b / raw_c must be aligned to raw_a (align_b.v).
+// va/vb/vc: the sample of that C5 is IQ (0 while it sends a marker): weight 0,
+// its moments hold, a tracker holds while its branch or C5 A is invalid.
+// Discriminator: the D32-R2 rule on the combined 16-bit angle (1024 sectors,
+// 50 ns step, 0.7 of a step outside the video window), one code per 50 ns.
 `default_nettype none
 
 // tracker and rotation of one extra branch k against A (the mrc_core.v B path)
@@ -12,6 +16,7 @@ module mrc3_trk (
     input  wire              clk,
     input  wire              rst,
     input  wire              run2,
+    input  wire              upd2,                         // S2: this sample updates the tracker
     input  wire [6:0]        idx2,
     input  wire signed [4:0] ca_i1, ca_q1, ck_i1, ck_q1,   // S1 cells
     output reg  signed [12:0] rk_i3, rk_q3                 // S3: c_k rotated by theta_k
@@ -49,10 +54,10 @@ module mrc3_trk (
         if (rst) begin
             xr <= 0; xi <= 0; cos_r <= 8'sd63; sin_r <= 8'sd0;
         end else if (run2) begin
-            xr <= xr_n; xi <= xi_n;
+            if (upd2) begin xr <= xr_n; xi <= xi_n; end
             if (idx2[3:0] == 4'd15) begin
                 cos_r <= cos_pend; sin_r <= sin_pend;
-                th_x <= xr_n >>> 4; th_y <= xi_n >>> 4; th_go <= 1'b1;
+                th_x <= (upd2 ? xr_n : xr) >>> 4; th_y <= (upd2 ? xi_n : xi) >>> 4; th_go <= 1'b1;
             end
         end
         rk_i3 <= $signed(r_ic[12:0]) - $signed(r_qs[12:0]);
@@ -80,6 +85,7 @@ module mrc3_core (
     input  wire [5:0] raw_c,
     input  wire       en_b,
     input  wire       en_c,
+    input  wire       va, vb, vc,   // per sample, with raw_*
     output reg  [5:0] code
 );
     reg [7:0] g_rom   [0:255];
@@ -98,12 +104,13 @@ module mrc3_core (
 
     // ---- R0 / S1 ----------------------------------------------------------------
     reg  [5:0] ra, rb, rc;
+    reg  [2:0] v0, v1, v2, v3;
     reg  [6:0] idx0, idx1, idx2, idx3;
     reg        run0, run1, run2, run3;
     always @(posedge clk) begin
         if (rst) begin idx0 <= 7'd0; run0 <= 1'b0; end
         else begin
-            ra <= raw_a; rb <= raw_b; rc <= raw_c;
+            ra <= raw_a; rb <= raw_b; rc <= raw_c; v0 <= {vc, vb, va};
             idx0 <= run0 ? idx0 + 7'd1 : 7'd0;
             run0 <= 1'b1;
         end
@@ -113,7 +120,7 @@ module mrc3_core (
         ca_i1 <= cell3(ra[5:3]); ca_q1 <= cell3(ra[2:0]);
         cb_i1 <= cell3(rb[5:3]); cb_q1 <= cell3(rb[2:0]);
         cc_i1 <= cell3(rc[5:3]); cc_q1 <= cell3(rc[2:0]);
-        idx1 <= idx0; run1 <= run0 & ~rst;
+        idx1 <= idx0; run1 <= run0 & ~rst; v1 <= v0;
     end
 
     // ---- S2: powers ------------------------------------------------------------
@@ -124,14 +131,14 @@ module mrc3_core (
         pb2 <= sq5(cb_i1) + sq5(cb_q1);
         pc2 <= sq5(cc_i1) + sq5(cc_q1);
         ca_i2 <= ca_i1; ca_q2 <= ca_q1;
-        idx2 <= idx1; run2 <= run1 & ~rst;
+        idx2 <= idx1; run2 <= run1 & ~rst; v2 <= v1;
     end
 
     // ---- trackers (B, C) -----------------------------------------------------------
     wire signed [12:0] rb_i3, rb_q3, rc_i3, rc_q3;
-    mrc3_trk u_tb (.clk(clk), .rst(rst), .run2(run2), .idx2(idx2), .ca_i1(ca_i1), .ca_q1(ca_q1),
+    mrc3_trk u_tb (.clk(clk), .rst(rst), .run2(run2), .upd2(v2[0] & v2[1]), .idx2(idx2), .ca_i1(ca_i1), .ca_q1(ca_q1),
                    .ck_i1(cb_i1), .ck_q1(cb_q1), .rk_i3(rb_i3), .rk_q3(rb_q3));
-    mrc3_trk u_tc (.clk(clk), .rst(rst), .run2(run2), .idx2(idx2), .ca_i1(ca_i1), .ca_q1(ca_q1),
+    mrc3_trk u_tc (.clk(clk), .rst(rst), .run2(run2), .upd2(v2[0] & v2[2]), .idx2(idx2), .ca_i1(ca_i1), .ca_q1(ca_q1),
                    .ck_i1(cc_i1), .ck_q1(cc_q1), .rk_i3(rc_i3), .rk_q3(rc_q3));
 
     // ---- S3: moments ------------------------------------------------------------
@@ -154,20 +161,20 @@ module mrc3_core (
         if (rst) begin
             for (k = 0; k < 3; k = k + 1) begin m2[k] <= 0; m4[k] <= 0; end
         end else if (run2) begin
-            for (k = 0; k < 3; k = k + 1) begin
+            for (k = 0; k < 3; k = k + 1) if (v2[k]) begin
                 m2[k] <= m2[k] + pk[k] - (m2[k] >> 6);
                 m4[k] <= m4[k] + psq[k] - (m4[k] >> 6);
             end
             if (idx2 == 7'd127) begin
                 for (k = 0; k < 3; k = k + 1) begin
-                    snap_m2[k] <= m2[k] + pk[k] - (m2[k] >> 6);
-                    snap_m4[k] <= m4[k] + psq[k] - (m4[k] >> 6);
+                    snap_m2[k] <= v2[k] ? m2[k] + pk[k] - (m2[k] >> 6) : m2[k];
+                    snap_m4[k] <= v2[k] ? m4[k] + psq[k] - (m4[k] >> 6) : m4[k];
                 end
                 snap_go <= 1'b1;
             end
         end
         ca_i3 <= ca_i2; ca_q3 <= ca_q2;
-        idx3 <= idx2; run3 <= run2 & ~rst;
+        idx3 <= idx2; run3 <= run2 & ~rst; v3 <= v2;
     end
 
     // ---- weight engine: three branches in turn ------------------------------------
@@ -241,11 +248,12 @@ module mrc3_core (
 
     // ---- S4: combine ------------------------------------------------------------------
     reg signed [23:0] zi4, zq4;
-    wire [7:0] wb_eff = en_b ? w_use[1] : 8'd0, wc_eff = en_c ? w_use[2] : 8'd0;
+    wire [7:0] wa_eff = v3[0] ? w_use[0] : 8'd0;
+    wire [7:0] wb_eff = en_b && v3[1] ? w_use[1] : 8'd0, wc_eff = en_c && v3[2] ? w_use[2] : 8'd0;
     wire [17:0] a_i, a_q;
     wire [35:0] b_i, b_q, c_i, c_q;
-    mul9  u_ai (.a({1'b0, w_use[0]}), .b({{4{ca_i3[4]}}, ca_i3}), .y(a_i));
-    mul9  u_aq (.a({1'b0, w_use[0]}), .b({{4{ca_q3[4]}}, ca_q3}), .y(a_q));
+    mul9  u_ai (.a({1'b0, wa_eff}), .b({{4{ca_i3[4]}}, ca_i3}), .y(a_i));
+    mul9  u_aq (.a({1'b0, wa_eff}), .b({{4{ca_q3[4]}}, ca_q3}), .y(a_q));
     mul18 u_bi (.a({10'd0, wb_eff}), .b({{5{rb_i3[12]}}, rb_i3}), .y(b_i));
     mul18 u_bq (.a({10'd0, wb_eff}), .b({{5{rb_q3[12]}}, rb_q3}), .y(b_q));
     mul18 u_ci (.a({10'd0, wc_eff}), .b({{5{rc_i3[12]}}, rc_i3}), .y(c_i));
@@ -260,15 +268,36 @@ module mrc3_core (
         zq4 <= $signed({a_q[17:0], 6'd0}) + $signed(b_q[23:0]) + $signed(c_q[23:0]);
     end
 
-    // ---- discriminator -------------------------------------------------------------
+    // ---- discriminator: D32-R2 rule on the combined angle (mrc3_model.disc50) ----
     wire [15:0] phi;
     cordic_angle #(.W(18), .N(10)) u_phi (.clk(clk), .x_in(zi4[23:6]), .y_in(zq4[23:6]), .ang(phi));
-    reg  [15:0] phi_prev;
-    reg  signed [31:0] acc;
+    // sample parity and run, carried along zi4 (1) and the CORDIC (N + 1 = 11)
+    reg [11:0] ev_d, run_d;
     always @(posedge clk) begin
-        phi_prev <= phi;
-        acc      <= $signed(phi - phi_prev) * 32'sd168 + 32'sd1684275;
-        code     <= (acc[31]) ? 6'd0 : (acc[31:16] > 16'd63) ? 6'd63 : acc[21:16];
+        ev_d  <= {ev_d[10:0], ~idx3[0]};
+        run_d <= rst ? 12'd0 : {run_d[10:0], run3};
+    end
+    wire        ev_phi = ev_d[11] & run_d[11];
+    wire [9:0]  tok = phi[15:6] ^ 10'h200;          // ((phi + 32768) >> 6) & 1023
+    reg  [9:0]  st_s;
+    reg         st_ok;
+    wire signed [9:0]  d = tok - st_s;               // wrapped to -512..511
+    wire signed [17:0] d179 = d * 18'sd179;
+    wire        inwin = d >= -10'sd312 && d <= 10'sd384;
+    wire signed [9:0]  step = inwin ? d : d179[17:8];
+    wire signed [17:0] cx = step * 18'sd105 + 18'sd32896;
+    wire signed [9:0]  cy = cx[17:8];                // floor(cx / 256)
+    wire [17:0] c5 = cy[8:0] * 9'd205;               // floor(cy / 5) for 0 <= cy < 1029
+    wire [7:0]  cq = c5[17:10];
+    always @(posedge clk) begin
+        if (rst) begin st_ok <= 1'b0; code <= 6'd25; end
+        else if (ev_phi) begin
+            if (!st_ok) begin st_s <= tok; st_ok <= 1'b1; code <= 6'd25; end
+            else begin
+                st_s <= st_s + step;
+                code <= cy[9] ? 6'd0 : (cq > 8'd63) ? 6'd63 : cq[5:0];
+            end
+        end
     end
 endmodule
 `default_nettype wire

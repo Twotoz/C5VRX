@@ -33,9 +33,26 @@ def stimulus(seed, cn, fd, n):
     return [mrc3_model.to_raw3(eval3.branch_y(z80, cn, rng, fd)[0])[:n] for _ in range(3)]
 
 
-def run(raws, en, work):
+def markers(raws, seed, n, count=6):
+    """Marker windows (fpga_link.h): about 480 samples of constant words on one
+    C5, which the FPGA flags invalid. Returns the raws with the words in place
+    and the per-sample valid mask."""
+    rng = np.random.default_rng(seed + 99)
+    raws = [np.array(r, np.int64) for r in raws]
+    valid = np.ones((3, n), np.int64)
+    for _ in range(count):
+        b, k0 = int(rng.integers(0, 3)), int(rng.integers(300, n - 600))
+        for j in range(6):
+            raws[b][k0 + 80 * j:k0 + 80 * (j + 1)] = int(rng.integers(0, 64))
+        valid[b, k0:k0 + 480] = 0
+    return raws, valid
+
+
+def run(raws, en, work, valid):
     for name, r in zip('abc', raws):
         (work / f'raw_{name}.hex').write_text('\n'.join(f'{int(v):02x}' for v in r) + '\n')
+    (work / 'valid.hex').write_text('\n'.join(f'{int(valid[0, k] | valid[1, k] << 1 | valid[2, k] << 2):x}'
+                                              for k in range(valid.shape[1])) + '\n')
     subprocess.run(['vvp', '-n', str(work / 'tb'), f'+n={len(raws[0])}', f'+en_b={en[1]}', f'+en_c={en[2]}'],
                    cwd=work, check=True, stdout=subprocess.DEVNULL)
     return np.array([int(x, 16) if 'x' not in x and 'z' not in x else -1
@@ -57,8 +74,9 @@ def main():
                 raws = [np.random.default_rng(seed + b).integers(0, 64, n) for b in range(3)]
             else:
                 raws = stimulus(seed, cn, fd, n)
-            hw = run(raws, en, work)
-            ref = mrc3_model.run(raws, tuple(bool(e) for e in en)).astype(np.int64)
+            raws, valid = markers(raws, seed, n, 0 if seed == 6 else 6)
+            hw = run(raws, en, work, valid)
+            ref = mrc3_model.run(raws, tuple(bool(e) for e in en), disc=True, valid=valid).astype(np.int64)
             best = None
             for lat in range(5, 40):
                 m = np.count_nonzero(hw[lat + WARMUP:lat + len(ref)] != ref[WARMUP:len(hw) - lat])
