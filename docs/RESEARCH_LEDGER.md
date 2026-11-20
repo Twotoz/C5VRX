@@ -79,6 +79,25 @@ stage): 8380 LUT4 (40 %), 3 BSRAM, 45 MULT9 + 4 MULT18, A clock 100 MHz
 against 40 MHz; bitstream packs. The LCD video decoder, OSD, DVR and button
 markers are not written; no board capture, goggle or range result.
 
+Tripleversity against one C5VRX (2026-11-20, host simulation only,
+`fpga/model/eval_vs_c5vrx.py`, `eval_disc.py`; same channel for every
+variant: NTSC deviation 0.7, independent noise, Rayleigh fading per antenna,
+own LO and AGC, four seeds of one field). Negative result first: the plain
+per-sample CORDIC phase difference of `mrc3_core.v` on one C5 is 3-5 dB
+behind the production D32-R2 decoder (lock 0.9 at 5.6 against 1.8 dB C/N
+static), which ate most of the combining gain (three C5s only +0.6 to +3.0 dB
+over one C5VRX). With D32-R2's own rule on the combined 16-bit angle (phase
+difference over 50 ns, a step outside -110..+135 degrees moves the state 0.7
+of the way, 1024 sectors) one C5 through the FPGA equals D32-R2 (0.0 to
+-1.0 dB) and Tripleversity gains, in C/N for the same lock fraction against
+one C5VRX (D32-R2): lock 0.5 +3.2 / +3.8 / +3.6 dB and lock 0.9 +3.9 / +8.3 /
++5.7 dB (static / 100 Hz / 300 Hz fading); two C5s (DVR mode) +1.6 to +2.5 and
++2.0 to +4.4 dB. Luma SINAD at equal C/N is 5-6 dB higher with three C5s
+(static 4 dB C/N: -3.9 to +1.9 dB). 32 sectors give the same lock; a 25 ns
+step is worse. The fading figures at lock 0.9 rest on few seeds. Not in the
+RTL yet (the discriminator of `mrc3_core.v` is still the plain one); no
+board, goggle or range result.
+
 ## Hardware experiment FPGA_IQ: raw Q4/I4 to an FPGA (2026-11-16)
 
 Operator request: a hardware experiment build without the resistor DAC that

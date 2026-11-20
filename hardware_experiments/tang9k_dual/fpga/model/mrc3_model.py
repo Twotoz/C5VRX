@@ -43,7 +43,7 @@ def _cell(v3):
 
 
 @njit(cache=True)
-def _run(raw, en, G, ISQ, COS, SIN, ATAN, out):
+def _run(raw, en, G, ISQ, COS, SIN, ATAN, out, phis):
     nb, n = raw.shape
     m2 = np.zeros(3, np.int64)
     m4 = np.zeros(3, np.int64)
@@ -73,6 +73,7 @@ def _run(raw, en, G, ISQ, COS, SIN, ATAN, out):
             zi += wb * ri
             zq += wb * rq_
         phi = cordic_angle(zi >> Z_SHIFT, zq >> Z_SHIFT, ATAN)
+        phis[k] = phi
         d = (phi - phi_prev) & 0xFFFF
         if d >= 32768:
             d -= 65536
@@ -111,15 +112,17 @@ def _run(raw, en, G, ISQ, COS, SIN, ATAN, out):
                 pend[b] = v if v > 1 else 1
 
 
-def run(raws, enable=(True, True, True)):
-    """raws: list of 1..3 arrays of 6-bit samples {I2..I0, Q2..Q0}, C5 A first."""
+def run(raws, enable=(True, True, True), return_phi=False):
+    """raws: list of 1..3 arrays of 6-bit samples {I2..I0, Q2..Q0}, C5 A first.
+    return_phi: also return the combined angle per sample (2^-16 turn)."""
     raw = np.zeros((3, len(raws[0])), np.int64)
     for b, r in enumerate(raws):
         raw[b] = np.asarray(r, np.int64)
     en = np.array([1, int(enable[1] and len(raws) > 1), int(enable[2] and len(raws) > 2)], np.int64)
     out = np.zeros(raw.shape[1], np.int64)
-    _run(raw, en, G, ISQ, COS, SIN, ATAN, out)
-    return out.astype(np.uint8)
+    phis = np.zeros(raw.shape[1], np.int64)
+    _run(raw, en, G, ISQ, COS, SIN, ATAN, out, phis)
+    return (out.astype(np.uint8), phis) if return_phi else out.astype(np.uint8)
 
 
 def to_raw3(y):
