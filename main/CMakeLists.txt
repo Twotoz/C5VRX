@@ -13,6 +13,7 @@ target_bitscrambler_add_src("p64.bsasm")
 target_bitscrambler_add_src("u85q.bsasm")
 target_bitscrambler_add_src("u50p64.bsasm")
 target_bitscrambler_add_src("d32.bsasm")
+target_bitscrambler_add_src("d32_lp.bsasm")
 
 # The AFC decoder must not inherit the application's debug-oriented -Og.
 set_source_files_properties(control.c PROPERTIES COMPILE_OPTIONS "-O2")

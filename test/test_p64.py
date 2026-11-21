@@ -94,7 +94,7 @@ def main():
     # Fixed decoders (operator decision 2026-10-28): P64 and the untrained
     # U85Q, no kp ladder or LP; the retired policies stay research.
     build = (ROOT / "main/CMakeLists.txt").read_text()
-    assert build.count('target_bitscrambler_add_src(') == 4
+    assert build.count('target_bitscrambler_add_src(') == 5
     assert 'target_bitscrambler_add_src("u50p64.bsasm")' in build
     check_u50p64()
     assert 'target_bitscrambler_add_src("d32.bsasm")' in build

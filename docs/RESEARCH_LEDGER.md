@@ -742,3 +742,26 @@ scheduling 2026-10-18) is no longer firmware. Its findings stay in
 witness freshness and delayed observations", "Sync flywheel removed") and
 `research/data/flywheel_desync_2026-10-18.json`; the code is in git history
 before the removal.
+
+## D32-R2-LP manual counter experiment (2026-11-22, host only)
+
+C5VRX by Twotoz and the C5VRX contributors. Extends U85Q-LP's two-bundle
+counter research above and D32-R2 at 8b60fef0f43f. The unchanged D32 LUT's
+token ignores sample B signs: forcing raw address bits 8/9 to zero removes
+legacy LP's fractional carry. LDCTIA / ADDCTIAH now implement the exact
+separately truncated half/half recurrence in A[15:10], without changing
+phase tracking/click suppression. MODEM_DIAG Q4/I4, RX40/raw32K, hardware-only
+TX DSP, two bundles/lookups per pair, DAC20 duplicated TX40, state continuous
+across ring boundaries; halted verified selection/recovery only. One extra
+50 ns pair delay, no additional CPU signal processing. D32 remains default.
+
+[Architecture and limitations](D32_LP.md), [full tables](D32_LP_RESULTS.md),
+raw metrics `research/data/d32_lp.json`, generators/study in
+`research/d32_lp*.py`. 240 identical-IQ PAL/NTSC cases / 720 decoder results,
+three seeds, deviation .7/1/1.4/1.7, C/N -2..30 dB. Less than 1 dB peak
+2 MHz luma improvement, unchanged sampled usable threshold, additional
+~5-7 dB burst attenuation and a large isolated near-cliff picture-lock
+regression. Strong-signal luma/detail regressions forbid promotion from this
+evidence. Assembler/emulator and mocked production restart tests are host
+proofs only; physical timing, FIFO, RF sensitivity, colour and goggles remain
+pending. Historical U85Q-LP results above are not D32-R2-LP results.

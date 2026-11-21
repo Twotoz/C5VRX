@@ -347,3 +347,5 @@ The C5VRX name and logos have separate terms; see [assets/BRANDING.md](assets/BR
 Affiliate links. As an Amazon Associate, I earn from qualifying purchases.
 All affiliate earnings go back into C5VRX development.
 
+
+Experimental manual decoder: [D32-R2-LP architecture and limitations](docs/D32_LP.md), [simulated comparison tables](docs/D32_LP_RESULTS.md). D32-R2 remains the default; LP has substantial colour/detail trade-offs and awaits hardware testing.

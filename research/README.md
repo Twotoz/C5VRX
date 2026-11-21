@@ -8,7 +8,11 @@ See [P64](../docs/P64.md) for the active fixed-model integration.
 
 # Where can C5VRX-5 firmware still gain range?
 
-Current branch cleanup (2026-10-23): LP is retired from the firmware. Its
+Historical cleanup (2026-10-23): U85Q-LP was retired from the firmware.
+A separate manual-only [experimental D32-R2-LP](../docs/D32_LP.md) now reuses
+its generator with exact, undithered counter arithmetic;
+[actual D32 sweep results](../docs/D32_LP_RESULTS.md) show substantial colour
+and strong-signal regressions. D32-R2 remains the default. Its
 programs and policy headers are preserved in `legacy_demod/` solely for
 historical replay. The earlier LP sections below describe those experiments;
 they do not describe current controls. Firmware now offers U85Q (kp-only)

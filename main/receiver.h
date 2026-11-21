@@ -71,16 +71,17 @@ const char *transport_program_name(void);
  * demod_deviation_guard). The key was "demod" (U80P64-R1 default) and
  * "demod2" (U50P64-R1 default); a choice stored under an old key is not read,
  * so every board starts once on the new default. */
-/* Appended, never reordered: the NVS key and the flight log keep these values. */
+/* Appended, never reordered: the NVS key and the flight log keep these values.
+ * D32-R2-LP is an experimental manual-only counter IIR; see docs/D32_LP.md. */
 /* D32-R2 (2026-11-15, research/nl_tracker.py): the U85Q program, a 32-sector
  * phase difference with click suppression: the fewest colour dots (board
  * capture, 1.80 against 3.06 IRE for U50P64-R1), line lock close to
  * U50P64-R1 at the edge for deviation ~0.7 (host model), its luma 3-4 dB
  * noisier at 2-9 dB C/N. */
-enum { TRANSPORT_DEMOD_P64, TRANSPORT_DEMOD_U85Q, TRANSPORT_DEMOD_U50P64, TRANSPORT_DEMOD_D32, TRANSPORT_DEMODS };
+enum { TRANSPORT_DEMOD_P64, TRANSPORT_DEMOD_U85Q, TRANSPORT_DEMOD_U50P64, TRANSPORT_DEMOD_D32, TRANSPORT_DEMOD_D32_LP, TRANSPORT_DEMODS };
 #define TRANSPORT_DEMOD_DEFAULT TRANSPORT_DEMOD_D32
 #define TRANSPORT_DEMOD_KEY "demod3"
-const char *transport_demod_short(uint8_t d);   /* menu: "P64", "U85Q", "U50", "D32" */
+const char *transport_demod_short(uint8_t d);   /* menu: "P64", "U85Q", "U50", "D32", "D32-LP" */
 uint8_t transport_demod(void);
 const char *transport_demod_name(uint8_t d);
 bool transport_set_demod(uint8_t d);
