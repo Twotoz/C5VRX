@@ -143,7 +143,7 @@ static int strength(const metrics_t *m, uint8_t gain)
     return (coherence * 2 + power + headroom) / 4;
 }
 
-/* Decoder P64 -> U85Q -> U50P64 -> D32 (console m, menu DEMOD), kept in NVS TRANSPORT_DEMOD_KEY: live, a
+/* Decoder P64 -> U85Q -> U50P64 -> D32 -> D32-LP (console m, menu DEMOD), kept in NVS TRANSPORT_DEMOD_KEY: live, a
  * verified restart behind the shared 5 s guard; in the menu, applied by the
  * restart on menu exit. */
 static void demod_next(void)

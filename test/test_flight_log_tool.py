@@ -75,6 +75,13 @@ class FlightLogToolTest(unittest.TestCase):
         self.assertEqual(row['picture_pct'], 87)
         self.assertEqual(row['picture_windows'], 14)
 
+    def test_d32_lp_identity(self):
+        p = summary()
+        p[51] = 6
+        self.assertEqual(flight_log.second(p)['output_demod'], 'D32-R2-LP (experimental)')
+        p[50] = 0
+        self.assertIsNone(flight_log.second(p)['output_demod'])
+
     def test_old_record_keeps_output_unknown_and_same_columns(self):
         old = flight_log.second(summary(34))
         new = flight_log.second(summary())

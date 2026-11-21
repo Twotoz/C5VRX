@@ -49,8 +49,8 @@ OUT = HERE / 'legacy_demod/u85q_lp.bsasm'
 RAW_BITS = '4 5 6 7 0 1 2 3 15 11'.split()     # U85Q PAIR4411 address bits
 
 
-def program():
-    raw = ',\n'.join(f'    set {16 + k} {b}' for k, b in enumerate(RAW_BITS))
+def program(raw_bits=RAW_BITS):
+    raw = ',\n'.join(f'    set {16 + k} {b}' for k, b in enumerate(raw_bits))
     controller = f"""    set 0..5 A10..A15,
     set 6..7 L4..L5,
     set 8..12 L6..L10,
@@ -111,7 +111,7 @@ def assemble(path):
     return insts, meta, lut
 
 
-def emulate(path, data, n_out, switch_to=None, switch_at=-1):
+def emulate(path, data, n_out, switch_to=None, switch_at=-1, trace=None):
     """Runs the program over `data` (bytes); returns the first n_out output
     bytes. With switch_to, the instruction memory is replaced by that
     program's instructions after `switch_at` executed bundles, keeping the
@@ -182,6 +182,8 @@ def emulate(path, data, n_out, switch_to=None, switch_at=-1):
         if r:
             reg = (reg >> r) | (take(r) << (64 - r))
         lut_out = lut[(out >> 16) & 1023]       # LUT16: address output[25:16]
+        if trace is not None:
+            trace.append((pc, out, lut_out, ctr[0]))
         out_prev = out
         pc = (pc + 1) % len(insts)
         executed += 1

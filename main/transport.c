@@ -41,10 +41,8 @@
 #include "soc/parl_io_struct.h"
 #include "soc/pcr_struct.h"
 
-/* Two fixed decoders, each a program with its own LUT16 and no runtime policy
- * (no kp ladder, no LP): U80P64-R1 (default) and U85Q (operator decision
- * 2026-10-28, selectable for a like-for-like board comparison; host model:
- * U85Q holds sync ~0.5-1 dB longer at deviation 0.7, P64 longer at 1.0). The
+/* Fixed decoders, with no automatic LP or kp policy. D32-R2 is the default;
+ * D32-R2-LP is an experimental manual post-detection filter. The
  * selection is applied by the same verified restart as OUTPUT and profiles;
  * a rollback returns to the last verified decoder with its own LUT. */
 BITSCRAMBLER_PROGRAM(s_p64, "p64");
@@ -58,17 +56,19 @@ BITSCRAMBLER_PROGRAM(s_u50p64, "u50p64");
  * step inside the video window and 0.7 of a step outside it (clicks); the
  * advance made is the DAC code; five token bits. */
 BITSCRAMBLER_PROGRAM(s_d32, "d32");
+/* Same immutable D32 table; counter A filters the scaled DAC code in hardware. */
+BITSCRAMBLER_PROGRAM(s_d32_lp, "d32_lp");
 static bool s_started;
 static uint8_t s_demod = TRANSPORT_DEMOD_DEFAULT, s_verified_demod = TRANSPORT_DEMOD_P64;
 static const void *demod_program(uint8_t d)
 {
     return d == TRANSPORT_DEMOD_U85Q ? s_u85q : d == TRANSPORT_DEMOD_U50P64 ? s_u50p64 :
-           d == TRANSPORT_DEMOD_D32 ? s_d32 : s_p64;
+           d == TRANSPORT_DEMOD_D32_LP ? s_d32_lp : d == TRANSPORT_DEMOD_D32 ? s_d32 : s_p64;
 }
 static const uint16_t *demod_table(uint8_t d)
 {
     return d == TRANSPORT_DEMOD_U85Q ? u85q_table : d == TRANSPORT_DEMOD_U50P64 ? u50p64_table :
-           d == TRANSPORT_DEMOD_D32 ? d32_table : p64_table;
+           (d == TRANSPORT_DEMOD_D32 || d == TRANSPORT_DEMOD_D32_LP) ? d32_table : p64_table;
 }
 static const void *tracker_program(void) { return demod_program(s_demod); }
 
@@ -326,21 +326,24 @@ uint32_t transport_switch_wait_ms(void)
 const char *transport_demod_name(uint8_t d)
 {
     return d == TRANSPORT_DEMOD_U85Q ? U85Q_MODEL_ID : d == TRANSPORT_DEMOD_U50P64 ? U50P64_MODEL_ID :
-           d == TRANSPORT_DEMOD_D32 ? D32_MODEL_ID : P64_MODEL_ID;
+           d == TRANSPORT_DEMOD_D32_LP ? "D32-R2-LP" : d == TRANSPORT_DEMOD_D32 ? D32_MODEL_ID : P64_MODEL_ID;
 }
 const char *transport_demod_short(uint8_t d)
 {
     return d == TRANSPORT_DEMOD_U85Q ? "U85Q" : d == TRANSPORT_DEMOD_U50P64 ? "U50" :
-           d == TRANSPORT_DEMOD_D32 ? "D32" : "P64";
+           d == TRANSPORT_DEMOD_D32_LP ? "D32-LP" : d == TRANSPORT_DEMOD_D32 ? "D32" : "P64";
 }
 const char *transport_program_name(void) { return transport_demod_name(s_demod); }
 uint8_t transport_demod(void) { return s_demod; }
 /* The live, verified decoder's LUT16 (without the OUTPUT scaling) and its
- * token width, for the picture measure (picture_sync.h); NULL while unknown. */
+ * token width, for the picture measure (picture_sync.h); NULL while unknown.
+ * D32-R2-LP shares the D32 LUT: this sparse CPU observer measures PRE-filter
+ * video, not the counter IIR or colour. No per-sample CPU LP is introduced. */
 const uint16_t *transport_decoder_lut(unsigned *token_bits)
 {
     if (!s_lut_known || s_transport_fault || !s_started) return NULL;
-    *token_bits = s_verified_demod == TRANSPORT_DEMOD_U85Q || s_verified_demod == TRANSPORT_DEMOD_D32 ? 5u : 4u;
+    *token_bits = s_verified_demod == TRANSPORT_DEMOD_U85Q || s_verified_demod == TRANSPORT_DEMOD_D32 ||
+                  s_verified_demod == TRANSPORT_DEMOD_D32_LP ? 5u : 4u;
     return demod_table(s_verified_demod);
 }
 
@@ -728,6 +731,7 @@ void transport_flog_identity(uint8_t *demod, uint8_t *output_level)
     if (demod) *demod = !verified ? FLOG_DEMOD_UNKNOWN :
                         s_verified_demod == TRANSPORT_DEMOD_U85Q ? FLOG_DEMOD_U85Q_1A09F5C092E8 :
                         s_verified_demod == TRANSPORT_DEMOD_U50P64 ? FLOG_DEMOD_U50P64_R1 :
+                        s_verified_demod == TRANSPORT_DEMOD_D32_LP ? FLOG_DEMOD_D32_R2_LP :
                         s_verified_demod == TRANSPORT_DEMOD_D32 ? FLOG_DEMOD_D32_R1 : FLOG_DEMOD_P64_R1;
     /* 0..9 a manual level; 0x80 | gain_q3 an AUTO OUTPUT word (gain = low six bits / 8). */
     if (output_level) *output_level = !verified ? 0xffu : output_is_affine(s_verified_output) ?
@@ -757,6 +761,9 @@ void transport_print(void)
     printf("DEMOD selected=%s verified=%s p64_model=%s p64_table_sha256=%s u85q_table_sha256=%s u50p64_table_sha256=%s "
            "d32_table_sha256=%s (console m switches)\n", transport_program_name(), verified_demod, P64_MODEL_ID,
            P64_TABLE_SHA256, U85Q_TABLE_SHA256, U50P64_TABLE_SHA256, D32_TABLE_SHA256);
+    if (s_demod == TRANSPORT_DEMOD_D32_LP)
+        printf("DEMOD_EXPERIMENTAL name=D32-R2-LP filter=counter_iir_half picture_observer=pre_filter "
+               "colour=unverified hardware_validation=pending\n");
     printf("TRANSPORT_STAGES_US quiesce=%lu bs_enable=%lu program_load=%lu instruction_verify=%lu lut_verify=%lu "
            "bs_reset=%lu bs_start=%lu rx_enable=%lu tx_enable=%lu rx_start=%lu tx_start=%lu (last restart)\n",
            (unsigned long)s_quiesce_us, (unsigned long)s_stage_us[TR_BS_ENABLE], (unsigned long)s_stage_us[TR_PROGRAM_LOAD],
