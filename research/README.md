@@ -1,10 +1,13 @@
 # Current firmware versus archived receiver studies
 
-The active firmware now uses U80P64-R1 only (operator decision 2026-10-23).
-The U85Q/kp/LP studies below retain their original evidence and assumptions;
-they do not describe current firmware controls. Retired programs/tables and
-policies are under `research/legacy_demod/`; they are excluded from the build.
-See [P64](../docs/P64.md) for the active fixed-model integration.
+The active firmware defaults to D32-R2 (operator decision 2026-11-15).
+U80P64-R1, U85Q and U50P64-R1 remain manually selectable; the latter retains
+its deviation fallback. [D32-R2-LP](../docs/D32_LP.md) is a separate manual-only
+experimental counter filter, with documented colour/detail regressions.
+The historical U85Q/kp/LP studies below retain their original evidence and
+assumptions; their automatic policies are not current firmware controls.
+Retired programs/tables and policies are under `research/legacy_demod/` and
+excluded from the build. See [P64](../docs/P64.md) for that fixed-model integration.
 
 # Where can C5VRX-5 firmware still gain range?
 
@@ -12,11 +15,10 @@ Historical cleanup (2026-10-23): U85Q-LP was retired from the firmware.
 A separate manual-only [experimental D32-R2-LP](../docs/D32_LP.md) now reuses
 its generator with exact, undithered counter arithmetic;
 [actual D32 sweep results](../docs/D32_LP_RESULTS.md) show substantial colour
-and strong-signal regressions. D32-R2 remains the default. Its
-programs and policy headers are preserved in `legacy_demod/` solely for
+and strong-signal regressions. D32-R2 remains the default. The retired U85Q-LP
+program and policy headers are preserved in `legacy_demod/` solely for
 historical replay. The earlier LP sections below describe those experiments;
-they do not describe current controls. Firmware now offers U85Q (kp-only)
-and U80P64-R1. `p64_lowcn_search.py --seconds 900` explores a separate fixed
+they do not describe current controls. `p64_lowcn_search.py --seconds 900` explores a separate fixed
 P64 candidate down to -10 dB C/N; `p64_lowcn_validate.py` freezes it and runs
 held-out PAL/NTSC and transfer checks. These are host simulations.
 Both candidates failed independent acceptance; [results](../docs/P64_LOWCN.md).
