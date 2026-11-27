@@ -111,9 +111,9 @@ int main(int argc, char **argv)
     v.cn_x10 = 455; menu_ui_render(ui, &v); check("cn_high", false);
     v.cn_x10 = -990; menu_ui_render(ui, &v); check("cn_unknown", false);
     v = base(); v.cursor = MENU_EXIT; v.firmware = "5.0.0-pr.9999"; menu_ui_render(ui, &v); check("exit_fw", false);
-    /* CALIBRATE submenu: every row, with the DC warning. */
+    /* CALIBRATE submenu: every row, including the full-calibration recommendation. */
     for (int k = 0; k < MENU_CAL_ITEMS; ++k) {
-        v = base(); v.cursor = MENU_CALIBRATE; v.cal_sub = k; v.dc_cal = k == 0;
+        v = base(); v.cursor = MENU_CALIBRATE; v.cal_sub = k; v.cal_full_recommended = k == MENU_CAL_FULL;
         snprintf(name, sizeof(name), "cal_sub_%d", k);
         menu_ui_render(ui, &v); check(name, false);
     }

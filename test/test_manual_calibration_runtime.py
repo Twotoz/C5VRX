@@ -86,7 +86,7 @@ int main(void){
    self.assertNotIn(name,body)
  def test_menu_recommendation_is_latched_until_recovery(self):
   s=''.join(p.read_text() for p in sorted((ROOT/'main').glob('calibration*.c')))
-  body=s[s.index('unsigned calibration_dc_needed('):s.index('static void dc_health_print(')]
+  body=s[s.index('unsigned calibration_dc_needed('):s.index('bool calibration_dc_full_recommended(')]
   run(r'''
 #include <assert.h>
 #include <stdbool.h>
@@ -110,6 +110,37 @@ int main(void){char label[24];
  frequency=5805;assert(!calibration_dc_needed(NULL,0));
  frequency=5865;key=43;assert(!calibration_dc_needed(NULL,0));
  key=42;s_cal_notice=false;assert(!calibration_dc_needed(NULL,0));
+}
+''')
+ def test_full_calibration_recommendation(self):
+  s=(ROOT/'main/calibration_dc.c').read_text()
+  body=s[s.index('bool calibration_dc_full_recommended('):s.index('static void dc_health_print(')]
+  run(r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#define ARC_VENDOR_GAIN_MAX 3
+#define DCO_ROW_OK 1
+static struct { unsigned lo, hi, freq; struct { unsigned valid; } e[4]; } s_dco;
+static bool s_dco_serving_valid, health;
+static unsigned frequency=5865,key=42,s_dco_serving=42,s_dco_templ;
+static unsigned rf_frequency_mhz(void){return frequency;}
+static unsigned live_filter_key(void){return key;}
+static bool dco_mask_get(unsigned mask,unsigned g){return (mask >> g) & 1u;}
+static unsigned calibration_dc_needed(char *buf,size_t size){(void)buf;(void)size;return health;}
+''' + body + r'''
+int main(void){
+ s_dco.freq=5865;s_dco.lo=0;s_dco.hi=3;
+ assert(!calibration_dc_full_recommended());
+ health=true;assert(calibration_dc_full_recommended());health=false;
+ s_dco_serving_valid=true;
+ s_dco.e[0].valid=s_dco.e[1].valid=s_dco.e[2].valid=DCO_ROW_OK;
+ s_dco.e[3].valid=2; /* a noise-floor row is neither usable nor a missing row */
+ s_dco_templ=1u | 8u;assert(!calibration_dc_full_recommended());
+ s_dco_templ=3u | 8u;assert(calibration_dc_full_recommended());
+ key=43;assert(!calibration_dc_full_recommended());
+ key=42;frequency=5805;assert(!calibration_dc_full_recommended());
 }
 ''')
  def test_actual_boot_phase_guard(self):

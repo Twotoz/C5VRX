@@ -327,8 +327,8 @@ static inline void dc_servo_forget_all(dc_servo_t *s)
  * its steps turn local, so a lasting per-row mismatch (a calibration from
  * another day, a template row) cannot keep moving every other row and two
  * rows cannot fight over `shared`. A template row without its own local part inherits the nearest
- * row's (`inherit` = local plus what an adoption moved into its codes); a
- * calibrated row's codes are right, its local part is 0. */
+ * row's local correction, including the part already saved into its codes;
+ * a calibrated row without a local part uses shared drift alone. */
 #ifndef DC_MODEL_ROWS
 #define DC_MODEL_ROWS 96u   /* indexed by gain row (>= ARC_VENDOR_GAIN_MAX + 1) */
 #endif
@@ -337,7 +337,8 @@ static inline void dc_servo_forget_all(dc_servo_t *s)
 typedef struct {
     int shared[2];
     int16_t local[DC_MODEL_ROWS][2];
-    int16_t absorbed[DC_MODEL_ROWS][2];   /* codes an adoption moved into the table */
+    int16_t absorbed[DC_MODEL_ROWS][2];   /* correction already saved into the table */
+    int16_t rebase[DC_MODEL_ROWS][2];     /* live trim window centre, relative to saved codes */
     bool own[DC_MODEL_ROWS];          /* the row has its own local part */
     uint8_t settled[DC_MODEL_ROWS];   /* in-deadband decisions in a row */
     uint8_t strikes[DC_MODEL_ROWS];   /* shared steps since the row last settled */
@@ -352,15 +353,72 @@ static inline int dc_model_local(const dc_model_t *m, unsigned g, unsigned a, bo
     if (m->own[g]) return m->local[g][a];
     if (!templ) return 0;
     for (unsigned d = 1; d < DC_MODEL_ROWS; ++d) {
-        if (g >= d && m->own[g - d]) return m->local[g - d][a] + m->absorbed[g - d][a];
-        if (g + d < DC_MODEL_ROWS && m->own[g + d]) return m->local[g + d][a] + m->absorbed[g + d][a];
+        if (g >= d && m->own[g - d]) return m->local[g - d][a];
+        if (g + d < DC_MODEL_ROWS && m->own[g + d]) return m->local[g + d][a];
     }
     return 0;
 }
 
 static inline int dc_model_offset(const dc_model_t *m, unsigned g, unsigned a, bool templ)
 {
-    return m->shared[a > 1u ? 1u : a] + dc_model_local(m, g, a, templ);
+    if (g >= DC_MODEL_ROWS || a > 1u) return 0;
+    return m->shared[a] + dc_model_local(m, g, a, templ) - m->absorbed[g][a];
+}
+
+/* Recentring the window changes neither the DAC code nor any inherited trim. */
+static inline bool dc_model_rebased(const dc_model_t *m, unsigned g)
+{
+    return m->rebase[g][0] || m->rebase[g][1];
+}
+
+static inline int dc_servo_dac_code(int code)
+{
+    return code < 0 ? 0 : code > 511 ? 511 : code;
+}
+
+static inline bool dc_servo_at_rail(int code, int step)
+{
+    return (code <= 0 && step < 0) || (code >= 511 && step > 0);
+}
+
+static inline bool dc_servo_rebase_needed(int code, int trim, int limit, int step)
+{
+    return !dc_servo_at_rail(code, step) &&
+           ((trim >= limit && step > 0) || (trim <= -limit && step < 0));
+}
+
+/* Shared or inherited changes may already have pushed a row beyond its
+ * own window. Allow inward steps and never turn an outward step around. */
+static inline int dc_servo_bound_step(int code, int trim, int limit, int step)
+{
+    if (step > 0 && step > limit - trim) step = trim < limit ? limit - trim : 0;
+    if (step < 0 && step < -limit - trim) step = trim > -limit ? -limit - trim : 0;
+    if (dc_servo_at_rail(code, step)) return 0;
+    if (step > 0 && code + step > 511) return 511 - code;
+    if (step < 0 && code + step < 0) return -code;
+    return step;
+}
+
+typedef struct {
+    int trim_step, dac_step;
+    bool rebased, rail;
+} dc_model_step_t;
+
+static inline dc_model_step_t dc_model_plan_step(dc_model_t *m, unsigned g, unsigned a, int base,
+                                                 bool templ, int limit, int step, bool large_residual)
+{
+    const int offset = dc_model_offset(m, g, a, templ);
+    const int code = base + offset;
+    int trim = offset - m->rebase[g][a];
+    const bool rail = dc_servo_at_rail(code, step);
+    const bool rebased = large_residual && dc_servo_rebase_needed(code, trim, limit, step);
+    if (rebased) {
+        m->rebase[g][a] = (int16_t)offset;
+        trim = 0;
+    }
+    const int bounded = dc_servo_bound_step(code, trim, limit, step);
+    return (dc_model_step_t){bounded, dc_servo_dac_code(code + bounded) - dc_servo_dac_code(code), rebased,
+                             rail && large_residual};
 }
 
 /* A decision's mean for row g (before its step): counts the settle run. */
@@ -401,8 +459,9 @@ static inline void dc_model_adopt(dc_model_t *m, unsigned g, bool templ)
     if (g >= DC_MODEL_ROWS) return;
     for (unsigned a = 0; a < 2; ++a) {
         const int local = dc_model_local(m, g, a, templ);
-        m->absorbed[g][a] = (int16_t)(m->absorbed[g][a] + m->shared[a] + local);
-        m->local[g][a] = (int16_t)-m->shared[a];
+        m->absorbed[g][a] = (int16_t)(m->shared[a] + local);
+        if (templ) m->local[g][a] = (int16_t)local;
+        m->rebase[g][a] = 0;
     }
-    m->own[g] = true;
+    if (templ) m->own[g] = true;
 }

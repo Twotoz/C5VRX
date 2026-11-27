@@ -734,6 +734,15 @@ with per-profile data in `research/data/phy_noise_lab_2026-10-28.json`.
 These bench controls do not establish a lower absolute NF and are not
 production boot settings. The current-level argument is not calibrated mA.
 
+## Table-row DC servo rebase (issue #320)
+
+The C5VRX-5 servo can recenter the live G54–G89 trim window and resume an
+outward correction while DAC headroom remains. See
+[Baseline boot and manual calibration](FASTER_CALIBRATION.md#live-dc-servo-operator-decision-2026-10-26)
+for the observed Triversity failure's source, persistence policy and separate
+low-gain path. Standalone C5VRX convergence and weak-signal performance still
+need a hardware comparison.
+
 ## Removed sync flywheel (PR #212/#218 history, removed 2026-10-25)
 
 The C5VRX-5 flywheel (PR #212, witness fix PR #218, bounded sync-loss

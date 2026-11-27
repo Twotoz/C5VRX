@@ -35,6 +35,23 @@ servo holds within 0.3 cells for 8 estimates on receiver noise, or 16 on a
 carrier, becomes this channel's own row and is stored, so the next boot starts
 closer. Boot itself still runs no search or trim.
 
+At the trim boundary, significant DC and an outward step recenter the live
+window without moving the held DAC codes or changing what neighbours inherit.
+The old stored row stays intact until the near-zero run qualifies the new
+codes and residual together. `DC_SERVO rebased` counts these events.
+`DC_FAULT trim_limit` means significant outward demand at the physical DAC
+rail (0 or 511). This adapts [Triversity's DC rebase by Twotoz and contributors](https://github.com/Twotoz/triversity/commit/af2d88f5654dcf86fcf64e082297005a98833bcf).
+
+The CALIBRATE submenu highlights FULL when DC health calls for calibration or
+most usable rows in the current channel/filter are still templates. QUICK and
+FULL remain explicit choices, as do console F and B. Keep the VTX off.
+
+Low DC (G30–G53) uses cached vendor codes and one volatile ±192-code trim per
+RF stage. Its own clamp can stop a stage at the trim boundary. A gain-row
+rebase cannot move that window without accounting for every row sharing the
+stage and for vendor codes first read on later visits. Check close-range
+hardware logs for stage saturation before adjusting this separate path.
+
 The servo corrects only on a settled sampling phase. Board 2026-10-26, b26ef545,
 VTX off: one boot in five came up with the phase unverified after the boot
 check (`SPHASE ... excess_mc2=1883 limit=300`, the boot scan read `worst=5076`).
