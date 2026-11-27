@@ -346,15 +346,15 @@ static void cal_list(const menu_view_t *v)
         const bool on = i == v->cal_sub;
         if (on) pill(0, y - 1, LIST_W, 7, MENU_INK_WHITE);
         text_box(s_cal_items[i], 9, y, 100, ALIGN_LEFT, FONT_TEXT, on ? MENU_INK_BLACK : MENU_INK_GREY);
-        if (i == MENU_CAL_QUICK && v->dc_cal)
-            text_box("DC!", 0, y, LIST_W - 8, ALIGN_RIGHT, FONT_TEXT, on ? MENU_INK_BLACK : MENU_INK_WHITE);
+        if (i == MENU_CAL_FULL && v->cal_full_recommended)
+            text_box("RECOMMENDED", 0, y, LIST_W - 8, ALIGN_RIGHT, FONT_TEXT, on ? MENU_INK_BLACK : MENU_INK_WHITE);
     }
 }
 
 static void card_cal(const menu_view_t *v)
 {
     static const char *const lines[MENU_CAL_ITEMS][3] = {
-        {"THIS FILTER", "AND DC ROWS", "ABOUT 30 S"},
+        {"THIS FILTER", "VTX OFF", "ABOUT 30 S"},
         {"ALL FILTERS", "VTX OFF", "1-2 MIN"},
         {"MAIN MENU", "", ""},
     };

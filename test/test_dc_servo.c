@@ -378,6 +378,70 @@ int main(void)
         check("model: a template neighbour inherits the same after adoption", dc_model_offset(&m, 61, 0, true) == before61);
         m.shared[0] += 5;
         check("model: an adopted row still follows a later shared drift", dc_model_offset(&m, 60, 0, true) == 5);
+
+        /* Both signs on I and Q, with the measured and template windows.
+         * Row 60 inherits from 57, while its neighbour 61 inherits from 63.
+         * Recentering must not make row 60 an inheritance source. */
+        bool rebase_ok = true, commit_ok = true, rail_ok = true;
+        for (unsigned kind = 0; kind < 2; ++kind) {
+            const bool template = kind != 0;
+            const int limit = template ? 192 : 96;
+            for (unsigned axis = 0; axis < 2; ++axis) {
+                for (int direction = -1; direction <= 1; direction += 2) {
+                    dc_model_reset(&m);
+                    m.shared[axis] = direction * (limit - (template ? 20 : 0));
+                    m.own[57] = m.own[63] = true;
+                    m.local[57][axis] = direction * 20;
+                    m.local[63][axis] = direction * 10;
+                    const int stored = direction > 0 ? 10 : 501;
+                    const int offset = dc_model_offset(&m, 60, axis, template);
+                    const int neighbour = dc_model_offset(&m, 61, axis, true);
+                    dc_model_step_t plan = dc_model_plan_step(&m, 60, axis, stored, template,
+                                                             limit, -direction * 8, true);
+                    rebase_ok &= !plan.rebased && !plan.rail && plan.dac_step == -direction * 8;
+                    plan = dc_model_plan_step(&m, 60, axis, stored, template, limit, direction * 8, false);
+                    rebase_ok &= !plan.rebased && !plan.rail && plan.dac_step == 0;
+                    plan = dc_model_plan_step(&m, 60, axis, stored, template, limit, direction * 8, true);
+                    rebase_ok &= plan.rebased && !plan.rail && plan.dac_step == direction * 8 &&
+                                 dc_model_rebased(&m, 60) && !m.own[60] &&
+                                 dc_model_offset(&m, 60, axis, template) == offset &&
+                                 dc_model_offset(&m, 61, axis, true) == neighbour;
+
+                    /* Shared drift pushes beyond a second window. Both
+                     * recentrings leave the pre-step output code intact. */
+                    m.shared[axis] += direction * limit;
+                    const int before = stored + dc_model_offset(&m, 60, axis, template);
+                    plan = dc_model_plan_step(&m, 60, axis, stored, template, limit, direction * 8, true);
+                    rebase_ok &= plan.rebased && plan.dac_step == direction * 8 &&
+                                 stored + dc_model_offset(&m, 60, axis, template) == before;
+                    int applied[2] = {0, 0};
+                    applied[axis] = plan.trim_step;
+                    dc_model_apply(&m, 60, applied, template);
+
+                    /* After a near-zero run the firmware saves the effective
+                     * codes, clears template status, and absorbs the trim. */
+                    const int saved = stored + dc_model_offset(&m, 60, axis, template);
+                    const int adjacent = dc_model_offset(&m, 61, axis, true);
+                    dc_model_adopt(&m, 60, template);
+                    commit_ok &= !dc_model_rebased(&m, 60) && dc_model_offset(&m, 60, axis, false) == 0 &&
+                                 saved == before + direction * 8 &&
+                                 dc_model_offset(&m, 61, axis, true) == adjacent;
+
+                    const int rail = direction > 0 ? 511 : 0;
+                    plan = dc_model_plan_step(&m, 60, axis, rail, false, limit, direction * 8, true);
+                    rail_ok &= plan.rail && !plan.rebased && plan.dac_step == 0;
+                    plan = dc_model_plan_step(&m, 60, axis, rail, false, limit, -direction * 8, true);
+                    rail_ok &= !plan.rail && !plan.rebased && plan.dac_step == -direction * 8;
+                    plan = dc_model_plan_step(&m, 60, axis, rail - direction, false, limit, direction * 8, true);
+                    rail_ok &= !plan.rail && !plan.rebased && plan.dac_step == direction;
+                    plan = dc_model_plan_step(&m, 60, axis, rail + 3 * direction, false, limit, -direction * 8, true);
+                    rail_ok &= !plan.rail && plan.trim_step == -direction * 8 && plan.dac_step == -direction * 5;
+                }
+            }
+        }
+        check("model: signed I/Q rebases preserve shared offsets, ownership and neighbours", rebase_ok);
+        check("model: settled measured and template rebases save without double-counting", commit_ok);
+        check("model: only outward residuals flag DAC rails and inward steps can recover", rail_ok);
         #undef ERR
         #undef VISIT
         #undef WORST

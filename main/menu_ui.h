@@ -40,6 +40,7 @@ typedef struct {
     uint8_t exp_values[EXP_ITEMS];
     int cursor;                     /* MENU_* */
     int cal_sub;                    /* MENU_CAL_* while the CALIBRATE submenu is open, else -1 */
+    bool cal_full_recommended;
     /* Tuning. */
     const char *channel;            /* "R1" */
     unsigned freq_mhz;

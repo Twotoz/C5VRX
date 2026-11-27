@@ -189,6 +189,7 @@ void menu_render(void)
         .exp_active = experimental_mask() != 0, .exp_failed = s_exp_failed || experimental_phy_failed(),
         .exp_reboot = experimental_reboot_needed(), .exp_coarse = rf_lane() != RF_LANE_ULTRAFINE,
         .cursor = s_menu_cursor, .cal_sub = s_cal_sub,
+        .cal_full_recommended = s_cal_sub >= 0 && calibration_dc_full_recommended(),
         .channel = ch->name, .freq_mhz = ch->freq_mhz,
         .band = index / 8u, .channel_in_band = index % 8u, .band_name = rf_band_name(index / 8u),
         .band_letters = "RABEFL", .band_count = FPV_BANDS,

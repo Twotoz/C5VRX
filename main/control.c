@@ -388,7 +388,9 @@ static void menu_action(void)
     case MENU_AFC: toggle_afc(); break;
     case MENU_DFILT: cycle_dfilt(); break;
     case MENU_EXPERIMENTAL: s_exp_sub = 0; break;
-    case MENU_CALIBRATE: s_cal_sub = MENU_CAL_QUICK; break;   /* opens the QUICK / FULL / BACK submenu */
+    case MENU_CALIBRATE:
+        s_cal_sub = calibration_dc_full_recommended() ? MENU_CAL_FULL : MENU_CAL_QUICK;
+        break;
     case MENU_OUTPUT: (void)transport_set_output((transport_output() + 1u) % OUTPUT_LEVELS); break;
     case MENU_GAIN: receiver_set_gain_mode(receiver_gain_mode_next(receiver_gain_mode()), true); prefs_save(); break;
     case MENU_DEMOD: demod_next(); break;   /* applied by the verified restart on menu exit */
